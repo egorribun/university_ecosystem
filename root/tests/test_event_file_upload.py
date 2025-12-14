@@ -23,6 +23,39 @@ from app.utils import files
 
 FIXTURE_UPLOADS = Path(__file__).parent / "fixtures" / "uploads"
 
+
+def _fallback_detect_mime(data: bytes) -> str | None:
+    """Simple MIME detection fallback for platforms without libmagic."""
+    if not data:
+        return None
+    if data.startswith(b"%PDF"):
+        return "application/pdf"
+    if data.startswith(b"\x89PNG"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data.startswith(b"GIF8"):
+        return "image/gif"
+    if data.startswith(b"RIFF") and b"WEBP" in data[:12]:
+        return "image/webp"
+    if data.startswith(b"PK\x03\x04"):
+        return "application/zip"
+    # SVG detection
+    if b"<svg" in data[:1024].lower():
+        return "image/svg+xml"
+    # Assume text/plain for printable ASCII
+    try:
+        data[:512].decode("utf-8")
+        return "text/plain"
+    except UnicodeDecodeError:
+        return "application/octet-stream"
+
+
+@pytest.fixture(autouse=True)
+def _mock_mime_detection(monkeypatch):
+    """Mock MIME detection for platforms without libmagic (e.g., Windows)."""
+    monkeypatch.setattr(files, "detect_mime_type", _fallback_detect_mime)
+
 MULTIPAGE_PDF_BYTES = b"""%PDF-1.4\n\
 1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n\
 2 0 obj\n<< /Type /Pages /Count 2 /Kids [3 0 R 4 0 R] >>\nendobj\n\

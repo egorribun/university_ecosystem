@@ -22,40 +22,6 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  "/healthz": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Healthz */
-    get: operations["healthz_healthz_get"]
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/ready": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Ready */
-    get: operations["ready_ready_get"]
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
   "/api/v1/auth/login": {
     parameters: {
       query?: never
@@ -90,7 +56,7 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  "/api/v1/auth/mfa/totp/start": {
+  "/api/v1/auth/logout": {
     parameters: {
       query?: never
       header?: never
@@ -99,15 +65,18 @@ export interface paths {
     }
     get?: never
     put?: never
-    /** Start Totp Enrollment Endpoint */
-    post: operations["start_totp_enrollment_endpoint_api_v1_auth_mfa_totp_start_post"]
+    /**
+     * Logout
+     * @description Terminate the client session.
+     */
+    post: operations["logout_api_v1_auth_logout_post"]
     delete?: never
     options?: never
     head?: never
     patch?: never
     trace?: never
   }
-  "/api/v1/auth/mfa/totp/confirm": {
+  "/api/v1/auth/mfa/step-up": {
     parameters: {
       query?: never
       header?: never
@@ -116,8 +85,8 @@ export interface paths {
     }
     get?: never
     put?: never
-    /** Confirm Totp Enrollment */
-    post: operations["confirm_totp_enrollment_api_v1_auth_mfa_totp_confirm_post"]
+    /** Request Step Up */
+    post: operations["request_step_up_api_v1_auth_mfa_step_up_post"]
     delete?: never
     options?: never
     head?: never
@@ -141,6 +110,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  "/api/v1/auth/mfa/totp/confirm": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Confirm Totp Enrollment */
+    post: operations["confirm_totp_enrollment_api_v1_auth_mfa_totp_confirm_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   "/api/v1/auth/mfa/totp/pending/{enrollment_id}": {
     parameters: {
       query?: never
@@ -153,6 +139,23 @@ export interface paths {
     post?: never
     /** Delete Pending Totp Enrollment */
     delete: operations["delete_pending_totp_enrollment_api_v1_auth_mfa_totp_pending__enrollment_id__delete"]
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/auth/mfa/totp/start": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Start Totp Enrollment Endpoint */
+    post: operations["start_totp_enrollment_endpoint_api_v1_auth_mfa_totp_start_post"]
+    delete?: never
     options?: never
     head?: never
     patch?: never
@@ -192,7 +195,7 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  "/api/v1/auth/mfa/step-up": {
+  "/api/v1/auth/register": {
     parameters: {
       query?: never
       header?: never
@@ -201,8 +204,8 @@ export interface paths {
     }
     get?: never
     put?: never
-    /** Request Step Up */
-    post: operations["request_step_up_api_v1_auth_mfa_step_up_post"]
+    /** Register */
+    post: operations["register_api_v1_auth_register_post"]
     delete?: never
     options?: never
     head?: never
@@ -226,111 +229,6 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  "/api/v1/auth/register": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Register */
-    post: operations["register_api_v1_auth_register_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/auth/logout": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /**
-     * Logout
-     * @description Terminate the client session.
-     */
-    post: operations["logout_api_v1_auth_logout_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/spotify/auth-url": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Spotify Auth Url */
-    get: operations["spotify_auth_url_api_v1_spotify_auth_url_get"]
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/spotify/callback": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Spotify Callback */
-    get: operations["spotify_callback_api_v1_spotify_callback_get"]
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/spotify/now-playing": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Now Playing */
-    get: operations["now_playing_api_v1_spotify_now_playing_get"]
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/spotify/disconnect": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Disconnect */
-    post: operations["disconnect_api_v1_spotify_disconnect_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
   "/api/v1/auth/sessions": {
     parameters: {
       query?: never
@@ -342,6 +240,23 @@ export interface paths {
     get: operations["list_sessions_api_v1_auth_sessions_get"]
     put?: never
     post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/auth/sessions/revoke-others": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Revoke Other Sessions */
+    post: operations["revoke_other_sessions_api_v1_auth_sessions_revoke_others_post"]
     delete?: never
     options?: never
     head?: never
@@ -365,93 +280,7 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  "/api/v1/auth/sessions/revoke-others": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Revoke Other Sessions */
-    post: operations["revoke_other_sessions_api_v1_auth_sessions_revoke_others_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/notifications": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** List Notifications */
-    get: operations["list_notifications_api_v1_notifications_get"]
-    put?: never
-    post?: never
-    /** Clear Notifications */
-    delete: operations["clear_notifications_api_v1_notifications_delete"]
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/notifications/{notif_id}/read": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    /** Mark Read Single */
-    patch: operations["mark_read_single_api_v1_notifications__notif_id__read_patch"]
-    trace?: never
-  }
-  "/api/v1/notifications/read-all": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Mark All Read */
-    post: operations["mark_all_read_api_v1_notifications_read_all_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/notifications/check-schedule": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Check Schedule And Generate */
-    post: operations["check_schedule_and_generate_api_v1_notifications_check_schedule_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/push/vapid-public-key": {
+  "/api/v1/chats": {
     parameters: {
       query?: never
       header?: never
@@ -459,36 +288,26 @@ export interface paths {
       cookie?: never
     }
     /**
-     * Get Vapid Public Key
-     * @description Return configured VAPID public key.
+     * Get Chats
+     * @description Get all chats for the current user with cursor-based pagination.
+     *
+     *     Returns chats ordered by last message timestamp (newest first).
+     *     Use the `next_cursor` from the response to fetch the next page.
      */
-    get: operations["get_vapid_public_key_api_v1_push_vapid_public_key_get"]
+    get: operations["get_chats_api_v1_chats_get"]
     put?: never
-    post?: never
+    /**
+     * Create Chat
+     * @description Create a new chat with a user. If a chat already exists, return it.
+     */
+    post: operations["create_chat_api_v1_chats_post"]
     delete?: never
     options?: never
     head?: never
     patch?: never
     trace?: never
   }
-  "/api/v1/push/subscribe": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Subscribe */
-    post: operations["subscribe_api_v1_push_subscribe_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/push/subscribe/topics": {
+  "/api/v1/chats/{chat_id}": {
     parameters: {
       query?: never
       header?: never
@@ -498,14 +317,17 @@ export interface paths {
     get?: never
     put?: never
     post?: never
-    delete?: never
+    /**
+     * Delete Chat
+     * @description Delete a chat entirely for all participants (messages, attachments, links).
+     */
+    delete: operations["delete_chat_api_v1_chats__chat_id__delete"]
     options?: never
     head?: never
-    /** Update Subscription Topics */
-    patch: operations["update_subscription_topics_api_v1_push_subscribe_topics_patch"]
+    patch?: never
     trace?: never
   }
-  "/api/v1/push/unsubscribe": {
+  "/api/v1/chats/{chat_id}/clear": {
     parameters: {
       query?: never
       header?: never
@@ -514,32 +336,48 @@ export interface paths {
     }
     get?: never
     put?: never
-    /** Unsubscribe */
-    post: operations["unsubscribe_api_v1_push_unsubscribe_post"]
+    /**
+     * Clear Chat History
+     * @description Remove all messages (and attachments) from a chat for its participants.
+     */
+    post: operations["clear_chat_history_api_v1_chats__chat_id__clear_post"]
     delete?: never
     options?: never
     head?: never
     patch?: never
     trace?: never
   }
-  "/api/v1/push/topics": {
+  "/api/v1/chats/{chat_id}/messages": {
     parameters: {
       query?: never
       header?: never
       path?: never
       cookie?: never
     }
-    /** Get Push Topics */
-    get: operations["get_push_topics_api_v1_push_topics_get"]
+    /**
+     * Get Messages
+     * @description Get messages for a chat with cursor-based pagination.
+     *
+     *     Messages are returned in ascending order (oldest first).
+     *     Use the `next_cursor` from the response to fetch older messages.
+     */
+    get: operations["get_messages_api_v1_chats__chat_id__messages_get"]
     put?: never
-    post?: never
+    /**
+     * Send Message
+     * @description Send a message to a chat.
+     *
+     *     The message is saved to the database and all chat participants
+     *     are notified via WebSocket in real-time.
+     */
+    post: operations["send_message_api_v1_chats__chat_id__messages_post"]
     delete?: never
     options?: never
     head?: never
     patch?: never
     trace?: never
   }
-  "/api/v1/push/test": {
+  "/api/v1/chats/{chat_id}/read": {
     parameters: {
       query?: never
       header?: never
@@ -548,319 +386,11 @@ export interface paths {
     }
     get?: never
     put?: never
-    /** Send Test */
-    post: operations["send_test_api_v1_push_test_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/push/admin/topics/{user_id}": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Admin Get User Topics */
-    get: operations["admin_get_user_topics_api_v1_push_admin_topics__user_id__get"]
-    /** Admin Update User Topics */
-    put: operations["admin_update_user_topics_api_v1_push_admin_topics__user_id__put"]
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/push/admin/disable-user": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Disable User Push */
-    post: operations["disable_user_push_api_v1_push_admin_disable_user_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/push/broadcast": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Broadcast */
-    post: operations["broadcast_api_v1_push_broadcast_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/schedule/ics": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Download Schedule Ics */
-    get: operations["download_schedule_ics_api_v1_schedule_ics_get"]
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/users/me": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Me */
-    get: operations["me_api_v1_users_me_get"]
-    /** Update Me */
-    put: operations["update_me_api_v1_users_me_put"]
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/users/me/email": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Change Email */
-    post: operations["change_email_api_v1_users_me_email_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/users/me/email/confirm": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Confirm Email Change */
-    post: operations["confirm_email_change_api_v1_users_me_email_confirm_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/users/me/password": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Change Password */
-    post: operations["change_password_api_v1_users_me_password_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/users/me/export": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Export Me */
-    post: operations["export_me_api_v1_users_me_export_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/users/me/delete": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Delete Me */
-    post: operations["delete_me_api_v1_users_me_delete_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/users/me/avatar": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Upload Avatar */
-    post: operations["upload_avatar_api_v1_users_me_avatar_post"]
-    /** Delete Avatar */
-    delete: operations["delete_avatar_api_v1_users_me_avatar_delete"]
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/users/me/cover": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Upload Cover */
-    post: operations["upload_cover_api_v1_users_me_cover_post"]
-    /** Delete Cover */
-    delete: operations["delete_cover_api_v1_users_me_cover_delete"]
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/users": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Get Users */
-    get: operations["get_users_api_v1_users_get"]
-    put?: never
-    /** Create User */
-    post: operations["create_user_api_v1_users_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/users/audit/export": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Export Access Audit */
-    get: operations["export_access_audit_api_v1_users_audit_export_get"]
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/users/{user_id}": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    /** Update User Admin */
-    patch: operations["update_user_admin_api_v1_users__user_id__patch"]
-    trace?: never
-  }
-  "/api/v1/password/forgot": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Forgot Password */
-    post: operations["forgot_password_api_v1_password_forgot_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/password/reset": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Reset Password */
-    post: operations["reset_password_api_v1_password_reset_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/groups": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Get Groups */
-    get: operations["get_groups_api_v1_groups_get"]
-    put?: never
-    post?: never
+    /**
+     * Mark Read
+     * @description Mark all messages in a chat as read.
+     */
+    post: operations["mark_read_api_v1_chats__chat_id__read_post"]
     delete?: never
     options?: never
     head?: never
@@ -909,6 +439,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  "/api/v1/events/file/{file_id}": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** Delete Event File */
+    delete: operations["delete_event_file_api_v1_events_file__file_id__delete"]
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   "/api/v1/events/my": {
     parameters: {
       query?: never
@@ -918,40 +465,6 @@ export interface paths {
     }
     /** My Events */
     get: operations["my_events_api_v1_events_my_get"]
-    put?: never
-    post?: never
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/events/{id}/upload_file": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Upload Event File */
-    post: operations["upload_event_file_api_v1_events__id__upload_file_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/events/{id}/files": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Get Event Files */
-    get: operations["get_event_files_api_v1_events__id__files_get"]
     put?: never
     post?: never
     delete?: never
@@ -1012,7 +525,24 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  "/api/v1/events/file/{file_id}": {
+  "/api/v1/events/{id}/files": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Get Event Files */
+    get: operations["get_event_files_api_v1_events__id__files_get"]
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/events/{id}/upload_file": {
     parameters: {
       query?: never
       header?: never
@@ -1021,9 +551,26 @@ export interface paths {
     }
     get?: never
     put?: never
+    /** Upload Event File */
+    post: operations["upload_event_file_api_v1_events__id__upload_file_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/groups": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Get Groups */
+    get: operations["get_groups_api_v1_groups_get"]
+    put?: never
     post?: never
-    /** Delete Event File */
-    delete: operations["delete_event_file_api_v1_events_file__file_id__delete"]
+    delete?: never
     options?: never
     head?: never
     patch?: never
@@ -1044,6 +591,23 @@ export interface paths {
     put?: never
     /** Create News */
     post: operations["create_news_api_v1_news_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/news/upload_image": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Upload News Image */
+    post: operations["upload_news_image_api_v1_news_upload_image_post"]
     delete?: never
     options?: never
     head?: never
@@ -1072,7 +636,25 @@ export interface paths {
     patch: operations["update_news_api_v1_news__id__patch"]
     trace?: never
   }
-  "/api/v1/news/upload_image": {
+  "/api/v1/notifications": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List Notifications */
+    get: operations["list_notifications_api_v1_notifications_get"]
+    put?: never
+    post?: never
+    /** Clear Notifications */
+    delete: operations["clear_notifications_api_v1_notifications_delete"]
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/notifications/check-schedule": {
     parameters: {
       query?: never
       header?: never
@@ -1081,33 +663,32 @@ export interface paths {
     }
     get?: never
     put?: never
-    /** Upload News Image */
-    post: operations["upload_news_image_api_v1_news_upload_image_post"]
+    /** Check Schedule And Generate */
+    post: operations["check_schedule_and_generate_api_v1_notifications_check_schedule_post"]
     delete?: never
     options?: never
     head?: never
     patch?: never
     trace?: never
   }
-  "/api/v1/stories": {
+  "/api/v1/notifications/read-all": {
     parameters: {
       query?: never
       header?: never
       path?: never
       cookie?: never
     }
-    /** List Stories */
-    get: operations["list_stories_api_v1_stories_get"]
+    get?: never
     put?: never
-    /** Create Story */
-    post: operations["create_story_api_v1_stories_post"]
+    /** Mark All Read */
+    post: operations["mark_all_read_api_v1_notifications_read_all_post"]
     delete?: never
     options?: never
     head?: never
     patch?: never
     trace?: never
   }
-  "/api/v1/stories/{story_id}": {
+  "/api/v1/notifications/{notif_id}/read": {
     parameters: {
       query?: never
       header?: never
@@ -1117,15 +698,14 @@ export interface paths {
     get?: never
     put?: never
     post?: never
-    /** Delete Story */
-    delete: operations["delete_story_api_v1_stories__story_id__delete"]
+    delete?: never
     options?: never
     head?: never
-    /** Update Story */
-    patch: operations["update_story_api_v1_stories__story_id__patch"]
+    /** Mark Read Single */
+    patch: operations["mark_read_single_api_v1_notifications__notif_id__read_patch"]
     trace?: never
   }
-  "/api/v1/stories/upload_cover": {
+  "/api/v1/password/forgot": {
     parameters: {
       query?: never
       header?: never
@@ -1134,8 +714,182 @@ export interface paths {
     }
     get?: never
     put?: never
-    /** Upload Story Cover */
-    post: operations["upload_story_cover_api_v1_stories_upload_cover_post"]
+    /** Forgot Password */
+    post: operations["forgot_password_api_v1_password_forgot_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/password/reset": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Reset Password */
+    post: operations["reset_password_api_v1_password_reset_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/push/admin/disable-user": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Disable User Push */
+    post: operations["disable_user_push_api_v1_push_admin_disable_user_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/push/admin/topics/{user_id}": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Admin Get User Topics */
+    get: operations["admin_get_user_topics_api_v1_push_admin_topics__user_id__get"]
+    /** Admin Update User Topics */
+    put: operations["admin_update_user_topics_api_v1_push_admin_topics__user_id__put"]
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/push/broadcast": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Broadcast */
+    post: operations["broadcast_api_v1_push_broadcast_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/push/subscribe": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Subscribe */
+    post: operations["subscribe_api_v1_push_subscribe_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/push/subscribe/topics": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    /** Update Subscription Topics */
+    patch: operations["update_subscription_topics_api_v1_push_subscribe_topics_patch"]
+    trace?: never
+  }
+  "/api/v1/push/test": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Send Test */
+    post: operations["send_test_api_v1_push_test_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/push/topics": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Get Push Topics */
+    get: operations["get_push_topics_api_v1_push_topics_get"]
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/push/unsubscribe": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Unsubscribe */
+    post: operations["unsubscribe_api_v1_push_unsubscribe_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/push/vapid-public-key": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * Get Vapid Public Key
+     * @description Return configured VAPID public key.
+     */
+    get: operations["get_vapid_public_key_api_v1_push_vapid_public_key_get"]
+    put?: never
+    post?: never
     delete?: never
     options?: never
     head?: never
@@ -1153,6 +907,23 @@ export interface paths {
     put?: never
     /** Add Schedule */
     post: operations["add_schedule_api_v1_schedule_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/schedule/ics": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Download Schedule Ics */
+    get: operations["download_schedule_ics_api_v1_schedule_ics_get"]
+    put?: never
+    post?: never
     delete?: never
     options?: never
     head?: never
@@ -1192,6 +963,74 @@ export interface paths {
     head?: never
     /** Update Schedule */
     patch: operations["update_schedule_api_v1_schedule__schedule_id__patch"]
+    trace?: never
+  }
+  "/api/v1/spotify/auth-url": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Spotify Auth Url */
+    get: operations["spotify_auth_url_api_v1_spotify_auth_url_get"]
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/spotify/callback": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Spotify Callback */
+    get: operations["spotify_callback_api_v1_spotify_callback_get"]
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/spotify/disconnect": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Disconnect */
+    post: operations["disconnect_api_v1_spotify_disconnect_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/spotify/now-playing": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Now Playing */
+    get: operations["now_playing_api_v1_spotify_now_playing_get"]
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
     trace?: never
   }
   "/api/v1/stats/attendance": {
@@ -1245,64 +1084,25 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  "/api/v1/chats": {
+  "/api/v1/stories": {
     parameters: {
       query?: never
       header?: never
       path?: never
       cookie?: never
     }
-    /**
-     * Get Chats
-     * @description Get all chats for the current user with cursor-based pagination.
-     *
-     *     Returns chats ordered by last message timestamp (newest first).
-     *     Use the `next_cursor` from the response to fetch the next page.
-     */
-    get: operations["get_chats_api_v1_chats_get"]
+    /** List Stories */
+    get: operations["list_stories_api_v1_stories_get"]
     put?: never
-    /**
-     * Create Chat
-     * @description Create a new chat with a user. If a chat already exists, return it.
-     */
-    post: operations["create_chat_api_v1_chats_post"]
+    /** Create Story */
+    post: operations["create_story_api_v1_stories_post"]
     delete?: never
     options?: never
     head?: never
     patch?: never
     trace?: never
   }
-  "/api/v1/chats/{chat_id}/messages": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /**
-     * Get Messages
-     * @description Get messages for a chat with cursor-based pagination.
-     *
-     *     Messages are returned in ascending order (oldest first).
-     *     Use the `next_cursor` from the response to fetch older messages.
-     */
-    get: operations["get_messages_api_v1_chats__chat_id__messages_get"]
-    put?: never
-    /**
-     * Send Message
-     * @description Send a message to a chat.
-     *
-     *     The message is saved to the database and all chat participants
-     *     are notified via WebSocket in real-time.
-     */
-    post: operations["send_message_api_v1_chats__chat_id__messages_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/chats/{chat_id}/read": {
+  "/api/v1/stories/upload_cover": {
     parameters: {
       query?: never
       header?: never
@@ -1311,38 +1111,15 @@ export interface paths {
     }
     get?: never
     put?: never
-    /**
-     * Mark Read
-     * @description Mark all messages in a chat as read.
-     */
-    post: operations["mark_read_api_v1_chats__chat_id__read_post"]
+    /** Upload Story Cover */
+    post: operations["upload_story_cover_api_v1_stories_upload_cover_post"]
     delete?: never
     options?: never
     head?: never
     patch?: never
     trace?: never
   }
-  "/api/v1/chats/{chat_id}/clear": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /**
-     * Clear Chat History
-     * @description Remove all messages (and attachments) from a chat for its participants.
-     */
-    post: operations["clear_chat_history_api_v1_chats__chat_id__clear_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/chats/{chat_id}": {
+  "/api/v1/stories/{story_id}": {
     parameters: {
       query?: never
       header?: never
@@ -1352,30 +1129,284 @@ export interface paths {
     get?: never
     put?: never
     post?: never
-    /**
-     * Delete Chat
-     * @description Delete a chat entirely for all participants (messages, attachments, links).
-     */
-    delete: operations["delete_chat_api_v1_chats__chat_id__delete"]
+    /** Delete Story */
+    delete: operations["delete_story_api_v1_stories__story_id__delete"]
     options?: never
     head?: never
-    patch?: never
+    /** Update Story */
+    patch: operations["update_story_api_v1_stories__story_id__patch"]
     trace?: never
   }
-  "/webpush/vapid-public-key": {
+  "/api/v1/users": {
     parameters: {
       query?: never
       header?: never
       path?: never
       cookie?: never
     }
-    /**
-     * Get Vapid Public Key
-     * @description Return configured VAPID public key.
-     */
-    get: operations["get_vapid_public_key_webpush_vapid_public_key_get"]
+    /** Get Users */
+    get: operations["get_users_api_v1_users_get"]
+    put?: never
+    /** Create User */
+    post: operations["create_user_api_v1_users_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/users/audit/export": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Export Access Audit */
+    get: operations["export_access_audit_api_v1_users_audit_export_get"]
     put?: never
     post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/users/me": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Me */
+    get: operations["me_api_v1_users_me_get"]
+    /** Update Me */
+    put: operations["update_me_api_v1_users_me_put"]
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/users/me/avatar": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Upload Avatar */
+    post: operations["upload_avatar_api_v1_users_me_avatar_post"]
+    /** Delete Avatar */
+    delete: operations["delete_avatar_api_v1_users_me_avatar_delete"]
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/users/me/cover": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Upload Cover */
+    post: operations["upload_cover_api_v1_users_me_cover_post"]
+    /** Delete Cover */
+    delete: operations["delete_cover_api_v1_users_me_cover_delete"]
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/users/me/delete": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Delete Me */
+    post: operations["delete_me_api_v1_users_me_delete_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/users/me/email": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Change Email */
+    post: operations["change_email_api_v1_users_me_email_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/users/me/email/confirm": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Confirm Email Change */
+    post: operations["confirm_email_change_api_v1_users_me_email_confirm_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/users/me/export": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Export Me */
+    post: operations["export_me_api_v1_users_me_export_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/users/me/password": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Change Password */
+    post: operations["change_password_api_v1_users_me_password_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/users/{user_id}": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    /** Update User Admin */
+    patch: operations["update_user_admin_api_v1_users__user_id__patch"]
+    trace?: never
+  }
+  "/healthz": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Healthz */
+    get: operations["healthz_healthz_get"]
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/ready": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Ready */
+    get: operations["ready_ready_get"]
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/webpush/admin/disable-user": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Disable User Push */
+    post: operations["disable_user_push_webpush_admin_disable_user_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/webpush/broadcast": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Broadcast */
+    post: operations["broadcast_webpush_broadcast_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/webpush/send-test": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Send Test */
+    post: operations["send_test_webpush_send_test_post"]
     delete?: never
     options?: never
     head?: never
@@ -1433,51 +1464,20 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  "/webpush/send-test": {
+  "/webpush/vapid-public-key": {
     parameters: {
       query?: never
       header?: never
       path?: never
       cookie?: never
     }
-    get?: never
+    /**
+     * Get Vapid Public Key
+     * @description Return configured VAPID public key.
+     */
+    get: operations["get_vapid_public_key_webpush_vapid_public_key_get"]
     put?: never
-    /** Send Test */
-    post: operations["send_test_webpush_send_test_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/webpush/admin/disable-user": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Disable User Push */
-    post: operations["disable_user_push_webpush_admin_disable_user_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/webpush/broadcast": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Broadcast */
-    post: operations["broadcast_webpush_broadcast_post"]
+    post?: never
     delete?: never
     options?: never
     head?: never
@@ -1490,12 +1490,6 @@ export interface components {
   schemas: {
     /** ActiveSessionOut */
     ActiveSessionOut: {
-      /** Id */
-      id: number
-      /** User Id */
-      user_id: number
-      /** Jti */
-      jti: string
       /**
        * Created At
        * Format: date-time
@@ -1506,43 +1500,49 @@ export interface components {
        * Format: date-time
        */
       expires_at: string
-      /** Revoked At */
-      revoked_at?: string | null
+      /** Id */
+      id: number
       /** Ip Address */
       ip_address?: string | null
-      /** User Agent */
-      user_agent?: string | null
-      /** Last Seen At */
-      last_seen_at?: string | null
-      /**
-       * Mfa Required
-       * @default false
-       */
-      mfa_required: boolean
-      /** Mfa Completed At */
-      mfa_completed_at?: string | null
-      /** Mfa Method */
-      mfa_method?: string | null
-      /** Mfa Verified At */
-      mfa_verified_at?: string | null
       /**
        * Is Current
        * @default false
        */
       is_current: boolean
+      /** Jti */
+      jti: string
+      /** Last Seen At */
+      last_seen_at?: string | null
+      /** Mfa Completed At */
+      mfa_completed_at?: string | null
+      /** Mfa Method */
+      mfa_method?: string | null
+      /**
+       * Mfa Required
+       * @default false
+       */
+      mfa_required: boolean
+      /** Mfa Verified At */
+      mfa_verified_at?: string | null
+      /** Revoked At */
+      revoked_at?: string | null
+      /** User Agent */
+      user_agent?: string | null
+      /** User Id */
+      user_id: number
     }
     /** AdminUserTopicsResponse */
     AdminUserTopicsResponse: {
-      /** User Id */
-      user_id: number
+      /** Allowed Topics */
+      allowed_topics: string[]
       /** Email */
       email: string
       /** Topics */
       topics: string[]
-      /** Allowed Topics */
-      allowed_topics: string[]
       /** Updated At */
       updated_at?: string | null
+      /** User Id */
+      user_id: number
     }
     /** AdminUserTopicsUpdate */
     AdminUserTopicsUpdate: {
@@ -1551,28 +1551,28 @@ export interface components {
     }
     /** AttachmentResponse */
     AttachmentResponse: {
-      /** Id */
-      id: string
-      /** Url */
-      url: string
       /** File Type */
       file_type: string
       /** Filename */
       filename: string
+      /** Id */
+      id: string
       /** Size */
       size: number
+      /** Url */
+      url: string
     }
     /** Body_login_api_v1_auth_login_post */
     Body_login_api_v1_auth_login_post: {
+      /** Client Id */
+      client_id?: string | null
       /**
-       * Trust Device
-       * @default false
+       * Client Secret
+       * Format: password
        */
-      trust_device: boolean
+      client_secret?: string | null
       /** Grant Type */
       grant_type?: string | null
-      /** Username */
-      username: string
       /**
        * Password
        * Format: password
@@ -1583,13 +1583,13 @@ export interface components {
        * @default
        */
       scope: string
-      /** Client Id */
-      client_id?: string | null
       /**
-       * Client Secret
-       * Format: password
+       * Trust Device
+       * @default false
        */
-      client_secret?: string | null
+      trust_device: boolean
+      /** Username */
+      username: string
     }
     /** Body_send_message_api_v1_chats__chat_id__messages_post */
     Body_send_message_api_v1_chats__chat_id__messages_post: {
@@ -1661,83 +1661,83 @@ export interface components {
     ChatMaintenanceResult: {
       /** Chat Id */
       chat_id: string
-      /** Status */
-      status: string
-      /**
-       * Deleted Messages
-       * @default 0
-       */
-      deleted_messages: number
       /**
        * Deleted Attachments
        * @default 0
        */
       deleted_attachments: number
+      /**
+       * Deleted Messages
+       * @default 0
+       */
+      deleted_messages: number
+      /** Status */
+      status: string
     }
     /** ChatParticipant */
     ChatParticipant: {
-      /** Id */
-      id: number
+      /** Avatar Url */
+      avatar_url?: string | null
       /** Email */
       email: string
       /** Full Name */
-      full_name: string
-      /** Avatar Url */
-      avatar_url?: string | null
+      full_name?: string | null
+      /** Id */
+      id: number
       /** Is Active */
       is_active: boolean
     }
     /** ChatResponse */
     ChatResponse: {
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string
       /** Id */
       id: string
+      last_message?: components["schemas"]["MessageResponse"] | null
       /** Participants */
       participants: components["schemas"]["ChatParticipant"][]
-      last_message?: components["schemas"]["MessageResponse"] | null
+      /** Presence */
+      presence?: {
+        [key: string]: components["schemas"]["PresenceStatus"]
+      } | null
       /**
        * Unread Count
        * @default 0
        */
       unread_count: number
       /**
-       * Created At
-       * Format: date-time
-       */
-      created_at: string
-      /**
        * Updated At
        * Format: date-time
        */
       updated_at: string
-      /** Presence */
-      presence?: {
-        [key: string]: components["schemas"]["PresenceStatus"]
-      } | null
     }
     /**
      * ChatsListOut
      * @description Paginated list of chats.
      */
     ChatsListOut: {
-      /** Items */
-      items: components["schemas"]["ChatResponse"][]
       /**
        * Has More
        * @default false
        */
       has_more: boolean
+      /** Items */
+      items: components["schemas"]["ChatResponse"][]
       /** Next Cursor */
       next_cursor?: string | null
     }
     /** DataDeletionOut */
     DataDeletionOut: {
-      /** Deleted */
-      deleted: boolean
       /**
        * Anonymized Email
        * Format: email
        */
       anonymized_email: string
+      /** Deleted */
+      deleted: boolean
     }
     /** DataDeletionRequest */
     DataDeletionRequest: {
@@ -1749,16 +1749,8 @@ export interface components {
     }
     /** DataExportOut */
     DataExportOut: {
-      /** Profile */
-      profile: {
-        [key: string]: unknown
-      }
-      /** Sessions */
-      sessions?: {
-        [key: string]: unknown
-      }[]
-      /** Notifications */
-      notifications?: {
+      /** Access Logs */
+      access_logs?: {
         [key: string]: unknown
       }[]
       /** Mfa Challenges */
@@ -1769,8 +1761,16 @@ export interface components {
       mfa_enrollments?: {
         [key: string]: unknown
       }[]
-      /** Access Logs */
-      access_logs?: {
+      /** Notifications */
+      notifications?: {
+        [key: string]: unknown
+      }[]
+      /** Profile */
+      profile: {
+        [key: string]: unknown
+      }
+      /** Sessions */
+      sessions?: {
         [key: string]: unknown
       }[]
     }
@@ -1789,159 +1789,159 @@ export interface components {
     }
     /** EventAttendanceOut */
     EventAttendanceOut: {
-      /** Id */
-      id: number
-      /** User Id */
-      user_id: number
       /** Event Id */
       event_id: number
+      /** Id */
+      id: number
+      /** Qr Token */
+      qr_token?: string | null
       /**
        * Registered At
        * Format: date-time
        */
       registered_at: string
-      /** Qr Token */
-      qr_token?: string | null
+      /** User Id */
+      user_id: number
     }
     /** EventCreate */
     EventCreate: {
-      /** Title */
-      title: string
-      /** Description */
-      description?: string | null
-      /** Title En */
-      title_en?: string | null
-      /** Description En */
-      description_en?: string | null
-      /** Location */
-      location?: string | null
-      /** Location En */
-      location_en?: string | null
-      /** Event Type */
-      event_type?: string | null
-      /** Event Type En */
-      event_type_en?: string | null
-      /**
-       * Starts At
-       * Format: date-time
-       */
-      starts_at: string
-      /**
-       * Ends At
-       * Format: date-time
-       */
-      ends_at: string
-      /** Speaker */
-      speaker?: string | null
-      /** Image Url */
-      image_url?: string | null
       /** About */
       about?: string | null
       /** About En */
       about_en?: string | null
-    }
-    /** EventFileOut */
-    EventFileOut: {
-      /** Id */
-      id: number
-      /** Event Id */
-      event_id: number
-      /** File Url */
-      file_url: string
       /** Description */
       description?: string | null
-    }
-    /** EventOut */
-    EventOut: {
-      /** Id */
-      id: number
-      /** Title */
-      title: string
-      /** Description */
-      description?: string | null
-      /** Title En */
-      title_en?: string | null
       /** Description En */
       description_en?: string | null
-      /** Location */
-      location?: string | null
-      /** Location En */
-      location_en?: string | null
-      /** Event Type */
-      event_type?: string | null
-      /** Event Type En */
-      event_type_en?: string | null
-      /**
-       * Starts At
-       * Format: date-time
-       */
-      starts_at: string
       /**
        * Ends At
        * Format: date-time
        */
       ends_at: string
-      /** Created By */
-      created_by: number
+      /** Event Type */
+      event_type?: string | null
+      /** Event Type En */
+      event_type_en?: string | null
+      /** Image Url */
+      image_url?: string | null
+      /** Location */
+      location?: string | null
+      /** Location En */
+      location_en?: string | null
+      /** Speaker */
+      speaker?: string | null
+      /**
+       * Starts At
+       * Format: date-time
+       */
+      starts_at: string
+      /** Title */
+      title: string
+      /** Title En */
+      title_en?: string | null
+    }
+    /** EventFileOut */
+    EventFileOut: {
+      /** Description */
+      description?: string | null
+      /** Event Id */
+      event_id: number
+      /** File Url */
+      file_url: string
+      /** Id */
+      id: number
+    }
+    /** EventOut */
+    EventOut: {
+      /** About */
+      about?: string | null
+      /** About En */
+      about_en?: string | null
       /**
        * Created At
        * Format: date-time
        */
       created_at: string
-      /** Is Active */
-      is_active: boolean
-      /** Speaker */
-      speaker?: string | null
-      /** Image Url */
-      image_url?: string | null
-      /** About */
-      about?: string | null
-      /** About En */
-      about_en?: string | null
+      /** Created By */
+      created_by: number
+      /** Description */
+      description?: string | null
+      /** Description En */
+      description_en?: string | null
+      /**
+       * Ends At
+       * Format: date-time
+       */
+      ends_at: string
+      /** Event Type */
+      event_type?: string | null
+      /** Event Type En */
+      event_type_en?: string | null
       /** Files */
       files?: components["schemas"]["EventFileOut"][]
+      /** Id */
+      id: number
+      /** Image Url */
+      image_url?: string | null
+      /** Is Active */
+      is_active: boolean
+      /** Is Registered */
+      is_registered?: boolean | null
+      /** Location */
+      location?: string | null
+      /** Location En */
+      location_en?: string | null
+      /** My Qr Token */
+      my_qr_token?: string | null
       /**
        * Participant Count
        * @default 0
        */
       participant_count: number
-      /** Is Registered */
-      is_registered?: boolean | null
-      /** My Qr Token */
-      my_qr_token?: string | null
+      /** Speaker */
+      speaker?: string | null
+      /**
+       * Starts At
+       * Format: date-time
+       */
+      starts_at: string
+      /** Title */
+      title: string
+      /** Title En */
+      title_en?: string | null
     }
     /** EventUpdate */
     EventUpdate: {
-      /** Title */
-      title?: string | null
-      /** Description */
-      description?: string | null
-      /** Title En */
-      title_en?: string | null
-      /** Description En */
-      description_en?: string | null
-      /** Location */
-      location?: string | null
-      /** Location En */
-      location_en?: string | null
-      /** Event Type */
-      event_type?: string | null
-      /** Event Type En */
-      event_type_en?: string | null
-      /** Starts At */
-      starts_at?: string | null
-      /** Ends At */
-      ends_at?: string | null
-      /** Is Active */
-      is_active?: boolean | null
-      /** Speaker */
-      speaker?: string | null
-      /** Image Url */
-      image_url?: string | null
       /** About */
       about?: string | null
       /** About En */
       about_en?: string | null
+      /** Description */
+      description?: string | null
+      /** Description En */
+      description_en?: string | null
+      /** Ends At */
+      ends_at?: string | null
+      /** Event Type */
+      event_type?: string | null
+      /** Event Type En */
+      event_type_en?: string | null
+      /** Image Url */
+      image_url?: string | null
+      /** Is Active */
+      is_active?: boolean | null
+      /** Location */
+      location?: string | null
+      /** Location En */
+      location_en?: string | null
+      /** Speaker */
+      speaker?: string | null
+      /** Starts At */
+      starts_at?: string | null
+      /** Title */
+      title?: string | null
+      /** Title En */
+      title_en?: string | null
     }
     /** ForgotPasswordIn */
     ForgotPasswordIn: {
@@ -1953,14 +1953,14 @@ export interface components {
     }
     /** GroupOut */
     GroupOut: {
-      /** Id */
-      id: number
-      /** Name */
-      name: string
       /** Course */
       course?: number | null
       /** Faculty */
       faculty?: string | null
+      /** Id */
+      id: number
+      /** Name */
+      name: string
     }
     /** HTTPValidationError */
     HTTPValidationError: {
@@ -1984,61 +1984,53 @@ export interface components {
     }
     /** MessageResponse */
     MessageResponse: {
-      /** Content */
-      content: string
-      /** Id */
-      id: string
-      /** Chat Id */
-      chat_id: string
-      /** Sender Id */
-      sender_id: number
-      /**
-       * Created At
-       * Format: date-time
-       */
-      created_at: string
-      /** Read Status */
-      read_status: boolean
-      sender?: components["schemas"]["ChatParticipant"] | null
-      sender_presence?: components["schemas"]["PresenceStatus"] | null
       /**
        * Attachments
        * @default []
        */
       attachments: components["schemas"]["AttachmentResponse"][]
+      /** Chat Id */
+      chat_id: string
+      /** Content */
+      content: string
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string
+      /** Id */
+      id: string
+      /** Read Status */
+      read_status: boolean
+      sender?: components["schemas"]["ChatParticipant"] | null
+      /** Sender Id */
+      sender_id: number
+      sender_presence?: components["schemas"]["PresenceStatus"] | null
     }
     /**
      * MessagesListOut
      * @description Paginated list of messages.
      */
     MessagesListOut: {
-      /** Items */
-      items: components["schemas"]["MessageResponse"][]
       /**
        * Has More
        * @default false
        */
       has_more: boolean
+      /** Items */
+      items: components["schemas"]["MessageResponse"][]
       /** Next Cursor */
       next_cursor?: string | null
     }
     /** MfaChallengeOut */
     MfaChallengeOut: {
-      /** Id */
-      id: number
-      /** User Id */
-      user_id: number
-      /** Session Id */
-      session_id?: number | null
+      /**
+       * Attempt Count
+       * @default 0
+       */
+      attempt_count: number
       /** Challenge Type */
       challenge_type: string
-      /** Token */
-      token: string
-      /**
-       * Expires At
-       * Format: date-time
-       */
-      expires_at: string
       /** Consumed At */
       consumed_at?: string | null
       /**
@@ -2046,15 +2038,23 @@ export interface components {
        * Format: date-time
        */
       created_at: string
+      /**
+       * Expires At
+       * Format: date-time
+       */
+      expires_at: string
+      /** Id */
+      id: number
       /** Payload */
       payload?: {
         [key: string]: unknown
       } | null
-      /**
-       * Attempt Count
-       * @default 0
-       */
-      attempt_count: number
+      /** Session Id */
+      session_id?: number | null
+      /** Token */
+      token: string
+      /** User Id */
+      user_id: number
     }
     /** MfaFactorStatusOut */
     MfaFactorStatusOut: {
@@ -2070,60 +2070,60 @@ export interface components {
     }
     /** MfaMethodChallengeOut */
     MfaMethodChallengeOut: {
-      /**
-       * Method
-       * @constant
-       */
-      method: "totp"
-      /** Challenge Token */
-      challenge_token: string
+      /** Attempt Count */
+      attempt_count?: number | null
+      /** Attempt Limit */
+      attempt_limit?: number | null
       /**
        * Challenge Expires At
        * Format: date-time
        */
       challenge_expires_at: string
-      /** Options */
-      options?: {
-        [key: string]: unknown
-      } | null
-      /** Attempt Count */
-      attempt_count?: number | null
-      /** Attempt Limit */
-      attempt_limit?: number | null
-      /** Remaining Attempts */
-      remaining_attempts?: number | null
-    }
-    /** MfaTotpEnrollmentOut */
-    MfaTotpEnrollmentOut: {
-      /** Id */
-      id: number
-      /** User Id */
-      user_id: number
-      /** Label */
-      label?: string | null
-      /** Is Active */
-      is_active: boolean
-      /** Confirmed At */
-      confirmed_at?: string | null
-      /** Revoked At */
-      revoked_at?: string | null
-      /**
-       * Created At
-       * Format: date-time
-       */
-      created_at: string
-    }
-    /** MfaVerifyIn */
-    MfaVerifyIn: {
+      /** Challenge Token */
+      challenge_token: string
       /**
        * Method
        * @constant
        */
       method: "totp"
+      /** Options */
+      options?: {
+        [key: string]: unknown
+      } | null
+      /** Remaining Attempts */
+      remaining_attempts?: number | null
+    }
+    /** MfaTotpEnrollmentOut */
+    MfaTotpEnrollmentOut: {
+      /** Confirmed At */
+      confirmed_at?: string | null
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string
+      /** Id */
+      id: number
+      /** Is Active */
+      is_active: boolean
+      /** Label */
+      label?: string | null
+      /** Revoked At */
+      revoked_at?: string | null
+      /** User Id */
+      user_id: number
+    }
+    /** MfaVerifyIn */
+    MfaVerifyIn: {
       /** Challenge Token */
       challenge_token: string
       /** Code */
       code?: string | null
+      /**
+       * Method
+       * @constant
+       */
+      method: "totp"
       /**
        * Trust Device
        * @default false
@@ -2132,49 +2132,49 @@ export interface components {
     }
     /** NewsCreate */
     NewsCreate: {
-      /** Title */
-      title: string
       /** Content */
       content: string
-      /** Title En */
-      title_en?: string | null
       /** Content En */
       content_en?: string | null
       /** Image Url */
       image_url?: string | null
+      /** Title */
+      title: string
+      /** Title En */
+      title_en?: string | null
     }
     /** NewsOut */
     NewsOut: {
-      /** Title */
-      title: string
       /** Content */
       content: string
-      /** Title En */
-      title_en?: string | null
       /** Content En */
       content_en?: string | null
-      /** Image Url */
-      image_url?: string | null
-      /** Id */
-      id: number
       /**
        * Created At
        * Format: date-time
        */
       created_at: string
+      /** Id */
+      id: number
+      /** Image Url */
+      image_url?: string | null
+      /** Title */
+      title: string
+      /** Title En */
+      title_en?: string | null
     }
     /** NewsUpdate */
     NewsUpdate: {
-      /** Title */
-      title?: string | null
       /** Content */
       content?: string | null
-      /** Title En */
-      title_en?: string | null
       /** Content En */
       content_en?: string | null
       /** Image Url */
       image_url?: string | null
+      /** Title */
+      title?: string | null
+      /** Title En */
+      title_en?: string | null
     }
     /** NotificationAction */
     NotificationAction: {
@@ -2183,6 +2183,11 @@ export interface components {
        * @description Notification action identifier
        */
       action: string
+      /**
+       * Icon
+       * @description Optional icon URL
+       */
+      icon?: string | null
       /**
        * Title
        * @description Action button title
@@ -2193,103 +2198,98 @@ export interface components {
        * @description Optional URL to open
        */
       url?: string | null
-      /**
-       * Icon
-       * @description Optional icon URL
-       */
-      icon?: string | null
     }
     /** NotificationOut */
     NotificationOut: {
-      /** Id */
-      id: number
-      /** Title */
-      title: string
       /** Body */
       body?: string | null
-      /** Title En */
-      title_en?: string | null
       /** Body En */
       body_en?: string | null
-      /** Type */
-      type?: string | null
-      /** Url */
-      url?: string | null
       /**
        * Created At
        * Format: date-time
        */
       created_at: string
+      /** Id */
+      id: number
       /** Read */
       read: boolean
       /** Read At */
       read_at?: string | null
+      /** Title */
+      title: string
+      /** Title En */
+      title_en?: string | null
+      /** Type */
+      type?: string | null
+      /** Url */
+      url?: string | null
     }
     /** NotificationsListOut */
     NotificationsListOut: {
-      /** Items */
-      items: components["schemas"]["NotificationOut"][]
-      /** Unread Count */
-      unread_count: number
       /** Has More */
       has_more: boolean
+      /** Items */
+      items: components["schemas"]["NotificationOut"][]
       /** Next Cursor */
       next_cursor?: string | null
+      /** Unread Count */
+      unread_count: number
     }
     /** NotifyBody */
     NotifyBody: {
-      /** Title */
-      title: string
-      /** Body */
-      body?: string | null
-      /** Url */
-      url?: string | null
-      /** Tag */
-      tag?: string | null
+      /** Actions */
+      actions?: components["schemas"]["NotificationAction"][] | null
       /** Badge */
       badge?: string | null
-      /** Type */
-      type?: string | null
+      /** Body */
+      body?: string | null
+      /** Data */
+      data?: {
+        [key: string]: unknown
+      } | null
+      /** Tag */
+      tag?: string | null
+      /** Title */
+      title: string
+      /** Topic */
+      topic?: string | null
       /** Ttl */
       ttl?: number | null
+      /** Type */
+      type?: string | null
       /**
        * Urgency
        * @default normal
        */
       urgency: string | null
-      /** Topic */
-      topic?: string | null
-      /** Actions */
-      actions?: components["schemas"]["NotificationAction"][] | null
-      /** Data */
-      data?: {
-        [key: string]: unknown
-      } | null
+      /** Url */
+      url?: string | null
     }
     /** PaginatedEvents */
     PaginatedEvents: {
-      /** Items */
-      items: components["schemas"]["EventOut"][]
-      /** Total */
-      total?: number | null
-      /** Limit */
-      limit: number
       /** Cursor */
       cursor?: string | null
-      /** Next Cursor */
-      next_cursor?: string | null
       /** Has More */
       has_more: boolean
+      /** Items */
+      items: components["schemas"]["EventOut"][]
+      /** Limit */
+      limit: number
+      /** Next Cursor */
+      next_cursor?: string | null
+      /** Total */
+      total?: number | null
     }
     /**
      * PaginatedNews
      * @description Paginated news response with cursor-based pagination.
      */
     PaginatedNews: {
-      /** Items */
-      items: components["schemas"]["NewsOut"][]
       /** Has More */
       has_more: boolean
+      /** Items */
+      items: components["schemas"]["NewsOut"][]
       /** Next Cursor */
       next_cursor?: string | null
     }
@@ -2305,6 +2305,12 @@ export interface components {
     }
     /** PendingMfaResponse */
     PendingMfaResponse: {
+      /** Default Method */
+      default_method?: "totp" | null
+      /** Methods */
+      methods: components["schemas"]["MfaMethodChallengeOut"][]
+      /** Session Id */
+      session_id?: number | null
       /**
        * Status
        * @default mfa_required
@@ -2313,12 +2319,6 @@ export interface components {
       status: "mfa_required"
       /** User Id */
       user_id: number
-      /** Session Id */
-      session_id?: number | null
-      /** Default Method */
-      default_method?: "totp" | null
-      /** Methods */
-      methods: components["schemas"]["MfaMethodChallengeOut"][]
     }
     /**
      * PresenceStatus
@@ -2360,26 +2360,18 @@ export interface components {
     /** PushSubscriptionKeys */
     PushSubscriptionKeys: {
       /**
-       * P256Dh
-       * @description Base64-encoded public key
-       */
-      p256dh: string
-      /**
        * Auth
        * @description Authentication secret
        */
       auth: string
+      /**
+       * P256Dh
+       * @description Base64-encoded public key
+       */
+      p256dh: string
     }
     /** PushSubscriptionOut */
     PushSubscriptionOut: {
-      /** Id */
-      id: number
-      /** User Id */
-      user_id: number
-      /** Endpoint */
-      endpoint: string
-      /** P256Dh */
-      p256dh: string
       /** Auth */
       auth: string
       /**
@@ -2387,14 +2379,22 @@ export interface components {
        * Format: date-time
        */
       created_at: string
-      /** User Agent */
-      user_agent?: string | null
+      /** Endpoint */
+      endpoint: string
+      /** Id */
+      id: number
       /** Last Seen At */
       last_seen_at?: string | null
-      /** Updated At */
-      updated_at?: string | null
+      /** P256Dh */
+      p256dh: string
       /** Topics */
       topics?: string[]
+      /** Updated At */
+      updated_at?: string | null
+      /** User Agent */
+      user_agent?: string | null
+      /** User Id */
+      user_id: number
     }
     /** PushSubscriptionTopicsUpdate */
     PushSubscriptionTopicsUpdate: {
@@ -2405,44 +2405,44 @@ export interface components {
     }
     /** PushTestRequest */
     PushTestRequest: {
-      /**
-       * Title
-       * @description Notification title
-       * @default Test web push notification
-       */
-      title: string
+      /** Actions */
+      actions?: components["schemas"]["NotificationAction"][] | null
+      /** Badge */
+      badge?: string | null
       /**
        * Body
        * @description Notification body
        * @default Delivery check
        */
       body: string | null
-      /**
-       * Url
-       * @description URL to open when clicking the notification
-       */
-      url?: string | null
+      /** Data */
+      data?: {
+        [key: string]: unknown
+      } | null
       /** Tag */
       tag?: string | null
-      /** Badge */
-      badge?: string | null
-      /** Type */
-      type?: string | null
+      /**
+       * Title
+       * @description Notification title
+       * @default Test web push notification
+       */
+      title: string
+      /** Topic */
+      topic?: string | null
       /** Ttl */
       ttl?: number | null
+      /** Type */
+      type?: string | null
       /**
        * Urgency
        * @default normal
        */
       urgency: string | null
-      /** Topic */
-      topic?: string | null
-      /** Actions */
-      actions?: components["schemas"]["NotificationAction"][] | null
-      /** Data */
-      data?: {
-        [key: string]: unknown
-      } | null
+      /**
+       * Url
+       * @description URL to open when clicking the notification
+       */
+      url?: string | null
       /**
        * User Id
        * @description Target user id for testing
@@ -2453,123 +2453,123 @@ export interface components {
     PushTopicsResponse: {
       /** Allowed */
       allowed: string[]
-      /** Topics */
-      topics: string[]
       /**
        * Has Preferences
        * @default false
        */
       has_preferences: boolean
+      /** Topics */
+      topics: string[]
       /** Updated At */
       updated_at?: string | null
     }
     /** ResetPasswordIn */
     ResetPasswordIn: {
-      /** Token */
-      token: string
       /** Password */
       password: string
+      /** Token */
+      token: string
     }
     /** ScheduleCreate */
     ScheduleCreate: {
-      /** Group Id */
-      group_id: number
-      /** Subject */
-      subject: string
-      /** Teacher */
-      teacher?: string | null
-      /** Room */
-      room?: string | null
-      /** Weekday */
-      weekday: string
-      /**
-       * Start Time
-       * Format: date-time
-       */
-      start_time: string
       /**
        * End Time
        * Format: date-time
        */
       end_time: string
+      /** Group Id */
+      group_id: number
+      /** Lesson Type */
+      lesson_type?: string | null
       /**
        * Parity
        * @default both
        */
       parity: string | null
-      /** Lesson Type */
-      lesson_type?: string | null
+      /** Room */
+      room?: string | null
+      /**
+       * Start Time
+       * Format: date-time
+       */
+      start_time: string
+      /** Subject */
+      subject: string
+      /** Teacher */
+      teacher?: string | null
+      /** Weekday */
+      weekday: string
     }
     /** ScheduleOut */
     ScheduleOut: {
-      /** Group Id */
-      group_id: number
-      /** Subject */
-      subject: string
-      /** Teacher */
-      teacher?: string | null
-      /** Room */
-      room?: string | null
-      /** Weekday */
-      weekday: string
-      /**
-       * Start Time
-       * Format: date-time
-       */
-      start_time: string
       /**
        * End Time
        * Format: date-time
        */
       end_time: string
+      /** Group Id */
+      group_id: number
+      /** Id */
+      id: number
+      /** Lesson Type */
+      lesson_type?: string | null
+      /** Lesson Type Display */
+      lesson_type_display?: string | null
       /**
        * Parity
        * @default both
        */
       parity: string | null
-      /** Lesson Type */
-      lesson_type?: string | null
-      /** Id */
-      id: number
-      /** Lesson Type Display */
-      lesson_type_display?: string | null
+      /** Room */
+      room?: string | null
+      /**
+       * Start Time
+       * Format: date-time
+       */
+      start_time: string
+      /** Subject */
+      subject: string
+      /** Teacher */
+      teacher?: string | null
+      /** Weekday */
+      weekday: string
     }
     /** ScheduleUpdate */
     ScheduleUpdate: {
+      /** End Time */
+      end_time?: string | null
       /** Group Id */
       group_id?: number | null
+      /** Lesson Type */
+      lesson_type?: string | null
+      /** Parity */
+      parity?: string | null
+      /** Room */
+      room?: string | null
+      /** Start Time */
+      start_time?: string | null
       /** Subject */
       subject?: string | null
       /** Teacher */
       teacher?: string | null
-      /** Room */
-      room?: string | null
       /** Weekday */
       weekday?: string | null
-      /** Start Time */
-      start_time?: string | null
-      /** End Time */
-      end_time?: string | null
-      /** Parity */
-      parity?: string | null
-      /** Lesson Type */
-      lesson_type?: string | null
     }
     /** SendTestResponse */
     SendTestResponse: {
+      /** Detail */
+      detail?: string | null
+      /** Failed */
+      failed: number
+      /** Removed */
+      removed: number
+      /** Sent */
+      sent: number
       /**
        * Total
        * @default 0
        */
       total: number
-      /** Sent */
-      sent: number
-      /** Removed */
-      removed: number
-      /** Failed */
-      failed: number
-      /** Detail */
-      detail?: string | null
     }
     /** SessionBulkRevokeOut */
     SessionBulkRevokeOut: {
@@ -2591,48 +2591,38 @@ export interface components {
     }
     /** SpotifyNowPlayingOut */
     SpotifyNowPlayingOut: {
-      /** Is Playing */
-      is_playing: boolean
-      /** Progress Ms */
-      progress_ms?: number | null
-      /** Duration Ms */
-      duration_ms?: number | null
-      /** Track Id */
-      track_id?: string | null
-      /** Track Name */
-      track_name?: string | null
-      /** Artists */
-      artists?: string[]
-      /** Album Name */
-      album_name?: string | null
       /** Album Image Url */
       album_image_url?: string | null
-      /** Track Url */
-      track_url?: string | null
-      /** Preview Url */
-      preview_url?: string | null
+      /** Album Name */
+      album_name?: string | null
+      /** Artists */
+      artists?: string[]
+      /** Duration Ms */
+      duration_ms?: number | null
       /**
        * Fetched At
        * Format: date-time
        */
       fetched_at: string
+      /** Is Playing */
+      is_playing: boolean
+      /** Preview Url */
+      preview_url?: string | null
+      /** Progress Ms */
+      progress_ms?: number | null
+      /** Track Id */
+      track_id?: string | null
+      /** Track Name */
+      track_name?: string | null
+      /** Track Url */
+      track_url?: string | null
     }
     /** StoryCreate */
     StoryCreate: {
-      /** Title */
-      title: string
-      /** Title En */
-      title_en?: string | null
-      /** Short Text */
-      short_text: string
-      /** Short Text En */
-      short_text_en?: string | null
       /** Cover Url */
       cover_url?: string | null
       /** Cta Url */
       cta_url?: string | null
-      /** Published At */
-      published_at?: string | null
       /** Expires At */
       expires_at?: string | null
       /**
@@ -2640,82 +2630,92 @@ export interface components {
        * @default true
        */
       is_active: boolean
-    }
-    /** StoryOut */
-    StoryOut: {
-      /** Id */
-      id: number
-      /** Title */
-      title: string
-      /** Title En */
-      title_en?: string | null
+      /** Published At */
+      published_at?: string | null
       /** Short Text */
       short_text: string
       /** Short Text En */
       short_text_en?: string | null
+      /** Title */
+      title: string
+      /** Title En */
+      title_en?: string | null
+    }
+    /** StoryOut */
+    StoryOut: {
       /** Cover Url */
       cover_url?: string | null
-      /** Cta Url */
-      cta_url?: string | null
-      /**
-       * Published At
-       * Format: date-time
-       */
-      published_at: string
-      /**
-       * Expires At
-       * Format: date-time
-       */
-      expires_at: string
-      /** Is Active */
-      is_active: boolean
-      /** Created By */
-      created_by?: number | null
       /**
        * Created At
        * Format: date-time
        */
       created_at: string
+      /** Created By */
+      created_by?: number | null
+      /** Cta Url */
+      cta_url?: string | null
+      /**
+       * Expires At
+       * Format: date-time
+       */
+      expires_at: string
+      /** Id */
+      id: number
+      /** Is Active */
+      is_active: boolean
+      /**
+       * Published At
+       * Format: date-time
+       */
+      published_at: string
+      /** Short Text */
+      short_text: string
+      /** Short Text En */
+      short_text_en?: string | null
+      /** Title */
+      title: string
+      /** Title En */
+      title_en?: string | null
     }
     /** StoryUpdate */
     StoryUpdate: {
-      /** Title */
-      title?: string | null
-      /** Title En */
-      title_en?: string | null
-      /** Short Text */
-      short_text?: string | null
-      /** Short Text En */
-      short_text_en?: string | null
       /** Cover Url */
       cover_url?: string | null
       /** Cta Url */
       cta_url?: string | null
-      /** Published At */
-      published_at?: string | null
       /** Expires At */
       expires_at?: string | null
       /** Is Active */
       is_active?: boolean | null
+      /** Published At */
+      published_at?: string | null
+      /** Short Text */
+      short_text?: string | null
+      /** Short Text En */
+      short_text_en?: string | null
+      /** Title */
+      title?: string | null
+      /** Title En */
+      title_en?: string | null
     }
     /** TokenWithProfile */
     TokenWithProfile: {
       /** Access Token */
       access_token: string
+      session?: components["schemas"]["SessionSigningKeyOut"] | null
       /**
        * Token Type
        * @default bearer
        */
       token_type: string
       user: components["schemas"]["UserOut"]
-      session?: components["schemas"]["SessionSigningKeyOut"] | null
     }
     /** TotpEnrollmentConfirmIn */
     TotpEnrollmentConfirmIn: {
-      /** Enrollment Id */
-      enrollment_id: number
       /** Code */
       code: string
+      /** Enrollment Id */
+      enrollment_id: number
     }
     /** TotpEnrollmentStartIn */
     TotpEnrollmentStartIn: {
@@ -2730,25 +2730,48 @@ export interface components {
     /** TotpEnrollmentStartOut */
     TotpEnrollmentStartOut: {
       enrollment: components["schemas"]["MfaTotpEnrollmentOut"]
-      /** Secret */
-      secret: string
       /** Otpauth Url */
       otpauth_url: string
+      /** Secret */
+      secret: string
     }
     /** UserAdminUpdate */
     UserAdminUpdate: {
-      /** Full Name */
-      full_name?: string | null
       /** Email */
       email?: string | null
-      role?: components["schemas"]["UserRole"] | null
+      /** Full Name */
+      full_name?: string | null
       /** Group Id */
       group_id?: number | null
       /** Reset Mfa */
       reset_mfa?: boolean | null
+      role?: components["schemas"]["UserRole"] | null
     }
     /** UserCreate */
     UserCreate: {
+      /** About */
+      about?: string | null
+      /** Achievements */
+      achievements?: string | null
+      /** Avatar Url */
+      avatar_url?: string | null
+      /** Course */
+      course?: string | null
+      /** Cover Url */
+      cover_url?: string | null
+      /** Department */
+      department?: string | null
+      /**
+       * Dnd Enabled
+       * @default false
+       */
+      dnd_enabled: boolean
+      /** Dnd End */
+      dnd_end?: string | null
+      /** Dnd Start */
+      dnd_start?: string | null
+      /** Education Level */
+      education_level?: string | null
       /**
        * Email
        * Format: email
@@ -2756,38 +2779,22 @@ export interface components {
       email: string
       /** Full Name */
       full_name?: string | null
-      /** @default student */
-      role: components["schemas"]["UserRole"]
       /** Group Id */
       group_id?: number | null
-      /** Avatar Url */
-      avatar_url?: string | null
-      /** Cover Url */
-      cover_url?: string | null
-      /** About */
-      about?: string | null
-      /** Record Book Number */
-      record_book_number?: string | null
-      /** Status */
-      status?: string | null
       /** Institute */
       institute?: string | null
-      /** Course */
-      course?: string | null
-      /** Education Level */
-      education_level?: string | null
-      /** Track */
-      track?: string | null
-      /** Program */
-      program?: string | null
-      /** Telegram */
-      telegram?: string | null
-      /** Achievements */
-      achievements?: string | null
-      /** Department */
-      department?: string | null
+      /** Invite Code */
+      invite_code?: string | null
+      /** Password */
+      password: string
       /** Position */
       position?: string | null
+      /** Program */
+      program?: string | null
+      /** Record Book Number */
+      record_book_number?: string | null
+      /** @default student */
+      role: components["schemas"]["UserRole"]
       /**
        * Spotify Connected
        * @default false
@@ -2795,21 +2802,14 @@ export interface components {
       spotify_connected: boolean
       /** Spotify Display Name */
       spotify_display_name?: string | null
-      /**
-       * Dnd Enabled
-       * @default false
-       */
-      dnd_enabled: boolean
-      /** Dnd Start */
-      dnd_start?: string | null
-      /** Dnd End */
-      dnd_end?: string | null
+      /** Status */
+      status?: string | null
+      /** Telegram */
+      telegram?: string | null
       /** Timezone */
       timezone?: string | null
-      /** Password */
-      password: string
-      /** Invite Code */
-      invite_code?: string | null
+      /** Track */
+      track?: string | null
     }
     /** UserEmailChangeIn */
     UserEmailChangeIn: {
@@ -2828,6 +2828,29 @@ export interface components {
     }
     /** UserOut */
     UserOut: {
+      /** About */
+      about?: string | null
+      /** Achievements */
+      achievements?: string | null
+      /** Avatar Url */
+      avatar_url?: string | null
+      /** Course */
+      course?: string | null
+      /** Cover Url */
+      cover_url?: string | null
+      /** Department */
+      department?: string | null
+      /**
+       * Dnd Enabled
+       * @default false
+       */
+      dnd_enabled: boolean
+      /** Dnd End */
+      dnd_end?: string | null
+      /** Dnd Start */
+      dnd_start?: string | null
+      /** Education Level */
+      education_level?: string | null
       /**
        * Email
        * Format: email
@@ -2835,38 +2858,35 @@ export interface components {
       email: string
       /** Full Name */
       full_name?: string | null
-      /** @default student */
-      role: components["schemas"]["UserRole"]
       /** Group Id */
       group_id?: number | null
-      /** Avatar Url */
-      avatar_url?: string | null
-      /** Cover Url */
-      cover_url?: string | null
-      /** About */
-      about?: string | null
-      /** Record Book Number */
-      record_book_number?: string | null
-      /** Status */
-      status?: string | null
+      /** Id */
+      id: number
       /** Institute */
       institute?: string | null
-      /** Course */
-      course?: string | null
-      /** Education Level */
-      education_level?: string | null
-      /** Track */
-      track?: string | null
-      /** Program */
-      program?: string | null
-      /** Telegram */
-      telegram?: string | null
-      /** Achievements */
-      achievements?: string | null
-      /** Department */
-      department?: string | null
+      /** Is Active */
+      is_active: boolean
+      /** Mfa Challenges */
+      mfa_challenges?: components["schemas"]["MfaChallengeOut"][]
+      /** Mfa Default Method */
+      mfa_default_method?: string | null
+      /** Mfa Last Verified At */
+      mfa_last_verified_at?: string | null
+      /**
+       * Mfa Required
+       * @default false
+       */
+      mfa_required: boolean
+      /** Pending Email */
+      pending_email?: string | null
       /** Position */
       position?: string | null
+      /** Program */
+      program?: string | null
+      /** Record Book Number */
+      record_book_number?: string | null
+      /** @default student */
+      role: components["schemas"]["UserRole"]
       /**
        * Spotify Connected
        * @default false
@@ -2874,38 +2894,18 @@ export interface components {
       spotify_connected: boolean
       /** Spotify Display Name */
       spotify_display_name?: string | null
-      /**
-       * Dnd Enabled
-       * @default false
-       */
-      dnd_enabled: boolean
-      /** Dnd Start */
-      dnd_start?: string | null
-      /** Dnd End */
-      dnd_end?: string | null
-      /** Timezone */
-      timezone?: string | null
-      /** Id */
-      id: number
-      /** Is Active */
-      is_active: boolean
-      /** Pending Email */
-      pending_email?: string | null
       /** Spotify Is Connected */
       spotify_is_connected?: boolean | null
-      /**
-       * Mfa Required
-       * @default false
-       */
-      mfa_required: boolean
-      /** Mfa Default Method */
-      mfa_default_method?: string | null
-      /** Mfa Last Verified At */
-      mfa_last_verified_at?: string | null
+      /** Status */
+      status?: string | null
+      /** Telegram */
+      telegram?: string | null
+      /** Timezone */
+      timezone?: string | null
       /** Totp Enrollments */
       totp_enrollments?: components["schemas"]["MfaTotpEnrollmentOut"][]
-      /** Mfa Challenges */
-      mfa_challenges?: components["schemas"]["MfaChallengeOut"][]
+      /** Track */
+      track?: string | null
     }
     /** UserPasswordChangeIn */
     UserPasswordChangeIn: {
@@ -2916,42 +2916,42 @@ export interface components {
     }
     /** UserProfileUpdate */
     UserProfileUpdate: {
-      /** Full Name */
-      full_name?: string | null
-      /** Email */
-      email?: string | null
       /** About */
       about?: string | null
+      /** Achievements */
+      achievements?: string | null
+      /** Course */
+      course?: string | null
+      /** Department */
+      department?: string | null
+      /** Dnd Enabled */
+      dnd_enabled?: boolean | null
+      /** Dnd End */
+      dnd_end?: string | null
+      /** Dnd Start */
+      dnd_start?: string | null
+      /** Education Level */
+      education_level?: string | null
+      /** Email */
+      email?: string | null
+      /** Full Name */
+      full_name?: string | null
+      /** Institute */
+      institute?: string | null
+      /** Position */
+      position?: string | null
+      /** Program */
+      program?: string | null
       /** Record Book Number */
       record_book_number?: string | null
       /** Status */
       status?: string | null
-      /** Institute */
-      institute?: string | null
-      /** Course */
-      course?: string | null
-      /** Education Level */
-      education_level?: string | null
-      /** Track */
-      track?: string | null
-      /** Program */
-      program?: string | null
       /** Telegram */
       telegram?: string | null
-      /** Achievements */
-      achievements?: string | null
-      /** Department */
-      department?: string | null
-      /** Position */
-      position?: string | null
-      /** Dnd Enabled */
-      dnd_enabled?: boolean | null
-      /** Dnd Start */
-      dnd_start?: string | null
-      /** Dnd End */
-      dnd_end?: string | null
       /** Timezone */
       timezone?: string | null
+      /** Track */
+      track?: string | null
     }
     /**
      * UserRole
@@ -2978,46 +2978,6 @@ export interface components {
 export type $defs = Record<string, never>
 export interface operations {
   root__get: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": unknown
-        }
-      }
-    }
-  }
-  healthz_healthz_get: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": unknown
-        }
-      }
-    }
-  }
-  ready_ready_get: {
     parameters: {
       query?: never
       header?: never
@@ -3121,18 +3081,14 @@ export interface operations {
       }
     }
   }
-  start_totp_enrollment_endpoint_api_v1_auth_mfa_totp_start_post: {
+  logout_api_v1_auth_logout_post: {
     parameters: {
       query?: never
       header?: never
       path?: never
       cookie?: never
     }
-    requestBody?: {
-      content: {
-        "application/json": components["schemas"]["TotpEnrollmentStartIn"] | null
-      }
-    }
+    requestBody?: never
     responses: {
       /** @description Successful Response */
       200: {
@@ -3140,16 +3096,56 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          "application/json": components["schemas"]["TotpEnrollmentStartOut"]
+          "application/json": unknown
         }
       }
-      /** @description Validation Error */
-      422: {
+    }
+  }
+  request_step_up_api_v1_auth_mfa_step_up_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
         headers: {
           [name: string]: unknown
         }
         content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
+          "application/json": components["schemas"]["PendingMfaResponse"]
+        }
+      }
+      /** @description Accepted */
+      202: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["PendingMfaResponse"]
+        }
+      }
+    }
+  }
+  list_totp_enrollments_api_v1_auth_mfa_totp_get: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["MfaTotpEnrollmentOut"][]
         }
       }
     }
@@ -3187,26 +3183,6 @@ export interface operations {
       }
     }
   }
-  list_totp_enrollments_api_v1_auth_mfa_totp_get: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["MfaTotpEnrollmentOut"][]
-        }
-      }
-    }
-  }
   delete_pending_totp_enrollment_api_v1_auth_mfa_totp_pending__enrollment_id__delete: {
     parameters: {
       query?: never
@@ -3224,6 +3200,39 @@ export interface operations {
           [name: string]: unknown
         }
         content?: never
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  start_totp_enrollment_endpoint_api_v1_auth_mfa_totp_start_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: {
+      content: {
+        "application/json": components["schemas"]["TotpEnrollmentStartIn"] | null
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["TotpEnrollmentStartOut"]
+        }
       }
       /** @description Validation Error */
       422: {
@@ -3300,55 +3309,6 @@ export interface operations {
       }
     }
   }
-  request_step_up_api_v1_auth_mfa_step_up_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["PendingMfaResponse"]
-        }
-      }
-      /** @description Accepted */
-      202: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["PendingMfaResponse"]
-        }
-      }
-    }
-  }
-  get_session_signing_key_api_v1_auth_session_signing_key_get: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["SessionSigningKeyOut"]
-        }
-      }
-    }
-  }
   register_api_v1_auth_register_post: {
     parameters: {
       query?: never
@@ -3382,7 +3342,7 @@ export interface operations {
       }
     }
   }
-  logout_api_v1_auth_logout_post: {
+  get_session_signing_key_api_v1_auth_session_signing_key_get: {
     parameters: {
       query?: never
       header?: never
@@ -3397,99 +3357,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          "application/json": unknown
-        }
-      }
-    }
-  }
-  spotify_auth_url_api_v1_spotify_auth_url_get: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["SpotifyAuthURL"]
-        }
-      }
-    }
-  }
-  spotify_callback_api_v1_spotify_callback_get: {
-    parameters: {
-      query: {
-        code: string
-        state: string
-      }
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": unknown
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  now_playing_api_v1_spotify_now_playing_get: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["SpotifyNowPlayingOut"]
-        }
-      }
-    }
-  }
-  disconnect_api_v1_spotify_disconnect_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": unknown
+          "application/json": components["schemas"]["SessionSigningKeyOut"]
         }
       }
     }
@@ -3512,37 +3380,6 @@ export interface operations {
         }
         content: {
           "application/json": components["schemas"]["ActiveSessionOut"][]
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  revoke_session_api_v1_auth_sessions__session_id__delete: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        session_id: number
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["ActiveSessionOut"]
         }
       }
       /** @description Validation Error */
@@ -3587,10 +3424,43 @@ export interface operations {
       }
     }
   }
-  list_notifications_api_v1_notifications_get: {
+  revoke_session_api_v1_auth_sessions__session_id__delete: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        session_id: number
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["ActiveSessionOut"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  get_chats_api_v1_chats_get: {
     parameters: {
       query?: {
+        /** @description Pagination cursor */
         cursor?: string | null
+        /** @description Number of chats to return */
         limit?: number
       }
       header?: never
@@ -3605,7 +3475,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          "application/json": components["schemas"]["NotificationsListOut"]
+          "application/json": components["schemas"]["ChatsListOut"]
         }
       }
       /** @description Validation Error */
@@ -3619,14 +3489,18 @@ export interface operations {
       }
     }
   }
-  clear_notifications_api_v1_notifications_delete: {
+  create_chat_api_v1_chats_post: {
     parameters: {
       query?: never
       header?: never
       path?: never
       cookie?: never
     }
-    requestBody?: never
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ChatCreate"]
+      }
+    }
     responses: {
       /** @description Successful Response */
       200: {
@@ -3634,17 +3508,26 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          "application/json": unknown
+          "application/json": components["schemas"]["ChatResponse"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
         }
       }
     }
   }
-  mark_read_single_api_v1_notifications__notif_id__read_patch: {
+  delete_chat_api_v1_chats__chat_id__delete: {
     parameters: {
       query?: never
       header?: never
       path: {
-        notif_id: number
+        chat_id: string
       }
       cookie?: never
     }
@@ -3656,7 +3539,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          "application/json": unknown
+          "application/json": components["schemas"]["ChatMaintenanceResult"]
         }
       }
       /** @description Validation Error */
@@ -3670,11 +3553,13 @@ export interface operations {
       }
     }
   }
-  mark_all_read_api_v1_notifications_read_all_post: {
+  clear_chat_history_api_v1_chats__chat_id__clear_post: {
     parameters: {
       query?: never
       header?: never
-      path?: never
+      path: {
+        chat_id: string
+      }
       cookie?: never
     }
     requestBody?: never
@@ -3685,18 +3570,32 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          "application/json": unknown
+          "application/json": components["schemas"]["ChatMaintenanceResult"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
         }
       }
     }
   }
-  check_schedule_and_generate_api_v1_notifications_check_schedule_post: {
+  get_messages_api_v1_chats__chat_id__messages_get: {
     parameters: {
       query?: {
-        lookahead_minutes?: number
+        /** @description Pagination cursor */
+        cursor?: string | null
+        /** @description Number of messages to return */
+        limit?: number
       }
       header?: never
-      path?: never
+      path: {
+        chat_id: string
+      }
       cookie?: never
     }
     requestBody?: never
@@ -3707,7 +3606,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          "application/json": components["schemas"]["NotificationsListOut"]
+          "application/json": components["schemas"]["MessagesListOut"]
         }
       }
       /** @description Validation Error */
@@ -3721,192 +3620,20 @@ export interface operations {
       }
     }
   }
-  get_vapid_public_key_api_v1_push_vapid_public_key_get: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": {
-            [key: string]: string
-          }
-        }
-      }
-    }
-  }
-  subscribe_api_v1_push_subscribe_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["PushSubscriptionIn"]
-      }
-    }
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["PushSubscriptionOut"]
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  update_subscription_topics_api_v1_push_subscribe_topics_patch: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["PushSubscriptionTopicsUpdate"]
-      }
-    }
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["PushSubscriptionOut"]
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  unsubscribe_api_v1_push_unsubscribe_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["PushSubscriptionDelete"]
-      }
-    }
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": {
-            [key: string]: boolean
-          }
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  get_push_topics_api_v1_push_topics_get: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["PushTopicsResponse"]
-        }
-      }
-    }
-  }
-  send_test_api_v1_push_test_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: {
-      content: {
-        "application/json": components["schemas"]["PushTestRequest"] | null
-      }
-    }
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["SendTestResponse"]
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  admin_get_user_topics_api_v1_push_admin_topics__user_id__get: {
+  send_message_api_v1_chats__chat_id__messages_post: {
     parameters: {
       query?: never
       header?: never
       path: {
-        user_id: number
+        chat_id: string
       }
       cookie?: never
     }
-    requestBody?: never
+    requestBody: {
+      content: {
+        "multipart/form-data": components["schemas"]["Body_send_message_api_v1_chats__chat_id__messages_post"]
+      }
+    }
     responses: {
       /** @description Successful Response */
       200: {
@@ -3914,7 +3641,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          "application/json": components["schemas"]["AdminUserTopicsResponse"]
+          "application/json": components["schemas"]["MessageResponse"]
         }
       }
       /** @description Validation Error */
@@ -3928,527 +3655,13 @@ export interface operations {
       }
     }
   }
-  admin_update_user_topics_api_v1_push_admin_topics__user_id__put: {
+  mark_read_api_v1_chats__chat_id__read_post: {
     parameters: {
       query?: never
       header?: never
       path: {
-        user_id: number
+        chat_id: string
       }
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["AdminUserTopicsUpdate"]
-      }
-    }
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["AdminUserTopicsResponse"]
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  disable_user_push_api_v1_push_admin_disable_user_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["DisableUserPushRequest"]
-      }
-    }
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": {
-            [key: string]: number | boolean
-          }
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  broadcast_api_v1_push_broadcast_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["NotifyBody"]
-      }
-    }
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["SendTestResponse"]
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  download_schedule_ics_api_v1_schedule_ics_get: {
-    parameters: {
-      query: {
-        /** @description Group identifier */
-        group: number
-      }
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  me_api_v1_users_me_get: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["UserOut"]
-        }
-      }
-    }
-  }
-  update_me_api_v1_users_me_put: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["UserProfileUpdate"]
-      }
-    }
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["UserOut"]
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  change_email_api_v1_users_me_email_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["UserEmailChangeIn"]
-      }
-    }
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["UserOut"]
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  confirm_email_change_api_v1_users_me_email_confirm_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["UserEmailConfirmIn"]
-      }
-    }
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["UserOut"]
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  change_password_api_v1_users_me_password_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["UserPasswordChangeIn"]
-      }
-    }
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["PasswordChangeOut"]
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  export_me_api_v1_users_me_export_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["DataExportOut"]
-        }
-      }
-    }
-  }
-  delete_me_api_v1_users_me_delete_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["DataDeletionRequest"]
-      }
-    }
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["DataDeletionOut"]
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  upload_avatar_api_v1_users_me_avatar_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        "multipart/form-data": components["schemas"]["Body_upload_avatar_api_v1_users_me_avatar_post"]
-      }
-    }
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["UserOut"]
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  delete_avatar_api_v1_users_me_avatar_delete: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["UserOut"]
-        }
-      }
-    }
-  }
-  upload_cover_api_v1_users_me_cover_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        "multipart/form-data": components["schemas"]["Body_upload_cover_api_v1_users_me_cover_post"]
-      }
-    }
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["UserOut"]
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  delete_cover_api_v1_users_me_cover_delete: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["UserOut"]
-        }
-      }
-    }
-  }
-  get_users_api_v1_users_get: {
-    parameters: {
-      query?: {
-        full_name?: string | null
-        search?: string | null
-        group_id?: number | null
-        role?: string | null
-        limit?: number | null
-        offset?: number | null
-      }
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["UserOut"][]
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  create_user_api_v1_users_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["UserCreate"]
-      }
-    }
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["UserOut"]
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  export_access_audit_api_v1_users_audit_export_get: {
-    parameters: {
-      query?: {
-        start_at?: string | null
-        end_at?: string | null
-      }
-      header?: never
-      path?: never
       cookie?: never
     }
     requestBody?: never
@@ -4469,127 +3682,6 @@ export interface operations {
         }
         content: {
           "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  update_user_admin_api_v1_users__user_id__patch: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        user_id: number
-      }
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["UserAdminUpdate"]
-      }
-    }
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["UserOut"]
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  forgot_password_api_v1_password_forgot_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["ForgotPasswordIn"]
-      }
-    }
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": unknown
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  reset_password_api_v1_password_reset_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["ResetPasswordIn"]
-      }
-    }
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": unknown
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  get_groups_api_v1_groups_get: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["GroupOut"][]
         }
       }
     }
@@ -4733,6 +3825,39 @@ export interface operations {
       }
     }
   }
+  delete_event_file_api_v1_events_file__file_id__delete: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        file_id: number
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": {
+            [key: string]: unknown
+          }
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
   my_events_api_v1_events_my_get: {
     parameters: {
       query?: never
@@ -4751,72 +3876,6 @@ export interface operations {
         }
         content: {
           "application/json": components["schemas"]["EventOut"][]
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  upload_event_file_api_v1_events__id__upload_file_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        id: number
-      }
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        "multipart/form-data": components["schemas"]["Body_upload_event_file_api_v1_events__id__upload_file_post"]
-      }
-    }
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["EventFileOut"]
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  get_event_files_api_v1_events__id__files_get: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        id: number
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["EventFileOut"][]
         }
       }
       /** @description Validation Error */
@@ -4964,12 +4023,12 @@ export interface operations {
       }
     }
   }
-  delete_event_file_api_v1_events_file__file_id__delete: {
+  get_event_files_api_v1_events__id__files_get: {
     parameters: {
       query?: never
       header?: never
       path: {
-        file_id: number
+        id: number
       }
       cookie?: never
     }
@@ -4981,9 +4040,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          "application/json": {
-            [key: string]: unknown
-          }
+          "application/json": components["schemas"]["EventFileOut"][]
         }
       }
       /** @description Validation Error */
@@ -4993,6 +4050,61 @@ export interface operations {
         }
         content: {
           "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  upload_event_file_api_v1_events__id__upload_file_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: number
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        "multipart/form-data": components["schemas"]["Body_upload_event_file_api_v1_events__id__upload_file_post"]
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["EventFileOut"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  get_groups_api_v1_groups_get: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["GroupOut"][]
         }
       }
     }
@@ -5053,6 +4165,39 @@ export interface operations {
         }
         content: {
           "application/json": components["schemas"]["NewsOut"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  upload_news_image_api_v1_news_upload_image_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        "multipart/form-data": components["schemas"]["Body_upload_news_image_api_v1_news_upload_image_post"]
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": unknown
         }
       }
       /** @description Validation Error */
@@ -5167,7 +4312,141 @@ export interface operations {
       }
     }
   }
-  upload_news_image_api_v1_news_upload_image_post: {
+  list_notifications_api_v1_notifications_get: {
+    parameters: {
+      query?: {
+        cursor?: string | null
+        limit?: number
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["NotificationsListOut"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  clear_notifications_api_v1_notifications_delete: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": unknown
+        }
+      }
+    }
+  }
+  check_schedule_and_generate_api_v1_notifications_check_schedule_post: {
+    parameters: {
+      query?: {
+        lookahead_minutes?: number
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["NotificationsListOut"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  mark_all_read_api_v1_notifications_read_all_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": unknown
+        }
+      }
+    }
+  }
+  mark_read_single_api_v1_notifications__notif_id__read_patch: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        notif_id: number
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": unknown
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  forgot_password_api_v1_password_forgot_post: {
     parameters: {
       query?: never
       header?: never
@@ -5176,7 +4455,7 @@ export interface operations {
     }
     requestBody: {
       content: {
-        "multipart/form-data": components["schemas"]["Body_upload_news_image_api_v1_news_upload_image_post"]
+        "application/json": components["schemas"]["ForgotPasswordIn"]
       }
     }
     responses: {
@@ -5200,38 +4479,7 @@ export interface operations {
       }
     }
   }
-  list_stories_api_v1_stories_get: {
-    parameters: {
-      query?: never
-      header?: {
-        "if-none-match"?: string | null
-      }
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["StoryOut"][]
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  create_story_api_v1_stories_post: {
+  reset_password_api_v1_password_reset_post: {
     parameters: {
       query?: never
       header?: never
@@ -5240,7 +4488,7 @@ export interface operations {
     }
     requestBody: {
       content: {
-        "application/json": components["schemas"]["StoryCreate"]
+        "application/json": components["schemas"]["ResetPasswordIn"]
       }
     }
     responses: {
@@ -5250,7 +4498,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          "application/json": components["schemas"]["StoryOut"]
+          "application/json": unknown
         }
       }
       /** @description Validation Error */
@@ -5264,16 +4512,18 @@ export interface operations {
       }
     }
   }
-  delete_story_api_v1_stories__story_id__delete: {
+  disable_user_push_api_v1_push_admin_disable_user_post: {
     parameters: {
       query?: never
       header?: never
-      path: {
-        story_id: number
-      }
+      path?: never
       cookie?: never
     }
-    requestBody?: never
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DisableUserPushRequest"]
+      }
+    }
     responses: {
       /** @description Successful Response */
       200: {
@@ -5282,7 +4532,7 @@ export interface operations {
         }
         content: {
           "application/json": {
-            [key: string]: unknown
+            [key: string]: number | boolean
           }
         }
       }
@@ -5297,20 +4547,16 @@ export interface operations {
       }
     }
   }
-  update_story_api_v1_stories__story_id__patch: {
+  admin_get_user_topics_api_v1_push_admin_topics__user_id__get: {
     parameters: {
       query?: never
       header?: never
       path: {
-        story_id: number
+        user_id: number
       }
       cookie?: never
     }
-    requestBody?: {
-      content: {
-        "application/json": components["schemas"]["StoryUpdate"] | null
-      }
-    }
+    requestBody?: never
     responses: {
       /** @description Successful Response */
       200: {
@@ -5318,7 +4564,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          "application/json": components["schemas"]["StoryOut"]
+          "application/json": components["schemas"]["AdminUserTopicsResponse"]
         }
       }
       /** @description Validation Error */
@@ -5332,16 +4578,18 @@ export interface operations {
       }
     }
   }
-  upload_story_cover_api_v1_stories_upload_cover_post: {
+  admin_update_user_topics_api_v1_push_admin_topics__user_id__put: {
     parameters: {
       query?: never
       header?: never
-      path?: never
+      path: {
+        user_id: number
+      }
       cookie?: never
     }
     requestBody: {
       content: {
-        "multipart/form-data": components["schemas"]["Body_upload_story_cover_api_v1_stories_upload_cover_post"]
+        "application/json": components["schemas"]["AdminUserTopicsUpdate"]
       }
     }
     responses: {
@@ -5351,7 +4599,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          "application/json": unknown
+          "application/json": components["schemas"]["AdminUserTopicsResponse"]
         }
       }
       /** @description Validation Error */
@@ -5361,6 +4609,215 @@ export interface operations {
         }
         content: {
           "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  broadcast_api_v1_push_broadcast_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["NotifyBody"]
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["SendTestResponse"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  subscribe_api_v1_push_subscribe_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PushSubscriptionIn"]
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["PushSubscriptionOut"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  update_subscription_topics_api_v1_push_subscribe_topics_patch: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PushSubscriptionTopicsUpdate"]
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["PushSubscriptionOut"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  send_test_api_v1_push_test_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: {
+      content: {
+        "application/json": components["schemas"]["PushTestRequest"] | null
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["SendTestResponse"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  get_push_topics_api_v1_push_topics_get: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["PushTopicsResponse"]
+        }
+      }
+    }
+  }
+  unsubscribe_api_v1_push_unsubscribe_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PushSubscriptionDelete"]
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": {
+            [key: string]: boolean
+          }
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  get_vapid_public_key_api_v1_push_vapid_public_key_get: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": {
+            [key: string]: string
+          }
         }
       }
     }
@@ -5386,6 +4843,36 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["ScheduleOut"]
         }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  download_schedule_ics_api_v1_schedule_ics_get: {
+    parameters: {
+      query: {
+        /** @description Group identifier */
+        group: number
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
       }
       /** @description Validation Error */
       422: {
@@ -5499,6 +4986,98 @@ export interface operations {
       }
     }
   }
+  spotify_auth_url_api_v1_spotify_auth_url_get: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["SpotifyAuthURL"]
+        }
+      }
+    }
+  }
+  spotify_callback_api_v1_spotify_callback_get: {
+    parameters: {
+      query: {
+        code: string
+        state: string
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": unknown
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  disconnect_api_v1_spotify_disconnect_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": unknown
+        }
+      }
+    }
+  }
+  now_playing_api_v1_spotify_now_playing_get: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["SpotifyNowPlayingOut"]
+        }
+      }
+    }
+  }
   attendance_summary_api_v1_stats_attendance_get: {
     parameters: {
       query?: {
@@ -5601,13 +5180,180 @@ export interface operations {
       }
     }
   }
-  get_chats_api_v1_chats_get: {
+  list_stories_api_v1_stories_get: {
+    parameters: {
+      query?: never
+      header?: {
+        "if-none-match"?: string | null
+      }
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["StoryOut"][]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  create_story_api_v1_stories_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["StoryCreate"]
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["StoryOut"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  upload_story_cover_api_v1_stories_upload_cover_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        "multipart/form-data": components["schemas"]["Body_upload_story_cover_api_v1_stories_upload_cover_post"]
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": unknown
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  delete_story_api_v1_stories__story_id__delete: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        story_id: number
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": {
+            [key: string]: unknown
+          }
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  update_story_api_v1_stories__story_id__patch: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        story_id: number
+      }
+      cookie?: never
+    }
+    requestBody?: {
+      content: {
+        "application/json": components["schemas"]["StoryUpdate"] | null
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["StoryOut"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  get_users_api_v1_users_get: {
     parameters: {
       query?: {
-        /** @description Pagination cursor */
-        cursor?: string | null
-        /** @description Number of chats to return */
-        limit?: number
+        full_name?: string | null
+        search?: string | null
+        group_id?: number | null
+        role?: string | null
+        limit?: number | null
+        offset?: number | null
       }
       header?: never
       path?: never
@@ -5621,7 +5367,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          "application/json": components["schemas"]["ChatsListOut"]
+          "application/json": components["schemas"]["UserOut"][]
         }
       }
       /** @description Validation Error */
@@ -5635,7 +5381,7 @@ export interface operations {
       }
     }
   }
-  create_chat_api_v1_chats_post: {
+  create_user_api_v1_users_post: {
     parameters: {
       query?: never
       header?: never
@@ -5644,7 +5390,7 @@ export interface operations {
     }
     requestBody: {
       content: {
-        "application/json": components["schemas"]["ChatCreate"]
+        "application/json": components["schemas"]["UserCreate"]
       }
     }
     responses: {
@@ -5654,7 +5400,7 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          "application/json": components["schemas"]["ChatResponse"]
+          "application/json": components["schemas"]["UserOut"]
         }
       }
       /** @description Validation Error */
@@ -5668,84 +5414,14 @@ export interface operations {
       }
     }
   }
-  get_messages_api_v1_chats__chat_id__messages_get: {
+  export_access_audit_api_v1_users_audit_export_get: {
     parameters: {
       query?: {
-        /** @description Pagination cursor */
-        cursor?: string | null
-        /** @description Number of messages to return */
-        limit?: number
+        start_at?: string | null
+        end_at?: string | null
       }
       header?: never
-      path: {
-        chat_id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["MessagesListOut"]
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  send_message_api_v1_chats__chat_id__messages_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        chat_id: string
-      }
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        "multipart/form-data": components["schemas"]["Body_send_message_api_v1_chats__chat_id__messages_post"]
-      }
-    }
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["MessageResponse"]
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  mark_read_api_v1_chats__chat_id__read_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        chat_id: string
-      }
+      path?: never
       cookie?: never
     }
     requestBody?: never
@@ -5770,69 +5446,7 @@ export interface operations {
       }
     }
   }
-  clear_chat_history_api_v1_chats__chat_id__clear_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        chat_id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["ChatMaintenanceResult"]
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  delete_chat_api_v1_chats__chat_id__delete: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        chat_id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["ChatMaintenanceResult"]
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  get_vapid_public_key_webpush_vapid_public_key_get: {
+  me_api_v1_users_me_get: {
     parameters: {
       query?: never
       header?: never
@@ -5847,9 +5461,474 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
+          "application/json": components["schemas"]["UserOut"]
+        }
+      }
+    }
+  }
+  update_me_api_v1_users_me_put: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UserProfileUpdate"]
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["UserOut"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  upload_avatar_api_v1_users_me_avatar_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        "multipart/form-data": components["schemas"]["Body_upload_avatar_api_v1_users_me_avatar_post"]
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["UserOut"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  delete_avatar_api_v1_users_me_avatar_delete: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["UserOut"]
+        }
+      }
+    }
+  }
+  upload_cover_api_v1_users_me_cover_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        "multipart/form-data": components["schemas"]["Body_upload_cover_api_v1_users_me_cover_post"]
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["UserOut"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  delete_cover_api_v1_users_me_cover_delete: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["UserOut"]
+        }
+      }
+    }
+  }
+  delete_me_api_v1_users_me_delete_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DataDeletionRequest"]
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["DataDeletionOut"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  change_email_api_v1_users_me_email_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UserEmailChangeIn"]
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["UserOut"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  confirm_email_change_api_v1_users_me_email_confirm_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UserEmailConfirmIn"]
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["UserOut"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  export_me_api_v1_users_me_export_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["DataExportOut"]
+        }
+      }
+    }
+  }
+  change_password_api_v1_users_me_password_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UserPasswordChangeIn"]
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["PasswordChangeOut"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  update_user_admin_api_v1_users__user_id__patch: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        user_id: number
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UserAdminUpdate"]
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["UserOut"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  healthz_healthz_get: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": unknown
+        }
+      }
+    }
+  }
+  ready_ready_get: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": unknown
+        }
+      }
+    }
+  }
+  disable_user_push_webpush_admin_disable_user_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DisableUserPushRequest"]
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
           "application/json": {
-            [key: string]: string
+            [key: string]: number | boolean
           }
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  broadcast_webpush_broadcast_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["NotifyBody"]
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["SendTestResponse"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  send_test_webpush_send_test_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: {
+      content: {
+        "application/json": components["schemas"]["PushTestRequest"] | null
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["SendTestResponse"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
         }
       }
     }
@@ -5955,51 +6034,14 @@ export interface operations {
       }
     }
   }
-  send_test_webpush_send_test_post: {
+  get_vapid_public_key_webpush_vapid_public_key_get: {
     parameters: {
       query?: never
       header?: never
       path?: never
       cookie?: never
     }
-    requestBody?: {
-      content: {
-        "application/json": components["schemas"]["PushTestRequest"] | null
-      }
-    }
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["SendTestResponse"]
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  disable_user_push_webpush_admin_disable_user_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["DisableUserPushRequest"]
-      }
-    }
+    requestBody?: never
     responses: {
       /** @description Successful Response */
       200: {
@@ -6008,50 +6050,8 @@ export interface operations {
         }
         content: {
           "application/json": {
-            [key: string]: number | boolean
+            [key: string]: string
           }
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  broadcast_webpush_broadcast_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["NotifyBody"]
-      }
-    }
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["SendTestResponse"]
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
         }
       }
     }

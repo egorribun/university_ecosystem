@@ -171,21 +171,24 @@ class TestWebSocketAuth:
         from app.api.websocket import get_user_from_token
 
         user = await user_factory(full_name="Test User")
-        token = await create_access_token(str(user.id))
+        token, _ = await create_access_token(str(user.id), db=db_session)
+        await db_session.commit()
 
-        result = await get_user_from_token(token)
+        result_user, session_jti = await get_user_from_token(token)
 
-        assert result is not None
-        assert result.id == user.id
+        assert result_user is not None
+        assert result_user.id == user.id
+        assert session_jti is not None
 
     @pytest.mark.asyncio
     async def test_get_user_from_token_invalid(self):
         """Test invalid token returns None."""
         from app.api.websocket import get_user_from_token
 
-        result = await get_user_from_token("invalid-token")
+        result_user, session_jti = await get_user_from_token("invalid-token")
 
-        assert result is None
+        assert result_user is None
+        assert session_jti is None
 
     @pytest.mark.asyncio
     async def test_get_user_from_token_inactive_user(self, db_session, user_factory):
@@ -195,9 +198,9 @@ class TestWebSocketAuth:
         user = await user_factory(is_active=False)
         token = await create_access_token(str(user.id))
 
-        result = await get_user_from_token(token)
+        result_user, session_jti = await get_user_from_token(token)
 
-        assert result is None
+        assert result_user is None
 
 
 class TestMessageSerialization:

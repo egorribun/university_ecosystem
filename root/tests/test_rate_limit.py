@@ -461,6 +461,8 @@ def test_parse_rate_limit_invalid_returns_fallback(value: str) -> None:
 async def test_check_rate_limit_blocks_after_limit(
     identifier: str, _rate_limit_redis_client, monkeypatch
 ):
+    # Clear redis between hypothesis iterations to ensure clean state
+    await _rate_limit_redis_client.flushall()
     monkeypatch.setattr(rate_limit, "_shared_clients", {})
     monkeypatch.setattr(rate_limit, "_shared_client_locks", {})
 
