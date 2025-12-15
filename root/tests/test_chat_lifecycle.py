@@ -18,7 +18,9 @@ async def _login(
 
 
 @pytest.mark.anyio
-async def test_chat_full_lifecycle(async_client, user_factory, _rate_limit_redis_client):
+async def test_chat_full_lifecycle(
+    async_client, user_factory, _rate_limit_redis_client
+):
     password = "Lifecycle123!"
     user = await user_factory(hashed_password=get_password_hash(password))
     other = await user_factory()
