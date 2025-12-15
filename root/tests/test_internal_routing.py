@@ -1,7 +1,10 @@
+from unittest.mock import patch
+
 import pytest
 from httpx import AsyncClient
 
 from app.api.internal import INTERNAL_ROUTE_PREFIXES
+from app.core.internal_access import InternalAccessMiddleware
 
 
 @pytest.mark.anyio
@@ -18,7 +21,9 @@ async def test_internal_routes_absent_from_openapi(root_client: AsyncClient):
 
 @pytest.mark.anyio
 async def test_internal_routes_require_token(root_client: AsyncClient):
-    response = await root_client.get("/api/v1/notifications/admin/dead-letter")
+    # Patch _is_allowed_ip to return False, simulating request from external IP
+    with patch.object(InternalAccessMiddleware, "_is_allowed_ip", return_value=False):
+        response = await root_client.get("/api/v1/notifications/admin/dead-letter")
 
-    assert response.status_code == 403
-    assert response.json()["detail"] == "Internal API access denied"
+        assert response.status_code == 403
+        assert response.json()["detail"] == "Internal API access denied"

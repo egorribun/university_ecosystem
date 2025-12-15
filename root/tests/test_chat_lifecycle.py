@@ -18,7 +18,9 @@ async def _login(
 
 
 @pytest.mark.anyio
-async def test_chat_full_lifecycle(async_client, user_factory):
+async def test_chat_full_lifecycle(
+    async_client, user_factory, _rate_limit_redis_client
+):
     password = "Lifecycle123!"
     user = await user_factory(hashed_password=get_password_hash(password))
     other = await user_factory()
@@ -54,6 +56,9 @@ async def test_chat_full_lifecycle(async_client, user_factory):
     )
     assert cleared_messages.status_code == 200
     assert cleared_messages.json()["items"] == []
+
+    # Flush rate limit counters before final operations to avoid 429
+    await _rate_limit_redis_client.flushall()
 
     delete_resp = await async_client.delete(f"/chats/{chat_id}", headers=headers)
     assert delete_resp.status_code == 200

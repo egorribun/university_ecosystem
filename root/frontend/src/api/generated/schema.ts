@@ -1681,7 +1681,7 @@ export interface components {
       /** Email */
       email: string
       /** Full Name */
-      full_name: string
+      full_name?: string | null
       /** Avatar Url */
       avatar_url?: string | null
       /** Is Active */

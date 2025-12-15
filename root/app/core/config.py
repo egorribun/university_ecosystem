@@ -11,7 +11,6 @@ from urllib.parse import urlparse
 from pydantic import (
     AliasChoices,
     Field,
-    FieldValidationInfo,
     ValidationError,
     ValidationInfo,
     field_validator,
@@ -557,15 +556,13 @@ class Settings(BaseSettings):
         "mfa_step_up_ttl_seconds",
     )
     @classmethod
-    def _validate_positive_mfa_values(
-        cls, value: int, info: FieldValidationInfo
-    ) -> int:
+    def _validate_positive_mfa_values(cls, value: int, info: ValidationInfo) -> int:
         field_name = getattr(info, "field_name", None) or "mfa_value"
         return _validate_positive_int(value, label=field_name.upper())
 
     @field_validator("mfa_totp_attempt_limit")
     @classmethod
-    def _validate_mfa_attempt_limits(cls, value: int, info: FieldValidationInfo) -> int:
+    def _validate_mfa_attempt_limits(cls, value: int, info: ValidationInfo) -> int:
         field_name = getattr(info, "field_name", None) or "mfa_attempt_limit"
         return _validate_non_negative_int(value, label=str(field_name).upper())
 

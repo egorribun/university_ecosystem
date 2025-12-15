@@ -389,7 +389,7 @@ urllib3==2.6.2
     #   sentry-sdk
 uvicorn[standard]==0.38.0
     # via -r root/requirements.in
-uvloop==0.22.1
+uvloop==0.22.1 ; sys_platform != 'win32'
     # via uvicorn
 virtualenv==20.35.4
     # via pre-commit

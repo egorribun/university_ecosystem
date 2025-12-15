@@ -9,7 +9,7 @@ class ChatParticipant(BaseModel):
 
     id: int
     email: str
-    full_name: str
+    full_name: str | None = None
     avatar_url: str | None = None
     is_active: bool
 
@@ -30,17 +30,18 @@ class MessageCreate(MessageBase):
 
 
 class AttachmentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     url: str
     file_type: str
     filename: str
     size: int
 
-    class Config:
-        from_attributes = True
-
 
 class MessageResponse(MessageBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     chat_id: str
     sender_id: int
@@ -49,9 +50,6 @@ class MessageResponse(MessageBase):
     sender: ChatParticipant | None = None
     sender_presence: PresenceStatus | None = None
     attachments: list[AttachmentResponse] = []
-
-    class Config:
-        from_attributes = True
 
 
 class ChatBase(BaseModel):
@@ -63,6 +61,8 @@ class ChatCreate(ChatBase):
 
 
 class ChatResponse(ChatBase):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     participants: list[ChatParticipant]
     last_message: MessageResponse | None = None
@@ -70,9 +70,6 @@ class ChatResponse(ChatBase):
     created_at: datetime
     updated_at: datetime
     presence: dict[int, PresenceStatus] | None = None
-
-    class Config:
-        from_attributes = True
 
 
 class ChatsListOut(BaseModel):

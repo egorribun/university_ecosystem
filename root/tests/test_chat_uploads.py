@@ -14,6 +14,39 @@ from app.models.chat import Attachment, Chat
 from app.utils import files
 
 
+def _fallback_detect_mime(data: bytes) -> str | None:
+    """Simple MIME detection fallback for platforms without libmagic."""
+    if not data:
+        return None
+    if data.startswith(b"%PDF"):
+        return "application/pdf"
+    if data.startswith(b"\x89PNG"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data.startswith(b"GIF8"):
+        return "image/gif"
+    if data.startswith(b"RIFF") and b"WEBP" in data[:12]:
+        return "image/webp"
+    if data.startswith(b"PK\x03\x04"):
+        return "application/zip"
+    # SVG detection
+    if b"<svg" in data[:1024].lower():
+        return "image/svg+xml"
+    # Assume text/plain for printable ASCII
+    try:
+        data[:512].decode("utf-8")
+        return "text/plain"
+    except UnicodeDecodeError:
+        return "application/octet-stream"
+
+
+@pytest.fixture(autouse=True)
+def _mock_mime_detection(monkeypatch):
+    """Mock MIME detection for platforms without libmagic (e.g., Windows)."""
+    monkeypatch.setattr(files, "detect_mime_type", _fallback_detect_mime)
+
+
 class _RecordingStorage:
     def __init__(self) -> None:
         self.calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
@@ -105,7 +138,11 @@ async def test_send_message_generates_public_urls(
     monkeypatch.setattr(
         files, "_storage_backend_snapshot", files._storage_backend_signature()
     )
-    monkeypatch.setattr(chat_api, "notify_new_message", lambda *_, **__: None)
+
+    async def _noop_notify(*_, **__):
+        pass
+
+    monkeypatch.setattr(chat_api, "notify_new_message", _noop_notify)
 
     message = await chat_api.send_message(
         chat.id,
@@ -115,7 +152,8 @@ async def test_send_message_generates_public_urls(
         session=db_session,
     )
 
-    await db_session.refresh(message, ["attachments"])
+    # message is now a MessageResponse (Pydantic schema), attachments are included
+    assert len(message.attachments) == 1
     attachment = message.attachments[0]
 
     assert attachment.url.startswith("https://cdn.example/chat_uploads/")
