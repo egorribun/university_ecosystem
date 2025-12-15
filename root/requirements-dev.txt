@@ -5,48 +5,48 @@
 #    pip-compile --output-file=root/requirements-dev.txt root/requirements-dev.in
 #
 aiofiles==25.1.0
-    # via -r root/requirements.in
+    # via -r requirements.in
 aiohappyeyeballs==2.6.1
     # via aiohttp
 aiohttp==3.13.2
     # via pywebpush
 aiosignal==1.4.0
     # via aiohttp
-aiosqlite==0.21.0
-    # via -r root/requirements.in
+aiosqlite==0.22.0
+    # via -r requirements.in
 alembic==1.17.2
-    # via -r root/requirements.in
+    # via -r requirements.in
 annotated-doc==0.0.4
     # via fastapi
 annotated-types==0.7.0
     # via pydantic
 anyio==4.12.0
     # via
-    #   -r root/requirements.in
+    #   -r requirements.in
     #   httpx
     #   starlette
     #   watchfiles
 argon2-cffi==25.1.0
-    # via -r root/requirements.in
+    # via -r requirements.in
 argon2-cffi-bindings==25.1.0
     # via argon2-cffi
 asgi-lifespan==2.1.0
-    # via -r root/requirements-dev.in
+    # via -r requirements-dev.in
 asgiref==3.11.0
     # via opentelemetry-instrumentation-asgi
 asyncpg==0.31.0
-    # via -r root/requirements.in
+    # via -r requirements.in
 attrs==25.4.0
     # via aiohttp
 bcrypt==5.0.0
     # via
-    #   -r root/requirements.in
+    #   -r requirements.in
     #   passlib
-boto3==1.42.8
+boto3==1.42.9
     # via
-    #   -r root/requirements-dev.in
-    #   -r root/requirements.in
-botocore==1.42.8
+    #   -r requirements-dev.in
+    #   -r requirements.in
+botocore==1.42.9
     # via
     #   boto3
     #   s3transfer
@@ -54,8 +54,8 @@ brotli==1.2.0
     # via brotli-asgi
 brotli-asgi==1.5.0
     # via
-    #   -r root/requirements-dev.in
-    #   -r root/requirements.in
+    #   -r requirements-dev.in
+    #   -r requirements.in
 certifi==2025.11.12
     # via
     #   httpcore
@@ -71,14 +71,14 @@ cfgv==3.5.0
 charset-normalizer==3.4.4
     # via requests
 clamd==1.0.2
-    # via -r root/requirements.in
+    # via -r requirements.in
 click==8.3.1
     # via uvicorn
 coverage[toml]==7.13.0
     # via pytest-cov
 cryptography==46.0.3
     # via
-    #   -r root/requirements.in
+    #   -r requirements.in
     #   http-ece
     #   py-vapid
     #   python-jose
@@ -92,11 +92,11 @@ dnspython==2.8.0
 ecdsa==0.19.1
     # via python-jose
 email-validator==2.3.0
-    # via -r root/requirements.in
+    # via -r requirements.in
 fakeredis==2.32.1
-    # via -r root/requirements-dev.in
+    # via -r requirements-dev.in
 fastapi==0.124.4
-    # via -r root/requirements.in
+    # via -r requirements.in
 filelock==3.20.0
     # via virtualenv
 frozenlist==1.8.0
@@ -108,7 +108,7 @@ googleapis-common-protos==1.72.0
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
 gputil==1.4.0
-    # via -r root/requirements.in
+    # via -r requirements.in
 greenlet==3.3.0
     # via sqlalchemy
 grpcio==1.76.0
@@ -124,9 +124,9 @@ httpcore==1.0.9
 httptools==0.7.1
     # via uvicorn
 httpx==0.28.1
-    # via -r root/requirements.in
-hypothesis==6.112.1
-    # via -r root/requirements-dev.in
+    # via -r requirements.in
+hypothesis==6.148.7
+    # via -r requirements-dev.in
 identify==2.6.15
     # via pre-commit
 idna==3.11
@@ -156,15 +156,15 @@ multidict==6.7.0
     # via
     #   aiohttp
     #   yarl
-mypy==1.19.0
-    # via -r root/requirements-dev.in
+mypy==1.19.1
+    # via -r requirements-dev.in
 mypy-extensions==1.1.0
     # via mypy
 nodeenv==1.9.1
     # via pre-commit
 opentelemetry-api==1.39.0
     # via
-    #   -r root/requirements.in
+    #   -r requirements.in
     #   opentelemetry-distro
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
@@ -179,7 +179,7 @@ opentelemetry-api==1.39.0
 opentelemetry-distro==0.60b0
     # via sentry-sdk
 opentelemetry-exporter-otlp==1.39.0
-    # via -r root/requirements.in
+    # via -r requirements.in
 opentelemetry-exporter-otlp-proto-common==1.39.0
     # via
     #   opentelemetry-exporter-otlp-proto-grpc
@@ -190,7 +190,7 @@ opentelemetry-exporter-otlp-proto-http==1.39.0
     # via opentelemetry-exporter-otlp
 opentelemetry-instrumentation==0.60b0
     # via
-    #   -r root/requirements.in
+    #   -r requirements.in
     #   opentelemetry-distro
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-asyncpg
@@ -199,16 +199,16 @@ opentelemetry-instrumentation==0.60b0
     #   opentelemetry-instrumentation-sqlalchemy
 opentelemetry-instrumentation-asgi==0.60b0
     # via
-    #   -r root/requirements.in
+    #   -r requirements.in
     #   opentelemetry-instrumentation-fastapi
 opentelemetry-instrumentation-asyncpg==0.60b0
-    # via -r root/requirements.in
+    # via -r requirements.in
 opentelemetry-instrumentation-fastapi==0.60b0
-    # via -r root/requirements.in
+    # via -r requirements.in
 opentelemetry-instrumentation-httpx==0.60b0
-    # via -r root/requirements.in
+    # via -r requirements.in
 opentelemetry-instrumentation-sqlalchemy==0.60b0
-    # via -r root/requirements.in
+    # via -r requirements.in
 opentelemetry-proto==1.39.0
     # via
     #   opentelemetry-exporter-otlp-proto-common
@@ -216,13 +216,13 @@ opentelemetry-proto==1.39.0
     #   opentelemetry-exporter-otlp-proto-http
 opentelemetry-sdk==1.39.0
     # via
-    #   -r root/requirements.in
+    #   -r requirements.in
     #   opentelemetry-distro
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-otlp-proto-http
 opentelemetry-semantic-conventions==0.60b0
     # via
-    #   -r root/requirements.in
+    #   -r requirements.in
     #   opentelemetry-instrumentation
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-asyncpg
@@ -242,11 +242,11 @@ packaging==25.0
     #   opentelemetry-instrumentation-sqlalchemy
     #   pytest
 passlib[bcrypt]==1.7.4
-    # via -r root/requirements.in
+    # via -r requirements.in
 pathspec==0.12.1
     # via mypy
 pillow==12.0.0
-    # via -r root/requirements.in
+    # via -r requirements.in
 platformdirs==4.5.1
     # via virtualenv
 pluggy==1.6.0
@@ -254,9 +254,9 @@ pluggy==1.6.0
     #   pytest
     #   pytest-cov
 pre-commit==4.5.0
-    # via -r root/requirements-dev.in
+    # via -r requirements-dev.in
 prometheus-client==0.23.1
-    # via -r root/requirements.in
+    # via -r requirements.in
 propcache==0.4.1
     # via
     #   aiohttp
@@ -266,9 +266,9 @@ protobuf==6.33.2
     #   googleapis-common-protos
     #   opentelemetry-proto
 psutil==7.1.3
-    # via -r root/requirements.in
+    # via -r requirements.in
 psycopg[binary]==3.3.2
-    # via -r root/requirements.in
+    # via -r requirements.in
 psycopg-binary==3.3.2
     # via psycopg
 py-vapid==1.9.2
@@ -281,50 +281,50 @@ pycparser==2.23
     # via cffi
 pydantic==2.12.5
     # via
-    #   -r root/requirements.in
+    #   -r requirements.in
     #   fastapi
     #   pydantic-settings
 pydantic-core==2.41.5
     # via pydantic
 pydantic-settings==2.12.0
-    # via -r root/requirements.in
+    # via -r requirements.in
 pygments==2.19.2
     # via pytest
 pyotp==2.9.0
     # via
-    #   -r root/requirements-dev.in
-    #   -r root/requirements.in
+    #   -r requirements-dev.in
+    #   -r requirements.in
 pytest==9.0.2
     # via
-    #   -r root/requirements-dev.in
+    #   -r requirements-dev.in
     #   pytest-asyncio
     #   pytest-cov
 pytest-asyncio==1.3.0
-    # via -r root/requirements-dev.in
+    # via -r requirements-dev.in
 pytest-cov==7.0.0
-    # via -r root/requirements-dev.in
+    # via -r requirements-dev.in
 python-dateutil==2.9.0.post0
     # via botocore
 python-dotenv==1.2.1
     # via
-    #   -r root/requirements.in
+    #   -r requirements.in
     #   pydantic-settings
     #   uvicorn
 python-jose[cryptography]==3.5.0
-    # via -r root/requirements.in
+    # via -r requirements.in
 python-magic==0.4.27
-    # via -r root/requirements.in
+    # via -r requirements.in
 python-multipart==0.0.20
-    # via -r root/requirements.in
+    # via -r requirements.in
 pywebpush==2.1.2
-    # via -r root/requirements.in
+    # via -r requirements.in
 pyyaml==6.0.3
     # via
     #   pre-commit
     #   uvicorn
 redis==7.1.0
     # via
-    #   -r root/requirements.in
+    #   -r requirements.in
     #   fakeredis
 requests==2.32.5
     # via
@@ -335,31 +335,32 @@ rsa==4.9.1
 s3transfer==0.16.0
     # via boto3
 sentry-sdk[opentelemetry]==2.47.0
-    # via -r root/requirements.in
+    # via -r requirements.in
 six==1.17.0
     # via
     #   ecdsa
     #   python-dateutil
     #   pywebpush
 slowapi==0.1.9
-    # via -r root/requirements.in
+    # via -r requirements.in
 sniffio==1.3.1
     # via asgi-lifespan
 sortedcontainers==2.4.0
-    # via fakeredis
+    # via
+    #   fakeredis
+    #   hypothesis
 sqlalchemy[asyncio]==2.0.45
     # via
-    #   -r root/requirements.in
+    #   -r requirements.in
     #   alembic
 starlette==0.50.0
     # via
-    #   -r root/requirements.in
+    #   -r requirements.in
     #   brotli-asgi
     #   fastapi
 typing-extensions==4.15.0
     # via
     #   aiosignal
-    #   aiosqlite
     #   alembic
     #   anyio
     #   fastapi
@@ -388,8 +389,8 @@ urllib3==2.6.2
     #   requests
     #   sentry-sdk
 uvicorn[standard]==0.38.0
-    # via -r root/requirements.in
-uvloop==0.22.1 ; sys_platform != 'win32'
+    # via -r requirements.in
+uvloop==0.22.1
     # via uvicorn
 virtualenv==20.35.4
     # via pre-commit
