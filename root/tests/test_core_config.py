@@ -79,29 +79,48 @@ def test_settings_allow_development_defaults_when_opted_in(monkeypatch):
         assert config_module.settings.has_development_fallbacks is True
 
 
-def test_settings_warn_when_env_matches_example(monkeypatch, caplog):
+def test_settings_warn_when_env_matches_example(monkeypatch, caplog, tmp_path):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.delenv("SECRET_KEY", raising=False)
 
-    example_bytes = (BACKEND_ROOT / ".env.example").read_bytes()
+    # Create a complete .env.example with all required vars for the test
+    secret_key = "Qj7p4R2zYx8N1a5Hk9V3u0Mw6Tg4Lr8Cz2Jv5Qw7Xn1Dk6Fh0Sg3Vb9Pp4Rz8Lm2"
+    test_example_content = (
+        f"DATABASE_URL=postgresql+asyncpg://test:test@localhost/test\n"
+        f"SECRET_KEY={secret_key}\n"
+    ).encode()
 
-    with _temporary_env_file(example_bytes) as env_path:
-        from app.core import config as config_module
+    # Write both .env and .env.example with identical content
+    example_path = BACKEND_ROOT / ".env.example"
+    original_example = None
+    try:
+        original_example = example_path.read_bytes()
+    except FileNotFoundError:
+        pass
 
-        with caplog.at_level("WARNING"):
-            config_module = importlib.reload(config_module)
+    try:
+        example_path.write_bytes(test_example_content)
 
-        assert config_module._ENV_FILE == env_path.resolve()
+        with _temporary_env_file(test_example_content) as env_path:
+            from app.core import config as config_module
 
-        with caplog.at_level("WARNING"):
-            settings = config_module.Settings()
+            with caplog.at_level("WARNING"):
+                config_module = importlib.reload(config_module)
 
-    assert settings.database_url.startswith("postgresql+asyncpg://")
-    assert (
-        settings.secret_key
-        == "Qj7p4R2zYx8N1a5Hk9V3u0Mw6Tg4Lr8Cz2Jv5Qw7Xn1Dk6Fh0Sg3Vb9Pp4Rz8Lm2"
-    )
-    assert any("identical to" in record.getMessage() for record in caplog.records)
+            assert config_module._ENV_FILE == env_path.resolve()
+
+            with caplog.at_level("WARNING"):
+                settings = config_module.Settings()
+
+        assert settings.database_url.startswith("postgresql+")
+        assert settings.secret_key == secret_key
+        assert any("identical to" in record.getMessage() for record in caplog.records)
+    finally:
+        # Restore original .env.example
+        if original_example is not None:
+            example_path.write_bytes(original_example)
+        elif example_path.exists():
+            example_path.unlink()
 
 
 def test_notifications_allowed_push_topics_parsed(monkeypatch):
