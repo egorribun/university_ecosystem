@@ -36,6 +36,7 @@ vi.mock("framer-motion", () => ({
   AnimatePresence: ({ children }: any) => <>{children}</>,
   motion: {
     div: ({ children, className, onClick, ...props }: any) => (
+      // eslint-disable-next-line jsx-a11y/no-static-element-interactions
       <div className={className} onClick={onClick} {...props}>
         {children}
       </div>
