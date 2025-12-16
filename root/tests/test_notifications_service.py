@@ -457,7 +457,7 @@ async def test_scheduler_loop_logs_failures(monkeypatch: pytest.MonkeyPatch, cap
         metrics=metrics,
     )
 
-    caplog.set_level(logging.ERROR, logger=worker_module.logger.name)
+    caplog.set_level(logging.ERROR)
 
     with pytest.raises(asyncio.CancelledError):
         await scheduler.run_forever()
