@@ -472,7 +472,12 @@ export const useProfileSync = (
     const syncFromCache = () => {
       const key = readStoredSessionSigningKey()
       const cached = readCachedUser(key)
-      if (!cached) return
+      if (!cached) {
+        // Cache was deleted or is invalid - clear user state
+        applyUserState(() => null, { persist: false })
+        queryClient.setQueryData<UserState>(currentUserQueryKey, null)
+        return
+      }
 
       applyUserState(
         (prev) => {
@@ -561,7 +566,7 @@ export const useProfileSync = (
     if (userStateRef.current == null) {
       setInitializing(true)
     }
-    ;(async () => {
+    ; (async () => {
       try {
         const profile = await fetchCurrentUser({ signal: controller.signal })
         try {

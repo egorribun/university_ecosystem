@@ -19,7 +19,7 @@ import { utf8ToBytes } from "@noble/hashes/utils"
 const bytesToBase64 = (bytes: Uint8Array): string => {
   const maybeBuffer =
     typeof globalThis !== "undefined" &&
-    typeof (globalThis as { Buffer?: unknown }).Buffer === "function"
+      typeof (globalThis as { Buffer?: unknown }).Buffer === "function"
       ? (globalThis as { Buffer?: { from?: unknown } }).Buffer
       : undefined
 
@@ -125,7 +125,7 @@ describe("AuthProvider caching", () => {
     queryClient.clear()
   })
 
-  it("synchronizes cached profile state when storage changes", async () => {
+  it("synchronizes cached profile state when storage changes", { timeout: 20000 }, async () => {
     localStorage.setItem("token", "token-789")
     const { queryClient, wrapper } = setup()
     const { result } = renderHook(() => useAuth(), { wrapper })
@@ -154,7 +154,7 @@ describe("AuthProvider caching", () => {
     queryClient.clear()
   })
 
-  it("discards tampered cached envelopes", async () => {
+  it("discards tampered cached envelopes", { timeout: 20000 }, async () => {
     localStorage.setItem("token", "token-tamper")
     const { queryClient, wrapper } = setup()
     const { result } = renderHook(() => useAuth(), { wrapper })

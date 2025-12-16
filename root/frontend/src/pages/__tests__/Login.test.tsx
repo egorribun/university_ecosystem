@@ -194,7 +194,7 @@ describe("Login page", () => {
     // Wait for initial auth check to complete
     await waitFor(() => expect(screen.queryByText(/loading|загрузка/i)).not.toBeInTheDocument(), {
       timeout: 1000,
-    }).catch(() => {}) // Ignore if no loading indicator
+    }).catch(() => { }) // Ignore if no loading indicator
 
     await user.type(
       screen.getByLabelText(matchText(tAuth("fields.email")), {
@@ -216,8 +216,7 @@ describe("Login page", () => {
 
     const otpInput = screen.getByLabelText(/Authenticator code|Код из приложения/i)
     await user.type(otpInput, "123456")
-    await user.click(screen.getByRole("button", { name: /Verify|Подтвердить/i }))
-
+    // OtpEntry auto-submits on complete, so we just wait for the result
     await waitFor(() => expect(screen.getByText("Welcome!")).toBeInTheDocument())
   })
 
@@ -256,14 +255,17 @@ describe("Login page", () => {
 
     const otpInput = screen.getByLabelText(/Authenticator code|Код из приложения/i)
     await user.type(otpInput, "000000")
-    await user.click(screen.getByRole("button", { name: /Verify|Подтвердить/i }))
-
+    // OtpEntry auto-submits on complete
     await screen.findByText(/Invalid verification code|Неверный код/i)
 
-    await user.clear(otpInput)
+    // After error, user clears input and types new code
+    // Note: OtpEntry component auto-clears on error via useEffect, but mfaError prop stays set
+    // which blocks auto-submit. We need to wait for the input to be cleared, then type new code
+    // and click the button manually since auto-submit is blocked
+    await waitFor(() => expect(otpInput).toHaveValue(""))
     await user.type(otpInput, "123456")
+    // Must click button since error prop blocks auto-submit
     await user.click(screen.getByRole("button", { name: /Verify|Подтвердить/i }))
-
     await waitFor(() => expect(screen.getByText("Welcome!")).toBeInTheDocument())
   })
 
