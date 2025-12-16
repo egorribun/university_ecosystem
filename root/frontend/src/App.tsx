@@ -117,7 +117,7 @@ function AppContent() {
   }, [isAuth])
 
   const wrap = (node: ReactElement) => {
-    if (reduceMotion || hideNavbar) return node
+    if (reduceMotion || hideNavbar || isMessenger) return node
     return <PageTransition>{node}</PageTransition>
   }
 
@@ -132,12 +132,22 @@ function AppContent() {
     />
   )
 
+  const isMessenger = location.pathname.startsWith("/messenger")
+
   const routedContent = (
     <div
       style={{
-        minHeight: "100dvh",
+        minHeight: isMessenger ? undefined : "100dvh",
+        position: isMessenger ? "fixed" : undefined,
+        top: isMessenger ? "var(--app-nav-h, 64px)" : undefined,
+        left: isMessenger ? 0 : undefined,
+        right: isMessenger ? 0 : undefined,
+        bottom: isMessenger ? 0 : undefined,
+        overflow: isMessenger ? "hidden" : undefined,
+        overscrollBehavior: isMessenger ? "none" : undefined,
         background: "var(--page-bg, var(--initial-bg, #060B14))",
         color: "var(--page-text)",
+        zIndex: isMessenger ? 0 : undefined,
       }}
     >
       <Suspense fallback={fallbackShell}>

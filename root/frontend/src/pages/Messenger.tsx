@@ -180,11 +180,11 @@ export default function Messenger() {
           items: previousChats.items.map((chat) =>
             chat.id === chatId
               ? {
-                  ...chat,
-                  last_message: undefined,
-                  unread_count: 0,
-                  updated_at: new Date().toISOString(),
-                }
+                ...chat,
+                last_message: undefined,
+                unread_count: 0,
+                updated_at: new Date().toISOString(),
+              }
               : chat
           ),
         })
@@ -322,32 +322,44 @@ export default function Messenger() {
 
   return (
     <div
-      className="flex overflow-hidden bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans"
+      className="flex overflow-hidden text-gray-900 dark:text-gray-100 font-sans"
       style={{
-        height: isBottomNavVisible ? "calc(100vh - 64px - var(--bn-h))" : "calc(100vh - 64px)",
+        height: "100%",
+        paddingBottom: isBottomNavVisible ? "calc(var(--bn-h) + env(safe-area-inset-bottom) + 16px)" : 0,
+        background: "var(--msg-chat-bg)",
       }}
     >
       {/* Sidebar */}
       <div
-        className={`${
-          showList ? "flex" : "hidden"
-        } w-full md:w-80 lg:w-96 flex-col border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-[#0b111e] transition-all duration-300`}
+        className={`${showList ? "flex" : "hidden"
+          } w-full md:w-80 lg:w-96 flex-col border-r transition-all duration-300 h-full`}
+        style={{
+          background: "var(--msg-sidebar-bg)",
+          borderColor: "var(--msg-header-border)",
+        }}
       >
-        <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center sticky top-0 bg-white/80 dark:bg-[#0b111e]/80 backdrop-blur-md z-10">
-          <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+        <div
+          className="p-4 flex justify-between items-center sticky top-0 z-10 backdrop-blur-md"
+          style={{
+            background: "var(--msg-header-bg)",
+            borderBottom: "1px solid var(--msg-header-border)",
+          }}
+        >
+          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">
             {t("messenger:title", "Messages")}
           </h1>
           <button
             onClick={() => setIsNewChatModalOpen(true)}
             className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            style={{ color: "var(--msg-sidebar-active)" }}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
               viewBox="0 0 24 24"
-              strokeWidth={1.5}
+              strokeWidth={2}
               stroke="currentColor"
-              className="w-6 h-6 text-gray-600 dark:text-gray-300"
+              className="w-5 h-5"
             >
               <path
                 strokeLinecap="round"
@@ -358,12 +370,31 @@ export default function Messenger() {
           </button>
         </div>
 
-        <div className="p-3">
-          <input
-            type="text"
-            placeholder={t("messenger:search", "Search messages...")}
-            className="w-full px-4 py-2 rounded-xl bg-gray-100 dark:bg-gray-800 border-none focus:ring-2 focus:ring-blue-500 outline-none transition-all text-sm"
-          />
+        <div className="p-3" style={{ background: "var(--msg-sidebar-bg)" }}>
+          <div className="relative">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+              stroke="currentColor"
+              className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"
+              />
+            </svg>
+            <input
+              type="text"
+              placeholder={t("messenger:search", "Search")}
+              className="w-full pl-9 pr-4 py-2.5 rounded-xl border-none focus:ring-2 outline-none transition-all text-sm"
+              style={{
+                background: "var(--msg-input-bg)",
+              }}
+            />
+          </div>
         </div>
 
         <ContactList
@@ -375,28 +406,31 @@ export default function Messenger() {
 
       {/* Chat Area */}
       <div
-        className={`${
-          showChat ? "flex" : "hidden"
-        } flex-1 flex flex-col bg-white/50 dark:bg-[#060b14] overflow-hidden`}
+        className={`${showChat ? "flex" : "hidden"
+          } flex-1 flex flex-col overflow-hidden`}
+        style={{ background: "var(--msg-chat-bg)" }}
       >
+
         {selectedChatId && activeChat ? (
           <>
             {/* Chat Header - Fixed */}
             {!showSearchInChat ? (
-              <div className="flex-shrink-0 h-16 border-b border-gray-200 dark:border-gray-800 flex items-center px-4 justify-between bg-white/80 dark:bg-[#0b111e]/80 backdrop-blur-md z-10">
+              <div
+                className="msg-header flex-shrink-0 h-16 flex items-center px-4 justify-between z-10"
+              >
                 <div className="flex items-center gap-3">
                   {isMobile && (
                     <button
                       onClick={() => setSelectedChatId(null)}
-                      className="p-1 -ml-2 mr-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"
+                      className="p-1.5 -ml-2 mr-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                     >
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
                         fill="none"
                         viewBox="0 0 24 24"
-                        strokeWidth={1.5}
+                        strokeWidth={2}
                         stroke="currentColor"
-                        className="w-6 h-6"
+                        className="w-5 h-5"
                       >
                         <path
                           strokeLinecap="round"
@@ -406,16 +440,27 @@ export default function Messenger() {
                       </svg>
                     </button>
                   )}
-                  <SmartImage
-                    srcRaw={getOtherParticipant(activeChat)?.avatar_url || AVATAR_PLACEHOLDER_URL}
-                    fallback={AVATAR_PLACEHOLDER_URL}
-                    alt={getOtherParticipant(activeChat)?.full_name || ""}
-                    className="w-10 h-10 rounded-full object-cover border border-gray-200 dark:border-gray-700"
-                  />
-                  <h2 className="font-semibold text-base leading-tight">
-                    {getOtherParticipant(activeChat)?.full_name}
-                  </h2>
+                  <div className="relative">
+                    <SmartImage
+                      srcRaw={getOtherParticipant(activeChat)?.avatar_url || AVATAR_PLACEHOLDER_URL}
+                      fallback={AVATAR_PLACEHOLDER_URL}
+                      alt={getOtherParticipant(activeChat)?.full_name || ""}
+                      className="w-10 h-10 rounded-full object-cover"
+                    />
+                    {presenceMap[getOtherParticipant(activeChat)?.id ?? 0]?.active && (
+                      <span className="msg-online-indicator absolute bottom-0 right-0 w-3 h-3"></span>
+                    )}
+                  </div>
+                  <div>
+                    <h2 className="font-semibold text-[15px] leading-tight">
+                      {getOtherParticipant(activeChat)?.full_name}
+                    </h2>
+                    {presenceMap[getOtherParticipant(activeChat)?.id ?? 0]?.active && (
+                      <p className="text-xs" style={{ color: "var(--msg-online-color)" }}>{t("messenger:online", "online")}</p>
+                    )}
+                  </div>
                 </div>
+
 
                 {/* Search and Menu buttons */}
                 <div className="flex items-center gap-2">
@@ -478,7 +523,7 @@ export default function Messenger() {
                               d="M17.982 18.725A7.488 7.488 0 0012 15.75a7.488 7.488 0 00-5.982 2.975m11.963 0a9 9 0 10-11.963 0m11.963 0A8.966 8.966 0 0112 21a8.966 8.966 0 01-5.982-2.275M15 9.75a3 3 0 11-6 0 3 3 0 016 0z"
                             />
                           </svg>
-                          <span className="text-sm">View Profile</span>
+                          <span className="text-sm">{t("messenger:viewProfile", "View Profile")}</span>
                         </button>
                         <button
                           onClick={handleClearChat}
@@ -498,7 +543,7 @@ export default function Messenger() {
                               d="M12 9.75v6.75m0 0l-3-3m3 3l3-3m-8.25 6a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"
                             />
                           </svg>
-                          <span className="text-sm">Clear Chat</span>
+                          <span className="text-sm">{t("messenger:clearChat", "Clear Chat")}</span>
                         </button>
                         <button
                           onClick={handleDeleteChat}
@@ -518,7 +563,7 @@ export default function Messenger() {
                               d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"
                             />
                           </svg>
-                          <span className="text-sm">Delete Chat</span>
+                          <span className="text-sm">{t("messenger:deleteChat", "Delete Chat")}</span>
                         </button>
                       </div>
                     )}
@@ -576,15 +621,19 @@ export default function Messenger() {
             <MessageInput onSend={handleSendMessage} />
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center text-gray-400 p-8 text-center">
-            <div className="w-24 h-24 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
+          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+            <div
+              className="w-28 h-28 rounded-full flex items-center justify-center mb-5"
+              style={{ background: "var(--msg-sidebar-hover)" }}
+            >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
                 fill="none"
                 viewBox="0 0 24 24"
-                strokeWidth={1.5}
+                strokeWidth={1}
                 stroke="currentColor"
-                className="w-12 h-12 text-gray-400"
+                className="w-14 h-14"
+                style={{ color: "var(--msg-empty-icon)" }}
               >
                 <path
                   strokeLinecap="round"
@@ -593,11 +642,12 @@ export default function Messenger() {
                 />
               </svg>
             </div>
-            <h3 className="text-lg font-medium text-gray-600 dark:text-gray-300">
+            <h3 className="text-lg font-medium text-gray-600 dark:text-gray-400">
               {t("messenger:selectChat", "Select a chat to start messaging")}
             </h3>
           </div>
         )}
+
       </div>
 
       <NewChatModal

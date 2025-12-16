@@ -32,6 +32,7 @@
 
 @layer utilities {
   @keyframes dash-colon-blink {
+
     0%,
     49.9% {
       opacity: 1;
@@ -55,6 +56,7 @@
 }
 
 @layer components {
+
   /* Component tokens
      .card-glass   → Frosted surface using the glass palette + blur.
      .btn-gradient → Primary CTA gradient button with hover lift.
@@ -144,47 +146,36 @@
 
   .dash-panel-schedule::before {
     background:
-      radial-gradient(
-        circle at 18% -8%,
+      radial-gradient(circle at 18% -8%,
         color-mix(in srgb, var(--dash-card-schedule-orb) 55%, transparent) 0%,
-        transparent 65%
-      ),
-      radial-gradient(
-        circle at 85% 120%,
+        transparent 65%),
+      radial-gradient(circle at 85% 120%,
         color-mix(in srgb, var(--dash-card-schedule-radial) 45%, transparent) 0%,
-        transparent 78%
-      );
+        transparent 78%);
   }
 
   .dash-panel-news::before {
     background:
-      radial-gradient(
-        circle at 82% 4%,
+      radial-gradient(circle at 82% 4%,
         color-mix(in srgb, var(--dash-card-news-orb) 52%, transparent) 0%,
-        transparent 68%
-      ),
-      radial-gradient(
-        circle at 10% 110%,
+        transparent 68%),
+      radial-gradient(circle at 10% 110%,
         color-mix(in srgb, var(--dash-card-news-radial) 46%, transparent) 0%,
-        transparent 80%
-      );
+        transparent 80%);
   }
 
   .dash-panel-events::before {
     background:
-      radial-gradient(
-        circle at 12% 6%,
+      radial-gradient(circle at 12% 6%,
         color-mix(in srgb, var(--dash-card-events-orb) 50%, transparent) 0%,
-        transparent 68%
-      ),
-      radial-gradient(
-        circle at 90% 115%,
+        transparent 68%),
+      radial-gradient(circle at 90% 115%,
         color-mix(in srgb, var(--dash-card-events-radial) 42%, transparent) 0%,
-        transparent 82%
-      );
+        transparent 82%);
   }
 
   @media (prefers-reduced-motion: reduce) {
+
     .dash-panel-schedule::before,
     .dash-panel-news::before,
     .dash-panel-events::before {
@@ -201,12 +192,10 @@
     content: "";
     position: absolute;
     inset: 0;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      rgba(255, 255, 255, 0.25) 45%,
-      transparent 100%
-    );
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.25) 45%,
+        transparent 100%);
     animation:
       fade-in var(--anim-med, 0.3s ease) forwards,
       skeleton-wave 1.6s ease-in-out infinite;
@@ -258,8 +247,7 @@
   }
 
   [data-page-fade][data-ready="true"] {
-    animation: ue-page-fade-shell var(--page-fade-duration) var(--page-fade-easing)
-      var(--page-fade-delay) both;
+    animation: ue-page-fade-shell var(--page-fade-duration) var(--page-fade-easing) var(--page-fade-delay) both;
   }
 
   [data-page-fade] [data-fade] {
@@ -274,8 +262,7 @@
   }
 
   [data-page-fade][data-ready="true"] [data-fade] {
-    animation: ue-page-fade-item var(--page-fade-duration) var(--page-fade-easing)
-      calc(var(--fade-delay, 120ms) + var(--page-fade-delay)) both;
+    animation: ue-page-fade-item var(--page-fade-duration) var(--page-fade-easing) calc(var(--fade-delay, 120ms) + var(--page-fade-delay)) both;
   }
 
   [data-page-fade][data-effect="soft-blur"] {
@@ -333,6 +320,178 @@
       opacity: 1 !important;
       transform: none !important;
       filter: none !important;
+      animation: none !important;
+    }
+  }
+
+  /* Messenger — Telegram Style Components */
+  @keyframes msg-online-pulse {
+
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 var(--msg-online-pulse);
+    }
+
+    50% {
+      box-shadow: 0 0 0 4px transparent;
+    }
+  }
+
+  @keyframes msg-typing {
+
+    0%,
+    60%,
+    100% {
+      opacity: 0.3;
+      transform: translateY(0);
+    }
+
+    30% {
+      opacity: 1;
+      transform: translateY(-4px);
+    }
+  }
+
+  @keyframes msg-bubble-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px) scale(0.95);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes msg-send-pulse {
+    0% {
+      transform: scale(1);
+    }
+
+    50% {
+      transform: scale(0.9);
+    }
+
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  .msg-online-indicator {
+    @apply w-3.5 h-3.5 rounded-full border-2 border-white;
+    background-color: var(--msg-online-color);
+    animation: msg-online-pulse 2s ease-in-out infinite;
+  }
+
+  body.dark .msg-online-indicator {
+    @apply border-gray-900;
+  }
+
+  .msg-typing-dot {
+    @apply w-2 h-2 rounded-full;
+    background-color: var(--msg-typing-dot);
+    animation: msg-typing 1.4s ease-in-out infinite;
+  }
+
+  .msg-typing-dot:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+
+  .msg-typing-dot:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+
+  .msg-bubble-sent {
+    background: linear-gradient(135deg, var(--msg-bubble-sent-start), var(--msg-bubble-sent-end));
+    box-shadow: 0 1px 2px var(--msg-bubble-sent-shadow);
+    animation: msg-bubble-in 0.2s ease-out;
+  }
+
+  .msg-bubble-received {
+    background: var(--msg-bubble-received-bg);
+    border: 1px solid var(--msg-bubble-received-border);
+    box-shadow: 0 1px 2px var(--msg-bubble-received-shadow);
+    animation: msg-bubble-in 0.2s ease-out;
+  }
+
+  .msg-send-active {
+    animation: msg-send-pulse 0.15s ease-out;
+  }
+
+  .msg-contact-item {
+    @apply transition-all duration-200 ease-out;
+  }
+
+  .msg-contact-item:hover {
+    background: var(--msg-sidebar-hover);
+  }
+
+  .msg-contact-item.active {
+    background: var(--msg-sidebar-active);
+    color: var(--msg-sidebar-active-text);
+  }
+
+  .msg-unread-badge {
+    @apply min-w-5 h-5 px-1.5 text-xs font-semibold rounded-full flex items-center justify-center;
+    background: var(--msg-unread-bg);
+    color: var(--msg-unread-text);
+  }
+
+  .msg-header {
+    background: var(--msg-header-bg);
+    border-bottom: 1px solid var(--msg-header-border);
+    @apply backdrop-blur-md;
+  }
+
+  .msg-input-container {
+    background: var(--msg-input-bg);
+    border: 1px solid var(--msg-input-border);
+    @apply rounded-3xl transition-all duration-200;
+  }
+
+  .msg-input-container:focus-within {
+    border-color: var(--msg-input-focus-border);
+    box-shadow: 0 0 0 3px rgba(51, 144, 236, 0.1);
+  }
+
+  body.dark .msg-input-container:focus-within {
+    box-shadow: 0 0 0 3px rgba(135, 116, 225, 0.15);
+  }
+
+  .msg-send-btn {
+    @apply p-2.5 rounded-full transition-all duration-200;
+    background: var(--msg-send-btn-bg);
+    color: white;
+  }
+
+  .msg-send-btn:hover:not(:disabled) {
+    background: var(--msg-send-btn-hover);
+    transform: scale(1.05);
+  }
+
+  .msg-send-btn:disabled {
+    @apply opacity-40 cursor-not-allowed;
+    transform: none;
+  }
+
+  .msg-attach-menu {
+    background: var(--msg-attach-menu-bg);
+    box-shadow: var(--msg-attach-menu-shadow);
+    @apply rounded-2xl border border-gray-200 dark:border-gray-700;
+  }
+
+  .msg-chat-area {
+    background: var(--msg-chat-bg);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+
+    .msg-online-indicator,
+    .msg-typing-dot,
+    .msg-bubble-sent,
+    .msg-bubble-received,
+    .msg-send-active {
       animation: none !important;
     }
   }

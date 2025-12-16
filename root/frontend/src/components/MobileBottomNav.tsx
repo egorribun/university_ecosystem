@@ -30,7 +30,7 @@ function getScrollRoot(): HTMLElement {
 
 function smoothToTop(target: HTMLElement) {
   try {
-    ;(target as any).scrollTo({ top: 0, behavior: "smooth" })
+    ; (target as any).scrollTo({ top: 0, behavior: "smooth" })
   } catch {
     const start = target.scrollTop
     const duration = 420
@@ -120,7 +120,9 @@ export default function MobileBottomNav() {
           </NavLink>
         ))}
       </nav>
-      <div className="bottom-nav-spacer" aria-hidden="true" />
+      {!pathname.startsWith("/messenger") && (
+        <div className="bottom-nav-spacer" aria-hidden="true" />
+      )}
     </>
   )
 }

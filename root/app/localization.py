@@ -221,6 +221,10 @@ _TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Слишком много вложений в сообщении",
         "en": "Too many attachments in the message",
     },
+    "errors.chat.empty_message": {
+        "ru": "Сообщение должно содержать текст или вложения",
+        "en": "Message must contain text or attachments",
+    },
     "errors.files.unsupported_type": {
         "ru": "Неподдерживаемый тип файла",
         "en": "Unsupported media type",

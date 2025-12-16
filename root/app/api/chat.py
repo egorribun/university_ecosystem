@@ -407,7 +407,7 @@ async def _process_chat_upload(
 @router.post("/{chat_id}/messages", response_model=MessageResponse)
 async def send_message(
     chat_id: str,
-    content: str = Form(...),
+    content: str = Form(""),
     files: list[UploadFile] = File(default=[]),
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
@@ -432,6 +432,13 @@ async def send_message(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=translate("errors.files.too_many_attachments", locale=locale),
+        )
+
+    # Require either text content or files
+    if not content.strip() and not uploads:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=translate("errors.chat.empty_message", locale=locale),
         )
 
     message = Message(

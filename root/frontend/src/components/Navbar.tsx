@@ -133,16 +133,13 @@ const Navbar = () => {
       <nav
         ref={navRef}
         className={cn(
-          "navbar-root sticky top-[env(safe-area-inset-top,0px)] z-[var(--ue-z-index-nav)] w-full overflow-x-hidden",
+          "navbar-root sticky top-[env(safe-area-inset-top,0px)] z-[var(--ue-z-index-nav)] w-full overflow-x-hidden flex flex-col justify-center",
           isMobile ? "min-h-[56px]" : "min-h-[64px]",
           prefersReducedMotion && "transition-none animate-none"
         )}
       >
         <div
-          className={cn(
-            "flex w-full min-w-0 items-center justify-start gap-0 box-border",
-            isMobile ? "pl-2.5 pr-1.5" : "px-4"
-          )}
+          className="flex h-full w-full items-center px-[clamp(8px,2vw,16px)] box-border"
         >
           <Link
             to="/dashboard"
@@ -159,25 +156,25 @@ const Navbar = () => {
               }
             }}
           >
-            <div className="flex items-center justify-center rounded-full bg-white shadow-[0_0_8px_rgba(0,0,0,0.13)] w-[44px] h-[44px] min-[1351px]:w-[52px] min-[1351px]:h-[52px]">
+            <div className="flex items-center justify-center shrink-0 rounded-full bg-white shadow-[0_0_8px_rgba(0,0,0,0.13)] w-[clamp(32px,8vw,52px)] h-[clamp(32px,8vw,52px)]">
               <SmartImage
                 srcRaw={guuLogo}
                 alt={t("navigation:brandAlt")}
-                className="object-contain w-[34px] h-[34px] min-[1351px]:w-[42px] min-[1351px]:h-[42px]"
+                className="object-contain w-[clamp(24px,6.5vw,42px)] h-[clamp(24px,6.5vw,42px)]"
                 loading="eager"
                 fetchPriority="high"
-                sizes="(min-width: 1351px) 42px, 34px"
-                responsiveWidths={[48, 64, 88]}
+                sizes="(min-width: 1351px) 42px, (min-width: 768px) 34px, 24px"
+                responsiveWidths={[28, 36, 48, 64]}
                 decoding="async"
               />
             </div>
-            <span className="whitespace-nowrap font-extrabold tracking-wide text-white text-[clamp(16px,5.2vw,20px)] min-[1351px]:text-[clamp(18px,1.6vw,22px)]">
+            <span className="whitespace-nowrap font-extrabold tracking-wide text-white text-[clamp(13px,3.5vw,22px)]">
               {t("navigation:brandName")}
             </span>
           </Link>
 
           {isMobile ? (
-            <div className="ml-auto flex items-center gap-2.5">
+            <div className="ml-auto flex items-center gap-[clamp(10px,3vw,20px)]">
               <MessengerButton />
               <NotificationsBell />
               {isAuth && user && !loading ? (
@@ -187,22 +184,31 @@ const Navbar = () => {
                   fallback={avatarFallback}
                   alt={profileAlt}
                   title={profileTitle}
-                  className="block cursor-pointer rounded-full border border-[#d7d7d7] bg-white object-cover w-[clamp(32px,8vw,36px)] h-[clamp(32px,8vw,36px)]"
+                  className="block cursor-pointer rounded-full border border-[#d7d7d7] bg-white object-cover w-[clamp(24px,6vw,36px)] h-[clamp(24px,6vw,36px)] shrink-0"
                   onClick={() => go("/profile")}
                 />
               ) : (
                 <Skeleton
                   variant="circular"
-                  width={avatarSize}
-                  height={avatarSize}
-                  sx={{ bgcolor: "rgba(255,255,255,0.32)" }}
+                  sx={{
+                    bgcolor: "rgba(255,255,255,0.32)",
+                    width: "clamp(24px, 6vw, 36px)",
+                    height: "clamp(24px, 6vw, 36px)"
+                  }}
                   aria-hidden="true"
-                  className="w-[clamp(32px,8vw,36px)] h-[clamp(32px,8vw,36px)]"
+                  className="shrink-0"
                 />
               )}
               <button
                 type="button"
-                className="burger-btn ml-3 flex shrink-0 cursor-pointer items-center justify-center rounded-xl border border-white/18 bg-gradient-to-b from-white/12 to-white/5 p-0 text-white/92 shadow-[inset_0_1px_0_rgba(255,255,255,0.24)] backdrop-blur-md backdrop-saturate-150 w-[clamp(32px,8vw,36px)] h-[clamp(32px,8vw,36px)] min-w-[clamp(32px,8vw,36px)] min-h-[clamp(32px,8vw,36px)]"
+                className="flex shrink-0 cursor-pointer items-center justify-center rounded-xl border border-white/18 bg-gradient-to-b from-white/12 to-white/5 p-0 text-white/92 shadow-[inset_0_1px_0_rgba(255,255,255,0.24)] backdrop-blur-md backdrop-saturate-150"
+                style={{
+                  width: "clamp(24px, 6vw, 36px)",
+                  height: "clamp(24px, 6vw, 36px)",
+                  minWidth: "clamp(24px, 6vw, 36px)",
+                  minHeight: "clamp(24px, 6vw, 36px)",
+                  marginLeft: "clamp(6px, 1.5vw, 10px)",
+                }}
                 onClick={() => setMobileMenu((v) => !v)}
                 aria-label={
                   mobileMenu ? t("navigation:aria.closeMenu") : t("navigation:aria.openMenu")
@@ -212,8 +218,6 @@ const Navbar = () => {
                 ref={burgerBtnRef}
               >
                 <svg
-                  width="20"
-                  height="20"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
@@ -221,7 +225,7 @@ const Navbar = () => {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   aria-hidden="true"
-                  className="overflow-visible stroke-white"
+                  className="overflow-visible stroke-white w-[clamp(16px,4vw,24px)] h-[clamp(16px,4vw,24px)]"
                 >
                   <line
                     x1="4"
@@ -263,92 +267,92 @@ const Navbar = () => {
               </button>
             </div>
           ) : (
-            <ul className="ml-9 flex flex-1 flex-row flex-wrap items-center gap-2 m-0 p-0 min-w-0 list-none text-[1.03rem] font-medium">
-              {menuLinks.map((item) => (
-                <li key={item.to}>
-                  <Link
-                    to={item.to}
-                    className={`menu-link${isActive(item.to) ? " active" : ""}`}
-                    onPointerDown={markScrollFromBottom}
-                    onClick={(e) => {
-                      if (isSameTarget(item.to)) {
-                        e.preventDefault()
-                        scrollToTop(prefersReducedMotion ? "auto" : "smooth")
-                      }
-                    }}
-                  >
-                    {item.label}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          {!isMobile && loading ? (
-            <div className="ml-2 flex items-center gap-2.5" aria-hidden="true">
-              <Skeleton
-                variant="circular"
-                width={36}
-                height={36}
-                sx={{ bgcolor: "rgba(255,255,255,0.25)" }}
-              />
-              <Skeleton
-                variant="rectangular"
-                width={96}
-                height={18}
-                sx={{ borderRadius: 1, bgcolor: "rgba(255,255,255,0.25)" }}
-              />
-              <Skeleton
-                variant="circular"
-                width={32}
-                height={32}
-                sx={{ bgcolor: "rgba(255,255,255,0.25)" }}
-              />
-            </div>
-          ) : (
-            !isMobile &&
-            isAuth &&
-            user && (
-              <div className="ml-2 flex min-w-0 items-center gap-2.5 whitespace-nowrap">
-                <MessengerButton />
-                <NotificationsBell />
-                <SmartImage
-                  srcRaw={hasAvatar ? avatarSource : avatarFallback}
-                  cacheV={hasAvatar ? avatarCacheV : undefined}
-                  fallback={avatarFallback}
-                  alt={profileAlt}
-                  title={profileTitle}
-                  className="block h-9 w-9 cursor-pointer rounded-full border-[1.5px] border-[#ccc] bg-white object-cover"
-                  onClick={() => go("/profile")}
-                />
-                <button
-                  type="button"
-                  onClick={() => go("/profile")}
-                  aria-label={profileTitle}
-                  title={profileTitle}
-                  className="cursor-pointer border-none bg-transparent p-0 m-0 font-semibold text-white font-[family-name:var(--font-ui)] tracking-[var(--ls-ui)] leading-[var(--lh-ui)] text-[1.01rem]"
-                >
-                  {user.full_name}
-                </button>
-                <button
-                  type="button"
-                  className="menu-btn-settings"
-                  onClick={() => go("/settings")}
-                  aria-label={t("navigation:menu.settings")}
-                  title={t("navigation:menu.settings")}
-                >
-                  <SettingsIcon
-                    style={{
-                      fontSize: "20px",
-                      opacity: 0.9,
-                    }}
+            <>
+              <ul className="ml-4 flex flex-1 flex-row flex-wrap items-center gap-2 m-0 p-0 min-w-0 list-none text-[1.03rem] font-medium">
+                {menuLinks.map((item) => (
+                  <li key={item.to}>
+                    <Link
+                      to={item.to}
+                      className={`menu-link${isActive(item.to) ? " active" : ""}`}
+                      onPointerDown={markScrollFromBottom}
+                      onClick={(e) => {
+                        if (isSameTarget(item.to)) {
+                          e.preventDefault()
+                          scrollToTop(prefersReducedMotion ? "auto" : "smooth")
+                        }
+                      }}
+                    >
+                      {item.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              {loading ? (
+                <div className="ml-auto flex items-center gap-2.5" aria-hidden="true">
+                  <Skeleton
+                    variant="circular"
+                    width={36}
+                    height={36}
+                    sx={{ bgcolor: "rgba(255,255,255,0.25)" }}
                   />
-                </button>
-              </div>
-            )
+                  <Skeleton
+                    variant="rectangular"
+                    width={96}
+                    height={18}
+                    sx={{ borderRadius: 1, bgcolor: "rgba(255,255,255,0.25)" }}
+                  />
+                  <Skeleton
+                    variant="circular"
+                    width={32}
+                    height={32}
+                    sx={{ bgcolor: "rgba(255,255,255,0.25)" }}
+                  />
+                </div>
+              ) : (
+                isAuth &&
+                user && (
+                  <div className="ml-auto flex min-w-0 items-center gap-2.5 whitespace-nowrap">
+                    <MessengerButton />
+                    <NotificationsBell />
+                    <SmartImage
+                      srcRaw={hasAvatar ? avatarSource : avatarFallback}
+                      cacheV={hasAvatar ? avatarCacheV : undefined}
+                      fallback={avatarFallback}
+                      alt={profileAlt}
+                      title={profileTitle}
+                      className="block h-9 w-9 cursor-pointer rounded-full border-[1.5px] border-[#ccc] bg-white object-cover"
+                      onClick={() => go("/profile")}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => go("/profile")}
+                      aria-label={profileTitle}
+                      title={profileTitle}
+                      className="cursor-pointer border-none bg-transparent p-0 m-0 font-semibold text-white font-[family-name:var(--font-ui)] tracking-[var(--ls-ui)] leading-[var(--lh-ui)] text-[1.01rem]"
+                    >
+                      {user.full_name}
+                    </button>
+                    <button
+                      type="button"
+                      className="menu-btn-settings"
+                      onClick={() => go("/settings")}
+                      aria-label={t("navigation:menu.settings")}
+                      title={t("navigation:menu.settings")}
+                    >
+                      <SettingsIcon
+                        style={{
+                          fontSize: "20px",
+                          opacity: 0.9,
+                        }}
+                      />
+                    </button>
+                  </div>
+                )
+              )}
+            </>
           )}
         </div>
-      </nav>
+      </nav >
 
       {isMobile && (
         <MobileMenu
@@ -362,7 +366,8 @@ const Navbar = () => {
           prefersReducedMotion={prefersReducedMotion}
           drawerTrapRef={drawerTrapRef}
         />
-      )}
+      )
+      }
     </>
   )
 }

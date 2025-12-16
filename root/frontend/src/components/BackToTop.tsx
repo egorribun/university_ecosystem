@@ -21,6 +21,7 @@ export default function BackToTop() {
     <button
       type="button"
       className={"back-to-top" + (show ? " visible" : "")}
+      style={{ pointerEvents: show ? "auto" : "none" }}
       aria-label={t("common:buttons.backToTop")}
       onClick={onClick}
     >
