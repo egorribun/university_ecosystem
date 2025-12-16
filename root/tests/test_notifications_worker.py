@@ -37,7 +37,7 @@ async def test_scheduler_run_once(db_session):
         mock_gen.return_value = 5
 
         # We need to mock async_session context manager if not using valid DB
-        # But here we pass db_session in test, code uses 
+        # But here we pass db_session in test, code uses
         # `async with async_session() as db`.
         # So we must mock app.core.database.async_session
 
