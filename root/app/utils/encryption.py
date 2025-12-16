@@ -93,7 +93,7 @@ def encrypt_string(value: str | bytes | None) -> str | None:
 
 def decrypt_string(value: str | bytes | None) -> str | None:
     """Decrypt a value previously produced by :func:`encrypt_string`.
-    
+
     If decryption fails (e.g., due to key change), returns None and logs a warning
     instead of raising an exception to prevent application crashes.
     """

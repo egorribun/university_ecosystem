@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import (
     APIRouter,
@@ -17,7 +17,6 @@ from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user
 from app.api.websocket import build_presence_map, notify_new_message
-from app.services.notifications import create_notifications_for_users
 from app.core.config import settings
 from app.core.database import get_db
 from app.localization import translate
@@ -32,6 +31,7 @@ from app.schemas.chat import (
     MessagesListOut,
     PresenceStatus,
 )
+from app.services.notifications import create_notifications_for_users
 from app.utils.files import delete_static_file, save_attachment
 
 router = APIRouter(prefix="/chats", tags=["chats"])
@@ -50,7 +50,7 @@ def _decode_cursor(cursor: str | None) -> tuple[datetime, str] | None:
     try:
         ts_str, id_val = cursor.split(":", 1)
         ts = int(ts_str) / 1000.0
-        return datetime.fromtimestamp(ts, tz=timezone.utc), id_val
+        return datetime.fromtimestamp(ts, tz=UTC), id_val
     except (ValueError, TypeError):
         return None
 
@@ -457,7 +457,7 @@ async def send_message(
             session.add(attachment)
 
         # Update chat updated_at
-        chat.updated_at = datetime.now(timezone.utc)
+        chat.updated_at = datetime.now(UTC)
         session.add(chat)
 
         await session.commit()
@@ -480,7 +480,7 @@ async def send_message(
         sender_name = current_user.full_name or "User"
         # Truncate content for body if needed
         body_preview = content[:100] + "..." if len(content) > 100 else content
-        
+
         await create_notifications_for_users(
             session,
             title=sender_name,
@@ -493,8 +493,8 @@ async def send_message(
             payload_data={
                 "chatId": chat_id,
                 "senderId": current_user.id,
-                "messageId": message.id
-            }
+                "messageId": message.id,
+            },
         )
 
     presence_map = await build_presence_map([message.sender_id], session=session)
@@ -564,7 +564,7 @@ async def clear_chat_history(
     try:
         for message in list(chat.messages):
             await session.delete(message)
-        chat.updated_at = datetime.now(timezone.utc)
+        chat.updated_at = datetime.now(UTC)
         session.add(chat)
         await session.commit()
     except Exception:

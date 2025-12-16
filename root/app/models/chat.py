@@ -1,13 +1,15 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Table
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 
+
 def utc_now():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
+
 
 # Association table for many-to-many relationship between Chat and User
 chat_participants = Table(

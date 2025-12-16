@@ -318,7 +318,9 @@ class UserService:
         db_user.preferences = None
         db_user.spotify = None
 
-        self.audit.log("users.admin_delete", request, user_id=user_id, reason="admin_delete")
+        self.audit.log(
+            "users.admin_delete", request, user_id=user_id, reason="admin_delete"
+        )
 
         await db.commit()
         return {"deleted": True, "user_id": user_id}

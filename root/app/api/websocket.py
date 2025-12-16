@@ -18,9 +18,8 @@ from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import func, select
-from sqlalchemy.orm import selectinload
-
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.database import async_session
 from app.models.chat import Chat, Message
