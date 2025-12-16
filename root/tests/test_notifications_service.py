@@ -4,6 +4,7 @@ import logging
 from contextlib import contextmanager
 
 import pytest
+import unittest.mock
 from sqlalchemy import delete, event, select
 
 from app.auth.security import get_password_hash
@@ -457,22 +458,19 @@ async def test_scheduler_loop_logs_failures(monkeypatch: pytest.MonkeyPatch, cap
         metrics=metrics,
     )
 
-    caplog.set_level(logging.ERROR)
-
     with pytest.raises(asyncio.CancelledError):
-        await scheduler.run_forever()
+        # We patch the logger instance on the module to verify call arguments directly
+        with unittest.mock.patch.object(worker_module.logger, "error") as mock_error:
+            await scheduler.run_forever()
 
-    failure_logs = [
-        record
-        for record in caplog.records
-        if "Failed to generate schedule reminders" in record.getMessage()
-    ]
-
-    assert len(failure_logs) == 1
-    record = failure_logs[0]
-    assert getattr(record, "attempt", None) == 1
-    assert getattr(record, "backoff_seconds", None) == 6
     assert metrics.failures == 1
+    
+    mock_error.assert_called_once()
+    args, kwargs = mock_error.call_args
+    assert "Failed to generate schedule reminders" in args[0]
+    extra = kwargs.get("extra", {})
+    assert extra.get("attempt") == 1
+    assert extra.get("backoff_seconds") == 6
 
 
 @pytest.mark.anyio
