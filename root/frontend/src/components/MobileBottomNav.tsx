@@ -30,7 +30,7 @@ function getScrollRoot(): HTMLElement {
 
 function smoothToTop(target: HTMLElement) {
   try {
-    ; (target as any).scrollTo({ top: 0, behavior: "smooth" })
+    ;(target as any).scrollTo({ top: 0, behavior: "smooth" })
   } catch {
     const start = target.scrollTop
     const duration = 420

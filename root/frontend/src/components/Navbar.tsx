@@ -138,9 +138,7 @@ const Navbar = () => {
           prefersReducedMotion && "transition-none animate-none"
         )}
       >
-        <div
-          className="flex h-full w-full items-center px-[clamp(8px,2vw,16px)] box-border"
-        >
+        <div className="flex h-full w-full items-center px-[clamp(8px,2vw,16px)] box-border">
           <Link
             to="/dashboard"
             aria-label={t("navigation:aria.homeLink")}
@@ -193,7 +191,7 @@ const Navbar = () => {
                   sx={{
                     bgcolor: "rgba(255,255,255,0.32)",
                     width: "clamp(24px, 6vw, 36px)",
-                    height: "clamp(24px, 6vw, 36px)"
+                    height: "clamp(24px, 6vw, 36px)",
                   }}
                   aria-hidden="true"
                   className="shrink-0"
@@ -352,7 +350,7 @@ const Navbar = () => {
             </>
           )}
         </div>
-      </nav >
+      </nav>
 
       {isMobile && (
         <MobileMenu
@@ -366,8 +364,7 @@ const Navbar = () => {
           prefersReducedMotion={prefersReducedMotion}
           drawerTrapRef={drawerTrapRef}
         />
-      )
-      }
+      )}
     </>
   )
 }

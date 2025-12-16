@@ -127,7 +127,13 @@ export default function NotificationsBell() {
         )}
         aria-label={t("system:notificationsBell.open")}
       >
-        <Bell className={cn("w-[clamp(16px,4vw,24px)] h-[clamp(16px,4vw,24px)] transition-transform duration-500", isOpen && "rotate-[-10deg]")} strokeWidth={1.5} />
+        <Bell
+          className={cn(
+            "w-[clamp(16px,4vw,24px)] h-[clamp(16px,4vw,24px)] transition-transform duration-500",
+            isOpen && "rotate-[-10deg]"
+          )}
+          strokeWidth={1.5}
+        />
         {unreadCount ? (
           <span className="absolute top-0 right-0 flex h-[clamp(6px,1.5vw,10px)] w-[clamp(6px,1.5vw,10px)]">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -187,7 +193,11 @@ export default function NotificationsBell() {
                         strokeWidth={2}
                         className="w-4 h-4"
                       >
-                        <polyline strokeLinecap="round" strokeLinejoin="round" points="1,8 4,11 11,4" />
+                        <polyline
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          points="1,8 4,11 11,4"
+                        />
                         <polyline strokeLinecap="round" strokeLinejoin="round" points="7,11 14,4" />
                       </svg>
                     </button>
@@ -260,10 +270,14 @@ export default function NotificationsBell() {
                             target={n.link ? "_blank" : undefined}
                             rel={n.link ? "noopener noreferrer" : undefined}
                           >
-                            <div className={cn(
-                              "w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-opacity",
-                              !n.read ? "bg-indigo-500/10 text-indigo-500 dark:text-indigo-400" : "bg-slate-10 text-secondary"
-                            )}>
+                            <div
+                              className={cn(
+                                "w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-opacity",
+                                !n.read
+                                  ? "bg-indigo-500/10 text-indigo-500 dark:text-indigo-400"
+                                  : "bg-slate-10 text-secondary"
+                              )}
+                            >
                               {n.type === "chat.message" ? (
                                 <MessageCircle className="w-4 h-4" />
                               ) : n.type === "schedule.reminder" ? (
@@ -274,7 +288,12 @@ export default function NotificationsBell() {
                             </div>
 
                             <div className="flex-1 space-y-1">
-                              <p className={cn("text-sm font-medium leading-tight", !n.read ? "text-page-foreground" : "text-secondary")}>
+                              <p
+                                className={cn(
+                                  "text-sm font-medium leading-tight",
+                                  !n.read ? "text-page-foreground" : "text-secondary"
+                                )}
+                              >
                                 {n.title}
                               </p>
                               <p className="text-xs text-secondary leading-relaxed text-pretty">

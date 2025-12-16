@@ -71,7 +71,10 @@ interface ContactListProps {
 
 export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, onSelect }) => {
   return (
-    <div className="flex-1 overflow-y-auto custom-scrollbar" style={{ background: "var(--msg-sidebar-bg)" }}>
+    <div
+      className="flex-1 overflow-y-auto custom-scrollbar"
+      style={{ background: "var(--msg-sidebar-bg)" }}
+    >
       {contacts.map((contact) => (
         <div
           key={contact.id}
@@ -84,8 +87,9 @@ export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, 
               onSelect(contact.id)
             }
           }}
-          className={`msg-contact-item flex items-center gap-3 p-3 mx-2 my-0.5 rounded-xl cursor-pointer ${selectedId === contact.id ? "active" : ""
-            }`}
+          className={`msg-contact-item flex items-center gap-3 p-3 mx-2 my-0.5 rounded-xl cursor-pointer ${
+            selectedId === contact.id ? "active" : ""
+          }`}
         >
           <div className="relative flex-shrink-0">
             <SmartImage
@@ -101,28 +105,25 @@ export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, 
           <div className="flex-1 min-w-0">
             <div className="flex justify-between items-center mb-0.5">
               <h3
-                className={`font-semibold text-[15px] truncate ${selectedId === contact.id
-                  ? "text-white"
-                  : "text-gray-900 dark:text-gray-100"
-                  }`}
+                className={`font-semibold text-[15px] truncate ${
+                  selectedId === contact.id ? "text-white" : "text-gray-900 dark:text-gray-100"
+                }`}
               >
                 {contact.name}
               </h3>
               <span
-                className={`text-xs flex-shrink-0 ml-2 ${selectedId === contact.id
-                  ? "text-white/70"
-                  : "text-gray-500 dark:text-gray-400"
-                  }`}
+                className={`text-xs flex-shrink-0 ml-2 ${
+                  selectedId === contact.id ? "text-white/70" : "text-gray-500 dark:text-gray-400"
+                }`}
               >
                 {contact.lastMessageTime}
               </span>
             </div>
             <div className="flex items-center gap-2">
               <p
-                className={`text-[14px] truncate flex-1 ${selectedId === contact.id
-                  ? "text-white/80"
-                  : "text-gray-500 dark:text-gray-400"
-                  }`}
+                className={`text-[14px] truncate flex-1 ${
+                  selectedId === contact.id ? "text-white/80" : "text-gray-500 dark:text-gray-400"
+                }`}
               >
                 {contact.lastMessage}
               </p>
@@ -138,7 +139,6 @@ export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, 
     </div>
   )
 }
-
 
 interface ChatWindowProps {
   messages: Message[]
@@ -161,12 +161,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
     >
       <div className="relative z-0 space-y-1">
         {messages.map((msg) => (
-          <div key={msg.id} className={`flex ${msg.isMe ? "justify-end md:justify-start" : "justify-start"}`}>
+          <div
+            key={msg.id}
+            className={`flex ${msg.isMe ? "justify-end md:justify-start" : "justify-start"}`}
+          >
             <div
-              className={`max-w-[75%] md:max-w-[60%] px-3.5 py-2 text-[15px] relative ${msg.isMe
-                ? "msg-bubble-sent text-white rounded-2xl rounded-br-md"
-                : "msg-bubble-received text-gray-900 dark:text-gray-100 rounded-2xl rounded-bl-md"
-                }`}
+              className={`max-w-[75%] md:max-w-[60%] px-3.5 py-2 text-[15px] relative ${
+                msg.isMe
+                  ? "msg-bubble-sent text-white rounded-2xl rounded-br-md"
+                  : "msg-bubble-received text-gray-900 dark:text-gray-100 rounded-2xl rounded-bl-md"
+              }`}
             >
               {msg.attachments && msg.attachments.length > 0 && (
                 <div className="mb-2 space-y-2">
@@ -189,10 +193,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
                           href={sanitizeUrl(att.url)!}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className={`flex items-center gap-2 p-2.5 rounded-xl ${msg.isMe
-                            ? "bg-white/20 hover:bg-white/30"
-                            : "bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
-                            } transition-colors`}
+                          className={`flex items-center gap-2 p-2.5 rounded-xl ${
+                            msg.isMe
+                              ? "bg-white/20 hover:bg-white/30"
+                              : "bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
+                          } transition-colors`}
                         >
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
@@ -219,7 +224,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
               <div className="flex items-center justify-end gap-1 mt-1">
                 <span
                   className="text-[11px]"
-                  style={{ color: msg.isMe ? "var(--msg-timestamp-sent)" : "var(--msg-timestamp-received)" }}
+                  style={{
+                    color: msg.isMe ? "var(--msg-timestamp-sent)" : "var(--msg-timestamp-received)",
+                  }}
                 >
                   {msg.timestamp}
                 </span>
@@ -234,7 +241,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
                         strokeWidth={2}
                         className="w-4 h-4"
                       >
-                        <polyline strokeLinecap="round" strokeLinejoin="round" points="1,8 4,11 11,4" />
+                        <polyline
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          points="1,8 4,11 11,4"
+                        />
                         <polyline strokeLinecap="round" strokeLinejoin="round" points="7,11 14,4" />
                       </svg>
                     ) : (
@@ -260,7 +271,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
     </div>
   )
 }
-
 
 interface MessageInputProps {
   onSend: (text: string, files: File[]) => void
@@ -348,7 +358,10 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
   }
 
   return (
-    <div className="flex-shrink-0 p-3 z-[2500] relative" style={{ background: "var(--msg-sidebar-bg)" }}>
+    <div
+      className="flex-shrink-0 p-3 z-[2500] relative"
+      style={{ background: "var(--msg-sidebar-bg)" }}
+    >
       {selectedFiles.length > 0 && (
         <div className="flex gap-2 mb-3 overflow-x-auto pb-2 custom-scrollbar">
           {selectedFiles.map((file, index) =>
@@ -444,7 +457,9 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
                     />
                   </svg>
                 </div>
-                <span className="text-[15px] font-medium">{t("messenger:attachPhoto", "Photo")}</span>
+                <span className="text-[15px] font-medium">
+                  {t("messenger:attachPhoto", "Photo")}
+                </span>
               </button>
               <button
                 onClick={() => handleAttachmentClick("document")}
@@ -466,7 +481,9 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
                     />
                   </svg>
                 </div>
-                <span className="text-[15px] font-medium">{t("messenger:attachDocument", "Document")}</span>
+                <span className="text-[15px] font-medium">
+                  {t("messenger:attachDocument", "Document")}
+                </span>
               </button>
               <button
                 onClick={() => handleAttachmentClick("file")}
@@ -522,7 +539,6 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
     </div>
   )
 }
-
 
 interface NewChatModalProps {
   open: boolean
