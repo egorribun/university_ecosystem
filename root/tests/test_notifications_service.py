@@ -1,10 +1,9 @@
 import asyncio
 import datetime as dt
-import logging
+import unittest.mock
 from contextlib import contextmanager
 
 import pytest
-import unittest.mock
 from sqlalchemy import delete, event, select
 
 from app.auth.security import get_password_hash
@@ -464,7 +463,7 @@ async def test_scheduler_loop_logs_failures(monkeypatch: pytest.MonkeyPatch, cap
             await scheduler.run_forever()
 
     assert metrics.failures == 1
-    
+
     mock_error.assert_called_once()
     args, kwargs = mock_error.call_args
     assert "Failed to generate schedule reminders" in args[0]
