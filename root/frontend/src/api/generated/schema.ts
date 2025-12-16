@@ -1594,7 +1594,10 @@ export interface components {
     }
     /** Body_send_message_api_v1_chats__chat_id__messages_post */
     Body_send_message_api_v1_chats__chat_id__messages_post: {
-      /** Content */
+      /**
+       * Content
+       * @default
+       */
       content: string
       /**
        * Files
@@ -5747,7 +5750,7 @@ export interface operations {
       }
       cookie?: never
     }
-    requestBody: {
+    requestBody?: {
       content: {
         "multipart/form-data": components["schemas"]["Body_send_message_api_v1_chats__chat_id__messages_post"]
       }
