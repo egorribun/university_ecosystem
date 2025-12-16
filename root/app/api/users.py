@@ -370,6 +370,17 @@ async def update_user_admin(
     return await service.admin_update_user(db, user_id, data, request, user)
 
 
+@users_router.delete("/{user_id}", response_model=dict)
+async def delete_user_admin(
+    user_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+    service: UserService = Depends(get_user_service),
+):
+    return await service.admin_delete_user(db, user_id, request, user)
+
+
 @groups_router.get("", response_model=list[schemas.GroupOut])
 async def get_groups(
     db: AsyncSession = Depends(get_db),

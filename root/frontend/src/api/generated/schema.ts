@@ -809,7 +809,8 @@ export interface paths {
     get?: never
     put?: never
     post?: never
-    delete?: never
+    /** Delete User Admin */
+    delete: operations["delete_user_admin_api_v1_users__user_id__delete"]
     options?: never
     head?: never
     /** Update User Admin */
@@ -4460,6 +4461,39 @@ export interface operations {
         }
         content: {
           "application/json": unknown
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  delete_user_admin_api_v1_users__user_id__delete: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        user_id: number
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": {
+            [key: string]: unknown
+          }
         }
       }
       /** @description Validation Error */

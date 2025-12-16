@@ -1284,9 +1284,15 @@ export default function Settings() {
     const enabled = Boolean(value?.dnd_enabled)
     const start = toInputTime(value?.dnd_start)
     const end = toInputTime(value?.dnd_end)
-    setDndEnabled(enabled)
-    setDndStart(start || (enabled ? DEFAULT_DND_START : ""))
-    setDndEnd(end || (enabled ? DEFAULT_DND_END : ""))
+    setDndEnabled((prev) => (prev === enabled ? prev : enabled))
+    setDndStart((prev) => {
+      const next = start || (enabled ? DEFAULT_DND_START : "")
+      return prev === next ? prev : next
+    })
+    setDndEnd((prev) => {
+      const next = end || (enabled ? DEFAULT_DND_END : "")
+      return prev === next ? prev : next
+    })
   }, [])
 
   const persistDnd = useCallback(

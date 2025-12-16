@@ -23,7 +23,29 @@ import SmartImage from "@/components/SmartImage"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 import type { User } from "@/types/User"
 import client from "@/api/client"
+import dayjs from "dayjs"
+import utc from "dayjs/plugin/utc"
+import timezone from "dayjs/plugin/timezone"
 
+dayjs.extend(utc)
+dayjs.extend(timezone)
+
+const formatMessageTime = (dateString: string) => {
+  if (!dateString) return ""
+
+  // Fix: Remove microseconds which confuse the parser in some environments
+  // 2025-12-16T01:53:34.310903Z -> 2025-12-16T01:53:34Z
+  const cleanDate = dateString.replace(/(\.\d+)(Z|[+\-]\d{2}:?\d{2})?$/, "$2")
+
+  // Ensure we treat it as UTC
+  let parsed = dayjs.utc(cleanDate)
+  // If it had a timezone offset originally but we stripped it (unlikely with regex above), ensure we respect the string
+  if (/[Zz]|[+\-]\d\d:?\d\d$/.test(cleanDate)) {
+    parsed = dayjs(cleanDate)
+  }
+
+  return parsed.tz("Europe/Moscow").format("HH:mm")
+}
 export default function Messenger() {
   const { t } = useTranslation(["messenger", "common"])
   const { user } = useAuth()
@@ -286,12 +308,7 @@ export default function Messenger() {
       name: other?.full_name || "Unknown User",
       avatar: other?.avatar_url || "",
       lastMessage: chat.last_message?.content || "",
-      lastMessageTime: chat.last_message
-        ? new Date(chat.last_message.created_at).toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          })
-        : "",
+      lastMessageTime: chat.last_message ? formatMessageTime(chat.last_message.created_at) : "",
       unread: chat.unread_count,
       online: status?.active ?? false,
     }
@@ -544,10 +561,7 @@ export default function Messenger() {
                 id: m.id,
                 senderId: String(m.sender_id),
                 text: m.content,
-                timestamp: new Date(m.created_at).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                }),
+                timestamp: formatMessageTime(m.created_at),
                 isMe: m.sender_id === user?.id,
                 status: m.read_status ? "read" : "sent",
                 attachments: m.attachments?.map((a) => ({

@@ -1,21 +1,19 @@
-import { useState } from "react"
-import {
-  Badge,
-  IconButton,
-  Popover,
-  Box,
-  List,
-  ListItem,
-  ListItemButton,
-  ListItemText,
-  Button,
-  Typography,
-} from "@mui/material"
-import NotificationsIcon from "@mui/icons-material/Notifications"
-import DoneIcon from "@mui/icons-material/Done"
-import DeleteSweepIcon from "@mui/icons-material/DeleteSweep"
-import { useNotifications } from "@/hooks/useNotifications"
+import { useState, useRef, useEffect } from "react"
+import { createPortal } from "react-dom"
 import { useTranslation } from "react-i18next"
+import { AnimatePresence, motion, Variants } from "framer-motion"
+import {
+  Bell,
+  CheckCheck,
+  Trash2,
+  Loader2,
+  Info,
+  ChevronDown,
+  MessageCircle,
+  Calendar,
+} from "lucide-react"
+import { useNotifications } from "@/hooks/useNotifications"
+import { cn } from "@/utils/cn"
 
 export default function NotificationsBell() {
   const { t } = useTranslation(["system"])
@@ -37,160 +35,306 @@ export default function NotificationsBell() {
     isFetchingMore,
     isFetchMoreError,
   } = useNotifications()
-  const [anchor, setAnchor] = useState<HTMLElement | null>(null)
-  const open = Boolean(anchor)
+
+  const [isOpen, setIsOpen] = useState(false)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+  const [coords, setCoords] = useState<{ top: number; right: number | null }>({ top: 0, right: 0 })
+  const [isMobile, setIsMobile] = useState(false)
+
+  // Update position when opening
+  useEffect(() => {
+    if (isOpen && buttonRef.current) {
+      const updatePosition = () => {
+        const mobile = window.innerWidth < 640
+        setIsMobile(mobile)
+        const rect = buttonRef.current!.getBoundingClientRect()
+        setCoords({
+          top: rect.bottom + 12,
+          right: mobile ? null : window.innerWidth - rect.right,
+        })
+      }
+      updatePosition()
+      window.addEventListener("resize", updatePosition)
+      return () => window.removeEventListener("resize", updatePosition)
+    }
+  }, [isOpen])
+
+  // Close when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        isOpen &&
+        buttonRef.current &&
+        !buttonRef.current.contains(event.target as Node) &&
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node)
+      ) {
+        setIsOpen(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [isOpen])
+
   const hasNotifications = data.length > 0
   const actionsDisabled =
     isLoading || isError || isRefetching || !hasNotifications || isMarkingAll || isClearing
+
+  const listVariants: Variants = {
+    hidden: {
+      opacity: 0,
+      y: -10,
+      scale: 0.95,
+      x: isMobile ? "-50%" : 0,
+    },
+    visible: {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      x: isMobile ? "-50%" : 0,
+      transition: {
+        duration: 0.2,
+        ease: "easeOut",
+        staggerChildren: 0.05,
+      },
+    },
+    exit: {
+      opacity: 0,
+      y: -10,
+      scale: 0.95,
+      x: isMobile ? "-50%" : 0,
+      transition: { duration: 0.15, ease: "easeIn" },
+    },
+  }
+
+  const itemVariants: Variants = {
+    hidden: { opacity: 0, x: -10 },
+    visible: { opacity: 1, x: 0 },
+  }
+
   return (
     <>
-      <IconButton
-        color="inherit"
-        size="small"
-        onClick={(e) => setAnchor(e.currentTarget)}
+      <button
+        ref={buttonRef}
+        onClick={() => setIsOpen(!isOpen)}
+        className={cn(
+          "relative p-2.5 rounded-xl transition-all duration-300 outline-none group",
+          isOpen
+            ? "bg-white/10 text-white shadow-[0_0_20px_rgba(255,255,255,0.1)]"
+            : "hover:bg-white/5 text-white/80 hover:text-white"
+        )}
         aria-label={t("system:notificationsBell.open")}
-        sx={{
-          width: "clamp(32px, 8vw, 36px)",
-          height: "clamp(32px, 8vw, 36px)",
-          padding: 0,
-          color: "rgba(255, 255, 255, 0.92)",
-        }}
       >
-        <Badge badgeContent={unreadCount || 0} color="error">
-          <NotificationsIcon sx={{ color: "inherit" }} />
-        </Badge>
-      </IconButton>
-      <Popover
-        open={open}
-        anchorEl={anchor}
-        onClose={() => setAnchor(null)}
-        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-        transformOrigin={{ vertical: "top", horizontal: "right" }}
-        slotProps={{ paper: { sx: { width: 360, maxWidth: "calc(100vw - 24px)" } } }}
-      >
-        <Box sx={{ p: 1 }}>
-          <Box
-            sx={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              px: 1,
-              py: 0.5,
-              gap: 1,
-            }}
-          >
-            <Typography variant="subtitle2" sx={{ fontWeight: 800 }}>
-              {t("system:notificationsBell.title")}
-            </Typography>
-            <Box sx={{ display: "flex", gap: 1 }}>
-              <Button
-                size="small"
-                startIcon={<DoneIcon fontSize="small" />}
-                onClick={() => markAll()}
-                disabled={actionsDisabled}
-              >
-                {t("system:notificationsBell.markAll")}
-              </Button>
-              <Button
-                size="small"
-                startIcon={<DeleteSweepIcon fontSize="small" />}
-                color="error"
-                onClick={() =>
-                  clearAll(undefined, {
-                    onSuccess: () => setAnchor(null),
-                  })
-                }
-                disabled={isLoading || isError || isRefetching || !hasNotifications || isClearing}
-              >
-                {t("system:notificationsBell.clear")}
-              </Button>
-            </Box>
-          </Box>
-          <List dense disablePadding>
-            {isError && !isRefetching ? (
-              <Box sx={{ p: 2, display: "flex", flexDirection: "column", gap: 1 }}>
-                <Typography variant="body2" color="error">
-                  {t("system:notificationsBell.error")}
-                </Typography>
-                <Button size="small" onClick={() => refetch()} disabled={isRefetching}>
-                  {t("system:errorBoundary.retry")}
-                </Button>
-              </Box>
-            ) : isLoading || isRefetching ? (
-              <Box sx={{ p: 2 }}>
-                <Typography variant="body2">{t("system:notificationsBell.loading")}</Typography>
-              </Box>
-            ) : data.length === 0 ? (
-              <Box sx={{ p: 2 }}>
-                <Typography variant="body2">{t("system:notificationsBell.empty")}</Typography>
-              </Box>
-            ) : (
-              <>
-                {data.map((n) => (
-                  <ListItem key={n.id} disablePadding>
-                    <ListItemButton
-                      component={n.link ? "a" : "div"}
-                      href={n.link || undefined}
-                      target={n.link ? "_blank" : undefined}
-                      rel={n.link ? "noopener noreferrer" : undefined}
-                      sx={{
-                        opacity: n.read ? 0.6 : 1,
-                        alignItems: "flex-start",
-                        gap: 1,
-                      }}
-                      onClick={() => {
-                        if (!n.read) markRead(n.id)
-                      }}
+        <Bell
+          className={cn("w-6 h-6 transition-transform duration-500", isOpen && "rotate-[-10deg]")}
+          strokeWidth={1.5}
+        />
+        {unreadCount ? (
+          <span className="absolute top-2 right-2 flex h-2.5 w-2.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500 border-2 border-[#0F172A]"></span>
+          </span>
+        ) : null}
+      </button>
+
+      {createPortal(
+        <AnimatePresence>
+          {isOpen && (
+            <motion.div
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+              variants={listVariants}
+              className={cn(
+                "fixed z-[9999] origin-top-right",
+                // Mobile styles: we handle translation in framer motion to avoid conflict
+                "max-sm:left-1/2 max-sm:w-[calc(100vw-2rem)]",
+                // Desktop styles
+                "sm:w-[400px]"
+              )}
+              style={{
+                top: coords.top,
+                right: coords.right ?? undefined,
+              }}
+              ref={dropdownRef}
+            >
+              {/* Glass Container */}
+              <div className="bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden ring-1 ring-black/5">
+                {/* Header */}
+                <div className="p-4 border-b border-white/5 flex items-center justify-between bg-white/5">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-white tracking-tight">
+                      {t("system:notificationsBell.title")}
+                    </h3>
+                    {unreadCount > 0 && (
+                      <span className="bg-indigo-500/20 text-indigo-300 text-xs px-2 py-0.5 rounded-full font-medium border border-indigo-500/20">
+                        {unreadCount} New
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => markAll()}
+                      disabled={actionsDisabled}
+                      className="p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+                      title={t("system:notificationsBell.markAll")}
                     >
-                      <ListItemText primary={n.title} secondary={n.body} />
-                      {!n.read ? (
-                        <Button
-                          size="small"
-                          sx={{ flexShrink: 0 }}
-                          onClick={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            markRead(n.id)
-                          }}
+                      <CheckCheck className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() =>
+                        clearAll(undefined, {
+                          onSuccess: () => setIsOpen(false),
+                        })
+                      }
+                      disabled={actionsDisabled}
+                      className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+                      title={t("system:notificationsBell.clear")}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Content */}
+                <div className="max-h-[80vh] sm:max-h-[60vh] overflow-y-auto custom-scrollbar">
+                  {isError && !isRefetching ? (
+                    <div className="p-8 text-center flex flex-col items-center gap-3">
+                      <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center text-red-400 mb-2">
+                        <Info className="w-6 h-6" />
+                      </div>
+                      <p className="text-sm text-red-300">{t("system:notificationsBell.error")}</p>
+                      <button
+                        onClick={() => refetch()}
+                        className="text-xs bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg transition-colors"
+                      >
+                        {t("system:errorBoundary.retry")}
+                      </button>
+                    </div>
+                  ) : isLoading && !hasNotifications ? (
+                    <div className="p-12 flex justify-center">
+                      <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
+                    </div>
+                  ) : data.length === 0 ? (
+                    <div className="p-12 text-center text-slate-400 flex flex-col items-center gap-3">
+                      <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center mb-2">
+                        <Bell className="w-8 h-8 opacity-20" />
+                      </div>
+                      <p className="text-sm opacity-60 font-medium">
+                        {t("system:notificationsBell.empty")}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col">
+                      {data.map((n) => (
+                        <motion.div
+                          key={n.id}
+                          variants={itemVariants}
+                          className={cn(
+                            "relative group border-b border-white/5 last:border-0 p-4 transition-all hover:bg-white/5",
+                            !n.read ? "bg-indigo-500/5" : ""
+                          )}
                         >
-                          {t("system:notificationsBell.markRead")}
-                        </Button>
-                      ) : null}
-                    </ListItemButton>
-                  </ListItem>
-                ))}
-                {hasMore ? (
-                  <Box
-                    sx={{
-                      p: 1.5,
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 1,
-                      borderTop: (theme) => `1px solid ${theme.palette.divider}`,
-                    }}
-                  >
-                    {isFetchMoreError ? (
-                      <Typography variant="body2" color="error">
-                        {t("system:notificationsBell.loadMoreError")}
-                      </Typography>
-                    ) : null}
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      onClick={() => fetchMore(nextCursor)}
-                      disabled={!nextCursor || isFetchingMore}
-                    >
-                      {isFetchingMore
-                        ? t("system:notificationsBell.loadingMore")
-                        : t("system:notificationsBell.loadMore")}
-                    </Button>
-                  </Box>
-                ) : null}
-              </>
-            )}
-          </List>
-        </Box>
-      </Popover>
+                          <a
+                            href={n.link || "#"}
+                            onClick={(e) => {
+                              if (!n.link) e.preventDefault()
+                              if (!n.read) markRead(n.id)
+                            }}
+                            className={cn(
+                              "flex gap-3",
+                              n.link ? "cursor-pointer" : "cursor-default"
+                            )}
+                            target={n.link ? "_blank" : undefined}
+                            rel={n.link ? "noopener noreferrer" : undefined}
+                          >
+                            <div
+                              className={cn(
+                                "w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-opacity",
+                                !n.read
+                                  ? "bg-indigo-500/10 text-indigo-400"
+                                  : "bg-white/5 text-slate-400"
+                              )}
+                            >
+                              {n.type === "chat.message" ? (
+                                <MessageCircle className="w-4 h-4" />
+                              ) : n.type === "schedule.reminder" ? (
+                                <Calendar className="w-4 h-4" />
+                              ) : (
+                                <Bell className="w-4 h-4" />
+                              )}
+                            </div>
+
+                            <div className="flex-1 space-y-1">
+                              <p
+                                className={cn(
+                                  "text-sm font-medium leading-tight",
+                                  !n.read ? "text-white" : "text-slate-300"
+                                )}
+                              >
+                                {n.title}
+                              </p>
+                              <p className="text-xs text-slate-400 leading-relaxed text-pretty">
+                                {n.body}
+                              </p>
+                              {/* Timestamp if available could go here */}
+                            </div>
+                          </a>
+
+                          {/* Mark read button (appears on hover) */}
+                          {!n.read && (
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                markRead(n.id)
+                              }}
+                              className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-all p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 bg-slate-900/50 backdrop-blur-sm"
+                              title={t("system:notificationsBell.markRead")}
+                            >
+                              <CheckCheck className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </motion.div>
+                      ))}
+
+                      {hasMore && (
+                        <div className="p-3 border-t border-white/5 bg-white/[0.02]">
+                          {isFetchMoreError && (
+                            <p className="text-xs text-red-400 text-center mb-2">
+                              {t("system:notificationsBell.loadMoreError")}
+                            </p>
+                          )}
+                          <button
+                            onClick={() => fetchMore(nextCursor)}
+                            disabled={!nextCursor || isFetchingMore}
+                            className="w-full py-2 flex items-center justify-center gap-2 text-xs font-medium text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-all disabled:opacity-50"
+                          >
+                            {isFetchingMore ? (
+                              <>
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                                {t("system:notificationsBell.loadingMore")}
+                              </>
+                            ) : (
+                              <>
+                                <ChevronDown className="w-3 h-3" />
+                                {t("system:notificationsBell.loadMore")}
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </>
   )
 }

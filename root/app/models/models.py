@@ -19,7 +19,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
+from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.orm import relationship
 
@@ -431,7 +431,7 @@ class DataAccessLog(Base):
     resource_type = Column(String(64), nullable=False, index=True)
     resource_id = Column(String(128), nullable=True, index=True)
     action = Column(String(64), nullable=False, index=True)
-    context = Column(JSONB, nullable=True)
+    context = Column(JSON, nullable=True)
     ip_address = Column(String(64))
     user_agent = Column(String(512))
     created_at = Column(

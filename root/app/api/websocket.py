@@ -18,6 +18,7 @@ from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import async_session
@@ -210,20 +211,32 @@ async def _update_last_seen(session_jti: str | None) -> datetime:
     return now
 
 
-async def build_presence_map(user_ids: Iterable[int]) -> dict[int, PresenceStatus]:
+async def build_presence_map(
+    user_ids: Iterable[int], session: AsyncSession | None = None
+) -> dict[int, PresenceStatus]:
     """Return presence info for a set of users."""
 
     ids = {uid for uid in user_ids if uid is not None}
     if not ids:
         return {}
 
-    async with async_session() as session:
+    if session:
+        # Use provided session
         result = await session.execute(
             select(ActiveSession.user_id, func.max(ActiveSession.last_seen_at))
             .where(ActiveSession.user_id.in_(ids))
             .group_by(ActiveSession.user_id)
         )
         last_seen_map = {row[0]: row[1] for row in result.all()}
+    else:
+        # Create new session
+        async with async_session() as new_session:
+            result = await new_session.execute(
+                select(ActiveSession.user_id, func.max(ActiveSession.last_seen_at))
+                .where(ActiveSession.user_id.in_(ids))
+                .group_by(ActiveSession.user_id)
+            )
+            last_seen_map = {row[0]: row[1] for row in result.all()}
 
     presence: dict[int, PresenceStatus] = {}
     for uid in ids:

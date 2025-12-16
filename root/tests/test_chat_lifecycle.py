@@ -66,3 +66,26 @@ async def test_chat_full_lifecycle(
 
     missing_resp = await async_client.get(f"/chats/{chat_id}/messages", headers=headers)
     assert missing_resp.status_code == 404
+
+
+@pytest.mark.anyio
+async def test_get_chats_list(async_client, user_factory):
+    password = "Lifecycle123!"
+    user = await user_factory(hashed_password=get_password_hash(password))
+    other = await user_factory()
+    headers = await _login(async_client, user.email, password)
+
+    # Create a chat
+    create_resp = await async_client.post(
+        "/chats", json={"participant_id": other.id}, headers=headers
+    )
+    assert create_resp.status_code == 200
+
+    # Get chats list - THIS WAS FAILING WITH 500
+    chats_resp = await async_client.get("/chats", headers=headers)
+    assert chats_resp.status_code == 200
+    data = chats_resp.json()
+    assert len(data["items"]) == 1
+    assert data["items"][0]["id"] == create_resp.json()["id"]
+    # Verify last_message is None for new chat
+    assert data["items"][0]["last_message"] is None

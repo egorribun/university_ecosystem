@@ -92,7 +92,12 @@ def encrypt_string(value: str | bytes | None) -> str | None:
 
 
 def decrypt_string(value: str | bytes | None) -> str | None:
-    """Decrypt a value previously produced by :func:`encrypt_string`."""
+    """Decrypt a value previously produced by :func:`encrypt_string`.
+
+    If decryption fails (e.g., due to key change), returns None and logs a warning
+    instead of raising an exception to prevent application crashes.
+    """
+    import logging
 
     if value is None:
         return None
@@ -106,8 +111,11 @@ def decrypt_string(value: str | bytes | None) -> str | None:
         token = value.encode("utf-8")
     try:
         data = _get_cipher().decrypt(token)
-    except InvalidToken as exc:
-        raise SpotifyEncryptionError("Failed to decrypt stored Spotify token") from exc
+    except InvalidToken:
+        logging.getLogger(__name__).warning(
+            "Failed to decrypt stored token (key mismatch?). Returning None."
+        )
+        return None
     return data.decode("utf-8")
 
 

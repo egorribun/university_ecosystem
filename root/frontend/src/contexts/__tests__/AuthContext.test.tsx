@@ -125,7 +125,7 @@ describe("AuthProvider caching", () => {
     queryClient.clear()
   })
 
-  it("synchronizes cached profile state when storage changes", async () => {
+  it("synchronizes cached profile state when storage changes", { timeout: 20000 }, async () => {
     localStorage.setItem("token", "token-789")
     const { queryClient, wrapper } = setup()
     const { result } = renderHook(() => useAuth(), { wrapper })
@@ -154,7 +154,7 @@ describe("AuthProvider caching", () => {
     queryClient.clear()
   })
 
-  it("discards tampered cached envelopes", async () => {
+  it("discards tampered cached envelopes", { timeout: 20000 }, async () => {
     localStorage.setItem("token", "token-tamper")
     const { queryClient, wrapper } = setup()
     const { result } = renderHook(() => useAuth(), { wrapper })

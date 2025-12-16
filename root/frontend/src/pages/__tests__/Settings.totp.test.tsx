@@ -129,7 +129,7 @@ describe("Settings TOTP enrollment", () => {
 
     const otpInput = screen.getByLabelText(/Authenticator code|Код из приложения/i)
     await user.type(otpInput, "123456")
-    await user.click(screen.getByRole("button", { name: matchTotpSubmit }))
+    // OtpEntry auto-submits when 6 digits are entered
 
     await waitFor(() =>
       expect(
@@ -156,7 +156,7 @@ describe("Settings TOTP enrollment", () => {
 
     const otpInput = await screen.findByLabelText(/Authenticator code|Код из приложения/i)
     await user.type(otpInput, "000000")
-    await user.click(screen.getByRole("button", { name: matchTotpSubmit }))
+    // OtpEntry auto-submits when 6 digits are entered
 
     const errorMessages = await screen.findAllByText(/Invalid verification code/i)
     expect(errorMessages.length).toBeGreaterThan(0)

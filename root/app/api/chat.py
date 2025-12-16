@@ -31,6 +31,7 @@ from app.schemas.chat import (
     MessagesListOut,
     PresenceStatus,
 )
+from app.services.notifications import create_notifications_for_users
 from app.utils.files import delete_static_file, save_attachment
 
 router = APIRouter(prefix="/chats", tags=["chats"])
@@ -163,7 +164,7 @@ async def get_chats(
         last_chat = chats[-1]
         next_cursor = _encode_cursor(last_chat.updated_at, last_chat.id)
 
-    presence_map = await build_presence_map(participant_ids)
+    presence_map = await build_presence_map(participant_ids, session=session)
 
     enriched_chats = []
     for chat in chat_responses:
@@ -188,7 +189,7 @@ async def get_chats(
             )
         enriched_chats.append(
             ChatResponse(
-                **chat.model_dump(),
+                **chat.model_dump(exclude={"last_message", "presence"}),
                 last_message=last_message,
                 presence=participant_status,
             )
@@ -256,7 +257,9 @@ async def create_chat(
     await session.commit()
     await session.refresh(new_chat)
 
-    presence_map = await build_presence_map([p.id for p in new_chat.participants])
+    presence_map = await build_presence_map(
+        [p.id for p in new_chat.participants], session=session
+    )
 
     return ChatResponse(
         id=new_chat.id,
@@ -327,7 +330,9 @@ async def get_messages(
         oldest_message = messages[0]  # First in ascending order = oldest
         next_cursor = _encode_cursor(oldest_message.created_at, oldest_message.id)
 
-    presence_map = await build_presence_map({msg.sender_id for msg in messages})
+    presence_map = await build_presence_map(
+        {msg.sender_id for msg in messages}, session=session
+    )
 
     response_items = [
         MessageResponse(
@@ -469,7 +474,30 @@ async def send_message(
     # Notify other participants via WebSocket
     await notify_new_message(message, exclude_user_id=current_user.id)
 
-    presence_map = await build_presence_map([message.sender_id])
+    # Send persistent notifications to other participants
+    other_participants = [p.id for p in chat.participants if p.id != current_user.id]
+    if other_participants:
+        sender_name = current_user.full_name or "User"
+        # Truncate content for body if needed
+        body_preview = content[:100] + "..." if len(content) > 100 else content
+
+        await create_notifications_for_users(
+            session,
+            title=sender_name,
+            body=body_preview,
+            type="chat.message",
+            url=f"/messenger/{chat_id}",
+            tag=f"chat:{chat_id}",
+            user_ids=other_participants,
+            topic="chat",
+            payload_data={
+                "chatId": chat_id,
+                "senderId": current_user.id,
+                "messageId": message.id,
+            },
+        )
+
+    presence_map = await build_presence_map([message.sender_id], session=session)
 
     return MessageResponse(
         id=message.id,

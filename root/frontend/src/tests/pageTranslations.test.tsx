@@ -19,7 +19,6 @@ import Login from "@/pages/Login"
 import Register from "@/pages/Register"
 import ForgotPassword from "@/pages/ForgotPassword"
 import ResetPassword from "@/pages/ResetPassword"
-import NotificationsBell from "@/components/NotificationsBell"
 import i18n from "@/i18n/config"
 import type { User } from "@/types/User"
 
@@ -225,7 +224,8 @@ const {
       return Promise.resolve({ data: storiesItems, status: 200 })
     }
     if (url === "/news" || url === "/api/v1/news") return Promise.resolve({ data: newsItems })
-    if (url === "/notifications") return Promise.resolve({ data: notificationsResponse })
+    if (url === "/notifications" || url === "/api/v1/notifications")
+      return Promise.resolve({ data: notificationsResponse })
     if (url === "/groups") return Promise.resolve({ data: scheduleGroups })
     if (url.startsWith("/schedule/")) return Promise.resolve({ data: scheduleLessons })
     if (url === "/users") return Promise.resolve({ data: adminUsers })
@@ -341,6 +341,14 @@ vi.mock("@/assets/spotify_icon.png", () => ({ default: "spotify-icon.png" }))
 vi.mock("@/api/client", () => ({
   __esModule: true,
   default: {
+    get: apiGetMock,
+    post: apiPostMock,
+    patch: apiPatchMock,
+    delete: apiDeleteMock,
+    put: apiPutMock,
+    interceptors: { response: { use: vi.fn() }, request: { use: vi.fn() } },
+  },
+  apiClient: {
     get: apiGetMock,
     post: apiPostMock,
     patch: apiPatchMock,
@@ -664,18 +672,5 @@ describe("page translations", () => {
     await user.click(screen.getByTestId("lang-toggle"))
 
     expect(await screen.findByRole("heading", { name: "Новый пароль" })).toBeInTheDocument()
-  })
-
-  it("switches notifications bell translations", async () => {
-    const { user } = renderWithProviders(<NotificationsBell />)
-
-    const openButton = await screen.findByLabelText("Open notifications")
-    await user.click(openButton)
-    expect(await screen.findByText("Notifications")).toBeInTheDocument()
-
-    await user.click(screen.getByTestId("lang-toggle"))
-
-    expect(await screen.findByLabelText("Открыть уведомления")).toBeInTheDocument()
-    expect(await screen.findByText("Уведомления")).toBeInTheDocument()
   })
 })

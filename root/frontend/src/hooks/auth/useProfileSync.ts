@@ -51,6 +51,41 @@ const isAscii = (value: string) => {
   return true
 }
 
+const areDeepEqual = (a: unknown, b: unknown): boolean => {
+  if (a === b) return true
+  if (typeof a !== "object" || a === null || typeof b !== "object" || b === null) return false
+  const keysA = Object.keys(a)
+  const keysB = Object.keys(b)
+  if (keysA.length !== keysB.length) return false
+  for (const key of keysA) {
+    if (!keysB.includes(key)) return false
+    if (!areDeepEqual((a as any)[key], (b as any)[key])) return false
+  }
+  return true
+}
+
+const debugDeepEqual = (a: unknown, b: unknown, path = ""): boolean => {
+  if (a === b) return true
+  if (typeof a !== "object" || a === null || typeof b !== "object" || b === null) {
+    console.warn(`DeepEqual mismatch at ${path}:`, a, "!==", b)
+    return false
+  }
+  const keysA = Object.keys(a)
+  const keysB = Object.keys(b)
+  if (keysA.length !== keysB.length) {
+    console.warn(`DeepEqual key length mismatch at ${path}:`, keysA, keysB)
+    return false
+  }
+  for (const key of keysA) {
+    if (!keysB.includes(key)) {
+      console.warn(`DeepEqual missing key at ${path}:`, key)
+      return false
+    }
+    if (!debugDeepEqual((a as any)[key], (b as any)[key], `${path}.${key}`)) return false
+  }
+  return true
+}
+
 const createOptimisticUser = (snapshot: CachedUserSnapshot): User => ({
   id: snapshot.id,
   email: "",
@@ -355,17 +390,14 @@ export const useProfileSync = (
         const next =
           typeof value === "function" ? (value as (prev: UserState) => UserState)(prev) : value
         const normalized: UserState = next ?? null
-        userStateRef.current = normalized
+
+        if (import.meta.env.DEV && normalized) {
+          const keys = Object.keys(normalized)
+          console.log(`setUserState called. Keys: ${keys.length}. Source trace:`, new Error().stack)
+        }
+
+        // Removed side effect: userStateRef.current = normalized
         if (persist) {
-          // We need current sessionSigningKey here.
-          // We can use the prop passed in, but it might be stale in closure?
-          // We should use a ref for sessionSigningKey if we need latest in callback?
-          // Or just rely on the prop if it's updated.
-          // But applyUserState is memoized.
-          // Let's assume we need a ref for sessionSigningKey.
-          // But we don't have it here.
-          // We can pass a ref or just read from sessionStorage?
-          // Reading from sessionStorage is safer for persistence.
           const key = readStoredSessionSigningKey()
           persistUserToCache(normalized, key)
         }
@@ -439,7 +471,32 @@ export const useProfileSync = (
 
     const syncFromCache = () => {
       const key = readStoredSessionSigningKey()
-      applyUserState(() => readCachedUser(key) ?? null, { persist: false })
+      const cached = readCachedUser(key)
+      if (!cached) {
+        // Cache was deleted or is invalid - clear user state
+        applyUserState(() => null, { persist: false })
+        queryClient.setQueryData<UserState>(currentUserQueryKey, null)
+        return
+      }
+
+      applyUserState(
+        (prev) => {
+          if (!prev) return cached
+          // If we have a full user object, don't overwrite it with a skeleton from cache
+          // Only update the fields that are actually in the cache snapshot.
+          console.log("Syncing from cache, merging fields...")
+          return {
+            ...prev,
+            id: cached.id,
+            full_name: cached.full_name,
+            avatar_url: cached.avatar_url,
+            mfa_required: cached.mfa_required,
+            mfa_default_method: cached.mfa_default_method,
+            mfa_last_verified_at: cached.mfa_last_verified_at,
+          }
+        },
+        { persist: false }
+      )
     }
 
     const onStorage = (event: StorageEvent) => {
@@ -494,6 +551,10 @@ export const useProfileSync = (
   }, [applyUserState, handleUnauthorized, updatePendingMfa])
 
   useEffect(() => {
+    userStateRef.current = userState
+  }, [userState])
+
+  useEffect(() => {
     if (typeof window === "undefined") {
       setInitializing(false)
       return
@@ -515,7 +576,9 @@ export const useProfileSync = (
             console.warn("Failed to obtain session signing key", error)
           }
         }
-        setUser(profile)
+        if (!debugDeepEqual(userStateRef.current, profile)) {
+          setUser(profile)
+        }
       } catch (error) {
         if (controller.signal.aborted) return null
         if (isAxiosError(error) && error.response?.status === 401) {

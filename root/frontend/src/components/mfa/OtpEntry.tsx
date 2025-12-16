@@ -118,6 +118,13 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
     inputRefs.current[0]?.focus()
   }, [error])
 
+  // Auto-submit when code is complete
+  useEffect(() => {
+    if (code.length === 6 && !loading && !localError && !error) {
+      onSubmit(code)
+    }
+  }, [code, loading, onSubmit, localError, error])
+
   return (
     <div className="w-full">
       <div className="flex flex-col gap-6 items-stretch">

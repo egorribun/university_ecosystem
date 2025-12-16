@@ -71,6 +71,11 @@ export const markAllNotificationsRead = () => apiClient.post("/api/v1/notificati
 
 export const clearNotifications = () => apiClient.delete("/api/v1/notifications")
 
+export const checkSchedule = (lookaheadMinutes: number = 15) =>
+  apiClient.post("/api/v1/notifications/check-schedule", undefined, {
+    params: { lookahead_minutes: lookaheadMinutes },
+  })
+
 export const fetchDeadLetterQueue = async (params?: { limit?: number; offset?: number }) => {
   const response = await api.get("/api/v1/notifications/admin/dead-letter", {
     params,

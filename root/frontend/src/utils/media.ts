@@ -1,6 +1,7 @@
 const DUMMY_BASE = "http://__dummy__"
 
 const hasProtocol = (value: string) => /^(?:https?:)?\/\//i.test(value)
+const isBlobUrl = (value: string) => /^blob:/i.test(value)
 
 export function resolveMediaUrl(
   raw?: string,
@@ -9,6 +10,11 @@ export function resolveMediaUrl(
   if (!raw) return ""
   const trimmed = String(raw).trim()
   if (!trimmed) return ""
+
+  // Return blob: URLs unchanged — they're local preview URLs
+  if (isBlobUrl(trimmed)) {
+    return trimmed
+  }
 
   if (hasProtocol(trimmed)) {
     return trimmed

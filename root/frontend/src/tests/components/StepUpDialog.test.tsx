@@ -63,7 +63,7 @@ describe("StepUpDialog", () => {
     expect(await screen.findByText("2 attempts remaining")).toBeInTheDocument()
 
     await user.type(input, "123456")
-    await user.click(screen.getByRole("button", { name: /verify/i }))
+    // OtpEntry auto-submits when 6 digits are entered
 
     await waitFor(() => {
       expect(requireMfa).toHaveBeenCalledTimes(2)
