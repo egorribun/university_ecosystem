@@ -224,7 +224,8 @@ const {
       return Promise.resolve({ data: storiesItems, status: 200 })
     }
     if (url === "/news" || url === "/api/v1/news") return Promise.resolve({ data: newsItems })
-    if (url === "/notifications" || url === "/api/v1/notifications") return Promise.resolve({ data: notificationsResponse })
+    if (url === "/notifications" || url === "/api/v1/notifications")
+      return Promise.resolve({ data: notificationsResponse })
     if (url === "/groups") return Promise.resolve({ data: scheduleGroups })
     if (url.startsWith("/schedule/")) return Promise.resolve({ data: scheduleLessons })
     if (url === "/users") return Promise.resolve({ data: adminUsers })
@@ -410,11 +411,11 @@ function renderWithProviders(ui: ReactNode, options: RenderOptions = {}) {
 }
 
 beforeAll(() => {
-  ; (globalThis as any).ResizeObserver = MockResizeObserver
+  ;(globalThis as any).ResizeObserver = MockResizeObserver
   vi.spyOn(window, "open").mockImplementation(() => null)
   vi.spyOn(window, "confirm").mockReturnValue(true)
   if (!(HTMLElement.prototype as any).scrollTo) {
-    ; (HTMLElement.prototype as any).scrollTo = () => { }
+    ;(HTMLElement.prototype as any).scrollTo = () => {}
   }
   CSSStyleDeclaration.prototype.setProperty = function setProperty(name, value) {
     try {
@@ -517,10 +518,10 @@ describe("page translations", () => {
       matches: query.includes("prefers-reduced-motion"),
       media: query,
       onchange: null,
-      addListener: () => { },
-      removeListener: () => { },
-      addEventListener: () => { },
-      removeEventListener: () => { },
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
       dispatchEvent: () => false,
     }))
 

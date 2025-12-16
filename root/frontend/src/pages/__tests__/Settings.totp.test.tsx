@@ -29,7 +29,7 @@ vi.mock("@/hooks/usePushPreferences", () => ({
     selectedTopicsDescription: "",
     enableNotifications: vi.fn(),
     disableNotifications: vi.fn(),
-    handleTopicToggle: () => () => { },
+    handleTopicToggle: () => () => {},
     safariIOS: false,
     safariGuideUrl: "#",
   }),

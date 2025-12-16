@@ -57,7 +57,7 @@ describe("StepUpDialog", () => {
 
     const user = userEvent.setup()
 
-    render(<StepUpDialog open onClose={() => { }} onChallengeReset={onChallengeReset} />)
+    render(<StepUpDialog open onClose={() => {}} onChallengeReset={onChallengeReset} />)
 
     const input = await screen.findByLabelText("Authenticator code")
     expect(await screen.findByText("2 attempts remaining")).toBeInTheDocument()

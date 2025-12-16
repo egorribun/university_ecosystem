@@ -194,7 +194,7 @@ describe("Login page", () => {
     // Wait for initial auth check to complete
     await waitFor(() => expect(screen.queryByText(/loading|загрузка/i)).not.toBeInTheDocument(), {
       timeout: 1000,
-    }).catch(() => { }) // Ignore if no loading indicator
+    }).catch(() => {}) // Ignore if no loading indicator
 
     await user.type(
       screen.getByLabelText(matchText(tAuth("fields.email")), {
