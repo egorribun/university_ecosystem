@@ -1,9 +1,10 @@
-import { useCallback } from "react"
+import { useCallback, useEffect } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import {
   clearNotifications as clearNotificationsRequest,
   fetchNotificationsList,
+  checkSchedule as checkScheduleRequest,
   markAllNotificationsRead as markAllNotificationsReadRequest,
   markNotificationRead as markNotificationReadRequest,
   type NotificationEntry,
@@ -42,6 +43,13 @@ export function useNotifications() {
     refetchInterval: 60000,
     staleTime: 30000,
   })
+
+  // Check for upcoming classes on mount to ensure notifications are generated
+  // even if the background worker is idle.
+  useEffect(() => {
+    checkScheduleRequest()
+  }, [])
+
   const markRead = useMutation({
     mutationFn: async (id: number) => {
       await markNotificationReadRequest(id)

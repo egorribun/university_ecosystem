@@ -46,6 +46,8 @@ export default function SmartImage({
   sizes = "(max-width: 720px) 82vw, 460px",
   ...rest
 }: SmartImageProps) {
+  const isBlobUrl = srcRaw?.startsWith("blob:")
+
   const computed = useMemo(() => {
     const resolved = resolveMediaUrl(srcRaw)
     if (!resolved) return ""
@@ -60,8 +62,11 @@ export default function SmartImage({
       return ""
     }
 
+    // Don't add version param to blob URLs — they can't have query params
+    if (isBlobUrl) return resolved
+
     return addVersionParam(resolved, cacheV)
-  }, [srcRaw, cacheV])
+  }, [srcRaw, cacheV, isBlobUrl])
 
   const [useFallback, setUseFallback] = useState(false)
 
@@ -71,9 +76,10 @@ export default function SmartImage({
 
   const finalSrc = useFallback || !computed ? fallback : computed
   const srcSet = useMemo(() => {
-    if (!computed) return ""
+    // Don't add srcSet for blob URLs — query params break them
+    if (!computed || isBlobUrl) return ""
     return buildSrcSet(computed, responsiveWidths)
-  }, [computed, responsiveWidths])
+  }, [computed, responsiveWidths, isBlobUrl])
 
   useEffect(() => {
     if (!DEV) return

@@ -83,11 +83,10 @@ export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, 
               onSelect(contact.id)
             }
           }}
-          className={`flex items-center gap-3 p-3 mx-2 my-1 rounded-xl cursor-pointer transition-all duration-200 ${
-            selectedId === contact.id
-              ? "bg-blue-500 text-white shadow-md shadow-blue-500/20"
-              : "hover:bg-gray-100 dark:hover:bg-gray-800"
-          }`}
+          className={`flex items-center gap-3 p-3 mx-2 my-1 rounded-xl cursor-pointer transition-all duration-200 ${selectedId === contact.id
+            ? "bg-blue-500 text-white shadow-md shadow-blue-500/20"
+            : "hover:bg-gray-100 dark:hover:bg-gray-800"
+            }`}
         >
           <div className="relative flex-shrink-0">
             <SmartImage
@@ -157,11 +156,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
         {messages.map((msg) => (
           <div key={msg.id} className={`flex ${msg.isMe ? "justify-end" : "justify-start"}`}>
             <div
-              className={`max-w-[75%] md:max-w-[60%] px-4 py-2 rounded-2xl shadow-sm text-sm md:text-base relative group ${
-                msg.isMe
-                  ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-br-none"
-                  : "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-none border border-gray-100 dark:border-gray-700"
-              }`}
+              className={`max-w-[75%] md:max-w-[60%] px-4 py-2 rounded-2xl shadow-sm text-sm md:text-base relative group ${msg.isMe
+                ? "bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-br-none"
+                : "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-none border border-gray-100 dark:border-gray-700"
+                }`}
             >
               {msg.attachments && msg.attachments.length > 0 && (
                 <div className="mb-2 space-y-2">
@@ -184,11 +182,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
                           href={sanitizeUrl(att.url)!}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className={`flex items-center gap-2 p-2 rounded-lg ${
-                            msg.isMe
-                              ? "bg-blue-500/50 hover:bg-blue-500/70"
-                              : "bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
-                          } transition-colors`}
+                          className={`flex items-center gap-2 p-2 rounded-lg ${msg.isMe
+                            ? "bg-blue-500/50 hover:bg-blue-500/70"
+                            : "bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
+                            } transition-colors`}
                         >
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
@@ -509,11 +506,10 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
         <button
           onClick={handleSend}
           disabled={!text.trim() && selectedFiles.length === 0}
-          className={`p-2 rounded-xl transition-all duration-200 ${
-            text.trim() || selectedFiles.length > 0
-              ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30 hover:bg-blue-700 transform hover:scale-105"
-              : "bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed"
-          }`}
+          className={`p-2 rounded-xl transition-all duration-200 ${text.trim() || selectedFiles.length > 0
+            ? "bg-blue-600 text-white shadow-lg shadow-blue-600/30 hover:bg-blue-700 transform hover:scale-105"
+            : "bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed"
+            }`}
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"

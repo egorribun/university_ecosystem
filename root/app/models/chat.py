@@ -1,10 +1,13 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Table
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+
+def utc_now():
+    return datetime.now(timezone.utc)
 
 # Association table for many-to-many relationship between Chat and User
 chat_participants = Table(
@@ -22,12 +25,12 @@ class Chat(Base):
         String, primary_key=True, default=lambda: str(uuid.uuid4())
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow
+        DateTime(timezone=True), default=utc_now
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=utc_now,
+        onupdate=utc_now,
     )
 
     # Relationships
@@ -53,7 +56,7 @@ class Message(Base):
     )
     content: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow
+        DateTime(timezone=True), default=utc_now
     )
     read_status: Mapped[bool] = mapped_column(Boolean, default=False)
 
@@ -84,7 +87,7 @@ class Attachment(Base):
     filename: Mapped[str] = mapped_column(String, nullable=False)
     size: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow
+        DateTime(timezone=True), default=utc_now
     )
 
     # Relationships

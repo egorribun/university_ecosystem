@@ -243,6 +243,86 @@ class UserService:
                 )
         return updated_user
 
+    async def admin_delete_user(
+        self,
+        db: AsyncSession,
+        user_id: int,
+        request: Request,
+        current_user: models.User,
+    ) -> dict:
+        """Delete a user by admin (anonymize user data)."""
+        locale = resolve_locale(request=request, user=current_user)
+        if current_user.role != "admin":
+            raise HTTPException(
+                status_code=403,
+                detail=translate("errors.forbidden", locale=locale),
+            )
+
+        db_user = await db.get(models.User, user_id, options=USER_MFA_LOAD_OPTIONS)
+        if db_user is None:
+            raise HTTPException(
+                status_code=404,
+                detail=translate("errors.users.not_found", locale=locale),
+            )
+
+        # Prevent admin from deleting themselves
+        if db_user.id == current_user.id:
+            raise HTTPException(
+                status_code=400,
+                detail=translate("errors.users.cannot_delete_self", locale=locale),
+            )
+
+        anonymized_email = f"deleted+{db_user.id}@deleted.example.com"
+
+        await delete_static_file(db_user.avatar_url) if db_user.avatar_url else None
+        await delete_static_file(db_user.cover_url) if db_user.cover_url else None
+
+        db_user.full_name = None
+        db_user.email = anonymized_email
+        db_user.avatar_url = None
+        db_user.cover_url = None
+        db_user.about = None
+        db_user.telegram = None
+        db_user.achievements = None
+        db_user.record_book_number = None
+        db_user.hashed_password = "deleted"
+        db_user.is_active = False
+        db_user.status = "deleted"
+        db_user.mfa_required = False
+        db_user.mfa_default_method = None
+        db_user.mfa_last_verified_at = None
+
+        await db.execute(
+            delete(models.ActiveSession).where(models.ActiveSession.user_id == user_id)
+        )
+        await db.execute(
+            delete(models.MfaChallenge).where(models.MfaChallenge.user_id == user_id)
+        )
+        await db.execute(
+            delete(models.MfaTotpEnrollment).where(
+                models.MfaTotpEnrollment.user_id == user_id
+            )
+        )
+        await db.execute(
+            delete(models.Notification).where(models.Notification.user_id == user_id)
+        )
+        await db.execute(
+            delete(models.DataAccessLog).where(
+                or_(
+                    models.DataAccessLog.actor_user_id == user_id,
+                    models.DataAccessLog.subject_user_id == user_id,
+                )
+            )
+        )
+
+        db_user.preferences = None
+        db_user.spotify = None
+
+        self.audit.log("users.admin_delete", request, user_id=user_id, reason="admin_delete")
+
+        await db.commit()
+        return {"deleted": True, "user_id": user_id}
+
     async def delete_avatar(
         self,
         db: AsyncSession,
@@ -392,7 +472,7 @@ class UserService:
             )
 
         db_user = await db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
-        anonymized_email = f"deleted+{user.id}@anonymized.local"
+        anonymized_email = f"deleted+{user.id}@deleted.example.com"
 
         await delete_static_file(db_user.avatar_url) if db_user.avatar_url else None
         await delete_static_file(db_user.cover_url) if db_user.cover_url else None

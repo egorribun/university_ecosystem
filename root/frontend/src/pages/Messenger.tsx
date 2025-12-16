@@ -5,6 +5,7 @@ import {
   ChatWindow,
   MessageInput,
   NewChatModal,
+
 } from "../components/messenger/MessengerComponents"
 import { useMediaQuery } from "@mui/material"
 import { useAuth } from "../contexts/AuthContext"
@@ -23,7 +24,29 @@ import SmartImage from "@/components/SmartImage"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 import type { User } from "@/types/User"
 import client from "@/api/client"
+import dayjs from "dayjs"
+import utc from "dayjs/plugin/utc"
+import timezone from "dayjs/plugin/timezone"
 
+dayjs.extend(utc)
+dayjs.extend(timezone)
+
+const formatMessageTime = (dateString: string) => {
+  if (!dateString) return ""
+
+  // Fix: Remove microseconds which confuse the parser in some environments
+  // 2025-12-16T01:53:34.310903Z -> 2025-12-16T01:53:34Z
+  const cleanDate = dateString.replace(/(\.\d+)(Z|[+\-]\d{2}:?\d{2})?$/, "$2")
+
+  // Ensure we treat it as UTC
+  let parsed = dayjs.utc(cleanDate)
+  // If it had a timezone offset originally but we stripped it (unlikely with regex above), ensure we respect the string
+  if (/[Zz]|[+\-]\d\d:?\d\d$/.test(cleanDate)) {
+    parsed = dayjs(cleanDate)
+  }
+
+  return parsed.tz("Europe/Moscow").format("HH:mm")
+}
 export default function Messenger() {
   const { t } = useTranslation(["messenger", "common"])
   const { user } = useAuth()
@@ -158,11 +181,11 @@ export default function Messenger() {
           items: previousChats.items.map((chat) =>
             chat.id === chatId
               ? {
-                  ...chat,
-                  last_message: undefined,
-                  unread_count: 0,
-                  updated_at: new Date().toISOString(),
-                }
+                ...chat,
+                last_message: undefined,
+                unread_count: 0,
+                updated_at: new Date().toISOString(),
+              }
               : chat
           ),
         })
@@ -287,10 +310,7 @@ export default function Messenger() {
       avatar: other?.avatar_url || "",
       lastMessage: chat.last_message?.content || "",
       lastMessageTime: chat.last_message
-        ? new Date(chat.last_message.created_at).toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          })
+        ? formatMessageTime(chat.last_message.created_at)
         : "",
       unread: chat.unread_count,
       online: status?.active ?? false,
@@ -312,9 +332,8 @@ export default function Messenger() {
     >
       {/* Sidebar */}
       <div
-        className={`${
-          showList ? "flex" : "hidden"
-        } w-full md:w-80 lg:w-96 flex-col border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-[#0b111e] transition-all duration-300`}
+        className={`${showList ? "flex" : "hidden"
+          } w-full md:w-80 lg:w-96 flex-col border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-[#0b111e] transition-all duration-300`}
       >
         <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center sticky top-0 bg-white/80 dark:bg-[#0b111e]/80 backdrop-blur-md z-10">
           <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
@@ -358,9 +377,8 @@ export default function Messenger() {
 
       {/* Chat Area */}
       <div
-        className={`${
-          showChat ? "flex" : "hidden"
-        } flex-1 flex flex-col bg-white/50 dark:bg-[#060b14] overflow-hidden`}
+        className={`${showChat ? "flex" : "hidden"
+          } flex-1 flex flex-col bg-white/50 dark:bg-[#060b14] overflow-hidden`}
       >
         {selectedChatId && activeChat ? (
           <>
@@ -544,10 +562,7 @@ export default function Messenger() {
                 id: m.id,
                 senderId: String(m.sender_id),
                 text: m.content,
-                timestamp: new Date(m.created_at).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                }),
+                timestamp: formatMessageTime(m.created_at),
                 isMe: m.sender_id === user?.id,
                 status: m.read_status ? "read" : "sent",
                 attachments: m.attachments?.map((a) => ({
