@@ -16,6 +16,7 @@ pip:
       package: ecdsa
       owner: backend@university.example
       expires: 2025-12-31
+      reason: |
         python-ecdsa has no upstream fix for CVE-2024-23342 (GHSA-wj6h-64fc-37mp). Monitor upstream and replace or upgrade when a patch lands.
     - id: CVE-2025-68146
       package: unknown
