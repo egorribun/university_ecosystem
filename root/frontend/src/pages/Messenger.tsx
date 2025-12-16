@@ -5,7 +5,6 @@ import {
   ChatWindow,
   MessageInput,
   NewChatModal,
-
 } from "../components/messenger/MessengerComponents"
 import { useMediaQuery } from "@mui/material"
 import { useAuth } from "../contexts/AuthContext"
@@ -181,11 +180,11 @@ export default function Messenger() {
           items: previousChats.items.map((chat) =>
             chat.id === chatId
               ? {
-                ...chat,
-                last_message: undefined,
-                unread_count: 0,
-                updated_at: new Date().toISOString(),
-              }
+                  ...chat,
+                  last_message: undefined,
+                  unread_count: 0,
+                  updated_at: new Date().toISOString(),
+                }
               : chat
           ),
         })
@@ -309,9 +308,7 @@ export default function Messenger() {
       name: other?.full_name || "Unknown User",
       avatar: other?.avatar_url || "",
       lastMessage: chat.last_message?.content || "",
-      lastMessageTime: chat.last_message
-        ? formatMessageTime(chat.last_message.created_at)
-        : "",
+      lastMessageTime: chat.last_message ? formatMessageTime(chat.last_message.created_at) : "",
       unread: chat.unread_count,
       online: status?.active ?? false,
     }
@@ -332,8 +329,9 @@ export default function Messenger() {
     >
       {/* Sidebar */}
       <div
-        className={`${showList ? "flex" : "hidden"
-          } w-full md:w-80 lg:w-96 flex-col border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-[#0b111e] transition-all duration-300`}
+        className={`${
+          showList ? "flex" : "hidden"
+        } w-full md:w-80 lg:w-96 flex-col border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-[#0b111e] transition-all duration-300`}
       >
         <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center sticky top-0 bg-white/80 dark:bg-[#0b111e]/80 backdrop-blur-md z-10">
           <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
@@ -377,8 +375,9 @@ export default function Messenger() {
 
       {/* Chat Area */}
       <div
-        className={`${showChat ? "flex" : "hidden"
-          } flex-1 flex flex-col bg-white/50 dark:bg-[#060b14] overflow-hidden`}
+        className={`${
+          showChat ? "flex" : "hidden"
+        } flex-1 flex flex-col bg-white/50 dark:bg-[#060b14] overflow-hidden`}
       >
         {selectedChatId && activeChat ? (
           <>

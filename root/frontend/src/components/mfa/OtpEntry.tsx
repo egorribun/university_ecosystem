@@ -156,13 +156,14 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
               className={`
                 w-12 h-14 sm:w-14 sm:h-16 text-center text-2xl font-bold rounded-xl
                 bg-card text-page-text border-2 transition-all duration-200
-                ${derivedError
-                  ? "border-red-500 focus:border-red-500 focus:ring-red-500/25"
-                  : focusedIndex === index
-                    ? "border-primary ring-4 ring-primary/25 scale-105"
-                    : digit
-                      ? "border-primary/50"
-                      : "border-page-text/20 hover:border-page-text/30"
+                ${
+                  derivedError
+                    ? "border-red-500 focus:border-red-500 focus:ring-red-500/25"
+                    : focusedIndex === index
+                      ? "border-primary ring-4 ring-primary/25 scale-105"
+                      : digit
+                        ? "border-primary/50"
+                        : "border-page-text/20 hover:border-page-text/30"
                 }
                 focus:outline-none
                 disabled:bg-page-text/[0.06] disabled:border-page-text/15 disabled:cursor-not-allowed

@@ -51,7 +51,7 @@ export default function NotificationsBell() {
         const rect = buttonRef.current!.getBoundingClientRect()
         setCoords({
           top: rect.bottom + 12,
-          right: mobile ? null : window.innerWidth - rect.right
+          right: mobile ? null : window.innerWidth - rect.right,
         })
       }
       updatePosition()
@@ -86,7 +86,7 @@ export default function NotificationsBell() {
       opacity: 0,
       y: -10,
       scale: 0.95,
-      x: isMobile ? "-50%" : 0
+      x: isMobile ? "-50%" : 0,
     },
     visible: {
       opacity: 1,
@@ -96,21 +96,21 @@ export default function NotificationsBell() {
       transition: {
         duration: 0.2,
         ease: "easeOut",
-        staggerChildren: 0.05
-      }
+        staggerChildren: 0.05,
+      },
     },
     exit: {
       opacity: 0,
       y: -10,
       scale: 0.95,
       x: isMobile ? "-50%" : 0,
-      transition: { duration: 0.15, ease: "easeIn" }
-    }
+      transition: { duration: 0.15, ease: "easeIn" },
+    },
   }
 
   const itemVariants: Variants = {
     hidden: { opacity: 0, x: -10 },
-    visible: { opacity: 1, x: 0 }
+    visible: { opacity: 1, x: 0 },
   }
 
   return (
@@ -126,7 +126,10 @@ export default function NotificationsBell() {
         )}
         aria-label={t("system:notificationsBell.open")}
       >
-        <Bell className={cn("w-6 h-6 transition-transform duration-500", isOpen && "rotate-[-10deg]")} strokeWidth={1.5} />
+        <Bell
+          className={cn("w-6 h-6 transition-transform duration-500", isOpen && "rotate-[-10deg]")}
+          strokeWidth={1.5}
+        />
         {unreadCount ? (
           <span className="absolute top-2 right-2 flex h-2.5 w-2.5">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
@@ -152,13 +155,12 @@ export default function NotificationsBell() {
               )}
               style={{
                 top: coords.top,
-                right: coords.right ?? undefined
+                right: coords.right ?? undefined,
               }}
               ref={dropdownRef}
             >
               {/* Glass Container */}
               <div className="bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden ring-1 ring-black/5">
-
                 {/* Header */}
                 <div className="p-4 border-b border-white/5 flex items-center justify-between bg-white/5">
                   <div className="flex items-center gap-2">
@@ -203,9 +205,7 @@ export default function NotificationsBell() {
                       <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center text-red-400 mb-2">
                         <Info className="w-6 h-6" />
                       </div>
-                      <p className="text-sm text-red-300">
-                        {t("system:notificationsBell.error")}
-                      </p>
+                      <p className="text-sm text-red-300">{t("system:notificationsBell.error")}</p>
                       <button
                         onClick={() => refetch()}
                         className="text-xs bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg transition-colors"
@@ -250,10 +250,14 @@ export default function NotificationsBell() {
                             target={n.link ? "_blank" : undefined}
                             rel={n.link ? "noopener noreferrer" : undefined}
                           >
-                            <div className={cn(
-                              "w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-opacity",
-                              !n.read ? "bg-indigo-500/10 text-indigo-400" : "bg-white/5 text-slate-400"
-                            )}>
+                            <div
+                              className={cn(
+                                "w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-opacity",
+                                !n.read
+                                  ? "bg-indigo-500/10 text-indigo-400"
+                                  : "bg-white/5 text-slate-400"
+                              )}
+                            >
                               {n.type === "chat.message" ? (
                                 <MessageCircle className="w-4 h-4" />
                               ) : n.type === "schedule.reminder" ? (
@@ -264,7 +268,12 @@ export default function NotificationsBell() {
                             </div>
 
                             <div className="flex-1 space-y-1">
-                              <p className={cn("text-sm font-medium leading-tight", !n.read ? "text-white" : "text-slate-300")}>
+                              <p
+                                className={cn(
+                                  "text-sm font-medium leading-tight",
+                                  !n.read ? "text-white" : "text-slate-300"
+                                )}
+                              >
                                 {n.title}
                               </p>
                               <p className="text-xs text-slate-400 leading-relaxed text-pretty">

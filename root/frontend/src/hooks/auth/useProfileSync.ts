@@ -474,21 +474,24 @@ export const useProfileSync = (
       const cached = readCachedUser(key)
       if (!cached) return
 
-      applyUserState((prev) => {
-        if (!prev) return cached
-        // If we have a full user object, don't overwrite it with a skeleton from cache
-        // Only update the fields that are actually in the cache snapshot.
-        console.log("Syncing from cache, merging fields...")
-        return {
-          ...prev,
-          id: cached.id,
-          full_name: cached.full_name,
-          avatar_url: cached.avatar_url,
-          mfa_required: cached.mfa_required,
-          mfa_default_method: cached.mfa_default_method,
-          mfa_last_verified_at: cached.mfa_last_verified_at,
-        }
-      }, { persist: false })
+      applyUserState(
+        (prev) => {
+          if (!prev) return cached
+          // If we have a full user object, don't overwrite it with a skeleton from cache
+          // Only update the fields that are actually in the cache snapshot.
+          console.log("Syncing from cache, merging fields...")
+          return {
+            ...prev,
+            id: cached.id,
+            full_name: cached.full_name,
+            avatar_url: cached.avatar_url,
+            mfa_required: cached.mfa_required,
+            mfa_default_method: cached.mfa_default_method,
+            mfa_last_verified_at: cached.mfa_last_verified_at,
+          }
+        },
+        { persist: false }
+      )
     }
 
     const onStorage = (event: StorageEvent) => {
@@ -558,7 +561,7 @@ export const useProfileSync = (
     if (userStateRef.current == null) {
       setInitializing(true)
     }
-    ; (async () => {
+    ;(async () => {
       try {
         const profile = await fetchCurrentUser({ signal: controller.signal })
         try {
