@@ -1,0 +1,72 @@
+import { memo } from "react"
+import { Skeleton } from "@/components/ui/skeleton"
+
+interface ProfileCardSkeletonProps {
+  /** Show cover image skeleton */
+  showCover?: boolean
+  /** Optional CSS class */
+  className?: string
+}
+
+/**
+ * ProfileCardSkeleton - Loading state for Profile page header.
+ * Displays placeholders for avatar, name, bio, and stats.
+ */
+export function ProfileCardSkeleton({
+  showCover = true,
+  className = "",
+}: ProfileCardSkeletonProps) {
+  return (
+    <div
+      className={`rounded-ue-xl border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] overflow-hidden ${className}`}
+      aria-busy="true"
+      aria-label="Loading profile"
+    >
+      {/* Cover image */}
+      {showCover && (
+        <div
+          className="h-32 w-full animate-skeleton-wave bg-skeleton sm:h-40 lg:h-48"
+          aria-hidden
+        />
+      )}
+
+      {/* Profile content */}
+      <div className="relative px-4 pb-5 sm:px-6">
+        {/* Avatar - positioned to overlap cover */}
+        <div className={`${showCover ? "-mt-12" : "mt-4"} mb-4 sm:-mt-16`}>
+          <Skeleton
+            width={80}
+            height={80}
+            rounded="50%"
+            className="border-4 border-[color:var(--card-bg)] sm:h-24 sm:w-24"
+            ariaLabel="Loading avatar"
+          />
+        </div>
+
+        {/* Name and username */}
+        <div className="space-y-2 mb-4">
+          <Skeleton width={180} height={24} ariaLabel="Loading name" />
+          <Skeleton width={120} height={16} />
+        </div>
+
+        {/* Bio lines */}
+        <div className="space-y-2 mb-4">
+          <Skeleton width="100%" height={14} />
+          <Skeleton width="75%" height={14} />
+        </div>
+
+        {/* Stats row */}
+        <div className="flex gap-6 pt-3 border-t border-white/10">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="flex flex-col items-center gap-1">
+              <Skeleton width={32} height={20} />
+              <Skeleton width={48} height={12} />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default memo(ProfileCardSkeleton)
