@@ -23,6 +23,8 @@ from app.models.models import PushSubscription
 from app.routers.notifications import _serialize_subscription
 from app.services import notifications
 from app.services import webpush as webpush_module
+from app.services.notifications import delivery as notifications_delivery
+from app.services.notifications import news_events as notifications_news_events
 from app.services.webpush import WebPushResult
 
 
@@ -330,7 +332,7 @@ async def test_notify_about_news_uses_locale(
         return 1
 
     monkeypatch.setattr(
-        notifications,
+        notifications_news_events,
         "create_notifications_for_users",
         fake_create_notifications_for_users,
     )
@@ -382,7 +384,7 @@ async def test_create_notifications_limits_concurrent_push_tasks(
         return None
 
     monkeypatch.setattr(
-        notifications, "_ensure_push_subscription_schema_once", _noop_schema
+        notifications_delivery, "_ensure_push_subscription_schema_once", _noop_schema
     )
 
     active = 0
@@ -408,7 +410,7 @@ async def test_create_notifications_limits_concurrent_push_tasks(
             status_code=201,
         )
 
-    monkeypatch.setattr(notifications, "send_web_push", _fake_send_web_push)
+    monkeypatch.setattr(notifications_delivery, "send_web_push", _fake_send_web_push)
 
     created = await notifications.create_notifications_for_users(
         db_session,
@@ -452,7 +454,9 @@ async def test_create_notifications_checks_schema_once_per_process(
         nonlocal schema_calls
         schema_calls += 1
 
-    monkeypatch.setattr(notifications, "ensure_push_subscription_schema", _fake_schema)
+    monkeypatch.setattr(
+        notifications_delivery, "ensure_push_subscription_schema", _fake_schema
+    )
 
     def _fake_send_web_push(subscription, payload):
         return WebPushResult(
@@ -463,7 +467,7 @@ async def test_create_notifications_checks_schema_once_per_process(
             status_code=201,
         )
 
-    monkeypatch.setattr(notifications, "send_web_push", _fake_send_web_push)
+    monkeypatch.setattr(notifications_delivery, "send_web_push", _fake_send_web_push)
 
     base_args = dict(
         db=db_session,

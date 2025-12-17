@@ -25,6 +25,12 @@ from app.services.notifications import (
     is_user_in_quiet_hours,
     prepare_push_payload_for_user,
 )
+from app.services.notifications import core as notifications_core
+from app.services.notifications import delivery as notifications_delivery
+from app.services.notifications import news_events as notifications_news_events
+from app.services.notifications import (
+    schedule_reminders as notifications_schedule_reminders,
+)
 from app.services.webpush import WebPushResult
 
 
@@ -108,7 +114,7 @@ def test_is_user_in_quiet_hours_uses_user_timezone(monkeypatch: pytest.MonkeyPat
                 return base.replace(tzinfo=None)
             return base.astimezone(tz)
 
-    monkeypatch.setattr(notifications_module.dt, "datetime", _FixedDatetime)
+    monkeypatch.setattr(notifications_core.dt, "datetime", _FixedDatetime)
     assert is_user_in_quiet_hours(user) is True
 
     monkeypatch.setattr(webpush_module, "datetime", _FixedDatetime)
@@ -127,7 +133,7 @@ def test_is_user_in_quiet_hours_defaults_to_utc(monkeypatch: pytest.MonkeyPatch)
                 return base.replace(tzinfo=None)
             return base.astimezone(tz)
 
-    monkeypatch.setattr(notifications_module.dt, "datetime", _UtcDatetime)
+    monkeypatch.setattr(notifications_core.dt, "datetime", _UtcDatetime)
     assert is_user_in_quiet_hours(user) is True
 
     user.timezone = "Invalid/Zone"
@@ -191,7 +197,7 @@ async def test_create_notifications_records_webpush_deliveries(
             status_code=201,
         )
 
-    monkeypatch.setattr(notifications_module, "send_web_push", _fake_send)
+    monkeypatch.setattr(notifications_delivery, "send_web_push", _fake_send)
 
     created = await create_notifications_for_users(
         db_session,
@@ -278,7 +284,7 @@ async def test_generate_schedule_reminders_query_count_constant(
         return 0
 
     monkeypatch.setattr(
-        notifications_module,
+        notifications_schedule_reminders,
         "create_notifications_for_users",
         _fake_create,
     )
@@ -496,7 +502,7 @@ async def test_event_creation_enqueues_notifications(
         return 0
 
     monkeypatch.setattr(
-        notifications_module,
+        notifications_news_events,
         "create_notifications_for_users",
         _fake_create,
     )
@@ -544,7 +550,7 @@ async def test_news_creation_enqueues_notifications(
         return 0
 
     monkeypatch.setattr(
-        notifications_module,
+        notifications_news_events,
         "create_notifications_for_users",
         _fake_create,
     )
