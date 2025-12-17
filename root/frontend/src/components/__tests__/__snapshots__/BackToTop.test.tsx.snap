@@ -4,6 +4,7 @@ exports[`BackToTop > renders hidden button by default 1`] = `
 <button
   aria-label="Back to top"
   class="back-to-top"
+  style="pointer-events: none;"
   type="button"
 >
   ↑
