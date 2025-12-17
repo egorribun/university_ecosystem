@@ -454,7 +454,9 @@ async def test_create_notifications_checks_schema_once_per_process(
         nonlocal schema_calls
         schema_calls += 1
 
-    monkeypatch.setattr(notifications_delivery, "ensure_push_subscription_schema", _fake_schema)
+    monkeypatch.setattr(
+        notifications_delivery, "ensure_push_subscription_schema", _fake_schema
+    )
 
     def _fake_send_web_push(subscription, payload):
         return WebPushResult(
