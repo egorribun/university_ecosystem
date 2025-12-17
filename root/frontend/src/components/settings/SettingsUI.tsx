@@ -387,3 +387,321 @@ export function Divider({
     />
   )
 }
+
+// ============================================================================
+// BUTTON COMPONENT
+// ============================================================================
+
+export function Button({
+  children,
+  variant = "contained",
+  color = "primary",
+  size = "medium",
+  disabled = false,
+  startIcon,
+  onClick,
+  type = "button",
+  className = "",
+  ...props
+}: {
+  children: React.ReactNode
+  variant?: "contained" | "outlined" | "text"
+  color?: "primary" | "error" | "inherit" | "success"
+  size?: "small" | "medium"
+  disabled?: boolean
+  startIcon?: React.ReactNode
+  onClick?: () => void
+  type?: "button" | "submit"
+  className?: string
+} & React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  const baseClasses = cn(
+    "relative inline-flex items-center justify-center gap-2 font-semibold tracking-tight",
+    "rounded-xl transition-all duration-200",
+    "focus-visible:outline-none focus-visible:ring-0 focus-visible:shadow-[var(--shadow-focus)]",
+    "disabled:pointer-events-none disabled:opacity-55",
+    "active:translate-y-[1px]"
+  )
+  const sizeClasses =
+    size === "small"
+      ? "px-3.5 py-2 text-sm"
+      : "px-4.5 py-2.5 text-[calc(theme(fontSize.base)*0.98)] sm:text-base"
+
+  let variantClasses = ""
+  if (variant === "contained") {
+    if (color === "primary") {
+      variantClasses = cn(
+        "bg-[color:var(--nav-link)] text-white shadow-[0_14px_34px_rgba(15,79,170,0.26)]",
+        "hover:bg-[color:color-mix(in_srgb,var(--nav-link)_94%,white_6%)] hover:shadow-[0_18px_44px_rgba(15,79,170,0.32)]",
+        "dark:bg-[color:color-mix(in_srgb,var(--nav-link)_88%,rgba(10,18,32,0.9)_12%)]",
+        "dark:hover:bg-[color:color-mix(in_srgb,var(--nav-link)_92%,rgba(10,18,32,0.9)_8%)]",
+        "dark:hover:shadow-[0_20px_48px_rgba(8,12,20,0.62)]"
+      )
+    } else if (color === "error") {
+      variantClasses = cn(
+        "bg-[#D14343] text-white shadow-[0_14px_32px_rgba(209,67,67,0.24)]",
+        "hover:bg-[#c03838] hover:shadow-[0_18px_40px_rgba(192,56,56,0.28)]"
+      )
+    } else if (color === "success") {
+      variantClasses = cn(
+        "bg-[#2E7D32] text-white shadow-[0_14px_32px_rgba(46,125,50,0.24)]",
+        "hover:bg-[#276b2b] hover:shadow-[0_18px_40px_rgba(39,107,43,0.28)]"
+      )
+    } else {
+      variantClasses = cn(
+        "bg-[color:color-mix(in_srgb,var(--card-bg)_94%,rgba(15,79,170,0.18)_6%)]",
+        "text-[var(--page-text)] shadow-[0_12px_28px_rgba(15,40,85,0.12)]",
+        "hover:shadow-[0_16px_38px_rgba(15,40,85,0.18)]"
+      )
+    }
+  } else if (variant === "outlined") {
+    if (color === "primary") {
+      variantClasses = cn(
+        "border border-[color:color-mix(in_srgb,var(--nav-link)_30%,transparent)]",
+        "bg-[color:color-mix(in_srgb,var(--card-bg)_97%,rgba(15,79,170,0.08)_3%)] text-[color:var(--nav-link)]",
+        "shadow-[0_8px_24px_rgba(15,40,85,0.08)]",
+        "hover:border-[color:color-mix(in_srgb,var(--nav-link)_45%,transparent)]",
+        "hover:bg-[color:color-mix(in_srgb,var(--nav-link)_12%,white_88%)]",
+        "hover:text-[color:color-mix(in_srgb,var(--nav-link)_88%,rgba(15,40,85,0.25)_12%)]"
+      )
+    } else if (color === "error") {
+      variantClasses = cn(
+        "border border-[#D14343] text-[#D14343]",
+        "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(209,67,67,0.08)_4%)]",
+        "hover:bg-[color:color-mix(in_srgb,rgba(209,67,67,0.12)_16%,white_84%)]"
+      )
+    } else if (color === "success") {
+      variantClasses = cn(
+        "border border-[#358E39] text-[#276b2b]",
+        "bg-[color:color-mix(in_srgb,var(--card-bg)_97%,rgba(46,125,50,0.08)_3%)]",
+        "hover:bg-[color:color-mix(in_srgb,rgba(46,125,50,0.12)_16%,white_84%)]"
+      )
+    } else {
+      variantClasses = cn(
+        "border border-[color:color-mix(in_srgb,var(--glass-border)_82%,transparent)]",
+        "bg-[color:color-mix(in_srgb,var(--card-bg)_97%,rgba(15,40,85,0.04)_3%)]",
+        "hover:bg-[color:color-mix(in_srgb,var(--card-bg)_94%,rgba(15,40,85,0.08)_6%)]"
+      )
+    }
+  } else if (variant === "text") {
+    if (color === "error") {
+      variantClasses = cn(
+        "text-[#C13B3B]",
+        "hover:bg-[color:color-mix(in_srgb,rgba(209,67,67,0.12)_32%,white_68%)]"
+      )
+    } else if (color === "inherit") {
+      variantClasses = cn(
+        "text-[var(--page-text)]",
+        "hover:bg-[color:color-mix(in_srgb,var(--nav-link)_8%,transparent)]"
+      )
+    } else if (color === "primary") {
+      variantClasses = cn(
+        "text-[color:var(--nav-link)]",
+        "hover:bg-[color:color-mix(in_srgb,var(--nav-link)_10%,transparent)]"
+      )
+    } else {
+      variantClasses = cn(
+        "text-[color:color-mix(in_srgb,var(--page-text)_88%,var(--secondary-text)_12%)]",
+        "hover:bg-[color:color-mix(in_srgb,var(--nav-link)_8%,transparent)]"
+      )
+    }
+  }
+
+  return (
+    <button
+      type={type}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(baseClasses, sizeClasses, variantClasses, className)}
+      {...props}
+    >
+      {startIcon && <span className="flex items-center text-inherit">{startIcon}</span>}
+      {children}
+    </button>
+  )
+}
+
+// ============================================================================
+// TEXT FIELD COMPONENT
+// ============================================================================
+
+export function TextField({
+  label,
+  value,
+  onChange,
+  onBlur,
+  type = "text",
+  disabled = false,
+  error = false,
+  helperText,
+  placeholder,
+  size = "medium",
+  fullWidth = false,
+  autoComplete,
+  className = "",
+  ...props
+}: {
+  label?: string
+  value: string
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+  onBlur?: (e: React.FocusEvent<HTMLInputElement>) => void
+  type?: string
+  disabled?: boolean
+  error?: boolean
+  helperText?: string
+  placeholder?: string
+  size?: "small" | "medium"
+  fullWidth?: boolean
+  autoComplete?: string
+  className?: string
+} & Omit<React.InputHTMLAttributes<HTMLInputElement>, "size" | "onChange" | "onBlur" | "value">) {
+  const inputClasses = cn(
+    "peer w-full rounded-xl border bg-transparent px-4 py-3 text-[var(--page-text)] transition-all duration-200",
+    "placeholder:text-[color:color-mix(in_srgb,var(--page-text)_50%,transparent)]",
+    "focus:outline-none focus:ring-0",
+    error
+      ? "border-[#D14343] focus:border-[#D14343]"
+      : cn(
+          "border-[color:color-mix(in_srgb,var(--glass-border)_75%,transparent)]",
+          "focus:border-[color:var(--nav-link)]"
+        ),
+    disabled ? "cursor-not-allowed opacity-60" : "",
+    size === "small" ? "py-2 text-sm" : ""
+  )
+
+  return (
+    <div className={cn(fullWidth ? "w-full" : "", className)}>
+      {label && (
+        <label className="mb-1.5 block text-sm font-medium text-[color:color-mix(in_srgb,var(--page-text)_80%,var(--secondary-text)_20%)]">
+          {label}
+        </label>
+      )}
+      <input
+        type={type}
+        value={value}
+        onChange={onChange}
+        onBlur={onBlur}
+        disabled={disabled}
+        placeholder={placeholder}
+        autoComplete={autoComplete}
+        className={inputClasses}
+        {...props}
+      />
+      {helperText && (
+        <p
+          className={cn(
+            "mt-1.5 text-xs",
+            error
+              ? "text-[#D14343]"
+              : "text-[color:color-mix(in_srgb,var(--page-text)_60%,var(--secondary-text)_40%)]"
+          )}
+        >
+          {helperText}
+        </p>
+      )}
+    </div>
+  )
+}
+
+// ============================================================================
+// SWITCH / TOGGLE COMPONENT
+// ============================================================================
+
+export function Switch({
+  checked,
+  onChange,
+  disabled = false,
+  size = "medium",
+  className = "",
+}: {
+  checked: boolean
+  onChange: (checked: boolean) => void
+  disabled?: boolean
+  size?: "small" | "medium"
+  className?: string
+}) {
+  const sizeClasses = size === "small" ? "h-5 w-9" : "h-6 w-11"
+  const thumbSizeClasses = size === "small" ? "h-3.5 w-3.5" : "h-4 w-4"
+  const translateClasses = size === "small" ? "translate-x-4" : "translate-x-5"
+
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={cn(
+        "relative inline-flex shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200",
+        sizeClasses,
+        checked
+          ? "bg-[color:var(--nav-link)]"
+          : "bg-[color:color-mix(in_srgb,var(--glass-border)_60%,transparent)]",
+        disabled ? "cursor-not-allowed opacity-50" : "",
+        className
+      )}
+    >
+      <span
+        className={cn(
+          "pointer-events-none inline-block transform rounded-full bg-white shadow-md transition-transform duration-200",
+          thumbSizeClasses,
+          checked ? translateClasses : "translate-x-1"
+        )}
+      />
+    </button>
+  )
+}
+
+// ============================================================================
+// ACCORDION / COLLAPSIBLE COMPONENT
+// ============================================================================
+
+export function Accordion({
+  expanded,
+  onChange,
+  title,
+  children,
+  className = "",
+}: {
+  expanded: boolean
+  onChange: () => void
+  title: React.ReactNode
+  children: React.ReactNode
+  className?: string
+}) {
+  return (
+    <div
+      className={cn(
+        "overflow-hidden rounded-xl border border-[color:var(--glass-border)]",
+        className
+      )}
+    >
+      <button
+        type="button"
+        onClick={onChange}
+        className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-[color:color-mix(in_srgb,var(--card-bg)_95%,rgba(15,79,170,0.08)_5%)]"
+        aria-expanded={expanded}
+      >
+        <span className="font-medium text-[var(--page-text)]">{title}</span>
+        <svg
+          className={cn(
+            "h-5 w-5 text-[color:color-mix(in_srgb,var(--page-text)_60%,transparent)] transition-transform duration-200",
+            expanded ? "rotate-180" : ""
+          )}
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      <div
+        className={cn(
+          "overflow-hidden transition-all duration-200",
+          expanded ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0"
+        )}
+      >
+        <div className="px-4 pb-4 pt-2">{children}</div>
+      </div>
+    </div>
+  )
+}
