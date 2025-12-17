@@ -28,7 +28,9 @@ from app.services.notifications import (
 from app.services.notifications import core as notifications_core
 from app.services.notifications import delivery as notifications_delivery
 from app.services.notifications import news_events as notifications_news_events
-from app.services.notifications import schedule_reminders as notifications_schedule_reminders
+from app.services.notifications import (
+    schedule_reminders as notifications_schedule_reminders,
+)
 from app.services.webpush import WebPushResult
 
 
