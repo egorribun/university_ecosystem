@@ -303,7 +303,6 @@ export default function Messenger() {
     (chatId: string) => {
       markReadMutation.mutate(chatId)
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   )
 
