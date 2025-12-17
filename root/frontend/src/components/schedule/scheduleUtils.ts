@@ -174,8 +174,8 @@ export const toDayjs = (s?: string | null) => {
 }
 
 export function getTodayIdx(): number {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const iso = (dayjs() as any).isoWeekday?.() || dayjs().day()
+  const d = dayjs()
+  const iso = typeof d.isoWeekday === "function" ? d.isoWeekday() : d.day()
   if (iso === 7) return -1
   return (iso - 1) as 0 | 1 | 2 | 3 | 4 | 5
 }
