@@ -19,14 +19,14 @@ from app.models.models import (
 from app.services import notification_queue
 from app.services import notifications as notifications_module
 from app.services import webpush as webpush_module
-from app.services.notifications import core as notifications_core
-from app.services.notifications import delivery as notifications_delivery
 from app.services.notifications import (
     aggregate_notification_delivery_stats,
     create_notifications_for_users,
     is_user_in_quiet_hours,
     prepare_push_payload_for_user,
 )
+from app.services.notifications import core as notifications_core
+from app.services.notifications import delivery as notifications_delivery
 from app.services.webpush import WebPushResult
 
 

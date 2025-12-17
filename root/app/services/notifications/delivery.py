@@ -26,6 +26,7 @@ from app.models.models import (
     User,
 )
 from app.services import stats_cache
+from app.services import webpush as webpush_module
 from app.services.notifications.core import (
     _build_delivery_row,
     _coerce_optional_text,
@@ -34,7 +35,6 @@ from app.services.notifications.core import (
 from app.services.notifications.quiet_hours import prepare_push_payload_for_user
 from app.services.push_schema import ensure_push_subscription_schema
 from app.services.push_topics import normalize_topic, subscription_supports_topic
-from app.services import webpush as webpush_module
 from app.services.webpush import WebPushResult
 
 logger = logging.getLogger(__name__)
@@ -238,7 +238,9 @@ async def create_notifications_for_users(
                 subscription: PushSubscription, payload: Mapping[str, Any]
             ) -> WebPushResult:
                 # Use globals() to allow monkeypatching send_web_push for tests
-                _send_func = globals().get("send_web_push", webpush_module.send_web_push)
+                _send_func = globals().get(
+                    "send_web_push", webpush_module.send_web_push
+                )
                 if semaphore is None:
                     return await asyncio.to_thread(_send_func, subscription, payload)
                 async with semaphore:

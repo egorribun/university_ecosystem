@@ -76,4 +76,3 @@ __all__ = [
     # Stats
     "aggregate_notification_delivery_stats",
 ]
-
