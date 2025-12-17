@@ -1,9 +1,17 @@
 {
-  "title": "Messages",
-  "search": "Search messages...",
-  "selectChat": "Select a chat to start messaging",
-  "newChat": "New Chat",
-  "typeMessage": "Write a message...",
-  "online": "Online",
-  "offline": "Offline"
+  "title": "الرسائل",
+  "search": "بحث",
+  "searchMessages": "بحث في الرسائل...",
+  "selectChat": "اختر محادثة للبدء",
+  "newChat": "محادثة جديدة",
+  "typeMessage": "رسالة",
+  "searchUsers": "البحث عن مستخدمين",
+  "online": "متصل",
+  "offline": "غير متصل",
+  "attachPhoto": "صورة",
+  "attachDocument": "مستند",
+  "attachFile": "ملف",
+  "viewProfile": "عرض الملف الشخصي",
+  "clearChat": "مسح المحادثة",
+  "deleteChat": "حذف المحادثة"
 }

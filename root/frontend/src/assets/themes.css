@@ -148,6 +148,36 @@
   --ue-z-index-overlay: 2700;
   --ue-z-index-floating: 2800;
   --ue-z-index-toast: 3400;
+
+  /* Messenger — Telegram Style */
+  --msg-bubble-sent-start: #3390ec;
+  --msg-bubble-sent-end: #2b7cd3;
+  --msg-bubble-sent-shadow: rgba(51, 144, 236, 0.25);
+  --msg-bubble-received-bg: #ffffff;
+  --msg-bubble-received-border: rgba(0, 0, 0, 0.08);
+  --msg-bubble-received-shadow: rgba(0, 0, 0, 0.06);
+  --msg-sidebar-bg: #ffffff;
+  --msg-sidebar-hover: rgba(0, 0, 0, 0.04);
+  --msg-sidebar-active: #3390ec;
+  --msg-sidebar-active-text: #ffffff;
+  --msg-header-bg: rgba(255, 255, 255, 0.92);
+  --msg-header-border: rgba(0, 0, 0, 0.08);
+  --msg-input-bg: #f4f4f5;
+  --msg-input-border: rgba(0, 0, 0, 0.1);
+  --msg-input-focus-border: #3390ec;
+  --msg-online-color: #4fae4e;
+  --msg-online-pulse: rgba(79, 174, 78, 0.4);
+  --msg-unread-bg: #3390ec;
+  --msg-unread-text: #ffffff;
+  --msg-timestamp-sent: rgba(255, 255, 255, 0.7);
+  --msg-timestamp-received: rgba(0, 0, 0, 0.45);
+  --msg-typing-dot: #8d8e90;
+  --msg-attach-menu-bg: #ffffff;
+  --msg-attach-menu-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+  --msg-send-btn-bg: #3390ec;
+  --msg-send-btn-hover: #2b7cd3;
+  --msg-chat-bg: #e7ebee;
+  --msg-empty-icon: #adb5bd;
 }
 
 body.dark {
@@ -247,6 +277,36 @@ body.dark {
   --hint-fg: rgba(255, 255, 255, 0.7);
   --placeholder-fg: rgba(255, 255, 255, 0.58);
   --ue-focus-ring: 0 0 0 1px rgba(6, 11, 20, 0.92), 0 0 0 4px rgba(127, 182, 230, 0.45);
+
+  /* Messenger — Premium Blue (Dark) */
+  --msg-bubble-sent-start: #3a7bd5;
+  --msg-bubble-sent-end: #2b5797;
+  --msg-bubble-sent-shadow: rgba(58, 123, 213, 0.25);
+  --msg-bubble-received-bg: #0d1a2e;
+  --msg-bubble-received-border: rgba(127, 182, 230, 0.12);
+  --msg-bubble-received-shadow: rgba(0, 0, 0, 0.15);
+  --msg-sidebar-bg: #060b14;
+  --msg-sidebar-hover: rgba(127, 182, 230, 0.08);
+  --msg-sidebar-active: #3a7bd5;
+  --msg-sidebar-active-text: #ffffff;
+  --msg-header-bg: rgba(6, 11, 20, 0.95);
+  --msg-header-border: rgba(127, 182, 230, 0.12);
+  --msg-input-bg: #0d1a2e;
+  --msg-input-border: rgba(127, 182, 230, 0.15);
+  --msg-input-focus-border: #5294e2;
+  --msg-online-color: #4cd964;
+  --msg-online-pulse: rgba(76, 217, 100, 0.35);
+  --msg-unread-bg: #3a7bd5;
+  --msg-unread-text: #ffffff;
+  --msg-timestamp-sent: rgba(255, 255, 255, 0.65);
+  --msg-timestamp-received: rgba(148, 178, 214, 0.7);
+  --msg-typing-dot: #7fb6e6;
+  --msg-attach-menu-bg: #0d1a2e;
+  --msg-attach-menu-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+  --msg-send-btn-bg: #3a7bd5;
+  --msg-send-btn-hover: #5294e2;
+  --msg-chat-bg: #060b14;
+  --msg-empty-icon: #4a6b8a;
 }
 
 ::selection {

@@ -119,7 +119,8 @@ export default function NotificationsBell() {
         ref={buttonRef}
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          "relative p-2.5 rounded-xl transition-all duration-300 outline-none group",
+          "relative rounded-xl transition-all duration-300 outline-none group flex items-center justify-center",
+          "w-[clamp(24px,6vw,36px)] h-[clamp(24px,6vw,36px)]",
           isOpen
             ? "bg-white/10 text-white shadow-[0_0_20px_rgba(255,255,255,0.1)]"
             : "hover:bg-white/5 text-white/80 hover:text-white"
@@ -127,13 +128,16 @@ export default function NotificationsBell() {
         aria-label={t("system:notificationsBell.open")}
       >
         <Bell
-          className={cn("w-6 h-6 transition-transform duration-500", isOpen && "rotate-[-10deg]")}
+          className={cn(
+            "w-[clamp(16px,4vw,24px)] h-[clamp(16px,4vw,24px)] transition-transform duration-500",
+            isOpen && "rotate-[-10deg]"
+          )}
           strokeWidth={1.5}
         />
         {unreadCount ? (
-          <span className="absolute top-2 right-2 flex h-2.5 w-2.5">
+          <span className="absolute top-0 right-0 flex h-[clamp(6px,1.5vw,10px)] w-[clamp(6px,1.5vw,10px)]">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500 border-2 border-[#0F172A]"></span>
+            <span className="relative inline-flex rounded-full h-full w-full bg-red-500 border border-[#0F172A]"></span>
           </span>
         ) : null}
       </button>
@@ -160,15 +164,15 @@ export default function NotificationsBell() {
               ref={dropdownRef}
             >
               {/* Glass Container */}
-              <div className="bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden ring-1 ring-black/5">
+              <div className="bg-glass backdrop-blur-xl border border-glass-border rounded-2xl shadow-glass overflow-hidden ring-1 ring-black/5">
                 {/* Header */}
-                <div className="p-4 border-b border-white/5 flex items-center justify-between bg-white/5">
+                <div className="p-4 border-b border-glass-border flex items-center justify-between bg-surface/30">
                   <div className="flex items-center gap-2">
-                    <h3 className="font-semibold text-white tracking-tight">
+                    <h3 className="font-semibold text-page-foreground tracking-tight">
                       {t("system:notificationsBell.title")}
                     </h3>
                     {unreadCount > 0 && (
-                      <span className="bg-indigo-500/20 text-indigo-300 text-xs px-2 py-0.5 rounded-full font-medium border border-indigo-500/20">
+                      <span className="bg-indigo-500/20 text-indigo-500 dark:text-indigo-300 text-xs px-2 py-0.5 rounded-full font-medium border border-indigo-500/20">
                         {unreadCount} New
                       </span>
                     )}
@@ -178,10 +182,24 @@ export default function NotificationsBell() {
                     <button
                       onClick={() => markAll()}
                       disabled={actionsDisabled}
-                      className="p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+                      className="p-1.5 text-secondary hover:text-page-foreground hover:bg-slate-5 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
                       title={t("system:notificationsBell.markAll")}
                     >
-                      <CheckCheck className="w-4 h-4" />
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 16 16"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                        className="w-4 h-4"
+                      >
+                        <polyline
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          points="1,8 4,11 11,4"
+                        />
+                        <polyline strokeLinecap="round" strokeLinejoin="round" points="7,11 14,4" />
+                      </svg>
                     </button>
                     <button
                       onClick={() =>
@@ -190,7 +208,7 @@ export default function NotificationsBell() {
                         })
                       }
                       disabled={actionsDisabled}
-                      className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+                      className="p-1.5 text-secondary hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
                       title={t("system:notificationsBell.clear")}
                     >
                       <Trash2 className="w-4 h-4" />
@@ -202,13 +220,15 @@ export default function NotificationsBell() {
                 <div className="max-h-[80vh] sm:max-h-[60vh] overflow-y-auto custom-scrollbar">
                   {isError && !isRefetching ? (
                     <div className="p-8 text-center flex flex-col items-center gap-3">
-                      <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center text-red-400 mb-2">
+                      <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center text-red-500 mb-2">
                         <Info className="w-6 h-6" />
                       </div>
-                      <p className="text-sm text-red-300">{t("system:notificationsBell.error")}</p>
+                      <p className="text-sm text-red-500/80">
+                        {t("system:notificationsBell.error")}
+                      </p>
                       <button
                         onClick={() => refetch()}
-                        className="text-xs bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg transition-colors"
+                        className="text-xs bg-slate-10 hover:bg-slate-20 text-page-foreground px-3 py-1.5 rounded-lg transition-colors"
                       >
                         {t("system:errorBoundary.retry")}
                       </button>
@@ -218,8 +238,8 @@ export default function NotificationsBell() {
                       <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
                     </div>
                   ) : data.length === 0 ? (
-                    <div className="p-12 text-center text-slate-400 flex flex-col items-center gap-3">
-                      <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center mb-2">
+                    <div className="p-12 text-center text-secondary flex flex-col items-center gap-3">
+                      <div className="w-16 h-16 rounded-2xl bg-slate-5 flex items-center justify-center mb-2">
                         <Bell className="w-8 h-8 opacity-20" />
                       </div>
                       <p className="text-sm opacity-60 font-medium">
@@ -233,7 +253,7 @@ export default function NotificationsBell() {
                           key={n.id}
                           variants={itemVariants}
                           className={cn(
-                            "relative group border-b border-white/5 last:border-0 p-4 transition-all hover:bg-white/5",
+                            "relative group border-b border-glass-border last:border-0 p-4 transition-all hover:bg-slate-5",
                             !n.read ? "bg-indigo-500/5" : ""
                           )}
                         >
@@ -254,8 +274,8 @@ export default function NotificationsBell() {
                               className={cn(
                                 "w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-opacity",
                                 !n.read
-                                  ? "bg-indigo-500/10 text-indigo-400"
-                                  : "bg-white/5 text-slate-400"
+                                  ? "bg-indigo-500/10 text-indigo-500 dark:text-indigo-400"
+                                  : "bg-slate-10 text-secondary"
                               )}
                             >
                               {n.type === "chat.message" ? (
@@ -271,12 +291,12 @@ export default function NotificationsBell() {
                               <p
                                 className={cn(
                                   "text-sm font-medium leading-tight",
-                                  !n.read ? "text-white" : "text-slate-300"
+                                  !n.read ? "text-page-foreground" : "text-secondary"
                                 )}
                               >
                                 {n.title}
                               </p>
-                              <p className="text-xs text-slate-400 leading-relaxed text-pretty">
+                              <p className="text-xs text-secondary leading-relaxed text-pretty">
                                 {n.body}
                               </p>
                               {/* Timestamp if available could go here */}
@@ -291,7 +311,7 @@ export default function NotificationsBell() {
                                 e.stopPropagation()
                                 markRead(n.id)
                               }}
-                              className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-all p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 bg-slate-900/50 backdrop-blur-sm"
+                              className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-all p-1.5 rounded-lg text-secondary hover:text-page-foreground hover:bg-slate-10 bg-surface/50 backdrop-blur-sm"
                               title={t("system:notificationsBell.markRead")}
                             >
                               <CheckCheck className="w-3.5 h-3.5" />
@@ -301,16 +321,16 @@ export default function NotificationsBell() {
                       ))}
 
                       {hasMore && (
-                        <div className="p-3 border-t border-white/5 bg-white/[0.02]">
+                        <div className="p-3 border-t border-glass-border bg-slate-5/20">
                           {isFetchMoreError && (
-                            <p className="text-xs text-red-400 text-center mb-2">
+                            <p className="text-xs text-red-500 text-center mb-2">
                               {t("system:notificationsBell.loadMoreError")}
                             </p>
                           )}
                           <button
                             onClick={() => fetchMore(nextCursor)}
                             disabled={!nextCursor || isFetchingMore}
-                            className="w-full py-2 flex items-center justify-center gap-2 text-xs font-medium text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-all disabled:opacity-50"
+                            className="w-full py-2 flex items-center justify-center gap-2 text-xs font-medium text-secondary hover:text-page-foreground bg-slate-5 hover:bg-slate-10 rounded-lg transition-all disabled:opacity-50"
                           >
                             {isFetchingMore ? (
                               <>

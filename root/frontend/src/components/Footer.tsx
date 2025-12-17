@@ -9,7 +9,7 @@ import { useTranslation } from "react-i18next"
 export default function Footer() {
   const year = new Date().getFullYear()
   const location = useLocation()
-  const isAuthPage = ["/login", "/register", "/forgot-password"].some((p) =>
+  const isAuthPage = ["/login", "/register", "/forgot-password", "/messenger"].some((p) =>
     location.pathname.startsWith(p)
   )
   if (isAuthPage) return null
@@ -20,11 +20,7 @@ export default function Footer() {
       className="footer-root"
       role="contentinfo"
       style={{
-        minHeight: location.pathname.startsWith("/messenger") ? "400px" : "150px",
-        marginTop: location.pathname.startsWith("/messenger") ? "-64px" : undefined,
-        borderTop: location.pathname.startsWith("/messenger") ? "none" : undefined,
-        position: location.pathname.startsWith("/messenger") ? "relative" : undefined,
-        zIndex: location.pathname.startsWith("/messenger") ? 10 : undefined,
+        minHeight: "150px",
       }}
     >
       <div className="footer-inner">

@@ -1,9 +1,17 @@
 {
   "title": "Messages",
-  "search": "Search messages...",
+  "search": "Search",
+  "searchMessages": "Search messages...",
   "selectChat": "Select a chat to start messaging",
   "newChat": "New Chat",
-  "typeMessage": "Write a message...",
-  "online": "Online",
-  "offline": "Offline"
+  "typeMessage": "Message",
+  "searchUsers": "Search users",
+  "online": "online",
+  "offline": "offline",
+  "attachPhoto": "Photo",
+  "attachDocument": "Document",
+  "attachFile": "File",
+  "viewProfile": "View Profile",
+  "clearChat": "Clear Chat",
+  "deleteChat": "Delete Chat"
 }

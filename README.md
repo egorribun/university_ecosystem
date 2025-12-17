@@ -15,15 +15,26 @@ Unified platform for university life that delivers schedules, news, stories, eve
 ```
 .
 ├── docker-compose.yml         # Backend + frontend + PostgreSQL + Redis + worker
+├── docker-compose.prod.yml    # Production overlay
+├── Makefile / justfile        # Common dev tasks (lint, test, serve, etc.)
+├── start-dev.ps1              # Windows PowerShell quick-start script
 ├── docs/                      # Deployment, localization, and contributing guides
+│   └── observability/         # Grafana dashboard & Prometheus alerts JSON
+├── scripts/
+│   ├── loadtesting/           # k6 / Locust scenarios
+│   ├── audit_dependencies.py  # Dependency vulnerability checker
+│   └── enforce_secret_strength.py  # Secret strength validation
+├── security/                  # Security policies and checklists
 ├── root/
 │   ├── app/                   # FastAPI application, services, and workers
 │   ├── frontend/              # Vite + React single-page app
 │   ├── tests/                 # Backend test suite (pytest)
+│   ├── alembic/               # Database migrations
 │   ├── requirements*.txt      # Python dependencies
 │   ├── .env.example           # Reference environment configuration
-│   ├── alembic/               # Database migrations
-│   └── create_invite_code.py  # Utility for generating invite codes
+│   ├── create_invite_code.py  # Utility for generating invite codes
+│   └── create_test_user.py    # Utility for creating test user accounts
+├── .github/workflows/         # CI/CD pipelines (ci.yml, codeql.yml, container-security.yml, gitleaks.yml)
 └── SECURITY.md                # Security policy
 ```
 
@@ -32,7 +43,9 @@ Unified platform for university life that delivers schedules, news, stories, eve
 - [Deployment guide (Russian)](docs/DEPLOY.md)
 - [Deployment guide (English)](docs/DEPLOY.en.md)
 - [Localization guidelines](docs/LOCALIZATION.md)
+- [API versioning](docs/api_versioning.md)
 - [Manual MFA checklist](docs/manual-mfa-checklist.md)
+- [Observability (Grafana, Prometheus)](docs/observability/)
 - [Contributing](docs/CONTRIBUTING.md)
 
 ## Getting started
@@ -86,7 +99,17 @@ PostgreSQL (`127.0.0.1:5432`) and Redis (`127.0.0.1:6379`) bindings are scoped t
 
 Redis-backed cache and rate limiting are enabled by default in Compose via `CACHE_ENABLED=true`, `CACHE_REDIS_URL=redis://redis:6379/0`, `RATE_LIMIT_STORAGE_BACKEND=redis`, and `RATE_LIMIT_STORAGE_URI=redis://redis:6379/1`.
 
-### 4. Run services manually (alternative)
+### 4. Windows PowerShell quick-start
+
+For Windows developers, the `start-dev.ps1` script automates local setup:
+
+```powershell
+.\start-dev.ps1
+```
+
+This creates a Python virtual environment in `root/.venv`, installs dependencies, generates a minimal `.env`, and launches both the FastAPI backend (using SQLite) and Vite dev server in separate terminals. The frontend opens automatically at http://localhost:5173.
+
+### 5. Run services manually (alternative)
 
 #### Backend (FastAPI)
 

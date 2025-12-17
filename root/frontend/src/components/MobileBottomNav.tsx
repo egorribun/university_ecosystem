@@ -120,7 +120,9 @@ export default function MobileBottomNav() {
           </NavLink>
         ))}
       </nav>
-      <div className="bottom-nav-spacer" aria-hidden="true" />
+      {!pathname.startsWith("/messenger") && (
+        <div className="bottom-nav-spacer" aria-hidden="true" />
+      )}
     </>
   )
 }
