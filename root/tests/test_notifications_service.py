@@ -27,6 +27,8 @@ from app.services.notifications import (
 )
 from app.services.notifications import core as notifications_core
 from app.services.notifications import delivery as notifications_delivery
+from app.services.notifications import news_events as notifications_news_events
+from app.services.notifications import schedule_reminders as notifications_schedule_reminders
 from app.services.webpush import WebPushResult
 
 
@@ -280,7 +282,7 @@ async def test_generate_schedule_reminders_query_count_constant(
         return 0
 
     monkeypatch.setattr(
-        notifications_module,
+        notifications_schedule_reminders,
         "create_notifications_for_users",
         _fake_create,
     )
@@ -498,7 +500,7 @@ async def test_event_creation_enqueues_notifications(
         return 0
 
     monkeypatch.setattr(
-        notifications_module,
+        notifications_news_events,
         "create_notifications_for_users",
         _fake_create,
     )
@@ -546,7 +548,7 @@ async def test_news_creation_enqueues_notifications(
         return 0
 
     monkeypatch.setattr(
-        notifications_module,
+        notifications_news_events,
         "create_notifications_for_users",
         _fake_create,
     )
