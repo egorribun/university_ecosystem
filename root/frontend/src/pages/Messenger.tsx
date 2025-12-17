@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import {
   ContactList,
@@ -25,27 +25,76 @@ import type { User } from "@/types/User"
 import client from "@/api/client"
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
-import timezone from "dayjs/plugin/timezone"
 
 dayjs.extend(utc)
-dayjs.extend(timezone)
 
 const formatMessageTime = (dateString: string) => {
   if (!dateString) return ""
 
   // Fix: Remove microseconds which confuse the parser in some environments
   // 2025-12-16T01:53:34.310903Z -> 2025-12-16T01:53:34Z
-  const cleanDate = dateString.replace(/(\.\d+)(Z|[+\-]\d{2}:?\d{2})?$/, "$2")
+  const cleanDate = dateString.replace(/(\.\d+)(Z|[+-]\d{2}:?\d{2})?$/, "$2")
 
-  // Ensure we treat it as UTC
-  let parsed = dayjs.utc(cleanDate)
-  // If it had a timezone offset originally but we stripped it (unlikely with regex above), ensure we respect the string
-  if (/[Zz]|[+\-]\d\d:?\d\d$/.test(cleanDate)) {
-    parsed = dayjs(cleanDate)
-  }
+  // Parse as UTC and convert to local timezone
+  const parsed = dayjs.utc(cleanDate)
 
-  return parsed.tz("Europe/Moscow").format("HH:mm")
+  return parsed.local().format("HH:mm")
 }
+
+interface ConfirmDialogProps {
+  open: boolean
+  title: string
+  message: string
+  confirmText: string
+  cancelText: string
+  variant?: "danger" | "warning" | "default"
+  onConfirm: () => void
+  onCancel: () => void
+}
+
+function ConfirmDialog({
+  open,
+  title,
+  message,
+  confirmText,
+  cancelText,
+  variant = "default",
+  onConfirm,
+  onCancel,
+}: ConfirmDialogProps) {
+  if (!open) return null
+
+  const confirmButtonClasses =
+    variant === "danger"
+      ? "bg-red-500 hover:bg-red-600 text-white"
+      : variant === "warning"
+        ? "bg-yellow-500 hover:bg-yellow-600 text-white"
+        : "bg-blue-500 hover:bg-blue-600 text-white"
+
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4 border border-gray-200 dark:border-gray-800">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h3>
+        <p className="text-sm text-gray-600 dark:text-gray-400">{message}</p>
+        <div className="flex gap-3 justify-end pt-2">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          >
+            {cancelText}
+          </button>
+          <button
+            onClick={onConfirm}
+            className={`px-4 py-2 text-sm rounded-lg transition-colors ${confirmButtonClasses}`}
+          >
+            {confirmText}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Messenger() {
   const { t } = useTranslation(["messenger", "common"])
   const { user } = useAuth()
@@ -61,6 +110,13 @@ export default function Messenger() {
   const [isProfileLoading, setIsProfileLoading] = useState(false)
   const [profileError, setProfileError] = useState<string | null>(null)
   const [presenceMap, setPresenceMap] = useState<Record<number, PresenceStatus>>({})
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean
+    title: string
+    message: string
+    variant: "danger" | "warning" | "default"
+    onConfirm: () => void
+  } | null>(null)
 
   // WebSocket for real-time updates (uses cookie-based auth)
   const { isConnected, sendTyping, sendRead, getTypingUsersForChat } = useChatWebSocket({
@@ -180,11 +236,11 @@ export default function Messenger() {
           items: previousChats.items.map((chat) =>
             chat.id === chatId
               ? {
-                  ...chat,
-                  last_message: undefined,
-                  unread_count: 0,
-                  updated_at: new Date().toISOString(),
-                }
+                ...chat,
+                last_message: undefined,
+                unread_count: 0,
+                updated_at: new Date().toISOString(),
+              }
               : chat
           ),
         })
@@ -242,12 +298,21 @@ export default function Messenger() {
     },
   })
 
+  // Stable callback for marking messages as read
+  const markAsRead = useCallback(
+    (chatId: string) => {
+      markReadMutation.mutate(chatId)
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  )
+
   // Mark messages as read when opening a chat
   useEffect(() => {
     if (selectedChatId) {
-      markReadMutation.mutate(selectedChatId)
+      markAsRead(selectedChatId)
     }
-  }, [selectedChatId])
+  }, [selectedChatId, markAsRead])
 
   const activeChat = chats.find((c) => c.id === selectedChatId)
 
@@ -257,31 +322,38 @@ export default function Messenger() {
   }
 
   const handleSendMessage = (text: string, files: File[]) => {
-    console.log("Messenger handleSendMessage:", {
-      chatId: selectedChatId,
-      text,
-      filesCount: files.length,
-    })
     if (!selectedChatId) return
     sendMessageMutation.mutate({ chatId: selectedChatId, content: text, files })
   }
 
   const handleClearChat = () => {
     if (!selectedChatId) return
-    const confirmed = window.confirm(
-      t("messenger:confirmClear", "Clear chat history for everyone?")
-    )
-    if (!confirmed) return
-    clearChatMutation.mutate(selectedChatId)
+    const chatId = selectedChatId
+    setConfirmDialog({
+      open: true,
+      title: t("messenger:clearChatTitle", "Clear Chat"),
+      message: t("messenger:confirmClear", "Clear chat history for everyone?"),
+      variant: "warning",
+      onConfirm: () => {
+        clearChatMutation.mutate(chatId)
+        setConfirmDialog(null)
+      },
+    })
   }
 
   const handleDeleteChat = () => {
     if (!selectedChatId) return
-    const confirmed = window.confirm(
-      t("messenger:confirmDelete", "Delete this chat for all participants?")
-    )
-    if (!confirmed) return
-    deleteChatMutation.mutate(selectedChatId)
+    const chatId = selectedChatId
+    setConfirmDialog({
+      open: true,
+      title: t("messenger:deleteChatTitle", "Delete Chat"),
+      message: t("messenger:confirmDelete", "Delete this chat for all participants?"),
+      variant: "danger",
+      onConfirm: () => {
+        deleteChatMutation.mutate(chatId)
+        setConfirmDialog(null)
+      },
+    })
   }
 
   const handleViewProfile = () => {
@@ -333,9 +405,8 @@ export default function Messenger() {
     >
       {/* Sidebar */}
       <div
-        className={`${
-          showList ? "flex" : "hidden"
-        } w-full md:w-80 lg:w-96 flex-col border-r transition-all duration-300 h-full`}
+        className={`${showList ? "flex" : "hidden"
+          } w-full md:w-80 lg:w-96 flex-col border-r transition-all duration-300 h-full`}
         style={{
           background: "var(--msg-sidebar-bg)",
           borderColor: "var(--msg-header-border)",
@@ -735,6 +806,18 @@ export default function Messenger() {
           </div>
         </div>
       )}
+
+      {/* Custom Confirmation Dialog */}
+      <ConfirmDialog
+        open={confirmDialog?.open ?? false}
+        title={confirmDialog?.title ?? ""}
+        message={confirmDialog?.message ?? ""}
+        confirmText={t("common:confirm", "Confirm")}
+        cancelText={t("common:cancel", "Cancel")}
+        variant={confirmDialog?.variant}
+        onConfirm={confirmDialog?.onConfirm ?? (() => { })}
+        onCancel={() => setConfirmDialog(null)}
+      />
     </div>
   )
 }
