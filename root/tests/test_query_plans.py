@@ -32,7 +32,9 @@ async def analyze_query_plan(session: AsyncSession, query: str) -> dict:
         plan_details = [row[3] for row in rows]
         full_detail = " ".join(plan_details).upper()
 
-        uses_index = "USING INDEX" in full_detail or "USING COVERING INDEX" in full_detail
+        uses_index = (
+            "USING INDEX" in full_detail or "USING COVERING INDEX" in full_detail
+        )
         # In SQLite, "SCAN TABLE" without an index means a full table scan
         seq_scan = "SCAN TABLE" in full_detail and "USING INDEX" not in full_detail
 
