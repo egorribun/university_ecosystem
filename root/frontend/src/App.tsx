@@ -21,6 +21,8 @@ import { useTranslation } from "react-i18next"
 import { AppShellProvider } from "./contexts/AppShellContext"
 import { AdminRoute, PrivateRoute } from "./components/RouteGuards"
 import { prefetchRouteModules } from "./utils/prefetchRoutes"
+import { LiveRegionProvider } from "./components/LiveRegionProvider"
+import OfflineIndicator from "./components/OfflineIndicator"
 
 const routeModules = {
   PageTransition: () => import("./components/PageTransition"),
@@ -198,6 +200,7 @@ function AppContent() {
       {!hideNavbar && <Footer />}
       {!hideNavbar && <MobileBottomNav />}
       <LivePushToasts />
+      <OfflineIndicator />
       {!hideNavbar && <InstallPrompt />}
     </>
   )
@@ -223,17 +226,19 @@ function AppShell() {
       <a href="#main" className="skip-link">
         {t("skipToContent")}
       </a>
-      <AppShellProvider>
-        <AuthProvider>
-          <LocalizationProvider key={language} dateAdapter={AdapterDayjs} adapterLocale={language}>
-            <ErrorBoundary>
-              <Router future={routerFutureFlags}>
-                <AppContent />
-              </Router>
-            </ErrorBoundary>
-          </LocalizationProvider>
-        </AuthProvider>
-      </AppShellProvider>
+      <LiveRegionProvider>
+        <AppShellProvider>
+          <AuthProvider>
+            <LocalizationProvider key={language} dateAdapter={AdapterDayjs} adapterLocale={language}>
+              <ErrorBoundary>
+                <Router future={routerFutureFlags}>
+                  <AppContent />
+                </Router>
+              </ErrorBoundary>
+            </LocalizationProvider>
+          </AuthProvider>
+        </AppShellProvider>
+      </LiveRegionProvider>
     </>
   )
 }

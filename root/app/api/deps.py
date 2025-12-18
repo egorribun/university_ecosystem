@@ -88,6 +88,20 @@ async def get_current_user(
     return user
 
 
+async def get_current_admin_user(
+    request: Request,
+    user: Annotated[User, Depends(get_current_user)],
+) -> User:
+    """Dependency that ensures the current user is an admin."""
+    if user.role != "admin":
+        locale = resolve_locale(request=request)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=translate("errors.forbidden", locale=locale),
+        )
+    return user
+
+
 def _enforce_fresh_mfa(request: Request) -> None:
     session: ActiveSession | None = getattr(request.state, "active_session", None)
     locale = resolve_locale(request=request)

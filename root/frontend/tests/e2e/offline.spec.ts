@@ -141,4 +141,45 @@ test.describe("PWA offline support", () => {
       await context.setOffline(false)
     }
   })
+
+  test("shows offline indicator toast when connection is lost", async ({ page, context }) => {
+    const mock = await useMockApi(page)
+    await mock.login(page)
+
+    await ensureServiceWorkerIsReady(page)
+
+    await page.goto("/dashboard", { waitUntil: "networkidle" })
+
+    // Go offline and check for indicator
+    await context.setOffline(true)
+    try {
+      // Trigger the online/offline event
+      await page.evaluate(() => {
+        window.dispatchEvent(new Event("offline"))
+      })
+
+      // Wait for offline indicator to appear
+      const offlineToast = page.locator('[role="status"]').filter({
+        hasText: /offline|подключения/i,
+      })
+      await expect(offlineToast).toBeVisible({ timeout: 5000 })
+
+      // Go back online
+      await context.setOffline(false)
+      await page.evaluate(() => {
+        window.dispatchEvent(new Event("online"))
+      })
+
+      // Check for "Back online" message
+      const onlineToast = page.locator('[role="status"]').filter({
+        hasText: /online|восстановлено/i,
+      })
+      await expect(onlineToast).toBeVisible({ timeout: 5000 })
+
+      // Toast should auto-hide after a few seconds
+      await expect(onlineToast).not.toBeVisible({ timeout: 5000 })
+    } finally {
+      await context.setOffline(false)
+    }
+  })
 })

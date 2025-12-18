@@ -236,6 +236,7 @@ export default function AdminUsers() {
                       color="error"
                       onClick={() => handleDelete(user.id)}
                       sx={{ position: "absolute", top: 8, right: 8 }}
+                      aria-label={t("users.deleteUser", "Delete user")}
                     >
                       <DeleteIcon />
                     </IconButton>
@@ -309,7 +310,11 @@ export default function AdminUsers() {
                       </TableCell>
                       <TableCell align="center">
                         {user.id !== (userContext?.id ?? null) && (
-                          <IconButton color="error" onClick={() => handleDelete(user.id)}>
+                          <IconButton
+                            color="error"
+                            onClick={() => handleDelete(user.id)}
+                            aria-label={t("users.deleteUser", "Delete user")}
+                          >
                             <DeleteIcon />
                           </IconButton>
                         )}

@@ -1,4 +1,5 @@
-import React, { useRef, useEffect, useState } from "react"
+import React, { useRef, useEffect, useState, useCallback } from "react"
+import { useVirtualizer } from "@tanstack/react-virtual"
 import { useTranslation } from "react-i18next"
 import {
   Dialog,
@@ -87,9 +88,8 @@ export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, 
               onSelect(contact.id)
             }
           }}
-          className={`msg-contact-item flex items-center gap-3 p-3 mx-2 my-0.5 rounded-xl cursor-pointer ${
-            selectedId === contact.id ? "active" : ""
-          }`}
+          className={`msg-contact-item flex items-center gap-3 p-3 mx-2 my-0.5 rounded-xl cursor-pointer ${selectedId === contact.id ? "active" : ""
+            }`}
         >
           <div className="relative flex-shrink-0">
             <SmartImage
@@ -105,25 +105,22 @@ export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, 
           <div className="flex-1 min-w-0">
             <div className="flex justify-between items-center mb-0.5">
               <h3
-                className={`font-semibold text-[15px] truncate ${
-                  selectedId === contact.id ? "text-white" : "text-gray-900 dark:text-gray-100"
-                }`}
+                className={`font-semibold text-[15px] truncate ${selectedId === contact.id ? "text-white" : "text-gray-900 dark:text-gray-100"
+                  }`}
               >
                 {contact.name}
               </h3>
               <span
-                className={`text-xs flex-shrink-0 ml-2 ${
-                  selectedId === contact.id ? "text-white/70" : "text-gray-500 dark:text-gray-400"
-                }`}
+                className={`text-xs flex-shrink-0 ml-2 ${selectedId === contact.id ? "text-white/70" : "text-gray-500 dark:text-gray-400"
+                  }`}
               >
                 {contact.lastMessageTime}
               </span>
             </div>
             <div className="flex items-center gap-2">
               <p
-                className={`text-[14px] truncate flex-1 ${
-                  selectedId === contact.id ? "text-white/80" : "text-gray-500 dark:text-gray-400"
-                }`}
+                className={`text-[14px] truncate flex-1 ${selectedId === contact.id ? "text-white/80" : "text-gray-500 dark:text-gray-400"
+                  }`}
               >
                 {contact.lastMessage}
               </p>
@@ -145,128 +142,172 @@ interface ChatWindowProps {
 }
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
-  const bottomRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const [isAtBottom, setIsAtBottom] = useState(true)
 
+  const virtualizer = useVirtualizer({
+    count: messages.length,
+    getScrollElement: () => containerRef.current,
+    estimateSize: () => 80, // Estimated height for a message bubble
+    overscan: 5, // Render 5 extra items above/below viewport
+    getItemKey: (index) => messages[index].id,
+  })
+
+  // Auto-scroll to bottom when new messages arrive (if already at bottom)
   useEffect(() => {
-    if (containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight
+    if (isAtBottom && messages.length > 0) {
+      virtualizer.scrollToIndex(messages.length - 1, { align: "end" })
     }
-  }, [messages])
+  }, [messages.length, isAtBottom, virtualizer])
+
+  // Track if user is at bottom of scroll
+  const handleScroll = useCallback(() => {
+    if (!containerRef.current) return
+    const { scrollTop, scrollHeight, clientHeight } = containerRef.current
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100
+    setIsAtBottom(isNearBottom)
+  }, [])
+
+  // Scroll to bottom on initial mount
+  useEffect(() => {
+    if (messages.length > 0) {
+      virtualizer.scrollToIndex(messages.length - 1, { align: "end" })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <div
       ref={containerRef}
-      className="msg-chat-area flex-1 min-h-0 overflow-y-auto p-4 space-y-2 custom-scrollbar relative"
+      onScroll={handleScroll}
+      className="msg-chat-area flex-1 min-h-0 overflow-y-auto p-4 custom-scrollbar relative"
     >
-      <div className="relative z-0 space-y-1">
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex ${msg.isMe ? "justify-end md:justify-start" : "justify-start"}`}
-          >
+      <div
+        style={{
+          height: `${virtualizer.getTotalSize()}px`,
+          width: "100%",
+          position: "relative",
+        }}
+      >
+        {virtualizer.getVirtualItems().map((virtualRow) => {
+          const msg = messages[virtualRow.index]
+          return (
             <div
-              className={`max-w-[75%] md:max-w-[60%] px-3.5 py-2 text-[15px] relative ${
-                msg.isMe
-                  ? "msg-bubble-sent text-white rounded-2xl rounded-br-md"
-                  : "msg-bubble-received text-gray-900 dark:text-gray-100 rounded-2xl rounded-bl-md"
-              }`}
+              key={virtualRow.key}
+              data-index={virtualRow.index}
+              ref={virtualizer.measureElement}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                transform: `translateY(${virtualRow.start}px)`,
+              }}
             >
-              {msg.attachments && msg.attachments.length > 0 && (
-                <div className="mb-2 space-y-2">
-                  {msg.attachments.map((att) => (
-                    <div key={att.id}>
-                      {att.type === "image" ? (
-                        sanitizeUrl(att.url) ? (
-                          <img
-                            src={sanitizeUrl(att.url)!}
-                            alt={att.name}
-                            className="rounded-xl max-w-full h-auto max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                            onClick={() => {
-                              const safe = sanitizeUrl(att.url)
-                              if (safe) window.open(safe, "_blank", "noopener,noreferrer")
-                            }}
-                          />
-                        ) : null
-                      ) : sanitizeUrl(att.url) ? (
-                        <a
-                          href={sanitizeUrl(att.url)!}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={`flex items-center gap-2 p-2.5 rounded-xl ${
-                            msg.isMe
-                              ? "bg-white/20 hover:bg-white/30"
-                              : "bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
-                          } transition-colors`}
-                        >
+              <div
+                className={`flex py-0.5 ${msg.isMe ? "justify-end md:justify-start" : "justify-start"}`}
+              >
+                <div
+                  className={`max-w-[75%] md:max-w-[60%] px-3.5 py-2 text-[15px] relative ${msg.isMe
+                    ? "msg-bubble-sent text-white rounded-2xl rounded-br-md"
+                    : "msg-bubble-received text-gray-900 dark:text-gray-100 rounded-2xl rounded-bl-md"
+                    }`}
+                >
+                  {msg.attachments && msg.attachments.length > 0 && (
+                    <div className="mb-2 space-y-2">
+                      {msg.attachments.map((att) => (
+                        <div key={att.id}>
+                          {att.type === "image" ? (
+                            sanitizeUrl(att.url) ? (
+                              <img
+                                src={sanitizeUrl(att.url)!}
+                                alt={att.name}
+                                className="rounded-xl max-w-full h-auto max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                                onClick={() => {
+                                  const safe = sanitizeUrl(att.url)
+                                  if (safe) window.open(safe, "_blank", "noopener,noreferrer")
+                                }}
+                              />
+                            ) : null
+                          ) : sanitizeUrl(att.url) ? (
+                            <a
+                              href={sanitizeUrl(att.url)!}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={`flex items-center gap-2 p-2.5 rounded-xl ${msg.isMe
+                                ? "bg-white/20 hover:bg-white/30"
+                                : "bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
+                                } transition-colors`}
+                            >
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                strokeWidth={1.5}
+                                stroke="currentColor"
+                                className="w-5 h-5"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+                                />
+                              </svg>
+                              <span className="truncate max-w-[150px] text-sm">{att.name}</span>
+                            </a>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <p className="break-words leading-snug">{msg.text}</p>
+                  <div className="flex items-center justify-end gap-1 mt-1">
+                    <span
+                      className="text-[11px]"
+                      style={{
+                        color: msg.isMe ? "var(--msg-timestamp-sent)" : "var(--msg-timestamp-received)",
+                      }}
+                    >
+                      {msg.timestamp}
+                    </span>
+                    {msg.isMe && (
+                      <span style={{ color: "var(--msg-timestamp-sent)" }}>
+                        {msg.status === "read" ? (
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 16 16"
                             fill="none"
-                            viewBox="0 0 24 24"
-                            strokeWidth={1.5}
                             stroke="currentColor"
-                            className="w-5 h-5"
+                            strokeWidth={2}
+                            className="w-4 h-4"
                           >
-                            <path
+                            <polyline
                               strokeLinecap="round"
                               strokeLinejoin="round"
-                              d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+                              points="1,8 4,11 11,4"
                             />
+                            <polyline strokeLinecap="round" strokeLinejoin="round" points="7,11 14,4" />
                           </svg>
-                          <span className="truncate max-w-[150px] text-sm">{att.name}</span>
-                        </a>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              )}
-              <p className="break-words leading-snug">{msg.text}</p>
-              <div className="flex items-center justify-end gap-1 mt-1">
-                <span
-                  className="text-[11px]"
-                  style={{
-                    color: msg.isMe ? "var(--msg-timestamp-sent)" : "var(--msg-timestamp-received)",
-                  }}
-                >
-                  {msg.timestamp}
-                </span>
-                {msg.isMe && (
-                  <span style={{ color: "var(--msg-timestamp-sent)" }}>
-                    {msg.status === "read" ? (
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 16 16"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                        className="w-4 h-4"
-                      >
-                        <polyline
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          points="1,8 4,11 11,4"
-                        />
-                        <polyline strokeLinecap="round" strokeLinejoin="round" points="7,11 14,4" />
-                      </svg>
-                    ) : (
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth={2.5}
-                        className="w-4 h-4"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.5l5 5L19 8" />
-                      </svg>
+                        ) : (
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth={2.5}
+                            className="w-4 h-4"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.5l5 5L19 8" />
+                          </svg>
+                        )}
+                      </span>
                     )}
-                  </span>
-                )}
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
-        <div ref={bottomRef} />
+          )
+        })}
       </div>
     </div>
   )
@@ -564,7 +605,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
       <DialogTitle sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         {t("messenger:newChat", "New Chat")}
-        <IconButton onClick={onClose}>
+        <IconButton onClick={onClose} aria-label={t("common:close", "Close")}>
           <CloseIcon />
         </IconButton>
       </DialogTitle>

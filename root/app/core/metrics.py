@@ -176,6 +176,43 @@ _DB_HEALTH = (
     else None
 )
 
+# Connection pool metrics
+_DB_POOL_SIZE = (
+    Gauge("db_pool_size", "Database connection pool size", registry=REGISTRY)
+    if Gauge is not None
+    else None
+)
+
+_DB_POOL_CHECKEDOUT = (
+    Gauge(
+        "db_pool_checkedout",
+        "Number of connections currently checked out from the pool",
+        registry=REGISTRY,
+    )
+    if Gauge is not None
+    else None
+)
+
+_DB_POOL_OVERFLOW = (
+    Gauge(
+        "db_pool_overflow",
+        "Number of overflow connections beyond pool size",
+        registry=REGISTRY,
+    )
+    if Gauge is not None
+    else None
+)
+
+_DB_POOL_CHECKEDIN = (
+    Gauge(
+        "db_pool_checkedin",
+        "Number of connections currently available in the pool",
+        registry=REGISTRY,
+    )
+    if Gauge is not None
+    else None
+)
+
 _CPU_LOAD = (
     Gauge("cpu_load_percent", "CPU load percentage", registry=REGISTRY)
     if Gauge is not None
@@ -432,9 +469,45 @@ async def _record_cache_metrics() -> None:
             _REDIS_HEALTH.set(0)
 
 
+def _record_pool_metrics() -> None:
+    """Record connection pool statistics."""
+    try:
+        # Access the underlying sync pool from the async engine
+        sync_engine = engine.sync_engine
+        pool = sync_engine.pool
+
+        # Get pool status if available (QueuePool has these methods)
+        if hasattr(pool, "size"):
+            pool_size = pool.size()
+            if _DB_POOL_SIZE is not None:
+                _DB_POOL_SIZE.set(float(pool_size))
+
+        if hasattr(pool, "checkedout"):
+            checked_out = pool.checkedout()
+            if _DB_POOL_CHECKEDOUT is not None:
+                _DB_POOL_CHECKEDOUT.set(float(checked_out))
+
+        if hasattr(pool, "overflow"):
+            overflow = pool.overflow()
+            if _DB_POOL_OVERFLOW is not None:
+                _DB_POOL_OVERFLOW.set(float(overflow))
+
+        if hasattr(pool, "checkedin"):
+            checked_in = pool.checkedin()
+            if _DB_POOL_CHECKEDIN is not None:
+                _DB_POOL_CHECKEDIN.set(float(checked_in))
+
+    except Exception:  # pragma: no cover - defensive metrics guard
+        logger.debug("Failed to collect pool metrics", exc_info=True)
+
+
 async def _record_db_metrics() -> None:
     if _DB_HEALTH is None and _DB_OPERATION_DURATION is None:
         return
+
+    # Record pool metrics first
+    _record_pool_metrics()
+
     start = time.perf_counter()
     success = False
     try:
