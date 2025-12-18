@@ -31,14 +31,22 @@ async def test_otel_span_generation():
         ):
             engine = create_async_engine("sqlite+aiosqlite:///:memory:")
             tracer_provider = _configure_otel(engine)
+            # Ensure it's not the NoOp provider from global state
+            from opentelemetry.sdk.trace import TracerProvider as SDKTracerProvider
+            assert isinstance(tracer_provider, SDKTracerProvider)
 
-            assert tracer_provider is not None
-
-            # Get a tracer and start a span
-            tracer = tracer_provider.get_tracer(__name__)
-            with tracer.start_as_current_span("test-span") as span:
-                assert span.is_recording()
-                span.set_attribute("test.attr", "value")
+            # Clear any existing context to avoid ParentBased sampler dropping the span
+            from opentelemetry.context import attach, Context
+            token = attach(Context())
+            try:
+                # Get a tracer and start a span
+                tracer = tracer_provider.get_tracer(__name__)
+                with tracer.start_as_current_span("test-span") as span:
+                    assert span.is_recording()
+                    span.set_attribute("test.attr", "value")
+            finally:
+                from opentelemetry.context import detach
+                detach(token)
 
             await engine.dispose()
 
