@@ -70,10 +70,9 @@ def optimize_image(
                 resample = _resolve_resample_filter()
                 img.thumbnail((max_w, max_h), resample=resample)
 
-            has_alpha = "A" in img.getbands()
-
             buffer = BytesIO()
-            # Prefer WebP for all images if possible, otherwise use PNG for alpha transparency if WebP is not desired
+            # Prefer WebP for all images if possible, otherwise use PNG
+            # for alpha transparency if WebP is not desired.
             # But WebP supports alpha, so we can use it for everything.
             img.save(buffer, format="WEBP", method=6, quality=85, lossless=False)
             mime = "image/webp"
