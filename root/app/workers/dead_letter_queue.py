@@ -29,11 +29,10 @@ from sqlalchemy import (
     select,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import declarative_base
+
+from app.core.database import Base
 
 logger = logging.getLogger(__name__)
-
-Base = declarative_base()
 
 
 class JobStatus(str, Enum):

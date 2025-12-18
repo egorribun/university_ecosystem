@@ -118,8 +118,9 @@ class TestCriticalQueryPlans:
     async def test_chat_messages_uses_index(self):
         """Verify that chat messages lookup uses chat_id index."""
         async with async_session() as session:
+            # Use actual table name 'messages'
             query = (
-                "SELECT * FROM chat_messages WHERE chat_id = 1 "
+                "SELECT * FROM messages WHERE chat_id = 'test-chat' "
                 "ORDER BY created_at DESC LIMIT 50"
             )
             plan = await analyze_query_plan(session, query)
@@ -141,23 +142,24 @@ class TestCriticalQueryPlans:
             plan = await analyze_query_plan(session, query)
 
             # Should either use index or be efficient on small table
-            assert (
-                plan["estimated_cost"] < 500
-            ), f"Active events query cost too high: {plan['estimated_cost']}"
+            assert plan["estimated_cost"] < 500, (
+                f"Active events query cost too high: {plan['estimated_cost']}"
+            )
 
     async def test_schedule_by_group_uses_index(self):
         """Verify that schedule lookup by group uses an index."""
         async with async_session() as session:
+            # Use actual table name 'schedule' and column 'start_time'
             query = """
-                SELECT * FROM schedule_entries 
+                SELECT * FROM schedule 
                 WHERE group_id = 1 
-                AND date BETWEEN '2024-01-01' AND '2024-01-07'
+                AND start_time BETWEEN '2024-01-01' AND '2024-01-07'
             """
             plan = await analyze_query_plan(session, query)
 
-            assert (
-                plan["estimated_cost"] < 500 or plan["uses_index"]
-            ), f"Schedule query should be efficient, cost: {plan['estimated_cost']}"
+            assert plan["estimated_cost"] < 500 or plan["uses_index"], (
+                f"Schedule query should be efficient, cost: {plan['estimated_cost']}"
+            )
 
 
 class TestQueryPlanHelpers:

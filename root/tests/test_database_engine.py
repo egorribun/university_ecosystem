@@ -176,3 +176,17 @@ async def test_wait_db_logs_final_error_and_raises_cause(monkeypatch, caplog):
         and "transient outage" in record.getMessage()
         for record in error_logs
     )
+
+
+def test_after_cursor_execute_handles_no_start_time():
+    """Verify that _after_cursor_execute handles missing start time gracefully."""
+    from app.core.database import _after_cursor_execute, _query_start_time
+
+    # Ensure start time is None
+    token = _query_start_time.set(None)
+    try:
+        # Should return early without error
+        _after_cursor_execute(None, None, "SELECT 1", None, None, False)
+        assert _query_start_time.get() is None
+    finally:
+        _query_start_time.reset(token)
