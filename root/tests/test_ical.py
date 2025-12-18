@@ -3,8 +3,6 @@
 from datetime import UTC, datetime, time, timedelta
 from unittest.mock import MagicMock
 
-import pytest
-
 from app.services.ical import (
     _escape,
     _format_dt,
@@ -141,7 +139,7 @@ class TestGenerateScheduleIcs:
     def test_generate_empty_schedule(self):
         group = self._make_mock_group()
         result = generate_schedule_ics(group, [], weeks=1)
-        
+
         assert "BEGIN:VCALENDAR" in result
         assert "END:VCALENDAR" in result
         assert "VERSION:2.0" in result
@@ -151,9 +149,9 @@ class TestGenerateScheduleIcs:
     def test_generate_single_lesson(self):
         group = self._make_mock_group("CS-101")
         lesson = self._make_mock_lesson(subject="Programming", room="A305")
-        
+
         result = generate_schedule_ics(group, [lesson], weeks=1, locale="en")
-        
+
         assert "BEGIN:VCALENDAR" in result
         assert "BEGIN:VEVENT" in result
         assert "SUMMARY:" in result
@@ -166,24 +164,24 @@ class TestGenerateScheduleIcs:
             self._make_mock_lesson(lesson_id=1, subject="Math", weekday="Monday"),
             self._make_mock_lesson(lesson_id=2, subject="Physics", weekday="Tuesday"),
         ]
-        
+
         result = generate_schedule_ics(group, lessons, weeks=1)
-        
-        # Count VEVENT occurrences 
+
+        # Count VEVENT occurrences
         event_count = result.count("BEGIN:VEVENT")
         assert event_count >= 1
 
     def test_ics_format_crlf_endings(self):
         group = self._make_mock_group()
         result = generate_schedule_ics(group, [], weeks=1)
-        
+
         # ICS spec requires CRLF line endings
         assert result.endswith("\r\n")
 
     def test_lesson_with_odd_parity(self):
         group = self._make_mock_group()
         lesson = self._make_mock_lesson(parity="odd")
-        
+
         result = generate_schedule_ics(group, [lesson], weeks=4)
-        
+
         assert "BEGIN:VCALENDAR" in result

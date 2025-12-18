@@ -3,8 +3,6 @@
 from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
-import pytest
-
 from app.auth.fingerprint import (
     SessionFingerprint,
     SuspiciousActivityDetector,
@@ -28,7 +26,7 @@ class TestSessionFingerprint:
         )
         fp2 = SessionFingerprint(
             user_agent="Chrome/120",
-            accept_language="en-US", 
+            accept_language="en-US",
             ip_address="192.168.1.1",
             fingerprint_hash="abc123",
         )
@@ -143,7 +141,7 @@ class TestGetClientIp:
         request.headers.get.side_effect = lambda key, default="": {
             "x-forwarded-for": "1.2.3.4, 5.6.7.8",
         }.get(key, default)
-        
+
         result = _get_client_ip(request)
         assert result == "1.2.3.4"
 
@@ -152,7 +150,7 @@ class TestGetClientIp:
         request.headers.get.side_effect = lambda key, default="": {
             "x-real-ip": "1.2.3.4",
         }.get(key, default)
-        
+
         result = _get_client_ip(request)
         assert result == "1.2.3.4"
 
@@ -160,7 +158,7 @@ class TestGetClientIp:
         request = MagicMock()
         request.headers.get.return_value = None
         request.client.host = "127.0.0.1"
-        
+
         result = _get_client_ip(request)
         assert result == "127.0.0.1"
 
@@ -168,7 +166,7 @@ class TestGetClientIp:
         request = MagicMock()
         request.headers.get.return_value = None
         request.client = None
-        
+
         result = _get_client_ip(request)
         assert result == "unknown"
 
@@ -206,9 +204,9 @@ class TestExtractFingerprint:
             "accept-language": "en-US,en;q=0.9",
         }.get(key, default)
         request.client.host = "192.168.1.1"
-        
+
         fp = extract_fingerprint(request)
-        
+
         assert fp.user_agent == "Mozilla/5.0 Chrome/120"
         assert fp.accept_language == "en-US,en;q=0.9"
         assert fp.ip_address == "192.168.1.1"
@@ -227,9 +225,9 @@ class TestSuspiciousActivityEvent:
             timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
             severity="high",
         )
-        
+
         record = event.to_log_record()
-        
+
         assert record["event"] == "suspicious_activity"
         assert record["user_id"] == 42
         assert record["session_id"] == 100
@@ -249,7 +247,7 @@ class TestSuspiciousActivityDetector:
             ip_address="1.2.3.4",
             fingerprint_hash="abc",
         )
-        
+
         result = detector.check_fingerprint_mismatch(1, 1, fp, fp)
         assert result is None
 
@@ -267,16 +265,16 @@ class TestSuspiciousActivityDetector:
             ip_address="1.2.3.4",
             fingerprint_hash="def",
         )
-        
+
         result = detector.check_fingerprint_mismatch(1, 1, fp1, fp2)
-        
+
         assert result is not None
         assert result.severity == "high"
         assert result.event_type == "fingerprint_mismatch"
 
     def test_check_rapid_location_change_same_ip(self):
         detector = SuspiciousActivityDetector()
-        
+
         result = detector.check_rapid_location_change(
             user_id=1,
             session_id=1,
@@ -288,7 +286,7 @@ class TestSuspiciousActivityDetector:
 
     def test_check_rapid_location_change_slow_change(self):
         detector = SuspiciousActivityDetector()
-        
+
         result = detector.check_rapid_location_change(
             user_id=1,
             session_id=1,
@@ -300,7 +298,7 @@ class TestSuspiciousActivityDetector:
 
     def test_check_rapid_location_change_detected(self):
         detector = SuspiciousActivityDetector()
-        
+
         result = detector.check_rapid_location_change(
             user_id=1,
             session_id=1,
@@ -308,7 +306,7 @@ class TestSuspiciousActivityDetector:
             current_ip="5.6.7.8",
             time_elapsed_seconds=30,  # Less than 60 seconds
         )
-        
+
         assert result is not None
         assert result.event_type == "rapid_ip_change"
         assert result.severity == "medium"
@@ -317,13 +315,13 @@ class TestSuspiciousActivityDetector:
         detector = SuspiciousActivityDetector()
         fp1 = SessionFingerprint("A", "en", "1.1.1.1", "h1")
         fp2 = SessionFingerprint("B", "en", "1.1.1.1", "h2")
-        
+
         detector.check_fingerprint_mismatch(1, 1, fp1, fp2)
         detector.check_rapid_location_change(2, 2, "1.1.1.1", "2.2.2.2", 10)
-        
+
         all_events = detector.get_recent_events()
         assert len(all_events) == 2
-        
+
         user_1_events = detector.get_recent_events(user_id=1)
         assert len(user_1_events) == 1
 
@@ -331,10 +329,10 @@ class TestSuspiciousActivityDetector:
         detector = SuspiciousActivityDetector()
         fp1 = SessionFingerprint("A", "en", "1.1.1.1", "h1")
         fp2 = SessionFingerprint("B", "en", "1.1.1.1", "h2")
-        
+
         for i in range(10):
             detector.check_fingerprint_mismatch(i, i, fp1, fp2)
-        
+
         events = detector.get_recent_events(limit=5)
         assert len(events) == 5
 
