@@ -8,6 +8,12 @@ from app.core.observability import _configure_otel
 
 @pytest.mark.anyio
 async def test_otel_span_generation():
+    # Force reset global state for testing
+    import app.core.observability
+
+    app.core.observability._otel_configured = False
+    app.core.observability._sqlalchemy_instrumented = False
+
     # Mock settings to enable OTel
     with patch("app.core.observability.settings") as mock_settings:
         mock_settings.enable_otel = True
