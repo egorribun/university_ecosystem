@@ -16,14 +16,35 @@ pytestmark = pytest.mark.asyncio
 
 async def analyze_query_plan(session: AsyncSession, query: str) -> dict:
     """
-    Analyze a query's execution plan using EXPLAIN ANALYZE.
-
-    Returns a dict with:
-    - plan: The raw plan output
-    - uses_index: Whether the query uses an index
-    - seq_scan: Whether the query does a sequential scan
-    - estimated_cost: The estimated query cost
+    Analyze a query's execution plan.
+    Supports both PostgreSQL (JSON format) and SQLite (text format).
     """
+    # Detect dialect
+    bind = session.get_bind()
+    dialect_name = bind.dialect.name if bind else "sqlite"
+
+    if dialect_name == "sqlite":
+        explain_query = f"EXPLAIN QUERY PLAN {query}"
+        result = await session.execute(text(explain_query))
+        rows = result.fetchall()
+
+        # SQLite output format: (id, parent, notused, detail)
+        plan_details = [row[3] for row in rows]
+        full_detail = " ".join(plan_details).upper()
+
+        uses_index = "USING INDEX" in full_detail or "USING COVERING INDEX" in full_detail
+        # In SQLite, "SCAN TABLE" without an index means a full table scan
+        seq_scan = "SCAN TABLE" in full_detail and "USING INDEX" not in full_detail
+
+        return {
+            "plan": plan_details,
+            "uses_index": uses_index,
+            "seq_scan": seq_scan,
+            "node_type": "SCAN" if seq_scan else ("SEARCH" if uses_index else "OTHER"),
+            "estimated_cost": 0.0,  # SQLite doesn't provide cost in this format
+        }
+
+    # PostgreSQL path
     explain_query = f"EXPLAIN (ANALYZE, COSTS, FORMAT JSON) {query}"
     result = await session.execute(text(explain_query))
     rows = result.fetchall()

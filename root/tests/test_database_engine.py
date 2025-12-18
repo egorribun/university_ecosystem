@@ -35,7 +35,8 @@ async def test_create_session_factory_uses_null_pool_for_development(monkeypatch
     def fake_create_async_engine(url: str, **kwargs):
         captured["url"] = url
         captured["engine_kwargs"] = kwargs
-        return "engine"
+        # Mock engine needs sync_engine for slow query logging setup
+        return SimpleNamespace(sync_engine=SimpleNamespace())
 
     def fake_sessionmaker(engine, **kwargs):
         captured["engine"] = engine
@@ -46,6 +47,8 @@ async def test_create_session_factory_uses_null_pool_for_development(monkeypatch
         database_module, "create_async_engine", fake_create_async_engine
     )
     monkeypatch.setattr(database_module, "async_sessionmaker", fake_sessionmaker)
+    # Avoid failures in _setup_slow_query_logging which is called during factory creation
+    monkeypatch.setattr(database_module.event, "listen", lambda *args, **kwargs: None)
 
     stub_settings = SimpleNamespace(
         database_url="sqlite+aiosqlite:///./local.db",
@@ -58,7 +61,7 @@ async def test_create_session_factory_uses_null_pool_for_development(monkeypatch
 
     engine, session_factory = database_module.create_session_factory(stub_settings)
 
-    assert engine == "engine"
+    assert hasattr(engine, "sync_engine")
     assert session_factory == "session"
     assert captured["url"] == "sqlite+aiosqlite:///./local.db"
     engine_kwargs = captured["engine_kwargs"]
@@ -69,7 +72,7 @@ async def test_create_session_factory_uses_null_pool_for_development(monkeypatch
     assert "max_overflow" not in engine_kwargs
     assert "pool_timeout" not in engine_kwargs
     assert "pool_recycle" not in engine_kwargs
-    assert captured["engine"] == "engine"
+    assert captured["engine"] == engine
     assert captured["session_kwargs"] == {
         "expire_on_commit": False,
         "class_": database_module.AsyncSession,
