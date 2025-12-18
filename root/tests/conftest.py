@@ -56,6 +56,9 @@ os.environ.setdefault("RATE_LIMIT_STORAGE_URI", "redis://test")
 os.environ.setdefault("ATTENDANCE_TOKEN_SECRET", "attendance-test-secret")
 os.environ.setdefault("INTERNAL_AUTH_TOKEN", "test-internal-token")
 os.environ.setdefault("INTERNAL_ALLOWED_IPS", "127.0.0.1,::1,testserver")
+os.environ.setdefault("CACHE_ENABLED", "false")
+os.environ.setdefault("ENABLE_OTEL", "false")
+os.environ.setdefault("SESSION_STORAGE_BACKEND", "db")
 Path(os.environ.get("STATIC_DIR", "app/test-static")).mkdir(parents=True, exist_ok=True)
 
 try:

@@ -7,6 +7,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.redis_session import get_session_backend
 from app.core.config import settings
 from app.localization import translate
 from app.models.models import ActiveSession
@@ -162,6 +163,18 @@ async def create_access_token(
         db.add(session)
         await db.commit()
         await db.refresh(session)
+
+        # Register in Redis session backend if enabled
+        session_backend = await get_session_backend()
+        await session_backend.register_session(
+            user_id=user_id,
+            jti=jti,
+            expires_at=expires_at,
+            metadata={
+                "ip_address": session.ip_address,
+                "user_agent": session.user_agent,
+            }
+        )
         return token, session
     return token
 

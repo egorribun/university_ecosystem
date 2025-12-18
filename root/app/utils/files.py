@@ -69,7 +69,7 @@ async def _prepare_local_storage(backend: StorageBackend, subdir: str) -> None:
         await asyncio.to_thread(_ensure_dir, target)
 
 
-ALLOWED_IMAGE_TYPES: Final[set[str]] = {"image/jpeg", "image/png", "image/webp"}
+ALLOWED_IMAGE_TYPES: Final[set[str]] = {"image/jpeg", "image/png", "image/webp", "image/svg+xml"}
 MAX_IMAGE_SIZE: Final[int] = 5 * 1024 * 1024
 
 _PREFIX_CLEAN_RE = re.compile(r"[^A-Za-z0-9._-]+")
@@ -77,6 +77,7 @@ _PREFERRED_EXTENSIONS: Final[dict[str, str]] = {
     "image/jpeg": ".jpg",
     "image/png": ".png",
     "image/webp": ".webp",
+    "image/svg+xml": ".svg",
 }
 
 try:  # pragma: no cover - exercised indirectly via detect_mime_type
@@ -112,6 +113,9 @@ def _detect_image_mime(data: bytes) -> str | None:
         return "image/png"
     if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
         return "image/webp"
+    # Basic SVG detection
+    if data.lstrip().startswith(b"<svg") or b"<svg" in data[:1024].lower():
+        return "image/svg+xml"
     return None
 
 
@@ -269,11 +273,12 @@ async def save_image(
             data,
             max_width=getattr(settings, "image_max_width", 0),
             max_height=getattr(settings, "image_max_height", 0),
+            content_type=detected_type,
         )
-    except ValueError:
+    except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail=translate("errors.files.unsupported_type", locale=locale),
+            detail=str(exc) if str(exc) else translate("errors.files.unsupported_type", locale=locale),
         ) from None
 
     ext = _PREFERRED_EXTENSIONS.get(optimized_type) or _ext_from_mime(optimized_type)
@@ -282,8 +287,10 @@ async def save_image(
     backend = _get_storage_backend()
     await _prepare_local_storage(backend, sanitized_subdir)
     relative_path = f"{sanitized_subdir}/{name}" if sanitized_subdir else name
+    # Use aggressive caching for all optimized images
+    cache_control = "public, max-age=31536000, immutable"
     return await backend.save_file(
-        relative_path, optimized_data, content_type=optimized_type
+        relative_path, optimized_data, content_type=optimized_type, cache_control=cache_control
     )
 
 
@@ -445,8 +452,10 @@ async def save_attachment(
     backend = _get_storage_backend()
     await _prepare_local_storage(backend, sanitized_subdir)
     relative_path = f"{sanitized_subdir}/{name}" if sanitized_subdir else name
+    # Use aggressive caching for attachments as well
+    cache_control = "public, max-age=31536000, immutable"
     url = await backend.save_file(
-        relative_path, data, content_type=declared_type or detected_type
+        relative_path, data, content_type=declared_type or detected_type, cache_control=cache_control
     )
     if return_meta:
         return {
