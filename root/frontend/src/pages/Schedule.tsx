@@ -29,235 +29,40 @@ import { useTranslation } from "react-i18next"
 import { getLocaleForLanguage, useLanguage } from "@/contexts/LanguageContext"
 import { Button, Badge, ProgressBar, Tooltip } from "@/components/ui"
 import Dialog from "@/components/Dialog"
+import Snackbar from "@/components/ui/Snackbar"
 import { cn } from "@/utils/cn"
+import {
+  type Lesson,
+  type LessonParity,
+  type AddLessonFields,
+  type ScheduleGroup,
+  type LessonTypeConfig,
+  type WeekdayConfig,
+  type StorageReadResult,
+  scheduleGroupsQueryKey,
+  scheduleQueryKey,
+  type ScheduleGroupsQueryKey,
+  type InactiveScheduleQueryKey,
+  type ActiveScheduleQueryKey,
+  groupsStorageKey,
+  scheduleStorageKey,
+  GROUPS_STORAGE_TTL_MS,
+  SCHEDULE_STORAGE_TTL_MS,
+  readFromStorage,
+  writeToStorage,
+  getTimeStr,
+  getEndTimeStr,
+  parseMinutes,
+  minutesDiff,
+  buildTable,
+  getTodayIdx,
+  toDayjs,
+  defaultLessonTypeColor,
+  minimalLessonTypeFallback,
+  minimalWeekdayFallback,
+} from "@/components/schedule/scheduleUtils"
 
 dayjs.extend(isoWeek)
-
-const scheduleGroupsQueryKey = ["schedule", "groups"] as const
-const scheduleQueryKey = (groupId: number) => ["schedule", "group", groupId] as const
-type ScheduleGroupsQueryKey = typeof scheduleGroupsQueryKey
-type InactiveScheduleQueryKey = readonly ["schedule", "group", "none"]
-type ActiveScheduleQueryKey = ReturnType<typeof scheduleQueryKey>
-
-const groupsStorageKey = "sched:groups"
-const scheduleStorageKey = (groupId: number) => `sched:${groupId}`
-
-const STORAGE_SCHEMA_VERSION = 1
-const GROUPS_STORAGE_TTL_MS = 5 * 60_000
-const SCHEDULE_STORAGE_TTL_MS = 5 * 60_000
-
-type StoredPayload<T> = {
-  version: number
-  timestamp: number
-  data: T
-}
-
-type StorageReadResult<T> = {
-  value: T
-  timestamp: number
-}
-
-type StorageReadOptions = {
-  maxAgeMs?: number
-  version?: number
-}
-
-type StorageWriteOptions = {
-  version?: number
-}
-
-const readFromStorage = <T,>(
-  key: string,
-  { maxAgeMs = SCHEDULE_STORAGE_TTL_MS, version = STORAGE_SCHEMA_VERSION }: StorageReadOptions = {}
-): StorageReadResult<T> | undefined => {
-  if (typeof window === "undefined") return undefined
-  try {
-    const raw = window.localStorage.getItem(key)
-    if (!raw) return undefined
-    const parsed = JSON.parse(raw) as Partial<StoredPayload<T>> | null
-    if (!parsed || typeof parsed !== "object") return undefined
-    if (parsed.version !== version) {
-      window.localStorage.removeItem(key)
-      return undefined
-    }
-    const ts = typeof parsed.timestamp === "number" ? parsed.timestamp : NaN
-    if (!Number.isFinite(ts)) {
-      window.localStorage.removeItem(key)
-      return undefined
-    }
-    if (Date.now() - ts > maxAgeMs) {
-      window.localStorage.removeItem(key)
-      return undefined
-    }
-    if (!("data" in parsed)) return undefined
-    return { value: parsed.data as T, timestamp: ts }
-  } catch {
-    return undefined
-  }
-}
-
-const writeToStorage = <T,>(
-  key: string,
-  value: T,
-  { version = STORAGE_SCHEMA_VERSION }: StorageWriteOptions = {}
-) => {
-  if (typeof window === "undefined") return
-  try {
-    const payload: StoredPayload<T> = {
-      version,
-      timestamp: Date.now(),
-      data: value,
-    }
-    window.localStorage.setItem(key, JSON.stringify(payload))
-  } catch {
-    /* noop */
-  }
-}
-
-type LessonParity = "odd" | "even" | "both"
-type LessonWeekday = string
-
-type Lesson = {
-  id: number
-  weekday: LessonWeekday
-  parity: LessonParity
-  start_time: string | null
-  end_time: string | null
-  subject?: string | null
-  teacher?: string | null
-  room?: string | null
-  lesson_type?: string | null
-  group_id?: number | null
-}
-
-type AddLessonFields = {
-  subject: string
-  teacher: string
-  room: string
-  lessonType: string
-  startTime: string
-  endTime: string
-  parity: LessonParity
-}
-
-type ScheduleGroup = {
-  id: number
-  name: string
-  [key: string]: unknown
-}
-
-type LessonTypeConfig = {
-  id: string
-  backend: string[]
-  label: string
-  color: string
-}
-
-type WeekdayConfig = {
-  id: string
-  backend: string[]
-  long: string
-  short: string
-}
-
-const defaultLessonTypeColor = "#888"
-
-const minimalLessonTypeFallback: LessonTypeConfig = {
-  id: "lesson",
-  backend: ["lesson"],
-  label: "Lesson",
-  color: defaultLessonTypeColor,
-}
-
-const minimalWeekdayFallback: WeekdayConfig[] = [
-  { id: "mon", backend: ["Monday"], long: "Monday", short: "Mon" },
-  { id: "tue", backend: ["Tuesday"], long: "Tuesday", short: "Tue" },
-  { id: "wed", backend: ["Wednesday"], long: "Wednesday", short: "Wed" },
-  { id: "thu", backend: ["Thursday"], long: "Thursday", short: "Thu" },
-  { id: "fri", backend: ["Friday"], long: "Friday", short: "Fri" },
-  { id: "sat", backend: ["Saturday"], long: "Saturday", short: "Sat" },
-]
-
-function getTimeStr(lesson: Lesson) {
-  if (!lesson?.start_time) return ""
-  if (lesson.start_time.length >= 16 && lesson.start_time[10] === "T")
-    return lesson.start_time.slice(11, 16)
-  return lesson.start_time.slice(0, 5)
-}
-
-function getEndTimeStr(lesson: Lesson) {
-  if (!lesson?.end_time) return ""
-  if (lesson.end_time.length >= 16 && lesson.end_time[10] === "T")
-    return lesson.end_time.slice(11, 16)
-  return lesson.end_time.slice(0, 5)
-}
-
-function parseMinutes(s?: string | null) {
-  if (!s) return null
-  const hhmm = s.length >= 16 && s[10] === "T" ? s.slice(11, 16) : s.slice(0, 5)
-  const [h, m] = hhmm.split(":").map(Number)
-  if (Number.isNaN(h) || Number.isNaN(m)) return null
-  return h * 60 + m
-}
-
-function buildTable(schedule: Lesson[], weekdayOrder: readonly string[]) {
-  const lessonsByDay = weekdayOrder.map((day) =>
-    schedule
-      .filter((l) => l.weekday === day)
-      .sort((a, b) => getTimeStr(a).localeCompare(getTimeStr(b)))
-  )
-  const maxLessons = Math.max(...lessonsByDay.map((arr) => arr.length), 0)
-  const rows: (Lesson | null)[][] = []
-  for (let i = 0; i < maxLessons; ++i)
-    rows.push(weekdayOrder.map((_, d) => lessonsByDay[d][i] || null))
-  return rows
-}
-
-function getTodayIdx() {
-  const iso = (dayjs() as any).isoWeekday?.() || dayjs().day()
-  if (iso === 7) return -1
-  return (iso - 1) as 0 | 1 | 2 | 3 | 4 | 5
-}
-
-function minutesDiff(a?: string | null, b?: string | null) {
-  const ma = parseMinutes(a) ?? 0
-  const mb = parseMinutes(b) ?? 0
-  return mb - ma
-}
-
-const toDayjs = (s?: string | null) => {
-  if (!s) return null
-  if (s.length >= 16 && s.includes("T")) return dayjs(s)
-  return dayjs(dayjs().format("YYYY-MM-DDT") + (s.length === 5 ? s + ":00" : s))
-}
-
-function Snackbar({
-  open,
-  message,
-  onClose,
-}: {
-  open: boolean
-  message: string
-  onClose: () => void
-}) {
-  useEffect(() => {
-    if (!open || !message) return
-    const timer = setTimeout(() => {
-      onClose()
-    }, 2200)
-    return () => clearTimeout(timer)
-  }, [open, message, onClose])
-
-  if (!open || !message) return null
-
-  return (
-    <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 animate-in slide-in-from-bottom-4 fade-in">
-      <div className="rounded-2xl border border-[color:color-mix(in_srgb,white_10%,var(--nav-link)_90%)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] px-6 py-4 text-sm font-semibold text-[color:var(--page-text)] shadow-[0_12px_32px_rgba(0,0,0,0.14),0_4px_12px_rgba(0,0,0,0.08)] backdrop-blur-xl [-webkit-backdrop-filter:blur(24px)] dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)] dark:shadow-[0_16px_40px_rgba(0,0,0,0.28),0_6px_16px_rgba(0,0,0,0.16)]">
-        {message}
-      </div>
-    </div>
-  )
-}
 
 const fadeDelayStyle = (value: string): CSSProperties =>
   ({ "--fade-delay": value }) as CSSProperties
