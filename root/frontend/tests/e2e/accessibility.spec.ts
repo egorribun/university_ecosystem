@@ -18,4 +18,39 @@ test.describe("Accessibility smoke", () => {
 
     expect(results.violations).toEqual([])
   })
+
+  test("buttons and links have visible focus indicators", async ({ page }) => {
+    const mock = await useMockApi(page)
+    await mock.login(page)
+
+    await page.goto("/dashboard", { waitUntil: "networkidle" })
+
+    // Find a button and focus it
+    const button = page.getByRole("button").first()
+    await button.focus()
+    await expect(button).toBeFocused()
+
+    // Check that focus is visible (box-shadow applied)
+    const boxShadow = await button.evaluate((el) => {
+      return window.getComputedStyle(el).boxShadow
+    })
+
+    // Focus indicator should have non-none box-shadow
+    expect(boxShadow).not.toBe("none")
+  })
+
+  test("app has ARIA live regions for announcements", async ({ page }) => {
+    const mock = await useMockApi(page)
+    await mock.login(page)
+
+    await page.goto("/dashboard", { waitUntil: "networkidle" })
+
+    // Check for polite live region
+    const politeRegion = page.locator('[role="status"][aria-live="polite"]')
+    await expect(politeRegion).toBeAttached()
+
+    // Check for assertive live region
+    const assertiveRegion = page.locator('[role="alert"][aria-live="assertive"]')
+    await expect(assertiveRegion).toBeAttached()
+  })
 })
