@@ -69,7 +69,12 @@ async def _prepare_local_storage(backend: StorageBackend, subdir: str) -> None:
         await asyncio.to_thread(_ensure_dir, target)
 
 
-ALLOWED_IMAGE_TYPES: Final[set[str]] = {"image/jpeg", "image/png", "image/webp", "image/svg+xml"}
+ALLOWED_IMAGE_TYPES: Final[set[str]] = {
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/svg+xml",
+}
 MAX_IMAGE_SIZE: Final[int] = 5 * 1024 * 1024
 
 _PREFIX_CLEAN_RE = re.compile(r"[^A-Za-z0-9._-]+")
@@ -278,7 +283,11 @@ async def save_image(
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail=str(exc) if str(exc) else translate("errors.files.unsupported_type", locale=locale),
+            detail=(
+                str(exc)
+                if str(exc)
+                else translate("errors.files.unsupported_type", locale=locale)
+            ),
         ) from None
 
     ext = _PREFERRED_EXTENSIONS.get(optimized_type) or _ext_from_mime(optimized_type)
@@ -290,7 +299,10 @@ async def save_image(
     # Use aggressive caching for all optimized images
     cache_control = "public, max-age=31536000, immutable"
     return await backend.save_file(
-        relative_path, optimized_data, content_type=optimized_type, cache_control=cache_control
+        relative_path,
+        optimized_data,
+        content_type=optimized_type,
+        cache_control=cache_control,
     )
 
 
@@ -455,7 +467,10 @@ async def save_attachment(
     # Use aggressive caching for attachments as well
     cache_control = "public, max-age=31536000, immutable"
     url = await backend.save_file(
-        relative_path, data, content_type=declared_type or detected_type, cache_control=cache_control
+        relative_path,
+        data,
+        content_type=declared_type or detected_type,
+        cache_control=cache_control,
     )
     if return_meta:
         return {

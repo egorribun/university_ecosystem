@@ -173,7 +173,7 @@ async def create_access_token(
             metadata={
                 "ip_address": session.ip_address,
                 "user_agent": session.user_agent,
-            }
+            },
         )
         return token, session
     return token

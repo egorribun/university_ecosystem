@@ -17,7 +17,12 @@ class StorageBackend(Protocol):
     """Protocol implemented by storage backends."""
 
     async def save_file(
-        self, relative_path: str, data: bytes, *, content_type: str | None = None, cache_control: str | None = None
+        self,
+        relative_path: str,
+        data: bytes,
+        *,
+        content_type: str | None = None,
+        cache_control: str | None = None,
     ) -> str:
         """Persist ``data`` under ``relative_path`` and return a public URL."""
 
@@ -42,7 +47,12 @@ class StaticFSStorage(StorageBackend):
         return candidate
 
     async def save_file(
-        self, relative_path: str, data: bytes, *, content_type: str | None = None, cache_control: str | None = None
+        self,
+        relative_path: str,
+        data: bytes,
+        *,
+        content_type: str | None = None,
+        cache_control: str | None = None,
     ) -> str:
         del content_type, cache_control  # unused for filesystem storage
         normalized = self._normalize_relative_path(relative_path)
@@ -142,13 +152,26 @@ class S3Storage(StorageBackend):
         return candidate.as_posix()
 
     async def save_file(
-        self, relative_path: str, data: bytes, *, content_type: str | None = None, cache_control: str | None = None
+        self,
+        relative_path: str,
+        data: bytes,
+        *,
+        content_type: str | None = None,
+        cache_control: str | None = None,
     ) -> str:
         key = self._normalize_key(relative_path)
-        await asyncio.to_thread(self._put_object, key, data, content_type, cache_control)
+        await asyncio.to_thread(
+            self._put_object, key, data, content_type, cache_control
+        )
         return f"{self.base_url}/{key}"
 
-    def _put_object(self, key: str, data: bytes, content_type: str | None, cache_control: str | None = None) -> None:
+    def _put_object(
+        self,
+        key: str,
+        data: bytes,
+        content_type: str | None,
+        cache_control: str | None = None,
+    ) -> None:
         args = {
             "Bucket": self.bucket,
             "Key": key,

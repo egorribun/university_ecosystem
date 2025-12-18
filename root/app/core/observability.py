@@ -663,7 +663,9 @@ async def start_worker_monitoring_server(
     return _stop
 
 
-def configure_worker_observability(*, worker_name: str | None = None, engine: AsyncEngine | None = None) -> None:
+def configure_worker_observability(
+    *, worker_name: str | None = None, engine: AsyncEngine | None = None
+) -> None:
     """Configure logging and telemetry for standalone worker processes."""
 
     _configure_logging()
@@ -671,8 +673,8 @@ def configure_worker_observability(*, worker_name: str | None = None, engine: As
         # Resource is already created in _configure_otel
         tracer_provider = _configure_otel(engine) if engine else None
         if tracer_provider:
-             trace.set_tracer_provider(tracer_provider)
-             
+            trace.set_tracer_provider(tracer_provider)
+
     if worker_name:
         logging.getLogger(__name__).info(
             "Worker %s observability configured", worker_name
