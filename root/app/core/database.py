@@ -26,7 +26,9 @@ slow_query_logger = logging.getLogger("slow_queries")
 SLOW_QUERY_THRESHOLD_MS: float = 100.0  # Log queries taking longer than 100ms
 
 # Context variable to store query start time (async-safe)
-_query_start_time: ContextVar[float | None] = ContextVar("query_start_time", default=None)
+_query_start_time: ContextVar[float | None] = ContextVar(
+    "query_start_time", default=None
+)
 
 
 def _build_engine_kwargs(current_settings: Settings) -> dict[str, object]:
@@ -68,7 +70,9 @@ def _after_cursor_execute(
 
     if elapsed_ms >= SLOW_QUERY_THRESHOLD_MS:
         # Truncate statement for logging (avoid huge log entries)
-        truncated_statement = statement[:500] + "..." if len(statement) > 500 else statement
+        truncated_statement = (
+            statement[:500] + "..." if len(statement) > 500 else statement
+        )
         slow_query_logger.warning(
             "Slow query detected: %.2fms - %s",
             elapsed_ms,
@@ -97,7 +101,6 @@ def _setup_slow_query_logging(engine: AsyncEngine, current_settings: Settings) -
         "Slow query logging enabled (threshold: %.0fms)",
         SLOW_QUERY_THRESHOLD_MS,
     )
-
 
 
 def create_session_factory(

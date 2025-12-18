@@ -7,9 +7,11 @@ and allow manual intervention for job processing.
 
 from __future__ import annotations
 
+from datetime import UTC
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status as http_status
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi import status as http_status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,13 +20,12 @@ from app.core.database import get_db
 from app.models import models
 from app.workers.dead_letter_queue import DeadLetterQueue, JobStatus
 
-
 router = APIRouter(prefix="/admin/dlq", tags=["admin"])
 
 
 class DLQStatsResponse(BaseModel):
     """Response model for DLQ statistics."""
-    
+
     pending: int
     retrying: int
     failed: int
@@ -34,7 +35,7 @@ class DLQStatsResponse(BaseModel):
 
 class DLQJobResponse(BaseModel):
     """Response model for a single DLQ job."""
-    
+
     id: int
     job_type: str
     job_hash: str
@@ -49,7 +50,7 @@ class DLQJobResponse(BaseModel):
 
 class DLQJobsListResponse(BaseModel):
     """Response model for listing DLQ jobs."""
-    
+
     jobs: list[DLQJobResponse]
     total: int
 
@@ -61,18 +62,19 @@ async def get_dlq_stats(
 ) -> DLQStatsResponse:
     """
     Get Dead Letter Queue statistics.
-    
+
     Returns counts of jobs by status for monitoring dashboards.
     """
     dlq = DeadLetterQueue(db)
     stats = await dlq.get_queue_stats()
-    
+
     return DLQStatsResponse(
         pending=stats.get(JobStatus.PENDING.value, 0),
         retrying=stats.get(JobStatus.RETRYING.value, 0),
         failed=stats.get(JobStatus.FAILED.value, 0),
         completed=stats.get(JobStatus.COMPLETED.value, 0),
-        total_active=stats.get(JobStatus.PENDING.value, 0) + stats.get(JobStatus.RETRYING.value, 0),
+        total_active=stats.get(JobStatus.PENDING.value, 0)
+        + stats.get(JobStatus.RETRYING.value, 0),
     )
 
 
@@ -85,14 +87,15 @@ async def list_dlq_jobs(
 ) -> DLQJobsListResponse:
     """
     List jobs in the Dead Letter Queue.
-    
+
     Optionally filter by status (pending, retrying, failed, completed).
     """
-    from sqlalchemy import select, func
+    from sqlalchemy import func, select
+
     from app.workers.dead_letter_queue import DeadLetterJob
-    
+
     query = select(DeadLetterJob)
-    
+
     if status:
         # Validate status
         valid_statuses = [s.value for s in JobStatus]
@@ -102,18 +105,18 @@ async def list_dlq_jobs(
                 detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}",
             )
         query = query.where(DeadLetterJob.status == status)
-    
+
     query = query.order_by(DeadLetterJob.created_at.desc()).limit(limit)
     result = await db.execute(query)
     jobs = result.scalars().all()
-    
+
     # Get total count
     count_query = select(func.count(DeadLetterJob.id))
     if status:
         count_query = count_query.where(DeadLetterJob.status == status)
     count_result = await db.execute(count_query)
     total = count_result.scalar() or 0
-    
+
     return DLQJobsListResponse(
         jobs=[
             DLQJobResponse(
@@ -124,7 +127,9 @@ async def list_dlq_jobs(
                 retry_count=job.retry_count,
                 max_retries=job.max_retries,
                 status=job.status,
-                next_retry_at=job.next_retry_at.isoformat() if job.next_retry_at else None,
+                next_retry_at=(
+                    job.next_retry_at.isoformat() if job.next_retry_at else None
+                ),
                 created_at=job.created_at.isoformat(),
                 updated_at=job.updated_at.isoformat(),
             )
@@ -142,31 +147,31 @@ async def retry_dlq_job(
 ) -> dict[str, Any]:
     """
     Manually trigger a retry for a specific DLQ job.
-    
+
     Resets the job status to pending for immediate retry.
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
+
     from sqlalchemy import select
+
     from app.workers.dead_letter_queue import DeadLetterJob
-    
-    result = await db.execute(
-        select(DeadLetterJob).where(DeadLetterJob.id == job_id)
-    )
+
+    result = await db.execute(select(DeadLetterJob).where(DeadLetterJob.id == job_id))
     job = result.scalar_one_or_none()
-    
+
     if not job:
         raise HTTPException(
             status_code=http_status.HTTP_404_NOT_FOUND,
             detail=f"Job with ID {job_id} not found",
         )
-    
+
     # Reset for retry
     job.status = JobStatus.PENDING.value
-    job.next_retry_at = datetime.now(timezone.utc)
-    job.updated_at = datetime.now(timezone.utc)
-    
+    job.next_retry_at = datetime.now(UTC)
+    job.updated_at = datetime.now(UTC)
+
     await db.commit()
-    
+
     return {
         "success": True,
         "message": f"Job {job_id} queued for retry",
@@ -182,12 +187,12 @@ async def cleanup_dlq(
 ) -> dict[str, Any]:
     """
     Clean up completed jobs from the Dead Letter Queue.
-    
+
     Removes completed jobs older than the specified number of days.
     """
     dlq = DeadLetterQueue(db)
     deleted = await dlq.cleanup_completed_jobs(older_than_days=older_than_days)
-    
+
     return {
         "success": True,
         "deleted_count": deleted,
