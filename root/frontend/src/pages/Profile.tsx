@@ -33,16 +33,18 @@ import ExpandMoreIcon from "@mui/icons-material/ExpandMore"
 import QrCodeIcon from "@mui/icons-material/QrCode"
 import OpenInNewIcon from "@mui/icons-material/OpenInNew"
 import { sanitizeEmailAddress, sanitizeTelegramUrl } from "@/utils/sanitize"
+import {
+  type SnackKey,
+  type SnackState,
+  parseAchievements,
+  buildVCardString,
+  formatDuration,
+  calculateAvatarSize,
+  calculateHeroLayout,
+  calculateStatusIndicator,
+} from "@/components/profile/profileUtils"
 
 const isTest = typeof import.meta !== "undefined" && import.meta.env.MODE === "test"
-
-type SnackKey = "spotifyConnected" | "spotifyError" | "copied" | "profileUpdated" | "error"
-
-type SnackState = {
-  key?: SnackKey
-  message?: string
-  sev?: "success" | "info" | "warning" | "error"
-}
 
 export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying }) {
   const prefersReduce =

@@ -4,7 +4,36 @@ import pytest
 from sqlalchemy import select
 
 from app.models.models import Story
-from app.services.story_cleanup import cleanup_expired_stories
+from app.services.story_cleanup import StoryCleanupConfig, cleanup_expired_stories
+
+
+class TestStoryCleanupConfig:
+    """Tests for StoryCleanupConfig dataclass."""
+
+    def test_default_interval(self):
+        """Should have default interval of 86400 seconds (1 day)."""
+        config = StoryCleanupConfig()
+        assert config.interval_seconds == 86_400
+
+    def test_custom_interval(self):
+        """Should accept custom interval."""
+        config = StoryCleanupConfig(interval_seconds=3600)
+        assert config.interval_seconds == 3600
+
+    def test_normalized_interval_above_minimum(self):
+        """Should return interval unchanged when above minimum."""
+        config = StoryCleanupConfig(interval_seconds=3600)
+        assert config.normalized_interval() == 3600
+
+    def test_normalized_interval_below_minimum(self):
+        """Should enforce minimum interval of 60 seconds."""
+        config = StoryCleanupConfig(interval_seconds=30)
+        assert config.normalized_interval() == 60
+
+    def test_normalized_interval_negative(self):
+        """Should return minimum for negative interval."""
+        config = StoryCleanupConfig(interval_seconds=-100)
+        assert config.normalized_interval() == 60
 
 
 @pytest.mark.asyncio
