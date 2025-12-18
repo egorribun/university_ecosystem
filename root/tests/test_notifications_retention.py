@@ -6,6 +6,53 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.models.models import Notification, NotificationDelivery
 from app.services.notifications import cleanup_stale_notifications
+from app.services.notifications_retention import NotificationsRetentionConfig
+
+
+class TestNotificationsRetentionConfig:
+    """Tests for NotificationsRetentionConfig dataclass."""
+
+    def test_default_values(self):
+        """Should have correct default values."""
+        config = NotificationsRetentionConfig()
+        assert config.retention_days == 90
+        assert config.interval_seconds == 86_400
+
+    def test_custom_values(self):
+        """Should accept custom values."""
+        config = NotificationsRetentionConfig(retention_days=30, interval_seconds=3600)
+        assert config.retention_days == 30
+        assert config.interval_seconds == 3600
+
+    def test_normalized_retention_days_positive(self):
+        """Should return positive days unchanged."""
+        config = NotificationsRetentionConfig(retention_days=90)
+        assert config.normalized_retention_days() == 90
+
+    def test_normalized_retention_days_zero(self):
+        """Should return 0 for zero days."""
+        config = NotificationsRetentionConfig(retention_days=0)
+        assert config.normalized_retention_days() == 0
+
+    def test_normalized_retention_days_negative(self):
+        """Should return 0 for negative days."""
+        config = NotificationsRetentionConfig(retention_days=-10)
+        assert config.normalized_retention_days() == 0
+
+    def test_normalized_interval_minimum(self):
+        """Should enforce minimum interval of 300 seconds."""
+        config = NotificationsRetentionConfig(interval_seconds=100)
+        assert config.normalized_interval() == 300
+
+    def test_normalized_interval_above_minimum(self):
+        """Should return interval unchanged when above minimum."""
+        config = NotificationsRetentionConfig(interval_seconds=3600)
+        assert config.normalized_interval() == 3600
+
+    def test_normalized_interval_negative(self):
+        """Should return minimum for negative interval."""
+        config = NotificationsRetentionConfig(interval_seconds=-500)
+        assert config.normalized_interval() == 300
 
 
 @pytest.mark.anyio
