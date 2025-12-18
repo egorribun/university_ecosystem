@@ -33,10 +33,12 @@ async def test_otel_span_generation():
             tracer_provider = _configure_otel(engine)
             # Ensure it's not the NoOp provider from global state
             from opentelemetry.sdk.trace import TracerProvider as SDKTracerProvider
+
             assert isinstance(tracer_provider, SDKTracerProvider)
 
             # Clear any existing context to avoid ParentBased sampler dropping the span
-            from opentelemetry.context import attach, Context
+            from opentelemetry.context import Context, attach
+
             token = attach(Context())
             try:
                 # Get a tracer and start a span
@@ -46,6 +48,7 @@ async def test_otel_span_generation():
                     span.set_attribute("test.attr", "value")
             finally:
                 from opentelemetry.context import detach
+
                 detach(token)
 
             await engine.dispose()
