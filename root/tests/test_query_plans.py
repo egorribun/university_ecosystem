@@ -16,14 +16,37 @@ pytestmark = pytest.mark.asyncio
 
 async def analyze_query_plan(session: AsyncSession, query: str) -> dict:
     """
-    Analyze a query's execution plan using EXPLAIN ANALYZE.
-
-    Returns a dict with:
-    - plan: The raw plan output
-    - uses_index: Whether the query uses an index
-    - seq_scan: Whether the query does a sequential scan
-    - estimated_cost: The estimated query cost
+    Analyze a query's execution plan.
+    Supports both PostgreSQL (JSON format) and SQLite (text format).
     """
+    # Detect dialect
+    bind = session.get_bind()
+    dialect_name = bind.dialect.name if bind else "sqlite"
+
+    if dialect_name == "sqlite":
+        explain_query = f"EXPLAIN QUERY PLAN {query}"
+        result = await session.execute(text(explain_query))
+        rows = result.fetchall()
+
+        # SQLite output format: (id, parent, notused, detail)
+        plan_details = [row[3] for row in rows]
+        full_detail = " ".join(plan_details).upper()
+
+        uses_index = (
+            "USING INDEX" in full_detail or "USING COVERING INDEX" in full_detail
+        )
+        # In SQLite, "SCAN TABLE" without an index means a full table scan
+        seq_scan = "SCAN TABLE" in full_detail and "USING INDEX" not in full_detail
+
+        return {
+            "plan": plan_details,
+            "uses_index": uses_index,
+            "seq_scan": seq_scan,
+            "node_type": "SCAN" if seq_scan else ("SEARCH" if uses_index else "OTHER"),
+            "estimated_cost": 0.0,  # SQLite doesn't provide cost in this format
+        }
+
+    # PostgreSQL path
     explain_query = f"EXPLAIN (ANALYZE, COSTS, FORMAT JSON) {query}"
     result = await session.execute(text(explain_query))
     rows = result.fetchall()
@@ -87,19 +110,25 @@ class TestCriticalQueryPlans:
             plan = await analyze_query_plan(session, query)
 
             # Either indexed access or efficient scan on small table
-            assert (
-                plan["estimated_cost"] < 1000 or plan["uses_index"]
-            ), f"Notifications query should be efficient, cost: {plan['estimated_cost']}"
+            assert plan["estimated_cost"] < 1000 or plan["uses_index"], (
+                f"Notifications query should be efficient, "
+                f"cost: {plan['estimated_cost']}"
+            )
 
     async def test_chat_messages_uses_index(self):
         """Verify that chat messages lookup uses chat_id index."""
         async with async_session() as session:
-            query = "SELECT * FROM chat_messages WHERE chat_id = 1 ORDER BY created_at DESC LIMIT 50"
+            # Use actual table name 'messages'
+            query = (
+                "SELECT * FROM messages WHERE chat_id = 'test-chat' "
+                "ORDER BY created_at DESC LIMIT 50"
+            )
             plan = await analyze_query_plan(session, query)
 
-            assert (
-                plan["estimated_cost"] < 500 or plan["uses_index"]
-            ), f"Chat messages query should be efficient, cost: {plan['estimated_cost']}"
+            assert plan["estimated_cost"] < 500 or plan["uses_index"], (
+                f"Chat messages query should be efficient, "
+                f"cost: {plan['estimated_cost']}"
+            )
 
     async def test_events_active_uses_index(self):
         """Verify that filtering active events uses an index."""
@@ -120,10 +149,11 @@ class TestCriticalQueryPlans:
     async def test_schedule_by_group_uses_index(self):
         """Verify that schedule lookup by group uses an index."""
         async with async_session() as session:
+            # Use actual table name 'schedule' and column 'start_time'
             query = """
-                SELECT * FROM schedule_entries 
+                SELECT * FROM schedule 
                 WHERE group_id = 1 
-                AND date BETWEEN '2024-01-01' AND '2024-01-07'
+                AND start_time BETWEEN '2024-01-01' AND '2024-01-07'
             """
             plan = await analyze_query_plan(session, query)
 

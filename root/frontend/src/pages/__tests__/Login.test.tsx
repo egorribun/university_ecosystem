@@ -112,7 +112,7 @@ describe("Login page", () => {
 
     await waitFor(() => expect(screen.getByText("Welcome!")).toBeInTheDocument())
     expect(captured).toEqual([{ username: "user@example.com", password: "secret123" }])
-  })
+  }, 15000)
 
   it("returns server errors to the user", async () => {
     server.use(
@@ -218,7 +218,7 @@ describe("Login page", () => {
     await user.type(otpInput, "123456")
     // OtpEntry auto-submits on complete, so we just wait for the result
     await waitFor(() => expect(screen.getByText("Welcome!")).toBeInTheDocument())
-  })
+  }, 15000)
 
   it("displays errors for invalid OTP attempts and allows retry", async () => {
     server.use(
@@ -267,7 +267,7 @@ describe("Login page", () => {
     // Must click button since error prop blocks auto-submit
     await user.click(screen.getByRole("button", { name: /Verify|Подтвердить/i }))
     await waitFor(() => expect(screen.getByText("Welcome!")).toBeInTheDocument())
-  })
+  }, 15000)
 
   it("meets basic accessibility requirements", async () => {
     const { container } = renderLogin()

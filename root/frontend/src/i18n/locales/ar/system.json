@@ -102,5 +102,9 @@
     "activeTopics": "Active topics: {{topics}}",
     "updateAvailable": "Update available",
     "reload": "Reload"
+  },
+  "offlineIndicator": {
+    "offline": "أنت غير متصل",
+    "online": "متصل الآن"
   }
 }

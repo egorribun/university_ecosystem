@@ -88,8 +88,9 @@ export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, 
               onSelect(contact.id)
             }
           }}
-          className={`msg-contact-item flex items-center gap-3 p-3 mx-2 my-0.5 rounded-xl cursor-pointer ${selectedId === contact.id ? "active" : ""
-            }`}
+          className={`msg-contact-item flex items-center gap-3 p-3 mx-2 my-0.5 rounded-xl cursor-pointer ${
+            selectedId === contact.id ? "active" : ""
+          }`}
         >
           <div className="relative flex-shrink-0">
             <SmartImage
@@ -105,22 +106,25 @@ export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, 
           <div className="flex-1 min-w-0">
             <div className="flex justify-between items-center mb-0.5">
               <h3
-                className={`font-semibold text-[15px] truncate ${selectedId === contact.id ? "text-white" : "text-gray-900 dark:text-gray-100"
-                  }`}
+                className={`font-semibold text-[15px] truncate ${
+                  selectedId === contact.id ? "text-white" : "text-gray-900 dark:text-gray-100"
+                }`}
               >
                 {contact.name}
               </h3>
               <span
-                className={`text-xs flex-shrink-0 ml-2 ${selectedId === contact.id ? "text-white/70" : "text-gray-500 dark:text-gray-400"
-                  }`}
+                className={`text-xs flex-shrink-0 ml-2 ${
+                  selectedId === contact.id ? "text-white/70" : "text-gray-500 dark:text-gray-400"
+                }`}
               >
                 {contact.lastMessageTime}
               </span>
             </div>
             <div className="flex items-center gap-2">
               <p
-                className={`text-[14px] truncate flex-1 ${selectedId === contact.id ? "text-white/80" : "text-gray-500 dark:text-gray-400"
-                  }`}
+                className={`text-[14px] truncate flex-1 ${
+                  selectedId === contact.id ? "text-white/80" : "text-gray-500 dark:text-gray-400"
+                }`}
               >
                 {contact.lastMessage}
               </p>
@@ -173,7 +177,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
     if (messages.length > 0) {
       virtualizer.scrollToIndex(messages.length - 1, { align: "end" })
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (
@@ -208,10 +211,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
                 className={`flex py-0.5 ${msg.isMe ? "justify-end md:justify-start" : "justify-start"}`}
               >
                 <div
-                  className={`max-w-[75%] md:max-w-[60%] px-3.5 py-2 text-[15px] relative ${msg.isMe
-                    ? "msg-bubble-sent text-white rounded-2xl rounded-br-md"
-                    : "msg-bubble-received text-gray-900 dark:text-gray-100 rounded-2xl rounded-bl-md"
-                    }`}
+                  className={`max-w-[75%] md:max-w-[60%] px-3.5 py-2 text-[15px] relative ${
+                    msg.isMe
+                      ? "msg-bubble-sent text-white rounded-2xl rounded-br-md"
+                      : "msg-bubble-received text-gray-900 dark:text-gray-100 rounded-2xl rounded-bl-md"
+                  }`}
                 >
                   {msg.attachments && msg.attachments.length > 0 && (
                     <div className="mb-2 space-y-2">
@@ -234,10 +238,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
                               href={sanitizeUrl(att.url)!}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className={`flex items-center gap-2 p-2.5 rounded-xl ${msg.isMe
-                                ? "bg-white/20 hover:bg-white/30"
-                                : "bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
-                                } transition-colors`}
+                              className={`flex items-center gap-2 p-2.5 rounded-xl ${
+                                msg.isMe
+                                  ? "bg-white/20 hover:bg-white/30"
+                                  : "bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
+                              } transition-colors`}
                             >
                               <svg
                                 xmlns="http://www.w3.org/2000/svg"
@@ -265,7 +270,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
                     <span
                       className="text-[11px]"
                       style={{
-                        color: msg.isMe ? "var(--msg-timestamp-sent)" : "var(--msg-timestamp-received)",
+                        color: msg.isMe
+                          ? "var(--msg-timestamp-sent)"
+                          : "var(--msg-timestamp-received)",
                       }}
                     >
                       {msg.timestamp}
@@ -286,7 +293,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
                               strokeLinejoin="round"
                               points="1,8 4,11 11,4"
                             />
-                            <polyline strokeLinecap="round" strokeLinejoin="round" points="7,11 14,4" />
+                            <polyline
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              points="7,11 14,4"
+                            />
                           </svg>
                         ) : (
                           <svg
@@ -297,7 +308,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
                             strokeWidth={2.5}
                             className="w-4 h-4"
                           >
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.5l5 5L19 8" />
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M4.5 12.5l5 5L19 8"
+                            />
                           </svg>
                         )}
                       </span>

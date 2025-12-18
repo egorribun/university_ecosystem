@@ -229,7 +229,11 @@ function AppShell() {
       <LiveRegionProvider>
         <AppShellProvider>
           <AuthProvider>
-            <LocalizationProvider key={language} dateAdapter={AdapterDayjs} adapterLocale={language}>
+            <LocalizationProvider
+              key={language}
+              dateAdapter={AdapterDayjs}
+              adapterLocale={language}
+            >
               <ErrorBoundary>
                 <Router future={routerFutureFlags}>
                   <AppContent />
