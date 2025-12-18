@@ -8,11 +8,11 @@ from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
+from alembic.config import Config
 from prometheus_client import REGISTRY, CollectorRegistry
 from sqlalchemy import select
 
 from alembic import command
-from alembic.config import Config
 from app.core import observability
 from app.core.database import Base, async_session
 from app.models.models import NotificationQueueJob

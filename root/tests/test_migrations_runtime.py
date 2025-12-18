@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
-
-from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
+
+from alembic import command
 from app.core.database import Base
 from app.models import (
     models,  # noqa: F401  # ensure tables are registered with Base metadata
