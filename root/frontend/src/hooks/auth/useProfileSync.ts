@@ -64,27 +64,6 @@ const areDeepEqual = (a: unknown, b: unknown): boolean => {
   return true
 }
 
-const debugDeepEqual = (a: unknown, b: unknown, path = ""): boolean => {
-  if (a === b) return true
-  if (typeof a !== "object" || a === null || typeof b !== "object" || b === null) {
-    console.warn(`DeepEqual mismatch at ${path}:`, a, "!==", b)
-    return false
-  }
-  const keysA = Object.keys(a)
-  const keysB = Object.keys(b)
-  if (keysA.length !== keysB.length) {
-    console.warn(`DeepEqual key length mismatch at ${path}:`, keysA, keysB)
-    return false
-  }
-  for (const key of keysA) {
-    if (!keysB.includes(key)) {
-      console.warn(`DeepEqual missing key at ${path}:`, key)
-      return false
-    }
-    if (!debugDeepEqual((a as any)[key], (b as any)[key], `${path}.${key}`)) return false
-  }
-  return true
-}
 
 const createOptimisticUser = (snapshot: CachedUserSnapshot): User => ({
   id: snapshot.id,
@@ -391,10 +370,6 @@ export const useProfileSync = (
           typeof value === "function" ? (value as (prev: UserState) => UserState)(prev) : value
         const normalized: UserState = next ?? null
 
-        if (import.meta.env.DEV && normalized) {
-          const keys = Object.keys(normalized)
-          console.log(`setUserState called. Keys: ${keys.length}. Source trace:`, new Error().stack)
-        }
 
         // Removed side effect: userStateRef.current = normalized
         if (persist) {
@@ -566,7 +541,7 @@ export const useProfileSync = (
     if (userStateRef.current == null) {
       setInitializing(true)
     }
-    ;(async () => {
+    ; (async () => {
       try {
         const profile = await fetchCurrentUser({ signal: controller.signal })
         try {
@@ -576,7 +551,7 @@ export const useProfileSync = (
             console.warn("Failed to obtain session signing key", error)
           }
         }
-        if (!debugDeepEqual(userStateRef.current, profile)) {
+        if (!areDeepEqual(userStateRef.current, profile)) {
           setUser(profile)
         }
       } catch (error) {
