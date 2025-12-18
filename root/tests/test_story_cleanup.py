@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import select
 
 from app.models.models import Story
-from app.services.story_cleanup import cleanup_expired_stories, StoryCleanupConfig
+from app.services.story_cleanup import StoryCleanupConfig, cleanup_expired_stories
 
 
 class TestStoryCleanupConfig:
