@@ -26,7 +26,6 @@ async def test_otel_span_generation():
         # Mock exporters to avoid network calls
         with (
             patch("app.core.observability.OTLPSpanExporter"),
-            patch("app.core.observability.BatchSpanProcessor"),
             patch("app.core.observability.FastAPIInstrumentor"),
             patch("app.core.observability.SQLAlchemyInstrumentor"),
         ):
