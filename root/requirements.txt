@@ -81,6 +81,9 @@ ecdsa==0.19.1
     # via python-jose
 email-validator==2.3.0
     # via -r requirements.in
+defusedxml==0.8.0
+    # via -r requirements.in
+
 fastapi==0.124.4
     # via -r requirements.in
 frozenlist==1.8.0
