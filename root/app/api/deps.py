@@ -54,7 +54,7 @@ async def get_current_user(
     session_backend = await get_session_backend()
     if not await session_backend.is_session_valid(jti):
         # Even if not in Redis, we might want to check DB as a fallback
-        # but for performance we can assume if it's supposed to be in Redis, 
+        # but for performance we can assume if it's supposed to be in Redis,
         # it should be there.
         # If session_storage_backend is "redis", then we trust Redis.
         if settings.session_storage_backend == "redis":
