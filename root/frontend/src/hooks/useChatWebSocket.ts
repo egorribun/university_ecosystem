@@ -2,6 +2,26 @@ import { useEffect, useRef, useCallback, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import type { Message, MessagesListResponse } from "../api/chat"
 
+// Reconnection configuration
+const RECONNECT_BASE_DELAY_MS = 1000 // 1 second
+const RECONNECT_MAX_DELAY_MS = 30000 // 30 seconds
+const RECONNECT_JITTER_FACTOR = 0.1 // ±10% jitter
+const PING_INTERVAL_MS = 30000 // Heartbeat every 30 seconds
+
+/**
+ * Calculate reconnection delay with exponential backoff and jitter.
+ * Jitter prevents "thundering herd" when many clients reconnect simultaneously.
+ */
+function calculateReconnectDelay(attempt: number): number {
+  // Exponential backoff: baseDelay * 2^attempt, capped at maxDelay
+  const expDelay = Math.min(
+    RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt),
+    RECONNECT_MAX_DELAY_MS
+  )
+  // Add jitter: random value in range [1-jitter, 1+jitter]
+  const jitter = 1 + (Math.random() * 2 - 1) * RECONNECT_JITTER_FACTOR
+  return Math.round(expDelay * jitter)
+}
 // WebSocket message types
 export type WebSocketMessageType =
   | "ping"
@@ -111,12 +131,12 @@ export function useChatWebSocket({
         // Reset reconnect attempts on successful connection
         reconnectAttemptRef.current = 0
 
-        // Start ping interval
+        // Start ping interval (heartbeat)
         pingIntervalRef.current = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: "ping" }))
           }
-        }, 30000) // Ping every 30 seconds
+        }, PING_INTERVAL_MS)
       }
 
       ws.onmessage = (event) => {
@@ -224,10 +244,10 @@ export function useChatWebSocket({
         setIsConnected(false)
         cleanup()
 
-        // Reconnect with exponential backoff unless it was a clean close or auth error
+        // Reconnect with exponential backoff + jitter unless it was a clean close or auth error
+        // Error codes: 1000 = normal close, 4001 = unauthorized, 4003 = forbidden
         if (event.code !== 1000 && event.code !== 4001 && event.code !== 4003) {
-          // Exponential backoff: 1s, 2s, 4s, 8s, 16s, max 30s
-          const delay = Math.min(1000 * Math.pow(2, reconnectAttemptRef.current), 30000)
+          const delay = calculateReconnectDelay(reconnectAttemptRef.current)
           reconnectAttemptRef.current += 1
           console.log(
             `[WebSocket] Reconnecting in ${delay}ms (attempt ${reconnectAttemptRef.current})`
