@@ -47,7 +47,8 @@ async def test_create_session_factory_uses_null_pool_for_development(monkeypatch
         database_module, "create_async_engine", fake_create_async_engine
     )
     monkeypatch.setattr(database_module, "async_sessionmaker", fake_sessionmaker)
-    # Avoid failures in _setup_slow_query_logging which is called during factory creation
+    # Avoid failures in _setup_slow_query_logging which is called during
+    # factory creation
     monkeypatch.setattr(database_module.event, "listen", lambda *args, **kwargs: None)
 
     stub_settings = SimpleNamespace(
