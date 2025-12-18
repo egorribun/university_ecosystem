@@ -64,7 +64,6 @@ const areDeepEqual = (a: unknown, b: unknown): boolean => {
   return true
 }
 
-
 const createOptimisticUser = (snapshot: CachedUserSnapshot): User => ({
   id: snapshot.id,
   email: "",
@@ -370,7 +369,6 @@ export const useProfileSync = (
           typeof value === "function" ? (value as (prev: UserState) => UserState)(prev) : value
         const normalized: UserState = next ?? null
 
-
         // Removed side effect: userStateRef.current = normalized
         if (persist) {
           const key = readStoredSessionSigningKey()
@@ -541,7 +539,7 @@ export const useProfileSync = (
     if (userStateRef.current == null) {
       setInitializing(true)
     }
-    ; (async () => {
+    ;(async () => {
       try {
         const profile = await fetchCurrentUser({ signal: controller.signal })
         try {
