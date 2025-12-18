@@ -22,6 +22,9 @@ async def test_otel_span_generation():
         mock_settings.otel_trace_sampler_ratio = 1.0
         mock_settings.enable_otel_metrics = False
         mock_settings.enable_otel_logs = False
+        mock_settings.service_version = "1.0.0"
+        mock_settings.environment = "testing"
+        mock_settings.otel_exporter_otlp_headers = {}
 
         # Mock exporters to avoid network calls
         with (
@@ -31,25 +34,33 @@ async def test_otel_span_generation():
         ):
             engine = create_async_engine("sqlite+aiosqlite:///:memory:")
             tracer_provider = _configure_otel(engine)
-            # Ensure it's not the NoOp provider from global state
+            
             from opentelemetry.sdk.trace import TracerProvider as SDKTracerProvider
-
+            from opentelemetry.sdk.trace import Tracer as SDKTracer
+            from opentelemetry.context import Context
+            
+            # Re-verify it's an SDK provider
             assert isinstance(tracer_provider, SDKTracerProvider)
-
-            # Clear any existing context to avoid ParentBased sampler dropping the span
-            from opentelemetry.context import Context, attach
-
-            token = attach(Context())
+            
+            # Ensure we have a recorder and it's not sampled out
+            import uuid
+            tracer = tracer_provider.get_tracer(f"test-tracer-{uuid.uuid4().hex}")
+            assert isinstance(tracer, SDKTracer)
+            
+            # Use start_span with explicit empty context to avoid parent inheritance
+            span = tracer.start_span("test-span", context=Context())
             try:
-                # Get a tracer and start a span
-                tracer = tracer_provider.get_tracer(__name__)
-                with tracer.start_as_current_span("test-span") as span:
-                    assert span.is_recording()
-                    span.set_attribute("test.attr", "value")
+                if not span.is_recording():
+                    # Diagnostic info if it still fails
+                    print(f"\nFAIL DEBUG: Provider: {tracer_provider}")
+                    print(f"FAIL DEBUG: Sampler: {tracer_provider.sampler}")
+                    print(f"FAIL DEBUG: Tracer: {tracer}")
+                    print(f"FAIL DEBUG: Span Context: {span.get_span_context()}")
+                
+                assert span.is_recording()
+                span.set_attribute("test.attr", "value")
             finally:
-                from opentelemetry.context import detach
-
-                detach(token)
+                span.end()
 
             await engine.dispose()
 
