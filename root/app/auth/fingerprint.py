@@ -47,11 +47,15 @@ class SessionFingerprint:
         if self.accept_language != other.accept_language:
             mismatches.append("accept_language")
 
-        # IP address changes are common (mobile, VPN) - only flag if everything else matches
+        # IP address changes are common (mobile, VPN)
+        # only flag if everything else matches
+
         if self.ip_address != other.ip_address:
             mismatches.append("ip_address")
 
-        # Consider suspicious if user_agent changed (most indicative of session hijacking)
+        # Consider suspicious if user_agent changed
+        # (most indicative of session hijacking)
+
         is_suspicious = "user_agent" in mismatches
 
         return is_suspicious, mismatches

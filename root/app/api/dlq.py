@@ -59,7 +59,10 @@ class DLQJobsListResponse(BaseModel):
     "/stats",
     response_model=DLQStatsResponse,
     summary="Get DLQ Statistics",
-    description="Returns counts of jobs by status (pending, retrying, failed, completed) for monitoring dashboards.",
+    description=(
+        "Returns counts of jobs by status (pending, retrying, failed, completed) "
+        "for monitoring dashboards."
+    ),
 )
 async def get_dlq_stats(
     db: AsyncSession = Depends(get_db),
@@ -87,7 +90,10 @@ async def get_dlq_stats(
     "/jobs",
     response_model=DLQJobsListResponse,
     summary="List DLQ Jobs",
-    description="Returns a paginated list of jobs in the dead letter queue with optional status filtering.",
+    description=(
+        "Returns a paginated list of jobs in the dead letter queue "
+        "with optional status filtering."
+    ),
 )
 async def list_dlq_jobs(
     status: str | None = None,
@@ -152,7 +158,10 @@ async def list_dlq_jobs(
 @router.post(
     "/retry/{job_id}",
     summary="Retry DLQ Job",
-    description="Manually triggers a retry for a specific failed job by resetting its status to pending.",
+    description=(
+        "Manually triggers a retry for a specific failed job by "
+        "resetting its status to pending."
+    ),
 )
 async def retry_dlq_job(
     job_id: int,
@@ -196,7 +205,10 @@ async def retry_dlq_job(
 @router.delete(
     "/cleanup",
     summary="Cleanup DLQ",
-    description="Removes completed jobs older than the specified number of days (default: 7) to free up storage.",
+    description=(
+        "Removes completed jobs older than the specified number of days "
+        "(default: 7) to free up storage."
+    ),
 )
 async def cleanup_dlq(
     older_than_days: int = 7,
