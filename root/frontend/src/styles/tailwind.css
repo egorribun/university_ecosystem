@@ -28,6 +28,37 @@
   .skip-link:focus-visible {
     @apply translate-y-0 opacity-100 outline-none shadow-focus;
   }
+
+  /* Global focus-visible indicators for keyboard navigation accessibility */
+  /* These ensure all interactive elements have visible focus states per WCAG 2.1 */
+  a:focus-visible,
+  button:focus-visible,
+  [role="button"]:focus-visible,
+  [tabindex]:not([tabindex="-1"]):focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    @apply outline-none;
+    box-shadow: var(--ue-focus-ring, 0 0 0 3px rgba(51, 144, 236, 0.4));
+  }
+
+  /* Alternative focus style for elements where box-shadow may conflict */
+  .focus-outline:focus-visible {
+    @apply outline-2 outline-offset-2;
+    outline-color: var(--nav-link);
+    outline-style: solid;
+  }
+
+  /* Dark mode focus adjustments */
+  .dark a:focus-visible,
+  .dark button:focus-visible,
+  .dark [role="button"]:focus-visible,
+  .dark [tabindex]:not([tabindex="-1"]):focus-visible,
+  .dark input:focus-visible,
+  .dark textarea:focus-visible,
+  .dark select:focus-visible {
+    box-shadow: var(--ue-focus-ring, 0 0 0 3px rgba(135, 116, 225, 0.45));
+  }
 }
 
 @layer utilities {

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import AsyncGenerator
+from contextvars import ContextVar
 
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -18,6 +20,13 @@ from sqlalchemy.pool import NullPool
 from app.core.config import Settings, settings
 
 logger = logging.getLogger(__name__)
+slow_query_logger = logging.getLogger("slow_queries")
+
+# Configuration for slow query logging
+SLOW_QUERY_THRESHOLD_MS: float = 100.0  # Log queries taking longer than 100ms
+
+# Context variable to store query start time (async-safe)
+_query_start_time: ContextVar[float | None] = ContextVar("query_start_time", default=None)
 
 
 def _build_engine_kwargs(current_settings: Settings) -> dict[str, object]:
@@ -39,11 +48,67 @@ def _build_engine_kwargs(current_settings: Settings) -> dict[str, object]:
     return kwargs
 
 
+def _before_cursor_execute(
+    conn, cursor, statement, parameters, context, executemany
+) -> None:
+    """Store the start time before query execution."""
+    _query_start_time.set(time.perf_counter())
+
+
+def _after_cursor_execute(
+    conn, cursor, statement, parameters, context, executemany
+) -> None:
+    """Log if query execution time exceeded threshold."""
+    start_time = _query_start_time.get()
+    if start_time is None:
+        return
+
+    elapsed_ms = (time.perf_counter() - start_time) * 1000.0
+    _query_start_time.set(None)
+
+    if elapsed_ms >= SLOW_QUERY_THRESHOLD_MS:
+        # Truncate statement for logging (avoid huge log entries)
+        truncated_statement = statement[:500] + "..." if len(statement) > 500 else statement
+        slow_query_logger.warning(
+            "Slow query detected: %.2fms - %s",
+            elapsed_ms,
+            truncated_statement.replace("\n", " ").strip(),
+            extra={
+                "elapsed_ms": elapsed_ms,
+                "statement_length": len(statement),
+                "executemany": executemany,
+            },
+        )
+
+
+def _setup_slow_query_logging(engine: AsyncEngine, current_settings: Settings) -> None:
+    """
+    Set up slow query logging for the given engine.
+
+    Only active in development mode.
+    """
+    if not current_settings.is_development:
+        return
+
+    sync_engine = engine.sync_engine
+    event.listen(sync_engine, "before_cursor_execute", _before_cursor_execute)
+    event.listen(sync_engine, "after_cursor_execute", _after_cursor_execute)
+    logger.info(
+        "Slow query logging enabled (threshold: %.0fms)",
+        SLOW_QUERY_THRESHOLD_MS,
+    )
+
+
+
 def create_session_factory(
     current_settings: Settings = settings,
 ) -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:
     engine_kwargs = _build_engine_kwargs(current_settings)
     engine = create_async_engine(current_settings.database_url, **engine_kwargs)
+
+    # Enable slow query logging in development mode
+    _setup_slow_query_logging(engine, current_settings)
+
     session_factory: async_sessionmaker[AsyncSession] = async_sessionmaker(
         engine,
         expire_on_commit=False,
