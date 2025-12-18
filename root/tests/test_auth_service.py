@@ -6,21 +6,21 @@ Covers helper functions and AuthService methods.
 
 import hashlib
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import models
+from app.services.audit_service import AuditService
 from app.services.auth_service import (
-    _hash_token,
-    _prepare_password_reset_token,
+    AuthService,
     _create_email_change_request,
     _get_active_email_change_request,
+    _hash_token,
+    _prepare_password_reset_token,
     attach_pending_email,
-    AuthService,
 )
-from app.services.audit_service import AuditService
 
 
 class TestHashToken:
