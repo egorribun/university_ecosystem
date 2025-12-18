@@ -52,6 +52,7 @@ export function useChatWebSocket({
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const reconnectAttemptRef = useRef(0)
   const [isConnected, setIsConnected] = useState(false)
   const [typingUsers, setTypingUsers] = useState<Map<string, TypingUser>>(new Map())
   const queryClient = useQueryClient()
@@ -107,6 +108,8 @@ export function useChatWebSocket({
       ws.onopen = () => {
         console.log("[WebSocket] Connected")
         setIsConnected(true)
+        // Reset reconnect attempts on successful connection
+        reconnectAttemptRef.current = 0
 
         // Start ping interval
         pingIntervalRef.current = setInterval(() => {
@@ -221,12 +224,17 @@ export function useChatWebSocket({
         setIsConnected(false)
         cleanup()
 
-        // Reconnect after 3 seconds unless it was a clean close or auth error
+        // Reconnect with exponential backoff unless it was a clean close or auth error
         if (event.code !== 1000 && event.code !== 4001 && event.code !== 4003) {
+          // Exponential backoff: 1s, 2s, 4s, 8s, 16s, max 30s
+          const delay = Math.min(1000 * Math.pow(2, reconnectAttemptRef.current), 30000)
+          reconnectAttemptRef.current += 1
+          console.log(
+            `[WebSocket] Reconnecting in ${delay}ms (attempt ${reconnectAttemptRef.current})`
+          )
           reconnectTimeoutRef.current = setTimeout(() => {
-            console.log("[WebSocket] Attempting to reconnect...")
             connect()
-          }, 3000)
+          }, delay)
         }
       }
 
