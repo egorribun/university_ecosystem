@@ -173,7 +173,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ messages }) => {
     if (messages.length > 0) {
       virtualizer.scrollToIndex(messages.length - 1, { align: "end" })
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (
