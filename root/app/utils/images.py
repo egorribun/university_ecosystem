@@ -5,6 +5,8 @@ from __future__ import annotations
 from io import BytesIO
 from typing import cast
 
+from defusedxml.common import DefusedXmlException
+from defusedxml.ElementTree import fromstring as parse_svg_string
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 try:  # Pillow >= 9.1 exposes the resampling enum in PIL.Image
@@ -25,14 +27,32 @@ def _resolve_resample_filter() -> Resampling:
     return cast(Resampling, lanczos)
 
 
+def sanitize_svg(data: bytes) -> bytes:
+    """Validate and sanitize SVG data to prevent XXE and other XML-based attacks."""
+    try:
+        # defusedxml will raise an error if it finds any suspicious XML
+        parse_svg_string(data)
+        return data
+    except (DefusedXmlException, Exception) as exc:
+        raise ValueError("Invalid or malicious SVG data") from exc
+
+
 def optimize_image(
-    data: bytes, *, max_width: int | None = None, max_height: int | None = None
+    data: bytes,
+    *,
+    max_width: int | None = None,
+    max_height: int | None = None,
+    content_type: str | None = None,
 ) -> tuple[bytes, str]:
-    """Resize and re-encode an image to an optimized PNG or WebP payload.
+    """Resize and re-encode an image to an optimized WebP or PNG payload.
 
     The helper ensures the image fits within the configured bounding box, strips
     EXIF metadata, and converts the image to an efficient format.
     """
+
+    # Handle SVG separately
+    if content_type == "image/svg+xml" or data.lstrip().startswith(b"<svg"):
+        return sanitize_svg(data), "image/svg+xml"
 
     try:
         with Image.open(BytesIO(data)) as img:
@@ -50,18 +70,13 @@ def optimize_image(
                 resample = _resolve_resample_filter()
                 img.thumbnail((max_w, max_h), resample=resample)
 
-            has_alpha = "A" in img.getbands()
-            target_mode = "RGBA" if has_alpha else "RGB"
-            if img.mode != target_mode:
-                img = img.convert(target_mode)
-
             buffer = BytesIO()
-            if has_alpha:
-                img.save(buffer, format="PNG", optimize=True)
-                mime = "image/png"
-            else:
-                img.save(buffer, format="WEBP", method=6, quality=85)
-                mime = "image/webp"
+            # Prefer WebP for all images if possible, otherwise use PNG
+            # for alpha transparency if WebP is not desired.
+            # But WebP supports alpha, so we can use it for everything.
+            img.save(buffer, format="WEBP", method=6, quality=85, lossless=False)
+            mime = "image/webp"
+
     except (
         UnidentifiedImageError,
         OSError,

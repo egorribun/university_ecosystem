@@ -123,11 +123,16 @@ class RedisCache(BaseCache):
             return self._client
         async with self._client_lock:
             if self._client is None:
+                # Use robust connection pooling for Redis
                 self._client = Redis.from_url(
                     self._url,
                     encoding="utf-8",
                     decode_responses=True,
                     health_check_interval=30,
+                    socket_timeout=5.0,
+                    socket_connect_timeout=5.0,
+                    retry_on_timeout=True,
+                    max_connections=getattr(settings, "redis_pool_size", 20),
                 )
         return self._client
 

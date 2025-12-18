@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import mfa
+from app.auth.redis_session import get_session_backend
 from app.auth.security import decode_token
 from app.core.config import settings
 from app.core.database import get_db
@@ -48,6 +49,17 @@ async def get_current_user(
         raise credentials_exception
     if not jti:
         raise credentials_exception
+
+    # Fast-path check in Redis session backend if enabled
+    session_backend = await get_session_backend()
+    if not await session_backend.is_session_valid(jti):
+        # Even if not in Redis, we might want to check DB as a fallback
+        # but for performance we can assume if it's supposed to be in Redis,
+        # it should be there.
+        # If session_storage_backend is "redis", then we trust Redis.
+        if settings.session_storage_backend == "redis":
+            raise credentials_exception
+
     res = await db.execute(select(ActiveSession).where(ActiveSession.jti == jti))
     session = res.scalars().first()
     now = datetime.now(UTC)

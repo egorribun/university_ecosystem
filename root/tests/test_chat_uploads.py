@@ -52,10 +52,19 @@ class _RecordingStorage:
         self.calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
 
     async def save_file(
-        self, relative_path: str, data: bytes, *, content_type: str | None = None
+        self,
+        relative_path: str,
+        data: bytes,
+        *,
+        content_type: str | None = None,
+        cache_control: str | None = None,
     ) -> str:
         self.calls.append(
-            ("save", (relative_path, data), {"content_type": content_type})
+            (
+                "save",
+                (relative_path, data),
+                {"content_type": content_type, "cache_control": cache_control},
+            )
         )
         return f"https://cdn.example/{relative_path}"
 

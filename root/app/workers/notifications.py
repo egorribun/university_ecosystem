@@ -175,7 +175,9 @@ async def _wait_for_signals(stop_event: asyncio.Event) -> None:
 async def run_worker() -> None:
     """Entrypoint for the standalone notifications worker."""
 
-    configure_worker_observability(worker_name="notifications")
+    from app.core.database import engine
+
+    configure_worker_observability(worker_name="notifications", engine=engine)
     metrics = create_worker_metrics("notifications_scheduler")
 
     monitor_stop: Callable[[], Awaitable[None]] | None = None

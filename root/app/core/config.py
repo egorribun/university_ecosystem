@@ -249,9 +249,9 @@ class Settings(BaseSettings):
     vapid_public_key: str = ""
     vapid_private_key: str = ""
     vapid_subject: str = ""
-    enable_otel: bool = False
+    enable_otel: bool = True
     otel_service_name: str = "university-ecosystem"
-    otel_exporter_otlp_endpoint: str = ""
+    otel_exporter_otlp_endpoint: str = "http://localhost:4317"
     otel_exporter_otlp_headers: str = ""
     otel_trace_sampler_ratio: float = 1.0
     enable_otel_metrics: bool = True
@@ -319,8 +319,9 @@ class Settings(BaseSettings):
     enable_corp: bool = False
     corp_value: str = "same-site"
     cache_backend: str = "redis"
-    cache_enabled: bool = False
+    cache_enabled: bool = True
     cache_redis_url: str = "redis://127.0.0.1:6379/0"
+    session_storage_backend: str = "redis"
     cache_default_ttl_seconds: int = 300
     stats_cache_ttl_seconds: int = 180
     cache_warmup_enabled: bool = False

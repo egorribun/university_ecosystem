@@ -30,7 +30,9 @@ aiosqlite>=0.19
 prometheus-client>=0.20
 pyotp>=2.9
 psutil>=6.0.0
-gputil>=1.4.0
+GPUTil>=1.4.0
+defusedxml>=0.7.1
+
 
 opentelemetry-api==1.39.0
 opentelemetry-sdk==1.39.0
