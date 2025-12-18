@@ -89,9 +89,7 @@ class TestCriticalQueryPlans:
             # Either indexed access or efficient scan on small table
             assert (
                 plan["estimated_cost"] < 1000 or plan["uses_index"]
-            ), (
-                f"Notifications query should be efficient, cost: {plan['estimated_cost']}"
-            )
+            ), f"Notifications query should be efficient, cost: {plan['estimated_cost']}"
 
     async def test_chat_messages_uses_index(self):
         """Verify that chat messages lookup uses chat_id index."""
@@ -101,9 +99,7 @@ class TestCriticalQueryPlans:
 
             assert (
                 plan["estimated_cost"] < 500 or plan["uses_index"]
-            ), (
-                f"Chat messages query should be efficient, cost: {plan['estimated_cost']}"
-            )
+            ), f"Chat messages query should be efficient, cost: {plan['estimated_cost']}"
 
     async def test_events_active_uses_index(self):
         """Verify that filtering active events uses an index."""
