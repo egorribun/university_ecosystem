@@ -353,9 +353,7 @@ class StoryUpdate(BaseModel):
         if "published_at" in provided and "expires_at" in provided:
             if self.published_at is not None and self.expires_at is not None:
                 if self.expires_at <= self.published_at:
-                    raise ValueError(
-                        translate("validation.stories.expires_after_publish")
-                    )
+                    raise ValueError(translate("validation.stories.expires_after_publish"))
         return self
 
 

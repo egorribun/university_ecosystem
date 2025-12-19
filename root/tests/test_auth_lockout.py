@@ -37,9 +37,7 @@ async def _login(async_client, email: str, password: str):
     )
 
 
-async def test_login_lockout_enforced(
-    async_client, user_factory, db_session, monkeypatch, caplog
-):
+async def test_login_lockout_enforced(async_client, user_factory, db_session, monkeypatch, caplog):
     monkeypatch.setattr(settings, "auth_lockout_thresholds", "2:3")
     monkeypatch.setattr(settings, "auth_lockout_history_minutes", 5)
     caplog.set_level(logging.INFO)
@@ -102,9 +100,7 @@ async def test_login_lockout_clears_after_success(
     assert unlocked_event.get("reason") == "successful_login"
 
 
-async def test_login_lockout_race_condition(
-    async_client, user_factory, db_session, monkeypatch
-):
+async def test_login_lockout_race_condition(async_client, user_factory, db_session, monkeypatch):
     monkeypatch.setattr(settings, "auth_lockout_thresholds", "2:5")
     monkeypatch.setattr(settings, "auth_lockout_history_minutes", 5)
 

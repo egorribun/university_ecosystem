@@ -58,10 +58,7 @@ _TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "en": "Hello{name}!",
     },
     "email.reset.instructions": {
-        "ru": (
-            "Вы запросили сброс пароля в Экосистеме ГУУ. "
-            "Ссылка действует {minutes} минут."
-        ),
+        "ru": ("Вы запросили сброс пароля в Экосистеме ГУУ. Ссылка действует {minutes} минут."),
         "en": (
             "You requested a password reset in the GUU Ecosystem. "
             "The link is valid for {minutes} minutes."
@@ -149,8 +146,7 @@ _TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
     },
     "notifications.mfa.reset.body": {
         "ru": (
-            "Администратор отключил ваши MFA-методы. "
-            "Настройте защиту повторно при следующем входе."
+            "Администратор отключил ваши MFA-методы. Настройте защиту повторно при следующем входе."
         ),
         "en": (
             "An administrator removed your MFA methods. "
@@ -722,9 +718,7 @@ def _normalize_weekday_token(value: str | None) -> str | None:
     return normalized or None
 
 
-def translate_lesson_type(
-    lesson_type: str | None, *, locale: str | None = None
-) -> str | None:
+def translate_lesson_type(lesson_type: str | None, *, locale: str | None = None) -> str | None:
     if lesson_type is None:
         return None
 

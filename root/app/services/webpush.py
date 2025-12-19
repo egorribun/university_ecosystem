@@ -246,9 +246,7 @@ def _normalize_payload(
     payload_data: dict[str, Any]
     if isinstance(raw.get("options"), Mapping):
         payload_options = {
-            key: deepcopy(value)
-            for key, value in raw["options"].items()
-            if value is not None
+            key: deepcopy(value) for key, value in raw["options"].items() if value is not None
         }
     else:
         payload_options = {}
@@ -293,9 +291,7 @@ def _normalize_payload(
         payload_options.setdefault("body", str(body_value or ""))
     else:
         meta_from_options = {
-            key: payload_options.pop(key)
-            for key in list(payload_options)
-            if key in _META_KEYS
+            key: payload_options.pop(key) for key in list(payload_options) if key in _META_KEYS
         }
         for key, value in meta_from_options.items():
             if value is None or key in meta:
@@ -392,16 +388,13 @@ def _compose_payload(
 ) -> dict[str, Any]:
     result = {
         "title": str(
-            payload.get("title")
-            or translate("notifications.default_title", locale=locale)
+            payload.get("title") or translate("notifications.default_title", locale=locale)
         ),
         "options": deepcopy(payload.get("options", {})),
         "data": deepcopy(payload.get("data", {})),
     }
     clean_meta = (
-        {key: value for key, value in (meta or {}).items() if value is not None}
-        if meta
-        else {}
+        {key: value for key, value in (meta or {}).items() if value is not None} if meta else {}
     )
     if clean_meta:
         result["_meta"] = clean_meta
@@ -467,29 +460,19 @@ def build_payload(
     else:
         raw_source = {}
 
-    template_defaults = render_notification_template(
-        notification_type, raw_source, locale=locale
-    )
+    template_defaults = render_notification_template(notification_type, raw_source, locale=locale)
     if template_defaults:
-        source: dict[str, Any] = {
-            key: deepcopy(value) for key, value in template_defaults.items()
-        }
+        source: dict[str, Any] = {key: deepcopy(value) for key, value in template_defaults.items()}
         template_data = (
             template_defaults.get("data")
             if isinstance(template_defaults.get("data"), Mapping)
             else None
         )
-        input_data = (
-            raw_source.get("data")
-            if isinstance(raw_source.get("data"), Mapping)
-            else None
-        )
+        input_data = raw_source.get("data") if isinstance(raw_source.get("data"), Mapping) else None
         if template_data or input_data:
             merged_data: dict[str, Any] = {}
             if template_data:
-                merged_data.update(
-                    {key: deepcopy(value) for key, value in template_data.items()}
-                )
+                merged_data.update({key: deepcopy(value) for key, value in template_data.items()})
             if input_data:
                 for key, value in input_data.items():
                     merged_data[key] = deepcopy(value)
@@ -503,14 +486,10 @@ def build_payload(
     else:
         source = raw_source
 
-    title = str(
-        source.get("title") or translate("notifications.default_title", locale=locale)
-    )
+    title = str(source.get("title") or translate("notifications.default_title", locale=locale))
     payload_data: dict[str, Any] = {}
     if isinstance(source.get("data"), Mapping):
-        payload_data.update(
-            {key: deepcopy(value) for key, value in source["data"].items()}
-        )
+        payload_data.update({key: deepcopy(value) for key, value in source["data"].items()})
     url = source.get("url")
     if isinstance(url, str) and url.strip():
         payload_data.setdefault("url", url.strip())
@@ -587,9 +566,7 @@ def send_web_push(sub: PushSubscription, data: dict) -> WebPushResult:
             headers=headers,
             ttl=ttl,
         )
-    except (
-        WebPushException
-    ) as exc:  # pragma: no cover - network errors hard to simulate
+    except WebPushException as exc:  # pragma: no cover - network errors hard to simulate
         status_code = getattr(getattr(exc, "response", None), "status_code", None)
         message = str(exc)
         gone = False
@@ -600,9 +577,7 @@ def send_web_push(sub: PushSubscription, data: dict) -> WebPushResult:
         if gone:
             session_factory = _ensure_sync_sessionmaker()
             with session_factory() as session:
-                session.execute(
-                    delete(PushSubscription).where(PushSubscription.id == sub.id)
-                )
+                session.execute(delete(PushSubscription).where(PushSubscription.id == sub.id))
                 session.commit()
             _log_event(
                 "send",
@@ -657,9 +632,7 @@ def send_web_push(sub: PushSubscription, data: dict) -> WebPushResult:
     session_factory = _ensure_sync_sessionmaker()
     with session_factory() as session:
         session.execute(
-            update(PushSubscription)
-            .where(PushSubscription.id == sub.id)
-            .values(last_seen_at=now)
+            update(PushSubscription).where(PushSubscription.id == sub.id).values(last_seen_at=now)
         )
         session.commit()
     _log_event("send", user_id=user_id, endpoint=sub.endpoint, status="sent")
@@ -705,11 +678,7 @@ async def send_to_user(
     async with async_session() as session:
         result = await session.execute(
             select(PushSubscription)
-            .options(
-                selectinload(PushSubscription.user).selectinload(
-                    User.push_topic_preferences
-                )
-            )
+            .options(selectinload(PushSubscription.user).selectinload(User.push_topic_preferences))
             .where(PushSubscription.user_id == user_id)
         )
         subscriptions = result.scalars().all()

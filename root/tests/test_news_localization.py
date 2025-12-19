@@ -43,18 +43,14 @@ async def test_news_localization_preference(async_client, db_session):
     assert data_en[fallback.id]["title"] == "Только русский"
     assert data_en[fallback.id]["content"] == "Контент без перевода"
 
-    detail_en = await async_client.get(
-        f"/news/{primary.id}", headers={"Accept-Language": "en"}
-    )
+    detail_en = await async_client.get(f"/news/{primary.id}", headers={"Accept-Language": "en"})
     assert detail_en.status_code == 200
     payload_en = detail_en.json()
     assert payload_en["title"] == "Daily News"
     assert payload_en["content"] == "English text"
     assert payload_en["title_en"] == "Daily News"
 
-    detail_ru = await async_client.get(
-        f"/news/{fallback.id}", headers={"Accept-Language": "en"}
-    )
+    detail_ru = await async_client.get(f"/news/{fallback.id}", headers={"Accept-Language": "en"})
     assert detail_ru.status_code == 200
     payload_ru = detail_ru.json()
     assert payload_ru["title"] == "Только русский"
@@ -63,9 +59,7 @@ async def test_news_localization_preference(async_client, db_session):
 
 
 @pytest.mark.anyio
-async def test_news_list_localization_headers_cache(
-    async_client, db_session, fake_cache
-):
+async def test_news_list_localization_headers_cache(async_client, db_session, fake_cache):
     _ = fake_cache
     record = models.News(
         title="Новость дня",
@@ -85,9 +79,7 @@ async def test_news_list_localization_headers_cache(
     etag = first.headers.get("ETag")
     assert etag
 
-    not_modified = await async_client.get(
-        "/news", headers={**headers, "If-None-Match": etag}
-    )
+    not_modified = await async_client.get("/news", headers={**headers, "If-None-Match": etag})
     assert not_modified.status_code == 304
     _assert_news_headers(not_modified, "en")
     assert not_modified.headers.get("ETag") == etag
@@ -99,9 +91,7 @@ async def test_news_list_localization_headers_cache(
 
 
 @pytest.mark.anyio
-async def test_news_detail_localization_headers_cache(
-    async_client, db_session, fake_cache
-):
+async def test_news_detail_localization_headers_cache(async_client, db_session, fake_cache):
     _ = fake_cache
     record = models.News(
         title="Новость дня",

@@ -27,9 +27,7 @@ from app.services.notifications.core import (
 from app.services.notifications.delivery import create_notifications_for_users
 
 
-async def notify_about_news(
-    db: AsyncSession, news: News, *, locale: str | None = None
-) -> int:
+async def notify_about_news(db: AsyncSession, news: News, *, locale: str | None = None) -> int:
     """Create and send notifications about a new news article."""
     resolved_locale = resolve_locale(locale=locale)
 
@@ -70,9 +68,7 @@ async def notify_about_news(
             "id": getattr(news, "id", None),
             "url": url,
         }
-        template = render_notification_template(
-            "news.new", template_payload, locale=normalized
-        )
+        template = render_notification_template("news.new", template_payload, locale=normalized)
         if headline:
             default_title = translate(
                 "notifications.news.title_with_headline",
@@ -81,9 +77,7 @@ async def notify_about_news(
             )
         else:
             default_title = translate("notifications.news.title", locale=normalized)
-        default_body = summary or translate(
-            "notifications.news.no_summary", locale=normalized
-        )
+        default_body = summary or translate("notifications.news.no_summary", locale=normalized)
         default_tag = f"news:{news.id}" if getattr(news, "id", None) else "news"
         if template:
             title_value = str(template.get("title") or default_title)
@@ -91,13 +85,9 @@ async def notify_about_news(
             resolved_url = str(template.get("url") or url)
             tag_value = str(template.get("tag") or default_tag)
             template_data = (
-                template.get("data")
-                if isinstance(template.get("data"), Mapping)
-                else {}
+                template.get("data") if isinstance(template.get("data"), Mapping) else {}
             )
-            payload_data = (
-                dict(template_data) if isinstance(template_data, Mapping) else {}
-            )
+            payload_data = dict(template_data) if isinstance(template_data, Mapping) else {}
         else:
             title_value, body_value, resolved_url, tag_value = (
                 default_title,
@@ -173,9 +163,7 @@ async def notify_about_news(
     )
 
 
-async def notify_about_event(
-    db: AsyncSession, event: Event, *, locale: str | None = None
-) -> int:
+async def notify_about_event(db: AsyncSession, event: Event, *, locale: str | None = None) -> int:
     """Create and send notifications about a new event."""
 
     def _variant(
@@ -249,9 +237,7 @@ async def notify_about_event(
                 title=localized_title_value,
             )
         else:
-            default_title = translate(
-                "notifications.events.title", locale=locale_option
-            )
+            default_title = translate("notifications.events.title", locale=locale_option)
         details = [start_local.strftime("%d.%m · %H:%M")]
         if localized_location:
             details.append(str(localized_location))
@@ -274,13 +260,9 @@ async def notify_about_event(
             resolved_url = str(template.get("url") or url)
             tag_value = str(template.get("tag") or default_tag)
             template_data = (
-                template.get("data")
-                if isinstance(template.get("data"), Mapping)
-                else {}
+                template.get("data") if isinstance(template.get("data"), Mapping) else {}
             )
-            payload_data = (
-                dict(template_data) if isinstance(template_data, Mapping) else {}
-            )
+            payload_data = dict(template_data) if isinstance(template_data, Mapping) else {}
         else:
             title_value, body_value, resolved_url, tag_value = (
                 default_title,

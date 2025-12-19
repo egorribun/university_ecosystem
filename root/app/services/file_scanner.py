@@ -26,9 +26,7 @@ class FileScannerPayloadTooLarge(RuntimeError):
     """Raised when a payload exceeds the configured scanner size limit."""
 
     def __init__(self, size_bytes: int, *, limit_bytes: int) -> None:
-        super().__init__(
-            f"payload exceeds scanner limit ({size_bytes} > {limit_bytes} bytes)"
-        )
+        super().__init__(f"payload exceeds scanner limit ({size_bytes} > {limit_bytes} bytes)")
         self.size_bytes = size_bytes
         self.limit_bytes = limit_bytes
 
@@ -120,9 +118,7 @@ def _scanner_size_limit_bytes() -> int:
 
 def _scanner_duration_limit_seconds() -> float:
     try:
-        configured = float(
-            getattr(settings, "event_file_scanner_max_duration_sec", 0) or 0
-        )
+        configured = float(getattr(settings, "event_file_scanner_max_duration_sec", 0) or 0)
     except (TypeError, ValueError):  # pragma: no cover - invalid config
         return 0.0
     if configured <= 0:
@@ -154,9 +150,7 @@ class _UploadStream:
             return data
         self.bytes_scanned += len(data)
         if self._limit and self.bytes_scanned > self._limit:
-            raise FileScannerPayloadTooLarge(
-                self.bytes_scanned, limit_bytes=self._limit
-            )
+            raise FileScannerPayloadTooLarge(self.bytes_scanned, limit_bytes=self._limit)
         return data
 
 
@@ -187,11 +181,7 @@ async def scan_for_malware(
     if not getattr(settings, "event_file_scanner_enabled", False):
         return
 
-    backend = (
-        (getattr(settings, "event_file_scanner_backend", "clamd") or "clamd")
-        .strip()
-        .lower()
-    )
+    backend = (getattr(settings, "event_file_scanner_backend", "clamd") or "clamd").strip().lower()
     size_limit = _scanner_size_limit_bytes()
     if size_limit and size_bytes and size_bytes > size_limit:
         raise HTTPException(
@@ -202,9 +192,7 @@ async def scan_for_malware(
     try:
         if backend == "clamd":
             if stream_upload is not None:
-                result = await _scan_upload_with_clamd(
-                    stream_upload, size_limit=size_limit
-                )
+                result = await _scan_upload_with_clamd(stream_upload, size_limit=size_limit)
             else:
                 result = await _scan_bytes_with_clamd(data)
         else:
@@ -276,9 +264,7 @@ async def _scan_bytes_with_clamd(data: bytes) -> _ScanResult:
     return await _run_scan(_runner)
 
 
-async def _scan_upload_with_clamd(
-    upload: UploadFile, *, size_limit: int
-) -> _ScanResult:
+async def _scan_upload_with_clamd(upload: UploadFile, *, size_limit: int) -> _ScanResult:
     await upload.seek(0)
 
     def _runner() -> tuple[str | None, int]:
@@ -295,9 +281,7 @@ async def _run_scan(
     start = time.perf_counter()
     signature, bytes_scanned = await asyncio.to_thread(runner)
     duration = time.perf_counter() - start
-    return _ScanResult(
-        signature=signature, duration=duration, bytes_scanned=bytes_scanned
-    )
+    return _ScanResult(signature=signature, duration=duration, bytes_scanned=bytes_scanned)
 
 
 async def check_file_scanner_health() -> None:
@@ -306,11 +290,7 @@ async def check_file_scanner_health() -> None:
     if not getattr(settings, "event_file_scanner_enabled", False):
         return
 
-    backend = (
-        (getattr(settings, "event_file_scanner_backend", "clamd") or "clamd")
-        .strip()
-        .lower()
-    )
+    backend = (getattr(settings, "event_file_scanner_backend", "clamd") or "clamd").strip().lower()
 
     if backend == "clamd":
         await asyncio.to_thread(_check_clamd_health)

@@ -71,9 +71,7 @@ def _server_secret() -> bytes:
         or _secret_from_env_files()
     )
     if not secret:
-        raise RuntimeError(
-            "ATTENDANCE_TOKEN_SECRET or SECRET_KEY must be set during migration"
-        )
+        raise RuntimeError("ATTENDANCE_TOKEN_SECRET or SECRET_KEY must be set during migration")
     return secret.strip().encode("utf-8")
 
 
@@ -96,13 +94,9 @@ def upgrade() -> None:
     existing_columns = _table_columns(bind, "event_attendance")
 
     if "qr_secret" not in existing_columns:
-        op.add_column(
-            "event_attendance", sa.Column("qr_secret", sa.String(), nullable=True)
-        )
+        op.add_column("event_attendance", sa.Column("qr_secret", sa.String(), nullable=True))
     if "qr_hmac" not in existing_columns:
-        op.add_column(
-            "event_attendance", sa.Column("qr_hmac", sa.String(), nullable=True)
-        )
+        op.add_column("event_attendance", sa.Column("qr_hmac", sa.String(), nullable=True))
 
     attendance = sa.table(
         "event_attendance",
@@ -132,9 +126,7 @@ def upgrade() -> None:
             updates["qr_hmac"] = digest
         if updates:
             connection.execute(
-                attendance.update()
-                .where(attendance.c.id == mapping["id"])
-                .values(**updates)
+                attendance.update().where(attendance.c.id == mapping["id"]).values(**updates)
             )
 
     if include_qr_code:
@@ -151,9 +143,7 @@ def downgrade() -> None:
     existing_columns = _table_columns(bind, "event_attendance")
 
     if "qr_code" not in existing_columns:
-        op.add_column(
-            "event_attendance", sa.Column("qr_code", sa.String(), nullable=True)
-        )
+        op.add_column("event_attendance", sa.Column("qr_code", sa.String(), nullable=True))
 
     attendance = sa.table(
         "event_attendance",
@@ -163,19 +153,13 @@ def downgrade() -> None:
     )
 
     connection = op.get_bind()
-    rows = connection.execute(
-        sa.select(attendance.c.id, attendance.c.qr_secret)
-    ).fetchall()
+    rows = connection.execute(sa.select(attendance.c.id, attendance.c.qr_secret)).fetchall()
     for row in rows:
         connection.execute(
-            attendance.update()
-            .where(attendance.c.id == row.id)
-            .values(qr_code=row.qr_secret)
+            attendance.update().where(attendance.c.id == row.id).values(qr_code=row.qr_secret)
         )
 
-    if "qr_hmac" in existing_columns or "qr_hmac" in _table_columns(
-        connection, "event_attendance"
-    ):
+    if "qr_hmac" in existing_columns or "qr_hmac" in _table_columns(connection, "event_attendance"):
         op.drop_column("event_attendance", "qr_hmac")
     if "qr_secret" in existing_columns or "qr_secret" in _table_columns(
         connection, "event_attendance"

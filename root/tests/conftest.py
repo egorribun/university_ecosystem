@@ -45,9 +45,7 @@ os.environ.setdefault("ALGORITHM", "HS256")
 os.environ.setdefault("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
 os.environ.setdefault("STATIC_DIR", "app/test-static")
 os.environ.setdefault("ENVIRONMENT", "testing")
-os.environ.setdefault(
-    "SPOTIFY_TOKEN_SECRET", "aN-c6G_Gi7q0E8VnXW0fvkYlCYwH14r2raXI5Qun7Ss="
-)
+os.environ.setdefault("SPOTIFY_TOKEN_SECRET", "aN-c6G_Gi7q0E8VnXW0fvkYlCYwH14r2raXI5Qun7Ss=")
 os.environ.setdefault("RATE_LIMIT_ENABLED", "true")
 os.environ.setdefault("RATE_LIMIT_DEFAULT", "5/minute,10/hour")
 os.environ.setdefault("RATE_LIMIT_SENSITIVE", "4/minute")
@@ -176,9 +174,7 @@ async def prepare_database() -> AsyncIterator[None]:
         await conn.exec_driver_sql("PRAGMA busy_timeout=5000")
         await conn.exec_driver_sql("PRAGMA journal_mode=WAL")
         await conn.run_sync(Base.metadata.create_all)
-        await conn.run_sync(
-            models.NotificationDelivery.__table__.create, checkfirst=True
-        )
+        await conn.run_sync(models.NotificationDelivery.__table__.create, checkfirst=True)
     yield
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
@@ -206,10 +202,7 @@ async def clean_database(prepare_database: None) -> AsyncIterator[None]:
                 raise
 
             logging.warning(
-                (
-                    "SQLite database locked during test cleanup, retrying in %.1fs "
-                    "(attempt %d/%d)"
-                ),
+                ("SQLite database locked during test cleanup, retrying in %.1fs (attempt %d/%d)"),
                 delay,
                 attempt,
                 attempts,
@@ -258,9 +251,7 @@ async def async_client(
     monkeypatch: pytest.MonkeyPatch,
     prepare_database: None,
 ) -> AsyncIterator[httpx.AsyncClient]:
-    async def _start_notifications_scheduler(
-        *args, **kwargs
-    ) -> Callable[[], Awaitable[None]]:
+    async def _start_notifications_scheduler(*args, **kwargs) -> Callable[[], Awaitable[None]]:
         async def _stop() -> None:
             return None
 
@@ -284,9 +275,7 @@ async def async_client(
         _start_notifications_retention_scheduler,
     )
 
-    async def _start_session_cleanup_scheduler(
-        *args, **kwargs
-    ) -> Callable[[], Awaitable[None]]:
+    async def _start_session_cleanup_scheduler(*args, **kwargs) -> Callable[[], Awaitable[None]]:
         async def _stop() -> None:
             return None
 
@@ -297,9 +286,7 @@ async def async_client(
         _start_session_cleanup_scheduler,
     )
 
-    async def _start_story_cleanup_scheduler(
-        *args, **kwargs
-    ) -> Callable[[], Awaitable[None]]:
+    async def _start_story_cleanup_scheduler(*args, **kwargs) -> Callable[[], Awaitable[None]]:
         async def _stop() -> None:
             return None
 
@@ -345,9 +332,7 @@ async def root_client(
 ) -> AsyncIterator[httpx.AsyncClient]:
     """Client for testing root-level endpoints (no /api/v1 prefix)."""
 
-    async def _start_notifications_scheduler(
-        *args, **kwargs
-    ) -> Callable[[], Awaitable[None]]:
+    async def _start_notifications_scheduler(*args, **kwargs) -> Callable[[], Awaitable[None]]:
         async def _stop() -> None:
             return None
 
@@ -371,9 +356,7 @@ async def root_client(
         _start_notifications_retention_scheduler,
     )
 
-    async def _start_session_cleanup_scheduler(
-        *args, **kwargs
-    ) -> Callable[[], Awaitable[None]]:
+    async def _start_session_cleanup_scheduler(*args, **kwargs) -> Callable[[], Awaitable[None]]:
         async def _stop() -> None:
             return None
 
@@ -384,9 +367,7 @@ async def root_client(
         _start_session_cleanup_scheduler,
     )
 
-    async def _start_story_cleanup_scheduler(
-        *args, **kwargs
-    ) -> Callable[[], Awaitable[None]]:
+    async def _start_story_cleanup_scheduler(*args, **kwargs) -> Callable[[], Awaitable[None]]:
         async def _stop() -> None:
             return None
 
@@ -432,9 +413,7 @@ async def db_session() -> AsyncIterator[AsyncSession]:
 class _TestingRedisCache(cache_module.RedisCache):
     async def _get_client(self):  # type: ignore[override]
         if self._client is None:
-            self._client = fakeredis.aioredis.FakeRedis(
-                encoding="utf-8", decode_responses=True
-            )
+            self._client = fakeredis.aioredis.FakeRedis(encoding="utf-8", decode_responses=True)
         return self._client
 
     async def invalidate(self, *keys: str) -> None:

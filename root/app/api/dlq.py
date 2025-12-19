@@ -81,8 +81,7 @@ async def get_dlq_stats(
         retrying=stats.get(JobStatus.RETRYING.value, 0),
         failed=stats.get(JobStatus.FAILED.value, 0),
         completed=stats.get(JobStatus.COMPLETED.value, 0),
-        total_active=stats.get(JobStatus.PENDING.value, 0)
-        + stats.get(JobStatus.RETRYING.value, 0),
+        total_active=stats.get(JobStatus.PENDING.value, 0) + stats.get(JobStatus.RETRYING.value, 0),
     )
 
 
@@ -91,8 +90,7 @@ async def get_dlq_stats(
     response_model=DLQJobsListResponse,
     summary="List DLQ Jobs",
     description=(
-        "Returns a paginated list of jobs in the dead letter queue "
-        "with optional status filtering."
+        "Returns a paginated list of jobs in the dead letter queue with optional status filtering."
     ),
 )
 async def list_dlq_jobs(
@@ -143,9 +141,7 @@ async def list_dlq_jobs(
                 retry_count=job.retry_count,
                 max_retries=job.max_retries,
                 status=job.status,
-                next_retry_at=(
-                    job.next_retry_at.isoformat() if job.next_retry_at else None
-                ),
+                next_retry_at=(job.next_retry_at.isoformat() if job.next_retry_at else None),
                 created_at=job.created_at.isoformat(),
                 updated_at=job.updated_at.isoformat(),
             )
@@ -159,8 +155,7 @@ async def list_dlq_jobs(
     "/retry/{job_id}",
     summary="Retry DLQ Job",
     description=(
-        "Manually triggers a retry for a specific failed job by "
-        "resetting its status to pending."
+        "Manually triggers a retry for a specific failed job by resetting its status to pending."
     ),
 )
 async def retry_dlq_job(

@@ -104,9 +104,7 @@ async def invalidate_all_schedules() -> None:
     get_cache()
     # For now, we can't easily invalidate all keys with a prefix
     # This would require SCAN command support in the cache layer
-    logger.warning(
-        "invalidate_all_schedules called but pattern deletion not implemented"
-    )
+    logger.warning("invalidate_all_schedules called but pattern deletion not implemented")
 
 
 class CacheInvalidator:

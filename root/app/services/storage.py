@@ -118,9 +118,7 @@ class S3Storage(StorageBackend):
         if client is None:
             try:
                 import boto3
-            except (
-                ImportError
-            ) as exc:  # pragma: no cover - import error handled in tests
+            except ImportError as exc:  # pragma: no cover - import error handled in tests
                 raise RuntimeError("boto3 is required for S3 storage") from exc
             client = boto3.client(
                 "s3",
@@ -160,9 +158,7 @@ class S3Storage(StorageBackend):
         cache_control: str | None = None,
     ) -> str:
         key = self._normalize_key(relative_path)
-        await asyncio.to_thread(
-            self._put_object, key, data, content_type, cache_control
-        )
+        await asyncio.to_thread(self._put_object, key, data, content_type, cache_control)
         return f"{self.base_url}/{key}"
 
     def _put_object(
@@ -222,24 +218,19 @@ class S3Storage(StorageBackend):
         try:
             self.client.delete_object(Bucket=self.bucket, Key=key)
         except Exception:  # pragma: no cover - depends on boto3 internals
-            logger.warning(
-                "Failed to delete %s from bucket %s", key, self.bucket, exc_info=True
-            )
+            logger.warning("Failed to delete %s from bucket %s", key, self.bucket, exc_info=True)
 
 
 def get_storage_backend(settings: Settings) -> StorageBackend:
     backend = str(settings.storage_backend).strip().lower()
     if backend in {"static", "filesystem", "local"}:
-        return StaticFSStorage(
-            settings.static_dir_path, base_url=settings.storage_static_base_url
-        )
+        return StaticFSStorage(settings.static_dir_path, base_url=settings.storage_static_base_url)
     if backend in {"s3", "minio"}:
         return S3Storage(
             bucket=settings.storage_s3_bucket,
             region=getattr(settings, "storage_s3_region", None) or None,
             access_key_id=getattr(settings, "storage_s3_access_key_id", None) or None,
-            secret_access_key=getattr(settings, "storage_s3_secret_access_key", None)
-            or None,
+            secret_access_key=getattr(settings, "storage_s3_secret_access_key", None) or None,
             endpoint_url=getattr(settings, "storage_s3_endpoint_url", None) or None,
             base_url=getattr(settings, "storage_s3_base_url", None) or None,
         )

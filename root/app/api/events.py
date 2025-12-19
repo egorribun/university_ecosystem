@@ -65,16 +65,12 @@ async def _get_events_list_version(cache) -> str:
             client = await cache._get_client()
             raw = await client.get(_EVENTS_LIST_VERSION_KEY)
         except (RedisError, OSError):
-            logger.warning(
-                "Failed to read events cache version from Redis", exc_info=True
-            )
+            logger.warning("Failed to read events cache version from Redis", exc_info=True)
             return "0"
         try:
             return str(int(raw)) if raw is not None else "0"
         except (TypeError, ValueError):
-            logger.debug(
-                "Invalid events cache version %s, using zero", raw, exc_info=True
-            )
+            logger.debug("Invalid events cache version %s, using zero", raw, exc_info=True)
             return "0"
     return "0"
 
@@ -87,9 +83,7 @@ async def _read_events_list_version(cache) -> int:
             client = await cache._get_client()
             raw = await client.get(_EVENTS_LIST_VERSION_KEY)
         except (RedisError, OSError):
-            logger.debug(
-                "Failed to read events cache version for inspection", exc_info=True
-            )
+            logger.debug("Failed to read events cache version for inspection", exc_info=True)
             return 0
         try:
             return int(raw) if raw is not None else 0
@@ -117,9 +111,7 @@ async def _increment_events_list_version(cache) -> None:
             else:
                 await _manual_increment_events_version(client)
         except (RedisError, OSError):
-            logger.warning(
-                "Failed to increment events cache version in Redis", exc_info=True
-            )
+            logger.warning("Failed to increment events cache version in Redis", exc_info=True)
         return
     _LOCAL_EVENTS_LIST_VERSION += 1
 
@@ -164,9 +156,7 @@ def _events_list_cache_key(
         sort_keys=True,
     ).encode("utf-8")
     digest = hashlib.sha256(signature).hexdigest()
-    return (
-        f"{_EVENTS_LIST_CACHE_PREFIX}:{normalized_version}:{normalized_locale}:{digest}"
-    )
+    return f"{_EVENTS_LIST_CACHE_PREFIX}:{normalized_version}:{normalized_locale}:{digest}"
 
 
 async def _invalidate_events_list_cache() -> None:
@@ -216,13 +206,9 @@ async def create_event(
     try:
         record = await crud.create_event(db, data, user_id=user.id)
     except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     await _invalidate_events_list_cache()
-    job = notification_queue.NotificationJob(
-        kind="event", record_id=record.id, locale=locale
-    )
+    job = notification_queue.NotificationJob(kind="event", record_id=record.id, locale=locale)
     try:
         background.add_task(
             notification_queue.enqueue_event_notification,
@@ -235,9 +221,7 @@ async def create_event(
             error=exc,
             source="events.create_event",
         )
-        logger.exception(
-            "Failed to enqueue event notification", extra={"event_id": record.id}
-        )
+        logger.exception("Failed to enqueue event notification", extra={"event_id": record.id})
     return crud.serialize_event(record, locale)
 
 
@@ -473,11 +457,7 @@ async def upload_event_file(
 @router.get("/{id}/files", response_model=list[schemas.EventFileOut])
 async def get_event_files(id: int, db: AsyncSession = Depends(get_db)):
     files = (
-        (
-            await db.execute(
-                select(models.EventFile).where(models.EventFile.event_id == id)
-            )
-        )
+        (await db.execute(select(models.EventFile).where(models.EventFile.event_id == id)))
         .scalars()
         .all()
     )
@@ -530,11 +510,7 @@ async def update_event(
     if old_image_url and q.image_url != old_image_url:
         await delete_static_file(old_image_url)
     files = (
-        (
-            await db.execute(
-                select(models.EventFile).where(models.EventFile.event_id == q.id)
-            )
-        )
+        (await db.execute(select(models.EventFile).where(models.EventFile.event_id == q.id)))
         .scalars()
         .all()
     )
@@ -578,16 +554,12 @@ async def delete_event(
         row[0]
         for row in (
             await db.execute(
-                select(models.EventFile.file_url).where(
-                    models.EventFile.event_id == event_id
-                )
+                select(models.EventFile.file_url).where(models.EventFile.event_id == event_id)
             )
         ).all()
         if row[0]
     ]
-    await db.execute(
-        delete(models.EventFile).where(models.EventFile.event_id == event_id)
-    )
+    await db.execute(delete(models.EventFile).where(models.EventFile.event_id == event_id))
     await db.delete(q)
     await db.commit()
     await _invalidate_events_list_cache()
@@ -633,11 +605,7 @@ async def get_event(
             await db.refresh(attendance)
         attendance_token = attendance_tokens.issue_token(attendance)
     files = (
-        (
-            await db.execute(
-                select(models.EventFile).where(models.EventFile.event_id == q.id)
-            )
-        )
+        (await db.execute(select(models.EventFile).where(models.EventFile.event_id == q.id)))
         .scalars()
         .all()
     )

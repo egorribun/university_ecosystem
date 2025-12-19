@@ -9,9 +9,7 @@ from app.models import models
 from app.services.story_cleanup import cleanup_expired_stories
 
 
-async def _login(
-    async_client: AsyncClient, email: str, password: str
-) -> dict[str, str]:
+async def _login(async_client: AsyncClient, email: str, password: str) -> dict[str, str]:
     response = await async_client.post(
         "/auth/login",
         data={"username": email, "password": password},
@@ -45,9 +43,7 @@ async def test_stories_list_filters_expired(async_client: AsyncClient, story_fac
 
 
 @pytest.mark.anyio
-async def test_stories_list_uses_etag(
-    async_client: AsyncClient, story_factory, fake_cache
-):
+async def test_stories_list_uses_etag(async_client: AsyncClient, story_factory, fake_cache):
     _ = fake_cache
     await story_factory(title="Cached story")
 
@@ -59,18 +55,14 @@ async def test_stories_list_uses_etag(
     assert etag
     assert first.headers.get("Content-Language") == "en"
 
-    not_modified = await async_client.get(
-        "/stories", headers={**headers, "If-None-Match": etag}
-    )
+    not_modified = await async_client.get("/stories", headers={**headers, "If-None-Match": etag})
     assert not_modified.status_code == 304
     assert not_modified.headers.get("ETag") == etag
     assert not_modified.headers.get("Content-Language") == "en"
 
 
 @pytest.mark.anyio
-async def test_story_admin_permissions(
-    async_client: AsyncClient, user_factory, db_session
-):
+async def test_story_admin_permissions(async_client: AsyncClient, user_factory, db_session):
     password = "StoryAdmin123!"
     hashed = get_password_hash(password)
     admin = await user_factory(role="admin", hashed_password=hashed)
@@ -97,9 +89,7 @@ async def test_story_admin_permissions(
     )
     assert forbidden_create.status_code == 403
 
-    created = await async_client.post(
-        "/stories", json=create_payload, headers=admin_headers
-    )
+    created = await async_client.post("/stories", json=create_payload, headers=admin_headers)
     assert created.status_code == 200
     created_id = created.json()["id"]
 
@@ -119,9 +109,7 @@ async def test_story_admin_permissions(
     await db_session.refresh(refreshed)
     assert refreshed.short_text == "Updated copy"
 
-    forbidden_delete = await async_client.delete(
-        f"/stories/{created_id}", headers=student_headers
-    )
+    forbidden_delete = await async_client.delete(f"/stories/{created_id}", headers=student_headers)
     assert forbidden_delete.status_code == 403
 
     deleted = await async_client.delete(f"/stories/{created_id}", headers=admin_headers)

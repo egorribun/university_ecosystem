@@ -41,8 +41,7 @@ def _resolve_env_file(base_dir: Path) -> Path | None:
             else:
                 if candidate_bytes == example_bytes:
                     logging.getLogger(__name__).warning(
-                        "%s is identical to %s; update it with real secrets before "
-                        "deploying.",
+                        "%s is identical to %s; update it with real secrets before deploying.",
                         candidate,
                         example_path,
                     )
@@ -93,9 +92,7 @@ def _validate_webpush_subject(value: str) -> str:
     if scheme == "http":
         hostname = (parsed.hostname or "").lower()
         if hostname not in {"localhost", "127.0.0.1"}:
-            raise ValueError(
-                "Insecure http scheme is only allowed for localhost testing"
-            )
+            raise ValueError("Insecure http scheme is only allowed for localhost testing")
     return normalized
 
 
@@ -162,9 +159,7 @@ class Settings(BaseSettings):
                     formatted
                     for error in exc.errors(include_url=False)
                     if error.get("type") == "missing"
-                    for formatted in [
-                        _format_missing(tuple(error.get("loc", ()) or ()))
-                    ]
+                    for formatted in [_format_missing(tuple(error.get("loc", ()) or ()))]
                     if formatted
                 }
             )
@@ -412,9 +407,7 @@ class Settings(BaseSettings):
 
     @field_validator("auto_create_schema", mode="before")
     @classmethod
-    def _default_auto_create_schema(
-        cls, value: bool | None, info: ValidationInfo
-    ) -> bool:
+    def _default_auto_create_schema(cls, value: bool | None, info: ValidationInfo) -> bool:
         if value is not None:
             return bool(value)
         environment = str(info.data.get("environment") or "development").lower()
@@ -462,9 +455,7 @@ class Settings(BaseSettings):
     def _validate_coep_value(cls, value: str) -> str:
         normalized = value.strip().lower()
         if normalized not in {"require-corp", "credentialless"}:
-            raise ValueError(
-                "COEP_VALUE must be either 'require-corp' or 'credentialless'"
-            )
+            raise ValueError("COEP_VALUE must be either 'require-corp' or 'credentialless'")
         return normalized
 
     @field_validator("corp_value")
@@ -473,8 +464,7 @@ class Settings(BaseSettings):
         normalized = value.strip().lower()
         if normalized not in {"same-origin", "same-site", "cross-origin"}:
             raise ValueError(
-                "CORP_VALUE must be one of 'same-origin', 'same-site', "
-                "or 'cross-origin'"
+                "CORP_VALUE must be one of 'same-origin', 'same-site', or 'cross-origin'"
             )
         return normalized
 
@@ -510,24 +500,18 @@ class Settings(BaseSettings):
             seen.add(candidate)
             normalized.append(candidate)
         if not normalized:
-            raise ValueError(
-                "NOTIFICATIONS_ALLOWED_PUSH_TOPICS must include at least one topic"
-            )
+            raise ValueError("NOTIFICATIONS_ALLOWED_PUSH_TOPICS must include at least one topic")
         return normalized
 
     @field_validator("health_storage_probe_min_interval_seconds")
     @classmethod
     def _validate_health_storage_probe_interval(cls, value: float) -> float:
-        return _validate_positive_float(
-            value, label="HEALTH_STORAGE_PROBE_MIN_INTERVAL_SECONDS"
-        )
+        return _validate_positive_float(value, label="HEALTH_STORAGE_PROBE_MIN_INTERVAL_SECONDS")
 
     @field_validator("notifications_retention_batch_size")
     @classmethod
     def _validate_notifications_retention_batch_size(cls, value: int) -> int:
-        return _validate_positive_int(
-            int(value), label="NOTIFICATIONS_RETENTION_BATCH_SIZE"
-        )
+        return _validate_positive_int(int(value), label="NOTIFICATIONS_RETENTION_BATCH_SIZE")
 
     @field_validator("stats_cache_ttl_seconds")
     @classmethod
@@ -592,24 +576,16 @@ class Settings(BaseSettings):
         seen_kids: set[str] = set()
         for raw_entry in _coerce_str_list(self.jwt_signing_keys):
             if ":" not in raw_entry:
-                raise RuntimeError(
-                    "JWT_SIGNING_KEYS entries must be in '<kid>:<secret>' format"
-                )
+                raise RuntimeError("JWT_SIGNING_KEYS entries must be in '<kid>:<secret>' format")
             kid, secret = raw_entry.split(":", 1)
             kid = kid.strip()
             secret = secret.strip()
             if not kid:
-                raise RuntimeError(
-                    "JWT_SIGNING_KEYS entries must specify a non-empty kid value"
-                )
+                raise RuntimeError("JWT_SIGNING_KEYS entries must specify a non-empty kid value")
             if not secret:
-                raise RuntimeError(
-                    "JWT_SIGNING_KEYS entries must specify a non-empty secret value"
-                )
+                raise RuntimeError("JWT_SIGNING_KEYS entries must specify a non-empty secret value")
             if kid in seen_kids:
-                raise RuntimeError(
-                    "JWT_SIGNING_KEYS entries must use unique kid values"
-                )
+                raise RuntimeError("JWT_SIGNING_KEYS entries must use unique kid values")
             entries.append((kid, secret))
             seen_kids.add(kid)
 
@@ -628,11 +604,7 @@ class Settings(BaseSettings):
     @property
     def jwt_signing_active_kid(self) -> str:
         registry = self.jwt_signing_key_registry
-        configured = (
-            self.jwt_active_kid.strip()
-            if isinstance(self.jwt_active_kid, str)
-            else None
-        )
+        configured = self.jwt_active_kid.strip() if isinstance(self.jwt_active_kid, str) else None
         if configured:
             if configured not in registry:
                 raise RuntimeError(
@@ -773,9 +745,7 @@ class Settings(BaseSettings):
     @property
     def event_file_allowed_mime_types_set(self) -> set[str]:
         values = {
-            value.lower()
-            for value in _coerce_str_list(self.event_file_allowed_mime_types)
-            if value
+            value.lower() for value in _coerce_str_list(self.event_file_allowed_mime_types) if value
         }
         return values
 
@@ -834,10 +804,7 @@ class Settings(BaseSettings):
 
     @cached_property
     def cors_expose_headers_list(self) -> list[str]:
-        headers = {
-            header.strip(): None
-            for header in _coerce_str_list(self.cors_expose_headers)
-        }
+        headers = {header.strip(): None for header in _coerce_str_list(self.cors_expose_headers)}
         headers[self.request_id_header] = None
         headers[self.trace_header] = None
         return [key for key in headers if key]
@@ -993,9 +960,7 @@ class Settings(BaseSettings):
                 policy = policy.replace("{nonce}", nonce)
             else:
                 policy = (
-                    policy.replace("'nonce-{nonce}'", "")
-                    .replace("{nonce}", "")
-                    .replace("  ", " ")
+                    policy.replace("'nonce-{nonce}'", "").replace("{nonce}", "").replace("  ", " ")
                 )
             directives = [part.strip() for part in policy.split(";") if part.strip()]
             policy = "; ".join(directives)
@@ -1003,18 +968,13 @@ class Settings(BaseSettings):
             connect_sources = (
                 self.security_connect_src_values + self._development_connect_overrides()
             )
-            connect_value = " ".join(
-                dict.fromkeys([value for value in connect_sources if value])
-            )
+            connect_value = " ".join(dict.fromkeys([value for value in connect_sources if value]))
             if not connect_value:
                 connect_value = "'self'"
             if self.strict_security_headers_enabled and not report_only:
                 directives = [
                     "default-src 'self'",
-                    (
-                        "script-src 'self' 'nonce-{nonce}' "
-                        "'strict-dynamic' 'report-sample'"
-                    ),
+                    ("script-src 'self' 'nonce-{nonce}' 'strict-dynamic' 'report-sample'"),
                     "style-src 'self' 'unsafe-inline'",
                     "img-src 'self' data: blob:",
                     f"connect-src {connect_value}",
@@ -1044,9 +1004,7 @@ class Settings(BaseSettings):
                 policy = policy.replace("{nonce}", nonce)
             else:
                 policy = policy.replace("'nonce-{nonce}'", "").replace("{nonce}", "")
-        policy = "; ".join(
-            part.strip() for part in policy.split(";") if part and part.strip()
-        )
+        policy = "; ".join(part.strip() for part in policy.split(";") if part and part.strip())
         if not policy:
             policy = "default-src 'self'"
         if "default-src" not in policy.lower():
@@ -1070,9 +1028,7 @@ class Settings(BaseSettings):
 
     @cached_property
     def cache_warmup_period_keys(self) -> tuple[str, ...]:
-        normalized = [
-            item.strip().lower() for item in _coerce_str_list(self.cache_warmup_periods)
-        ]
+        normalized = [item.strip().lower() for item in _coerce_str_list(self.cache_warmup_periods)]
         unique: list[str] = []
         seen: set[str] = set()
         for item in normalized:
@@ -1100,24 +1056,16 @@ def _load_settings() -> Settings:
         if not _should_allow_development_defaults(missing_required):
             raise
         _logger.debug(
-            (
-                "Falling back to development defaults because settings "
-                "initialization failed: %s"
-            ),
+            ("Falling back to development defaults because settings initialization failed: %s"),
             exc,
             exc_info=False,
         )
         fallback = Settings(_allow_missing=True)
-        missing = ", ".join(
-            name.upper() for name in fallback.development_fallback_fields
-        )
+        missing = ", ".join(name.upper() for name in fallback.development_fallback_fields)
         if not missing:
             missing = "DATABASE_URL, SECRET_KEY"
         hint_parts = [
-            (
-                "Provide real secrets via environment variables or a .env file "
-                "before deploying."
-            ),
+            ("Provide real secrets via environment variables or a .env file before deploying."),
         ]
         if not (_PROJECT_ROOT / ".env").exists():
             hint_parts.append(

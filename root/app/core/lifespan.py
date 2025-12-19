@@ -73,9 +73,7 @@ async def lifespan(app: FastAPI):
             window_minutes=settings.notifications_scheduler_window_minutes,
             max_backoff_seconds=settings.notifications_scheduler_max_backoff_seconds,
         )
-    await cleanup_stale_notifications(
-        retention_days=settings.notifications_retention_days
-    )
+    await cleanup_stale_notifications(retention_days=settings.notifications_retention_days)
     await notification_queue.cleanup_dead_lettered_jobs(
         retention_days=settings.notification_queue_dead_letter_retention_days
     )
@@ -119,9 +117,7 @@ async def lifespan(app: FastAPI):
         )
     if settings.session_cleanup_interval_seconds > 0:
         stop_session_cleanup = await start_session_cleanup_scheduler(
-            config=SessionCleanupConfig(
-                interval_seconds=settings.session_cleanup_interval_seconds
-            )
+            config=SessionCleanupConfig(interval_seconds=settings.session_cleanup_interval_seconds)
         )
     if settings.mfa_challenge_cleanup_interval_seconds > 0:
         stop_mfa_challenge_cleanup = await start_mfa_challenge_cleanup_scheduler(
@@ -144,10 +140,7 @@ async def lifespan(app: FastAPI):
                 retention_minutes=settings.email_change_cleanup_retention_minutes,
             )
         )
-    if (
-        settings.stories_cleanup_enabled
-        and settings.stories_retention_cleanup_interval_seconds > 0
-    ):
+    if settings.stories_cleanup_enabled and settings.stories_retention_cleanup_interval_seconds > 0:
         stop_story_cleanup = await start_story_cleanup_scheduler(
             config=StoryCleanupConfig(
                 interval_seconds=settings.stories_retention_cleanup_interval_seconds

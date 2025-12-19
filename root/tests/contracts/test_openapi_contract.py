@@ -38,9 +38,7 @@ def test_api_version_matches_semver(openapi_schema: dict):
     ],
 )
 def test_core_routes_present(openapi_schema: dict, required_path_prefix: str):
-    matching_paths = [
-        p for p in openapi_schema["paths"] if p.startswith(required_path_prefix)
-    ]
+    matching_paths = [p for p in openapi_schema["paths"] if p.startswith(required_path_prefix)]
     assert matching_paths, f"Expected routes for prefix {required_path_prefix} to exist"
 
 

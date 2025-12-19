@@ -32,9 +32,7 @@ def _normalize_secret(secret: str) -> str:
 
 @lru_cache(maxsize=4)
 def _build_cipher(raw_secret: str) -> Fernet | MultiFernet:
-    secrets = [
-        _normalize_secret(item) for item in raw_secret.split(",") if item.strip()
-    ]
+    secrets = [_normalize_secret(item) for item in raw_secret.split(",") if item.strip()]
     if not secrets:
         raise SpotifyEncryptionError("SPOTIFY_TOKEN_SECRET is not configured")
     ciphers = [Fernet(secret.encode("utf-8")) for secret in secrets]

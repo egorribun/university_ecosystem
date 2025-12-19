@@ -315,9 +315,7 @@ def _configure_otel(engine: AsyncEngine) -> TracerProvider | None:
 
     resource = _create_otel_resource()
 
-    sampler = ParentBased(
-        TraceIdRatioBased(max(min(settings.otel_trace_sampler_ratio, 1.0), 0.0))
-    )
+    sampler = ParentBased(TraceIdRatioBased(max(min(settings.otel_trace_sampler_ratio, 1.0), 0.0)))
     tracer_provider = TracerProvider(resource=resource, sampler=sampler)
 
     otlp_headers = _resolve_headers(settings.otel_exporter_otlp_headers)
@@ -494,9 +492,7 @@ class WorkerMetrics:
 
 
 def create_worker_metrics(name: str) -> WorkerMetrics:
-    if (
-        CollectorRegistry is None or Counter is None or Gauge is None
-    ):  # pragma: no cover - safety
+    if CollectorRegistry is None or Counter is None or Gauge is None:  # pragma: no cover - safety
         raise RuntimeError("prometheus-client is required to create worker metrics")
 
     metric_name = _sanitize_metric_name(name)
@@ -657,9 +653,7 @@ def get_periodic_task_metrics(name: str) -> PeriodicTaskMetrics:
     return metrics
 
 
-def create_worker_monitoring_app(
-    *, worker_name: str, metrics: WorkerMetrics
-) -> FastAPI:
+def create_worker_monitoring_app(*, worker_name: str, metrics: WorkerMetrics) -> FastAPI:
     """Build a lightweight ASGI app exposing worker metrics and health."""
 
     app = FastAPI(title=f"{worker_name} worker monitor", docs_url=None, redoc_url=None)
@@ -725,9 +719,7 @@ def configure_worker_observability(
             trace.set_tracer_provider(tracer_provider)
 
     if worker_name:
-        logging.getLogger(__name__).info(
-            "Worker %s observability configured", worker_name
-        )
+        logging.getLogger(__name__).info("Worker %s observability configured", worker_name)
 
 
 @dataclass
@@ -792,13 +784,9 @@ def get_notification_queue_metrics() -> NotificationQueueMetrics:
             or CollectorRegistry is None
             or REGISTRY is None
         ):  # pragma: no cover
-            raise RuntimeError(
-                "prometheus-client is required to create notification queue metrics"
-            )
+            raise RuntimeError("prometheus-client is required to create notification queue metrics")
 
-        _notification_queue_metrics = create_notification_queue_metrics(
-            registry=REGISTRY
-        )
+        _notification_queue_metrics = create_notification_queue_metrics(registry=REGISTRY)
 
     return _notification_queue_metrics
 
@@ -815,9 +803,7 @@ def create_notification_queue_metrics(
         or CollectorRegistry is None
         or REGISTRY is None
     ):  # pragma: no cover - optional dependency guard
-        raise RuntimeError(
-            "prometheus-client is required to create notification queue metrics"
-        )
+        raise RuntimeError("prometheus-client is required to create notification queue metrics")
 
     target_registry = registry or REGISTRY
 
@@ -951,9 +937,7 @@ def reinitialize_notification_queue_metrics(
             _notification_queue_metrics.dead_lettered_jobs,
         ]
         if _notification_queue_metrics.oldest_dead_letter_age_seconds is not None:
-            previous_collectors.append(
-                _notification_queue_metrics.oldest_dead_letter_age_seconds
-            )
+            previous_collectors.append(_notification_queue_metrics.oldest_dead_letter_age_seconds)
         for collector in previous_collectors:
             with suppress(KeyError):
                 _notification_queue_metrics.registry.unregister(collector)

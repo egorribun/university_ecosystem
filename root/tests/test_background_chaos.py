@@ -65,9 +65,7 @@ async def test_notification_worker_recovers_after_restart(
     async with async_session() as session:
         row = (
             await session.execute(
-                sa.select(NotificationQueueJob).where(
-                    NotificationQueueJob.record_id == 9001
-                )
+                sa.select(NotificationQueueJob).where(NotificationQueueJob.record_id == 9001)
             )
         ).scalar_one_or_none()
 

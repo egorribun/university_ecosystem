@@ -65,9 +65,7 @@ def _set_language_headers(response: Response, locale: str) -> None:
     ensure_vary_header(response, "Accept-Language")
 
 
-def _serialize_story(
-    record: models.Story | schemas.StoryOut, locale: str
-) -> dict[str, Any]:
+def _serialize_story(record: models.Story | schemas.StoryOut, locale: str) -> dict[str, Any]:
     story = crud.serialize_story(record, locale)
     return story.model_dump()
 
@@ -83,9 +81,7 @@ async def list_stories(
     normalized_locale = _normalized_cache_locale(locale)
     cache = get_cache()
     cache_key = _stories_list_cache_key(locale)
-    legacy_key = (
-        _STORIES_LIST_CACHE_KEY if normalized_locale == DEFAULT_LOCALE else None
-    )
+    legacy_key = _STORIES_LIST_CACHE_KEY if normalized_locale == DEFAULT_LOCALE else None
 
     if cache.enabled:
         cached = await cache.get(cache_key)

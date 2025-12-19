@@ -91,9 +91,7 @@ async def _create_event(db_session, user: models.User) -> models.Event:
 
 
 @pytest.mark.anyio("asyncio")
-async def test_upload_event_file_offloads_io(
-    tmp_path, monkeypatch, db_session, user_factory
-):
+async def test_upload_event_file_offloads_io(tmp_path, monkeypatch, db_session, user_factory):
     admin = await user_factory(role="admin")
     event = await _create_event(db_session, admin)
 
@@ -164,9 +162,7 @@ async def test_upload_event_file_cleans_up_on_commit_failure(
     monkeypatch.setattr(db_session, "commit", failing_commit)
 
     with pytest.raises(RuntimeError):
-        await events.upload_event_file(
-            event.id, upload, request=None, db=db_session, user=admin
-        )
+        await events.upload_event_file(event.id, upload, request=None, db=db_session, user=admin)
 
     folder = tmp_path / "event_files"
     assert delete_calls, "delete_static_file should run on failure"
@@ -194,9 +190,7 @@ async def test_upload_event_file_rejects_large_payload(
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 8)
 
     with pytest.raises(HTTPException) as excinfo:
-        await events.upload_event_file(
-            event.id, upload, request=None, db=db_session, user=admin
-        )
+        await events.upload_event_file(event.id, upload, request=None, db=db_session, user=admin)
 
     assert excinfo.value.status_code == status.HTTP_413_CONTENT_TOO_LARGE
     assert excinfo.value.detail == translate("errors.files.too_large", locale="en")
@@ -230,9 +224,7 @@ async def test_upload_event_file_respects_scanner_limit(
     )
 
     with pytest.raises(HTTPException) as excinfo:
-        await events.upload_event_file(
-            event.id, upload, request=None, db=db_session, user=admin
-        )
+        await events.upload_event_file(event.id, upload, request=None, db=db_session, user=admin)
 
     assert excinfo.value.status_code == status.HTTP_413_CONTENT_TOO_LARGE
     assert excinfo.value.detail == translate("errors.files.too_large", locale="en")
@@ -259,14 +251,10 @@ async def test_upload_event_file_rejects_forbidden_type(
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
 
     with pytest.raises(HTTPException) as excinfo:
-        await events.upload_event_file(
-            event.id, upload, request=None, db=db_session, user=admin
-        )
+        await events.upload_event_file(event.id, upload, request=None, db=db_session, user=admin)
 
     assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
-    assert excinfo.value.detail == translate(
-        "errors.files.unsupported_type", locale="en"
-    )
+    assert excinfo.value.detail == translate("errors.files.unsupported_type", locale="en")
     folder = tmp_path / "event_files"
     assert not folder.exists()
 
@@ -295,14 +283,10 @@ async def test_upload_event_file_rejects_mismatched_metadata(
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
 
     with pytest.raises(HTTPException) as excinfo:
-        await events.upload_event_file(
-            event.id, upload, request=None, db=db_session, user=admin
-        )
+        await events.upload_event_file(event.id, upload, request=None, db=db_session, user=admin)
 
     assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
-    assert excinfo.value.detail == translate(
-        "errors.files.content_type_mismatch", locale="en"
-    )
+    assert excinfo.value.detail == translate("errors.files.content_type_mismatch", locale="en")
     quarantine_dir = tmp_path / "quarantine" / "event_files"
     stored_samples = list(quarantine_dir.glob("*.bin"))
     assert stored_samples
@@ -342,9 +326,7 @@ async def test_upload_event_file_rejects_infected_payload(
     monkeypatch.setattr(files, "scan_for_malware", fake_scan)
 
     with pytest.raises(HTTPException) as excinfo:
-        await events.upload_event_file(
-            event.id, upload, request=None, db=db_session, user=admin
-        )
+        await events.upload_event_file(event.id, upload, request=None, db=db_session, user=admin)
 
     assert excinfo.value.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
     assert excinfo.value.detail == translate("errors.files.infected", locale="en")
@@ -372,14 +354,10 @@ async def test_upload_event_file_rejects_detected_type_not_allowed(
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
 
     with pytest.raises(HTTPException) as excinfo:
-        await events.upload_event_file(
-            event.id, upload, request=None, db=db_session, user=admin
-        )
+        await events.upload_event_file(event.id, upload, request=None, db=db_session, user=admin)
 
     assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
-    assert excinfo.value.detail == translate(
-        "errors.files.unsupported_type", locale="en"
-    )
+    assert excinfo.value.detail == translate("errors.files.unsupported_type", locale="en")
     folder = tmp_path / "event_files"
     assert not folder.exists()
 
@@ -445,14 +423,10 @@ async def test_upload_event_file_quarantines_polyglot_pdf(
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 2048)
 
     with pytest.raises(HTTPException) as excinfo:
-        await events.upload_event_file(
-            event.id, upload, request=None, db=db_session, user=admin
-        )
+        await events.upload_event_file(event.id, upload, request=None, db=db_session, user=admin)
 
     assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
-    assert excinfo.value.detail == translate(
-        "errors.files.unsupported_type", locale="en"
-    )
+    assert excinfo.value.detail == translate("errors.files.unsupported_type", locale="en")
     quarantine_dir = tmp_path / "quarantine" / "event_files"
     stored_samples = list(quarantine_dir.glob("*.bin"))
     assert stored_samples
@@ -479,20 +453,14 @@ async def test_upload_event_file_quarantines_svg_with_js(
         "event_file_allowed_mime_types",
         ["image/svg+xml", "application/pdf", "text/plain"],
     )
-    monkeypatch.setattr(
-        settings, "event_file_allowed_extensions", [".svg", ".pdf", ".txt"]
-    )
+    monkeypatch.setattr(settings, "event_file_allowed_extensions", [".svg", ".pdf", ".txt"])
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 2048)
 
     with pytest.raises(HTTPException) as excinfo:
-        await events.upload_event_file(
-            event.id, upload, request=None, db=db_session, user=admin
-        )
+        await events.upload_event_file(event.id, upload, request=None, db=db_session, user=admin)
 
     assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
-    assert excinfo.value.detail == translate(
-        "errors.files.unsupported_type", locale="en"
-    )
+    assert excinfo.value.detail == translate("errors.files.unsupported_type", locale="en")
     quarantine_dir = tmp_path / "quarantine" / "event_files"
     stored_samples = list(quarantine_dir.glob("*.bin"))
     assert stored_samples
@@ -561,18 +529,14 @@ async def test_update_event_replaces_image_removes_old_file(
     monkeypatch.setattr(settings, "static_dir_path", tmp_path)
 
     payload = schemas.EventUpdate(image_url="/static/event_images/new.png")
-    result = await events.update_event(
-        event.id, payload, request=None, db=db_session, user=admin
-    )
+    result = await events.update_event(event.id, payload, request=None, db=db_session, user=admin)
 
     assert result.image_url == "/static/event_images/new.png"
     assert not old_path.exists()
 
 
 @pytest.mark.anyio("asyncio")
-async def test_delete_event_file_removes_payload(
-    tmp_path, monkeypatch, db_session, user_factory
-):
+async def test_delete_event_file_removes_payload(tmp_path, monkeypatch, db_session, user_factory):
     admin = await user_factory(role="admin")
     event = await _create_event(db_session, admin)
 
@@ -595,18 +559,14 @@ async def test_delete_event_file_removes_payload(
     stored_path = tmp_path / "event_files" / event_file.file_url.rsplit("/", 1)[-1]
     assert stored_path.exists()
 
-    result = await events.delete_event_file(
-        event_file.id, request=None, db=db_session, user=admin
-    )
+    result = await events.delete_event_file(event_file.id, request=None, db=db_session, user=admin)
 
     assert result == {"ok": True}
     assert not stored_path.exists()
 
 
 @pytest.mark.anyio("asyncio")
-async def test_delete_event_removes_all_files(
-    tmp_path, monkeypatch, db_session, user_factory
-):
+async def test_delete_event_removes_all_files(tmp_path, monkeypatch, db_session, user_factory):
     admin = await user_factory(role="admin")
     event = await _create_event(db_session, admin)
 
@@ -632,16 +592,12 @@ async def test_delete_event_removes_all_files(
         event_file = await events.upload_event_file(
             event.id, upload, request=None, db=db_session, user=admin
         )
-        stored_paths.append(
-            tmp_path / "event_files" / event_file.file_url.rsplit("/", 1)[-1]
-        )
+        stored_paths.append(tmp_path / "event_files" / event_file.file_url.rsplit("/", 1)[-1])
 
     for path in stored_paths:
         assert path.exists()
 
-    result = await events.delete_event(
-        event.id, request=None, db=db_session, user=admin
-    )
+    result = await events.delete_event(event.id, request=None, db=db_session, user=admin)
 
     assert result == {"ok": True}
     for path in stored_paths:

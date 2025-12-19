@@ -86,9 +86,7 @@ class UserService:
         request: Request,
     ) -> models.User:
         locale = resolve_locale(request=request, user=user)
-        url = await save_upload(
-            file, "avatars", f"user_{user.id}_avatar", locale=locale
-        )
+        url = await save_upload(file, "avatars", f"user_{user.id}_avatar", locale=locale)
         db_user = await db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
         previous_url = db_user.avatar_url
         db_user.avatar_url = url
@@ -295,17 +293,11 @@ class UserService:
         await db.execute(
             delete(models.ActiveSession).where(models.ActiveSession.user_id == user_id)
         )
+        await db.execute(delete(models.MfaChallenge).where(models.MfaChallenge.user_id == user_id))
         await db.execute(
-            delete(models.MfaChallenge).where(models.MfaChallenge.user_id == user_id)
+            delete(models.MfaTotpEnrollment).where(models.MfaTotpEnrollment.user_id == user_id)
         )
-        await db.execute(
-            delete(models.MfaTotpEnrollment).where(
-                models.MfaTotpEnrollment.user_id == user_id
-            )
-        )
-        await db.execute(
-            delete(models.Notification).where(models.Notification.user_id == user_id)
-        )
+        await db.execute(delete(models.Notification).where(models.Notification.user_id == user_id))
         await db.execute(
             delete(models.DataAccessLog).where(
                 or_(
@@ -318,9 +310,7 @@ class UserService:
         db_user.preferences = None
         db_user.spotify = None
 
-        self.audit.log(
-            "users.admin_delete", request, user_id=user_id, reason="admin_delete"
-        )
+        self.audit.log("users.admin_delete", request, user_id=user_id, reason="admin_delete")
 
         await db.commit()
         return {"deleted": True, "user_id": user_id}
@@ -497,17 +487,11 @@ class UserService:
         await db.execute(
             delete(models.ActiveSession).where(models.ActiveSession.user_id == user.id)
         )
+        await db.execute(delete(models.MfaChallenge).where(models.MfaChallenge.user_id == user.id))
         await db.execute(
-            delete(models.MfaChallenge).where(models.MfaChallenge.user_id == user.id)
+            delete(models.MfaTotpEnrollment).where(models.MfaTotpEnrollment.user_id == user.id)
         )
-        await db.execute(
-            delete(models.MfaTotpEnrollment).where(
-                models.MfaTotpEnrollment.user_id == user.id
-            )
-        )
-        await db.execute(
-            delete(models.Notification).where(models.Notification.user_id == user.id)
-        )
+        await db.execute(delete(models.Notification).where(models.Notification.user_id == user.id))
         await db.execute(
             delete(models.DataAccessLog).where(
                 or_(

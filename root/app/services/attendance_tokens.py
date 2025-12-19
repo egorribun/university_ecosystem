@@ -94,9 +94,7 @@ class AttendanceTokenPayload:
             "iat": self.issued_at,
             "exp": self.expires_at,
         }
-        return json.dumps(payload, separators=(",", ":"), sort_keys=True).encode(
-            "utf-8"
-        )
+        return json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
 
     @classmethod
     def decode(cls, data: bytes) -> AttendanceTokenPayload:
@@ -153,9 +151,7 @@ def verify_token(
         raise AttendanceTokenInvalid("Token payload encoding is invalid") from exc
     if _b64encode(payload_bytes) != payload_b64:
         raise AttendanceTokenInvalid("Token payload encoding is non-canonical")
-    expected_signature = hmac.new(
-        _server_secret(), payload_bytes, hashlib.sha256
-    ).digest()
+    expected_signature = hmac.new(_server_secret(), payload_bytes, hashlib.sha256).digest()
     try:
         provided_signature = _b64decode(signature_b64)
     except (ValueError, binascii.Error) as exc:

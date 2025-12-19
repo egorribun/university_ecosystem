@@ -22,9 +22,7 @@ def upgrade() -> None:
     if bind is not None:
         inspector = sa.inspect(bind)
         if TABLE_NAME in inspector.get_table_names():
-            existing_indexes = {
-                index["name"] for index in inspector.get_indexes(TABLE_NAME)
-            }
+            existing_indexes = {index["name"] for index in inspector.get_indexes(TABLE_NAME)}
             for index_name, columns in INDEX_DEFINITIONS.items():
                 if index_name not in existing_indexes:
                     op.create_index(index_name, TABLE_NAME, columns)

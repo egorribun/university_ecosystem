@@ -41,9 +41,7 @@ class NotificationsScheduler:
 
     async def run_once(self) -> int:
         async with async_session() as db:
-            created = await generate_schedule_reminders(
-                db, window_minutes=self.window_minutes
-            )
+            created = await generate_schedule_reminders(db, window_minutes=self.window_minutes)
         return created
 
     async def run_forever(self) -> None:
@@ -78,9 +76,7 @@ class NotificationsScheduler:
                     if self.metrics is not None:
                         self.metrics.record_success(created)
                     if created:
-                        logger.info(
-                            "Generated %s schedule reminder notifications", created
-                        )
+                        logger.info("Generated %s schedule reminder notifications", created)
                 await asyncio.sleep(sleep_for)
         except asyncio.CancelledError:
             logger.info("Notifications scheduler loop cancelled")
@@ -102,9 +98,7 @@ async def start_notifications_scheduler(
     global _scheduler_task
 
     poll = (
-        poll_seconds
-        if poll_seconds is not None
-        else settings.notifications_scheduler_poll_seconds
+        poll_seconds if poll_seconds is not None else settings.notifications_scheduler_poll_seconds
     )
     window = (
         window_minutes
@@ -183,9 +177,7 @@ async def run_worker() -> None:
     monitor_stop: Callable[[], Awaitable[None]] | None = None
     metrics_port = settings.notifications_worker_metrics_port
     if metrics_port and metrics_port > 0:
-        monitor_app = create_worker_monitoring_app(
-            worker_name="notifications", metrics=metrics
-        )
+        monitor_app = create_worker_monitoring_app(worker_name="notifications", metrics=metrics)
         monitor_stop = await start_worker_monitoring_server(
             monitor_app,
             host=settings.notifications_worker_metrics_host,

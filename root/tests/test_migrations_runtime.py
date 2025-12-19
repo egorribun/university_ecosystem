@@ -17,9 +17,7 @@ from app.models import (
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _make_config(
-    tmp_path: Path, name: str, use_async: bool = True
-) -> tuple[Config, str]:
+def _make_config(tmp_path: Path, name: str, use_async: bool = True) -> tuple[Config, str]:
     db_path = tmp_path / name
     async_url = f"sqlite+aiosqlite:///{db_path}"
     sync_url = f"sqlite:///{db_path}?timeout=30"
@@ -103,9 +101,7 @@ def test_alembic_upgrade_head(tmp_path, dbname):
     # Verify user_preferences table exists with the DND and timezone columns
     assert insp.has_table("user_preferences")
     user_prefs_columns = {col["name"] for col in insp.get_columns("user_preferences")}
-    assert {"dnd_enabled", "dnd_start", "dnd_end", "timezone"}.issubset(
-        user_prefs_columns
-    )
+    assert {"dnd_enabled", "dnd_start", "dnd_end", "timezone"}.issubset(user_prefs_columns)
 
     assert insp.has_table("push_subscriptions")
 
@@ -120,9 +116,7 @@ def test_alembic_upgrade_head(tmp_path, dbname):
     assert not insp.has_table("mfa_webauthn_credentials")
 
     challenge_columns = {col["name"] for col in insp.get_columns("mfa_challenges")}
-    assert {"user_id", "session_id", "challenge_type", "expires_at"}.issubset(
-        challenge_columns
-    )
+    assert {"user_id", "session_id", "challenge_type", "expires_at"}.issubset(challenge_columns)
     challenge_fks = insp.get_foreign_keys("mfa_challenges")
     assert any(fk["referred_table"] == "active_sessions" for fk in challenge_fks)
     engine.dispose()

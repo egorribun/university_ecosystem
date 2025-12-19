@@ -136,9 +136,7 @@ async def test_cleanup_stale_notifications_respects_read_state(
         ),
     ]
 
-    db_session.add_all(
-        [old_read, another_old_read, old_unread, recent_read, *deliveries]
-    )
+    db_session.add_all([old_read, another_old_read, old_unread, recent_read, *deliveries])
     await db_session.flush()
     recent_read_id = recent_read.id
     await db_session.commit()
@@ -151,25 +149,17 @@ async def test_cleanup_stale_notifications_respects_read_state(
     assert deleted_deliveries == 3
 
     remaining_notifications = (
-        (await db_session.execute(select(Notification).order_by(Notification.id)))
-        .scalars()
-        .all()
+        (await db_session.execute(select(Notification).order_by(Notification.id))).scalars().all()
     )
     remaining_titles = {notification.title for notification in remaining_notifications}
     assert remaining_titles == {"Old unread", "Recent read"}
 
     remaining_deliveries = (
-        (
-            await db_session.execute(
-                select(NotificationDelivery).order_by(NotificationDelivery.id)
-            )
-        )
+        (await db_session.execute(select(NotificationDelivery).order_by(NotificationDelivery.id)))
         .scalars()
         .all()
     )
-    assert [delivery.notification_id for delivery in remaining_deliveries] == [
-        recent_read_id
-    ]
+    assert [delivery.notification_id for delivery in remaining_deliveries] == [recent_read_id]
 
 
 @pytest.mark.anyio

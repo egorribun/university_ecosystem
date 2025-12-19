@@ -147,9 +147,7 @@ default_limit, default_window = parse_rate_limit(
 
 if settings.rate_limit_enabled:
     normalized_url = rate_limit_url.lower()
-    if rate_limit_backend == "redis" and normalized_url.startswith(
-        ("redis://", "rediss://")
-    ):
+    if rate_limit_backend == "redis" and normalized_url.startswith(("redis://", "rediss://")):
         app.add_middleware(
             RateLimitMiddleware,
             redis_url=rate_limit_url,
@@ -208,9 +206,7 @@ _storage_probe_cache: dict[str, float | str] = {
 
 
 def _reset_storage_probe_cache() -> None:
-    _storage_probe_cache.update(
-        {"expires_at": 0.0, "status": "unknown", "latency": 0.0}
-    )
+    _storage_probe_cache.update({"expires_at": 0.0, "status": "unknown", "latency": 0.0})
 
 
 async def _lightweight_storage_probe(backend) -> str | None:
@@ -218,9 +214,7 @@ async def _lightweight_storage_probe(backend) -> str | None:
         exists = await asyncio.to_thread(backend.base_dir.exists)
         return "ok" if exists else "error"
     if isinstance(backend, S3Storage):
-        await asyncio.to_thread(
-            backend.client.list_objects_v2, Bucket=backend.bucket, MaxKeys=0
-        )
+        await asyncio.to_thread(backend.client.list_objects_v2, Bucket=backend.bucket, MaxKeys=0)
         return "ok"
     return None
 
@@ -268,8 +262,7 @@ async def _probe_storage() -> tuple[str, float]:
     latency_seconds = max(elapsed, 0.0)
     _storage_probe_cache.update(
         {
-            "expires_at": now
-            + max(settings.health_storage_probe_min_interval_seconds, 0.0),
+            "expires_at": now + max(settings.health_storage_probe_min_interval_seconds, 0.0),
             "status": status,
             "latency": latency_seconds,
         }
@@ -373,9 +366,7 @@ async def healthz():
     record_health_probe("file_scanner", scanner_status, scanner_elapsed)
 
     overall_ok = all(value != "error" for value in statuses.values())
-    http_status = (
-        status.HTTP_200_OK if overall_ok else status.HTTP_503_SERVICE_UNAVAILABLE
-    )
+    http_status = status.HTTP_200_OK if overall_ok else status.HTTP_503_SERVICE_UNAVAILABLE
     payload = {"status": "ok" if overall_ok else "error", **statuses, **latencies}
     return JSONResponse(status_code=http_status, content=payload)
 

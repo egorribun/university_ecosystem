@@ -121,9 +121,7 @@ def test_generate_schedule_ics_english_avoids_cyrillic_labels() -> None:
 
 
 @pytest.mark.anyio
-async def test_schedule_endpoint_localizes_lesson_type(
-    async_client, db_session
-) -> None:
+async def test_schedule_endpoint_localizes_lesson_type(async_client, db_session) -> None:
     group = models.Group(name="EN-01", course=1, faculty="IT")
     db_session.add(group)
     await db_session.commit()
@@ -150,9 +148,7 @@ async def test_schedule_endpoint_localizes_lesson_type(
     expected_en = translate_lesson_type("lecture", locale="en")
     assert payload_en[0]["lesson_type_display"] == expected_en
 
-    response_ru = await async_client.get(
-        f"/schedule/{group.id}", headers={"Accept-Language": "ru"}
-    )
+    response_ru = await async_client.get(f"/schedule/{group.id}", headers={"Accept-Language": "ru"})
     assert response_ru.status_code == 200
     payload_ru = response_ru.json()
     expected_ru = translate_lesson_type("lecture", locale="ru")

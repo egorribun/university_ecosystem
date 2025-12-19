@@ -7,13 +7,9 @@ from app.schemas import schemas
 
 
 @pytest.mark.anyio("asyncio")
-async def test_update_news_removes_replaced_image(
-    tmp_path, monkeypatch, db_session, user_factory
-):
+async def test_update_news_removes_replaced_image(tmp_path, monkeypatch, db_session, user_factory):
     admin = await user_factory(role="admin")
-    record = models.News(
-        title="Title", content="Body", image_url="/static/news_images/old.png"
-    )
+    record = models.News(title="Title", content="Body", image_url="/static/news_images/old.png")
     db_session.add(record)
     await db_session.commit()
     await db_session.refresh(record)
@@ -35,13 +31,9 @@ async def test_update_news_removes_replaced_image(
 
 
 @pytest.mark.anyio("asyncio")
-async def test_delete_news_removes_image_file(
-    tmp_path, monkeypatch, db_session, user_factory
-):
+async def test_delete_news_removes_image_file(tmp_path, monkeypatch, db_session, user_factory):
     admin = await user_factory(role="admin")
-    record = models.News(
-        title="Title", content="Body", image_url="/static/news_images/old.png"
-    )
+    record = models.News(title="Title", content="Body", image_url="/static/news_images/old.png")
     db_session.add(record)
     await db_session.commit()
     await db_session.refresh(record)

@@ -60,9 +60,7 @@ _MISSING_COLUMN_MARKERS = (
 )
 
 
-async def _require_admin_user(
-    request: Request, user: User = Depends(get_current_user)
-) -> User:
+async def _require_admin_user(request: Request, user: User = Depends(get_current_user)) -> User:
     locale = resolve_locale(request=request, user=user)
     if user.role != "admin":
         raise HTTPException(
@@ -114,9 +112,7 @@ def _parse_datetime(value: Any) -> datetime | None:
             except (OverflowError, OSError, ValueError):
                 return None
         else:
-            return (
-                parsed.astimezone(UTC) if parsed.tzinfo else parsed.replace(tzinfo=UTC)
-            )
+            return parsed.astimezone(UTC) if parsed.tzinfo else parsed.replace(tzinfo=UTC)
 
     return None
 
@@ -370,9 +366,7 @@ def _serialize_notification(
     try:
         return NotificationOut.model_validate(data)
     except ValidationError as exc:  # pragma: no cover - defensive guard
-        logger.warning(
-            "Failed to validate notification payload for id=%s: %s", identifier, exc
-        )
+        logger.warning("Failed to validate notification payload for id=%s: %s", identifier, exc)
         return NotificationOut.model_construct(**data)
 
 
@@ -401,9 +395,7 @@ async def list_notifications(
         cursor_dt, cursor_id = parsed
         cursor_info = (_ensure_utc(cursor_dt), cursor_id)
 
-    rows, available_columns = await _fetch_notification_rows(
-        db, user.id, limit, cursor_info
-    )
+    rows, available_columns = await _fetch_notification_rows(db, user.id, limit, cursor_info)
     items = rows[:limit]
     has_more = len(rows) > limit
 
@@ -421,9 +413,7 @@ async def list_notifications(
                 raise
             unread = sum(1 for row in rows if not _coerce_bool(row.get("read", False)))
     else:
-        count_stmt = select(func.count(Notification.id)).where(
-            Notification.user_id == user.id
-        )
+        count_stmt = select(func.count(Notification.id)).where(Notification.user_id == user.id)
         try:
             unread = (await db.execute(count_stmt)).scalar_one() or 0
         except SQLAlchemyError:  # pragma: no cover - defensive fallback
@@ -490,9 +480,7 @@ async def clear_notifications(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    result = await db.execute(
-        delete(Notification).where(Notification.user_id == user.id)
-    )
+    result = await db.execute(delete(Notification).where(Notification.user_id == user.id))
     await db.commit()
     deleted = result.rowcount or 0
     return {"ok": True, "deleted": int(deleted)}

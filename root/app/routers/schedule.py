@@ -27,9 +27,7 @@ def _build_filename(group: models.Group) -> str:
 @router.get("/ics", response_class=Response)
 async def download_schedule_ics(
     request: Request,
-    group: int = Query(
-        ..., description=translate("schedule.query.group_id_description")
-    ),
+    group: int = Query(..., description=translate("schedule.query.group_id_description")),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
     locale = resolve_locale(request=request)
@@ -48,6 +46,4 @@ async def download_schedule_ics(
     }
     if locale:
         headers["Content-Language"] = locale
-    return Response(
-        content=ics_body, media_type="text/calendar; charset=utf-8", headers=headers
-    )
+    return Response(content=ics_body, media_type="text/calendar; charset=utf-8", headers=headers)

@@ -132,9 +132,7 @@ async def _get_active_email_change_request(
     return result.scalars().first()
 
 
-async def attach_pending_email(
-    db: AsyncSession, user: models.User | None
-) -> models.User | None:
+async def attach_pending_email(db: AsyncSession, user: models.User | None) -> models.User | None:
     if user is None:
         return None
     pending = await _get_active_email_change_request(db, user.id)
@@ -219,9 +217,7 @@ class AuthService:
             )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=translate(
-                    "errors.password.invalid_or_expired_link", locale=locale
-                ),
+                detail=translate("errors.password.invalid_or_expired_link", locale=locale),
             )
         expires_at = rec.expires_at
         if expires_at.tzinfo is None:
@@ -236,9 +232,7 @@ class AuthService:
             )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=translate(
-                    "errors.password.invalid_or_expired_link", locale=locale
-                ),
+                detail=translate("errors.password.invalid_or_expired_link", locale=locale),
             )
         user = await db.get(models.User, rec.user_id)
         if not user or not getattr(user, "is_active", True):
@@ -256,9 +250,7 @@ class AuthService:
         try:
             user.hashed_password = get_password_hash(new_password, locale=locale)
         except ValueError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
-            )
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
         rec.used = True
         await db.execute(
             update(models.PasswordResetToken)
@@ -362,17 +354,13 @@ class AuthService:
         now = datetime.now(UTC)
 
         result = await db.execute(
-            select(models.EmailChangeToken).where(
-                models.EmailChangeToken.token_hash == token_hash
-            )
+            select(models.EmailChangeToken).where(models.EmailChangeToken.token_hash == token_hash)
         )
         record = result.scalar_one_or_none()
         if record is None or record.user_id != user.id or record.used:
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
-                detail=translate(
-                    "errors.users.email_confirmation_invalid", locale=locale
-                ),
+                detail=translate("errors.users.email_confirmation_invalid", locale=locale),
             )
 
         expires_at = record.expires_at
@@ -381,9 +369,7 @@ class AuthService:
         if expires_at <= now:
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
-                detail=translate(
-                    "errors.users.email_confirmation_invalid", locale=locale
-                ),
+                detail=translate("errors.users.email_confirmation_invalid", locale=locale),
             )
 
         existing = await db.execute(
@@ -406,9 +392,7 @@ class AuthService:
             await attach_pending_email(db, user)
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
-                detail=translate(
-                    "errors.users.email_confirmation_conflict", locale=locale
-                ),
+                detail=translate("errors.users.email_confirmation_conflict", locale=locale),
             )
 
         db_user = await db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
@@ -472,9 +456,7 @@ class AuthService:
         db_user = await db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
         db_user.hashed_password = hashed_password
 
-        active_session: models.ActiveSession | None = getattr(
-            request.state, "active_session", None
-        )
+        active_session: models.ActiveSession | None = getattr(request.state, "active_session", None)
         current_session_id = active_session.id if active_session else None
         conditions = [
             models.ActiveSession.user_id == user.id,

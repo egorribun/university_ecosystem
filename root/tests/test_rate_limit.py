@@ -36,9 +36,7 @@ async def test_rate_limit_per_token(root_client):
     blocked = await root_client.get("/healthz", headers=headers)
     assert blocked.status_code == 429
 
-    other = await root_client.get(
-        "/healthz", headers={"Authorization": "Bearer token-b"}
-    )
+    other = await root_client.get("/healthz", headers={"Authorization": "Bearer token-b"})
     assert other.status_code == 200
 
 
@@ -91,9 +89,7 @@ async def test_rate_limit_skips_static_paths():
         return {"ok": True}
 
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(
-        transport=transport, base_url="http://testserver"
-    ) as client:
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
         for path in [
             "/static/example.png",
             "/media/example.png",
@@ -164,9 +160,7 @@ async def test_rate_limit_memory_backend_blocks_requests():
         return {"ok": True}
 
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(
-        transport=transport, base_url="http://testserver"
-    ) as client:
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
         first = await client.get("/ping")
         second = await client.get("/ping")
         third = await client.get("/ping")
@@ -198,9 +192,7 @@ async def test_sensitive_dependency_memory_backend():
     transport = httpx.ASGITransport(app=app)
 
     try:
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://testserver"
-        ) as client:
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             first = await client.get("/limited")
             second = await client.get("/limited")
             third = await client.get("/limited")
@@ -234,9 +226,7 @@ async def test_sensitive_dependency_memory_backend_resolves_proxy_headers():
     transport = httpx.ASGITransport(app=app)
 
     try:
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://testserver"
-        ) as client:
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             first = await client.get(
                 "/limited",
                 headers={"X-Forwarded-For": " 2001:DB8::1 "},
@@ -259,9 +249,7 @@ async def test_sensitive_dependency_memory_backend_resolves_proxy_headers():
 
 
 @pytest.mark.anyio
-async def test_sensitive_dependency_redis_backend(
-    monkeypatch, _rate_limit_redis_client
-):
+async def test_sensitive_dependency_redis_backend(monkeypatch, _rate_limit_redis_client):
     original_backend = settings.rate_limit_storage_backend
     original_uri = settings.rate_limit_storage_uri
     settings.rate_limit_storage_backend = "redis"
@@ -278,18 +266,14 @@ async def test_sensitive_dependency_redis_backend(
         return {"ok": True}
 
     def _fail_check(*args, **kwargs):
-        raise AssertionError(
-            "Memory limiter should not run when Redis backend is configured"
-        )
+        raise AssertionError("Memory limiter should not run when Redis backend is configured")
 
     monkeypatch.setattr(ratelimit_module.limiter, "check", _fail_check)
 
     transport = httpx.ASGITransport(app=app)
 
     try:
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://testserver"
-        ) as client:
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             first = await client.get("/limited")
             second = await client.get("/limited")
             third = await client.get("/limited")
@@ -323,18 +307,14 @@ async def test_sensitive_dependency_redis_backend_forwarded_header(
         return {"ok": True}
 
     def _fail_check(*args, **kwargs):
-        raise AssertionError(
-            "Memory limiter should not run when Redis backend is configured"
-        )
+        raise AssertionError("Memory limiter should not run when Redis backend is configured")
 
     monkeypatch.setattr(ratelimit_module.limiter, "check", _fail_check)
 
     transport = httpx.ASGITransport(app=app)
 
     try:
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://testserver"
-        ) as client:
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             first = await client.get(
                 "/limited",
                 headers={
@@ -412,9 +392,7 @@ async def test_rate_limit_middleware_allows_when_redis_fails(monkeypatch):
     monkeypatch.setattr(RateLimitMiddleware, "_check_limit", fail_check)
 
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(
-        transport=transport, base_url="http://testserver"
-    ) as client:
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
         response = await client.get("/ping")
 
     assert response.status_code == status.HTTP_200_OK
@@ -443,19 +421,13 @@ def test_parse_rate_limit_accepts_known_units(
 
 
 @hypo_settings(max_examples=25)
-@given(
-    value=st.text().filter(
-        lambda raw: not raw or raw.strip().isdigit() or raw.count("/") > 1
-    )
-)
+@given(value=st.text().filter(lambda raw: not raw or raw.strip().isdigit() or raw.count("/") > 1))
 def test_parse_rate_limit_invalid_returns_fallback(value: str) -> None:
     fallback = (3, 7)
     assert rate_limit.parse_rate_limit(value, fallback=fallback) == fallback
 
 
-@hypo_settings(
-    max_examples=15, suppress_health_check=[HealthCheck.function_scoped_fixture]
-)
+@hypo_settings(max_examples=15, suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(identifier=st.text(min_size=1, max_size=12).filter(lambda s: ":" not in s))
 @pytest.mark.anyio
 async def test_check_rate_limit_blocks_after_limit(

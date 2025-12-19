@@ -108,9 +108,7 @@ async def test_news_list_and_detail_cache(async_client, db_session, fake_cache):
         f"news:item:{news.id}:ru",
     )
 
-    list_after_update = await async_client.get(
-        "/news", headers={"If-None-Match": list_etag}
-    )
+    list_after_update = await async_client.get("/news", headers={"If-None-Match": list_etag})
     assert list_after_update.status_code == 200
     assert list_after_update.headers.get("ETag") != list_etag
 

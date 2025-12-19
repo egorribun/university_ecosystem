@@ -15,9 +15,7 @@ async def test_periodic_task_metrics_records_success() -> None:
     assert REGISTRY.get_sample_value(f"{prefix}_runs_total") == pytest.approx(1.0)
     assert REGISTRY.get_sample_value(f"{prefix}_errors_total") == pytest.approx(0.0)
     assert REGISTRY.get_sample_value(f"{prefix}_deleted_total") == pytest.approx(5.0)
-    assert REGISTRY.get_sample_value(
-        f"{prefix}_duration_seconds_count"
-    ) == pytest.approx(1.0)
+    assert REGISTRY.get_sample_value(f"{prefix}_duration_seconds_count") == pytest.approx(1.0)
     duration_sum = REGISTRY.get_sample_value(f"{prefix}_duration_seconds_sum")
     assert duration_sum is not None and duration_sum >= 0.0
 
@@ -34,8 +32,6 @@ async def test_periodic_task_metrics_records_failure() -> None:
     assert REGISTRY.get_sample_value(f"{prefix}_runs_total") == pytest.approx(0.0)
     assert REGISTRY.get_sample_value(f"{prefix}_errors_total") == pytest.approx(1.0)
     assert REGISTRY.get_sample_value(f"{prefix}_deleted_total") == pytest.approx(0.0)
-    assert REGISTRY.get_sample_value(
-        f"{prefix}_duration_seconds_count"
-    ) == pytest.approx(1.0)
+    assert REGISTRY.get_sample_value(f"{prefix}_duration_seconds_count") == pytest.approx(1.0)
     duration_sum = REGISTRY.get_sample_value(f"{prefix}_duration_seconds_sum")
     assert duration_sum is not None and duration_sum >= 0.0

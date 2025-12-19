@@ -165,15 +165,11 @@ _CACHE_MEMORY_BYTES = (
 )
 
 _REDIS_HEALTH = (
-    Gauge("redis_health", "Redis availability", registry=REGISTRY)
-    if Gauge is not None
-    else None
+    Gauge("redis_health", "Redis availability", registry=REGISTRY) if Gauge is not None else None
 )
 
 _DB_HEALTH = (
-    Gauge("db_health", "Database availability", registry=REGISTRY)
-    if Gauge is not None
-    else None
+    Gauge("db_health", "Database availability", registry=REGISTRY) if Gauge is not None else None
 )
 
 # Connection pool metrics
@@ -220,9 +216,7 @@ _CPU_LOAD = (
 )
 
 _GPU_LOAD = (
-    Gauge(
-        "gpu_load_percent", "GPU load percentage", ("index", "name"), registry=REGISTRY
-    )
+    Gauge("gpu_load_percent", "GPU load percentage", ("index", "name"), registry=REGISTRY)
     if Gauge is not None
     else None
 )
@@ -250,9 +244,7 @@ class PrometheusRequestMetricsMiddleware(BaseHTTPMiddleware):
         except Exception:
             raise
         finally:
-            _REQUEST_COUNT.labels(
-                method=method, path=path_template, status=status_code
-            ).inc()
+            _REQUEST_COUNT.labels(method=method, path=path_template, status=status_code).inc()
             elapsed = max(time.perf_counter() - start, 0.0)
             _REQUEST_DURATION.labels(method=method, path=path_template).observe(elapsed)
             if _ROUTER_DURATION is not None:
@@ -385,9 +377,7 @@ def _metrics_auth_config_is_invalid() -> bool:
 def record_health_probe(component: str, status: str, elapsed_seconds: float) -> None:
     if _HEALTH_CHECK_DURATION is not None:
         try:
-            _HEALTH_CHECK_DURATION.labels(component=component).observe(
-                max(elapsed_seconds, 0.0)
-            )
+            _HEALTH_CHECK_DURATION.labels(component=component).observe(max(elapsed_seconds, 0.0))
         except Exception:  # pragma: no cover - defensive metrics guard
             logger.debug("Failed to record health check duration", exc_info=True)
     if _HEALTH_CHECK_STATUS is not None:
@@ -397,14 +387,10 @@ def record_health_probe(component: str, status: str, elapsed_seconds: float) -> 
             logger.debug("Failed to record health check status", exc_info=True)
 
 
-def record_redis_command(
-    command: str, elapsed_seconds: float, *, success: bool
-) -> None:
+def record_redis_command(command: str, elapsed_seconds: float, *, success: bool) -> None:
     if _REDIS_COMMAND_DURATION is not None:
         try:
-            _REDIS_COMMAND_DURATION.labels(command=command).observe(
-                max(elapsed_seconds, 0.0)
-            )
+            _REDIS_COMMAND_DURATION.labels(command=command).observe(max(elapsed_seconds, 0.0))
         except Exception:  # pragma: no cover - defensive metrics guard
             logger.debug("Failed to record redis command duration", exc_info=True)
     if not success and _REDIS_COMMAND_ERRORS is not None:
@@ -414,14 +400,10 @@ def record_redis_command(
             logger.debug("Failed to record redis command error", exc_info=True)
 
 
-def record_db_operation(
-    operation: str, elapsed_seconds: float, *, success: bool
-) -> None:
+def record_db_operation(operation: str, elapsed_seconds: float, *, success: bool) -> None:
     if _DB_OPERATION_DURATION is not None:
         try:
-            _DB_OPERATION_DURATION.labels(operation=operation).observe(
-                max(elapsed_seconds, 0.0)
-            )
+            _DB_OPERATION_DURATION.labels(operation=operation).observe(max(elapsed_seconds, 0.0))
         except Exception:  # pragma: no cover - defensive metrics guard
             logger.debug("Failed to record db operation duration", exc_info=True)
     if not success and _DB_OPERATION_ERRORS is not None:
@@ -449,9 +431,7 @@ async def _record_cache_metrics() -> None:
             if _CACHE_ENTRIES is not None:
                 _CACHE_ENTRIES.set(float(size))
             if _CACHE_MEMORY_BYTES is not None:
-                used_memory = (
-                    info.get("used_memory") if isinstance(info, dict) else None
-                )
+                used_memory = info.get("used_memory") if isinstance(info, dict) else None
                 if isinstance(used_memory, int | float):
                     _CACHE_MEMORY_BYTES.set(float(used_memory))
             if _REDIS_HEALTH is not None:
@@ -632,8 +612,7 @@ def configure_metrics(app: FastAPI) -> None:
 
     if (
         settings.enable_metrics_endpoint
-        and settings.metrics_basic_auth_password.strip().lower()
-        in _PLACEHOLDER_PASSWORDS
+        and settings.metrics_basic_auth_password.strip().lower() in _PLACEHOLDER_PASSWORDS
     ):
         logger.warning(
             "Metrics endpoint is enabled but METRICS_BASIC_AUTH_PASSWORD uses a "

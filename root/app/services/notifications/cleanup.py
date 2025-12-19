@@ -97,9 +97,7 @@ async def cleanup_stale_notifications(
         ]
         if not notification_ids:
             break
-        notifications_stmt = delete(Notification).where(
-            Notification.id.in_(notification_ids)
-        )
+        notifications_stmt = delete(Notification).where(Notification.id.in_(notification_ids))
         notifications_result = await db.execute(notifications_stmt)
         notifications_deleted += int(notifications_result.rowcount or 0)
         await db.commit()

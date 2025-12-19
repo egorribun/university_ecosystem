@@ -58,9 +58,7 @@ async def test_attend_registers_event(async_client, db_session, user_factory):
 
 
 @pytest.mark.anyio
-async def test_attend_missing_event_returns_not_found(
-    async_client, db_session, user_factory
-):
+async def test_attend_missing_event_returns_not_found(async_client, db_session, user_factory):
     password = "AttendMissing123!"
     student = await user_factory(
         hashed_password=get_password_hash(password),
@@ -76,15 +74,11 @@ async def test_attend_missing_event_returns_not_found(
         json={"event_id": 999999},
     )
     assert response.status_code == status.HTTP_404_NOT_FOUND
-    assert response.json()["detail"] == translate(
-        "errors.events.not_found", locale="en"
-    )
+    assert response.json()["detail"] == translate("errors.events.not_found", locale="en")
 
 
 @pytest.mark.anyio
-async def test_attend_registration_closed_returns_conflict(
-    async_client, db_session, user_factory
-):
+async def test_attend_registration_closed_returns_conflict(async_client, db_session, user_factory):
     password = "AttendClosed123!"
     student = await user_factory(
         hashed_password=get_password_hash(password),
@@ -113,9 +107,7 @@ async def test_attend_registration_closed_returns_conflict(
         json={"event_id": event.id},
     )
     assert response.status_code == status.HTTP_409_CONFLICT
-    assert response.json()["detail"] == translate(
-        "errors.events.registration_closed", locale="en"
-    )
+    assert response.json()["detail"] == translate("errors.events.registration_closed", locale="en")
 
 
 @pytest.mark.anyio
@@ -237,9 +229,7 @@ async def test_attendance_token_reuse_rejected_after_expiry(
     async_client, db_session, user_factory, monkeypatch
 ):
     monkeypatch.setattr(attendance_tokens.settings, "attendance_token_ttl_seconds", 1)
-    token, attendance, _, _ = await _register_for_event(
-        async_client, db_session, user_factory
-    )
+    token, attendance, _, _ = await _register_for_event(async_client, db_session, user_factory)
     payload = attendance_tokens.verify_token(token, attendance)
     expired_at = datetime.fromtimestamp(payload.expires_at + 1, tz=UTC)
     with pytest.raises(attendance_tokens.AttendanceTokenExpired):
@@ -247,12 +237,8 @@ async def test_attendance_token_reuse_rejected_after_expiry(
 
 
 @pytest.mark.anyio
-async def test_attendance_token_signature_tampering(
-    async_client, db_session, user_factory
-):
-    token, attendance, _, _ = await _register_for_event(
-        async_client, db_session, user_factory
-    )
+async def test_attendance_token_signature_tampering(async_client, db_session, user_factory):
+    token, attendance, _, _ = await _register_for_event(async_client, db_session, user_factory)
     tampered = token[:-1] + ("A" if token[-1] != "A" else "B")
     with pytest.raises(attendance_tokens.AttendanceTokenInvalid):
         attendance_tokens.verify_token(tampered, attendance)

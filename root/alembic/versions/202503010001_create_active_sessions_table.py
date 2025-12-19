@@ -37,9 +37,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.UniqueConstraint("jti", name="uq_active_sessions_jti"),
     )
-    op.create_index(
-        "ix_active_sessions_user_id", "active_sessions", ["user_id"], unique=False
-    )
+    op.create_index("ix_active_sessions_user_id", "active_sessions", ["user_id"], unique=False)
     op.create_index(
         "ix_active_sessions_expires_at", "active_sessions", ["expires_at"], unique=False
     )

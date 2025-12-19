@@ -94,11 +94,7 @@ def _enforce_profile_cache_integrity(request: Request) -> None:
         "data": candidate.get("data"),
     }
 
-    if (
-        payload["version"] is None
-        or payload["expiresAt"] is None
-        or payload["data"] is None
-    ):
+    if payload["version"] is None or payload["expiresAt"] is None or payload["data"] is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=translate("errors.profile_cache.invalid_envelope", locale=locale),
@@ -144,9 +140,7 @@ async def reset_password(
     db: AsyncSession = Depends(get_db),
     auth_service: AuthService = Depends(get_auth_service),
 ):
-    await auth_service.perform_password_reset(
-        db, payload.token, payload.password, request
-    )
+    await auth_service.perform_password_reset(db, payload.token, payload.password, request)
     return {"ok": True}
 
 

@@ -58,9 +58,7 @@ def upgrade() -> None:
     )
     rows = result.fetchall()
     for row in rows:
-        bind.execute(
-            update_stmt, {"id": row.id, "signing_key": secrets.token_urlsafe(32)}
-        )
+        bind.execute(update_stmt, {"id": row.id, "signing_key": secrets.token_urlsafe(32)})
 
     with op.batch_alter_table(_TABLE_NAME) as batch_op:
         batch_op.alter_column(

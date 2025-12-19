@@ -62,9 +62,7 @@ def _fresh_notification_queue_metrics() -> None:
     notification_queue._queue_metrics = metrics
 
     if REGISTRY is not None:
-        default_metrics = observability.reinitialize_notification_queue_metrics(
-            registry=REGISTRY
-        )
+        default_metrics = observability.reinitialize_notification_queue_metrics(registry=REGISTRY)
         notification_queue._queue_metrics = default_metrics
 
 
@@ -140,25 +138,17 @@ def _metric_value_for_kind(name: str, kind: str) -> float | None:
 @pytest.mark.anyio
 async def test_reinitialize_notification_queue_metrics_replaces_registry() -> None:
     registry_one = CollectorRegistry()
-    metrics_one = observability.reinitialize_notification_queue_metrics(
-        registry=registry_one
-    )
+    metrics_one = observability.reinitialize_notification_queue_metrics(registry=registry_one)
     notification_queue._queue_metrics = metrics_one
     metrics_one.queue_size.set(5)
-    assert registry_one.get_sample_value("notification_queue_size") == pytest.approx(
-        5.0
-    )
+    assert registry_one.get_sample_value("notification_queue_size") == pytest.approx(5.0)
 
     registry_two = CollectorRegistry()
-    metrics_two = observability.reinitialize_notification_queue_metrics(
-        registry=registry_two
-    )
+    metrics_two = observability.reinitialize_notification_queue_metrics(registry=registry_two)
     notification_queue._queue_metrics = metrics_two
 
     assert registry_one.get_sample_value("notification_queue_size") is None
-    assert registry_two.get_sample_value("notification_queue_size") == pytest.approx(
-        0.0
-    )
+    assert registry_two.get_sample_value("notification_queue_size") == pytest.approx(0.0)
 
     global _METRICS_REGISTRY
     _METRICS_REGISTRY = metrics_two.registry
@@ -222,9 +212,9 @@ async def test_notification_queue_records_drops_when_saturated(
     assert _metric_value_for_kind(
         "notification_queue_dropped_jobs_total", "event"
     ) == pytest.approx(2.0)
-    assert _metric_value_for_kind(
-        "notification_queue_dropped_jobs_total", "news"
-    ) == pytest.approx(1.0)
+    assert _metric_value_for_kind("notification_queue_dropped_jobs_total", "news") == pytest.approx(
+        1.0
+    )
 
     await notification_queue.reset_testing_state()
     await notification_queue.shutdown_notification_queue()
@@ -342,9 +332,7 @@ async def test_reset_testing_state_resets_metrics(monkeypatch: pytest.MonkeyPatc
             None,
             pytest.approx(0.0),
         )
-    assert _metric_value(
-        "notification_queue_queue_wait_time_seconds_sum", {"kind": "news"}
-    ) in (
+    assert _metric_value("notification_queue_queue_wait_time_seconds_sum", {"kind": "news"}) in (
         None,
         pytest.approx(0.0),
     )
@@ -537,9 +525,7 @@ async def test_persistent_queue_dead_letters_poison_jobs(
         while True:
             async with async_session() as session:
                 result = await session.execute(
-                    select(NotificationQueueJob).where(
-                        NotificationQueueJob.record_id == 505
-                    )
+                    select(NotificationQueueJob).where(NotificationQueueJob.record_id == 505)
                 )
                 record = result.scalar_one_or_none()
             if record and record.dead_lettered:
@@ -557,9 +543,9 @@ async def test_persistent_queue_dead_letters_poison_jobs(
     await asyncio.sleep(0.05)
     assert len(attempts) == 3
 
-    assert _metric_value_for_kind(
-        "notification_queue_failed_jobs_total", "event"
-    ) == pytest.approx(1.0)
+    assert _metric_value_for_kind("notification_queue_failed_jobs_total", "event") == pytest.approx(
+        1.0
+    )
 
     await notification_queue.wait_for_all_jobs(timeout=1.0)
 
@@ -576,9 +562,7 @@ async def test_notification_queue_pending_index_migration(tmp_path: Path) -> Non
             Base.metadata.create_all(engine)
             with engine.begin() as conn:
                 conn.execute(
-                    sa.text(
-                        "DROP INDEX IF EXISTS ix_notification_queue_jobs_pending_claim"
-                    )
+                    sa.text("DROP INDEX IF EXISTS ix_notification_queue_jobs_pending_claim")
                 )
         finally:
             engine.dispose()
@@ -700,9 +684,7 @@ async def test_cleanup_dead_lettered_jobs_respects_retention_window() -> None:
         remaining = (
             (
                 await session.execute(
-                    select(NotificationQueueJob).order_by(
-                        NotificationQueueJob.record_id
-                    )
+                    select(NotificationQueueJob).order_by(NotificationQueueJob.record_id)
                 )
             )
             .scalars()
@@ -742,9 +724,7 @@ async def test_cleanup_dead_lettered_jobs_disabled_with_zero_retention() -> None
     async with async_session() as session:
         remaining = (
             await session.execute(
-                select(NotificationQueueJob).where(
-                    NotificationQueueJob.record_id == 404
-                )
+                select(NotificationQueueJob).where(NotificationQueueJob.record_id == 404)
             )
         ).scalar_one_or_none()
 

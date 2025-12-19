@@ -127,9 +127,7 @@ return {1, remaining, 0}
 
 
 def _create_redis_pool(url: str) -> Redis:
-    return Redis.from_url(
-        url, encoding="utf-8", decode_responses=False, health_check_interval=30
-    )
+    return Redis.from_url(url, encoding="utf-8", decode_responses=False, health_check_interval=30)
 
 
 _RedisFactory = Callable[[str], Redis]
@@ -210,9 +208,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         if self._headers_enabled:
             response.headers.setdefault("X-RateLimit-Limit", str(self._limit))
-            response.headers.setdefault(
-                "X-RateLimit-Remaining", str(max(0, info.remaining))
-            )
+            response.headers.setdefault("X-RateLimit-Remaining", str(max(0, info.remaining)))
         return response
 
     async def _check_limit(self, identifier: str) -> RateLimitInfo:
@@ -316,9 +312,7 @@ class RateLimitExceeded(Exception):
         self.info = info
 
 
-async def _memory_rate_limit(
-    key: str, limit: int, window_seconds: int
-) -> RateLimitInfo:
+async def _memory_rate_limit(key: str, limit: int, window_seconds: int) -> RateLimitInfo:
     if limit <= 0 or window_seconds <= 0:
         return RateLimitInfo(True, max(limit, 0), 0)
     now = time.time()
@@ -387,9 +381,7 @@ async def _redis_rate_limit(
     except RedisError as exc:
         if "unknown command" not in str(exc).lower():
             raise
-        info = await _redis_rate_limit_fallback(
-            client, redis_key, window_ms, limit, now_ms, member
-        )
+        info = await _redis_rate_limit_fallback(client, redis_key, window_ms, limit, now_ms, member)
         return info
     allowed = bool(int(result[0]))
     remaining = max(0, int(result[1]))

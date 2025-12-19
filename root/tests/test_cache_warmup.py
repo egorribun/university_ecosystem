@@ -36,18 +36,14 @@ class TestIsEntryFresh:
     def test_returns_true_when_entry_is_fresh(self, mock_settings):
         """Should return True when entry is within max_age."""
         mock_settings.cache_warmup_max_age_seconds = 3600  # 1 hour
-        entry = CacheEntry(
-            etag="abc", payload={}, stored_at=time.time() - 60
-        )  # 1 min old
+        entry = CacheEntry(etag="abc", payload={}, stored_at=time.time() - 60)  # 1 min old
         assert _is_entry_fresh(entry) is True
 
     @patch("app.services.cache_warmup.settings")
     def test_returns_false_when_entry_is_stale(self, mock_settings):
         """Should return False when entry exceeds max_age."""
         mock_settings.cache_warmup_max_age_seconds = 300  # 5 min
-        entry = CacheEntry(
-            etag="abc", payload={}, stored_at=time.time() - 600
-        )  # 10 min old
+        entry = CacheEntry(etag="abc", payload={}, stored_at=time.time() - 600)  # 10 min old
         assert _is_entry_fresh(entry) is False
 
 

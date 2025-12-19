@@ -13,9 +13,7 @@ from app.models.models import Notification, NotificationQueueJob
 from app.services.notifications import create_notifications_for_users
 
 
-async def _login(
-    async_client: AsyncClient, email: str, password: str
-) -> dict[str, str]:
+async def _login(async_client: AsyncClient, email: str, password: str) -> dict[str, str]:
     response = await async_client.post(
         "/auth/login",
         data={"username": email, "password": password},
@@ -63,20 +61,12 @@ async def test_clear_notifications_removes_only_current_user(
     assert body["deleted"] == 2
 
     remaining_user = (
-        (
-            await db_session.execute(
-                select(Notification).where(Notification.user_id == user.id)
-            )
-        )
+        (await db_session.execute(select(Notification).where(Notification.user_id == user.id)))
         .scalars()
         .all()
     )
     remaining_other = (
-        (
-            await db_session.execute(
-                select(Notification).where(Notification.user_id == other.id)
-            )
-        )
+        (await db_session.execute(select(Notification).where(Notification.user_id == other.id)))
         .scalars()
         .all()
     )
@@ -102,9 +92,7 @@ async def test_list_notifications_handles_missing_created_at(
     await db_session.commit()
 
     await db_session.execute(
-        update(Notification)
-        .where(Notification.id == notification.id)
-        .values(created_at=None)
+        update(Notification).where(Notification.id == notification.id).values(created_at=None)
     )
     await db_session.commit()
 
@@ -347,9 +335,7 @@ def test_serialize_notification_normalizes_id_and_read_flag():
 
 
 @pytest.mark.anyio
-async def test_admin_dead_letter_requires_admin(
-    async_client: AsyncClient, user_factory
-):
+async def test_admin_dead_letter_requires_admin(async_client: AsyncClient, user_factory):
     password = "NoAdmin123!"
     hashed = get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True, role="student")

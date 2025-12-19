@@ -64,9 +64,7 @@ async def _get_chat_for_user(
 ):
     load_options = [selectinload(Chat.participants)]
     if load_messages:
-        load_options.append(
-            selectinload(Chat.messages).selectinload(Message.attachments)
-        )
+        load_options.append(selectinload(Chat.messages).selectinload(Message.attachments))
 
     chat = await session.get(Chat, chat_id, options=load_options)
     if not chat:
@@ -136,15 +134,11 @@ async def get_chats(
     chat_responses = []
     for chat in chats:
         # Sort messages to find the last one
-        sorted_messages = sorted(
-            chat.messages, key=lambda m: m.created_at, reverse=True
-        )
+        sorted_messages = sorted(chat.messages, key=lambda m: m.created_at, reverse=True)
         last_message = sorted_messages[0] if sorted_messages else None
 
         unread_count = sum(
-            1
-            for m in chat.messages
-            if not m.read_status and m.sender_id != current_user.id
+            1 for m in chat.messages if not m.read_status and m.sender_id != current_user.id
         )
 
         chat_responses.append(
@@ -184,9 +178,7 @@ async def get_chats(
 
         participant_status = {}
         for participant in chat.participants:
-            participant_status[participant.id] = presence_map.get(
-                participant.id, PresenceStatus()
-            )
+            participant_status[participant.id] = presence_map.get(participant.id, PresenceStatus())
         enriched_chats.append(
             ChatResponse(
                 **chat.model_dump(exclude={"last_message", "presence"}),
@@ -257,9 +249,7 @@ async def create_chat(
     await session.commit()
     await session.refresh(new_chat)
 
-    presence_map = await build_presence_map(
-        [p.id for p in new_chat.participants], session=session
-    )
+    presence_map = await build_presence_map([p.id for p in new_chat.participants], session=session)
 
     return ChatResponse(
         id=new_chat.id,
@@ -330,9 +320,7 @@ async def get_messages(
         oldest_message = messages[0]  # First in ascending order = oldest
         next_cursor = _encode_cursor(oldest_message.created_at, oldest_message.id)
 
-    presence_map = await build_presence_map(
-        {msg.sender_id for msg in messages}, session=session
-    )
+    presence_map = await build_presence_map({msg.sender_id for msg in messages}, session=session)
 
     response_items = [
         MessageResponse(

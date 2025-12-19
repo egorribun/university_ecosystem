@@ -27,9 +27,7 @@ def upgrade() -> None:
     if bind.dialect.name == "sqlite":
         return
 
-    op.drop_constraint(
-        op.f("uq_active_sessions_jti"), "active_sessions", type_="unique"
-    )
+    op.drop_constraint(op.f("uq_active_sessions_jti"), "active_sessions", type_="unique")
     op.alter_column(
         "event_attendance",
         "registered_at",
@@ -59,9 +57,7 @@ def upgrade() -> None:
         existing_nullable=True,
         existing_server_default=sa.text("now()"),
     )
-    op.drop_index(
-        op.f("ix_events_search_vector"), table_name="events", postgresql_using="gin"
-    )
+    op.drop_index(op.f("ix_events_search_vector"), table_name="events", postgresql_using="gin")
     op.alter_column(
         "invite_codes",
         "created_at",
@@ -79,12 +75,8 @@ def upgrade() -> None:
         existing_server_default=sa.text("now()"),
     )
     op.drop_index(op.f("ix_news_published_at_desc"), table_name="news")
-    op.add_column(
-        "notification_deliveries", sa.Column("status_code", sa.Integer(), nullable=True)
-    )
-    op.add_column(
-        "notification_deliveries", sa.Column("detail", sa.Text(), nullable=True)
-    )
+    op.add_column("notification_deliveries", sa.Column("status_code", sa.Integer(), nullable=True))
+    op.add_column("notification_deliveries", sa.Column("detail", sa.Text(), nullable=True))
     op.alter_column(
         "notification_deliveries",
         "delivered_at",
@@ -126,9 +118,7 @@ def upgrade() -> None:
         type_=sa.DateTime(timezone=True),
         existing_nullable=True,
     )
-    op.alter_column(
-        "push_subscriptions", "user_id", existing_type=sa.INTEGER(), nullable=False
-    )
+    op.alter_column("push_subscriptions", "user_id", existing_type=sa.INTEGER(), nullable=False)
     op.alter_column(
         "push_subscriptions",
         "created_at",
@@ -137,9 +127,7 @@ def upgrade() -> None:
         nullable=False,
     )
     op.drop_index(op.f("ix_push_subscriptions_active"), table_name="push_subscriptions")
-    op.drop_index(
-        op.f("ix_push_subscriptions_updated_at"), table_name="push_subscriptions"
-    )
+    op.drop_index(op.f("ix_push_subscriptions_updated_at"), table_name="push_subscriptions")
     op.create_index(
         op.f("ix_push_subscriptions_last_seen_at"),
         "push_subscriptions",
@@ -252,9 +240,7 @@ def downgrade() -> None:
     )
     op.add_column(
         "push_subscriptions",
-        sa.Column(
-            "updated_at", postgresql.TIMESTAMP(), autoincrement=False, nullable=True
-        ),
+        sa.Column("updated_at", postgresql.TIMESTAMP(), autoincrement=False, nullable=True),
     )
     op.drop_constraint(None, "push_subscriptions", type_="foreignkey")
     op.create_foreign_key(
@@ -265,9 +251,7 @@ def downgrade() -> None:
         ["id"],
         ondelete="SET NULL",
     )
-    op.drop_index(
-        op.f("ix_push_subscriptions_last_seen_at"), table_name="push_subscriptions"
-    )
+    op.drop_index(op.f("ix_push_subscriptions_last_seen_at"), table_name="push_subscriptions")
     op.create_index(
         op.f("ix_push_subscriptions_updated_at"),
         "push_subscriptions",
@@ -287,9 +271,7 @@ def downgrade() -> None:
         type_=postgresql.TIMESTAMP(),
         nullable=True,
     )
-    op.alter_column(
-        "push_subscriptions", "user_id", existing_type=sa.INTEGER(), nullable=True
-    )
+    op.alter_column("push_subscriptions", "user_id", existing_type=sa.INTEGER(), nullable=True)
     op.alter_column(
         "password_reset_tokens",
         "created_at",

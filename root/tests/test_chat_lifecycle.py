@@ -4,9 +4,7 @@ from httpx import AsyncClient
 from app.auth.security import get_password_hash
 
 
-async def _login(
-    async_client: AsyncClient, email: str, password: str
-) -> dict[str, str]:
+async def _login(async_client: AsyncClient, email: str, password: str) -> dict[str, str]:
     response = await async_client.post(
         "/auth/login",
         data={"username": email, "password": password},
@@ -18,9 +16,7 @@ async def _login(
 
 
 @pytest.mark.anyio
-async def test_chat_full_lifecycle(
-    async_client, user_factory, _rate_limit_redis_client
-):
+async def test_chat_full_lifecycle(async_client, user_factory, _rate_limit_redis_client):
     password = "Lifecycle123!"
     user = await user_factory(hashed_password=get_password_hash(password))
     other = await user_factory()
@@ -40,9 +36,7 @@ async def test_chat_full_lifecycle(
     )
     assert send_resp.status_code == 200
 
-    initial_messages = await async_client.get(
-        f"/chats/{chat_id}/messages", headers=headers
-    )
+    initial_messages = await async_client.get(f"/chats/{chat_id}/messages", headers=headers)
     assert initial_messages.status_code == 200
     assert initial_messages.json()["items"]
 
@@ -51,9 +45,7 @@ async def test_chat_full_lifecycle(
     assert clear_resp.json()["status"] == "cleared"
     assert clear_resp.json()["deleted_messages"] == 1
 
-    cleared_messages = await async_client.get(
-        f"/chats/{chat_id}/messages", headers=headers
-    )
+    cleared_messages = await async_client.get(f"/chats/{chat_id}/messages", headers=headers)
     assert cleared_messages.status_code == 200
     assert cleared_messages.json()["items"] == []
 

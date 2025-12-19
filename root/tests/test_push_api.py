@@ -82,9 +82,7 @@ async def test_push_test_returns_aggregated_stats(
     async def _fake_deliver(*args, **kwargs):
         return next(results)
 
-    monkeypatch.setattr(
-        "app.routers.notifications._deliver_to_subscription", _fake_deliver
-    )
+    monkeypatch.setattr("app.routers.notifications._deliver_to_subscription", _fake_deliver)
 
     request = _make_request("/push/test")
     response = await send_test(request=request, db=db_session, user=user, payload=None)
@@ -127,9 +125,7 @@ async def test_push_broadcast_reports_failures(
             error="Service Unavailable",
         )
 
-    monkeypatch.setattr(
-        "app.routers.notifications._deliver_to_subscription", _fail_deliver
-    )
+    monkeypatch.setattr("app.routers.notifications._deliver_to_subscription", _fail_deliver)
 
     payload = NotifyBody(title="System", body="Maintenance", url="/")
     response = await broadcast(
@@ -148,9 +144,7 @@ async def test_push_broadcast_reports_failures(
 
 
 @pytest.mark.anyio
-async def test_admin_disable_user_push_removes_subscriptions(
-    db_session, user_factory
-) -> None:
+async def test_admin_disable_user_push_removes_subscriptions(db_session, user_factory) -> None:
     admin = await user_factory(role="admin")
     target = await user_factory()
     other_user = await user_factory()
@@ -197,9 +191,7 @@ async def test_admin_disable_user_push_removes_subscriptions(
     others = (
         (
             await db_session.execute(
-                select(PushSubscription).where(
-                    PushSubscription.user_id == other_user.id
-                )
+                select(PushSubscription).where(PushSubscription.user_id == other_user.id)
             )
         )
         .scalars()
@@ -227,9 +219,7 @@ async def test_get_push_topics_includes_preferences(db_session, user_factory) ->
 
 
 @pytest.mark.anyio
-async def test_admin_update_user_topics_updates_preferences(
-    db_session, user_factory
-) -> None:
+async def test_admin_update_user_topics_updates_preferences(db_session, user_factory) -> None:
     admin = await user_factory(role="admin")
     target = await user_factory()
     subscriptions = [
@@ -263,9 +253,7 @@ async def test_admin_update_user_topics_updates_preferences(
     assert response.updated_at is not None
 
     record = (
-        await db_session.execute(
-            select(UserPushTopic).where(UserPushTopic.user_id == target.id)
-        )
+        await db_session.execute(select(UserPushTopic).where(UserPushTopic.user_id == target.id))
     ).scalar_one()
     assert set(record.topics) == {"events", "news"}
 

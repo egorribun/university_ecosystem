@@ -12,9 +12,7 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
-def _has_index(
-    inspector: sa.Inspector, table_name: str, column_names: Sequence[str]
-) -> bool:
+def _has_index(inspector: sa.Inspector, table_name: str, column_names: Sequence[str]) -> bool:
     normalized = tuple(column_names)
     for index in inspector.get_indexes(table_name):
         if tuple(index.get("column_names", [])) == normalized:

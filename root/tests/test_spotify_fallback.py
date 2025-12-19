@@ -92,9 +92,7 @@ def test_legacy_fallback_matches_new_behavior():
     assert legacy.track_url == modern.track_url
 
 
-async def _login(
-    async_client: AsyncClient, user: ModelUser, password: str
-) -> dict[str, str]:
+async def _login(async_client: AsyncClient, user: ModelUser, password: str) -> dict[str, str]:
     response = await async_client.post(
         "/auth/login",
         data={"username": user.email, "password": password},
@@ -401,9 +399,7 @@ async def test_now_playing_disconnects_on_unauthorized_response(
     assert user.spotify.refresh_token is None
 
 
-async def test_spotify_tokens_are_encrypted_in_database(
-    db_session, user_factory
-) -> None:
+async def test_spotify_tokens_are_encrypted_in_database(db_session, user_factory) -> None:
     user = await user_factory(is_active=True)
 
     await _save_tokens(
@@ -418,8 +414,7 @@ async def test_spotify_tokens_are_encrypted_in_database(
     # Query spotify_integrations table instead of users table
     row = await db_session.execute(
         sa.text(
-            "SELECT access_token, refresh_token FROM spotify_integrations "
-            "WHERE user_id = :user_id"
+            "SELECT access_token, refresh_token FROM spotify_integrations WHERE user_id = :user_id"
         ),
         {"user_id": user.id},
     )
@@ -452,9 +447,7 @@ async def test_ensure_access_token_returns_plaintext(db_session, user_factory) -
     assert token == "plaintext-token"
 
     raw = await db_session.execute(
-        sa.text(
-            "SELECT access_token FROM spotify_integrations WHERE user_id = :user_id"
-        ),
+        sa.text("SELECT access_token FROM spotify_integrations WHERE user_id = :user_id"),
         {"user_id": user.id},
     )
     stored_token = raw.scalar_one()

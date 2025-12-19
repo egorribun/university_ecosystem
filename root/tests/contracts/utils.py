@@ -19,9 +19,7 @@ def normalize_openapi(schema: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
-def _iterable_contains_superset(
-    candidates: Iterable[Any], expected: Any, path: str
-) -> bool:
+def _iterable_contains_superset(candidates: Iterable[Any], expected: Any, path: str) -> bool:
     for candidate in candidates:
         try:
             assert_openapi_superset(expected, candidate, path=path)

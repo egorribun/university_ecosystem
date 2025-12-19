@@ -61,10 +61,7 @@ class ConnectionManager:
 
     def is_online(self, user_id: int) -> bool:
         """Check if a user has any active connections."""
-        return (
-            user_id in self.active_connections
-            and len(self.active_connections[user_id]) > 0
-        )
+        return user_id in self.active_connections and len(self.active_connections[user_id]) > 0
 
     async def send_to_user(self, user_id: int, message: dict[str, Any]) -> int:
         """
@@ -97,9 +94,7 @@ class ConnectionManager:
         """Broadcast a message to all participants of a chat. Returns total sends."""
         total_sent = 0
         async with async_session() as session:
-            chat = await session.get(
-                Chat, chat_id, options=[selectinload(Chat.participants)]
-            )
+            chat = await session.get(Chat, chat_id, options=[selectinload(Chat.participants)])
             if chat:
                 for participant in chat.participants:
                     if exclude_user_id and participant.id == exclude_user_id:
@@ -260,9 +255,7 @@ def serialize_message(
         status = presence[message.sender_id]
         sender_presence = {
             "active": status.active,
-            "last_seen_at": (
-                status.last_seen_at.isoformat() if status.last_seen_at else None
-            ),
+            "last_seen_at": (status.last_seen_at.isoformat() if status.last_seen_at else None),
         }
 
     return {
@@ -315,12 +308,8 @@ async def websocket_chat(websocket: WebSocket):
     session_jti = None
 
     # Debug: log incoming connection info
-    logger.info(
-        f"WebSocket connection attempt - cookies: {list(websocket.cookies.keys())}"
-    )
-    logger.info(
-        f"WebSocket connection attempt - query params: {dict(websocket.query_params)}"
-    )
+    logger.info(f"WebSocket connection attempt - cookies: {list(websocket.cookies.keys())}")
+    logger.info(f"WebSocket connection attempt - query params: {dict(websocket.query_params)}")
 
     # Try token from query params first
     token = websocket.query_params.get("token")
@@ -335,9 +324,7 @@ async def websocket_chat(websocket: WebSocket):
     # Fallback to cookie-based auth
     if not user:
         access_token = websocket.cookies.get("access_token")
-        logger.info(
-            f"Attempting cookie auth, access_token present: {bool(access_token)}"
-        )
+        logger.info(f"Attempting cookie auth, access_token present: {bool(access_token)}")
         if access_token:
             user, session_jti = await get_user_from_cookie(access_token)
             if user:
@@ -432,9 +419,7 @@ async def websocket_chat(websocket: WebSocket):
         await manager.broadcast_presence(user.id, False, last_seen)
 
 
-async def notify_new_message(
-    message: Message, exclude_user_id: int | None = None
-) -> int:
+async def notify_new_message(message: Message, exclude_user_id: int | None = None) -> int:
     """
     Notify chat participants about a new message via WebSocket.
     Call this from the chat API after saving a message.

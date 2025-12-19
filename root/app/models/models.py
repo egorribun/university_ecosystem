@@ -175,9 +175,7 @@ class User(Base):
         preferences_data = {
             key: kwargs.pop(key) for key in list(kwargs) if key in preferences_fields
         }
-        spotify_data = {
-            key: kwargs.pop(key) for key in list(kwargs) if key in spotify_fields
-        }
+        spotify_data = {key: kwargs.pop(key) for key in list(kwargs) if key in spotify_fields}
 
         super().__init__(**kwargs)
 
@@ -284,9 +282,7 @@ class Event(Base):
     event_type_en = Column(String)
     starts_at = Column(DateTime(timezone=True), nullable=False, index=True)
     ends_at = Column(DateTime(timezone=True), nullable=False, index=True)
-    created_by = Column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
+    created_by = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     search_vector = Column(
         Text().with_variant(TSVECTOR(), "postgresql"),
         server_default=FetchedValue(),
@@ -298,9 +294,7 @@ class Event(Base):
     about = Column(Text)
     about_en = Column(Text)
 
-    __table_args__ = (
-        CheckConstraint("ends_at > starts_at", name="ck_event_time_order"),
-    )
+    __table_args__ = (CheckConstraint("ends_at > starts_at", name="ck_event_time_order"),)
 
 
 def _generate_session_signing_key() -> str:
@@ -318,9 +312,7 @@ class ActiveSession(Base):
         index=True,
     )
     jti = Column(String, nullable=False, unique=True, index=True)
-    created_at = Column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
     revoked_at = Column(DateTime(timezone=True), nullable=True, index=True)
     ip_address = Column(String(64))
@@ -356,9 +348,7 @@ class MfaTotpEnrollment(Base):
     is_active = Column(Boolean, nullable=False, default=False, index=True)
     confirmed_at = Column(DateTime(timezone=True), nullable=True, index=True)
     revoked_at = Column(DateTime(timezone=True), nullable=True, index=True)
-    created_at = Column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     user = relationship("User", back_populates="totp_enrollments")
 
@@ -379,9 +369,7 @@ class MfaChallenge(Base):
     token = Column(String(255), nullable=False, unique=True)
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
     consumed_at = Column(DateTime(timezone=True), nullable=True, index=True)
-    created_at = Column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     payload = Column(JSON, nullable=True)
     attempt_count = Column(Integer, nullable=False, server_default="0", default=0)
 
@@ -458,9 +446,7 @@ class EventAttendance(Base):
         index=True,
         nullable=False,
     )
-    registered_at = Column(
-        DateTime(timezone=True), server_default=func.now(), index=True
-    )
+    registered_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     qr_secret = Column(String, nullable=False)
     qr_hmac = Column(String, nullable=False)
 
@@ -499,9 +485,7 @@ def _utcnow() -> datetime:
 
 class Story(Base):
     __tablename__ = "stories"
-    __table_args__ = (
-        Index("ix_stories_expires_at_is_active", "expires_at", "is_active"),
-    )
+    __table_args__ = (Index("ix_stories_expires_at_is_active", "expires_at", "is_active"),)
 
     id = Column(Integer, primary_key=True)
     title = Column(String, nullable=False)
@@ -611,9 +595,7 @@ class EmailChangeToken(Base):
 
     @property
     def is_active(self) -> bool:
-        return not self.used and (
-            self.expires_at is None or self.expires_at > datetime.now(UTC)
-        )
+        return not self.used and (self.expires_at is None or self.expires_at > datetime.now(UTC))
 
 
 class Notification(Base):
@@ -656,25 +638,19 @@ class NotificationQueueJob(Base):
     kind = Column(String(16), nullable=False, index=True)
     record_id = Column(Integer, nullable=False)
     locale = Column(String(16))
-    enqueued_at = Column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
+    enqueued_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     claimed_at = Column(DateTime(timezone=True), index=True)
     attempts = Column(Integer, nullable=False, server_default=text("0"))
     last_error = Column(Text)
     next_retry_at = Column(DateTime(timezone=True), index=True)
-    dead_lettered = Column(
-        Boolean, nullable=False, server_default=text("0"), index=True
-    )
+    dead_lettered = Column(Boolean, nullable=False, server_default=text("0"), index=True)
 
     __table_args__ = (
         CheckConstraint(
             "kind IN ('event', 'news')",
             name="ck_notification_queue_jobs_kind",
         ),
-        UniqueConstraint(
-            "kind", "record_id", name="uq_notification_queue_jobs_kind_record"
-        ),
+        UniqueConstraint("kind", "record_id", name="uq_notification_queue_jobs_kind_record"),
         Index("ix_notification_queue_jobs_kind_record", "kind", "record_id"),
         Index(
             "ix_notification_queue_jobs_pending_claim",
@@ -760,16 +736,12 @@ class TrustedDevice(Base):
     __tablename__ = "trusted_devices"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     token_hash = Column(String(128), unique=True, index=True, nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
     last_used_at = Column(DateTime(timezone=True), nullable=True, index=True)
     user_agent = Column(String(512), nullable=True)
     ip_address = Column(String(45), nullable=True)
-    created_at = Column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     user = relationship("User", back_populates="trusted_devices")

@@ -41,9 +41,7 @@ async def test_security_headers_production_mode(monkeypatch):
 
     transport = httpx.ASGITransport(app=app)
     async with LifespanManager(app):
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://testserver"
-        ) as client:
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             response = await client.get("/")
 
     headers = response.headers
@@ -54,9 +52,7 @@ async def test_security_headers_production_mode(monkeypatch):
     assert headers.get("X-Content-Type-Options") == "nosniff"
     assert headers.get("X-Frame-Options") == "DENY"
     assert headers.get("Referrer-Policy") == "no-referrer"
-    assert (
-        headers.get("Permissions-Policy") == "geolocation=(), microphone=(), camera=()"
-    )
+    assert headers.get("Permissions-Policy") == "geolocation=(), microphone=(), camera=()"
     assert headers.get("Cross-Origin-Opener-Policy") == "same-origin"
     assert headers.get("Cross-Origin-Embedder-Policy") == "require-corp"
     assert headers.get("Cross-Origin-Resource-Policy") == "same-site"
@@ -113,9 +109,7 @@ async def test_security_headers_development_report_only(monkeypatch):
 
     transport = httpx.ASGITransport(app=app)
     async with LifespanManager(app):
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://testserver"
-        ) as client:
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             response = await client.get("/")
 
     headers = response.headers
@@ -124,12 +118,9 @@ async def test_security_headers_development_report_only(monkeypatch):
     report_only = headers.get("Content-Security-Policy-Report-Only", "")
     assert "default-src 'self'" in report_only
     assert (
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' "
-        "http://localhost:5173 'report-sample'"
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:5173 'report-sample'"
     ) in report_only
-    assert (
-        "trusted-types app dompurify-news goog#html 'allow-duplicates'" in report_only
-    )
+    assert "trusted-types app dompurify-news goog#html 'allow-duplicates'" in report_only
     assert "require-trusted-types-for 'script'" not in report_only
     assert "http://localhost:5173" in report_only
     assert "http://127.0.0.1:8000" in report_only
@@ -166,9 +157,7 @@ async def test_security_headers_credentialless_coep(monkeypatch):
 
     transport = httpx.ASGITransport(app=app)
     async with LifespanManager(app):
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://testserver"
-        ) as client:
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             response = await client.get("/")
 
     headers = response.headers

@@ -211,19 +211,13 @@ async def test_create_notifications_records_webpush_deliveries(
     assert created == 1
 
     notifications = (
-        (
-            await db_session.execute(
-                select(Notification).where(Notification.user_id == user.id)
-            )
-        )
+        (await db_session.execute(select(Notification).where(Notification.user_id == user.id)))
         .scalars()
         .all()
     )
     assert len(notifications) == 1
 
-    deliveries = (
-        (await db_session.execute(select(NotificationDelivery))).scalars().all()
-    )
+    deliveries = (await db_session.execute(select(NotificationDelivery))).scalars().all()
     assert len(deliveries) == 1
     delivery = deliveries[0]
     assert delivery.notification_id == notifications[0].id
@@ -259,9 +253,7 @@ async def test_create_notifications_records_skip_without_credentials(
 
     assert created == 1
 
-    deliveries = (
-        (await db_session.execute(select(NotificationDelivery))).scalars().all()
-    )
+    deliveries = (await db_session.execute(select(NotificationDelivery))).scalars().all()
     assert len(deliveries) == 1
     delivery = deliveries[0]
     assert delivery.status == "skipped_no_credentials"
@@ -311,9 +303,7 @@ async def test_generate_schedule_reminders_query_count_constant(
     async def _run_with_count(count: int) -> int:
         await _prepare_lessons(count)
         with _count_queries(db_session) as get_count:
-            await notifications_module.generate_schedule_reminders(
-                db_session, window_minutes=15
-            )
+            await notifications_module.generate_schedule_reminders(db_session, window_minutes=15)
         return get_count()
 
     single_count = await _run_with_count(1)
@@ -323,9 +313,7 @@ async def test_generate_schedule_reminders_query_count_constant(
 
 
 @pytest.mark.anyio
-async def test_generate_schedule_reminders_handles_duplicate_titles(
-    db_session, user_factory
-):
+async def test_generate_schedule_reminders_handles_duplicate_titles(db_session, user_factory):
     group = Group(name="G2")
     db_session.add(group)
     await db_session.commit()
@@ -349,18 +337,12 @@ async def test_generate_schedule_reminders_handles_duplicate_titles(
     db_session.add_all(lessons)
     await db_session.commit()
 
-    created = await notifications_module.generate_schedule_reminders(
-        db_session, window_minutes=30
-    )
+    created = await notifications_module.generate_schedule_reminders(db_session, window_minutes=30)
 
     assert created == 2
 
     notifications = (
-        (
-            await db_session.execute(
-                select(Notification).where(Notification.user_id == user.id)
-            )
-        )
+        (await db_session.execute(select(Notification).where(Notification.user_id == user.id)))
         .scalars()
         .all()
     )
@@ -377,9 +359,7 @@ async def test_generate_schedule_reminders_handles_duplicate_titles(
 
 
 @pytest.mark.anyio
-async def test_generate_schedule_reminders_skips_inactive_users(
-    db_session, user_factory
-):
+async def test_generate_schedule_reminders_skips_inactive_users(db_session, user_factory):
     group = Group(name="G3")
     db_session.add(group)
     await db_session.commit()
@@ -401,9 +381,7 @@ async def test_generate_schedule_reminders_skips_inactive_users(
     db_session.add(lesson)
     await db_session.commit()
 
-    created = await notifications_module.generate_schedule_reminders(
-        db_session, window_minutes=30
-    )
+    created = await notifications_module.generate_schedule_reminders(db_session, window_minutes=30)
 
     assert created == 1
 

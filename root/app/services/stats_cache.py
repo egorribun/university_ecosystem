@@ -92,9 +92,7 @@ async def invalidate_user_stats_cache(
     unique_users = {int(uid) for uid in user_ids if uid is not None}
     if not unique_users:
         return
-    selected_kinds = tuple(
-        {kind.strip().lower() for kind in (kinds or _STATS_KNOWN_KINDS) if kind}
-    )
+    selected_kinds = tuple({kind.strip().lower() for kind in (kinds or _STATS_KNOWN_KINDS) if kind})
     if not selected_kinds:
         return
     normalized_periods = {
