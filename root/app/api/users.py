@@ -181,7 +181,11 @@ async def update_me(
     return await service.update_user_profile(db, user, data, request)
 
 
-@users_router.post("/me/email", response_model=schemas.UserOut)
+@users_router.post(
+    "/me/email",
+    response_model=schemas.UserOut,
+    dependencies=[Depends(sensitive_route_limit())],
+)
 async def change_email(
     payload: schemas.UserEmailChangeIn,
     request: Request,
@@ -194,7 +198,11 @@ async def change_email(
     return await auth_service.initiate_email_change(db, user, payload, request, bg)
 
 
-@users_router.post("/me/email/confirm", response_model=schemas.UserOut)
+@users_router.post(
+    "/me/email/confirm",
+    response_model=schemas.UserOut,
+    dependencies=[Depends(sensitive_route_limit())],
+)
 async def confirm_email_change(
     payload: schemas.UserEmailConfirmIn,
     request: Request,
@@ -205,7 +213,11 @@ async def confirm_email_change(
     return await auth_service.confirm_email_change(db, user, payload.token, request)
 
 
-@users_router.post("/me/password", response_model=schemas.PasswordChangeOut)
+@users_router.post(
+    "/me/password",
+    response_model=schemas.PasswordChangeOut,
+    dependencies=[Depends(sensitive_route_limit())],
+)
 async def change_password(
     payload: schemas.UserPasswordChangeIn,
     request: Request,
@@ -218,7 +230,11 @@ async def change_password(
     return schemas.PasswordChangeOut(ok=ok, revoked_sessions=revoked)
 
 
-@users_router.post("/me/export", response_model=schemas.DataExportOut)
+@users_router.post(
+    "/me/export",
+    response_model=schemas.DataExportOut,
+    dependencies=[Depends(sensitive_route_limit())],
+)
 async def export_me(
     request: Request,
     _: None = Depends(require_fresh_mfa),
@@ -229,7 +245,11 @@ async def export_me(
     return await service.export_user_data(db, user, request)
 
 
-@users_router.post("/me/delete", response_model=schemas.DataDeletionOut)
+@users_router.post(
+    "/me/delete",
+    response_model=schemas.DataDeletionOut,
+    dependencies=[Depends(sensitive_route_limit())],
+)
 async def delete_me(
     payload: schemas.DataDeletionRequest,
     request: Request,

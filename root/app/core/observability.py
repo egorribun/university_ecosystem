@@ -152,8 +152,19 @@ class TraceContextFilter(logging.Filter):
 
 
 class JSONLogFormatter(logging.Formatter):
+    """JSON formatter that captures all extra fields for structured logging."""
+
     default_time_format = "%Y-%m-%dT%H:%M:%S"
     default_msec_format = "%s.%03dZ"
+
+    # Standard LogRecord attributes to exclude from extras
+    _STANDARD_ATTRS: frozenset[str] = frozenset({
+        "name", "msg", "args", "created", "filename", "funcName",
+        "levelname", "levelno", "lineno", "module", "msecs",
+        "pathname", "process", "processName", "relativeCreated",
+        "stack_info", "exc_info", "exc_text", "thread", "threadName",
+        "taskName", "message",
+    })
 
     def format(self, record: logging.LogRecord) -> str:
         log_record: dict[str, Any] = {
@@ -162,20 +173,39 @@ class JSONLogFormatter(logging.Formatter):
             "logger": record.name,
             "message": record.getMessage(),
         }
-        extras = {
+
+        # Known trace context fields (prioritized)
+        trace_fields = {
             "trace_id": getattr(record, "trace_id", None),
             "span_id": getattr(record, "span_id", None),
             "request_id": getattr(record, "request_id", None),
             "service_name": getattr(record, "service_name", None),
             "environment": getattr(record, "environment", None),
         }
-        for key, value in extras.items():
+        for key, value in trace_fields.items():
             if value:
                 log_record[key] = value
+
+        # Capture all custom extra fields
+        for key, value in record.__dict__.items():
+            if key in self._STANDARD_ATTRS or key in trace_fields:
+                continue
+            if key.startswith("_"):
+                continue
+            if value is None:
+                continue
+            # Ensure JSON serializable
+            try:
+                json.dumps(value)
+                log_record[key] = value
+            except (TypeError, ValueError):
+                log_record[key] = str(value)
+
         if record.exc_info:
             log_record["exc_info"] = self.formatException(record.exc_info)
         if record.stack_info:
             log_record["stack_info"] = self.formatStack(record.stack_info)
+
         return json.dumps(log_record, ensure_ascii=False)
 
 

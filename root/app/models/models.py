@@ -331,6 +331,9 @@ class ActiveSession(Base):
     mfa_completed_at = Column(DateTime(timezone=True), nullable=True, index=True)
     mfa_method = Column(String(64))
     mfa_verified_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    # Session fingerprint for security binding
+    accept_language = Column(String(256))
+    fingerprint_hash = Column(String(64), index=True)  # SHA-256 hex digest
 
     user = relationship("User", back_populates="sessions")
     challenges = relationship(

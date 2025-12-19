@@ -219,6 +219,7 @@ class Settings(BaseSettings):
     jwt_active_kid: str | None = None
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
+    max_sessions_per_user: int = 5  # 0 = unlimited concurrent sessions
     frontend_origin: str = "http://localhost:5173"
     frontend_origins: str | list[str] = ""
     app_base_url: str = "http://localhost:5173"

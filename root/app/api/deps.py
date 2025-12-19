@@ -75,6 +75,38 @@ async def get_current_user(
     if expires_at <= now:
         raise credentials_exception
 
+    # Fingerprint validation for session binding (logs suspicious activity)
+    if session.fingerprint_hash:
+        from app.auth.fingerprint import (
+            SessionFingerprint,
+            extract_fingerprint,
+            get_suspicious_activity_detector,
+        )
+        
+        current_fp = extract_fingerprint(request)
+        stored_fp = SessionFingerprint(
+            user_agent=session.user_agent or "",
+            accept_language=session.accept_language or "",
+            ip_address=session.ip_address or "",
+            fingerprint_hash=session.fingerprint_hash,
+        )
+        
+        # Check for fingerprint mismatch (log but don't block)
+        if current_fp.fingerprint_hash != stored_fp.fingerprint_hash:
+            detector = get_suspicious_activity_detector()
+            event = detector.check_fingerprint_mismatch(
+                user_id=user.id,
+                session_id=session.id,
+                stored_fingerprint=stored_fp,
+                current_fingerprint=current_fp,
+            )
+            if event:
+                import logging
+                logging.getLogger("app.auth.security").warning(
+                    "Session fingerprint mismatch detected",
+                    extra=event.to_log_record(),
+                )
+
     ttl = max(0, getattr(settings, "mfa_step_up_ttl_seconds", 0))
     if ttl > 0 and session.mfa_verified_at is not None:
         verified_at = session.mfa_verified_at
