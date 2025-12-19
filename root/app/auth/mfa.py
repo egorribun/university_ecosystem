@@ -34,10 +34,7 @@ _TOTP_VALID_WINDOW = settings.mfa_totp_initial_skew_windows
 _TOTP_DIGITS = 6
 _MAX_ACTIVE_TOTP_ENROLLMENTS = 1
 
-TOTP_ENROLLMENT_PENDING_ERROR = (
-    "A TOTP enrollment is already pending. "
-    "Confirm or reuse it before starting a new one."
-)
+TOTP_ENROLLMENT_PENDING_ERROR = "A TOTP enrollment is already pending. Confirm or reuse it before starting a new one."
 TOTP_ENROLLMENT_LIMIT_ERROR = (
     "Only one authenticator app can be connected at a time. "
     "Remove the existing app before starting a new setup."

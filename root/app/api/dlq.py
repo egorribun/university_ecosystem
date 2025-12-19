@@ -91,8 +91,7 @@ async def get_dlq_stats(
     response_model=DLQJobsListResponse,
     summary="List DLQ Jobs",
     description=(
-        "Returns a paginated list of jobs in the dead letter queue "
-        "with optional status filtering."
+        "Returns a paginated list of jobs in the dead letter queue with optional status filtering."
     ),
 )
 async def list_dlq_jobs(
@@ -159,8 +158,7 @@ async def list_dlq_jobs(
     "/retry/{job_id}",
     summary="Retry DLQ Job",
     description=(
-        "Manually triggers a retry for a specific failed job by "
-        "resetting its status to pending."
+        "Manually triggers a retry for a specific failed job by resetting its status to pending."
     ),
 )
 async def retry_dlq_job(

@@ -140,6 +140,8 @@ async def create_access_token(
         if session_metadata:
             ip_address = session_metadata.get("ip_address")
             user_agent = session_metadata.get("user_agent")
+            accept_language = session_metadata.get("accept_language")
+            fingerprint_hash = session_metadata.get("fingerprint_hash")
             last_seen_at = session_metadata.get("last_seen_at")
             mfa_required = session_metadata.get("mfa_required")
             mfa_method = session_metadata.get("mfa_method")
@@ -149,6 +151,10 @@ async def create_access_token(
                 session.ip_address = str(ip_address)[:64]
             if user_agent:
                 session.user_agent = str(user_agent)[:512]
+            if accept_language:
+                session.accept_language = str(accept_language)[:256]
+            if fingerprint_hash:
+                session.fingerprint_hash = str(fingerprint_hash)[:64]
             if last_seen_at is not None:
                 session.last_seen_at = last_seen_at
             if mfa_required is not None:
@@ -161,6 +167,43 @@ async def create_access_token(
             if mfa_verified_at is not None:
                 session.mfa_verified_at = mfa_verified_at
         db.add(session)
+
+        # Enforce concurrent session limit (revoke oldest sessions if limit exceeded)
+        max_sessions = settings.max_sessions_per_user
+        if max_sessions > 0:
+            from sqlalchemy import func, select
+            from sqlalchemy.orm import load_only
+
+            # Count current active sessions for this user (excluding just-created one)
+            count_stmt = (
+                select(func.count(ActiveSession.id))
+                .where(ActiveSession.user_id == user_id)
+                .where(ActiveSession.revoked_at.is_(None))
+                .where(ActiveSession.expires_at > now)
+            )
+            result = await db.execute(count_stmt)
+            active_count = result.scalar_one_or_none() or 0
+
+            # If limit exceeded, revoke oldest sessions
+            if active_count > max_sessions:
+                excess_count = active_count - max_sessions
+                oldest_stmt = (
+                    select(ActiveSession)
+                    .options(load_only(ActiveSession.id, ActiveSession.jti))
+                    .where(ActiveSession.user_id == user_id)
+                    .where(ActiveSession.revoked_at.is_(None))
+                    .where(ActiveSession.expires_at > now)
+                    .where(ActiveSession.jti != jti)  # Exclude current session
+                    .order_by(ActiveSession.created_at.asc())
+                    .limit(excess_count)
+                )
+                oldest_sessions = (await db.execute(oldest_stmt)).scalars().all()
+
+                session_backend = await get_session_backend()
+                for old_session in oldest_sessions:
+                    old_session.revoked_at = now
+                    await session_backend.revoke_session(user_id, old_session.jti)
+
         await db.commit()
         await db.refresh(session)
 

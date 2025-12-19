@@ -86,8 +86,7 @@ def test_settings_warn_when_env_matches_example(monkeypatch, caplog, tmp_path):
     # Create a complete .env.example with all required vars for the test
     secret_key = "Qj7p4R2zYx8N1a5Hk9V3u0Mw6Tg4Lr8Cz2Jv5Qw7Xn1Dk6Fh0Sg3Vb9Pp4Rz8Lm2"
     test_example_content = (
-        f"DATABASE_URL=postgresql+asyncpg://test:test@localhost/test\n"
-        f"SECRET_KEY={secret_key}\n"
+        f"DATABASE_URL=postgresql+asyncpg://test:test@localhost/test\nSECRET_KEY={secret_key}\n"
     ).encode()
 
     # Write both .env and .env.example with identical content
@@ -107,7 +106,7 @@ def test_settings_warn_when_env_matches_example(monkeypatch, caplog, tmp_path):
             with caplog.at_level("WARNING"):
                 config_module = importlib.reload(config_module)
 
-            assert config_module._ENV_FILE == env_path.resolve()
+            assert env_path.resolve() == config_module._ENV_FILE
 
             with caplog.at_level("WARNING"):
                 settings = config_module.Settings()

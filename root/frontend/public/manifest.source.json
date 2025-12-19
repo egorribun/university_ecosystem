@@ -8,16 +8,26 @@
     "description": null,
     "dir": "ltr",
     "display": "standalone",
-    "display_override": ["standalone", "browser"],
+    "display_override": [
+      "standalone",
+      "browser"
+    ],
     "start_url": "/?source=pwa",
     "scope": "/",
     "orientation": "portrait-primary",
     "theme_color": "#0b63f4",
     "background_color": "#f4f8fd",
+    "handle_links": "preferred",
     "launch_handler": {
       "client_mode": "navigate-existing"
     },
-    "categories": ["education", "productivity"],
+    "edge_side_panel": {
+      "preferred_width": 400
+    },
+    "categories": [
+      "education",
+      "productivity"
+    ],
     "shortcuts": [
       {
         "url": "/schedule",
@@ -72,6 +82,28 @@
         "sizes": "512x512",
         "type": "image/png",
         "purpose": "maskable any"
+      }
+    ],
+    "screenshots": [
+      {
+        "src": "/screenshots/schedule-wide.png",
+        "sizes": "1280x720",
+        "type": "image/png",
+        "form_factor": "wide",
+        "label": "Schedule view on desktop"
+      },
+      {
+        "src": "/screenshots/schedule-narrow.png",
+        "sizes": "750x1334",
+        "type": "image/png",
+        "form_factor": "narrow",
+        "label": "Schedule view on mobile"
+      }
+    ],
+    "protocol_handlers": [
+      {
+        "protocol": "web+guu",
+        "url": "/?action=%s"
       }
     ]
   },

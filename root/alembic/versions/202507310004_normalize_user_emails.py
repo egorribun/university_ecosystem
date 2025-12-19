@@ -21,7 +21,7 @@ def _ensure_no_duplicates(bind) -> None:
     if duplicates:
         conflicts = ", ".join(row._mapping["normalized"] for row in duplicates)
         raise RuntimeError(
-            "Duplicate user emails found after normalization: " f"{conflicts}"
+            f"Duplicate user emails found after normalization: {conflicts}"
         )
 
 
@@ -41,8 +41,7 @@ def upgrade() -> None:
     if dialect in {"postgresql", "sqlite"}:
         op.execute(
             sa.text(
-                "CREATE UNIQUE INDEX IF NOT EXISTS ux_users_lower_email "
-                "ON users (lower(email))"
+                "CREATE UNIQUE INDEX IF NOT EXISTS ux_users_lower_email ON users (lower(email))"
             )
         )
     else:

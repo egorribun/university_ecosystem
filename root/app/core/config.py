@@ -41,8 +41,7 @@ def _resolve_env_file(base_dir: Path) -> Path | None:
             else:
                 if candidate_bytes == example_bytes:
                     logging.getLogger(__name__).warning(
-                        "%s is identical to %s; update it with real secrets before "
-                        "deploying.",
+                        "%s is identical to %s; update it with real secrets before deploying.",
                         candidate,
                         example_path,
                     )
@@ -194,7 +193,7 @@ class Settings(BaseSettings):
                     f"{details}. Provide real secrets via environment variables or an"
                     " application .env file (not .env.example)."
                 )
-                setattr(error, "missing_required", tuple(missing_required))
+                error.missing_required = tuple(missing_required)
                 raise error from None
             raise
 
@@ -219,6 +218,7 @@ class Settings(BaseSettings):
     jwt_active_kid: str | None = None
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
+    max_sessions_per_user: int = 5  # 0 = unlimited concurrent sessions
     frontend_origin: str = "http://localhost:5173"
     frontend_origins: str | list[str] = ""
     app_base_url: str = "http://localhost:5173"
@@ -472,8 +472,7 @@ class Settings(BaseSettings):
         normalized = value.strip().lower()
         if normalized not in {"same-origin", "same-site", "cross-origin"}:
             raise ValueError(
-                "CORP_VALUE must be one of 'same-origin', 'same-site', "
-                "or 'cross-origin'"
+                "CORP_VALUE must be one of 'same-origin', 'same-site', or 'cross-origin'"
             )
         return normalized
 
@@ -839,7 +838,7 @@ class Settings(BaseSettings):
         }
         headers[self.request_id_header] = None
         headers[self.trace_header] = None
-        return [key for key in headers.keys() if key]
+        return [key for key in headers if key]
 
     @cached_property
     def rate_limit_default_list(self) -> list[str]:
@@ -1011,8 +1010,7 @@ class Settings(BaseSettings):
                 directives = [
                     "default-src 'self'",
                     (
-                        "script-src 'self' 'nonce-{nonce}' "
-                        "'strict-dynamic' 'report-sample'"
+                        "script-src 'self' 'nonce-{nonce}' 'strict-dynamic' 'report-sample'"
                     ),
                     "style-src 'self' 'unsafe-inline'",
                     "img-src 'self' data: blob:",
@@ -1100,8 +1098,7 @@ def _load_settings() -> Settings:
             raise
         _logger.debug(
             (
-                "Falling back to development defaults because settings "
-                "initialization failed: %s"
+                "Falling back to development defaults because settings initialization failed: %s"
             ),
             exc,
             exc_info=False,
@@ -1114,8 +1111,7 @@ def _load_settings() -> Settings:
             missing = "DATABASE_URL, SECRET_KEY"
         hint_parts = [
             (
-                "Provide real secrets via environment variables or a .env file "
-                "before deploying."
+                "Provide real secrets via environment variables or a .env file before deploying."
             ),
         ]
         if not (_PROJECT_ROOT / ".env").exists():

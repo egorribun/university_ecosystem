@@ -4,10 +4,7 @@ from app.utils.images import optimize_image, sanitize_svg
 
 
 def test_sanitize_svg_valid():
-    svg_data = (
-        b'<svg xmlns="http://www.w3.org/2000/svg">'
-        b'<circle cx="50" cy="50" r="40"/></svg>'
-    )
+    svg_data = b'<svg xmlns="http://www.w3.org/2000/svg"><circle cx="50" cy="50" r="40"/></svg>'
     result = sanitize_svg(svg_data)
     assert result == svg_data
 

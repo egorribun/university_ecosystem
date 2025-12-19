@@ -24,14 +24,12 @@ def upgrade() -> None:
         return
     # Alter sender_id column type from VARCHAR to INTEGER
     op.execute(
-        "ALTER TABLE messages ALTER COLUMN sender_id TYPE INTEGER "
-        "USING sender_id::INTEGER"
+        "ALTER TABLE messages ALTER COLUMN sender_id TYPE INTEGER USING sender_id::INTEGER"
     )
 
     # Also need to fix the chat_participants user_id if it's wrong
     op.execute(
-        "ALTER TABLE chat_participants ALTER COLUMN user_id TYPE INTEGER "
-        "USING user_id::INTEGER"
+        "ALTER TABLE chat_participants ALTER COLUMN user_id TYPE INTEGER USING user_id::INTEGER"
     )
 
 
