@@ -40,7 +40,7 @@ ignore_missing_imports = true
 
 [tool.ruff]
 target-version = "py311"
-line-length = 100
+line-length = 88
 
 [tool.ruff.lint]
 select = [
