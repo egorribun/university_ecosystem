@@ -14,10 +14,7 @@ const PING_INTERVAL_MS = 30000 // Heartbeat every 30 seconds
  */
 function calculateReconnectDelay(attempt: number): number {
   // Exponential backoff: baseDelay * 2^attempt, capped at maxDelay
-  const expDelay = Math.min(
-    RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt),
-    RECONNECT_MAX_DELAY_MS
-  )
+  const expDelay = Math.min(RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt), RECONNECT_MAX_DELAY_MS)
   // Add jitter: random value in range [1-jitter, 1+jitter]
   const jitter = 1 + (Math.random() * 2 - 1) * RECONNECT_JITTER_FACTOR
   return Math.round(expDelay * jitter)
