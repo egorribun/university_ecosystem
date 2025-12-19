@@ -126,8 +126,8 @@ def issue_token(
     expires_at = issued_at + ttl
     payload = AttendanceTokenPayload(
         purpose=TOKEN_PURPOSE,
-        event_id=int(getattr(attendance, "event_id")),
-        user_id=int(getattr(attendance, "user_id")),
+        event_id=int(attendance.event_id),
+        user_id=int(attendance.user_id),
         secret=secret,
         issued_at=issued_at,
         expires_at=expires_at,
@@ -170,9 +170,9 @@ def verify_token(
         raise AttendanceTokenInvalid("Token payload is invalid") from exc
     if payload.purpose != TOKEN_PURPOSE:
         raise AttendanceTokenInvalid("Token purpose mismatch")
-    if payload.event_id != getattr(attendance, "event_id"):
+    if payload.event_id != attendance.event_id:
         raise AttendanceTokenInvalid("Token event mismatch")
-    if payload.user_id != getattr(attendance, "user_id"):
+    if payload.user_id != attendance.user_id:
         raise AttendanceTokenInvalid("Token user mismatch")
     expected_hmac = getattr(attendance, "qr_hmac", None)
     if not expected_hmac:

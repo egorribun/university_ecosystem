@@ -167,13 +167,13 @@ async def create_access_token(
             if mfa_verified_at is not None:
                 session.mfa_verified_at = mfa_verified_at
         db.add(session)
-        
+
         # Enforce concurrent session limit (revoke oldest sessions if limit exceeded)
         max_sessions = settings.max_sessions_per_user
         if max_sessions > 0:
-            from sqlalchemy import select, func
+            from sqlalchemy import func, select
             from sqlalchemy.orm import load_only
-            
+
             # Count current active sessions for this user (excluding just-created one)
             count_stmt = (
                 select(func.count(ActiveSession.id))
@@ -183,7 +183,7 @@ async def create_access_token(
             )
             result = await db.execute(count_stmt)
             active_count = result.scalar_one_or_none() or 0
-            
+
             # If limit exceeded, revoke oldest sessions
             if active_count > max_sessions:
                 excess_count = active_count - max_sessions
@@ -198,12 +198,12 @@ async def create_access_token(
                     .limit(excess_count)
                 )
                 oldest_sessions = (await db.execute(oldest_stmt)).scalars().all()
-                
+
                 session_backend = await get_session_backend()
                 for old_session in oldest_sessions:
                     old_session.revoked_at = now
                     await session_backend.revoke_session(user_id, old_session.jti)
-        
+
         await db.commit()
         await db.refresh(session)
 

@@ -194,7 +194,7 @@ class Settings(BaseSettings):
                     f"{details}. Provide real secrets via environment variables or an"
                     " application .env file (not .env.example)."
                 )
-                setattr(error, "missing_required", tuple(missing_required))
+                error.missing_required = tuple(missing_required)
                 raise error from None
             raise
 
@@ -840,7 +840,7 @@ class Settings(BaseSettings):
         }
         headers[self.request_id_header] = None
         headers[self.trace_header] = None
-        return [key for key in headers.keys() if key]
+        return [key for key in headers if key]
 
     @cached_property
     def rate_limit_default_list(self) -> list[str]:

@@ -107,7 +107,7 @@ def test_settings_warn_when_env_matches_example(monkeypatch, caplog, tmp_path):
             with caplog.at_level("WARNING"):
                 config_module = importlib.reload(config_module)
 
-            assert config_module._ENV_FILE == env_path.resolve()
+            assert env_path.resolve() == config_module._ENV_FILE
 
             with caplog.at_level("WARNING"):
                 settings = config_module.Settings()

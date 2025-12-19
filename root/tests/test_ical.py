@@ -3,8 +3,6 @@
 from datetime import UTC, date, datetime, time, timedelta, timezone
 from unittest.mock import MagicMock
 
-import pytest
-
 from app.services.ical import (
     _ensure_time,
     _escape,
@@ -51,9 +49,9 @@ class TestEscape:
         """Test all special iCalendar characters in one string."""
         result = _escape("Dr. Smith; Room 101, Building A\nNotes: Use \\ carefully")
         assert "\\\\" in result  # Backslash escaped
-        assert "\\;" in result   # Semicolon escaped
-        assert "\\," in result   # Comma escaped
-        assert "\\n" in result   # Newline escaped
+        assert "\\;" in result  # Semicolon escaped
+        assert "\\," in result  # Comma escaped
+        assert "\\n" in result  # Newline escaped
 
 
 class TestWeekdayIndex:
@@ -132,8 +130,6 @@ class TestEnsureTime:
         assert result.minute == 30
 
 
-
-
 class TestFormatDt:
     """Tests for _format_dt function."""
 
@@ -151,8 +147,6 @@ class TestIterLessonDates:
     """Tests for _iter_lesson_dates function."""
 
     def test_iter_both_parity(self):
-        from datetime import date
-
         monday = date(2024, 1, 1)  # Monday
         dates = list(
             _iter_lesson_dates(
@@ -168,8 +162,6 @@ class TestIterLessonDates:
         assert dates[1] == monday + timedelta(weeks=1)  # Week 2
 
     def test_iter_odd_parity_starting_odd(self):
-        from datetime import date
-
         monday = date(2024, 1, 1)
         dates = list(
             _iter_lesson_dates(
@@ -184,8 +176,6 @@ class TestIterLessonDates:
         assert len(dates) == 3
 
     def test_iter_even_parity_starting_odd(self):
-        from datetime import date
-
         monday = date(2024, 1, 1)
         dates = list(
             _iter_lesson_dates(
@@ -234,7 +224,7 @@ class TestGenerateScheduleIcs:
     def test_generate_empty_schedule(self):
         group = self._make_mock_group()
         result = generate_schedule_ics(group, [], weeks=1)
-        
+
         assert "BEGIN:VCALENDAR" in result
         assert "END:VCALENDAR" in result
         assert "VERSION:2.0" in result
@@ -244,9 +234,9 @@ class TestGenerateScheduleIcs:
     def test_generate_single_lesson(self):
         group = self._make_mock_group("CS-101")
         lesson = self._make_mock_lesson(subject="Programming", room="A305")
-        
+
         result = generate_schedule_ics(group, [lesson], weeks=1, locale="en")
-        
+
         assert "BEGIN:VCALENDAR" in result
         assert "BEGIN:VEVENT" in result
         assert "SUMMARY:" in result
@@ -259,26 +249,26 @@ class TestGenerateScheduleIcs:
             self._make_mock_lesson(lesson_id=1, subject="Math", weekday="Monday"),
             self._make_mock_lesson(lesson_id=2, subject="Physics", weekday="Tuesday"),
         ]
-        
+
         result = generate_schedule_ics(group, lessons, weeks=1)
-        
-        # Count VEVENT occurrences 
+
+        # Count VEVENT occurrences
         event_count = result.count("BEGIN:VEVENT")
         assert event_count >= 1
 
     def test_ics_format_crlf_endings(self):
         group = self._make_mock_group()
         result = generate_schedule_ics(group, [], weeks=1)
-        
+
         # ICS spec requires CRLF line endings
         assert result.endswith("\r\n")
 
     def test_lesson_with_odd_parity(self):
         group = self._make_mock_group()
         lesson = self._make_mock_lesson(parity="odd")
-        
+
         result = generate_schedule_ics(group, [lesson], weeks=4)
-        
+
         assert "BEGIN:VCALENDAR" in result
 
     # === Edge Cases: Missing and Malformed Data ===
@@ -288,9 +278,9 @@ class TestGenerateScheduleIcs:
         group = self._make_mock_group()
         lesson = self._make_mock_lesson()
         lesson.weekday = None
-        
+
         result = generate_schedule_ics(group, [lesson], weeks=1)
-        
+
         assert "BEGIN:VCALENDAR" in result
         assert "BEGIN:VEVENT" not in result
 
@@ -299,9 +289,9 @@ class TestGenerateScheduleIcs:
         group = self._make_mock_group()
         lesson = self._make_mock_lesson()
         lesson.start_time = None
-        
+
         result = generate_schedule_ics(group, [lesson], weeks=1)
-        
+
         assert "BEGIN:VCALENDAR" in result
         assert "BEGIN:VEVENT" not in result
 
@@ -310,9 +300,9 @@ class TestGenerateScheduleIcs:
         group = self._make_mock_group()
         lesson = self._make_mock_lesson()
         lesson.end_time = None
-        
+
         result = generate_schedule_ics(group, [lesson], weeks=1)
-        
+
         assert "BEGIN:VCALENDAR" in result
         assert "BEGIN:VEVENT" not in result
 
@@ -321,9 +311,9 @@ class TestGenerateScheduleIcs:
         group = self._make_mock_group()
         lesson = self._make_mock_lesson()
         lesson.weekday = "InvalidDay"
-        
+
         result = generate_schedule_ics(group, [lesson], weeks=1)
-        
+
         assert "BEGIN:VCALENDAR" in result
         assert "BEGIN:VEVENT" not in result
 
@@ -332,9 +322,9 @@ class TestGenerateScheduleIcs:
         group = self._make_mock_group()
         lesson = self._make_mock_lesson()
         lesson.subject = None
-        
+
         result = generate_schedule_ics(group, [lesson], weeks=1, locale="en")
-        
+
         assert "BEGIN:VEVENT" in result
         assert "SUMMARY:" in result
 
@@ -343,9 +333,9 @@ class TestGenerateScheduleIcs:
         group = self._make_mock_group()
         lesson = self._make_mock_lesson()
         lesson.teacher = None
-        
+
         result = generate_schedule_ics(group, [lesson], weeks=1)
-        
+
         assert "BEGIN:VEVENT" in result
         # DESCRIPTION should not have teacher info
         # But event should still be valid
@@ -355,9 +345,9 @@ class TestGenerateScheduleIcs:
         group = self._make_mock_group()
         lesson = self._make_mock_lesson()
         lesson.room = None
-        
+
         result = generate_schedule_ics(group, [lesson], weeks=1)
-        
+
         assert "BEGIN:VEVENT" in result
         assert "LOCATION:" not in result
 
@@ -366,9 +356,9 @@ class TestGenerateScheduleIcs:
         group = self._make_mock_group()
         lesson = self._make_mock_lesson()
         lesson.lesson_type = None
-        
+
         result = generate_schedule_ics(group, [lesson], weeks=1)
-        
+
         assert "BEGIN:VEVENT" in result
         # SUMMARY should just have subject without parentheses
 
@@ -381,9 +371,9 @@ class TestGenerateScheduleIcs:
         # Some ORMs might return datetime instead of time
         lesson.start_time = datetime(2024, 1, 15, 9, 0, 0)
         lesson.end_time = datetime(2024, 1, 15, 10, 30, 0)
-        
+
         result = generate_schedule_ics(group, [lesson], weeks=1)
-        
+
         assert "BEGIN:VEVENT" in result
         assert "DTSTART:" in result
 
@@ -393,9 +383,9 @@ class TestGenerateScheduleIcs:
         lesson = self._make_mock_lesson()
         lesson.start_time = datetime(2024, 1, 15, 9, 0, 0, tzinfo=UTC)
         lesson.end_time = datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
-        
+
         result = generate_schedule_ics(group, [lesson], weeks=1)
-        
+
         assert "BEGIN:VEVENT" in result
         assert "DTSTART:" in result
 
@@ -405,18 +395,18 @@ class TestGenerateScheduleIcs:
         """Even parity lessons should only appear on even weeks."""
         group = self._make_mock_group()
         lesson = self._make_mock_lesson(parity="even")
-        
+
         result = generate_schedule_ics(group, [lesson], weeks=4)
-        
+
         assert "BEGIN:VCALENDAR" in result
 
     def test_lesson_with_uppercase_parity(self):
         """Parity should be case-insensitive."""
         group = self._make_mock_group()
         lesson = self._make_mock_lesson(parity="ODD")
-        
+
         result = generate_schedule_ics(group, [lesson], weeks=4)
-        
+
         assert "BEGIN:VCALENDAR" in result
 
     def test_lesson_with_none_parity_treated_as_both(self):
@@ -424,9 +414,9 @@ class TestGenerateScheduleIcs:
         group = self._make_mock_group()
         lesson = self._make_mock_lesson()
         lesson.parity = None
-        
+
         result = generate_schedule_ics(group, [lesson], weeks=2)
-        
+
         # Should have events for both weeks
         event_count = result.count("BEGIN:VEVENT")
         assert event_count >= 2
@@ -437,9 +427,9 @@ class TestGenerateScheduleIcs:
         """Special characters in subject should be escaped."""
         group = self._make_mock_group()
         lesson = self._make_mock_lesson(subject="Math; Advanced, Part 1\nNotes")
-        
+
         result = generate_schedule_ics(group, [lesson], weeks=1)
-        
+
         assert "BEGIN:VEVENT" in result
         # Verify the escaped characters work
 
@@ -447,9 +437,9 @@ class TestGenerateScheduleIcs:
         """Unicode characters in subject should work."""
         group = self._make_mock_group()
         lesson = self._make_mock_lesson(subject="Математика")
-        
+
         result = generate_schedule_ics(group, [lesson], weeks=1)
-        
+
         assert "BEGIN:VEVENT" in result
         assert "Математика" in result
 
@@ -459,9 +449,9 @@ class TestGenerateScheduleIcs:
         """Zero weeks should produce no events."""
         group = self._make_mock_group()
         lesson = self._make_mock_lesson()
-        
+
         result = generate_schedule_ics(group, [lesson], weeks=0)
-        
+
         assert "BEGIN:VCALENDAR" in result
         assert "BEGIN:VEVENT" not in result
 
@@ -469,9 +459,9 @@ class TestGenerateScheduleIcs:
         """Large week count should work (e.g., full year)."""
         group = self._make_mock_group()
         lesson = self._make_mock_lesson()
-        
+
         result = generate_schedule_ics(group, [lesson], weeks=52)
-        
+
         assert "BEGIN:VCALENDAR" in result
         event_count = result.count("BEGIN:VEVENT")
         assert event_count == 52
@@ -483,8 +473,8 @@ class TestGenerateScheduleIcs:
         group = MagicMock()
         group.name = None
         lesson = self._make_mock_lesson()
-        
+
         result = generate_schedule_ics(group, [lesson], weeks=1)
-        
+
         assert "BEGIN:VCALENDAR" in result
         assert "NAME:" in result

@@ -82,7 +82,7 @@ async def get_current_user(
             extract_fingerprint,
             get_suspicious_activity_detector,
         )
-        
+
         current_fp = extract_fingerprint(request)
         stored_fp = SessionFingerprint(
             user_agent=session.user_agent or "",
@@ -90,7 +90,7 @@ async def get_current_user(
             ip_address=session.ip_address or "",
             fingerprint_hash=session.fingerprint_hash,
         )
-        
+
         # Check for fingerprint mismatch (log but don't block)
         if current_fp.fingerprint_hash != stored_fp.fingerprint_hash:
             detector = get_suspicious_activity_detector()
@@ -102,6 +102,7 @@ async def get_current_user(
             )
             if event:
                 import logging
+
                 logging.getLogger("app.auth.security").warning(
                     "Session fingerprint mismatch detected",
                     extra=event.to_log_record(),

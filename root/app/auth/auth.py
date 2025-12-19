@@ -174,13 +174,13 @@ def _extract_client_info(request: Request) -> tuple[str | None, str | None]:
 
 def _create_session_for_user(user: User, request: Request) -> ActiveSession:
     from app.auth.fingerprint import extract_fingerprint
-    
+
     client_ip, user_agent = _extract_client_info(request)
     now = datetime.now(UTC)
-    
+
     # Extract session fingerprint for security binding
     fingerprint = extract_fingerprint(request)
-    
+
     session = ActiveSession(
         user_id=user.id,
         jti=str(uuid4()),
@@ -193,11 +193,15 @@ def _create_session_for_user(user: User, request: Request) -> ActiveSession:
         session.ip_address = client_ip[:64]
     if user_agent:
         session.user_agent = user_agent[:512]
-    
+
     # Store fingerprint data for session binding
-    session.accept_language = fingerprint.accept_language[:256] if fingerprint.accept_language else None
-    session.fingerprint_hash = fingerprint.fingerprint_hash[:64] if fingerprint.fingerprint_hash else None
-    
+    session.accept_language = (
+        fingerprint.accept_language[:256] if fingerprint.accept_language else None
+    )
+    session.fingerprint_hash = (
+        fingerprint.fingerprint_hash[:64] if fingerprint.fingerprint_hash else None
+    )
+
     return session
 
 

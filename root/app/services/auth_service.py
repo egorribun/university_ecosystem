@@ -138,7 +138,7 @@ async def attach_pending_email(
     if user is None:
         return None
     pending = await _get_active_email_change_request(db, user.id)
-    setattr(user, "pending_email", pending.new_email if pending else None)
+    user.pending_email = pending.new_email if pending else None
     return user
 
 

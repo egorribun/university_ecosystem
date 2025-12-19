@@ -268,7 +268,9 @@ async def create_notifications_for_users(
 
             if tasks:
                 results = await asyncio.gather(*tasks, return_exceptions=True)
-                for (sub, notification_id), result in zip(send_jobs, results):
+                for (sub, notification_id), result in zip(
+                    send_jobs, results, strict=False
+                ):
                     attempt_ts = dt.datetime.now(UTC)
                     if isinstance(result, WebPushResult):
                         detail_parts: list[str] = [f"subscription:{sub.id}"]

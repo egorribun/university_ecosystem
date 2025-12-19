@@ -61,7 +61,7 @@ def test_webpush_import_does_not_touch_database(monkeypatch):
     )
     monkeypatch.delitem(sys.modules, "app.services.webpush", raising=False)
     module = importlib.import_module("app.services.webpush")
-    assert getattr(module, "_Session") is None
+    assert module._Session is None
 
 
 @pytest.mark.asyncio

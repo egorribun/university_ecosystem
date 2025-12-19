@@ -158,13 +158,32 @@ class JSONLogFormatter(logging.Formatter):
     default_msec_format = "%s.%03dZ"
 
     # Standard LogRecord attributes to exclude from extras
-    _STANDARD_ATTRS: frozenset[str] = frozenset({
-        "name", "msg", "args", "created", "filename", "funcName",
-        "levelname", "levelno", "lineno", "module", "msecs",
-        "pathname", "process", "processName", "relativeCreated",
-        "stack_info", "exc_info", "exc_text", "thread", "threadName",
-        "taskName", "message",
-    })
+    _STANDARD_ATTRS: frozenset[str] = frozenset(
+        {
+            "name",
+            "msg",
+            "args",
+            "created",
+            "filename",
+            "funcName",
+            "levelname",
+            "levelno",
+            "lineno",
+            "module",
+            "msecs",
+            "pathname",
+            "process",
+            "processName",
+            "relativeCreated",
+            "stack_info",
+            "exc_info",
+            "exc_text",
+            "thread",
+            "threadName",
+            "taskName",
+            "message",
+        }
+    )
 
     def format(self, record: logging.LogRecord) -> str:
         log_record: dict[str, Any] = {
