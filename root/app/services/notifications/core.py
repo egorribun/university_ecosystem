@@ -52,7 +52,9 @@ def _room_label_prefixes() -> set[str]:
     """Build a set of room label prefixes for all supported locales."""
     prefixes: set[str] = set()
     for locale_code in SUPPORTED_LOCALES:
-        template = translate("notifications.schedule.room_label", locale=locale_code, room="")
+        template = translate(
+            "notifications.schedule.room_label", locale=locale_code, room=""
+        )
         for variant in (template, template.replace(".", "")):
             normalized = variant.strip().lower()
             if normalized:

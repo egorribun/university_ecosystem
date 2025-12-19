@@ -32,14 +32,18 @@ async def test_stats_requires_auth(async_client, path):
 
 
 @pytest.mark.anyio
-async def test_attendance_stats_returns_expected_payload(async_client, db_session, user_factory):
+async def test_attendance_stats_returns_expected_payload(
+    async_client, db_session, user_factory
+):
     now = datetime.now(UTC)
     admin = await user_factory(role="admin")
     password = "StatsPass123!"
     hashed = get_password_hash(password)
     student = await user_factory(hashed_password=hashed, is_active=True)
 
-    def build_event(title: str, delta: timedelta, duration_hours: int = 2) -> models.Event:
+    def build_event(
+        title: str, delta: timedelta, duration_hours: int = 2
+    ) -> models.Event:
         starts_at = now - delta
         return models.Event(
             title=title,
@@ -189,7 +193,9 @@ async def test_grade_stats_parse_notifications(async_client, db_session, user_fa
 
 
 @pytest.mark.anyio
-async def test_participation_stats_summarize_events(async_client, db_session, user_factory):
+async def test_participation_stats_summarize_events(
+    async_client, db_session, user_factory
+):
     now = datetime.now(UTC)
     admin = await user_factory(role="admin")
     password = "Participate789!"
@@ -266,7 +272,9 @@ async def test_participation_stats_summarize_events(async_client, db_session, us
 
 
 @pytest.mark.anyio
-async def test_attendance_stats_uses_cache(async_client, fake_cache, user_factory, monkeypatch):
+async def test_attendance_stats_uses_cache(
+    async_client, fake_cache, user_factory, monkeypatch
+):
     password = "CachePass123!"
     hashed = get_password_hash(password)
     student = await user_factory(hashed_password=hashed, is_active=True)

@@ -73,7 +73,9 @@ class _RecordingStorage:
 
 
 @pytest.mark.anyio("asyncio")
-async def test_send_message_blocks_infected_file(tmp_path, monkeypatch, db_session, user_factory):
+async def test_send_message_blocks_infected_file(
+    tmp_path, monkeypatch, db_session, user_factory
+):
     sender = await user_factory()
     recipient = await user_factory()
     chat = Chat()
@@ -118,7 +120,9 @@ async def test_send_message_blocks_infected_file(tmp_path, monkeypatch, db_sessi
 
 
 @pytest.mark.anyio("asyncio")
-async def test_send_message_generates_public_urls(monkeypatch, db_session, user_factory):
+async def test_send_message_generates_public_urls(
+    monkeypatch, db_session, user_factory
+):
     sender = await user_factory()
     recipient = await user_factory()
     chat = Chat()
@@ -140,7 +144,9 @@ async def test_send_message_generates_public_urls(monkeypatch, db_session, user_
     monkeypatch.setattr(settings, "chat_attachment_max_size_bytes", 1024)
     monkeypatch.setattr(files, "storage_backend", backend)
     monkeypatch.setattr(files, "_default_storage_backend", backend)
-    monkeypatch.setattr(files, "_storage_backend_snapshot", files._storage_backend_signature())
+    monkeypatch.setattr(
+        files, "_storage_backend_snapshot", files._storage_backend_signature()
+    )
 
     async def _noop_notify(*_, **__):
         pass
@@ -162,7 +168,9 @@ async def test_send_message_generates_public_urls(monkeypatch, db_session, user_
     assert attachment.url.startswith("https://cdn.example/chat_uploads/")
     assert attachment.size == 5
 
-    stored = await db_session.execute(select(Attachment).where(Attachment.id == attachment.id))
+    stored = await db_session.execute(
+        select(Attachment).where(Attachment.id == attachment.id)
+    )
     assert stored.scalar_one().url == attachment.url
 
     method, (relative_path, data), kwargs = backend.calls[0]

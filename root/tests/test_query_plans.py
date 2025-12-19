@@ -32,7 +32,9 @@ async def analyze_query_plan(session: AsyncSession, query: str) -> dict:
         plan_details = [row[3] for row in rows]
         full_detail = " ".join(plan_details).upper()
 
-        uses_index = "USING INDEX" in full_detail or "USING COVERING INDEX" in full_detail
+        uses_index = (
+            "USING INDEX" in full_detail or "USING COVERING INDEX" in full_detail
+        )
         # In SQLite, "SCAN TABLE" without an index means a full table scan
         seq_scan = "SCAN TABLE" in full_detail and "USING INDEX" not in full_detail
 
@@ -108,9 +110,9 @@ class TestCriticalQueryPlans:
             plan = await analyze_query_plan(session, query)
 
             # Either indexed access or efficient scan on small table
-            assert plan["estimated_cost"] < 1000 or plan["uses_index"], (
-                f"Notifications query should be efficient, cost: {plan['estimated_cost']}"
-            )
+            assert (
+                plan["estimated_cost"] < 1000 or plan["uses_index"]
+            ), f"Notifications query should be efficient, cost: {plan['estimated_cost']}"
 
     async def test_chat_messages_uses_index(self):
         """Verify that chat messages lookup uses chat_id index."""
@@ -122,9 +124,9 @@ class TestCriticalQueryPlans:
             )
             plan = await analyze_query_plan(session, query)
 
-            assert plan["estimated_cost"] < 500 or plan["uses_index"], (
-                f"Chat messages query should be efficient, cost: {plan['estimated_cost']}"
-            )
+            assert (
+                plan["estimated_cost"] < 500 or plan["uses_index"]
+            ), f"Chat messages query should be efficient, cost: {plan['estimated_cost']}"
 
     async def test_events_active_uses_index(self):
         """Verify that filtering active events uses an index."""
@@ -138,9 +140,9 @@ class TestCriticalQueryPlans:
             plan = await analyze_query_plan(session, query)
 
             # Should either use index or be efficient on small table
-            assert plan["estimated_cost"] < 500, (
-                f"Active events query cost too high: {plan['estimated_cost']}"
-            )
+            assert (
+                plan["estimated_cost"] < 500
+            ), f"Active events query cost too high: {plan['estimated_cost']}"
 
     async def test_schedule_by_group_uses_index(self):
         """Verify that schedule lookup by group uses an index."""
@@ -153,9 +155,9 @@ class TestCriticalQueryPlans:
             """
             plan = await analyze_query_plan(session, query)
 
-            assert plan["estimated_cost"] < 500 or plan["uses_index"], (
-                f"Schedule query should be efficient, cost: {plan['estimated_cost']}"
-            )
+            assert (
+                plan["estimated_cost"] < 500 or plan["uses_index"]
+            ), f"Schedule query should be efficient, cost: {plan['estimated_cost']}"
 
 
 class TestQueryPlanHelpers:

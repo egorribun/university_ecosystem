@@ -90,7 +90,9 @@ async def test_cleanup_expired_sessions_removes_mfa_challenges(db_session):
 
     assert removed == 1
 
-    delete_statements = [stmt for stmt in statements if stmt.lstrip().upper().startswith("DELETE")]
+    delete_statements = [
+        stmt for stmt in statements if stmt.lstrip().upper().startswith("DELETE")
+    ]
     assert len(delete_statements) == 2
     challenge_delete, session_delete = delete_statements
     assert "mfa_challenge" in challenge_delete.lower()

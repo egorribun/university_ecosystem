@@ -113,7 +113,9 @@ def generate_schedule_ics(
         )
         lesson_type = getattr(lesson, "lesson_type", None)
         lesson_type_display = translate_lesson_type(lesson_type, locale=locale)
-        summary = subject if not lesson_type_display else f"{subject} ({lesson_type_display})"
+        summary = (
+            subject if not lesson_type_display else f"{subject} ({lesson_type_display})"
+        )
         teacher = getattr(lesson, "teacher", None)
         room = getattr(lesson, "room", None)
 

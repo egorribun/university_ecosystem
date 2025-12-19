@@ -19,7 +19,9 @@ def _column_exists(bind, table_name: str, column_name: str) -> bool:
     inspector = sa.inspect(bind)
     if table_name not in inspector.get_table_names():
         return False
-    return column_name in {column["name"] for column in inspector.get_columns(table_name)}
+    return column_name in {
+        column["name"] for column in inspector.get_columns(table_name)
+    }
 
 
 def _encrypt_existing_tokens(session: Session) -> None:

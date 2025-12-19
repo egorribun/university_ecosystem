@@ -19,7 +19,9 @@ def upgrade() -> None:
     inspector = sa.inspect(bind)
     if not inspector.has_table("notifications"):
         return
-    existing_columns = {column["name"] for column in inspector.get_columns("notifications")}
+    existing_columns = {
+        column["name"] for column in inspector.get_columns("notifications")
+    }
 
     with op.batch_alter_table("notifications") as batch_op:
         if "title_en" not in existing_columns:
@@ -28,7 +30,9 @@ def upgrade() -> None:
             batch_op.add_column(sa.Column("body_en", sa.Text(), nullable=True))
 
     inspector = sa.inspect(bind)
-    updated_columns = {column["name"] for column in inspector.get_columns("notifications")}
+    updated_columns = {
+        column["name"] for column in inspector.get_columns("notifications")
+    }
 
     if "title_en" in updated_columns:
         op.execute(
@@ -52,7 +56,9 @@ def downgrade() -> None:
     inspector = sa.inspect(bind)
     if not inspector.has_table("notifications"):
         return
-    existing_columns = {column["name"] for column in inspector.get_columns("notifications")}
+    existing_columns = {
+        column["name"] for column in inspector.get_columns("notifications")
+    }
 
     with op.batch_alter_table("notifications") as batch_op:
         if "body_en" in existing_columns:

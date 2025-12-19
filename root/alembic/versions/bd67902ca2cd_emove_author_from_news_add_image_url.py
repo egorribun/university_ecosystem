@@ -61,6 +61,8 @@ def downgrade() -> None:
             batch_op.add_column(sa.Column("author_id", sa.Integer(), nullable=True))
             added_author = True
         if not fk_names or added_author:
-            batch_op.create_foreign_key(op.f("news_author_id_fkey"), "users", ["author_id"], ["id"])
+            batch_op.create_foreign_key(
+                op.f("news_author_id_fkey"), "users", ["author_id"], ["id"]
+            )
         if "image_url" in columns:
             batch_op.drop_column("image_url")

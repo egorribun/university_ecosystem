@@ -95,7 +95,9 @@ def test_send_web_push_prefers_explicit_ttl(monkeypatch):
 def test_log_event_masks_endpoint(caplog):
     caplog.set_level("INFO")
     caplog.set_level("INFO", logger="app.services.webpush")
-    webpush_module._log_event("send", endpoint="https://example.com/private/token-123", user_id=1)
+    webpush_module._log_event(
+        "send", endpoint="https://example.com/private/token-123", user_id=1
+    )
     record = caplog.records[-1]
     assert record.endpoint.startswith("https://example.com/…#")
     assert "token-123" not in record.endpoint

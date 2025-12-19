@@ -59,7 +59,9 @@ async def _delete_stale_subscriptions(session: AsyncSession) -> int:
     )
     if stale:
         await session.commit()
-        logger.info("weekly_cleanup.deleted_stale_subscriptions", extra={"count": len(stale)})
+        logger.info(
+            "weekly_cleanup.deleted_stale_subscriptions", extra={"count": len(stale)}
+        )
     return len(stale)
 
 

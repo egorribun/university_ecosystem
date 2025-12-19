@@ -148,7 +148,9 @@ class RedisCache(BaseCache):
         except (RedisError, OSError):
             logger.debug("Failed to close Redis client", exc_info=True)
         finally:
-            record_redis_command("close", time_module.perf_counter() - start, success=success)
+            record_redis_command(
+                "close", time_module.perf_counter() - start, success=success
+            )
 
     async def get(self, key: str) -> CacheEntry | None:
         start = time_module.perf_counter()
@@ -176,7 +178,9 @@ class RedisCache(BaseCache):
             logger.warning("Redis cache get failed for key %s", key, exc_info=True)
             return None
         finally:
-            record_redis_command("get", time_module.perf_counter() - start, success=success)
+            record_redis_command(
+                "get", time_module.perf_counter() - start, success=success
+            )
 
     async def set(self, key: str, payload: Any, ttl: int | None = None) -> CacheEntry:
         normalized_payload, serialized = _normalize_payload(payload)
@@ -202,8 +206,12 @@ class RedisCache(BaseCache):
         except (RedisError, OSError):
             logger.warning("Redis cache set failed for key %s", key, exc_info=True)
         finally:
-            record_redis_command("set", time_module.perf_counter() - start, success=success)
-        return CacheEntry(etag=etag, payload=normalized_payload, stored_at=time_module.time())
+            record_redis_command(
+                "set", time_module.perf_counter() - start, success=success
+            )
+        return CacheEntry(
+            etag=etag, payload=normalized_payload, stored_at=time_module.time()
+        )
 
     async def invalidate(self, *keys: str) -> None:
         filtered = [str(key) for key in keys if key]
@@ -231,14 +239,18 @@ class RedisCache(BaseCache):
             for pattern in patterns:
                 cursor = 0
                 while True:
-                    cursor, matches = await client.scan(cursor, match=pattern, count=100)
+                    cursor, matches = await client.scan(
+                        cursor, match=pattern, count=100
+                    )
                     if matches:
                         await client.delete(*matches)
                     if cursor == 0:
                         break
             success = True
         except (RedisError, OSError):
-            logger.warning("Redis cache invalidate failed for keys %s", filtered, exc_info=True)
+            logger.warning(
+                "Redis cache invalidate failed for keys %s", filtered, exc_info=True
+            )
         finally:
             record_redis_command(
                 "invalidate",

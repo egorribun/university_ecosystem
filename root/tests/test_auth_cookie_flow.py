@@ -69,7 +69,9 @@ async def test_session_signing_key_missing_localized(
 @pytest.fixture
 def configure_cookie_security(monkeypatch):
     def _configure(value):
-        monkeypatch.setattr(settings, "enable_strict_security_headers", value, raising=False)
+        monkeypatch.setattr(
+            settings, "enable_strict_security_headers", value, raising=False
+        )
         settings.__dict__.pop("strict_security_headers_enabled", None)
         settings.__dict__.pop("cookie_secure", None)
 
@@ -100,7 +102,9 @@ async def test_login_cookie_security_modes(
 
     set_cookie_headers = response.headers.get_list("set-cookie")
     access_cookie_header = next(
-        header for header in set_cookie_headers if header.lower().startswith("access_token=")
+        header
+        for header in set_cookie_headers
+        if header.lower().startswith("access_token=")
     )
     attributes = _extract_cookie_attributes(access_cookie_header)
     assert "httponly" in attributes
@@ -135,7 +139,9 @@ async def test_login_cookie_security_modes(
     assert profile_response.status_code == 401
 
 
-async def test_token_reuse_after_logout_rejected(async_client, user_factory, db_session):
+async def test_token_reuse_after_logout_rejected(
+    async_client, user_factory, db_session
+):
     password = "ReusePass789!"
     user = await _create_active_user(user_factory, password)
 
@@ -148,7 +154,9 @@ async def test_token_reuse_after_logout_rejected(async_client, user_factory, db_
     jti = payload.get("jti")
     assert jti
 
-    result = await db_session.execute(select(ActiveSession).where(ActiveSession.jti == jti))
+    result = await db_session.execute(
+        select(ActiveSession).where(ActiveSession.jti == jti)
+    )
     session = result.scalars().first()
     assert session is not None and session.revoked_at is None
 
@@ -175,7 +183,9 @@ async def test_profile_cache_envelope_validation(async_client, user_factory):
     token = login_response.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
-    signing_key_response = await async_client.get("/auth/session/signing-key", headers=headers)
+    signing_key_response = await async_client.get(
+        "/auth/session/signing-key", headers=headers
+    )
     assert signing_key_response.status_code == 200
     signing_key = signing_key_response.json()["signing_key"]
 
@@ -187,7 +197,9 @@ async def test_profile_cache_envelope_validation(async_client, user_factory):
 
     payload_json = json.dumps(payload, separators=(",", ":"))
     signature = base64.b64encode(
-        hmac.new(signing_key.encode("utf-8"), payload_json.encode("utf-8"), hashlib.sha256).digest()
+        hmac.new(
+            signing_key.encode("utf-8"), payload_json.encode("utf-8"), hashlib.sha256
+        ).digest()
     ).decode("ascii")
     envelope = {**payload, "signature": signature}
 
@@ -212,7 +224,9 @@ async def test_profile_cache_envelope_validation(async_client, user_factory):
     assert rejected_data.status_code == 400
 
 
-async def test_logout_rotates_session_signing_key(async_client, user_factory, db_session):
+async def test_logout_rotates_session_signing_key(
+    async_client, user_factory, db_session
+):
     password = "RotateKeyPass123!"
     user = await _create_active_user(user_factory, password)
 
@@ -224,7 +238,9 @@ async def test_logout_rotates_session_signing_key(async_client, user_factory, db
     jti = payload.get("jti")
     assert jti
 
-    result = await db_session.execute(select(ActiveSession).where(ActiveSession.jti == jti))
+    result = await db_session.execute(
+        select(ActiveSession).where(ActiveSession.jti == jti)
+    )
     session = result.scalars().first()
     assert session is not None
     original_key = session.signing_key

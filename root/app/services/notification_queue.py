@@ -69,11 +69,15 @@ class _LoopState:
     active_jobs: int = 0
 
 
-_loop_states: WeakKeyDictionary[asyncio.AbstractEventLoop, _LoopState] = WeakKeyDictionary()
+_loop_states: WeakKeyDictionary[asyncio.AbstractEventLoop, _LoopState] = (
+    WeakKeyDictionary()
+)
 
 
 _queue_metrics: NotificationQueueMetrics | None = None
-_DEAD_LETTER_CLEANUP_METRICS = get_periodic_task_metrics("notification_queue_dead_letter_cleanup")
+_DEAD_LETTER_CLEANUP_METRICS = get_periodic_task_metrics(
+    "notification_queue_dead_letter_cleanup"
+)
 
 
 _FAILED_ENQUEUE_HISTORY_LIMIT = 128
@@ -177,7 +181,8 @@ async def retry_failed_enqueues(limit: int | None = None) -> int:
     async with _failed_enqueue_lock:
         if limit is None:
             pending: list[FailedEnqueueRecord] = [
-                _failed_enqueue_records.popleft() for _ in range(len(_failed_enqueue_records))
+                _failed_enqueue_records.popleft()
+                for _ in range(len(_failed_enqueue_records))
             ]
         else:
             count = max(int(limit), 0)
@@ -241,7 +246,9 @@ async def _ensure_worker() -> None:
         if state.worker_task and not state.worker_task.done():
             return
         loop = asyncio.get_running_loop()
-        state.worker_task = loop.create_task(_worker_loop(state), name=_WORKER_TASK_NAME)
+        state.worker_task = loop.create_task(
+            _worker_loop(state), name=_WORKER_TASK_NAME
+        )
 
 
 async def _worker_loop(state: _LoopState) -> None:
@@ -266,13 +273,17 @@ async def _worker_loop(state: _LoopState) -> None:
                 if claimed_at.tzinfo is None:
                     claimed_at = claimed_at.replace(tzinfo=UTC)
                 wait_seconds = max((claimed_at - enqueued_at).total_seconds(), 0.0)
-                metrics.queue_wait_time_seconds.labels(kind=job.kind).observe(wait_seconds)
+                metrics.queue_wait_time_seconds.labels(kind=job.kind).observe(
+                    wait_seconds
+                )
             started = time.perf_counter()
             success = False
             error: BaseException | None = None
             span: Span | None = None
             try:
-                with tracer.start_as_current_span("notification_queue.process_job") as current_span:
+                with tracer.start_as_current_span(
+                    "notification_queue.process_job"
+                ) as current_span:
                     span = current_span
                     span.set_attribute("notification.job.kind", job.kind)
                     span.set_attribute("notification.job.record_id", job.record_id)
@@ -288,7 +299,9 @@ async def _worker_loop(state: _LoopState) -> None:
                 if span is not None:
                     span.set_attribute("notification.job.result", "failure")
                     span.record_exception(exc)
-                logger.exception("Failed to process notification job", extra={"job": job})
+                logger.exception(
+                    "Failed to process notification job", extra={"job": job}
+                )
             finally:
                 # Always record metrics first, even if cleanup operations are cancelled
                 if metrics is not None:
@@ -441,20 +454,26 @@ async def _process_job(job: NotificationJob) -> None:
         if job.kind == "event":
             record = await session.get(Event, job.record_id)
             if not record:
-                logger.info("Event %s disappeared before notification dispatch", job.record_id)
+                logger.info(
+                    "Event %s disappeared before notification dispatch", job.record_id
+                )
                 return
             await notify_about_event(session, record, locale=job.locale)
         elif job.kind == "news":
             record = await session.get(News, job.record_id)
             if not record:
-                logger.info("News %s disappeared before notification dispatch", job.record_id)
+                logger.info(
+                    "News %s disappeared before notification dispatch", job.record_id
+                )
                 return
             await notify_about_news(session, record, locale=job.locale)
         else:  # pragma: no cover - defensive guard
             logger.warning("Unsupported notification job", extra={"job": job})
 
 
-async def enqueue_event_notification(event_id: int, *, locale: str | None = None) -> None:
+async def enqueue_event_notification(
+    event_id: int, *, locale: str | None = None
+) -> None:
     """Queue an event notification job for asynchronous delivery."""
 
     job = NotificationJob(kind="event", record_id=event_id, locale=locale)
@@ -735,7 +754,9 @@ async def list_dead_lettered_jobs(
         stmt = (
             select(NotificationQueueJob)
             .where(NotificationQueueJob.dead_lettered.is_(True))
-            .order_by(NotificationQueueJob.enqueued_at.asc(), NotificationQueueJob.id.asc())
+            .order_by(
+                NotificationQueueJob.enqueued_at.asc(), NotificationQueueJob.id.asc()
+            )
             .offset(safe_offset)
             .limit(safe_limit)
         )
@@ -817,7 +838,9 @@ async def delete_dead_lettered_jobs(job_ids: Sequence[int]) -> int:
             targets = [row[0] for row in result]
             if targets:
                 await session.execute(
-                    delete(NotificationQueueJob).where(NotificationQueueJob.id.in_(targets))
+                    delete(NotificationQueueJob).where(
+                        NotificationQueueJob.id.in_(targets)
+                    )
                 )
                 deleted = len(targets)
 
@@ -878,7 +901,11 @@ async def start_dead_letter_cleanup_scheduler(
 
     persistent_backend = _use_persistent_backend()
     if retention_days <= 0 or not persistent_backend:
-        reason = "retention disabled" if retention_days <= 0 else "persistent backend disabled"
+        reason = (
+            "retention disabled"
+            if retention_days <= 0
+            else "persistent backend disabled"
+        )
 
         async def _noop() -> None:
             return None
@@ -896,7 +923,9 @@ async def start_dead_letter_cleanup_scheduler(
             while True:
                 try:
                     async with _DEAD_LETTER_CLEANUP_METRICS.track_execution() as run:
-                        deleted = await cleanup_dead_lettered_jobs(retention_days=retention_days)
+                        deleted = await cleanup_dead_lettered_jobs(
+                            retention_days=retention_days
+                        )
                         run.observe_deleted(deleted)
                 except asyncio.CancelledError:
                     raise
@@ -967,7 +996,8 @@ async def _acknowledge_persistent_job(
                         record.last_error = error_message
                         record.claimed_at = None
                         should_dead_letter = (
-                            max_attempts_setting > 0 and attempts >= max_attempts_setting
+                            max_attempts_setting > 0
+                            and attempts >= max_attempts_setting
                         )
                         if should_dead_letter:
                             record.dead_lettered = True
@@ -975,7 +1005,9 @@ async def _acknowledge_persistent_job(
                             if metrics is not None:
                                 metrics.failed_jobs_total.labels(kind=job.kind).inc()
                             logger.error(
-                                ("Notification job exhausted retries; moving to dead-letter queue"),
+                                (
+                                    "Notification job exhausted retries; moving to dead-letter queue"
+                                ),
                                 extra={
                                     "job": job,
                                     "queue_id": job.queue_id,
@@ -987,13 +1019,15 @@ async def _acknowledge_persistent_job(
                         else:
                             delay_seconds = base_delay * (2 ** max(attempts - 1, 0))
                             wake_delay = max(delay_seconds, 0.0)
-                            next_retry = datetime.now(UTC) + timedelta(seconds=wake_delay)
+                            next_retry = datetime.now(UTC) + timedelta(
+                                seconds=wake_delay
+                            )
                             record.dead_lettered = False
                             record.next_retry_at = next_retry
                             if metrics is not None and wake_delay > 0:
-                                metrics.retry_delay_seconds.labels(kind=job.kind).observe(
-                                    wake_delay
-                                )
+                                metrics.retry_delay_seconds.labels(
+                                    kind=job.kind
+                                ).observe(wake_delay)
                             logger.warning(
                                 "Notification job failed; scheduling retry",
                                 extra={
@@ -1001,7 +1035,9 @@ async def _acknowledge_persistent_job(
                                     "queue_id": job.queue_id,
                                     "attempt": attempts,
                                     "max_attempts": (
-                                        max_attempts_setting if max_attempts_setting > 0 else None
+                                        max_attempts_setting
+                                        if max_attempts_setting > 0
+                                        else None
                                     ),
                                     "next_retry_at": next_retry.isoformat(),
                                     "error": error_message,

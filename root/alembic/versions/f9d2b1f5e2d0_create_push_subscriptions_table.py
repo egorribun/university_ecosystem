@@ -39,7 +39,9 @@ def _has_index(table: str, name: str) -> bool:
     return any(ix.get("name") == name for ix in inspector.get_indexes(table))
 
 
-def _create_index_safe(name: str, table: str, columns: list[str], *, unique: bool = False) -> None:
+def _create_index_safe(
+    name: str, table: str, columns: list[str], *, unique: bool = False
+) -> None:
     if not _table_exists(table) or _has_index(table, name):
         return
     try:
@@ -81,13 +83,17 @@ def upgrade() -> None:
             ),
             sa.Column("user_agent", sa.String(512)),
             sa.Column("last_seen_at", sa.DateTime(timezone=True)),
-            sa.Column("topics", sa.JSON, nullable=False, server_default=sa.text("'[]'")),
+            sa.Column(
+                "topics", sa.JSON, nullable=False, server_default=sa.text("'[]'")
+            ),
         )
     else:
         if not _column_exists("push_subscriptions", "topics"):
             op.add_column(
                 "push_subscriptions",
-                sa.Column("topics", sa.JSON, nullable=False, server_default=sa.text("'[]'")),
+                sa.Column(
+                    "topics", sa.JSON, nullable=False, server_default=sa.text("'[]'")
+                ),
             )
         if not _column_exists("push_subscriptions", "created_at"):
             op.add_column(

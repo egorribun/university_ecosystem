@@ -48,7 +48,9 @@ def _normalize_topics(raw: Iterable[object] | None) -> list[str]:
 
 def _populate_existing_data() -> None:
     bind = op.get_bind()
-    result = bind.execute(sa.select(_PUSH_SUBSCRIPTIONS.c.user_id, _PUSH_SUBSCRIPTIONS.c.topics))
+    result = bind.execute(
+        sa.select(_PUSH_SUBSCRIPTIONS.c.user_id, _PUSH_SUBSCRIPTIONS.c.topics)
+    )
     aggregated: dict[int, list[str]] = {}
     for user_id, topics in result:
         if user_id is None:
@@ -62,7 +64,9 @@ def _populate_existing_data() -> None:
                 existing.append(topic)
     if not aggregated:
         return
-    rows = [{"user_id": user_id, "topics": topics} for user_id, topics in aggregated.items()]
+    rows = [
+        {"user_id": user_id, "topics": topics} for user_id, topics in aggregated.items()
+    ]
     op.bulk_insert(_USER_PUSH_TOPICS, rows)
 
 
@@ -95,7 +99,9 @@ def upgrade() -> None:  # noqa: D401 - Alembic migration hook.
             ["updated_at"],
         )
     else:
-        existing_indexes = {index["name"] for index in inspector.get_indexes(_TABLE_NAME)}
+        existing_indexes = {
+            index["name"] for index in inspector.get_indexes(_TABLE_NAME)
+        }
         if "ix_user_push_topics_updated_at" not in existing_indexes:
             op.create_index(
                 "ix_user_push_topics_updated_at",
@@ -112,7 +118,9 @@ def downgrade() -> None:  # noqa: D401 - Alembic migration hook.
     bind = op.get_bind()
     inspector = sa.inspect(bind)
     if inspector.has_table(_TABLE_NAME):
-        existing_indexes = {index["name"] for index in inspector.get_indexes(_TABLE_NAME)}
+        existing_indexes = {
+            index["name"] for index in inspector.get_indexes(_TABLE_NAME)
+        }
         if "ix_user_push_topics_updated_at" in existing_indexes:
             op.drop_index("ix_user_push_topics_updated_at", table_name=_TABLE_NAME)
         op.drop_table(_TABLE_NAME)

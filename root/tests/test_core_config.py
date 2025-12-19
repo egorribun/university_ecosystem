@@ -192,7 +192,10 @@ def test_auto_create_schema_warns_when_enabled_in_production(monkeypatch, caplog
             settings = config_module.Settings()
 
     assert settings.auto_create_schema is True
-    assert any("AUTO_CREATE_SCHEMA is enabled" in record.getMessage() for record in caplog.records)
+    assert any(
+        "AUTO_CREATE_SCHEMA is enabled" in record.getMessage()
+        for record in caplog.records
+    )
 
 
 def test_response_compression_toggle(monkeypatch):

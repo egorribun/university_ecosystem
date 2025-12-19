@@ -23,7 +23,9 @@ def _make_png_bytes(color: tuple[int, int, int] = (255, 0, 0)) -> bytes:
     return buffer.getvalue()
 
 
-async def _login(async_client: AsyncClient, email: str, password: str) -> dict[str, str]:
+async def _login(
+    async_client: AsyncClient, email: str, password: str
+) -> dict[str, str]:
     response = await async_client.post(
         "/auth/login",
         data={"username": email, "password": password},
@@ -111,7 +113,9 @@ async def test_email_change_requires_confirmation(
         "app.services.auth_service.secrets.token_urlsafe",
         lambda *_args, **_kwargs: token_value,
     )
-    monkeypatch.setattr("app.services.auth_service._send_reset_email_blocking", fake_blocking)
+    monkeypatch.setattr(
+        "app.services.auth_service._send_reset_email_blocking", fake_blocking
+    )
 
     response = await async_client.post(
         "/users/me/email",
@@ -128,7 +132,9 @@ async def test_email_change_requires_confirmation(
     assert user.email == "change-me@example.com"
 
     result = await db_session.execute(
-        select(models.EmailChangeToken).where(models.EmailChangeToken.user_id == user.id)
+        select(models.EmailChangeToken).where(
+            models.EmailChangeToken.user_id == user.id
+        )
     )
     record = result.scalar_one_or_none()
     assert record is not None
@@ -156,7 +162,9 @@ async def test_email_change_requires_confirmation(
     assert user.email == "new.confirm@example.com"
 
     final = await db_session.execute(
-        select(models.EmailChangeToken).where(models.EmailChangeToken.user_id == user.id)
+        select(models.EmailChangeToken).where(
+            models.EmailChangeToken.user_id == user.id
+        )
     )
     final_record = final.scalar_one_or_none()
     assert final_record is not None
@@ -165,7 +173,9 @@ async def test_email_change_requires_confirmation(
 
 
 @pytest.mark.anyio
-async def test_update_profile_timezone_persisted(async_client, user_factory, db_session):
+async def test_update_profile_timezone_persisted(
+    async_client, user_factory, db_session
+):
     password = "TimezonePersist123!"
     hashed = get_password_hash(password)
     user = await user_factory(
@@ -390,7 +400,9 @@ async def test_delete_cover_removes_file(async_client, user_factory, db_session)
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("cover_url", ["", "https://example.com/cover.png"])
-async def test_delete_cover_ignores_invalid_path(async_client, user_factory, db_session, cover_url):
+async def test_delete_cover_ignores_invalid_path(
+    async_client, user_factory, db_session, cover_url
+):
     password = "IgnoreCover123!"
     hashed = get_password_hash(password)
     sentinel_rel = f"covers/sentinel-{uuid.uuid4().hex}.txt"
@@ -421,7 +433,9 @@ async def test_delete_cover_ignores_invalid_path(async_client, user_factory, db_
 
 
 @pytest.mark.anyio
-async def test_forgot_password_sends_email_via_thread(async_client, user_factory, monkeypatch):
+async def test_forgot_password_sends_email_via_thread(
+    async_client, user_factory, monkeypatch
+):
     user = await user_factory(email="forgot-password@example.com")
 
     event = asyncio.Event()

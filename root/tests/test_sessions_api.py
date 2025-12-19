@@ -34,7 +34,9 @@ async def _login(
         headers=headers,
     )
     if response.status_code == status.HTTP_202_ACCEPTED:
-        pytest.fail("Login returned an MFA challenge; this helper expects a non-MFA user")
+        pytest.fail(
+            "Login returned an MFA challenge; this helper expects a non-MFA user"
+        )
     assert response.status_code == 200
     token = response.json()["access_token"]
     return {"Authorization": f"Bearer {token}", "User-Agent": user_agent}
@@ -207,7 +209,9 @@ async def test_revoke_session_removes_from_listing(
     assert response.status_code == 200
     assert len(response.json()) == 2
 
-    response = await async_client.delete(f"/auth/sessions/{other_session.id}", headers=headers)
+    response = await async_client.delete(
+        f"/auth/sessions/{other_session.id}", headers=headers
+    )
     assert response.status_code == 200
     body = response.json()
     assert body["revoked_at"] is not None
@@ -303,7 +307,9 @@ async def test_revoke_session_requires_step_up(
     monkeypatch.setattr(settings, "mfa_step_up_ttl_seconds", 60)
     password = "StepUpSessions123!"
     hashed = get_password_hash(password)
-    user = await user_factory(email="stepup-sessions@example.com", hashed_password=hashed)
+    user = await user_factory(
+        email="stepup-sessions@example.com", hashed_password=hashed
+    )
 
     headers = await _login(async_client, email=user.email, password=password)
     secret = await _enable_totp(async_client, headers)
@@ -327,7 +333,9 @@ async def test_revoke_session_requires_step_up(
     current_session.mfa_verified_at = dt.datetime.now(dt.UTC) - dt.timedelta(hours=1)
     await db_session.commit()
 
-    blocked = await async_client.delete(f"/auth/sessions/{other_session.id}", headers=headers)
+    blocked = await async_client.delete(
+        f"/auth/sessions/{other_session.id}", headers=headers
+    )
     assert blocked.status_code == status.HTTP_428_PRECONDITION_REQUIRED
     detail = blocked.json()["detail"]
     assert detail["error"] == "mfa_step_up_required"
@@ -340,7 +348,9 @@ async def test_revoke_session_requires_step_up(
     payload = await _complete_step_up(async_client, headers, secret)
     assert payload["session_id"] == current_session.id
 
-    success = await async_client.delete(f"/auth/sessions/{other_session.id}", headers=headers)
+    success = await async_client.delete(
+        f"/auth/sessions/{other_session.id}", headers=headers
+    )
     assert success.status_code == 200
     assert success.json()["revoked_at"] is not None
 
@@ -366,7 +376,9 @@ async def test_revoke_other_user_session_forbidden(
 
     headers = await _login(async_client, email=actor.email, password=password)
 
-    response = await async_client.delete(f"/auth/sessions/{session.id}", headers=headers)
+    response = await async_client.delete(
+        f"/auth/sessions/{session.id}", headers=headers
+    )
     assert response.status_code == 403
     assert response.json()["detail"] == "Access denied"
 

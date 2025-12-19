@@ -45,4 +45,6 @@ def downgrade() -> None:
     if "attended" in columns:
         return
     with op.batch_alter_table("event_attendance") as batch_op:
-        batch_op.add_column(sa.Column("attended", sa.Boolean(), autoincrement=False, nullable=True))
+        batch_op.add_column(
+            sa.Column("attended", sa.Boolean(), autoincrement=False, nullable=True)
+        )

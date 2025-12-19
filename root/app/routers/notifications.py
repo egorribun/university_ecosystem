@@ -87,7 +87,9 @@ class PushSubscriptionKeys(BaseModel):
 class PushSubscriptionIn(BaseModel):
     endpoint: str = Field(..., description="Push subscription endpoint URL")
     keys: PushSubscriptionKeys
-    topics: list[str] | None = Field(default=None, description="Optional list of topics")
+    topics: list[str] | None = Field(
+        default=None, description="Optional list of topics"
+    )
     user_agent: str | None = Field(default=None, description="User agent override")
 
     @field_validator("endpoint", mode="before")
@@ -222,7 +224,9 @@ class SendTestResponse(BaseModel):
 
 
 class PushTestRequest(NotifyBody):
-    user_id: int | None = Field(default=None, description="Target user id for testing", ge=1)
+    user_id: int | None = Field(
+        default=None, description="Target user id for testing", ge=1
+    )
     title: str = Field(
         default=translate("notifications.push.test.title_default"),
         description="Notification title",
@@ -231,7 +235,9 @@ class PushTestRequest(NotifyBody):
         default=translate("notifications.push.test.body_default"),
         description="Notification body",
     )
-    url: str | None = Field(default=None, description="URL to open when clicking the notification")
+    url: str | None = Field(
+        default=None, description="URL to open when clicking the notification"
+    )
 
 
 async def _deliver_to_subscription(
@@ -240,7 +246,9 @@ async def _deliver_to_subscription(
     return await run_in_threadpool(send_web_push, subscription, payload)
 
 
-def _aggregate_results(results: list[WebPushResult], *, failure_detail: str) -> SendTestResponse:
+def _aggregate_results(
+    results: list[WebPushResult], *, failure_detail: str
+) -> SendTestResponse:
     sent = sum(1 for r in results if r.status == "sent")
     removed = sum(1 for r in results if r.status == "gone")
     failed = sum(1 for r in results if r.status == "error")
@@ -260,7 +268,9 @@ async def _refresh_user_topic_preferences(db: AsyncSession, *, user_id: int) -> 
     """Synchronize stored user topic preferences with subscription data."""
 
     topics_rows = (
-        await db.execute(select(PushSubscription.topics).where(PushSubscription.user_id == user_id))
+        await db.execute(
+            select(PushSubscription.topics).where(PushSubscription.user_id == user_id)
+        )
     ).scalars()
     aggregated: list[str] = []
     for row in topics_rows:
@@ -328,7 +338,9 @@ async def _validate_subscription_payload(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
                 "error": "invalid_subscription",
-                "message": translate("errors.push.subscription_validation_failed", locale=locale),
+                "message": translate(
+                    "errors.push.subscription_validation_failed", locale=locale
+                ),
                 "fields": errors,
             },
         )
@@ -350,7 +362,9 @@ async def subscribe(
 ) -> PushSubscriptionOut:
     locale = resolve_locale(request=request, user=user)
     await ensure_push_subscription_schema(db)
-    endpoint, p256dh, auth = await _validate_subscription_payload(payload, locale=locale)
+    endpoint, p256dh, auth = await _validate_subscription_payload(
+        payload, locale=locale
+    )
 
     client_host = request.client.host if request.client else None
     try:
@@ -386,12 +400,16 @@ async def subscribe(
         user_agent = user_agent[:512]
 
     existing = (
-        await db.execute(select(PushSubscription).where(PushSubscription.endpoint == endpoint))
+        await db.execute(
+            select(PushSubscription).where(PushSubscription.endpoint == endpoint)
+        )
     ).scalar_one_or_none()
 
     now = datetime.now(UTC)
     try:
-        normalized_topics = resolve_topics(payload.topics, existing.topics if existing else None)
+        normalized_topics = resolve_topics(
+            payload.topics, existing.topics if existing else None
+        )
         topics_copy = list(normalized_topics)
         if existing:
             if existing.user_id != user.id:
@@ -399,7 +417,9 @@ async def subscribe(
                     status_code=status.HTTP_409_CONFLICT,
                     detail={
                         "error": "duplicate_endpoint",
-                        "message": translate("errors.push.subscription_exists", locale=locale),
+                        "message": translate(
+                            "errors.push.subscription_exists", locale=locale
+                        ),
                     },
                 )
             existing.p256dh = p256dh
@@ -474,7 +494,9 @@ async def update_subscription_topics(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
                 "error": "subscription_not_found",
-                "message": translate("errors.push.subscription_not_found", locale=locale),
+                "message": translate(
+                    "errors.push.subscription_not_found", locale=locale
+                ),
             },
         )
 
@@ -534,7 +556,9 @@ async def unsubscribe(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail={
                 "error": "rate_limited",
-                "message": translate("errors.rate_limit.push_unsubscribe", locale=locale),
+                "message": translate(
+                    "errors.rate_limit.push_unsubscribe", locale=locale
+                ),
                 "retry_after": info.retry_after,
             },
         ) from None
@@ -651,7 +675,9 @@ async def send_test(
             await db.execute(
                 select(PushSubscription)
                 .options(
-                    selectinload(PushSubscription.user).selectinload(User.push_topic_preferences)
+                    selectinload(PushSubscription.user).selectinload(
+                        User.push_topic_preferences
+                    )
                 )
                 .where(PushSubscription.user_id == target.id)
             )
@@ -678,7 +704,8 @@ async def send_test(
     )
     message = {
         "title": title,
-        "body": body or translate("notifications.push.test.body_default", locale=locale),
+        "body": body
+        or translate("notifications.push.test.body_default", locale=locale),
         "url": base_url,
     }
     if normalized_topic:
@@ -838,14 +865,20 @@ async def disable_user_push(
         )
 
     existing = (
-        (await db.execute(select(PushSubscription.id).where(PushSubscription.user_id == target.id)))
+        (
+            await db.execute(
+                select(PushSubscription.id).where(PushSubscription.user_id == target.id)
+            )
+        )
         .scalars()
         .all()
     )
     if not existing:
         return {"ok": True, "removed": 0}
 
-    await db.execute(delete(PushSubscription).where(PushSubscription.user_id == target.id))
+    await db.execute(
+        delete(PushSubscription).where(PushSubscription.user_id == target.id)
+    )
     await db.commit()
     logger.info(
         "push.admin.disable_all",
@@ -880,7 +913,9 @@ async def broadcast(
         (
             await db.execute(
                 select(PushSubscription).options(
-                    selectinload(PushSubscription.user).selectinload(User.push_topic_preferences)
+                    selectinload(PushSubscription.user).selectinload(
+                        User.push_topic_preferences
+                    )
                 )
             )
         )
@@ -899,7 +934,9 @@ async def broadcast(
     for subscription in subscriptions:
         if not subscription_supports_topic(subscription, topic):
             continue
-        prepared = prepare_push_payload_for_user(payload, getattr(subscription, "user", None))
+        prepared = prepare_push_payload_for_user(
+            payload, getattr(subscription, "user", None)
+        )
         results.append(await _deliver_to_subscription(subscription, prepared))
 
     summary = _aggregate_results(

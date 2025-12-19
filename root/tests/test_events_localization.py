@@ -75,7 +75,9 @@ async def test_events_localization(async_client, db_session, user_factory):
     assert response_en.headers.get("Content-Language") == "en"
     vary_en = response_en.headers.get("Vary", "")
     assert any(
-        value.strip().lower() == "accept-language" for value in vary_en.split(",") if value.strip()
+        value.strip().lower() == "accept-language"
+        for value in vary_en.split(",")
+        if value.strip()
     )
     etag_en = response_en.headers.get("ETag")
     assert etag_en
@@ -108,7 +110,9 @@ async def test_events_localization(async_client, db_session, user_factory):
     assert response_ru.headers.get("Content-Language") == "ru"
     vary_ru = response_ru.headers.get("Vary", "")
     assert any(
-        value.strip().lower() == "accept-language" for value in vary_ru.split(",") if value.strip()
+        value.strip().lower() == "accept-language"
+        for value in vary_ru.split(",")
+        if value.strip()
     )
     assert response_ru.headers.get("ETag")
     data_ru = response_ru.json()
@@ -179,7 +183,9 @@ async def test_create_event_records_enqueue_failure(
 
 
 @pytest.mark.anyio
-async def test_events_etag_and_not_modified(async_client, db_session, user_factory, fake_cache):
+async def test_events_etag_and_not_modified(
+    async_client, db_session, user_factory, fake_cache
+):
     await events._reset_events_list_cache_version()
     assert fake_cache is not None
     password = "TestEvent456!"
@@ -399,7 +405,9 @@ async def test_events_cache_invalidation_on_mutations(
 
     admin_password = "CacheAdmin123!"
     student_password = "CacheStudent123!"
-    admin = await user_factory(role="admin", hashed_password=get_password_hash(admin_password))
+    admin = await user_factory(
+        role="admin", hashed_password=get_password_hash(admin_password)
+    )
     student = await user_factory(
         hashed_password=get_password_hash(student_password), is_active=True
     )

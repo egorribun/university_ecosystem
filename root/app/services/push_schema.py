@@ -44,7 +44,9 @@ def _ensure_columns(bind) -> None:
             parts.append(f"DEFAULT {default_sql}")
         if not_null:
             parts.append("NOT NULL")
-        statement = f"ALTER TABLE {preparer.quote(table_name)} ADD COLUMN {' '.join(parts)}"
+        statement = (
+            f"ALTER TABLE {preparer.quote(table_name)} ADD COLUMN {' '.join(parts)}"
+        )
         bind.exec_driver_sql(statement)
 
     if "user_agent" not in columns:
@@ -86,7 +88,9 @@ async def ensure_push_subscription_schema(db: AsyncSession) -> None:
 
             await db.run_sync(_sync_create)
         except SQLAlchemyError:
-            logger.exception("Failed to ensure push subscription schema using async session")
+            logger.exception(
+                "Failed to ensure push subscription schema using async session"
+            )
             return
         else:
             _async_ready = True
@@ -105,13 +109,17 @@ def ensure_push_subscription_schema_sync(engine: Engine | None) -> None:
                 _ensure_columns(connection)
         except OperationalError as exc:
             logger.warning(
-                ("Push subscription schema creation skipped; database is unavailable: %s"),
+                (
+                    "Push subscription schema creation skipped; database is unavailable: %s"
+                ),
                 exc,
                 exc_info=False,
             )
             return
         except SQLAlchemyError:
-            logger.exception("Failed to ensure push subscription schema using sync engine")
+            logger.exception(
+                "Failed to ensure push subscription schema using sync engine"
+            )
             return
         else:
             _sync_ready = True

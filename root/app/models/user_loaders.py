@@ -18,7 +18,9 @@ USER_MFA_LOAD_OPTIONS: tuple = (
 )
 
 
-async def ensure_mfa_relationships_loaded(db: AsyncSession, user: User | None) -> User | None:
+async def ensure_mfa_relationships_loaded(
+    db: AsyncSession, user: User | None
+) -> User | None:
     """Ensure MFA-related relationships are loaded on the given user instance."""
 
     if user is None:

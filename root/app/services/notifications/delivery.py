@@ -104,7 +104,9 @@ async def create_notifications_for_users(
         filtered_stmt = user_filter(filtered_stmt)
         filtered_rows = await db.execute(filtered_stmt)
         allowed_ids = {
-            int(user_id) for user_id in filtered_rows.scalars().all() if user_id is not None
+            int(user_id)
+            for user_id in filtered_rows.scalars().all()
+            if user_id is not None
         }
         uids = [uid for uid in uids if uid in allowed_ids]
         if not uids:
@@ -225,7 +227,9 @@ async def create_notifications_for_users(
             send_jobs: list[tuple[PushSubscription, int]] = []
             tasks: list[Awaitable[WebPushResult]] = []
 
-            limit = int(getattr(settings, "notifications_webpush_concurrency_limit", 0) or 0)
+            limit = int(
+                getattr(settings, "notifications_webpush_concurrency_limit", 0) or 0
+            )
             semaphore: asyncio.Semaphore | None = None
             if limit > 0:
                 semaphore = asyncio.Semaphore(limit)
@@ -234,7 +238,9 @@ async def create_notifications_for_users(
                 subscription: PushSubscription, payload: Mapping[str, Any]
             ) -> WebPushResult:
                 # Use globals() to allow monkeypatching send_web_push for tests
-                _send_func = globals().get("send_web_push", webpush_module.send_web_push)
+                _send_func = globals().get(
+                    "send_web_push", webpush_module.send_web_push
+                )
                 if semaphore is None:
                     return await asyncio.to_thread(_send_func, subscription, payload)
                 async with semaphore:
@@ -262,7 +268,9 @@ async def create_notifications_for_users(
 
             if tasks:
                 results = await asyncio.gather(*tasks, return_exceptions=True)
-                for (sub, notification_id), result in zip(send_jobs, results, strict=False):
+                for (sub, notification_id), result in zip(
+                    send_jobs, results, strict=False
+                ):
                     attempt_ts = dt.datetime.now(UTC)
                     if isinstance(result, WebPushResult):
                         detail_parts: list[str] = [f"subscription:{sub.id}"]

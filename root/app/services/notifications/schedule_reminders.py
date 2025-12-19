@@ -65,7 +65,9 @@ def build_schedule_reminder_message(
         if cache_key in cache:
             return cache[cache_key]
 
-        lesson_type_display = translate_lesson_type(lesson_type_raw, locale=locale_option)
+        lesson_type_display = translate_lesson_type(
+            lesson_type_raw, locale=locale_option
+        )
         payload_input = {
             "subject": getattr(lesson, "subject", None),
             "group": getattr(getattr(lesson, "group", None), "name", None),
@@ -89,7 +91,9 @@ def build_schedule_reminder_message(
                 subject=subject_value,
             )
         else:
-            default_title = translate("notifications.schedule.reminder.title", locale=locale_option)
+            default_title = translate(
+                "notifications.schedule.reminder.title", locale=locale_option
+            )
         summary_parts: list[str] = []
         if lesson_type_display:
             summary_parts.append(lesson_type_display)
@@ -122,7 +126,9 @@ def build_schedule_reminder_message(
             default_lines.append(" · ".join(summary_parts))
         else:
             default_lines.append(
-                translate("notifications.schedule.reminder.no_details", locale=locale_option)
+                translate(
+                    "notifications.schedule.reminder.no_details", locale=locale_option
+                )
             )
         default_body = "\n".join(default_lines)
         identifier_component = str(schedule_id) if schedule_id is not None else "lesson"
@@ -146,7 +152,9 @@ def build_schedule_reminder_message(
             body_value = str(template.get("body") or default_body)
             tag_value = str(template.get("tag") or default_tag)
             template_data = (
-                template.get("data") if isinstance(template.get("data"), Mapping) else {}
+                template.get("data")
+                if isinstance(template.get("data"), Mapping)
+                else {}
             )
             merged_data = {**default_data}
             if isinstance(template_data, Mapping):
@@ -170,7 +178,9 @@ def build_schedule_reminder_message(
                 else tag_value
             )
         )
-        dedupe_value = str(dedupe_candidate) if dedupe_candidate not in (None, "") else ""
+        dedupe_value = (
+            str(dedupe_candidate) if dedupe_candidate not in (None, "") else ""
+        )
         result = (title_value, body_value, tag_value, filtered_data, dedupe_value)
         cache[cache_key] = result
         return result
@@ -196,11 +206,15 @@ def build_schedule_reminder_message(
     )
 
 
-async def generate_schedule_reminders(db: AsyncSession, *, window_minutes: int = 6) -> int:
+async def generate_schedule_reminders(
+    db: AsyncSession, *, window_minutes: int = 6
+) -> int:
     """Generate schedule reminder notifications for upcoming lessons."""
     now = dt.datetime.now(UTC)
     soon = now + dt.timedelta(minutes=window_minutes)
-    q = select(Schedule).where(and_(Schedule.start_time >= now, Schedule.start_time <= soon))
+    q = select(Schedule).where(
+        and_(Schedule.start_time >= now, Schedule.start_time <= soon)
+    )
     schedules = (await db.execute(q)).scalars().all()
     if not schedules:
         return 0
@@ -224,7 +238,10 @@ async def generate_schedule_reminders(db: AsyncSession, *, window_minutes: int =
         message_payloads[int(schedule.id)] = payload
     dedupe_keys: set[str] = {
         str(key)
-        for key in (payload[6] or payload[2] or payload[0] for payload in message_payloads.values())
+        for key in (
+            payload[6] or payload[2] or payload[0]
+            for payload in message_payloads.values()
+        )
         if key not in (None, "")
     }
 

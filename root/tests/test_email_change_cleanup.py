@@ -63,7 +63,9 @@ async def test_cleanup_stale_email_change_tokens_respects_retention(db_session):
     assert cleaned == 3
 
     db_session.expire_all()
-    remaining = await db_session.execute(select(EmailChangeToken).order_by(EmailChangeToken.id))
+    remaining = await db_session.execute(
+        select(EmailChangeToken).order_by(EmailChangeToken.id)
+    )
     tokens = remaining.scalars().all()
     assert {token.token_hash for token in tokens} == {"expired", "recent"}
 
@@ -109,7 +111,9 @@ async def test_start_email_change_cleanup_scheduler(monkeypatch):
         event.set()
         return 0
 
-    monkeypatch.setattr(email_change_cleanup, "cleanup_stale_email_change_tokens", fake_cleanup)
+    monkeypatch.setattr(
+        email_change_cleanup, "cleanup_stale_email_change_tokens", fake_cleanup
+    )
 
     real_asyncio_sleep = asyncio.sleep
 

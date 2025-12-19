@@ -45,7 +45,9 @@ class RecordingStorage:
         )
         return f"https://cdn.example/{relative_path}"
 
-    async def delete_file(self, file_url: str) -> None:  # pragma: no cover - unused in tests
+    async def delete_file(
+        self, file_url: str
+    ) -> None:  # pragma: no cover - unused in tests
         self.calls.append(("delete", (file_url,), {}))
 
 
@@ -95,7 +97,9 @@ async def test_save_image_reports_localized_unsupported_type(locale):
     with pytest.raises(HTTPException) as excinfo:
         await files.save_image(upload, "avatars", "Profile Pic", locale=locale)
 
-    assert excinfo.value.detail == translate("errors.files.unsupported_type", locale=locale)
+    assert excinfo.value.detail == translate(
+        "errors.files.unsupported_type", locale=locale
+    )
 
 
 @pytest.mark.asyncio
@@ -216,7 +220,9 @@ async def test_save_attachment_rejects_mismatched_types(monkeypatch):
         await files.save_attachment(upload, "event_files", "event_1")
 
     assert excinfo.value.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
-    assert excinfo.value.detail == translate("errors.files.content_type_mismatch", locale="en")
+    assert excinfo.value.detail == translate(
+        "errors.files.content_type_mismatch", locale="en"
+    )
     assert backend.calls
     method, (relative_path, data), kwargs = backend.calls[0]
     assert method == "save"
@@ -270,7 +276,9 @@ async def test_scan_for_malware_rejects_unknown_backend(monkeypatch):
         await files.scan_for_malware(b"payload", locale="en")
 
     assert excinfo.value.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
-    assert excinfo.value.detail == translate("errors.files.scanner_unavailable", locale="en")
+    assert excinfo.value.detail == translate(
+        "errors.files.scanner_unavailable", locale="en"
+    )
 
 
 @pytest.mark.asyncio
@@ -287,4 +295,6 @@ async def test_scan_for_malware_handles_scanner_unavailable(monkeypatch):
         await files.scan_for_malware(b"payload", locale="fr")
 
     assert excinfo.value.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
-    assert excinfo.value.detail == translate("errors.files.scanner_unavailable", locale="fr")
+    assert excinfo.value.detail == translate(
+        "errors.files.scanner_unavailable", locale="fr"
+    )

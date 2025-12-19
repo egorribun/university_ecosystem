@@ -144,7 +144,9 @@ async def test_healthcheck_cache_failure(async_client, monkeypatch):
 @pytest.mark.anyio("asyncio")
 async def test_healthcheck_storage_failure(async_client, monkeypatch):
     class _FailingStorage:
-        async def save_file(self, relative_path: str, data: bytes, *, content_type=None):
+        async def save_file(
+            self, relative_path: str, data: bytes, *, content_type=None
+        ):
             raise RuntimeError("storage down")
 
         async def delete_file(self, file_url: str) -> None:
@@ -161,7 +163,9 @@ async def test_healthcheck_storage_failure(async_client, monkeypatch):
 
 
 @pytest.mark.anyio("asyncio")
-async def test_healthcheck_storage_probe_skips_heavy_when_disabled(async_client, monkeypatch):
+async def test_healthcheck_storage_probe_skips_heavy_when_disabled(
+    async_client, monkeypatch
+):
     monkeypatch.setattr(main.settings, "health_storage_probe_enabled", False)
 
     probes = {"light": 0, "heavy": 0}
@@ -190,7 +194,9 @@ async def test_healthcheck_storage_probe_skips_heavy_when_disabled(async_client,
 @pytest.mark.anyio("asyncio")
 async def test_healthcheck_storage_probe_uses_cache(async_client, monkeypatch):
     monkeypatch.setattr(main.settings, "health_storage_probe_enabled", True)
-    monkeypatch.setattr(main.settings, "health_storage_probe_min_interval_seconds", 60.0)
+    monkeypatch.setattr(
+        main.settings, "health_storage_probe_min_interval_seconds", 60.0
+    )
 
     probes = {"light": 0, "heavy": 0}
 
@@ -240,7 +246,9 @@ async def test_healthcheck_notification_queue_missing_table(
 
 
 @pytest.mark.anyio("asyncio")
-async def test_healthcheck_reports_migration_versions_on_drift(async_client, monkeypatch):
+async def test_healthcheck_reports_migration_versions_on_drift(
+    async_client, monkeypatch
+):
     async def _mock_migrations_are_current() -> tuple[bool, set[str], set[str]]:
         return False, {"current"}, {"expected"}
 
@@ -290,7 +298,9 @@ async def test_healthcheck_file_scanner_failure(async_client, monkeypatch):
 
 
 @pytest.mark.anyio("asyncio")
-async def test_healthcheck_file_scanner_uses_lightweight_probe(async_client, monkeypatch):
+async def test_healthcheck_file_scanner_uses_lightweight_probe(
+    async_client, monkeypatch
+):
     monkeypatch.setattr(main.settings, "event_file_scanner_enabled", True)
 
     async def _fake_health_check() -> None:

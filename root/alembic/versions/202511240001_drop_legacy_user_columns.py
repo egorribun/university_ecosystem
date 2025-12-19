@@ -35,7 +35,9 @@ def downgrade():
     # Add columns back
     op.add_column(
         "users",
-        sa.Column("timezone", sa.VARCHAR(length=64), autoincrement=False, nullable=True),
+        sa.Column(
+            "timezone", sa.VARCHAR(length=64), autoincrement=False, nullable=True
+        ),
     )
     op.add_column(
         "users",

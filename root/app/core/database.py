@@ -26,7 +26,9 @@ slow_query_logger = logging.getLogger("slow_queries")
 SLOW_QUERY_THRESHOLD_MS: float = 100.0  # Log queries taking longer than 100ms
 
 # Context variable to store query start time (async-safe)
-_query_start_time: ContextVar[float | None] = ContextVar("query_start_time", default=None)
+_query_start_time: ContextVar[float | None] = ContextVar(
+    "query_start_time", default=None
+)
 
 
 def _build_engine_kwargs(current_settings: Settings) -> dict[str, object]:
@@ -48,12 +50,16 @@ def _build_engine_kwargs(current_settings: Settings) -> dict[str, object]:
     return kwargs
 
 
-def _before_cursor_execute(conn, cursor, statement, parameters, context, executemany) -> None:
+def _before_cursor_execute(
+    conn, cursor, statement, parameters, context, executemany
+) -> None:
     """Store the start time before query execution."""
     _query_start_time.set(time.perf_counter())
 
 
-def _after_cursor_execute(conn, cursor, statement, parameters, context, executemany) -> None:
+def _after_cursor_execute(
+    conn, cursor, statement, parameters, context, executemany
+) -> None:
     """Log if query execution time exceeded threshold."""
     start_time = _query_start_time.get()
     if start_time is None:
@@ -64,7 +70,9 @@ def _after_cursor_execute(conn, cursor, statement, parameters, context, executem
 
     if elapsed_ms >= SLOW_QUERY_THRESHOLD_MS:
         # Truncate statement for logging (avoid huge log entries)
-        truncated_statement = statement[:500] + "..." if len(statement) > 500 else statement
+        truncated_statement = (
+            statement[:500] + "..." if len(statement) > 500 else statement
+        )
         slow_query_logger.warning(
             "Slow query detected: %.2fms - %s",
             elapsed_ms,

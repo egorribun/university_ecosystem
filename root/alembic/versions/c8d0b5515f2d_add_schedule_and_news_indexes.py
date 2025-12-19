@@ -35,7 +35,9 @@ def upgrade() -> None:
                 """
             )
         else:
-            raise RuntimeError("Expected schedule columns for index creation were not found.")
+            raise RuntimeError(
+                "Expected schedule columns for index creation were not found."
+            )
 
     if inspector.has_table("news"):
         news_columns = {col["name"] for col in inspector.get_columns("news")}
@@ -54,7 +56,9 @@ def upgrade() -> None:
                 """
             )
         else:
-            raise RuntimeError("Expected news timestamp column for index creation was not found.")
+            raise RuntimeError(
+                "Expected news timestamp column for index creation was not found."
+            )
 
 
 def downgrade() -> None:

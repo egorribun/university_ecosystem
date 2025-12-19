@@ -65,7 +65,9 @@ class TestConnectionManager:
         assert user_id not in connection_manager.active_connections
         assert mock_ws not in connection_manager.connection_users
 
-    def test_disconnect_keeps_other_connections(self, connection_manager: ConnectionManager):
+    def test_disconnect_keeps_other_connections(
+        self, connection_manager: ConnectionManager
+    ):
         """Test that disconnect only removes the specific connection."""
         mock_ws1 = AsyncMock(spec=WebSocket)
         mock_ws2 = AsyncMock(spec=WebSocket)
@@ -81,7 +83,9 @@ class TestConnectionManager:
         assert mock_ws2 in connection_manager.active_connections[user_id]
         assert len(connection_manager.active_connections[user_id]) == 1
 
-    def test_is_online_returns_true_for_connected_user(self, connection_manager: ConnectionManager):
+    def test_is_online_returns_true_for_connected_user(
+        self, connection_manager: ConnectionManager
+    ):
         """Test is_online returns True when user has connections."""
         mock_ws = AsyncMock(spec=WebSocket)
         user_id = 1
@@ -96,7 +100,9 @@ class TestConnectionManager:
         assert connection_manager.is_online(999) is False
 
     @pytest.mark.asyncio
-    async def test_send_to_user_delivers_message(self, connection_manager: ConnectionManager):
+    async def test_send_to_user_delivers_message(
+        self, connection_manager: ConnectionManager
+    ):
         """Test that send_to_user delivers message to all user connections."""
         mock_ws1 = AsyncMock(spec=WebSocket)
         mock_ws2 = AsyncMock(spec=WebSocket)

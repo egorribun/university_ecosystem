@@ -18,7 +18,9 @@ _POSTGRESQL_WHERE = sa.text("dead_lettered = false AND claimed_at IS NULL")
 def upgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
-    indexes = {index["name"] for index in inspector.get_indexes("notification_queue_jobs")}
+    indexes = {
+        index["name"] for index in inspector.get_indexes("notification_queue_jobs")
+    }
 
     if "ix_notification_queue_jobs_pending_claim" in indexes:
         return
@@ -36,7 +38,9 @@ def upgrade() -> None:
 def downgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
-    indexes = {index["name"] for index in inspector.get_indexes("notification_queue_jobs")}
+    indexes = {
+        index["name"] for index in inspector.get_indexes("notification_queue_jobs")
+    }
 
     if "ix_notification_queue_jobs_pending_claim" not in indexes:
         return

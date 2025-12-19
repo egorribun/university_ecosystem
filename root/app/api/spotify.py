@@ -66,7 +66,9 @@ def _fallback_now_playing(user: User) -> SpotifyNowPlayingOut:
     artists: list[str] = []
     if user.spotify.last_artist_name:
         artists = [
-            name.strip() for name in user.spotify.last_artist_name.split(",") if name.strip()
+            name.strip()
+            for name in user.spotify.last_artist_name.split(",")
+            if name.strip()
         ]
 
     has_payload = any(
@@ -331,7 +333,9 @@ async def now_playing(
     if r.status_code == 429:
         retry_after_header = r.headers.get("Retry-After")
         try:
-            retry_after = max(1, int(float(retry_after_header))) if retry_after_header else 5
+            retry_after = (
+                max(1, int(float(retry_after_header))) if retry_after_header else 5
+            )
         except (TypeError, ValueError):
             retry_after = 5
         user.spotify.last_checked_at = _now_utc()
@@ -376,7 +380,9 @@ async def now_playing(
 
 
 @router.post("/disconnect")
-async def disconnect(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+async def disconnect(
+    db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)
+):
     _disconnect_user(user, clear_refresh=True, clear_profile=True)
     await db.commit()
     return {"ok": True}

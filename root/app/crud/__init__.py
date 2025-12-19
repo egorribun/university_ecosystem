@@ -229,7 +229,9 @@ async def get_news_list(
             )
         )
 
-    stmt = stmt.order_by(models.News.created_at.desc(), models.News.id.desc()).limit(limit)
+    stmt = stmt.order_by(models.News.created_at.desc(), models.News.id.desc()).limit(
+        limit
+    )
 
     result = await db.execute(stmt)
     return result.scalars().all()
@@ -321,7 +323,9 @@ def serialize_story(
 ) -> schemas.StoryOut:
     normalized_locale = normalize_locale(locale)
     story_out = (
-        story if isinstance(story, schemas.StoryOut) else schemas.StoryOut.model_validate(story)
+        story
+        if isinstance(story, schemas.StoryOut)
+        else schemas.StoryOut.model_validate(story)
     )
     data = story_out.model_dump()
     data["title"] = localized_text(
@@ -415,7 +419,9 @@ def serialize_event(
             getattr(record, "description_en", None),
         ),
         "title_en": sanitize_optional_text(getattr(record, "title_en", None)),
-        "description_en": sanitize_optional_text(getattr(record, "description_en", None)),
+        "description_en": sanitize_optional_text(
+            getattr(record, "description_en", None)
+        ),
         "location": _localized_event_field(
             normalized_locale,
             getattr(record, "location", None),
@@ -532,7 +538,9 @@ async def get_all_events(
             rank_expr.desc(), models.Event.starts_at.asc(), models.Event.id.asc()
         )
     else:
-        ordered_stmt = stmt.order_by(models.Event.starts_at.asc(), models.Event.id.asc())
+        ordered_stmt = stmt.order_by(
+            models.Event.starts_at.asc(), models.Event.id.asc()
+        )
     fetch_limit = safe_limit + 1 if safe_limit > 0 else 1
     page_stmt = ordered_stmt.limit(fetch_limit)
     rows = await db.execute(page_stmt)
@@ -582,7 +590,9 @@ async def get_all_events(
             for row in updated_rows:
                 await db.refresh(row)
         registered_ids = {row.event_id for row in attendance_rows}
-        qr_map = {row.event_id: attendance_tokens.issue_token(row) for row in attendance_rows}
+        qr_map = {
+            row.event_id: attendance_tokens.issue_token(row) for row in attendance_rows
+        }
 
     normalized_locale = normalize_locale(locale)
     result: list[schemas.EventOut] = []
@@ -693,7 +703,9 @@ async def update_event(
     return record
 
 
-async def register_attendance(db: AsyncSession, data: schemas.EventAttendanceCreate, user_id: int):
+async def register_attendance(
+    db: AsyncSession, data: schemas.EventAttendanceCreate, user_id: int
+):
     cache_kinds = ("attendance", "participation")
     stmt = select(models.EventAttendance).where(
         and_(
@@ -789,7 +801,9 @@ async def get_my_events(db: AsyncSession, user_id: int, *, locale: str | None = 
     attendance_rows = (
         (
             await db.execute(
-                select(models.EventAttendance).where(models.EventAttendance.user_id == user_id)
+                select(models.EventAttendance).where(
+                    models.EventAttendance.user_id == user_id
+                )
             )
         )
         .scalars()
@@ -807,7 +821,9 @@ async def get_my_events(db: AsyncSession, user_id: int, *, locale: str | None = 
         for row in updated_rows:
             await db.refresh(row)
     ids = [row.event_id for row in attendance_rows]
-    qr_map = {row.event_id: attendance_tokens.issue_token(row) for row in attendance_rows}
+    qr_map = {
+        row.event_id: attendance_tokens.issue_token(row) for row in attendance_rows
+    }
     q = select(models.Event).where(models.Event.id.in_(ids))
     events = (await db.execute(q)).scalars().all()
     counts = await _attendance_counts(db, ids)
@@ -1082,7 +1098,9 @@ async def get_attendance_stats(
         total_events = attended_events = previous_events = previous_attended = 0
 
     percent = (attended_events / total_events * 100) if total_events else 0.0
-    previous_percent = previous_attended / previous_events * 100 if previous_events else 0.0
+    previous_percent = (
+        previous_attended / previous_events * 100 if previous_events else 0.0
+    )
 
     recent: list[dict[str, Any]] = []
     for row in rows:

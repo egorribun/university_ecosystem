@@ -149,7 +149,9 @@ async def test_totp_start_reuse_returns_same_secret(async_client, user_factory):
 
 
 @pytest.mark.anyio
-async def test_pending_totp_enrollment_can_be_cancelled(async_client, user_factory, db_session):
+async def test_pending_totp_enrollment_can_be_cancelled(
+    async_client, user_factory, db_session
+):
     password = "TotpCancelPending123!"
     user = await user_factory(
         email="mfa-totp-cancel-pending@example.com",
@@ -177,7 +179,9 @@ async def test_pending_totp_enrollment_can_be_cancelled(async_client, user_facto
 
 
 @pytest.mark.anyio
-async def test_pending_totp_enrollment_cancel_rejected_for_confirmed(async_client, user_factory):
+async def test_pending_totp_enrollment_cancel_rejected_for_confirmed(
+    async_client, user_factory
+):
     password = "TotpCancelConfirmed123!"
     user = await user_factory(
         email="mfa-totp-cancel-confirmed@example.com",
@@ -209,7 +213,9 @@ async def test_pending_totp_enrollment_cancel_rejected_for_confirmed(async_clien
 
 
 @pytest.mark.anyio
-async def test_totp_start_rejects_when_active_factor_exists(async_client, user_factory, db_session):
+async def test_totp_start_rejects_when_active_factor_exists(
+    async_client, user_factory, db_session
+):
     password = "TotpStepUpStart123!"
     user = await user_factory(
         email="mfa-stepup-start@example.com",
@@ -254,7 +260,9 @@ def _find_audit_event(caplog, logger_name: str, event: str) -> dict:
 
 
 @pytest.mark.anyio
-async def test_totp_enrollment_and_verification_flow(async_client, user_factory, db_session):
+async def test_totp_enrollment_and_verification_flow(
+    async_client, user_factory, db_session
+):
     password = "TotpFlowPass123!"
     user = await user_factory(
         email="mfa-totp@example.com",
@@ -363,7 +371,9 @@ async def test_totp_login_handles_legacy_records_without_confirmed_at(
     secret = await _enroll_totp(async_client, user, password, db_session)
 
     result = await db_session.execute(
-        select(models.MfaTotpEnrollment).where(models.MfaTotpEnrollment.user_id == user.id).limit(1)
+        select(models.MfaTotpEnrollment)
+        .where(models.MfaTotpEnrollment.user_id == user.id)
+        .limit(1)
     )
     enrollment = result.scalars().first()
     assert enrollment is not None
@@ -393,7 +403,9 @@ async def test_totp_login_handles_legacy_records_without_confirmed_at(
 
 
 @pytest.mark.anyio
-async def test_totp_challenge_expiry_blocks_verification(async_client, user_factory, db_session):
+async def test_totp_challenge_expiry_blocks_verification(
+    async_client, user_factory, db_session
+):
     password = "TotpExpiryPass123!"
     user = await user_factory(
         email="mfa-expiry@example.com",
@@ -510,11 +522,15 @@ async def test_login_fails_when_mfa_required_but_no_totp(async_client, user_fact
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.json()["detail"] == translate("errors.auth.mfa_totp_missing", locale="en")
+    assert response.json()["detail"] == translate(
+        "errors.auth.mfa_totp_missing", locale="en"
+    )
 
 
 @pytest.mark.anyio
-async def test_step_up_request_without_enrollment_returns_error(async_client, user_factory):
+async def test_step_up_request_without_enrollment_returns_error(
+    async_client, user_factory
+):
     password = "StepUpNone123!"
     user = await user_factory(
         email="stepup-missing@example.com",
@@ -527,11 +543,15 @@ async def test_step_up_request_without_enrollment_returns_error(async_client, us
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.json()["detail"] == translate("errors.auth.mfa_totp_missing", locale="en")
+    assert response.json()["detail"] == translate(
+        "errors.auth.mfa_totp_missing", locale="en"
+    )
 
 
 @pytest.mark.anyio
-async def test_disabling_last_factor_clears_mfa_requirement(async_client, user_factory, db_session):
+async def test_disabling_last_factor_clears_mfa_requirement(
+    async_client, user_factory, db_session
+):
     password = "LastFactorLoop123!"
     user = await user_factory(
         email="mfa-last-factor@example.com",
@@ -573,7 +593,9 @@ async def test_disabling_last_factor_clears_mfa_requirement(async_client, user_f
     assert token
 
     headers = {"Authorization": f"Bearer {token}"}
-    delete_response = await async_client.delete(f"/auth/mfa/totp/{enrollment.id}", headers=headers)
+    delete_response = await async_client.delete(
+        f"/auth/mfa/totp/{enrollment.id}", headers=headers
+    )
     assert delete_response.status_code == status.HTTP_200_OK
     body = delete_response.json()
     assert body["disabled"] is True
@@ -646,7 +668,9 @@ async def test_admin_reset_endpoint_clears_mfa_state(
     assert response.status_code == status.HTTP_200_OK
 
     result = await db_session.execute(
-        select(models.MfaTotpEnrollment).where(models.MfaTotpEnrollment.user_id == target.id)
+        select(models.MfaTotpEnrollment).where(
+            models.MfaTotpEnrollment.user_id == target.id
+        )
     )
     assert result.scalars().all() == []
 
@@ -668,7 +692,9 @@ async def test_admin_reset_endpoint_clears_mfa_state(
 
 
 @pytest.mark.anyio
-async def test_reset_mfa_command_resets_state(user_factory, db_session, caplog, monkeypatch):
+async def test_reset_mfa_command_resets_state(
+    user_factory, db_session, caplog, monkeypatch
+):
     caplog.set_level(logging.INFO, logger="app.users.audit")
 
     user = await user_factory(email="cli-reset@example.com")
@@ -695,11 +721,15 @@ async def test_reset_mfa_command_resets_state(user_factory, db_session, caplog, 
         notifications.append(list(kwargs.get("user_ids", [])))
         return len(kwargs.get("user_ids", []))
 
-    monkeypatch.setattr(reset_mfa, "create_notifications_for_users", fake_create_notifications)
+    monkeypatch.setattr(
+        reset_mfa, "create_notifications_for_users", fake_create_notifications
+    )
 
     caplog.clear()
 
-    reset_user, stats = await reset_mfa._reset_user_mfa(user_id=user.id, email=None, notify=True)
+    reset_user, stats = await reset_mfa._reset_user_mfa(
+        user_id=user.id, email=None, notify=True
+    )
 
     assert reset_user.id == user.id
     assert stats.totp_deleted == 1
@@ -708,7 +738,9 @@ async def test_reset_mfa_command_resets_state(user_factory, db_session, caplog, 
     assert stats.changed is True
 
     result = await db_session.execute(
-        select(models.MfaTotpEnrollment).where(models.MfaTotpEnrollment.user_id == user.id)
+        select(models.MfaTotpEnrollment).where(
+            models.MfaTotpEnrollment.user_id == user.id
+        )
     )
     assert result.scalars().all() == []
     result = await db_session.execute(
@@ -737,11 +769,15 @@ async def test_reset_mfa_command_noop_logs_reason(user_factory, caplog, monkeypa
     async def fake_create_notifications(db, **kwargs):
         raise AssertionError("Notifications should not be sent for noop reset")
 
-    monkeypatch.setattr(reset_mfa, "create_notifications_for_users", fake_create_notifications)
+    monkeypatch.setattr(
+        reset_mfa, "create_notifications_for_users", fake_create_notifications
+    )
 
     caplog.clear()
 
-    _, stats = await reset_mfa._reset_user_mfa(user_id=user.id, email=None, notify=False)
+    _, stats = await reset_mfa._reset_user_mfa(
+        user_id=user.id, email=None, notify=False
+    )
 
     assert stats.changed is False
     assert stats.totp_deleted == 0
@@ -753,7 +789,9 @@ async def test_reset_mfa_command_noop_logs_reason(user_factory, caplog, monkeypa
 
 
 @pytest.mark.anyio
-async def test_mfa_verification_rejects_revoked_session(async_client, user_factory, db_session):
+async def test_mfa_verification_rejects_revoked_session(
+    async_client, user_factory, db_session
+):
     password = "RevokedSession123!"
     user = await user_factory(
         email="mfa-revoked@example.com", hashed_password=get_password_hash(password)

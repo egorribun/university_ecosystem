@@ -15,5 +15,7 @@ def test_polyglot_detection_flags_script_in_pdf():
 
 
 def test_polyglot_detection_allows_clean_svg():
-    payload = b"<svg xmlns='http://www.w3.org/2000/svg'><rect width='10' height='10'/></svg>"
+    payload = (
+        b"<svg xmlns='http://www.w3.org/2000/svg'><rect width='10' height='10'/></svg>"
+    )
     assert files._looks_like_polyglot(payload, "image/svg+xml") is False  # noqa: SLF001

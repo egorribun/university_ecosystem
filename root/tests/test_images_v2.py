@@ -11,7 +11,9 @@ def test_sanitize_svg_valid():
 
 def test_sanitize_svg_invalid():
     # Attempting XXE or just malformed XML
-    malicious_svg = b'<!DOCTYPE svg [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><svg>&xxe;</svg>'
+    malicious_svg = (
+        b'<!DOCTYPE svg [<!ENTITY xxe SYSTEM "file:///etc/passwd">]><svg>&xxe;</svg>'
+    )
     with pytest.raises(ValueError, match="Invalid or malicious SVG data"):
         sanitize_svg(malicious_svg)
 

@@ -99,13 +99,19 @@ def _localized_text(locale: str, ru_value: Any, en_value: Any) -> str:
     return str(ru_value or en_value or "")
 
 
-def _serialize_news(record: models.News | schemas.NewsOut, locale: str) -> dict[str, Any]:
+def _serialize_news(
+    record: models.News | schemas.NewsOut, locale: str
+) -> dict[str, Any]:
     model_out = (
-        record if isinstance(record, schemas.NewsOut) else schemas.NewsOut.model_validate(record)
+        record
+        if isinstance(record, schemas.NewsOut)
+        else schemas.NewsOut.model_validate(record)
     )
     data = model_out.model_dump()
     data["title"] = _localized_text(locale, data.get("title"), data.get("title_en"))
-    data["content"] = _localized_text(locale, data.get("content"), data.get("content_en"))
+    data["content"] = _localized_text(
+        locale, data.get("content"), data.get("content_en")
+    )
     return data
 
 
@@ -143,7 +149,9 @@ async def create_news(
             locale=locale,
         )
     except Exception:
-        logger.exception("Failed to enqueue news notification", extra={"news_id": record.id})
+        logger.exception(
+            "Failed to enqueue news notification", extra={"news_id": record.id}
+        )
     return schemas.NewsOut.model_validate(serialized)
 
 

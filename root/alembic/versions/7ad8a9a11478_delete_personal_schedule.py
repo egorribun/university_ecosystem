@@ -46,8 +46,14 @@ def downgrade() -> None:
         sa.Column("teacher", sa.VARCHAR(), autoincrement=False, nullable=True),
         sa.Column("room", sa.VARCHAR(), autoincrement=False, nullable=True),
         sa.Column("weekday", sa.VARCHAR(), autoincrement=False, nullable=False),
-        sa.Column("start_time", postgresql.TIMESTAMP(), autoincrement=False, nullable=False),
-        sa.Column("end_time", postgresql.TIMESTAMP(), autoincrement=False, nullable=False),
-        sa.ForeignKeyConstraint(["user_id"], ["users.id"], name="personal_schedule_user_id_fkey"),
+        sa.Column(
+            "start_time", postgresql.TIMESTAMP(), autoincrement=False, nullable=False
+        ),
+        sa.Column(
+            "end_time", postgresql.TIMESTAMP(), autoincrement=False, nullable=False
+        ),
+        sa.ForeignKeyConstraint(
+            ["user_id"], ["users.id"], name="personal_schedule_user_id_fkey"
+        ),
         sa.PrimaryKeyConstraint("id", name="personal_schedule_pkey"),
     )

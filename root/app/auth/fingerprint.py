@@ -182,7 +182,9 @@ class SuspiciousActivityDetector:
         if stored_fingerprint.matches(current_fingerprint):
             return None
 
-        is_suspicious, mismatches = stored_fingerprint.partially_matches(current_fingerprint)
+        is_suspicious, mismatches = stored_fingerprint.partially_matches(
+            current_fingerprint
+        )
 
         if not mismatches:
             return None
@@ -216,7 +218,9 @@ class SuspiciousActivityDetector:
             "low": logging.DEBUG,
         }.get(severity, logging.INFO)
 
-        logger.log(log_level, "Suspicious activity detected", extra=event.to_log_record())
+        logger.log(
+            log_level, "Suspicious activity detected", extra=event.to_log_record()
+        )
 
         self._events.append(event)
 

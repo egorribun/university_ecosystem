@@ -107,7 +107,9 @@ async def test_password_reset_initiation_audit(async_client, user_factory, caplo
     assert event["reason"] == "initiated"
 
 
-async def test_password_reset_completed_audit(async_client, user_factory, db_session, caplog):
+async def test_password_reset_completed_audit(
+    async_client, user_factory, db_session, caplog
+):
     caplog.set_level(logging.INFO)
     caplog.clear()
     hashed = get_password_hash("ResetCompletePass123!")

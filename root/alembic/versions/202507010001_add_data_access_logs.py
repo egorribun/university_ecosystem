@@ -44,8 +44,12 @@ def upgrade() -> None:
                 nullable=False,
                 server_default=sa.func.now(),
             ),
-            sa.ForeignKeyConstraint(["actor_user_id"], ["users.id"], ondelete="SET NULL"),
-            sa.ForeignKeyConstraint(["subject_user_id"], ["users.id"], ondelete="SET NULL"),
+            sa.ForeignKeyConstraint(
+                ["actor_user_id"], ["users.id"], ondelete="SET NULL"
+            ),
+            sa.ForeignKeyConstraint(
+                ["subject_user_id"], ["users.id"], ondelete="SET NULL"
+            ),
         )
 
     inspector = sa.inspect(bind)

@@ -14,7 +14,9 @@ from app.models.models import User
 from app.services.notifications.core import _current_local_time
 
 
-def is_user_in_quiet_hours(user: User | None, *, now_time: dt.time | None = None) -> bool:
+def is_user_in_quiet_hours(
+    user: User | None, *, now_time: dt.time | None = None
+) -> bool:
     """Check if the user is currently in their quiet hours period."""
     if not user or not getattr(user, "dnd_enabled", False):
         return False

@@ -43,7 +43,9 @@ async def test_create_session_factory_uses_null_pool_for_development(monkeypatch
         captured["session_kwargs"] = kwargs
         return "session"
 
-    monkeypatch.setattr(database_module, "create_async_engine", fake_create_async_engine)
+    monkeypatch.setattr(
+        database_module, "create_async_engine", fake_create_async_engine
+    )
     monkeypatch.setattr(database_module, "async_sessionmaker", fake_sessionmaker)
     # Avoid failures in _setup_slow_query_logging which is called during
     # factory creation
@@ -92,7 +94,9 @@ async def test_create_session_factory_uses_pool_settings_for_production(monkeypa
         captured["session_kwargs"] = kwargs
         return "session"
 
-    monkeypatch.setattr(database_module, "create_async_engine", fake_create_async_engine)
+    monkeypatch.setattr(
+        database_module, "create_async_engine", fake_create_async_engine
+    )
     monkeypatch.setattr(database_module, "async_sessionmaker", fake_sessionmaker)
 
     stub_settings = SimpleNamespace(
@@ -153,11 +157,15 @@ async def test_wait_db_logs_final_error_and_raises_cause(monkeypatch, caplog):
         with pytest.raises(RuntimeError) as excinfo:
             await database_module.wait_db(max_attempts=2, delay=0.25)
 
-    assert "Database connection failed after 2 attempts: transient outage" in str(excinfo.value)
+    assert "Database connection failed after 2 attempts: transient outage" in str(
+        excinfo.value
+    )
     # Sleep is only performed between attempts, not after the final failure.
     assert sleep_calls == [0.25]
 
-    error_logs = [record for record in caplog.records if record.levelname in {"WARNING", "ERROR"}]
+    error_logs = [
+        record for record in caplog.records if record.levelname in {"WARNING", "ERROR"}
+    ]
     assert any(
         record.levelname == "WARNING" and "attempt 1/2" in record.getMessage()
         for record in error_logs

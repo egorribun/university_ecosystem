@@ -43,7 +43,9 @@ def upgrade() -> None:
             ),
         )
 
-    existing_indexes = {index["name"] for index in inspector.get_indexes("notification_queue_jobs")}
+    existing_indexes = {
+        index["name"] for index in inspector.get_indexes("notification_queue_jobs")
+    }
 
     if "ix_notification_queue_jobs_dead_lettered" not in existing_indexes:
         op.create_index(
@@ -66,7 +68,9 @@ def downgrade() -> None:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
 
-    existing_indexes = {index["name"] for index in inspector.get_indexes("notification_queue_jobs")}
+    existing_indexes = {
+        index["name"] for index in inspector.get_indexes("notification_queue_jobs")
+    }
     if "ix_notification_queue_jobs_next_retry_at" in existing_indexes:
         op.drop_index(
             "ix_notification_queue_jobs_next_retry_at",

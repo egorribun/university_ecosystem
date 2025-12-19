@@ -59,7 +59,9 @@ async def test_metrics_endpoint_rejects_missing_credentials_when_public(root_cli
 
 
 @pytest.mark.anyio
-async def test_metrics_endpoint_exposes_prometheus_payload(root_client, _configure_metrics: str):
+async def test_metrics_endpoint_exposes_prometheus_payload(
+    root_client, _configure_metrics: str
+):
     # Emit a request to ensure counters are incremented.
     health_response = await root_client.get("/healthz")
     assert health_response.status_code == 200
@@ -104,7 +106,9 @@ async def test_metrics_endpoint_rejects_partial_credentials(root_client):
 
 
 @pytest.mark.anyio
-async def test_metrics_endpoint_respects_allowlist(root_client, _configure_metrics: str):
+async def test_metrics_endpoint_respects_allowlist(
+    root_client, _configure_metrics: str
+):
     settings.metrics_allowlist = "10.0.0.0/8"
 
     response = await root_client.get(

@@ -46,7 +46,9 @@ async def log_data_access(
     return log_entry
 
 
-async def cleanup_access_logs(*, db: AsyncSession | None = None, retention_days: int = 180) -> int:
+async def cleanup_access_logs(
+    *, db: AsyncSession | None = None, retention_days: int = 180
+) -> int:
     owns_session = db is None
     retention = max(0, int(retention_days))
     if retention <= 0:

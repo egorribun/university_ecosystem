@@ -152,7 +152,9 @@ async def test_decode_token_accepts_legacy_and_active_secrets(monkeypatch):
         "exp": now + timedelta(minutes=5),
         "jti": "legacy-jti",
     }
-    legacy_token = jwt.encode(legacy_payload, "old-secret", algorithm=settings.algorithm)
+    legacy_token = jwt.encode(
+        legacy_payload, "old-secret", algorithm=settings.algorithm
+    )
 
     rotated_token = await create_access_token("current-user")
 
@@ -327,7 +329,9 @@ async def test_login_accepts_mixed_case_username(async_client, user_factory):
 
 
 @pytest.mark.anyio
-async def test_forgot_password_accepts_mixed_case_email(async_client, user_factory, db_session):
+async def test_forgot_password_accepts_mixed_case_email(
+    async_client, user_factory, db_session
+):
     user = await user_factory(email=f"forgot-{uuid.uuid4().hex[:6]}@example.com")
 
     base_query = select(models.PasswordResetToken.id).where(

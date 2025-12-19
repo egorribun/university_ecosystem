@@ -8,7 +8,9 @@ from app.auth.security import get_password_hash
 from app.models.chat import Chat, Message
 
 
-async def _login(async_client: AsyncClient, email: str, password: str) -> dict[str, str]:
+async def _login(
+    async_client: AsyncClient, email: str, password: str
+) -> dict[str, str]:
     response = await async_client.post(
         "/auth/login",
         data={"username": email, "password": password},
@@ -26,12 +28,16 @@ async def test_create_chat_errors(async_client, user_factory):
     headers = await _login(async_client, user.email, password)
 
     # 1. Create chat with self
-    resp = await async_client.post("/chats", json={"participant_id": user.id}, headers=headers)
+    resp = await async_client.post(
+        "/chats", json={"participant_id": user.id}, headers=headers
+    )
     assert resp.status_code == 400
     assert "Cannot create chat with yourself" in resp.json()["detail"]
 
     # 2. Create chat with non-existent user
-    resp = await async_client.post("/chats", json={"participant_id": 999999}, headers=headers)
+    resp = await async_client.post(
+        "/chats", json={"participant_id": 999999}, headers=headers
+    )
     assert resp.status_code == 404
     assert "User not found" in resp.json()["detail"]
 
@@ -44,12 +50,16 @@ async def test_create_chat_idempotency(async_client, user_factory):
     headers = await _login(async_client, user.email, password)
 
     # Create first time
-    resp1 = await async_client.post("/chats", json={"participant_id": other.id}, headers=headers)
+    resp1 = await async_client.post(
+        "/chats", json={"participant_id": other.id}, headers=headers
+    )
     assert resp1.status_code == 200
     chat_id = resp1.json()["id"]
 
     # Create second time - should return same chat
-    resp2 = await async_client.post("/chats", json={"participant_id": other.id}, headers=headers)
+    resp2 = await async_client.post(
+        "/chats", json={"participant_id": other.id}, headers=headers
+    )
     assert resp2.status_code == 200
     assert resp2.json()["id"] == chat_id
 
@@ -138,7 +148,8 @@ async def test_send_message_errors(async_client, user_factory, db_session, monke
     )
     assert resp.status_code == 400
     assert (
-        "Too many attachments" in str(resp.content) or "too many" in str(resp.content).lower()
+        "Too many attachments" in str(resp.content)
+        or "too many" in str(resp.content).lower()
     )  # Relaxed check for translation keys
 
 
@@ -157,9 +168,13 @@ async def test_mark_read_logic(async_client, user_factory, db_session):
 
     # Create unread messages from 'other' to 'user'
     msg1 = Message(chat_id=chat.id, sender_id=other.id, content="Hi", read_status=False)
-    msg2 = Message(chat_id=chat.id, sender_id=other.id, content="How are you", read_status=False)
+    msg2 = Message(
+        chat_id=chat.id, sender_id=other.id, content="How are you", read_status=False
+    )
     # Message from 'user' (should differ)
-    msg3 = Message(chat_id=chat.id, sender_id=user.id, content="Im self", read_status=False)
+    msg3 = Message(
+        chat_id=chat.id, sender_id=user.id, content="Im self", read_status=False
+    )
     db_session.add_all([msg1, msg2, msg3])
     await db_session.commit()
 

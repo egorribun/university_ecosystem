@@ -145,7 +145,9 @@ async def test_get_all_events_respects_locale(db_session, user_factory):
     assert en_events.items[0].about == "English text"
 
 
-async def test_get_all_events_cursor_respects_ordering_and_gaps(db_session, user_factory):
+async def test_get_all_events_cursor_respects_ordering_and_gaps(
+    db_session, user_factory
+):
     admin = await user_factory(role="admin")
     student = await user_factory()
     base = datetime.now(UTC) + timedelta(days=1)
@@ -210,7 +212,9 @@ async def test_get_all_events_cursor_respects_ordering_and_gaps(db_session, user
     assert third_page.next_cursor is None
 
 
-async def test_get_all_events_cursor_skips_total_on_followup_pages(db_session, user_factory):
+async def test_get_all_events_cursor_skips_total_on_followup_pages(
+    db_session, user_factory
+):
     admin = await user_factory(role="admin")
     student = await user_factory()
     base = datetime.now(UTC) + timedelta(days=1)
@@ -250,14 +254,18 @@ async def test_get_all_events_cursor_skips_total_on_followup_pages(db_session, u
 
     assert second_page.total is None
     lowered_statements = [stmt.lower() for stmt in statements]
-    assert not any("count" in stmt and " from events" in stmt for stmt in lowered_statements)
+    assert not any(
+        "count" in stmt and " from events" in stmt for stmt in lowered_statements
+    )
 
 
 async def test_event_detail_returns_qr_code_after_registration(
     async_client, db_session, user_factory
 ):
     password = "QrCodePass123!"
-    student = await user_factory(hashed_password=get_password_hash(password), is_active=True)
+    student = await user_factory(
+        hashed_password=get_password_hash(password), is_active=True
+    )
     admin = await user_factory(role="admin")
 
     now = datetime.now(UTC)

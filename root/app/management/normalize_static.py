@@ -71,12 +71,16 @@ def _rename_files(base_dir: Path) -> tuple[dict[str, str], dict[str, str]]:
     return avatar_mapping, cover_mapping
 
 
-async def _update_column(session: AsyncSession, mapping: dict[str, str], column_name: str) -> None:
+async def _update_column(
+    session: AsyncSession, mapping: dict[str, str], column_name: str
+) -> None:
     if not mapping:
         return
     column = getattr(User, column_name)
     for old_url, new_url in mapping.items():
-        await session.execute(update(User).where(column == old_url).values({column_name: new_url}))
+        await session.execute(
+            update(User).where(column == old_url).values({column_name: new_url})
+        )
 
 
 async def main() -> None:

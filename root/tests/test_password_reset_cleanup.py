@@ -96,7 +96,9 @@ async def test_start_password_reset_cleanup_scheduler(monkeypatch):
         calls.append(retention_minutes)
         event.set()
 
-    monkeypatch.setattr(password_reset_cleanup, "cleanup_stale_password_reset_tokens", fake_cleanup)
+    monkeypatch.setattr(
+        password_reset_cleanup, "cleanup_stale_password_reset_tokens", fake_cleanup
+    )
 
     real_asyncio_sleep = asyncio.sleep
 
@@ -117,12 +119,16 @@ async def test_start_password_reset_cleanup_scheduler(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_forgot_password_limits_active_tokens(async_client, user_factory, db_session):
+async def test_forgot_password_limits_active_tokens(
+    async_client, user_factory, db_session
+):
     user = await user_factory(email="limit-reset@example.com")
 
     iterations = settings.password_reset_max_active_tokens + 2
     for _ in range(iterations):
-        response = await async_client.post("/password/forgot", json={"email": user.email})
+        response = await async_client.post(
+            "/password/forgot", json={"email": user.email}
+        )
         assert response.status_code == 200
 
     active = await db_session.execute(

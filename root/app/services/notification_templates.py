@@ -24,7 +24,9 @@ _SPACE_RE = re.compile(r"\s+")
 def _room_label_prefixes() -> set[str]:
     prefixes: set[str] = set()
     for locale_code in SUPPORTED_LOCALES:
-        template = translate("notifications.schedule.room_label", locale=locale_code, room="")
+        template = translate(
+            "notifications.schedule.room_label", locale=locale_code, room=""
+        )
         for variant in (template, template.replace(".", "")):
             normalized = variant.strip().lower()
             if normalized:
@@ -183,7 +185,9 @@ def _build_schedule_change(
     if detail_parts:
         lines.append(" · ".join(detail_parts))
     if not lines:
-        lines.append(translate("notifications.schedule.change.no_details", locale=locale))
+        lines.append(
+            translate("notifications.schedule.change.no_details", locale=locale)
+        )
 
     if subject:
         title = translate(
@@ -279,7 +283,9 @@ def _build_schedule_reminder(
     if summary_parts:
         lines.append(" · ".join(summary_parts))
     if not lines:
-        lines.append(translate("notifications.schedule.reminder.no_details", locale=locale))
+        lines.append(
+            translate("notifications.schedule.reminder.no_details", locale=locale)
+        )
 
     if subject:
         title = translate(
@@ -330,7 +336,9 @@ def _build_schedule_reminder(
     }
 
 
-def _build_news(context: ScenarioContext, *, locale: str | None = None) -> dict[str, Any]:
+def _build_news(
+    context: ScenarioContext, *, locale: str | None = None
+) -> dict[str, Any]:
     headline = context.get_text("headline", "title", "subject", "name")
     summary = _clean_text(
         context.get("summary", "body", "excerpt", "description"),
@@ -385,7 +393,9 @@ def _build_news(context: ScenarioContext, *, locale: str | None = None) -> dict[
     }
 
 
-def _build_event(context: ScenarioContext, *, locale: str | None = None) -> dict[str, Any]:
+def _build_event(
+    context: ScenarioContext, *, locale: str | None = None
+) -> dict[str, Any]:
     title = context.get_text("title", "name", "headline")
     summary = _clean_text(
         context.get("summary", "description", "about", "details"),
@@ -435,7 +445,9 @@ def _build_event(context: ScenarioContext, *, locale: str | None = None) -> dict
         lines.append(translate("notifications.events.no_details", locale=locale))
 
     if title:
-        notif_title = translate("notifications.events.title_with_name", locale=locale, title=title)
+        notif_title = translate(
+            "notifications.events.title_with_name", locale=locale, title=title
+        )
     else:
         notif_title = translate("notifications.events.title", locale=locale)
     tag = f"event:{identifier}" if identifier else "event"
@@ -477,7 +489,9 @@ def _build_event(context: ScenarioContext, *, locale: str | None = None) -> dict
     }
 
 
-def _build_system(context: ScenarioContext, *, locale: str | None = None) -> dict[str, Any]:
+def _build_system(
+    context: ScenarioContext, *, locale: str | None = None
+) -> dict[str, Any]:
     subject = context.get_text("title", "subject", "heading")
     message = context.get_text("message", "body", "text")
     url = context.get_url("url", "link", default="/")

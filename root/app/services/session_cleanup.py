@@ -28,7 +28,9 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-async def delete_sessions_matching(*, db: AsyncSession, whereclause: ClauseElement[bool]) -> int:
+async def delete_sessions_matching(
+    *, db: AsyncSession, whereclause: ClauseElement[bool]
+) -> int:
     """Delete sessions (and their MFA challenges) matching *whereclause*."""
 
     bind = db.get_bind()
@@ -36,7 +38,9 @@ async def delete_sessions_matching(*, db: AsyncSession, whereclause: ClauseEleme
 
     if dialect.name == "sqlite":
         subquery = select(ActiveSession.id).where(whereclause)
-        challenge_delete_stmt = delete(MfaChallenge).where(MfaChallenge.session_id.in_(subquery))
+        challenge_delete_stmt = delete(MfaChallenge).where(
+            MfaChallenge.session_id.in_(subquery)
+        )
     else:
         challenge_delete_stmt = (
             delete(MfaChallenge)
@@ -48,7 +52,9 @@ async def delete_sessions_matching(*, db: AsyncSession, whereclause: ClauseEleme
 
     delete_stmt = delete(ActiveSession).where(whereclause)
     supports_returning = bool(getattr(dialect, "delete_returning", False))
-    supports_rowcount_returning = bool(getattr(dialect, "supports_sane_rowcount_returning", False))
+    supports_rowcount_returning = bool(
+        getattr(dialect, "supports_sane_rowcount_returning", False)
+    )
     if supports_returning:
         delete_stmt = delete_stmt.returning(ActiveSession.id)
         delete_result = await db.execute(delete_stmt)
@@ -104,7 +110,9 @@ async def cleanup_expired_sessions(
         async with async_session() as session:
             return await cleanup_expired_sessions(db=session, now=now)
 
-    expiry_condition = or_(ActiveSession.expires_at <= now, ActiveSession.revoked_at <= now)
+    expiry_condition = or_(
+        ActiveSession.expires_at <= now, ActiveSession.revoked_at <= now
+    )
 
     deleted = await delete_sessions_matching(db=db, whereclause=expiry_condition)
     await db.commit()

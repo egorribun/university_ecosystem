@@ -94,7 +94,9 @@ _MAGIC_NOT_INITIALIZED: Final[object] = object()
 _magic_mime_detector: Any = _MAGIC_NOT_INITIALIZED
 
 
-async def _read_limited(upload: UploadFile, limit: int, *, locale: str | None = None) -> bytes:
+async def _read_limited(
+    upload: UploadFile, limit: int, *, locale: str | None = None
+) -> bytes:
     data = await upload.read(limit + 1)
     if len(data) > limit:
         raise HTTPException(
@@ -146,7 +148,9 @@ def detect_mime_type(data: bytes) -> str | None:
             try:
                 detector = magic.Magic(mime=True)  # type: ignore[attr-defined]
             except Exception:  # pragma: no cover - depends on runtime env
-                logger.warning("Failed to initialize libmagic MIME detector", exc_info=True)
+                logger.warning(
+                    "Failed to initialize libmagic MIME detector", exc_info=True
+                )
                 detector = None
         _magic_mime_detector = detector
     else:
@@ -157,7 +161,9 @@ def detect_mime_type(data: bytes) -> str | None:
             result = detector.from_buffer(data)  # type: ignore[call-arg]
         except AttributeError:  # pragma: no cover - fallback path
             try:
-                result = magic.from_buffer(data, mime=True) if magic is not None else None
+                result = (
+                    magic.from_buffer(data, mime=True) if magic is not None else None
+                )
             except Exception:  # pragma: no cover - depends on runtime env
                 logger.warning("libmagic failed to detect MIME type", exc_info=True)
                 result = None
@@ -222,7 +228,9 @@ async def _quarantine_payload(
             content_type="application/octet-stream",
         )
     except Exception:
-        logger.warning("Failed to store quarantined payload", exc_info=True, extra=metadata)
+        logger.warning(
+            "Failed to store quarantined payload", exc_info=True, extra=metadata
+        )
 
 
 def normalize_filename_prefix(prefix: str) -> str:
@@ -276,7 +284,9 @@ async def save_image(
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail=(
-                str(exc) if str(exc) else translate("errors.files.unsupported_type", locale=locale)
+                str(exc)
+                if str(exc)
+                else translate("errors.files.unsupported_type", locale=locale)
             ),
         ) from None
 
@@ -407,7 +417,9 @@ async def save_attachment(
         return candidate[1:] if candidate.startswith(".") else candidate
 
     detected_ext_without_dot = _ext_without_dot_from_mime(detected_type)
-    declared_ext_without_dot = _ext_without_dot_from_mime(declared_type) if declared_type else ""
+    declared_ext_without_dot = (
+        _ext_without_dot_from_mime(declared_type) if declared_type else ""
+    )
     chosen_ext_without_dot = detected_ext_without_dot or declared_ext_without_dot
 
     if allowed_exts:

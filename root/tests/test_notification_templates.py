@@ -128,7 +128,9 @@ def test_build_payload_schedule_change_english_locale():
     payload = build_payload("schedule.change", None, locale="en")
 
     assert payload["title"] == "Class change"
-    assert payload["options"]["body"] == "Check the schedule for the latest information."
+    assert (
+        payload["options"]["body"] == "Check the schedule for the latest information."
+    )
 
 
 def test_build_payload_schedule_reminder_english_locale():

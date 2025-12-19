@@ -46,7 +46,9 @@ def upgrade() -> None:
 
     if not _column_exists(bind, _TABLE_NAME, _COLUMN_NAME):
         with op.batch_alter_table(_TABLE_NAME) as batch_op:
-            batch_op.add_column(sa.Column(_COLUMN_NAME, sa.DateTime(timezone=True), nullable=True))
+            batch_op.add_column(
+                sa.Column(_COLUMN_NAME, sa.DateTime(timezone=True), nullable=True)
+            )
 
         # Prefer historical timestamps when available to keep retention windows small.
         op.execute(

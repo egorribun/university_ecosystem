@@ -56,7 +56,9 @@ def _audit_cli(
     audit_logger.info(json.dumps(payload, ensure_ascii=False))
 
 
-async def _load_user(session, *, user_id: int | None, email: str | None) -> models.User | None:
+async def _load_user(
+    session, *, user_id: int | None, email: str | None
+) -> models.User | None:
     if user_id is not None:
         return await session.get(models.User, user_id)
     if email is None:

@@ -94,8 +94,12 @@ async def cleanup_privacy_artifacts(
     counts: dict[str, int] = {}
     async with _METRICS.track_execution() as run:
         counts["sessions"] = await _cleanup_sessions(db, config.session_retention_days)
-        counts["mfa_challenges"] = await _cleanup_mfa_challenges(db, config.mfa_retention_days)
-        counts["mfa_enrollments"] = await _cleanup_mfa_enrollments(db, config.mfa_retention_days)
+        counts["mfa_challenges"] = await _cleanup_mfa_challenges(
+            db, config.mfa_retention_days
+        )
+        counts["mfa_enrollments"] = await _cleanup_mfa_enrollments(
+            db, config.mfa_retention_days
+        )
         counts["failed_logins"] = await _cleanup_failed_logins(
             db, config.failed_login_retention_days
         )

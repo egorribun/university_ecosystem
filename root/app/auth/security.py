@@ -43,11 +43,16 @@ else:  # pragma: no cover - executed during import
             cls, secret, ident, new=False, _orig=_original_norm_digest
         ):
             secret, ident = _orig(cls, secret, ident, new=new)
-            if isinstance(secret, bytes | bytearray) and len(secret) > LEGACY_BCRYPT_MAX_BYTES:
+            if (
+                isinstance(secret, bytes | bytearray)
+                and len(secret) > LEGACY_BCRYPT_MAX_BYTES
+            ):
                 secret = secret[:LEGACY_BCRYPT_MAX_BYTES]
             return secret, ident
 
-        _backend_common._norm_digest_args = classmethod(_norm_digest_args_with_legacy_truncation)
+        _backend_common._norm_digest_args = classmethod(
+            _norm_digest_args_with_legacy_truncation
+        )
 
 pwd_context = CryptContext(
     schemes=[DEFAULT_SCHEME, LEGACY_SCHEME],
@@ -82,7 +87,9 @@ def verify_and_update_password(
     plain_password: str, hashed_password: str
 ) -> tuple[bool, str | None]:
     try:
-        verified, new_hash = pwd_context.verify_and_update(plain_password, hashed_password)
+        verified, new_hash = pwd_context.verify_and_update(
+            plain_password, hashed_password
+        )
     except ValueError:
         return False, None
     return verified, new_hash
@@ -125,7 +132,9 @@ async def create_access_token(
         try:
             user_id = int(sub)
         except (TypeError, ValueError):  # pragma: no cover - defensive guard
-            raise ValueError("sub must be an integer when persisting sessions") from None
+            raise ValueError(
+                "sub must be an integer when persisting sessions"
+            ) from None
         session = ActiveSession(user_id=user_id, jti=jti, expires_at=expires_at)
         session.signing_key = secrets.token_urlsafe(32)
         if session_metadata:

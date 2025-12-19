@@ -56,9 +56,13 @@ class DeadLetterJob(Base):
     error_message = Column(Text, nullable=True)
     retry_count = Column(Integer, default=0, nullable=False)
     max_retries = Column(Integer, default=3, nullable=False)
-    status = Column(String(20), default=JobStatus.PENDING.value, nullable=False, index=True)
+    status = Column(
+        String(20), default=JobStatus.PENDING.value, nullable=False, index=True
+    )
     next_retry_at = Column(DateTime(timezone=True), nullable=True, index=True)
-    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
+    created_at = Column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
     updated_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),
@@ -141,7 +145,9 @@ class DeadLetterQueue:
         result = await self.session.execute(
             select(DeadLetterJob)
             .where(
-                DeadLetterJob.status.in_([JobStatus.PENDING.value, JobStatus.RETRYING.value]),
+                DeadLetterJob.status.in_(
+                    [JobStatus.PENDING.value, JobStatus.RETRYING.value]
+                ),
                 DeadLetterJob.next_retry_at <= now,
             )
             .order_by(DeadLetterJob.next_retry_at)

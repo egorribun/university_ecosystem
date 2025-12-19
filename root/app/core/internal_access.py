@@ -24,7 +24,9 @@ class InternalAccessMiddleware(BaseHTTPMiddleware):
         self.allowed_ips = {ip.strip() for ip in allowed_ips if ip and ip.strip()}
         self.header_name = header_name
         self.header_token = header_token
-        self.internal_prefixes = tuple(prefix.rstrip("/") for prefix in internal_prefixes)
+        self.internal_prefixes = tuple(
+            prefix.rstrip("/") for prefix in internal_prefixes
+        )
 
     async def dispatch(self, request: Request, call_next):
         path = request.url.path.rstrip("/") or "/"

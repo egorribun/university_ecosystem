@@ -12,13 +12,17 @@ from app.workers.notifications import (
 @pytest.mark.anyio
 async def test_scheduler_init():
     # Test valid init
-    scheduler = NotificationsScheduler(poll_seconds=10, window_minutes=5, max_backoff_seconds=100)
+    scheduler = NotificationsScheduler(
+        poll_seconds=10, window_minutes=5, max_backoff_seconds=100
+    )
     assert scheduler.poll_seconds == 10
     assert scheduler.window_minutes == 5
     assert scheduler.max_backoff_seconds == 100
 
     # Test clamping
-    scheduler = NotificationsScheduler(poll_seconds=0, window_minutes=-1, max_backoff_seconds=0)
+    scheduler = NotificationsScheduler(
+        poll_seconds=0, window_minutes=-1, max_backoff_seconds=0
+    )
     assert scheduler.poll_seconds == 1
     assert scheduler.window_minutes == 1
     assert scheduler.max_backoff_seconds == 1
@@ -55,7 +59,9 @@ async def test_scheduler_run_forever_logic():
     # Test that run_forever loops and handles errors/backoff
     # We will cancel it after a few iterations
 
-    scheduler = NotificationsScheduler(poll_seconds=1, window_minutes=1, max_backoff_seconds=10)
+    scheduler = NotificationsScheduler(
+        poll_seconds=1, window_minutes=1, max_backoff_seconds=10
+    )
 
     with patch.object(scheduler, "run_once", SideEffect=AsyncMock) as mock_run:
         # 1. Success

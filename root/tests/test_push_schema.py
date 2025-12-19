@@ -46,7 +46,9 @@ async def test_ensure_push_subscription_schema_upgrades_existing_table(
 
         def _assert_schema(sync_conn):
             inspector = sa.inspect(sync_conn)
-            columns = {column["name"] for column in inspector.get_columns("push_subscriptions")}
+            columns = {
+                column["name"] for column in inspector.get_columns("push_subscriptions")
+            }
             assert {
                 "endpoint",
                 "user_agent",

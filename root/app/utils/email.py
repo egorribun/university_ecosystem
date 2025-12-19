@@ -15,11 +15,17 @@ def _log_event(
     message: str,
     *,
     extra: dict[str, object] | None = None,
-    exc_info: (bool | BaseException | tuple[type[BaseException], BaseException, Any] | None) = None,
+    exc_info: (
+        bool | BaseException | tuple[type[BaseException], BaseException, Any] | None
+    ) = None,
 ) -> None:
     """Emit a log record even if the module logger is disabled upstream."""
 
-    target = logger if logger.isEnabledFor(level) and not logger.disabled else logging.getLogger()
+    target = (
+        logger
+        if logger.isEnabledFor(level) and not logger.disabled
+        else logging.getLogger()
+    )
     target.log(level, message, extra=extra, exc_info=exc_info, stacklevel=3)
 
 
@@ -33,7 +39,9 @@ def build_reset_email_content(
     name_suffix = f", {full_name}" if full_name else ""
     subject = translate("email.reset.subject", locale=resolved_locale)
     heading = translate("email.reset.heading", locale=resolved_locale)
-    greeting = translate("email.reset.greeting", locale=resolved_locale, name=name_suffix)
+    greeting = translate(
+        "email.reset.greeting", locale=resolved_locale, name=name_suffix
+    )
     instructions = translate(
         "email.reset.instructions",
         locale=resolved_locale,

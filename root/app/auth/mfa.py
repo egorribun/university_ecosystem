@@ -34,9 +34,7 @@ _TOTP_VALID_WINDOW = settings.mfa_totp_initial_skew_windows
 _TOTP_DIGITS = 6
 _MAX_ACTIVE_TOTP_ENROLLMENTS = 1
 
-TOTP_ENROLLMENT_PENDING_ERROR = (
-    "A TOTP enrollment is already pending. Confirm or reuse it before starting a new one."
-)
+TOTP_ENROLLMENT_PENDING_ERROR = "A TOTP enrollment is already pending. Confirm or reuse it before starting a new one."
 TOTP_ENROLLMENT_LIMIT_ERROR = (
     "Only one authenticator app can be connected at a time. "
     "Remove the existing app before starting a new setup."
@@ -175,7 +173,11 @@ async def issue_challenge(
     )
     token = secrets.token_urlsafe(48)
     now = _utcnow()
-    ttl = ttl_seconds if ttl_seconds and ttl_seconds > 0 else settings.mfa_challenge_ttl_seconds
+    ttl = (
+        ttl_seconds
+        if ttl_seconds and ttl_seconds > 0
+        else settings.mfa_challenge_ttl_seconds
+    )
     expires_at = now + timedelta(seconds=ttl)
     payload_data = dict(payload or {})
     if attempt_limit is not None and attempt_limit > 0:
@@ -384,7 +386,9 @@ async def start_totp_enrollment(
     pending = result.scalars().first()
     if pending:
         if not reuse_existing:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, TOTP_ENROLLMENT_PENDING_ERROR)
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, TOTP_ENROLLMENT_PENDING_ERROR
+            )
         if label and label != pending.label:
             pending.label = label
             await db.flush()
@@ -516,11 +520,17 @@ async def verify_totp_for_user(
         )
     if loaded_challenge is not None:
         if loaded_challenge.challenge_type != CHALLENGE_TYPE_TOTP_VERIFY:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired challenge")
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "Invalid or expired challenge"
+            )
         if loaded_challenge.user_id != user.id:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired challenge")
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "Invalid or expired challenge"
+            )
         if session_id is not None and loaded_challenge.session_id != session_id:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired challenge")
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "Invalid or expired challenge"
+            )
     limit = _extract_attempt_limit(loaded_challenge, settings.mfa_totp_attempt_limit)
     await _ensure_challenge_not_locked(
         db,
@@ -594,7 +604,9 @@ async def reset_user_mfa(db: AsyncSession, *, user: User) -> MfaResetStats:
     totp_result = await db.execute(
         delete(MfaTotpEnrollment).where(MfaTotpEnrollment.user_id == user.id)
     )
-    challenge_result = await db.execute(delete(MfaChallenge).where(MfaChallenge.user_id == user.id))
+    challenge_result = await db.execute(
+        delete(MfaChallenge).where(MfaChallenge.user_id == user.id)
+    )
 
     stats.totp_deleted = int(totp_result.rowcount or 0)
     stats.challenges_revoked = int(challenge_result.rowcount or 0)

@@ -306,7 +306,9 @@ async def _collect_mfa_challenges(
         attempt_count,
         attempt_limit,
         remaining_attempts,
-    ) = mfa.describe_challenge_attempts(challenge, default_limit=settings.mfa_totp_attempt_limit)
+    ) = mfa.describe_challenge_attempts(
+        challenge, default_limit=settings.mfa_totp_attempt_limit
+    )
     methods.append(
         MfaMethodChallengeOut(
             method=mfa.MFA_METHOD_TOTP,
@@ -391,7 +393,9 @@ def _normalize_timestamp(value: datetime) -> datetime:
     return value.astimezone(UTC)
 
 
-def _calculate_lock_until(attempts: Sequence[FailedLoginAttempt], now: datetime) -> datetime | None:
+def _calculate_lock_until(
+    attempts: Sequence[FailedLoginAttempt], now: datetime
+) -> datetime | None:
     rules = _lockout_rules()
     if not attempts or not rules:
         return None
@@ -402,7 +406,9 @@ def _calculate_lock_until(attempts: Sequence[FailedLoginAttempt], now: datetime)
             attempt_time = _normalize_timestamp(attempts[-1].attempted_at)
             candidate = attempt_time + timedelta(seconds=seconds)
             if candidate > now:
-                lock_until = candidate if lock_until is None else max(lock_until, candidate)
+                lock_until = (
+                    candidate if lock_until is None else max(lock_until, candidate)
+                )
     return lock_until
 
 
@@ -432,13 +438,17 @@ async def _register_failed_attempt(
     lock_until = _calculate_lock_until(updated, now)
     await db.commit()
     triggered = bool(
-        lock_until and (previous_lock is None or previous_lock <= now) and lock_until > now
+        lock_until
+        and (previous_lock is None or previous_lock <= now)
+        and lock_until > now
     )
     return lock_until, triggered, len(updated)
 
 
 async def _clear_failed_attempts(db: AsyncSession, email: str) -> int:
-    result = await db.execute(delete(FailedLoginAttempt).where(FailedLoginAttempt.email == email))
+    result = await db.execute(
+        delete(FailedLoginAttempt).where(FailedLoginAttempt.email == email)
+    )
     await db.commit()
     return int(result.rowcount or 0)
 
@@ -521,7 +531,9 @@ async def _perform_login(
     normalized_email = email.strip().lower()
     base_locale = resolve_locale(request=request)
 
-    res = await db.execute(select(User).where(func.lower(User.email) == normalized_email))
+    res = await db.execute(
+        select(User).where(func.lower(User.email) == normalized_email)
+    )
     user = res.scalars().first()
     locale = resolve_locale(request=request, user=user) if user else base_locale
 
@@ -543,7 +555,9 @@ async def _perform_login(
         )
 
     if not user:
-        lock_until, triggered, attempts = await _register_failed_attempt(db, normalized_email, None)
+        lock_until, triggered, attempts = await _register_failed_attempt(
+            db, normalized_email, None
+        )
         audit.log(
             "auth.login.failure",
             request,
@@ -717,7 +731,9 @@ async def _perform_login(
                 else bool(user.mfa_required)
             ),
             "mfa_method": user.mfa_default_method,
-            "mfa_completed_at": (now if "is_trusted" in locals() and is_trusted else None),
+            "mfa_completed_at": (
+                now if "is_trusted" in locals() and is_trusted else None
+            ),
             "mfa_verified_at": now if "is_trusted" in locals() and is_trusted else None,
         },
     )
@@ -852,7 +868,9 @@ async def confirm_totp_enrollment(
     if not enrollment or enrollment.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Enrollment not found")
     try:
-        updated = await mfa.complete_totp_enrollment(db, enrollment=enrollment, code=payload.code)
+        updated = await mfa.complete_totp_enrollment(
+            db, enrollment=enrollment, code=payload.code
+        )
     except HTTPException:
         _audit_log(
             "auth.mfa.totp.enroll_failure",
@@ -894,10 +912,15 @@ async def list_totp_enrollments(
         .order_by(MfaTotpEnrollment.created_at.desc())
     )
     result = await db.execute(stmt)
-    return [MfaTotpEnrollmentOut.model_validate(enrollment) for enrollment in result.scalars()]
+    return [
+        MfaTotpEnrollmentOut.model_validate(enrollment)
+        for enrollment in result.scalars()
+    ]
 
 
-@router.delete("/mfa/totp/pending/{enrollment_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/mfa/totp/pending/{enrollment_id}", status_code=status.HTTP_204_NO_CONTENT
+)
 async def delete_pending_totp_enrollment(
     enrollment_id: int,
     request: Request,
@@ -998,15 +1021,21 @@ async def verify_mfa_challenge(
                 reason="session_invalid",
                 extra={"session_id": challenge.session_id},
             )
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Associated session is invalid")
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "Associated session is invalid"
+            )
         if session.revoked_at is not None:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Associated session has been revoked")
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "Associated session has been revoked"
+            )
         expires_at = session.expires_at
         if expires_at is not None:
             if expires_at.tzinfo is None:
                 expires_at = expires_at.replace(tzinfo=UTC)
             if expires_at <= now:
-                raise HTTPException(status.HTTP_400_BAD_REQUEST, "Associated session has expired")
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST, "Associated session has expired"
+                )
     _audit_log(
         "auth.mfa.verify.attempt",
         request,
@@ -1025,7 +1054,9 @@ async def verify_mfa_challenge(
                 user_id=user.id,
                 reason="missing_code",
             )
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Verification code required")
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "Verification code required"
+            )
         await mfa.verify_totp_for_user(
             db,
             user=user,
@@ -1146,7 +1177,9 @@ async def request_step_up(
 
 
 @router.get("/session/signing-key", response_model=SessionSigningKeyOut)
-async def get_session_signing_key(request: Request, _: User = Depends(get_current_user)):
+async def get_session_signing_key(
+    request: Request, _: User = Depends(get_current_user)
+):
     session = getattr(request.state, "active_session", None)
     if session is None or not getattr(session, "signing_key", None):
         raise HTTPException(

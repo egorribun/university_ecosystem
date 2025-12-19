@@ -55,7 +55,9 @@ async def start_notifications_retention_scheduler(
                         (
                             deleted_notifications,
                             deleted_deliveries,
-                        ) = await cleanup_stale_notifications(retention_days=retention_days)
+                        ) = await cleanup_stale_notifications(
+                            retention_days=retention_days
+                        )
                         run.observe_deleted((deleted_notifications, deleted_deliveries))
                 except asyncio.CancelledError:
                     raise

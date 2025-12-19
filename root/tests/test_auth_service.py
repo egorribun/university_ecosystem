@@ -108,7 +108,9 @@ class TestCreateEmailChangeRequest:
         """Should create email change request and return token."""
         new_email = "new@example.com"
 
-        record, token = await _create_email_change_request(mock_db, mock_user, new_email)
+        record, token = await _create_email_change_request(
+            mock_db, mock_user, new_email
+        )
 
         # Should add a record
         mock_db.add.assert_called_once()

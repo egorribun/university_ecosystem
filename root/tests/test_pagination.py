@@ -35,7 +35,9 @@ def test_chat_cursor_round_trip(timestamp_ms: int, identifier: str) -> None:
 
 @settings(max_examples=25)
 @given(
-    value=st.text(min_size=1).filter(lambda raw: raw.count(":") != 1 or not raw.strip()),
+    value=st.text(min_size=1).filter(
+        lambda raw: raw.count(":") != 1 or not raw.strip()
+    ),
 )
 def test_chat_decode_cursor_rejects_invalid(value: str) -> None:
     assert chat._decode_cursor(value) is None  # noqa: SLF001
@@ -130,7 +132,9 @@ class TestNewsPagination:
         assert isinstance(data["items"], list)
 
     @pytest.mark.asyncio
-    async def test_news_list_respects_limit(self, async_client: AsyncClient, news_factory):
+    async def test_news_list_respects_limit(
+        self, async_client: AsyncClient, news_factory
+    ):
         """Test that limit parameter is respected."""
         await news_factory(count=5)
         response = await async_client.get("/news?limit=2")
@@ -141,7 +145,9 @@ class TestNewsPagination:
         assert data["next_cursor"] is not None
 
     @pytest.mark.asyncio
-    async def test_news_list_cursor_pagination(self, async_client: AsyncClient, news_factory):
+    async def test_news_list_cursor_pagination(
+        self, async_client: AsyncClient, news_factory
+    ):
         """Test cursor-based pagination works correctly."""
         await news_factory(count=5)
 
@@ -181,7 +187,9 @@ class TestNewsPagination:
         assert data["next_cursor"] is None
 
     @pytest.mark.asyncio
-    async def test_news_list_invalid_cursor_ignored(self, async_client: AsyncClient, news_factory):
+    async def test_news_list_invalid_cursor_ignored(
+        self, async_client: AsyncClient, news_factory
+    ):
         """Test that invalid cursor is ignored (returns first page)."""
         await news_factory(count=3)
         response = await async_client.get("/news?limit=10&cursor=invalid")
@@ -215,7 +223,9 @@ class TestEventsPagination:
             assert "next_cursor" in data
 
     @pytest.mark.asyncio
-    async def test_events_list_respects_limit(self, async_client: AsyncClient, events_factory):
+    async def test_events_list_respects_limit(
+        self, async_client: AsyncClient, events_factory
+    ):
         """Test that limit parameter is respected for events."""
         await events_factory(count=5)
         response = await async_client.get("/events?limit=2")
@@ -228,7 +238,9 @@ class TestCrudNewsPagination:
     """Tests for CRUD news pagination functions."""
 
     @pytest.mark.asyncio
-    async def test_get_news_list_with_limit(self, db_session: AsyncSession, news_factory):
+    async def test_get_news_list_with_limit(
+        self, db_session: AsyncSession, news_factory
+    ):
         """Test get_news_list respects limit."""
         await news_factory(count=5)
 
@@ -237,7 +249,9 @@ class TestCrudNewsPagination:
         assert len(result) == 2
 
     @pytest.mark.asyncio
-    async def test_get_news_list_with_cursor(self, db_session: AsyncSession, news_factory):
+    async def test_get_news_list_with_cursor(
+        self, db_session: AsyncSession, news_factory
+    ):
         """Test get_news_list with cursor returns subsequent items."""
         await news_factory(count=5)
 

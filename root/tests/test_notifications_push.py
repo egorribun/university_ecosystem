@@ -110,7 +110,9 @@ async def test_subscribe_persists_subscription(
 
     stored = (
         await db_session.execute(
-            select(PushSubscription).where(PushSubscription.endpoint == payload["endpoint"])
+            select(PushSubscription).where(
+                PushSubscription.endpoint == payload["endpoint"]
+            )
         )
     ).scalar_one()
     assert stored.user_id == user.id
@@ -145,7 +147,9 @@ async def test_unsubscribe_removes_subscription(
     db_session,
     _configured_webpush_settings,
 ):
-    _user, headers = await _create_user_and_token(async_client, user_factory, role="admin")
+    _user, headers = await _create_user_and_token(
+        async_client, user_factory, role="admin"
+    )
     endpoint = "https://push.example.test/remove-me"
     payload = {
         "endpoint": endpoint,
@@ -237,7 +241,9 @@ async def test_send_test_filters_and_cleans_subscriptions(
     _configured_webpush_settings,
     _sync_session_factory,
 ):
-    _user, headers = await _create_user_and_token(async_client, user_factory, role="admin")
+    _user, headers = await _create_user_and_token(
+        async_client, user_factory, role="admin"
+    )
 
     stub = _WebPushStub()
     monkeypatch.setattr(webpush_module, "webpush", stub)
@@ -283,7 +289,11 @@ async def test_send_test_filters_and_cleans_subscriptions(
     assert called_endpoints == {ok_endpoint, gone_410_endpoint, gone_404_endpoint}
 
     remaining = (
-        (await db_session.execute(select(PushSubscription).order_by(PushSubscription.endpoint)))
+        (
+            await db_session.execute(
+                select(PushSubscription).order_by(PushSubscription.endpoint)
+            )
+        )
         .scalars()
         .all()
     )
@@ -292,7 +302,9 @@ async def test_send_test_filters_and_cleans_subscriptions(
 
 
 @pytest.mark.anyio
-async def test_notify_about_news_uses_locale(db_session, monkeypatch: pytest.MonkeyPatch):
+async def test_notify_about_news_uses_locale(
+    db_session, monkeypatch: pytest.MonkeyPatch
+):
     user = models.User(email="notify@example.com", hashed_password="x", is_active=True)
     db_session.add(user)
     news = models.News(
@@ -442,7 +454,9 @@ async def test_create_notifications_checks_schema_once_per_process(
         nonlocal schema_calls
         schema_calls += 1
 
-    monkeypatch.setattr(notifications_delivery, "ensure_push_subscription_schema", _fake_schema)
+    monkeypatch.setattr(
+        notifications_delivery, "ensure_push_subscription_schema", _fake_schema
+    )
 
     def _fake_send_web_push(subscription, payload):
         return WebPushResult(

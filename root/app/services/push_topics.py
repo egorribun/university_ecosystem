@@ -34,7 +34,9 @@ def sort_topics(
         settings_obj=settings_obj,
     )
     allowed_list = (
-        list(allowed_topics) if allowed_topics is not None else get_allowed_topics(settings_obj)
+        list(allowed_topics)
+        if allowed_topics is not None
+        else get_allowed_topics(settings_obj)
     )
     order = {topic: index for index, topic in enumerate(allowed_list)}
     return sorted(normalized, key=lambda topic: order.get(topic, len(order)))
@@ -216,7 +218,11 @@ async def synchronize_user_topics(
         settings_obj=settings_obj,
     )
     subscriptions = (
-        (await db.execute(select(PushSubscription).where(PushSubscription.user_id == user_id)))
+        (
+            await db.execute(
+                select(PushSubscription).where(PushSubscription.user_id == user_id)
+            )
+        )
         .scalars()
         .all()
     )

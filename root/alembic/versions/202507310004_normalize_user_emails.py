@@ -20,7 +20,9 @@ def _ensure_no_duplicates(bind) -> None:
     ).fetchall()
     if duplicates:
         conflicts = ", ".join(row._mapping["normalized"] for row in duplicates)
-        raise RuntimeError(f"Duplicate user emails found after normalization: {conflicts}")
+        raise RuntimeError(
+            f"Duplicate user emails found after normalization: {conflicts}"
+        )
 
 
 def upgrade() -> None:
