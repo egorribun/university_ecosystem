@@ -1,0 +1,130 @@
+name: API security scan (ZAP)
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # Run weekly on Monday at 03:00 UTC
+    - cron: '0 3 * * 1'
+
+concurrency:
+  group: zap-scan-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BACKEND_PORT: 8000
+  ZAP_RULES_FILE: security/zap-rules.tsv
+
+jobs:
+  zap-baseline:
+    name: ZAP baseline scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      security-events: write
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            root/requirements.txt
+            root/requirements-dev.txt
+
+      - name: Install backend dependencies
+        working-directory: root
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Alembic migrations
+        working-directory: root
+        env:
+          DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/testdb
+        run: alembic upgrade head
+
+      - name: Start backend server
+        working-directory: root
+        env:
+          DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/testdb
+          REDIS_URL: redis://localhost:6379/0
+          SECRET_KEY: ci-test-secret-key-do-not-use-in-production
+          OTEL_SDK_DISABLED: "true"
+        run: |
+          uvicorn app.main:app --host 0.0.0.0 --port ${{ env.BACKEND_PORT }} &
+          sleep 10
+          curl --retry 10 --retry-delay 2 --retry-connrefused http://localhost:${{ env.BACKEND_PORT }}/health
+
+      - name: Create ZAP rules file if missing
+        run: |
+          mkdir -p security
+          if [ ! -f "${{ env.ZAP_RULES_FILE }}" ]; then
+            cat > "${{ env.ZAP_RULES_FILE }}" << 'EOF'
+          # ZAP Passive Scan Rules Configuration
+          # Format: rule_id	action	reason
+          # Actions: IGNORE, WARN, FAIL
+          10021	WARN	X-Content-Type-Options Header Missing
+          10038	WARN	Content Security Policy (CSP) Header Not Set
+          10098	IGNORE	Cross-Domain Misconfiguration (expected for API)
+          EOF
+          fi
+
+      - name: ZAP baseline scan
+        uses: zaproxy/action-baseline@v0.14.0
+        with:
+          target: http://localhost:${{ env.BACKEND_PORT }}
+          rules_file_name: ${{ env.ZAP_RULES_FILE }}
+          cmd_options: '-a -j -I'
+          allow_issue_writing: false
+          fail_action: false
+
+      - name: Upload ZAP report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report
+          path: report_html.html
+          if-no-files-found: warn
+
+      - name: Job summary
+        if: always()
+        run: |
+          cat <<'SUMMARY' >> "$GITHUB_STEP_SUMMARY"
+          ## ZAP API Security Scan
+
+          - Target: `http://localhost:${{ env.BACKEND_PORT }}`
+          - Rules file: `${{ env.ZAP_RULES_FILE }}`
+
+          See the uploaded artifact for the full HTML report.
+          SUMMARY

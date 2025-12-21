@@ -11,6 +11,7 @@ import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 const DEFAULT_AVATAR = AVATAR_PLACEHOLDER_URL
 import PageFadeIn from "../components/PageFadeIn"
 import Layout from "../components/Layout"
+import SmartImage from "@/components/SmartImage"
 import {
   CircularProgress,
   Snackbar,
@@ -222,13 +223,11 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
               referrerPolicy="no-referrer"
               onLoad={handleImageLoad}
               onError={handleImageError}
-              className={`w-full h-full rounded-lg object-cover transition-opacity duration-300 ${
-                imageLoaded ? "opacity-100" : "opacity-0"
-              } ${
-                prefersReduce || reduced
+              className={`w-full h-full rounded-lg object-cover transition-opacity duration-300 ${imageLoaded ? "opacity-100" : "opacity-0"
+                } ${prefersReduce || reduced
                   ? ""
                   : "scale-[1.012] transition-transform duration-[900ms] cubic-bezier-[0.22,0.61,0.36,1] hover:scale-[1.02]"
-              }`}
+                }`}
             />
           ) : (
             <div className="w-full h-full rounded-lg bg-[#2a2a2a] flex items-center justify-center">
@@ -238,9 +237,8 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
         </div>
         <div className="min-w-0 flex flex-col gap-1.5" aria-live="polite">
           <h3
-            className={`np-title font-extrabold leading-tight tracking-tight text-white text-base transition-opacity duration-200 ${
-              imageLoaded || !data.album_image_url || imageError ? "opacity-100" : "opacity-0"
-            }`}
+            className={`np-title font-extrabold leading-tight tracking-tight text-white text-base transition-opacity duration-200 ${imageLoaded || !data.album_image_url || imageError ? "opacity-100" : "opacity-0"
+              }`}
           >
             {data.track_name || "—"}
           </h3>
@@ -341,8 +339,8 @@ export default function Profile() {
   const prevSpotifyConnectedRef = useRef(spotifyConnected)
   const showNowPlaying = Boolean(
     spotifyConnected &&
-      nowPlaying &&
-      (nowPlaying.track_id || nowPlaying.track_name || nowPlaying.artists.length > 0)
+    nowPlaying &&
+    (nowPlaying.track_id || nowPlaying.track_name || nowPlaying.artists.length > 0)
   )
   const location = useLocation()
   const navigate = useNavigate()
@@ -709,11 +707,17 @@ export default function Profile() {
                       <div
                         className={`absolute inset-0 bg-center bg-cover ${reduceMotion ? "" : "transition-transform duration-[1200ms] cubic-bezier-[0.33,1,0.68,1]"}`}
                         style={{
-                          backgroundImage: coverImageUrl ? `url(${coverImageUrl})` : undefined,
                           transform: `translateY(${coverParallax}px) scale(${coverScale})`,
                           filter: "saturate(1) contrast(1.02) brightness(0.98)",
                         }}
-                      />
+                      >
+                        <SmartImage
+                          srcRaw={user?.cover_url ?? undefined}
+                          fallback={profileBg}
+                          cacheV={coverVersion}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
                       {/* Dark Matte Overlay */}
                       <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[rgba(6,9,20,0.85)] dark:to-[rgba(6,9,20,0.92)] from-35%" />
 
@@ -724,21 +728,14 @@ export default function Profile() {
                       >
                         <div className="avatar-ring w-full h-full">
                           <div className="relative w-full h-full rounded-full bg-white/10 overflow-hidden">
-                            {avatarImageUrl ? (
-                              <img
-                                src={avatarImageUrl}
-                                alt={user?.full_name ?? undefined}
-                                onError={handleAvatarImgError}
-                                loading="lazy"
-                                decoding="async"
-                                referrerPolicy="no-referrer"
-                                className="w-full h-full rounded-full object-cover"
-                              />
-                            ) : (
-                              <div className="w-full h-full rounded-full bg-white/10 text-white/90 flex items-center justify-center text-[clamp(28px,6vw,64px)] font-bold">
-                                {user?.full_name?.[0]}
-                              </div>
-                            )}
+                            <SmartImage
+                              srcRaw={user?.avatar_url ?? undefined}
+                              fallback={DEFAULT_AVATAR}
+                              cacheV={avatarVersion}
+                              alt={user?.full_name ?? undefined}
+                              className="w-full h-full rounded-full object-cover"
+                              onError={handleAvatarImgError}
+                            />
                           </div>
                         </div>
 
@@ -807,10 +804,10 @@ export default function Profile() {
                                 isTest || reduced
                                   ? { duration: 0 }
                                   : {
-                                      delay: idx * 0.09,
-                                      duration: 0.56,
-                                      ease: [0.22, 0.61, 0.36, 1],
-                                    }
+                                    delay: idx * 0.09,
+                                    duration: 0.56,
+                                    ease: [0.22, 0.61, 0.36, 1],
+                                  }
                               }
                             >
                               <span className="inline-flex items-center px-3 sm:px-4 py-1 sm:py-1.5 rounded-full border border-white/30 dark:border-white/25 bg-white/20 dark:bg-white/15 text-white text-xs sm:text-sm font-bold tracking-wide transition-all duration-300 hover:scale-105 hover:shadow-md hover:bg-white/28 dark:hover:bg-white/22">
@@ -1215,10 +1212,10 @@ export default function Profile() {
                                           isTest || reduced
                                             ? { duration: 0 }
                                             : {
-                                                delay: idx * 0.09,
-                                                duration: 0.5,
-                                                ease: [0.22, 0.61, 0.36, 1],
-                                              }
+                                              delay: idx * 0.09,
+                                              duration: 0.5,
+                                              ease: [0.22, 0.61, 0.36, 1],
+                                            }
                                         }
                                         onClick={() =>
                                           setAchOpen({

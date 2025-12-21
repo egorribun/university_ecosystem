@@ -9,11 +9,11 @@ type StoryResponse = components["schemas"]["StoryOut"]
 type DeleteStoryResponse =
   paths["/api/v1/stories/{story_id}"]["delete"]["responses"]["200"]["content"]["application/json"]
 
-export function fetchStories(ifNoneMatch?: string | null) {
+export function fetchStories() {
   return axios.get<StoriesListResponse>("/stories", {
-    headers: ifNoneMatch ? { "If-None-Match": ifNoneMatch } : undefined,
-    validateStatus: (status) => status === 304 || (status >= 200 && status < 300),
-  })
+    validateStatus: (status: number) => status >= 200 && status < 400,
+    etagCacheKey: "dashboard:stories",
+  } as any)
 }
 
 export function createStory(payload: StoryCreatePayload) {

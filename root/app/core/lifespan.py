@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from app.core.config import settings
 from app.core.database import Base, engine, wait_db
 from app.core.observability import shutdown_observability
+from app.core.tkq import broker
 from app.deps.cache import shutdown_cache
 from app.services import notification_queue, webpush
 from app.services.cache_warmup import warm_cache
@@ -50,10 +51,15 @@ from app.services.story_cleanup import (
     cleanup_expired_stories,
     start_story_cleanup_scheduler,
 )
+from app.services.partition_manager import (
+    ensure_partitions_exist,
+    start_partition_management_scheduler,
+)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    await broker.startup()
     await wait_db(max_attempts=10, delay=0.5)
     if settings.auto_create_schema:
         async with engine.begin() as conn:
@@ -67,6 +73,7 @@ async def lifespan(app: FastAPI):
     stop_mfa_challenge_cleanup = None
     stop_email_change_cleanup = None
     stop_privacy_cleanup = None
+    stop_partition_management = None
     if settings.is_development and settings.notifications_scheduler_inline_enabled:
         stop_scheduler = await start_notifications_scheduler(
             poll_seconds=settings.notifications_scheduler_poll_seconds,
@@ -163,6 +170,12 @@ async def lifespan(app: FastAPI):
                 interval_seconds=settings.privacy_cleanup_interval_seconds,
             )
         )
+    if settings.partition_management_enabled:
+        await ensure_partitions_exist()
+        stop_partition_management = await start_partition_management_scheduler(
+            interval_seconds=settings.partition_management_interval_seconds
+        )
+
     await warm_cache()
     try:
         yield
@@ -185,7 +198,10 @@ async def lifespan(app: FastAPI):
             await stop_mfa_challenge_cleanup()
         if stop_privacy_cleanup is not None:
             await stop_privacy_cleanup()
+        if stop_partition_management is not None:
+            await stop_partition_management()
         await notification_queue.shutdown_notification_queue()
         webpush.cleanup()
         await shutdown_cache()
+        await broker.shutdown()
         shutdown_observability()

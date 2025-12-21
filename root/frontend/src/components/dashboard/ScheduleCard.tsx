@@ -1,4 +1,5 @@
 import { useMemo, type KeyboardEvent, type CSSProperties } from "react"
+import { motion } from "framer-motion"
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { Badge, Button, Card, ProgressBar, Skeleton } from "@/components/ui"
@@ -104,7 +105,7 @@ export function ScheduleCard({
     return Math.round((passed / span) * 100)
   }, [currentLesson, minutesNow])
 
-  const warmSchedulePage = () => import("../../pages/Schedule").catch(() => {})
+  const warmSchedulePage = () => import("../../pages/Schedule").catch(() => { })
 
   const prepareOnKey = (event: KeyboardEvent, callback: () => void) => {
     if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
@@ -190,10 +191,16 @@ export function ScheduleCard({
           </div>
         )}
         {loadingSched && (
-          <div className="space-y-3" role="presentation">
-            <Skeleton height={22} />
-            <Skeleton height={22} />
-            <Skeleton height={22} />
+          <div className="space-y-4" role="presentation">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="flex flex-col gap-2 rounded-ue-lg border border-[color:var(--dash-panel-item-divider)] bg-[color:var(--dash-panel-item-bg)] px-4 py-3 opacity-60">
+                <div className="flex items-center gap-2">
+                  <Skeleton width={80} height={18} />
+                  <Skeleton width={120} height={20} />
+                </div>
+                <Skeleton width="60%" height={14} />
+              </div>
+            ))}
           </div>
         )}
         {!loadingSched && todayLessons.length === 0 && (
@@ -235,13 +242,35 @@ export function ScheduleCard({
           </ul>
         )}
       </div>
-      <span
+      <motion.span
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top,var(--dash-card-schedule-radial),transparent_72%)] opacity-0 mix-blend-soft-light transition-opacity duration-500 group-hover:opacity-80"
+        initial={{ opacity: 0 }}
+        whileHover={{ opacity: 0.8 }}
+        animate={{
+          scale: [1, 1.1, 1],
+        }}
+        transition={{
+          duration: 4,
+          repeat: Infinity,
+          ease: "easeInOut"
+        }}
+        className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top,var(--dash-card-schedule-radial),transparent_72%)] mix-blend-soft-light transition-opacity duration-500"
       />
-      <span
+      <motion.span
         aria-hidden="true"
-        className="pointer-events-none absolute -top-24 right-10 z-0 h-36 w-36 rounded-full bg-[radial-gradient(circle,var(--dash-card-schedule-orb),transparent)] opacity-30 blur-3xl mix-blend-soft-light transition duration-700 group-hover:opacity-70"
+        initial={{ opacity: 0.3 }}
+        whileHover={{ opacity: 0.7 }}
+        animate={{
+          scale: [1, 1.15, 1],
+          x: [0, 8, 0],
+          y: [0, -8, 0],
+        }}
+        transition={{
+          duration: 6,
+          repeat: Infinity,
+          ease: "easeInOut"
+        }}
+        className="pointer-events-none absolute -top-24 right-10 z-0 h-36 w-36 rounded-full bg-[radial-gradient(circle,var(--dash-card-schedule-orb),transparent)] blur-3xl mix-blend-soft-light transition-opacity duration-700"
       />
     </Card>
   )

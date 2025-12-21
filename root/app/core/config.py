@@ -290,6 +290,9 @@ class Settings(BaseSettings):
     mfa_challenge_max_attempts: int = 5
     mfa_step_up_ttl_seconds: int = 300
     mfa_totp_attempt_limit: int = 5
+    webauthn_rp_id: str = "localhost"
+    webauthn_rp_name: str = "University Ecosystem"
+    webauthn_origin: str = "http://localhost:5173"
     trusted_device_expire_days: int = 30
     trusted_device_cookie_name: str = "trusted_device"
     security_csp: str = ""
@@ -318,9 +321,15 @@ class Settings(BaseSettings):
     coep_value: str = "require-corp"
     enable_corp: bool = False
     corp_value: str = "same-site"
+    image_proxy_enabled: bool = True
+    image_proxy_cache_dir: str = "cache/images"
+    image_proxy_cache_size_gb: float = 2.0
+    image_proxy_allowed_widths: str | list[int] = "100,200,400,800,1200,1600"
+    audit_log_secret: str = ""
     cache_backend: str = "redis"
     cache_enabled: bool = True
     cache_redis_url: str = "redis://127.0.0.1:6379/0"
+    taskiq_broker_url: str = "redis://127.0.0.1:6379/1"
     session_storage_backend: str = "redis"
     cache_default_ttl_seconds: int = 300
     stats_cache_ttl_seconds: int = 180
@@ -379,7 +388,9 @@ class Settings(BaseSettings):
     session_retention_days: int = 90
     mfa_retention_days: int = 30
     failed_login_retention_days: int = 30
-    access_log_retention_days: int = 180
+    access_log_retention_days: int = 365
+    partition_management_enabled: bool = True
+    partition_management_interval_seconds: int = 86400
     event_file_allowed_mime_types: str | list[str] = (
         "application/pdf,"
         "text/plain,"
@@ -577,6 +588,13 @@ class Settings(BaseSettings):
         if value < 0:
             raise ValueError("MFA_TOTP_INITIAL_SKEW_WINDOWS must be zero or positive")
         return value
+
+    @field_validator("image_proxy_allowed_widths", mode="before")
+    @classmethod
+    def _validate_image_proxy_widths(
+        cls, value: Iterable[str | int] | str | None
+    ) -> list[int]:
+        return sorted(_coerce_int_list(value))
 
     model_config = SettingsConfigDict(
         env_file=str(_ENV_FILE) if _ENV_FILE is not None else None,

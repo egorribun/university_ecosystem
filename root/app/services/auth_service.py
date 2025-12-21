@@ -21,6 +21,7 @@ from app.schemas import schemas
 from app.services.audit_service import AuditService
 from app.services.session_cleanup import revoke_sessions_matching
 from app.utils.email import RESET_TOKEN_EXPIRY_MINUTES, send_reset_email
+from app.tasks.email import send_auth_email
 
 logger = logging.getLogger(__name__)
 
@@ -35,16 +36,7 @@ def _send_reset_email_blocking(
     send_reset_email(to_email, link, full_name, locale=locale)
 
 
-async def _send_reset_email(
-    to_email: str, link: str, full_name: str = "", locale: str | None = None
-) -> None:
-    await anyio.to_thread.run_sync(
-        _send_reset_email_blocking,
-        to_email,
-        link,
-        full_name,
-        locale,
-    )
+# Removed local _send_reset_email in favor of TaskIQ task
 
 
 async def _prepare_password_reset_token(
@@ -172,8 +164,7 @@ class AuthService:
             base = settings.app_base_url_clean
             reset_link = f"{base}/reset-password?token={token}"
             locale = resolve_locale(request=request, user=user)
-            bg.add_task(
-                _send_reset_email,
+            await send_auth_email.kiq(
                 user.email,
                 reset_link,
                 user.full_name or "",
@@ -333,8 +324,7 @@ class AuthService:
 
         base = settings.app_base_url_clean
         confirm_link = f"{base}/settings/email-confirm?token={token}"
-        bg.add_task(
-            _send_reset_email,
+        await send_auth_email.kiq(
             validated_email,
             confirm_link,
             user.full_name or "",

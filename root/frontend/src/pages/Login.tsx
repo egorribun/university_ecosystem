@@ -17,6 +17,8 @@ import type { PendingMfaState } from "@/types/Auth"
 import { isAxiosError } from "axios"
 import OtpEntry from "@/components/mfa/OtpEntry"
 import ParticleAuthBackground from "@/components/ui/ParticleAuthBackground"
+import { startAuthentication } from "@simplewebauthn/browser"
+import { Fingerprint } from "lucide-react"
 
 type ChallengeMethod = PendingMfaState["methods"][number]
 type ChallengeWithAttempts = ChallengeMethod &
@@ -139,7 +141,18 @@ const Login = () => {
   )
 
   const otpChallenge = useMemo<ChallengeMethod | null>(
-    () => (loginChallenge ? (loginChallenge.methods[0] ?? null) : null),
+    () =>
+      loginChallenge
+        ? (loginChallenge.methods.find((m) => (m.method as any) === "totp") ?? null)
+        : null,
+    [loginChallenge]
+  )
+
+  const webauthnChallenge = useMemo<ChallengeMethod | null>(
+    () =>
+      loginChallenge
+        ? (loginChallenge.methods.find((m) => (m.method as any) === "webauthn") ?? null)
+        : null,
     [loginChallenge]
   )
 
@@ -256,14 +269,8 @@ const Login = () => {
 
   const handleOtpVerify = useCallback(
     async (code: string) => {
-      if (!loginChallenge) {
+      if (!loginChallenge || !otpChallenge) {
         setMfaError(t("auth:mfa.errors.expired"))
-        setMfaErrorSource("general")
-        return
-      }
-      const challenge = loginChallenge.methods[0]
-      if (!challenge) {
-        setMfaError(t("auth:mfa.errors.missingChallenge"))
         setMfaErrorSource("general")
         return
       }
@@ -274,8 +281,9 @@ const Login = () => {
 
       try {
         await submitMfaChallenge({
+          method: "totp",
           code,
-          challengeToken: challenge.challenge_token,
+          challengeToken: otpChallenge.challenge_token,
           trustDevice,
         })
         navigate("/dashboard")
@@ -298,8 +306,44 @@ const Login = () => {
         setMfaBusy(false)
       }
     },
-    [loginChallenge, navigate, submitMfaChallenge, t]
+    [loginChallenge, otpChallenge, navigate, submitMfaChallenge, t, trustDevice]
   )
+
+  const handleWebAuthnVerify = useCallback(async () => {
+    if (!loginChallenge || !webauthnChallenge || !webauthnChallenge.options) {
+      setMfaError(t("auth:mfa.errors.expired"))
+      setMfaErrorSource("general")
+      return
+    }
+
+    setMfaBusy(true)
+    setMfaError(null)
+    setMfaErrorSource(null)
+
+    try {
+      const response = await startAuthentication(webauthnChallenge.options as any)
+
+      await submitMfaChallenge({
+        method: "webauthn",
+        webauthnResponse: response,
+        challengeToken: webauthnChallenge.challenge_token,
+        trustDevice,
+      })
+      navigate("/dashboard")
+    } catch (err) {
+      let message = t("auth:mfa.errors.generic")
+      if (err instanceof Error && err.message) {
+        message = err.message
+      }
+      if (isAxiosError(err) && err.response?.data?.detail) {
+        message = err.response.data.detail
+      }
+      setMfaError(message)
+      setMfaErrorSource("general")
+    } finally {
+      setMfaBusy(false)
+    }
+  }, [loginChallenge, webauthnChallenge, navigate, submitMfaChallenge, t, trustDevice])
 
   const activeEmail = pendingEmail || currentEmail || savedEmail.current || ""
   const generalMfaError = mfaErrorSource === "general" ? mfaError : null
@@ -371,8 +415,33 @@ const Login = () => {
                 </div>
               ) : null}
 
-              {otpChallenge ? (
+              {webauthnChallenge && (
+                <button
+                  type="button"
+                  onClick={handleWebAuthnVerify}
+                  disabled={mfaBusy}
+                  className="inline-flex w-full items-center justify-center gap-3 rounded-[1.2rem] bg-[color:color-mix(in_srgb,var(--nav-link)_15%,transparent)] px-6 py-4 text-lg font-bold text-[color:var(--nav-link)] transition hover:bg-[color:color-mix(in_srgb,var(--nav-link)_25%,transparent)] disabled:opacity-50"
+                >
+                  <Fingerprint className="h-6 w-6" />
+                  {t("auth:mfa.webauthn.useSecurityKey", { defaultValue: "Использовать ключ безопасности" })}
+                </button>
+              )}
+
+              {otpChallenge && (
                 <>
+                  {webauthnChallenge && (
+                    <div className="relative w-full py-2">
+                      <div className="absolute inset-0 flex items-center">
+                        <div className="w-full border-t border-[color:color-mix(in_srgb,var(--glass-border)_40%,transparent)]"></div>
+                      </div>
+                      <div className="relative flex justify-center text-xs uppercase">
+                        <span className="bg-[color:var(--card-bg)] px-2 text-[color:var(--secondary-text)]">
+                          {t("auth:mfa.or", { defaultValue: "ИЛИ" })}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="w-full">
                     <OtpEntry
                       loading={mfaBusy}
@@ -393,7 +462,9 @@ const Login = () => {
                     {t("auth:actions.trustDevice", { defaultValue: "Доверять этому устройству" })}
                   </label>
                 </>
-              ) : (
+              )}
+
+              {!otpChallenge && !webauthnChallenge && (
                 <div className="w-full rounded-2xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-sm font-semibold text-amber-200">
                   {t("auth:mfa.noMethods")}
                 </div>

@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/react"
+import { initTelemetry } from "./telemetry"
 
 let initialized = false
 
@@ -40,6 +41,7 @@ export function initObservability(env: ImportMetaEnv = import.meta.env): boolean
   }
 
   Sentry.init(config)
+  initTelemetry(env)
 
   initialized = true
   return true

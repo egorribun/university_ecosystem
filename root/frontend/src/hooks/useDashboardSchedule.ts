@@ -50,10 +50,18 @@ const createScheduleQueryOptions = (
       createScheduleQueryKey(role, groupId)
     )
 
+    const etagKey = `schedule:group:${groupId}`
     try {
       const response = await api.get<DashboardLesson[]>(`/schedule/${groupId}`, {
         signal,
-      })
+        validateStatus: (status: number) => status >= 200 && status < 400,
+        etagCacheKey: etagKey,
+      } as any)
+
+      if (response.status === 304) {
+        return previous ?? []
+      }
+
       return ensureLessons(response.data)
     } catch (error) {
       if (signal?.aborted) {

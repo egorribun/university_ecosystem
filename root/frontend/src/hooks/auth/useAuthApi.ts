@@ -206,15 +206,26 @@ export const useAuthApi = (
   }, [handleUnauthorized, user])
 
   const submitMfaChallenge = useCallback(
-    async ({ code, challengeToken, trustDevice }: SubmitMfaChallengePayload) => {
+    async ({
+      method = "totp",
+      code,
+      webauthnResponse,
+      challengeToken,
+      trustDevice,
+    }: SubmitMfaChallengePayload) => {
       if (authOperation) return
       setAuthOperation(true)
       try {
         const payload: MfaVerifyPayload = {
-          method: "totp",
-          code,
+          method,
           challenge_token: challengeToken || "",
           trust_device: trustDevice ?? false,
+        }
+
+        if (method === "totp") {
+          payload.code = code
+        } else if (method === "webauthn") {
+          payload.webauthn_response = webauthnResponse
         }
 
         const response = await api.post<TokenWithProfileResponse>("/auth/mfa/verify", payload, {

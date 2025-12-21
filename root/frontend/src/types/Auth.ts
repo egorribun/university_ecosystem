@@ -8,7 +8,9 @@ export type SetUserArg = SetStateAction<UserState>
 export type PendingMfaState = PendingMfaResponse & { reason: "login" | "step-up" }
 
 export type SubmitMfaChallengePayload = {
-  code: string
+  method?: "totp" | "webauthn"
+  code?: string
+  webauthnResponse?: any
   challengeToken?: string
   trustDevice?: boolean
 }

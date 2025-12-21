@@ -22,6 +22,7 @@ import EditIcon from "@mui/icons-material/Edit"
 import CloseIcon from "@mui/icons-material/Close"
 import { useAuth } from "../contexts/AuthContext"
 import SmartImage from "@/components/SmartImage"
+import { motion } from "framer-motion"
 import { cn } from "@/utils/cn"
 import { useTranslation } from "react-i18next"
 import { Button, Badge, Tooltip } from "@/components/ui"
@@ -279,13 +280,13 @@ const EventCardComponent: FC<EventCardProps> = ({
           setQr(code)
           try {
             localStorage.setItem(qrKey(id, user), code)
-          } catch {}
+          } catch { }
         }
       } else {
         setQr(undefined)
         try {
           localStorage.removeItem(qrKey(id, user))
-        } catch {}
+        } catch { }
       }
       setRegistered(nextRegistered)
       return nextRegistered ? "registered" : "unregistered"
@@ -305,7 +306,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       if (cached === "1" && !is_registered) {
         setRegistered(true)
       }
-    } catch {}
+    } catch { }
   }, [id, user?.id, is_registered])
 
   // Persist registration state to localStorage
@@ -317,7 +318,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       } else {
         localStorage.removeItem(regKey(id, user.id))
       }
-    } catch {}
+    } catch { }
   }, [registered, id, user?.id])
 
   useEffect(() => {
@@ -325,14 +326,14 @@ const EventCardComponent: FC<EventCardProps> = ({
       setQr(undefined)
       try {
         localStorage.removeItem(qrKey(id, user))
-      } catch {}
+      } catch { }
       return
     }
     if (my_qr_token) {
       setQr(my_qr_token)
       try {
         localStorage.setItem(qrKey(id, user), my_qr_token)
-      } catch {}
+      } catch { }
     }
   }, [registered, my_qr_token, id, user])
 
@@ -341,7 +342,7 @@ const EventCardComponent: FC<EventCardProps> = ({
     try {
       const stored = localStorage.getItem(qrKey(id, user))
       if (stored) setQr(stored)
-    } catch {}
+    } catch { }
   }, [registered, qr, my_qr_token, id, user])
 
   useLayoutEffect(() => {
@@ -351,14 +352,14 @@ const EventCardComponent: FC<EventCardProps> = ({
         const cached = qr || localStorage.getItem(qrKey(id, user))
         if (cached) setQrOpen(true)
       }
-    } catch {}
+    } catch { }
   }, [id])
 
   useEffect(() => {
     try {
       if (qrOpen) sessionStorage.setItem(qrOpenKey(id), "1")
       else sessionStorage.removeItem(qrOpenKey(id))
-    } catch {}
+    } catch { }
   }, [qrOpen, id])
 
   useEffect(() => {
@@ -417,7 +418,7 @@ const EventCardComponent: FC<EventCardProps> = ({
     Boolean(editData.starts_at) &&
     Boolean(editData.ends_at) &&
     new Date(normalizeDate(editData.ends_at)).getTime() <
-      new Date(normalizeDate(editData.starts_at)).getTime()
+    new Date(normalizeDate(editData.starts_at)).getTime()
 
   const handleRegister = async (e?: React.MouseEvent) => {
     if (e) e.stopPropagation()
@@ -431,7 +432,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       setSnack(t("events:card.messages.registerSuccess"))
       try {
         localStorage.setItem(qrKey(id, user), code)
-      } catch {}
+      } catch { }
     } catch (error) {
       const shouldResync =
         isAxiosError(error) &&
@@ -469,7 +470,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       setSnack(t("events:card.messages.unregisterSuccess"))
       try {
         localStorage.removeItem(qrKey(id, user))
-      } catch {}
+      } catch { }
     } catch (error) {
       const shouldResync =
         isAxiosError(error) &&
@@ -502,7 +503,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       await api.delete(`/events/${id}`)
       try {
         localStorage.removeItem(qrKey(id, user))
-      } catch {}
+      } catch { }
       setSnack(t("events:card.messages.deleteSuccess"))
       onChange && onChange()
     } catch {
@@ -573,19 +574,27 @@ const EventCardComponent: FC<EventCardProps> = ({
   }
   const hoveringDisabled = editOpen || qrOpen
 
-  const entranceDelay = `${(animationIndex % 10) * 80}ms`
+  const entranceEase = [0.22, 1, 0.36, 1] as const
 
   return (
-    <div
-      className="w-full animate-in fade-in slide-in-from-bottom-3 duration-500 fill-mode-both"
-      style={{ animationDelay: entranceDelay }}
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 16, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{
+        duration: 0.45,
+        delay: (animationIndex % 10) * 0.06,
+        ease: entranceEase,
+      }}
+      whileHover={{ y: -4, transition: { duration: 0.2 } }}
+      className="w-full"
     >
       <div
         className={cn(
-          "group relative flex flex-col overflow-hidden rounded-ue-xl border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] text-[color:var(--page-text)] shadow-surface transition-[transform,box-shadow] duration-300 ease-out w-full p-5 transform-gpu will-change-[transform,box-shadow]",
+          "card-glass group relative flex flex-col transition-[box-shadow] duration-300 ease-out w-full p-5 transform-gpu will-change-transform",
           hoveringDisabled
             ? "cursor-default"
-            : "cursor-pointer hover:-translate-y-[2px] hover:scale-[1.015] hover:shadow-surface-strong active:scale-[0.995]"
+            : "cursor-pointer hover:shadow-glass-strong active:scale-[0.985]"
         )}
         style={{ width: "100%" }}
         role="button"
@@ -874,8 +883,8 @@ const EventCardComponent: FC<EventCardProps> = ({
               <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                 {language === "en"
                   ? t("events:form.title_en", {
-                      defaultValue: `${t("events:form.title")} (English)`,
-                    })
+                    defaultValue: `${t("events:form.title")} (English)`,
+                  })
                   : t("events:form.title")}
               </label>
               <input
@@ -889,8 +898,8 @@ const EventCardComponent: FC<EventCardProps> = ({
               <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                 {language === "en"
                   ? t("events:form.description_en", {
-                      defaultValue: `${t("events:form.description")} (English)`,
-                    })
+                    defaultValue: `${t("events:form.description")} (English)`,
+                  })
                   : t("events:form.description")}
               </label>
               <textarea
@@ -904,8 +913,8 @@ const EventCardComponent: FC<EventCardProps> = ({
               <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                 {language === "en"
                   ? t("events:form.type_en", {
-                      defaultValue: `${t("events:form.type")} (English)`,
-                    })
+                    defaultValue: `${t("events:form.type")} (English)`,
+                  })
                   : t("events:form.type")}
               </label>
               <input
@@ -919,8 +928,8 @@ const EventCardComponent: FC<EventCardProps> = ({
               <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                 {language === "en"
                   ? t("events:form.location_en", {
-                      defaultValue: `${t("events:form.location")} (English)`,
-                    })
+                    defaultValue: `${t("events:form.location")} (English)`,
+                  })
                   : t("events:form.location")}
               </label>
               <input
@@ -1032,7 +1041,7 @@ const EventCardComponent: FC<EventCardProps> = ({
 
         <Snackbar open={!!snack} message={snack} onClose={() => setSnack("")} />
       </div>
-    </div>
+    </motion.div>
   )
 }
 

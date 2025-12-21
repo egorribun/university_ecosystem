@@ -1,4 +1,5 @@
 import { FC, memo, useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from "react"
+import { motion } from "framer-motion"
 import MoreVertIcon from "@mui/icons-material/MoreVert"
 import EditIcon from "@mui/icons-material/Edit"
 import DeleteIcon from "@mui/icons-material/Delete"
@@ -281,12 +282,17 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   const hoveringDisabled = editOpen || menuOpen
 
   return (
-    <article
+    <motion.article
+      layout
+      initial={{ opacity: 0, y: 15 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileHover={{ y: -4 }}
+      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
       className={cn(
-        "group relative flex flex-col overflow-hidden rounded-ue-xl border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] text-[color:var(--page-text)] shadow-surface transition-[transform,box-shadow] duration-300 ease-out h-[480px] w-full",
+        "card-glass group relative flex flex-col transition-[box-shadow] duration-300 ease-out h-[480px] w-full transform-gpu",
         hoveringDisabled
           ? "cursor-default"
-          : "cursor-pointer hover:-translate-y-[2px] hover:scale-[1.015] hover:shadow-surface-strong active:scale-[0.995]"
+          : "cursor-pointer hover:shadow-glass-strong active:scale-[0.985]"
       )}
       style={{ width: "100%" }}
     >
@@ -567,7 +573,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
           {t("news:dialogs.delete.description")}
         </p>
       </Dialog>
-    </article>
+    </motion.article>
   )
 }
 

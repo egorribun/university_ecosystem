@@ -10,6 +10,7 @@ from app.api.spotify import router as spotify_router
 from app.api.stats import router as stats_router
 from app.api.stories import router as stories_router
 from app.api.users import router as users_router
+from app.api.images import router as images_router
 from app.auth.auth import router as auth_router
 from app.core.versioning import API_V1_PREFIX
 from app.routers.notifications import router as push_router
@@ -30,3 +31,4 @@ router.include_router(stories_router)
 router.include_router(schedule_api_router)
 router.include_router(stats_router)
 router.include_router(chat_router)
+router.include_router(images_router)

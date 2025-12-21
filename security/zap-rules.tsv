@@ -1,0 +1,23 @@
+# ZAP Passive Scan Rules Configuration
+# Format: rule_id	action	reason
+# Actions: IGNORE, WARN, FAIL
+
+# Information Disclosure
+10021	WARN	X-Content-Type-Options Header Missing
+10038	WARN	Content Security Policy (CSP) Header Not Set
+
+# Cross-Domain (expected for API backends)
+10098	IGNORE	Cross-Domain Misconfiguration
+
+# Cookie flags (handled by application)
+10010	WARN	Cookie No HttpOnly Flag
+10011	WARN	Cookie Without Secure Flag
+
+# CORS (intentional for API)
+10020	IGNORE	X-Frame-Options Header Not Set
+
+# Deprecated headers
+10050	IGNORE	Retrieved from Cache
+
+# Modern browser headers
+10063	WARN	Feature Policy Header Not Set

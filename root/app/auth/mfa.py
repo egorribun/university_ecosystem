@@ -26,6 +26,7 @@ from app.models.models import (
     MfaTotpEnrollment,
     TrustedDevice,
     User,
+    WebAuthnCredential,
 )
 from app.utils import ratelimit as ratelimit_utils
 
@@ -42,7 +43,10 @@ TOTP_ENROLLMENT_LIMIT_ERROR = (
 
 CHALLENGE_TYPE_TOTP_ENROLL = "totp-enroll"
 CHALLENGE_TYPE_TOTP_VERIFY = "totp-verify"
+CHALLENGE_TYPE_WEBAUTHN_REG = "webauthn-registration"
+CHALLENGE_TYPE_WEBAUTHN_AUTH = "webauthn-authentication"
 MFA_METHOD_TOTP = "totp"
+MFA_METHOD_WEBAUTHN = "webauthn"
 
 
 audit_logger = logging.getLogger("app.users.audit")
@@ -51,6 +55,7 @@ audit_logger = logging.getLogger("app.users.audit")
 @dataclass(slots=True)
 class MfaResetStats:
     totp_deleted: int = 0
+    webauthn_deleted: int = 0
     challenges_revoked: int = 0
     fields_cleared: bool = False
 
@@ -59,6 +64,7 @@ class MfaResetStats:
         return any(
             (
                 self.totp_deleted,
+                self.webauthn_deleted,
                 self.challenges_revoked,
                 self.fields_cleared,
             )
@@ -74,6 +80,11 @@ def user_has_confirmed_interactive_factor(user: User) -> bool:
 
     if user.mfa_default_method:
         return True
+    
+    # Check WebAuthn
+    if getattr(user, "webauthn_credentials", None):
+        return True
+
     enrollments = getattr(user, "totp_enrollments", None)
     if not enrollments:
         return False
@@ -572,8 +583,17 @@ async def refresh_user_mfa_preferences(
     )
     totp_available = bool((await db.execute(totp_stmt)).scalars().first())
 
+    webauthn_stmt = (
+        select(WebAuthnCredential.id)
+        .where(WebAuthnCredential.user_id == user.id)
+        .limit(1)
+    )
+    webauthn_available = bool((await db.execute(webauthn_stmt)).scalars().first())
+
     new_default: str | None
-    if totp_available:
+    if webauthn_available:
+        new_default = MFA_METHOD_WEBAUTHN
+    elif totp_available:
         new_default = MFA_METHOD_TOTP
     else:
         new_default = None
@@ -604,11 +624,15 @@ async def reset_user_mfa(db: AsyncSession, *, user: User) -> MfaResetStats:
     totp_result = await db.execute(
         delete(MfaTotpEnrollment).where(MfaTotpEnrollment.user_id == user.id)
     )
+    webauthn_result = await db.execute(
+        delete(WebAuthnCredential).where(WebAuthnCredential.user_id == user.id)
+    )
     challenge_result = await db.execute(
         delete(MfaChallenge).where(MfaChallenge.user_id == user.id)
     )
 
     stats.totp_deleted = int(totp_result.rowcount or 0)
+    stats.webauthn_deleted = int(webauthn_result.rowcount or 0)
     stats.challenges_revoked = int(challenge_result.rowcount or 0)
 
     if user.mfa_required:

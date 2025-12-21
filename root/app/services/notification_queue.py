@@ -21,13 +21,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import async_session
-from app.core.observability import (
-    NotificationQueueMetrics,
-    get_notification_queue_metrics,
-    get_periodic_task_metrics,
+from app.tasks.notifications import (
+    enqueue_event_notification_task,
+    enqueue_news_notification_task,
 )
-from app.models.models import Event, News, Notification, NotificationQueueJob
-from app.services.notifications import notify_about_event, notify_about_news
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +135,25 @@ def _serialize_error(error: BaseException | str | None) -> str | None:
     if isinstance(error, BaseException):
         return f"{error.__class__.__name__}: {error}"
     return str(error)
+
+
+async def enqueue_event_notification(
+    event_id: int, *, locale: str | None = None
+) -> None:
+    """Enqueue an event notification job using TaskIQ."""
+    await enqueue_event_notification_task.kiq(event_id, locale=locale)
+
+
+async def enqueue_news_notification(
+    news_id: int, *, locale: str | None = None
+) -> None:
+    """Enqueue a news notification job using TaskIQ."""
+    await enqueue_news_notification_task.kiq(news_id, locale=locale)
+
+
+async def shutdown_notification_queue() -> None:
+    """No-op for TaskIQ-backed queue."""
+    pass
 
 
 async def record_enqueue_failure(

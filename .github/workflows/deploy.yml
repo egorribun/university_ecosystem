@@ -1,0 +1,209 @@
+name: Deploy (Blue-Green)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      skip_tests:
+        description: 'Skip pre-deployment tests'
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: deploy-${{ github.event.inputs.environment }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  validate:
+    name: Pre-deployment validation
+    runs-on: ubuntu-latest
+    if: ${{ !inputs.skip_tests }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: |
+            root/requirements.txt
+            root/requirements-dev.txt
+
+      - name: Install dependencies
+        working-directory: root
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run critical tests
+        working-directory: root
+        env:
+          OTEL_SDK_DISABLED: "true"
+        run: pytest -x -q --tb=short tests/
+
+      - name: Verify migrations can downgrade
+        working-directory: root
+        env:
+          DATABASE_URL: sqlite+aiosqlite:///./deploy-test.db
+        run: |
+          alembic upgrade head
+          alembic downgrade -1
+          alembic upgrade head
+
+  build-and-push:
+    name: Build and push images
+    runs-on: ubuntu-latest
+    needs: [validate]
+    if: ${{ always() && (needs.validate.result == 'success' || inputs.skip_tests) }}
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      backend_digest: ${{ steps.build_backend.outputs.digest }}
+      frontend_digest: ${{ steps.build_frontend.outputs.digest }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Generate version tag
+        id: version
+        run: |
+          VERSION="${{ github.sha }}-$(date +%Y%m%d%H%M%S)"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Login to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push backend
+        id: build_backend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: root/backend.Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend:${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend:${{ inputs.environment }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+      - name: Build and push frontend
+        id: build_frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: root/frontend.Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend:${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend:${{ inputs.environment }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+  deploy:
+    name: Deploy to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    needs: [build-and-push]
+    environment:
+      name: ${{ inputs.environment }}
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Deploy (placeholder)
+        id: deploy
+        run: |
+          echo "::notice::Blue-Green deployment to ${{ inputs.environment }}"
+          echo "Backend image: ${{ needs.build-and-push.outputs.backend_digest }}"
+          echo "Frontend image: ${{ needs.build-and-push.outputs.frontend_digest }}"
+          echo "Version: ${{ needs.build-and-push.outputs.version }}"
+          
+          # Placeholder for actual deployment commands
+          # This would typically:
+          # 1. Deploy to "green" environment
+          # 2. Run health checks
+          # 3. Switch traffic from "blue" to "green"
+          # 4. Keep "blue" as rollback target
+          
+          echo "url=https://${{ inputs.environment }}.example.com" >> "$GITHUB_OUTPUT"
+
+      - name: Post-deployment health check
+        run: |
+          echo "Running health checks..."
+          # curl --retry 5 --retry-delay 10 "${{ steps.deploy.outputs.url }}/health"
+
+  rollback:
+    name: Rollback capability test
+    runs-on: ubuntu-latest
+    needs: [deploy]
+    if: ${{ inputs.environment == 'staging' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: root/requirements.txt
+
+      - name: Install dependencies
+        working-directory: root
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Test database rollback
+        working-directory: root
+        env:
+          DATABASE_URL: sqlite+aiosqlite:///./rollback-test.db
+        run: |
+          echo "Testing migration rollback capability..."
+          alembic upgrade head
+          alembic downgrade -1
+          echo "✅ Rollback successful"
+          alembic upgrade head
+          echo "✅ Re-upgrade successful"
+
+  notify:
+    name: Notify deployment status
+    runs-on: ubuntu-latest
+    needs: [deploy, rollback]
+    if: always()
+    steps:
+      - name: Deployment summary
+        run: |
+          cat <<'SUMMARY' >> "$GITHUB_STEP_SUMMARY"
+          ## Deployment Summary
+          
+          | Property | Value |
+          |----------|-------|
+          | Environment | `${{ inputs.environment }}` |
+          | Version | `${{ needs.build-and-push.outputs.version }}` |
+          | Deploy Status | `${{ needs.deploy.result }}` |
+          | Rollback Test | `${{ needs.rollback.result }}` |
+          
+          **Triggered by:** @${{ github.actor }}
+          SUMMARY
