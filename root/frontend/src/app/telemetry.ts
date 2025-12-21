@@ -1,4 +1,4 @@
-import { WebTracerProvider } from "@opentelemetry/sdk-trace-web"
+import { WebTracerProvider, type SpanProcessor } from "@opentelemetry/sdk-trace-web"
 import { BatchSpanProcessor, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base"
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http"
 import { registerInstrumentations } from "@opentelemetry/instrumentation"
@@ -29,7 +29,7 @@ export function initTelemetry(env: ImportMetaEnv = import.meta.env) {
 
   const processor = env.DEV ? new SimpleSpanProcessor(exporter) : new BatchSpanProcessor(exporter)
 
-  provider.addSpanProcessor(processor)
+  provider.addSpanProcessor(processor as unknown as SpanProcessor)
   provider.register()
 
   registerInstrumentations({

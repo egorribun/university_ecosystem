@@ -58,7 +58,7 @@ export const Past: Story = {
 export const WithoutImage: Story = {
   args: {
     ...mockEvent,
-    photo_url: undefined,
+    image_url: undefined,
   },
 }
 
