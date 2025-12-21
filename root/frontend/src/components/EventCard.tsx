@@ -577,7 +577,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       className="w-full animate-in fade-in slide-in-from-bottom-3 duration-500 fill-mode-both"
       style={{ animationDelay: entranceDelay }}
     >
-      <article
+      <div
         className={cn(
           "group relative flex flex-col overflow-hidden rounded-ue-xl border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] text-[color:var(--page-text)] shadow-surface transition-[transform,box-shadow] duration-300 ease-out w-full p-5 transform-gpu will-change-[transform,box-shadow]",
           hoveringDisabled
@@ -1025,7 +1025,7 @@ const EventCardComponent: FC<EventCardProps> = ({
         </Dialog>
 
         <Snackbar open={!!snack} message={snack} onClose={() => setSnack("")} />
-      </article>
+      </div>
     </div>
   )
 }

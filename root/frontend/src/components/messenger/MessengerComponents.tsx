@@ -141,7 +141,7 @@ interface ChatWindowProps {
   messages: Message[]
 }
 
-export const ChatWindow: React.FC<ChatWindowProps> = memo(({ messages }) => {
+const ChatWindow: React.FC<ChatWindowProps> = memo(({ messages }) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const prevMessagesLengthRef = useRef(0)
@@ -284,6 +284,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = memo(({ messages }) => {
     </div>
   )
 })
+ChatWindow.displayName = "ChatWindow"
+export { ChatWindow }
 
 interface MessageInputProps {
   onSend: (text: string, files: File[]) => void
