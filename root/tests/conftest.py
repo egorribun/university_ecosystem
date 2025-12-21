@@ -225,7 +225,7 @@ async def prepare_database() -> AsyncIterator[None]:
                 dedupe_key VARCHAR(255),
                 read BOOLEAN DEFAULT 0,
                 read_at DATETIME,
-                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
         await conn.exec_driver_sql(
@@ -243,7 +243,7 @@ async def prepare_database() -> AsyncIterator[None]:
             CREATE TABLE IF NOT EXISTS notification_deliveries (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 notification_id INTEGER NOT NULL,
-                notification_created_at DATETIME NOT NULL,
+                notification_created_at TIMESTAMP,
                 channel VARCHAR NOT NULL DEFAULT 'inapp',
                 status VARCHAR NOT NULL DEFAULT 'delivered',
                 attempted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

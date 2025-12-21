@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 import pytest
 
 from app.auth.security import get_password_hash
@@ -21,8 +23,10 @@ async def test_notifications_localization(async_client, db_session, user_factory
     hashed = get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True)
 
+    now = datetime.now(UTC)
     primary = models.Notification(
         user_id=user.id,
+        created_at=now,
         title="Новое уведомление",
         body="Русский текст",
         title_en="New notification",
@@ -30,6 +34,7 @@ async def test_notifications_localization(async_client, db_session, user_factory
     )
     fallback = models.Notification(
         user_id=user.id,
+        created_at=now,
         title="Без перевода",
         body="Только русский текст",
     )

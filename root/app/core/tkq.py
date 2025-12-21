@@ -3,13 +3,17 @@ from taskiq_redis import RedisAsyncResultBackend, RedisStreamBroker
 
 from app.core.config import settings
 
-result_backend = RedisAsyncResultBackend(
-    redis_url=settings.taskiq_broker_url,
-)
+if settings.environment.lower() in ("test", "testing"):
+    from taskiq import InMemoryBroker
+    broker = InMemoryBroker()
+else:
+    result_backend = RedisAsyncResultBackend(
+        redis_url=settings.taskiq_broker_url,
+    )
 
-broker = RedisStreamBroker(
-    url=settings.taskiq_broker_url,
-).with_result_backend(result_backend)
+    broker = RedisStreamBroker(
+        url=settings.taskiq_broker_url,
+    ).with_result_backend(result_backend)
 
 # This allows TaskIQ to use FastAPI dependencies
 taskiq_fastapi.init(broker, "app.main:app")
