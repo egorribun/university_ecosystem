@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import {
   ContactList,
@@ -176,6 +176,25 @@ export default function Messenger() {
     // No more polling needed - WebSocket handles real-time updates
   })
   const messages = messagesData?.items ?? []
+
+  // Memoize transformed messages to prevent infinite re-renders in ChatWindow
+  const transformedMessages = useMemo(() => {
+    return messages.map((m) => ({
+      id: m.id,
+      senderId: String(m.sender_id),
+      text: m.content,
+      timestamp: formatMessageTime(m.created_at),
+      isMe: m.sender_id === user?.id,
+      status: (m.read_status ? "read" : "sent") as "read" | "sent",
+      attachments: m.attachments?.map((a) => ({
+        id: a.id,
+        url: a.url,
+        type: a.file_type,
+        name: a.filename,
+        size: a.size,
+      })),
+    }))
+  }, [messages, user?.id])
 
   // Send Message Mutation
   const sendMessageMutation = useMutation({
@@ -673,23 +692,7 @@ export default function Messenger() {
               </div>
             )}
 
-            <ChatWindow
-              messages={messages.map((m) => ({
-                id: m.id,
-                senderId: String(m.sender_id),
-                text: m.content,
-                timestamp: formatMessageTime(m.created_at),
-                isMe: m.sender_id === user?.id,
-                status: m.read_status ? "read" : "sent",
-                attachments: m.attachments?.map((a) => ({
-                  id: a.id,
-                  url: a.url,
-                  type: a.file_type,
-                  name: a.filename,
-                  size: a.size,
-                })),
-              }))}
-            />
+            <ChatWindow messages={transformedMessages} />
             <MessageInput onSend={handleSendMessage} />
           </>
         ) : (

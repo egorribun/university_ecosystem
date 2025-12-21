@@ -178,6 +178,23 @@
   --msg-send-btn-hover: #2b7cd3;
   --msg-chat-bg: #e7ebee;
   --msg-empty-icon: #adb5bd;
+
+  /* iOS-Style Design System */
+  --ios-card-shadow: 0 2px 8px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.08);
+  --ios-card-shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.06), 0 16px 32px rgba(0, 0, 0, 0.12);
+  --ios-card-radius: 20px;
+  --ios-card-border: rgba(0, 0, 0, 0.06);
+  --ios-glass-bg: rgba(255, 255, 255, 0.72);
+  --ios-glass-blur: 24px;
+  --ios-glass-border: rgba(255, 255, 255, 0.4);
+  --ios-segment-bg: rgba(118, 118, 128, 0.12);
+  --ios-segment-active: #ffffff;
+  --ios-segment-shadow: 0 1px 4px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04);
+  --ios-input-bg: rgba(142, 142, 147, 0.12);
+  --ios-input-border: transparent;
+  --ios-input-focus-border: rgba(0, 122, 255, 0.5);
+  --ios-transition-spring: 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ios-transition-smooth: 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
 body.dark {
@@ -276,6 +293,10 @@ body.dark {
   --glass-alpha: 0.45;
   --hint-fg: rgba(255, 255, 255, 0.7);
   --placeholder-fg: rgba(255, 255, 255, 0.58);
+  --slate-05: #0d1a2e;
+  --slate-10: #132033;
+  --slate-20: #1b2d48;
+  --slate-40: #2a4060;
   --ue-focus-ring: 0 0 0 1px rgba(6, 11, 20, 0.92), 0 0 0 4px rgba(127, 182, 230, 0.45);
 
   /* Messenger — Premium Blue (Dark) */
@@ -307,6 +328,18 @@ body.dark {
   --msg-send-btn-hover: #5294e2;
   --msg-chat-bg: #060b14;
   --msg-empty-icon: #4a6b8a;
+
+  /* iOS-Style Design System (Dark) */
+  --ios-card-shadow: 0 2px 8px rgba(0, 0, 0, 0.2), 0 8px 24px rgba(0, 0, 0, 0.3);
+  --ios-card-shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.25), 0 16px 32px rgba(0, 0, 0, 0.4);
+  --ios-card-border: rgba(255, 255, 255, 0.08);
+  --ios-glass-bg: rgba(20, 30, 48, 0.72);
+  --ios-glass-border: rgba(255, 255, 255, 0.12);
+  --ios-segment-bg: rgba(118, 118, 128, 0.24);
+  --ios-segment-active: rgba(30, 42, 60, 0.95);
+  --ios-segment-shadow: 0 1px 4px rgba(0, 0, 0, 0.2), 0 2px 8px rgba(0, 0, 0, 0.15);
+  --ios-input-bg: rgba(118, 118, 128, 0.24);
+  --ios-input-focus-border: rgba(64, 156, 255, 0.5);
 }
 
 ::selection {
@@ -3837,4 +3870,33 @@ body.dark .ios-list .ios-row {
 .profile-page .nowplaying--spotify.MuiPaper-root:hover {
   transform: translateY(-1px);
   filter: saturate(112%);
+}
+
+/* Pulse shadow animation for buttons */
+@keyframes pulse-shadow {
+  0%,
+  100% {
+    box-shadow: 0 4px 16px -4px color-mix(in srgb, var(--nav-link) 40%, transparent 60%);
+  }
+
+  50% {
+    box-shadow: 0 6px 24px -4px color-mix(in srgb, var(--nav-link) 55%, transparent 45%);
+  }
+}
+
+.animate-pulse-shadow {
+  animation: pulse-shadow 2s ease-in-out infinite;
+}
+
+/* Fade in animation for cards (no transform to avoid hover conflicts) */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
