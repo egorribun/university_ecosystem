@@ -1,4 +1,10 @@
-import { forwardRef, type ElementType, type ReactElement, type ReactNode, type MouseEvent } from "react"
+import {
+  forwardRef,
+  type ElementType,
+  type ReactElement,
+  type ReactNode,
+  type MouseEvent,
+} from "react"
 import { cn } from "@/utils/cn"
 import type { PolymorphicComponentProps, PolymorphicRef } from "@/types/polymorphic"
 import { useHaptics } from "@/hooks/useHaptics"
@@ -69,7 +75,12 @@ const ButtonBase = <T extends ElementType = "button">(
   }: ButtonProps<T>,
   ref: PolymorphicRef<T>
 ) => {
-  const { disabled, haptics = true, onClick, ...otherProps } = rest as typeof rest & {
+  const {
+    disabled,
+    haptics = true,
+    onClick,
+    ...otherProps
+  } = rest as typeof rest & {
     disabled?: boolean
     onClick?: (e: MouseEvent) => void
   }
@@ -133,4 +144,4 @@ export const Button = forwardRef(
 ) as <T extends ElementType = "button">(
   props: ButtonProps<T> & { ref?: PolymorphicRef<T> }
 ) => ReactElement | null
-  ; (Button as { displayName?: string }).displayName = "Button"
+;(Button as { displayName?: string }).displayName = "Button"

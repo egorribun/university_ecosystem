@@ -502,10 +502,10 @@ function TextField({
           "disabled:border-[color:color-mix(in_srgb,var(--glass-border)_68%,transparent)] disabled:text-[color:rgba(59,73,92,0.58)] disabled:shadow-none",
           error
             ? [
-              "border-[#D14343] hover:border-[#C13B3B]",
-              "focus:border-[#D14343] focus:shadow-[0_0_0_4px_rgba(209,67,67,0.18)]",
-              "shadow-[0_0_0_1px_rgba(209,67,67,0.4)]",
-            ]
+                "border-[#D14343] hover:border-[#C13B3B]",
+                "focus:border-[#D14343] focus:shadow-[0_0_0_4px_rgba(209,67,67,0.18)]",
+                "shadow-[0_0_0_1px_rgba(209,67,67,0.4)]",
+              ]
             : null
         )}
         {...props}
@@ -606,21 +606,21 @@ function FormControlLabel({
     >
       {React.isValidElement(control)
         ? React.cloneElement(
-          control as React.ReactElement<{
-            checked?: boolean
-            value?: string
-            name?: string
-            id?: string
-            onChange?: (e: ChangeEvent<HTMLInputElement>) => void
-          }>,
-          {
-            checked: groupValue === value,
-            value: value,
-            name: "radio-group",
-            id: inputId,
-            onChange: groupOnChange,
-          }
-        )
+            control as React.ReactElement<{
+              checked?: boolean
+              value?: string
+              name?: string
+              id?: string
+              onChange?: (e: ChangeEvent<HTMLInputElement>) => void
+            }>,
+            {
+              checked: groupValue === value,
+              value: value,
+              name: "radio-group",
+              id: inputId,
+              onChange: groupOnChange,
+            }
+          )
         : control}
       <span
         className={cn(
@@ -1133,19 +1133,19 @@ function SwitchControl({
           "absolute inset-0 rounded-full border transition-all duration-200",
           checked
             ? [
-              "border-[color:color-mix(in_srgb,var(--nav-link)_36%,transparent)]",
-              "bg-[color:color-mix(in_srgb,var(--nav-link)_24%,white_76%)]",
-              "shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]",
-            ]
+                "border-[color:color-mix(in_srgb,var(--nav-link)_36%,transparent)]",
+                "bg-[color:color-mix(in_srgb,var(--nav-link)_24%,white_76%)]",
+                "shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]",
+              ]
             : hover && !disabled
               ? [
-                "border-[color:color-mix(in_srgb,var(--nav-link)_22%,transparent)]",
-                "bg-[color:color-mix(in_srgb,var(--card-bg)_95%,rgba(15,79,170,0.12)_5%)]",
-              ]
+                  "border-[color:color-mix(in_srgb,var(--nav-link)_22%,transparent)]",
+                  "bg-[color:color-mix(in_srgb,var(--card-bg)_95%,rgba(15,79,170,0.12)_5%)]",
+                ]
               : [
-                "border-[color:color-mix(in_srgb,var(--glass-border)_82%,transparent)]",
-                "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(15,40,85,0.06)_4%)]",
-              ],
+                  "border-[color:color-mix(in_srgb,var(--glass-border)_82%,transparent)]",
+                  "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(15,40,85,0.06)_4%)]",
+                ],
           "dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]",
           checked
             ? "dark:border-[rgba(127,182,230,0.55)] dark:bg-[color:color-mix(in_srgb,rgba(127,182,230,0.55),rgba(17,24,32,0.45))]"
@@ -1473,11 +1473,11 @@ export default function Settings() {
         setUser((prev) =>
           prev
             ? {
-              ...prev,
-              spotify_connected: false,
-              spotify_is_connected: false,
-              spotify_display_name: null,
-            }
+                ...prev,
+                spotify_connected: false,
+                spotify_is_connected: false,
+                spotify_display_name: null,
+              }
             : prev
         )
       }
@@ -2009,10 +2009,10 @@ export default function Settings() {
             setUser((prev) =>
               prev
                 ? {
-                  ...prev,
-                  mfa_default_method: data.mfa_default_method,
-                  mfa_required: data.mfa_required,
-                }
+                    ...prev,
+                    mfa_default_method: data.mfa_default_method,
+                    mfa_required: data.mfa_required,
+                  }
                 : prev
             )
           }

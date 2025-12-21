@@ -158,10 +158,10 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
         {((shouldShowFallback && fallback) ||
           status === "error" ||
           (!hasImage && !fallbackSrc)) && (
-            <Box sx={fallbackStyles} data-testid="async-image-fallback">
-              {fallback ?? <InsertPhotoOutlinedIcon fontSize="large" />}
-            </Box>
-          )}
+          <Box sx={fallbackStyles} data-testid="async-image-fallback">
+            {fallback ?? <InsertPhotoOutlinedIcon fontSize="large" />}
+          </Box>
+        )}
       </Box>
     )
   }

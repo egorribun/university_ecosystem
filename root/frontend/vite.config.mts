@@ -215,8 +215,20 @@ export default defineConfig(({ mode }) => {
 
   const toPosix = (value: string) => value.replace(/\\/g, "/")
   const routeChunks = [
-    { name: "map", patterns: [toPosix(resolve(srcDir, "pages/Map.tsx")), toPosix(resolve(srcDir, "pages/MapContent.tsx"))] },
-    { name: "schedule", patterns: [toPosix(resolve(srcDir, "pages/Schedule.tsx")), toPosix(resolve(srcDir, "components/schedule"))] },
+    {
+      name: "map",
+      patterns: [
+        toPosix(resolve(srcDir, "pages/Map.tsx")),
+        toPosix(resolve(srcDir, "pages/MapContent.tsx")),
+      ],
+    },
+    {
+      name: "schedule",
+      patterns: [
+        toPosix(resolve(srcDir, "pages/Schedule.tsx")),
+        toPosix(resolve(srcDir, "components/schedule")),
+      ],
+    },
     {
       name: "news",
       patterns: [

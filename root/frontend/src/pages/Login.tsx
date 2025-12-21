@@ -423,7 +423,9 @@ const Login = () => {
                   className="inline-flex w-full items-center justify-center gap-3 rounded-[1.2rem] bg-[color:color-mix(in_srgb,var(--nav-link)_15%,transparent)] px-6 py-4 text-lg font-bold text-[color:var(--nav-link)] transition hover:bg-[color:color-mix(in_srgb,var(--nav-link)_25%,transparent)] disabled:opacity-50"
                 >
                   <Fingerprint className="h-6 w-6" />
-                  {t("auth:mfa.webauthn.useSecurityKey", { defaultValue: "Использовать ключ безопасности" })}
+                  {t("auth:mfa.webauthn.useSecurityKey", {
+                    defaultValue: "Использовать ключ безопасности",
+                  })}
                 </button>
               )}
 

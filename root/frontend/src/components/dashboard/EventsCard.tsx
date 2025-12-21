@@ -32,7 +32,7 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
   const events: Event[] = dashboardEventsQuery.data ?? []
   const loadingEvents = dashboardEventsQuery.isLoading && events.length === 0
 
-  const warmEventsPage = () => import("../../pages/Events").catch(() => { })
+  const warmEventsPage = () => import("../../pages/Events").catch(() => {})
 
   const prefetchEventsList = () => {
     warmEventsPage()
@@ -136,7 +136,10 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
         {loadingEvents && (
           <div className="space-y-4" role="presentation">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="flex flex-col gap-2 rounded-ue-lg border border-[color:var(--dash-panel-item-divider)] bg-[color:var(--dash-panel-item-bg)] px-4 py-3 opacity-60">
+              <div
+                key={i}
+                className="flex flex-col gap-2 rounded-ue-lg border border-[color:var(--dash-panel-item-divider)] bg-[color:var(--dash-panel-item-bg)] px-4 py-3 opacity-60"
+              >
                 <Skeleton width="60%" height={20} />
                 <div className="flex items-center gap-2">
                   <Skeleton width={120} height={16} />
@@ -190,11 +193,11 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
                         label={
                           d
                             ? d.toLocaleString(locale, {
-                              day: "2-digit",
-                              month: "long",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })
+                                day: "2-digit",
+                                month: "long",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })
                             : ""
                         }
                       />
@@ -218,7 +221,7 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
         transition={{
           duration: 5,
           repeat: Infinity,
-          ease: "easeInOut"
+          ease: "easeInOut",
         }}
         className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top_left,var(--dash-card-events-radial),transparent_70%)] mix-blend-soft-light transition-opacity duration-500"
       />
@@ -234,7 +237,7 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
         transition={{
           duration: 7,
           repeat: Infinity,
-          ease: "easeInOut"
+          ease: "easeInOut",
         }}
         className="pointer-events-none absolute -top-16 left-1/4 z-0 h-40 w-40 rounded-full bg-[radial-gradient(circle,var(--dash-card-events-orb),transparent)] blur-3xl mix-blend-soft-light transition-opacity duration-700"
       />

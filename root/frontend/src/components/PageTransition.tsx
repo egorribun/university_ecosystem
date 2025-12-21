@@ -47,7 +47,7 @@ const PageTransition: FC<Props> = ({ children }) => {
       .then((mod) => {
         if (active) setMotionModule(mod)
       })
-      .catch(() => { })
+      .catch(() => {})
     return () => {
       active = false
     }
@@ -76,8 +76,8 @@ const PageTransition: FC<Props> = ({ children }) => {
             transition: {
               duration: 0.5,
               ease: [0.16, 1, 0.3, 1], // Custom Quintic ease-out
-              scale: { duration: 0.6 }
-            }
+              scale: { duration: 0.6 },
+            },
           }}
           exit={{
             opacity: 0,
@@ -85,8 +85,8 @@ const PageTransition: FC<Props> = ({ children }) => {
             scale: 0.98,
             transition: {
               duration: 0.25,
-              ease: [0.7, 0, 0.84, 0] // Custom Cubic ease-in
-            }
+              ease: [0.7, 0, 0.84, 0], // Custom Cubic ease-in
+            },
           }}
           style={{
             position: "relative",

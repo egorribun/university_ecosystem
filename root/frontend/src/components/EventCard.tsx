@@ -280,13 +280,13 @@ const EventCardComponent: FC<EventCardProps> = ({
           setQr(code)
           try {
             localStorage.setItem(qrKey(id, user), code)
-          } catch { }
+          } catch {}
         }
       } else {
         setQr(undefined)
         try {
           localStorage.removeItem(qrKey(id, user))
-        } catch { }
+        } catch {}
       }
       setRegistered(nextRegistered)
       return nextRegistered ? "registered" : "unregistered"
@@ -306,7 +306,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       if (cached === "1" && !is_registered) {
         setRegistered(true)
       }
-    } catch { }
+    } catch {}
   }, [id, user?.id, is_registered])
 
   // Persist registration state to localStorage
@@ -318,7 +318,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       } else {
         localStorage.removeItem(regKey(id, user.id))
       }
-    } catch { }
+    } catch {}
   }, [registered, id, user?.id])
 
   useEffect(() => {
@@ -326,14 +326,14 @@ const EventCardComponent: FC<EventCardProps> = ({
       setQr(undefined)
       try {
         localStorage.removeItem(qrKey(id, user))
-      } catch { }
+      } catch {}
       return
     }
     if (my_qr_token) {
       setQr(my_qr_token)
       try {
         localStorage.setItem(qrKey(id, user), my_qr_token)
-      } catch { }
+      } catch {}
     }
   }, [registered, my_qr_token, id, user])
 
@@ -342,7 +342,7 @@ const EventCardComponent: FC<EventCardProps> = ({
     try {
       const stored = localStorage.getItem(qrKey(id, user))
       if (stored) setQr(stored)
-    } catch { }
+    } catch {}
   }, [registered, qr, my_qr_token, id, user])
 
   useLayoutEffect(() => {
@@ -352,14 +352,14 @@ const EventCardComponent: FC<EventCardProps> = ({
         const cached = qr || localStorage.getItem(qrKey(id, user))
         if (cached) setQrOpen(true)
       }
-    } catch { }
+    } catch {}
   }, [id])
 
   useEffect(() => {
     try {
       if (qrOpen) sessionStorage.setItem(qrOpenKey(id), "1")
       else sessionStorage.removeItem(qrOpenKey(id))
-    } catch { }
+    } catch {}
   }, [qrOpen, id])
 
   useEffect(() => {
@@ -418,7 +418,7 @@ const EventCardComponent: FC<EventCardProps> = ({
     Boolean(editData.starts_at) &&
     Boolean(editData.ends_at) &&
     new Date(normalizeDate(editData.ends_at)).getTime() <
-    new Date(normalizeDate(editData.starts_at)).getTime()
+      new Date(normalizeDate(editData.starts_at)).getTime()
 
   const handleRegister = async (e?: React.MouseEvent) => {
     if (e) e.stopPropagation()
@@ -432,7 +432,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       setSnack(t("events:card.messages.registerSuccess"))
       try {
         localStorage.setItem(qrKey(id, user), code)
-      } catch { }
+      } catch {}
     } catch (error) {
       const shouldResync =
         isAxiosError(error) &&
@@ -470,7 +470,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       setSnack(t("events:card.messages.unregisterSuccess"))
       try {
         localStorage.removeItem(qrKey(id, user))
-      } catch { }
+      } catch {}
     } catch (error) {
       const shouldResync =
         isAxiosError(error) &&
@@ -503,7 +503,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       await api.delete(`/events/${id}`)
       try {
         localStorage.removeItem(qrKey(id, user))
-      } catch { }
+      } catch {}
       setSnack(t("events:card.messages.deleteSuccess"))
       onChange && onChange()
     } catch {
@@ -883,8 +883,8 @@ const EventCardComponent: FC<EventCardProps> = ({
               <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                 {language === "en"
                   ? t("events:form.title_en", {
-                    defaultValue: `${t("events:form.title")} (English)`,
-                  })
+                      defaultValue: `${t("events:form.title")} (English)`,
+                    })
                   : t("events:form.title")}
               </label>
               <input
@@ -898,8 +898,8 @@ const EventCardComponent: FC<EventCardProps> = ({
               <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                 {language === "en"
                   ? t("events:form.description_en", {
-                    defaultValue: `${t("events:form.description")} (English)`,
-                  })
+                      defaultValue: `${t("events:form.description")} (English)`,
+                    })
                   : t("events:form.description")}
               </label>
               <textarea
@@ -913,8 +913,8 @@ const EventCardComponent: FC<EventCardProps> = ({
               <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                 {language === "en"
                   ? t("events:form.type_en", {
-                    defaultValue: `${t("events:form.type")} (English)`,
-                  })
+                      defaultValue: `${t("events:form.type")} (English)`,
+                    })
                   : t("events:form.type")}
               </label>
               <input
@@ -928,8 +928,8 @@ const EventCardComponent: FC<EventCardProps> = ({
               <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                 {language === "en"
                   ? t("events:form.location_en", {
-                    defaultValue: `${t("events:form.location")} (English)`,
-                  })
+                      defaultValue: `${t("events:form.location")} (English)`,
+                    })
                   : t("events:form.location")}
               </label>
               <input

@@ -30,7 +30,7 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
   const news: NewsItem[] = dashboardNewsQuery.data ?? []
   const loadingNews = dashboardNewsQuery.isLoading && news.length === 0
 
-  const warmNewsPage = () => import("../../pages/News").catch(() => { })
+  const warmNewsPage = () => import("../../pages/News").catch(() => {})
 
   const prefetchNewsList = () => {
     warmNewsPage()
@@ -83,7 +83,10 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
         {loadingNews && (
           <div className="space-y-4" role="presentation">
             {[1, 2].map((i) => (
-              <div key={i} className="flex items-start gap-4 rounded-ue-lg border border-[color:var(--dash-panel-item-divider)] bg-[color:var(--dash-panel-item-bg)] px-4 py-3 opacity-60">
+              <div
+                key={i}
+                className="flex items-start gap-4 rounded-ue-lg border border-[color:var(--dash-panel-item-divider)] bg-[color:var(--dash-panel-item-bg)] px-4 py-3 opacity-60"
+              >
                 <Skeleton width={44} height={44} rounded="9999px" className="flex-shrink-0" />
                 <div className="flex-1 space-y-2">
                   <Skeleton height={20} width="90%" />
@@ -144,7 +147,7 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
         transition={{
           duration: 4.5,
           repeat: Infinity,
-          ease: "easeInOut"
+          ease: "easeInOut",
         }}
         className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top_right,var(--dash-card-news-radial),transparent_68%)] mix-blend-soft-light transition-opacity duration-500"
       />
@@ -160,7 +163,7 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
         transition={{
           duration: 6.5,
           repeat: Infinity,
-          ease: "easeInOut"
+          ease: "easeInOut",
         }}
         className="pointer-events-none absolute -bottom-20 left-1/3 z-0 h-44 w-44 rounded-full bg-[radial-gradient(circle,var(--dash-card-news-orb),transparent)] blur-3xl mix-blend-soft-light transition-opacity duration-700"
       />
