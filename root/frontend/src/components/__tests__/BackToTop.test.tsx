@@ -56,7 +56,7 @@ describe("BackToTop", () => {
   })
 
   it("scrolls smoothly to top when clicked", async () => {
-    const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => { })
+    const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => {})
     render(<BackToTop />)
 
     setScrollY(500)
@@ -73,4 +73,3 @@ describe("BackToTop", () => {
     expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" })
   })
 })
-
