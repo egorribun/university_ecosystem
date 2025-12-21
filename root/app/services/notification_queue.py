@@ -21,6 +21,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import async_session
+from app.core.observability import (
+    NotificationQueueMetrics,
+    get_notification_queue_metrics,
+    get_periodic_task_metrics,
+)
+from app.models.models import Event, News, Notification, NotificationQueueJob
+from app.services.notifications import notify_about_event, notify_about_news
 from app.tasks.notifications import (
     enqueue_event_notification_task,
     enqueue_news_notification_task,
@@ -485,37 +492,6 @@ async def _process_job(job: NotificationJob) -> None:
             logger.warning("Unsupported notification job", extra={"job": job})
 
 
-async def enqueue_event_notification(
-    event_id: int, *, locale: str | None = None
-) -> None:
-    """Queue an event notification job for asynchronous delivery."""
-
-    job = NotificationJob(kind="event", record_id=event_id, locale=locale)
-    try:
-        await _enqueue_job(job)
-    except Exception as exc:
-        await record_enqueue_failure(
-            job,
-            error=exc,
-            source="notification_queue.enqueue_event_notification",
-        )
-        raise
-
-
-async def enqueue_news_notification(news_id: int, *, locale: str | None = None) -> None:
-    """Queue a news notification job for asynchronous delivery."""
-
-    job = NotificationJob(kind="news", record_id=news_id, locale=locale)
-    try:
-        await _enqueue_job(job)
-    except Exception as exc:
-        await record_enqueue_failure(
-            job,
-            error=exc,
-            source="notification_queue.enqueue_news_notification",
-        )
-        raise
-
 
 async def wait_for_all_jobs(timeout: float | None = None) -> None:
     """Wait until the queue is empty. Intended for tests."""
@@ -567,39 +543,6 @@ async def reset_testing_state() -> None:
         else:
             _update_in_memory_metrics(metrics, queue)
 
-
-async def shutdown_notification_queue() -> None:
-    """Stop the background worker and drain any pending jobs."""
-
-    state = _get_loop_state()
-    queue = state.queue
-    worker = state.worker_task
-    metrics = _get_metrics()
-
-    if worker is not None:
-        if not worker.done():
-            worker.cancel()
-            try:
-                await worker
-            except asyncio.CancelledError:
-                pass
-        state.worker_task = None
-
-    while not queue.empty():
-        try:
-            queue.get_nowait()
-        except asyncio.QueueEmpty:  # pragma: no cover - defensive guard
-            break
-        else:
-            queue.task_done()
-    state.active_jobs = 0
-    state.job_event.clear()
-    await _clear_persistent_jobs()
-    if metrics is not None:
-        if _use_persistent_backend():
-            await _refresh_persistent_queue_size(metrics)
-        else:
-            _update_in_memory_metrics(metrics, queue)
 
 
 async def _refresh_persistent_queue_size(metrics: NotificationQueueMetrics) -> None:

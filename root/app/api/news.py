@@ -44,6 +44,20 @@ _NEWS_LIST_CACHE_PREFIX = "news:list"
 _NEWS_LIST_VERSION_KEY = f"{_NEWS_LIST_CACHE_PREFIX}:version"
 _LOCAL_NEWS_LIST_VERSION = 0
 
+_NEWS_CACHE_CONTROL = "public, max-age=60, stale-while-revalidate=120"
+_LEGACY_NEWS_LIST_CACHE_KEY = "news:list"
+_LEGACY_NEWS_ITEM_PREFIX = "news:item"
+_CACHE_LOCALES = frozenset(SUPPORTED_LOCALES)
+
+
+def _normalized_cache_locale(locale: str | None) -> str:
+    """Normalize locale string for cache key purposes."""
+    if locale is None:
+        return DEFAULT_LOCALE
+    if locale in SUPPORTED_LOCALES:
+        return locale
+    return DEFAULT_LOCALE
+
 
 async def _get_news_list_version() -> str:
     cache = get_cache()
@@ -144,7 +158,7 @@ def _serialize_news(
 
 def _news_cache_keys(news_id: int | None = None) -> list[str]:
     keys: list[str] = [_LEGACY_NEWS_LIST_CACHE_KEY]
-    keys.extend(f"{_news_list_cache_key(locale)}*" for locale in _CACHE_LOCALES)
+    keys.extend(f"{_NEWS_LIST_CACHE_PREFIX}:{locale}:*" for locale in _CACHE_LOCALES)
     if news_id is not None:
         keys.append(_legacy_news_item_cache_key(news_id))
         keys.extend(_news_item_cache_key(news_id, locale) for locale in _CACHE_LOCALES)

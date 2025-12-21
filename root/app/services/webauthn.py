@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import logging
 from datetime import UTC, datetime
 from typing import Any
@@ -41,11 +42,15 @@ class WebAuthnService:
     async def get_registration_options(self, user: User) -> dict[str, Any]:
         """Generate options for a new WebAuthn credential registration."""
         if not user.webauthn_id:
+<<<<<<< HEAD
             user.webauthn_id = (
                 generate_user_handle().decode("utf-8")
                 if isinstance(generate_user_handle(), bytes)
                 else generate_user_handle()
             )
+=======
+            user.webauthn_id = generate_user_handle().decode('utf-8') if isinstance(generate_user_handle(), bytes) else generate_user_handle()
+>>>>>>> ab643715 (fix: resolve ruff lint errors (missing imports, duplicate functions, trailing whitespace))
             # Wait, py_webauthn generate_user_handle returns bytes.
             # We should store it as base64 or similar if we want it in a String column.
             # Actually, let's use base64 for the webauthn_id if it's a string column.
@@ -152,7 +157,11 @@ class WebAuthnService:
         """Verify the authentication response."""
         import base64
 
+<<<<<<< HEAD
         credential_id = response.get("id")
+=======
+        credential_id = response.get('id')
+>>>>>>> ab643715 (fix: resolve ruff lint errors (missing imports, duplicate functions, trailing whitespace))
         result = await self.db.execute(
             select(WebAuthnCredential).where(
                 WebAuthnCredential.user_id == user.id,

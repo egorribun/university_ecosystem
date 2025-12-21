@@ -49,7 +49,7 @@ async def ensure_partitions_exist(months_ahead: int = 1):
                     await conn.execute(
                         text(
                             f"""
-                        CREATE TABLE IF NOT EXISTS {partition_name} 
+                        CREATE TABLE IF NOT EXISTS {partition_name}
                         PARTITION OF {table}
                         FOR VALUES FROM ('{start_date.isoformat()}') TO ('{next_month_start.isoformat()}');
                     """
