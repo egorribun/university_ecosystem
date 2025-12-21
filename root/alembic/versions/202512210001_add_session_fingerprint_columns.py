@@ -14,8 +14,12 @@ depends_on: str | Sequence[str] | None = None
 
 
 _TABLE_NAME = "active_sessions"
-_ACCEPT_LANGUAGE_COLUMN = sa.Column("accept_language", sa.String(length=256), nullable=True)
-_FINGERPRINT_HASH_COLUMN = sa.Column("fingerprint_hash", sa.String(length=64), nullable=True)
+_ACCEPT_LANGUAGE_COLUMN = sa.Column(
+    "accept_language", sa.String(length=256), nullable=True
+)
+_FINGERPRINT_HASH_COLUMN = sa.Column(
+    "fingerprint_hash", sa.String(length=64), nullable=True
+)
 _FINGERPRINT_INDEX_NAME = "ix_active_sessions_fingerprint_hash"
 
 
