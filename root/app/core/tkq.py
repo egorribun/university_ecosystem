@@ -1,8 +1,6 @@
 import taskiq_fastapi
 from taskiq_redis import RedisAsyncResultBackend, RedisStreamBroker
 
-import app.tasks.email  # noqa: F401
-import app.tasks.notifications  # noqa: F401
 from app.core.config import settings
 
 result_backend = RedisAsyncResultBackend(
@@ -15,3 +13,7 @@ broker = RedisStreamBroker(
 
 # This allows TaskIQ to use FastAPI dependencies
 taskiq_fastapi.init(broker, "app.main:app")
+
+# Import task modules AFTER broker is defined to avoid circular imports
+import app.tasks.email  # noqa: F401, E402
+import app.tasks.notifications  # noqa: F401, E402
