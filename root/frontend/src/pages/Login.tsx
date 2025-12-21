@@ -372,14 +372,27 @@ const Login = () => {
               ) : null}
 
               {otpChallenge ? (
-                <div className="w-full">
-                  <OtpEntry
-                    loading={mfaBusy}
-                    error={mfaErrorSource === "totp" ? mfaError : null}
-                    helperText={otpHelperText ?? null}
-                    onSubmit={handleOtpVerify}
-                  />
-                </div>
+                <>
+                  <div className="w-full">
+                    <OtpEntry
+                      loading={mfaBusy}
+                      error={mfaErrorSource === "totp" ? mfaError : null}
+                      helperText={otpHelperText ?? null}
+                      onSubmit={handleOtpVerify}
+                    />
+                  </div>
+
+                  <label className="flex items-center gap-3 text-sm font-medium text-[color:color-mix(in_srgb,var(--page-text)_90%,var(--secondary-text)_10%)]">
+                    <input
+                      type="checkbox"
+                      className="size-5 rounded-lg border-[color:color-mix(in_srgb,var(--nav-link)_50%,transparent)] bg-transparent accent-[color:var(--nav-link)]"
+                      checked={trustDevice}
+                      onChange={(e) => setTrustDevice(e.target.checked)}
+                      disabled={mfaBusy}
+                    />
+                    {t("auth:actions.trustDevice", { defaultValue: "Доверять этому устройству" })}
+                  </label>
+                </>
               ) : (
                 <div className="w-full rounded-2xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-sm font-semibold text-amber-200">
                   {t("auth:mfa.noMethods")}

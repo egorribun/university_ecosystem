@@ -1,7 +1,7 @@
 import Layout from "../components/Layout"
 import PageFadeIn from "../components/PageFadeIn"
 import EventCard from "../components/EventCard"
-import { useEffect, useState, useCallback, useMemo, useRef, type CSSProperties } from "react"
+import { useEffect, useState, useCallback, useMemo, useRef, useLayoutEffect, type CSSProperties } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { createEvent, uploadEventImage } from "@/api/events"
 import type { Event } from "@/types/Event"
@@ -100,6 +100,24 @@ const Events = () => {
   const filtersOpen = Boolean(filterAnchor)
   const filtersActive = Boolean(type?.trim() || location?.trim())
   const filterPopoverRef = useRef<HTMLDivElement>(null)
+
+  // Tab indicator animation
+  const tabContainerRef = useRef<HTMLDivElement>(null)
+  const tabRefs = useRef<Map<EventTabKey, HTMLButtonElement | null>>(new Map())
+  const [indicatorStyle, setIndicatorStyle] = useState<{ left: number; width: number }>({ left: 0, width: 0 })
+
+  useLayoutEffect(() => {
+    const activeButton = tabRefs.current.get(tab)
+    const container = tabContainerRef.current
+    if (activeButton && container) {
+      const containerRect = container.getBoundingClientRect()
+      const buttonRect = activeButton.getBoundingClientRect()
+      setIndicatorStyle({
+        left: buttonRect.left - containerRect.left,
+        width: buttonRect.width,
+      })
+    }
+  }, [tab])
 
   useEffect(() => {
     if (!filtersOpen) return
@@ -254,7 +272,7 @@ const Events = () => {
       setTab("active")
       void queryClient.invalidateQueries({ queryKey: ["events"] })
       window.scrollTo({ top: 0, behavior: "smooth" })
-    } catch {}
+    } catch { }
   }
 
   const handleRefresh = useCallback(() => {
@@ -290,15 +308,17 @@ const Events = () => {
     <Layout>
       <PageFadeIn>
         <div className="w-screen min-h-screen bg-[color:var(--page-bg)] text-[color:var(--page-text)] py-8 sm:py-10">
-          <div className="px-2 md:px-4">
+          <div className="px-4 sm:px-6 lg:px-8">
             {/* Header */}
             <div
               data-fade
               style={fadeDelayStyle("80ms")}
               className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[color:color-mix(in_srgb,var(--glass-bg)_70%,var(--nav-link)_30%)] text-[color:var(--nav-link)] shadow-[0_6px_20px_color-mix(in_srgb,var(--nav-link)_24%,transparent)] transition-transform duration-200 hover:scale-105 dark:bg-[color:color-mix(in_srgb,var(--glass-bg)_65%,var(--nav-link)_35%)] dark:shadow-[0_8px_24px_color-mix(in_srgb,var(--nav-link)_28%,transparent)] backdrop-blur-sm [-webkit-backdrop-filter:blur(12px)]">
-                <EventNoteIcon className="text-[2rem]" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[color:color-mix(in_srgb,var(--glass-bg)_70%,var(--nav-link)_30%)] text-[color:var(--nav-link)] shadow-[0_6px_20px_color-mix(in_srgb,var(--nav-link)_24%,transparent)] transition-transform duration-300 hover:scale-[1.08] dark:bg-[color:color-mix(in_srgb,var(--glass-bg)_65%,var(--nav-link)_35%)] dark:shadow-[0_8px_24px_color-mix(in_srgb,var(--nav-link)_28%,transparent)] overflow-hidden">
+                <span className="flex items-center justify-center">
+                  <EventNoteIcon className="text-[2rem]" />
+                </span>
               </div>
               <h1 className="text-[clamp(1.6rem,5vw,2.75rem)] font-bold tracking-tight text-[color:var(--page-text)]">
                 {t("events:pageTitle")}
@@ -323,31 +343,39 @@ const Events = () => {
             <div
               data-fade
               style={fadeDelayStyle("200ms")}
-              className="relative mb-6 min-h-[45px] rounded-ue-xl border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] px-3 py-2 shadow-[0_12px_32px_rgba(0,0,0,0.08),0_4px_12px_rgba(0,0,0,0.04)] backdrop-blur-[12px] sm:px-4 sm:py-2.5 lg:max-w-4xl"
+              className="mb-6 lg:max-w-4xl"
               role="tablist"
             >
-              <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+              <div
+                ref={tabContainerRef}
+                className="relative inline-flex rounded-[12px] bg-[color:color-mix(in_srgb,var(--card-bg)_92%,var(--nav-link)_8%)] p-1 border border-[color:color-mix(in_srgb,var(--nav-link)_12%,transparent_88%)] shadow-[0_2px_8px_-2px_rgba(0,0,0,0.1),inset_0_1px_0_rgba(255,255,255,0.04)]"
+              >
+                {/* Sliding indicator */}
+                <div
+                  className="absolute top-1 bottom-1 rounded-[9px] bg-[color:var(--card-bg)] shadow-[0_2px_8px_-2px_rgba(0,0,0,0.15),0_1px_2px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.06)] border border-[color:color-mix(in_srgb,var(--nav-link)_20%,transparent_80%)] transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
+                  style={{
+                    left: indicatorStyle.left,
+                    width: indicatorStyle.width,
+                  }}
+                  aria-hidden="true"
+                />
                 {tabs.map((tabItem) => (
                   <button
                     key={tabItem.key}
+                    ref={(el) => { tabRefs.current.set(tabItem.key, el) }}
                     role="tab"
                     id={`events-tab-${tabItem.key}`}
                     aria-selected={tab === tabItem.key}
                     aria-controls={`events-tabpanel-${tabItem.key}`}
                     onClick={() => handleTabChange(tabItem.key)}
                     className={cn(
-                      "relative rounded-ue-lg px-4 py-2 text-base font-semibold transition-colors duration-200 sm:px-6 sm:text-lg",
+                      "relative z-[1] px-4 py-2 text-[15px] font-semibold rounded-[9px] transition-colors duration-200",
+                      "sm:px-6 sm:text-base",
                       tab === tabItem.key
-                        ? "text-[color:var(--nav-link)] font-bold"
-                        : "text-[color:var(--page-text)] opacity-80 hover:opacity-100"
+                        ? "text-[color:var(--page-text)]"
+                        : "text-[color:var(--secondary-text)] hover:text-[color:var(--page-text)]"
                     )}
                   >
-                    {tab === tabItem.key && (
-                      <span
-                        className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-[color:var(--nav-link)]"
-                        aria-hidden="true"
-                      />
-                    )}
                     {t(`events:tabs.${tabItem.key}`)}
                   </button>
                 ))}
@@ -358,44 +386,54 @@ const Events = () => {
             <div
               data-fade
               style={fadeDelayStyle("240ms")}
-              className="mb-5 flex flex-wrap items-center gap-3 rounded-ue-xl border border-[color:var(--glass-border)] bg-[linear-gradient(135deg,rgba(14,116,144,0.12),rgba(14,116,144,0))] px-4 py-3 shadow-[0_18px_45px_rgba(15,23,42,0.18)] backdrop-blur-[14px] sm:px-5 sm:py-4 lg:max-w-4xl"
+              className="mb-6 lg:max-w-4xl"
             >
-              <div className="relative flex-1 min-w-[200px]">
-                <SearchIcon className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[color:var(--secondary-text)] pointer-events-none" />
+              <div className="relative">
+                <SearchIcon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[color:var(--secondary-text)] pointer-events-none opacity-60" />
                 <input
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder={t("events:filters.search")}
-                  className={cn(inputClass, "pl-10 pr-10", "w-full")}
+                  className={cn(
+                    "w-full rounded-[14px] px-4 py-3.5 pl-11 pr-20 text-base text-[color:var(--page-text)]",
+                    "bg-[color:color-mix(in_srgb,var(--card-bg)_94%,var(--nav-link)_6%)]",
+                    "border border-[color:color-mix(in_srgb,var(--nav-link)_12%,var(--glass-border)_88%)]",
+                    "shadow-[0_2px_12px_-4px_rgba(0,0,0,0.08),inset_0_1px_0_rgba(255,255,255,0.04)]",
+                    "placeholder:text-[color:var(--secondary-text)] placeholder:opacity-50",
+                    "outline-none transition-all duration-200",
+                    "focus:border-[color:color-mix(in_srgb,var(--nav-link)_35%,var(--glass-border)_65%)]",
+                    "focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--nav-link)_12%,transparent_88%),0_2px_12px_-4px_rgba(0,0,0,0.08)]"
+                  )}
                 />
                 <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
                   {search && (
                     <button
                       type="button"
                       onClick={() => setSearch("")}
-                      className="rounded-full p-1.5 text-[color:var(--secondary-text)] transition-colors hover:text-[color:var(--nav-link)]"
+                      className="rounded-full p-2 text-[color:var(--secondary-text)] transition-all duration-150 hover:bg-[color:color-mix(in_srgb,var(--nav-link)_8%,transparent_92%)] active:scale-95"
                       aria-label={t("events:aria.clearSearch")}
                     >
                       <ClearIcon className="h-4 w-4" />
                     </button>
                   )}
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={(e) => setFilterAnchor(e.currentTarget)}
-                      className="rounded-full p-1.5 text-[color:var(--secondary-text)] transition-colors hover:text-[color:var(--nav-link)]"
-                      aria-label={t("events:aria.openFilters")}
-                    >
-                      {filtersActive && (
-                        <span
-                          className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-[color:var(--nav-link)]"
-                          aria-hidden="true"
-                        />
-                      )}
-                      <FilterListIcon className="h-4 w-4" />
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => setFilterAnchor(e.currentTarget)}
+                    className={cn(
+                      "relative rounded-full p-2 transition-all duration-150 hover:bg-[color:color-mix(in_srgb,var(--nav-link)_8%,transparent_92%)] active:scale-95",
+                      filtersActive ? "text-[color:var(--nav-link)]" : "text-[color:var(--secondary-text)]"
+                    )}
+                    aria-label={t("events:aria.openFilters")}
+                  >
+                    {filtersActive && (
+                      <span
+                        className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-[color:var(--nav-link)] shadow-[0_0_4px_var(--nav-link)]"
+                        aria-hidden="true"
+                      />
+                    )}
+                    <FilterListIcon className="h-5 w-5" />
+                  </button>
                 </div>
               </div>
             </div>
@@ -462,39 +500,56 @@ const Events = () => {
               role="tabpanel"
               id={`events-tabpanel-${tab}`}
               aria-labelledby={`events-tab-${tab}`}
-              className={cn(
-                "grid gap-6 grid-cols-[repeat(auto-fill,minmax(340px,1fr))] pb-6 transition-all duration-300",
-                isMobile ? "grid-cols-1" : ""
-              )}
+              className="grid gap-5 sm:gap-6 pb-6 grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
             >
               {loading &&
                 Array.from({ length: skeletonCount }).map((_, i) => (
-                  <div key={`event-skel-${i}`} className="flex h-full w-full">
-                    <div className="w-full space-y-3 rounded-ue-xl border border-[color:var(--glass-border)] bg-[color:var(--card-bg)] p-4 shadow-surface">
-                      <Skeleton height={isMobile ? 160 : 200} className="rounded-ue-lg" />
-                      <Skeleton height={isMobile ? 28 : 32} />
-                      <Skeleton height={20} width={isMobile ? "85%" : "80%"} />
-                      {!isMobile && <Skeleton height={20} width="60%" />}
+                  <div key={`event-skel-${i}`} className="w-full">
+                    <div className="w-full space-y-4 rounded-[var(--ios-card-radius)] border border-[color:var(--ios-card-border)] bg-[color:var(--card-bg)] p-5 shadow-[var(--ios-card-shadow)]">
+                      <Skeleton height={isMobile ? 180 : 200} className="rounded-[16px]" />
+                      <Skeleton height={28} className="rounded-[6px]" />
+                      <Skeleton height={20} width="75%" className="rounded-[6px]" />
+                      <div className="flex gap-3 pt-2">
+                        <Skeleton height={36} width={120} className="rounded-[10px]" />
+                        <Skeleton height={36} width={100} className="rounded-[10px]" />
+                      </div>
                     </div>
                   </div>
                 ))}
 
               {!loading &&
-                normalizedEvents.map((event) => (
-                  <div key={event.id} className="flex h-full w-full">
-                    <EventCard {...event} onChange={handleRefresh} maxWidth="100%" />
-                  </div>
+                normalizedEvents.map((event, index) => (
+                  <EventCard key={event.id} {...event} onChange={handleRefresh} maxWidth="100%" animationIndex={index} />
                 ))}
 
               {!loading && normalizedEvents.length === 0 && (
-                <div className="col-span-full mt-16 flex w-full justify-center">
-                  <div className="flex w-full max-w-[420px] flex-col items-center gap-5 rounded-ue-xl border border-[color:var(--glass-border)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] px-6 py-10 text-center text-[color:var(--secondary-text)] shadow-surface">
-                    <span className="flex h-16 w-16 items-center justify-center rounded-full bg-[color:var(--glass-bg)]/70 text-[color:var(--nav-link)] shadow-surface">
-                      <EventNoteIcon className="text-[2.2rem]" />
-                    </span>
-                    <p className="text-lg font-semibold text-[color:var(--page-text)] sm:text-xl">
-                      {t("events:states.empty")}
-                    </p>
+                <div className="col-span-full mt-12 flex w-full justify-center animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <div className="flex w-full max-w-md flex-col items-center gap-5 rounded-[1.25rem] border border-[color:color-mix(in_srgb,var(--nav-link)_15%,var(--glass-border)_85%)] bg-gradient-to-br from-[color:var(--card-bg)] to-[color:color-mix(in_srgb,var(--card-bg)_94%,var(--nav-link)_6%)] px-8 py-14 text-center shadow-[0_4px_24px_-8px_rgba(0,0,0,0.12)]">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-[color:color-mix(in_srgb,var(--nav-link)_20%,var(--card-bg)_80%)] to-[color:color-mix(in_srgb,var(--nav-link)_10%,var(--card-bg)_90%)] shadow-[0_4px_12px_-4px_color-mix(in_srgb,var(--nav-link)_30%,transparent_70%)]">
+                      <EventNoteIcon className="text-[2rem] text-[color:var(--nav-link)]" />
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-lg font-semibold text-[color:var(--page-text)]">
+                        {t("events:states.empty")}
+                      </p>
+                      <p className="text-sm text-[color:var(--secondary-text)]">
+                        {tab === "active"
+                          ? "Попробуйте посмотреть прошедшие мероприятия"
+                          : tab === "archive"
+                            ? "Загляните в актуальные мероприятия"
+                            : "Зарегистрируйтесь на интересующие мероприятия"}
+                      </p>
+                    </div>
+                    {tab !== "my" && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleTabChange(tab === "active" ? "archive" : "active")}
+                        className="mt-2"
+                      >
+                        {tab === "active" ? "Прошедшие" : "Актуальные"}
+                      </Button>
+                    )}
                   </div>
                 </div>
               )}
@@ -552,8 +607,8 @@ const Events = () => {
                   <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                     {language === "en"
                       ? t("events:form.title_en", {
-                          defaultValue: `${t("events:form.title")} (English)`,
-                        })
+                        defaultValue: `${t("events:form.title")} (English)`,
+                      })
                       : t("events:form.title")}
                   </label>
                   <input
@@ -567,8 +622,8 @@ const Events = () => {
                   <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                     {language === "en"
                       ? t("events:form.description_en", {
-                          defaultValue: `${t("events:form.description")} (English)`,
-                        })
+                        defaultValue: `${t("events:form.description")} (English)`,
+                      })
                       : t("events:form.description")}
                   </label>
                   <textarea
@@ -582,8 +637,8 @@ const Events = () => {
                   <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                     {language === "en"
                       ? t("events:form.type_en", {
-                          defaultValue: `${t("events:form.type")} (English)`,
-                        })
+                        defaultValue: `${t("events:form.type")} (English)`,
+                      })
                       : t("events:form.type")}
                   </label>
                   <input
@@ -597,8 +652,8 @@ const Events = () => {
                   <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                     {language === "en"
                       ? t("events:form.location_en", {
-                          defaultValue: `${t("events:form.location")} (English)`,
-                        })
+                        defaultValue: `${t("events:form.location")} (English)`,
+                      })
                       : t("events:form.location")}
                   </label>
                   <input
