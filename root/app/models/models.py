@@ -691,7 +691,7 @@ class NotificationQueueJob(Base):
     last_error = Column(Text)
     next_retry_at = Column(DateTime(timezone=True), index=True)
     dead_lettered = Column(
-        Boolean, nullable=False, server_default=text("0"), index=True
+        Boolean, nullable=False, server_default=text("false"), index=True
     )
 
     __table_args__ = (
