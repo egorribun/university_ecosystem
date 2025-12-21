@@ -492,7 +492,6 @@ async def _process_job(job: NotificationJob) -> None:
             logger.warning("Unsupported notification job", extra={"job": job})
 
 
-
 async def wait_for_all_jobs(timeout: float | None = None) -> None:
     """Wait until the queue is empty. Intended for tests."""
 
@@ -542,7 +541,6 @@ async def reset_testing_state() -> None:
             await _refresh_persistent_queue_size(metrics)
         else:
             _update_in_memory_metrics(metrics, queue)
-
 
 
 async def _refresh_persistent_queue_size(metrics: NotificationQueueMetrics) -> None:
