@@ -27,6 +27,7 @@ from app.core.database import get_db
 from app.deps.cache import etag_matches, format_etag, get_cache
 from app.localization import (
     DEFAULT_LOCALE,
+    SUPPORTED_LOCALES,
     resolve_locale,
     translate,
 )

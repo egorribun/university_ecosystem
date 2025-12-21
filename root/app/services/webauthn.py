@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import logging
 from datetime import UTC, datetime
 from typing import Any
@@ -42,28 +43,12 @@ class WebAuthnService:
     async def get_registration_options(self, user: User) -> dict[str, Any]:
         """Generate options for a new WebAuthn credential registration."""
         if not user.webauthn_id:
-<<<<<<< HEAD
-            user.webauthn_id = (
-                generate_user_handle().decode("utf-8")
-                if isinstance(generate_user_handle(), bytes)
-                else generate_user_handle()
-            )
-=======
-            user.webauthn_id = generate_user_handle().decode('utf-8') if isinstance(generate_user_handle(), bytes) else generate_user_handle()
->>>>>>> ab643715 (fix: resolve ruff lint errors (missing imports, duplicate functions, trailing whitespace))
-            # Wait, py_webauthn generate_user_handle returns bytes.
-            # We should store it as base64 or similar if we want it in a String column.
-            # Actually, let's use base64 for the webauthn_id if it's a string column.
-            import base64
-
             user.webauthn_id = (
                 base64.urlsafe_b64encode(generate_user_handle())
                 .decode("utf-8")
                 .rstrip("=")
             )
             await self.db.flush()
-
-        import base64
 
         user_id_bytes = base64.urlsafe_b64decode(user.webauthn_id + "==")
 
@@ -101,8 +86,6 @@ class WebAuthnService:
         label: str | None = None,
     ) -> WebAuthnCredential:
         """Verify the registration response and save the new credential."""
-        import base64
-
         verification = verify_registration_response(
             credential=response,
             expected_challenge=base64.urlsafe_b64decode(challenge + "=="),
@@ -122,8 +105,7 @@ class WebAuthnService:
             sign_count=verification.sign_count,
             transports=response.get("response", {}).get("transports"),
             label=label or "WebAuthn Device",
-            backing_up=verification.credential_device_type
-            == "multi_device",  # Simplified
+            backing_up=verification.credential_device_type == "multi_device",
             backup_state=verification.backup_state,
         )
 
@@ -155,13 +137,7 @@ class WebAuthnService:
         self, user: User, challenge: str, response: dict[str, Any]
     ) -> WebAuthnCredential:
         """Verify the authentication response."""
-        import base64
-
-<<<<<<< HEAD
         credential_id = response.get("id")
-=======
-        credential_id = response.get('id')
->>>>>>> ab643715 (fix: resolve ruff lint errors (missing imports, duplicate functions, trailing whitespace))
         result = await self.db.execute(
             select(WebAuthnCredential).where(
                 WebAuthnCredential.user_id == user.id,
@@ -192,6 +168,4 @@ class WebAuthnService:
 
 
 def json_to_dict(json_str: str) -> dict[str, Any]:
-    import json
-
     return json.loads(json_str)
