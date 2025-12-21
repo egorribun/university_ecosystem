@@ -47,9 +47,8 @@ def test_news_cache_keys_include_all_locales_and_legacy_prefixes():
     # Base list cache key and per-locale patterns
     assert news._LEGACY_NEWS_LIST_CACHE_KEY in keys
     for locale in news._CACHE_LOCALES:
-        pattern = news._news_list_cache_key(locale, limit=0, cursor=None, version="0").split(":")[2] # Check normalized locale part
-        # The key generation is complex, better to verify coverage by wildcard
-        assert any(k.startswith(news._NEWS_LIST_CACHE_PREFIX) for k in keys)
+        expected_wildcard = f"{news._NEWS_LIST_CACHE_PREFIX}:{locale}:*"
+        assert expected_wildcard in keys
 
     # Item-specific cache keys include legacy and localized variants
     assert news._legacy_news_item_cache_key(42) in keys
