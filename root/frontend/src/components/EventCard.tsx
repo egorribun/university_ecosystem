@@ -86,27 +86,30 @@ const formatLocalDateTime = (s?: string) => {
   return d.isValid() ? d.format("DD.MM.YYYY HH:mm") : "—"
 }
 
-const getTimeStatus = (starts_at: string, ends_at: string): { status: 'soon' | 'live' | 'ended' | 'upcoming'; timeText?: string } => {
+const getTimeStatus = (
+  starts_at: string,
+  ends_at: string
+): { status: "soon" | "live" | "ended" | "upcoming"; timeText?: string } => {
   const now = dayjs()
   const start = dayjs(starts_at.replace(" ", "T"))
   const end = dayjs(ends_at.replace(" ", "T"))
 
-  if (!start.isValid() || !end.isValid()) return { status: 'upcoming' }
+  if (!start.isValid() || !end.isValid()) return { status: "upcoming" }
 
-  if (now.isAfter(end)) return { status: 'ended' }
-  if (now.isAfter(start) && now.isBefore(end)) return { status: 'live' }
+  if (now.isAfter(end)) return { status: "ended" }
+  if (now.isAfter(start) && now.isBefore(end)) return { status: "live" }
 
-  const hoursUntil = start.diff(now, 'hour')
-  const minutesUntil = start.diff(now, 'minute')
+  const hoursUntil = start.diff(now, "hour")
+  const minutesUntil = start.diff(now, "minute")
 
   if (hoursUntil < 24 && hoursUntil >= 1) {
-    return { status: 'soon', timeText: `${hoursUntil}ч` }
+    return { status: "soon", timeText: `${hoursUntil}ч` }
   }
   if (minutesUntil < 60 && minutesUntil > 0) {
-    return { status: 'soon', timeText: `${minutesUntil}мин` }
+    return { status: "soon", timeText: `${minutesUntil}мин` }
   }
 
-  return { status: 'upcoming' }
+  return { status: "upcoming" }
 }
 
 const qrKey = (eventId: number, user: any) => `qr:${eventId}:${user?.id ?? user?.user_id ?? "me"}`
@@ -276,13 +279,13 @@ const EventCardComponent: FC<EventCardProps> = ({
           setQr(code)
           try {
             localStorage.setItem(qrKey(id, user), code)
-          } catch { }
+          } catch {}
         }
       } else {
         setQr(undefined)
         try {
           localStorage.removeItem(qrKey(id, user))
-        } catch { }
+        } catch {}
       }
       setRegistered(nextRegistered)
       return nextRegistered ? "registered" : "unregistered"
@@ -302,7 +305,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       if (cached === "1" && !is_registered) {
         setRegistered(true)
       }
-    } catch { }
+    } catch {}
   }, [id, user?.id, is_registered])
 
   // Persist registration state to localStorage
@@ -314,7 +317,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       } else {
         localStorage.removeItem(regKey(id, user.id))
       }
-    } catch { }
+    } catch {}
   }, [registered, id, user?.id])
 
   useEffect(() => {
@@ -322,14 +325,14 @@ const EventCardComponent: FC<EventCardProps> = ({
       setQr(undefined)
       try {
         localStorage.removeItem(qrKey(id, user))
-      } catch { }
+      } catch {}
       return
     }
     if (my_qr_token) {
       setQr(my_qr_token)
       try {
         localStorage.setItem(qrKey(id, user), my_qr_token)
-      } catch { }
+      } catch {}
     }
   }, [registered, my_qr_token, id, user])
 
@@ -338,7 +341,7 @@ const EventCardComponent: FC<EventCardProps> = ({
     try {
       const stored = localStorage.getItem(qrKey(id, user))
       if (stored) setQr(stored)
-    } catch { }
+    } catch {}
   }, [registered, qr, my_qr_token, id, user])
 
   useLayoutEffect(() => {
@@ -348,14 +351,14 @@ const EventCardComponent: FC<EventCardProps> = ({
         const cached = qr || localStorage.getItem(qrKey(id, user))
         if (cached) setQrOpen(true)
       }
-    } catch { }
+    } catch {}
   }, [id])
 
   useEffect(() => {
     try {
       if (qrOpen) sessionStorage.setItem(qrOpenKey(id), "1")
       else sessionStorage.removeItem(qrOpenKey(id))
-    } catch { }
+    } catch {}
   }, [qrOpen, id])
 
   useEffect(() => {
@@ -414,7 +417,7 @@ const EventCardComponent: FC<EventCardProps> = ({
     Boolean(editData.starts_at) &&
     Boolean(editData.ends_at) &&
     new Date(normalizeDate(editData.ends_at)).getTime() <
-    new Date(normalizeDate(editData.starts_at)).getTime()
+      new Date(normalizeDate(editData.starts_at)).getTime()
 
   const handleRegister = async (e?: React.MouseEvent) => {
     if (e) e.stopPropagation()
@@ -428,7 +431,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       setSnack(t("events:card.messages.registerSuccess"))
       try {
         localStorage.setItem(qrKey(id, user), code)
-      } catch { }
+      } catch {}
     } catch (error) {
       const shouldResync =
         isAxiosError(error) &&
@@ -466,7 +469,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       setSnack(t("events:card.messages.unregisterSuccess"))
       try {
         localStorage.removeItem(qrKey(id, user))
-      } catch { }
+      } catch {}
     } catch (error) {
       const shouldResync =
         isAxiosError(error) &&
@@ -499,7 +502,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       await api.delete(`/events/${id}`)
       try {
         localStorage.removeItem(qrKey(id, user))
-      } catch { }
+      } catch {}
       setSnack(t("events:card.messages.deleteSuccess"))
       onChange && onChange()
     } catch {
@@ -676,13 +679,11 @@ const EventCardComponent: FC<EventCardProps> = ({
             {/* Event type badge on image */}
             {event_type && (
               <div className="absolute top-3 left-3 px-3 py-1.5 rounded-lg bg-black/50 backdrop-blur-md border border-white/20 shadow-lg">
-                <span className="text-xs font-semibold text-white">
-                  {event_type}
-                </span>
+                <span className="text-xs font-semibold text-white">{event_type}</span>
               </div>
             )}
             {/* Status indicators */}
-            {timeStatus.status === 'live' && (
+            {timeStatus.status === "live" && (
               <div className="absolute top-3 right-3 px-3 py-1.5 rounded-lg bg-green-500/90 backdrop-blur-sm shadow-lg flex items-center gap-1.5">
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
@@ -691,7 +692,7 @@ const EventCardComponent: FC<EventCardProps> = ({
                 <span className="text-xs font-bold text-white">LIVE</span>
               </div>
             )}
-            {timeStatus.status === 'soon' && timeStatus.timeText && (
+            {timeStatus.status === "soon" && timeStatus.timeText && (
               <div className="absolute top-3 right-3 px-3 py-1.5 rounded-lg bg-amber-500/90 backdrop-blur-sm shadow-lg flex items-center gap-1.5">
                 <span className="text-xs font-bold text-white">⏱ Через {timeStatus.timeText}</span>
               </div>
@@ -873,8 +874,8 @@ const EventCardComponent: FC<EventCardProps> = ({
               <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                 {language === "en"
                   ? t("events:form.title_en", {
-                    defaultValue: `${t("events:form.title")} (English)`,
-                  })
+                      defaultValue: `${t("events:form.title")} (English)`,
+                    })
                   : t("events:form.title")}
               </label>
               <input
@@ -888,8 +889,8 @@ const EventCardComponent: FC<EventCardProps> = ({
               <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                 {language === "en"
                   ? t("events:form.description_en", {
-                    defaultValue: `${t("events:form.description")} (English)`,
-                  })
+                      defaultValue: `${t("events:form.description")} (English)`,
+                    })
                   : t("events:form.description")}
               </label>
               <textarea
@@ -903,8 +904,8 @@ const EventCardComponent: FC<EventCardProps> = ({
               <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                 {language === "en"
                   ? t("events:form.type_en", {
-                    defaultValue: `${t("events:form.type")} (English)`,
-                  })
+                      defaultValue: `${t("events:form.type")} (English)`,
+                    })
                   : t("events:form.type")}
               </label>
               <input
@@ -918,8 +919,8 @@ const EventCardComponent: FC<EventCardProps> = ({
               <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                 {language === "en"
                   ? t("events:form.location_en", {
-                    defaultValue: `${t("events:form.location")} (English)`,
-                  })
+                      defaultValue: `${t("events:form.location")} (English)`,
+                    })
                   : t("events:form.location")}
               </label>
               <input
@@ -968,7 +969,12 @@ const EventCardComponent: FC<EventCardProps> = ({
               />
             </div>
             <div>
-              <Button as="label" variant="solid" disabled={imageLoading} className="w-full sm:w-auto">
+              <Button
+                as="label"
+                variant="solid"
+                disabled={imageLoading}
+                className="w-full sm:w-auto"
+              >
                 {imageLoading ? t("common:statuses.uploading") : t("common:buttons.changePhoto")}
                 <input
                   type="file"

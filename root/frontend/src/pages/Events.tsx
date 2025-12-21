@@ -1,7 +1,15 @@
 import Layout from "../components/Layout"
 import PageFadeIn from "../components/PageFadeIn"
 import EventCard from "../components/EventCard"
-import { useEffect, useState, useCallback, useMemo, useRef, useLayoutEffect, type CSSProperties } from "react"
+import {
+  useEffect,
+  useState,
+  useCallback,
+  useMemo,
+  useRef,
+  useLayoutEffect,
+  type CSSProperties,
+} from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { createEvent, uploadEventImage } from "@/api/events"
 import type { Event } from "@/types/Event"
@@ -104,7 +112,10 @@ const Events = () => {
   // Tab indicator animation
   const tabContainerRef = useRef<HTMLDivElement>(null)
   const tabRefs = useRef<Map<EventTabKey, HTMLButtonElement | null>>(new Map())
-  const [indicatorStyle, setIndicatorStyle] = useState<{ left: number; width: number }>({ left: 0, width: 0 })
+  const [indicatorStyle, setIndicatorStyle] = useState<{ left: number; width: number }>({
+    left: 0,
+    width: 0,
+  })
 
   useLayoutEffect(() => {
     const activeButton = tabRefs.current.get(tab)
@@ -272,7 +283,7 @@ const Events = () => {
       setTab("active")
       void queryClient.invalidateQueries({ queryKey: ["events"] })
       window.scrollTo({ top: 0, behavior: "smooth" })
-    } catch { }
+    } catch {}
   }
 
   const handleRefresh = useCallback(() => {
@@ -362,7 +373,9 @@ const Events = () => {
                 {tabs.map((tabItem) => (
                   <button
                     key={tabItem.key}
-                    ref={(el) => { tabRefs.current.set(tabItem.key, el) }}
+                    ref={(el) => {
+                      tabRefs.current.set(tabItem.key, el)
+                    }}
                     role="tab"
                     id={`events-tab-${tabItem.key}`}
                     aria-selected={tab === tabItem.key}
@@ -383,11 +396,7 @@ const Events = () => {
             </div>
 
             {/* Search and filters */}
-            <div
-              data-fade
-              style={fadeDelayStyle("240ms")}
-              className="mb-6 lg:max-w-4xl"
-            >
+            <div data-fade style={fadeDelayStyle("240ms")} className="mb-6 lg:max-w-4xl">
               <div className="relative">
                 <SearchIcon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[color:var(--secondary-text)] pointer-events-none opacity-60" />
                 <input
@@ -422,7 +431,9 @@ const Events = () => {
                     onClick={(e) => setFilterAnchor(e.currentTarget)}
                     className={cn(
                       "relative rounded-full p-2 transition-all duration-150 hover:bg-[color:color-mix(in_srgb,var(--nav-link)_8%,transparent_92%)] active:scale-95",
-                      filtersActive ? "text-[color:var(--nav-link)]" : "text-[color:var(--secondary-text)]"
+                      filtersActive
+                        ? "text-[color:var(--nav-link)]"
+                        : "text-[color:var(--secondary-text)]"
                     )}
                     aria-label={t("events:aria.openFilters")}
                   >
@@ -519,7 +530,13 @@ const Events = () => {
 
               {!loading &&
                 normalizedEvents.map((event, index) => (
-                  <EventCard key={event.id} {...event} onChange={handleRefresh} maxWidth="100%" animationIndex={index} />
+                  <EventCard
+                    key={event.id}
+                    {...event}
+                    onChange={handleRefresh}
+                    maxWidth="100%"
+                    animationIndex={index}
+                  />
                 ))}
 
               {!loading && normalizedEvents.length === 0 && (
@@ -607,8 +624,8 @@ const Events = () => {
                   <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                     {language === "en"
                       ? t("events:form.title_en", {
-                        defaultValue: `${t("events:form.title")} (English)`,
-                      })
+                          defaultValue: `${t("events:form.title")} (English)`,
+                        })
                       : t("events:form.title")}
                   </label>
                   <input
@@ -622,8 +639,8 @@ const Events = () => {
                   <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                     {language === "en"
                       ? t("events:form.description_en", {
-                        defaultValue: `${t("events:form.description")} (English)`,
-                      })
+                          defaultValue: `${t("events:form.description")} (English)`,
+                        })
                       : t("events:form.description")}
                   </label>
                   <textarea
@@ -637,8 +654,8 @@ const Events = () => {
                   <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                     {language === "en"
                       ? t("events:form.type_en", {
-                        defaultValue: `${t("events:form.type")} (English)`,
-                      })
+                          defaultValue: `${t("events:form.type")} (English)`,
+                        })
                       : t("events:form.type")}
                   </label>
                   <input
@@ -652,8 +669,8 @@ const Events = () => {
                   <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                     {language === "en"
                       ? t("events:form.location_en", {
-                        defaultValue: `${t("events:form.location")} (English)`,
-                      })
+                          defaultValue: `${t("events:form.location")} (English)`,
+                        })
                       : t("events:form.location")}
                   </label>
                   <input

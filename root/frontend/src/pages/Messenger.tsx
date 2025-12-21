@@ -255,11 +255,11 @@ export default function Messenger() {
           items: previousChats.items.map((chat) =>
             chat.id === chatId
               ? {
-                ...chat,
-                last_message: undefined,
-                unread_count: 0,
-                updated_at: new Date().toISOString(),
-              }
+                  ...chat,
+                  last_message: undefined,
+                  unread_count: 0,
+                  updated_at: new Date().toISOString(),
+                }
               : chat
           ),
         })
@@ -420,8 +420,9 @@ export default function Messenger() {
     >
       {/* Sidebar */}
       <div
-        className={`${showList ? "flex" : "hidden"
-          } w-full md:w-80 lg:w-96 flex-col border-r transition-all duration-300 h-full`}
+        className={`${
+          showList ? "flex" : "hidden"
+        } w-full md:w-80 lg:w-96 flex-col border-r transition-all duration-300 h-full`}
         style={{
           background: "var(--msg-sidebar-bg)",
           borderColor: "var(--msg-header-border)",
@@ -814,7 +815,7 @@ export default function Messenger() {
         confirmText={t("common:confirm", "Confirm")}
         cancelText={t("common:cancel", "Cancel")}
         variant={confirmDialog?.variant}
-        onConfirm={confirmDialog?.onConfirm ?? (() => { })}
+        onConfirm={confirmDialog?.onConfirm ?? (() => {})}
         onCancel={() => setConfirmDialog(null)}
       />
     </div>
