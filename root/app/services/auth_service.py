@@ -3,7 +3,6 @@ import logging
 import secrets
 from datetime import UTC, datetime, timedelta
 
-import anyio
 from fastapi import BackgroundTasks, HTTPException, Request, status
 from pydantic import EmailStr, TypeAdapter
 from sqlalchemy import and_, func, select, update
@@ -20,8 +19,8 @@ from app.models.user_loaders import (
 from app.schemas import schemas
 from app.services.audit_service import AuditService
 from app.services.session_cleanup import revoke_sessions_matching
-from app.utils.email import RESET_TOKEN_EXPIRY_MINUTES, send_reset_email
 from app.tasks.email import send_auth_email
+from app.utils.email import RESET_TOKEN_EXPIRY_MINUTES, send_reset_email
 
 logger = logging.getLogger(__name__)
 

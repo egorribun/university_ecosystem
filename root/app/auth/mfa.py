@@ -80,7 +80,7 @@ def user_has_confirmed_interactive_factor(user: User) -> bool:
 
     if user.mfa_default_method:
         return True
-    
+
     # Check WebAuthn
     if getattr(user, "webauthn_credentials", None):
         return True

@@ -1,7 +1,8 @@
-from datetime import UTC, datetime, timedelta
 import logging
-from typing import List, Optional
+from datetime import UTC, datetime, timedelta
+
 from sqlalchemy import text
+
 from app.core.database import engine
 
 logger = logging.getLogger(__name__)
@@ -11,6 +12,7 @@ PARTITIONED_TABLES = [
     ("notification_deliveries", "attempted_at"),
     ("data_access_logs", "created_at"),
 ]
+
 
 async def ensure_partitions_exist(months_ahead: int = 1):
     """
@@ -28,7 +30,7 @@ async def ensure_partitions_exist(months_ahead: int = 1):
                 target_date = now + timedelta(days=31 * i)
                 year = target_date.year
                 month = target_date.month
-                
+
                 # Start of month
                 start_date = datetime(year, month, 1, tzinfo=UTC)
                 # Start of next month
@@ -36,25 +38,32 @@ async def ensure_partitions_exist(months_ahead: int = 1):
                     next_month_start = datetime(year + 1, 1, 1, tzinfo=UTC)
                 else:
                     next_month_start = datetime(year, month + 1, 1, tzinfo=UTC)
-                
+
                 partition_name = f"{table}_y{year}m{month:02d}"
-                
-                logger.info(f"Ensuring partition {partition_name} exists for table {table}")
-                
+
+                logger.info(
+                    f"Ensuring partition {partition_name} exists for table {table}"
+                )
+
                 try:
-                    await conn.execute(text(f"""
+                    await conn.execute(
+                        text(
+                            f"""
                         CREATE TABLE IF NOT EXISTS {partition_name} 
                         PARTITION OF {table}
                         FOR VALUES FROM ('{start_date.isoformat()}') TO ('{next_month_start.isoformat()}');
-                    """))
+                    """
+                        )
+                    )
                     await conn.commit()
                 except Exception as e:
                     logger.error(f"Failed to create partition {partition_name}: {e}")
                     # Don't rethrow, try other partitions
 
+
 async def start_partition_management_scheduler(interval_seconds: int = 86400):
     """
-    Simplistic scheduler for partition management. 
+    Simplistic scheduler for partition management.
     In a real production environment, this might be a Celery Beat task or a cron job.
     """
     import asyncio
@@ -68,7 +77,7 @@ async def start_partition_management_scheduler(interval_seconds: int = 86400):
             await asyncio.sleep(interval_seconds)
 
     task = asyncio.create_task(run_periodically())
-    
+
     async def stop():
         task.cancel()
         try:

@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Header, Response, Query, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Query, Response
+
+from app.core.config import settings
 from app.services.image_proxy import get_transformed_image
 from app.utils.files import _get_storage_backend
-from app.core.config import settings
 
 router = APIRouter(tags=["images"])
+
 
 @router.get("/img/{path:path}")
 async def proxy_image(
@@ -13,12 +15,12 @@ async def proxy_image(
 ):
     """
     Public image proxy endpoint.
-    Retrieves an image from storage, optimizes it for the requesting browser, 
+    Retrieves an image from storage, optimizes it for the requesting browser,
     and applies optional resizing.
     """
     if not settings.image_proxy_enabled:
         raise HTTPException(status_code=404, detail="Image proxy is disabled")
-        
+
     # Validate and snap width to allowed buckets to prevent cache fragmentation
     target_width = None
     if w:
@@ -42,23 +44,26 @@ async def proxy_image(
     try:
         # Path might have leading slash from URL capturing, strip it for backend compatibility
         normalized_path = path.lstrip("/")
-        
+
         data, mime = await get_transformed_image(
             backend, normalized_path, width=target_width, format_preference=format_pref
         )
-        
+
         return Response(
             content=data,
             media_type=mime,
             headers={
                 "Cache-Control": "public, max-age=31536000, immutable",
-                "Vary": "Accept, bucket-width", # Inform caching layers
-                "x-image-proxy-cache": "HIT" if target_width else "MISS", # Simplified indication
+                "Vary": "Accept, bucket-width",  # Inform caching layers
+                "x-image-proxy-cache": (
+                    "HIT" if target_width else "MISS"
+                ),  # Simplified indication
             },
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
-    except Exception as exc:
+    except Exception:
         from logging import getLogger
+
         getLogger(__name__).exception("Image proxy error for %s", path)
         raise HTTPException(status_code=500, detail="Internal image processing error")

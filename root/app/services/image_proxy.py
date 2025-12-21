@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Literal
 
 from diskcache import Cache
-from PIL import Image, UnidentifiedImageError
+from PIL import Image
 
 from app.core.config import settings
 from app.services.storage import StorageBackend
@@ -43,25 +43,27 @@ async def get_transformed_image(
     Fetch image from backend, transform it (resize, re-encode), and return bytes + mime.
     Utilizes disk caching for efficiency.
     """
-    
+
     # Construct a cache key based on path, width, and format
-    cache_key = hashlib.sha256(f"{path}:{width}:{format_preference}".encode()).hexdigest()
-    
+    cache_key = hashlib.sha256(
+        f"{path}:{width}:{format_preference}".encode()
+    ).hexdigest()
+
     cached_data = image_cache.get(cache_key)
     if cached_data:
         data, mime = cached_data
         return data, mime
 
     # If not in cache, fetch from storage backend
-    # Note: StorageBackend protocol doesn't have a direct 'get_file_bytes' method in the protocol, 
+    # Note: StorageBackend protocol doesn't have a direct 'get_file_bytes' method in the protocol,
     # but the implementations (StaticFSStorage, S3Storage) effectively work with paths.
     # However, save_file returns a URL. We might need to fetch the file bytes differently.
-    
+
     # We need a way to get file bytes from the backend or direct from disk/S3
-    # Let's add a helper or look for one. 
-    # Since we can't easily modify the StorageBackend protocol right now, 
+    # Let's add a helper or look for one.
+    # Since we can't easily modify the StorageBackend protocol right now,
     # we'll implement a dedicated fetcher here based on backend type.
-    
+
     try:
         source_bytes = await _fetch_source_bytes(backend, path)
     except Exception as exc:
@@ -76,11 +78,11 @@ async def get_transformed_image(
         transformed_data, mime = await asyncio.to_thread(
             _process_image, source_bytes, width, format_preference
         )
-        
+
         # Cache the result
         image_cache.set(cache_key, (transformed_data, mime))
         return transformed_data, mime
-        
+
     except Exception as exc:
         logger.error("Failed to transform image %s: %s", path, exc)
         return source_bytes, _guess_mime(path)
@@ -88,22 +90,21 @@ async def get_transformed_image(
 
 async def _fetch_source_bytes(backend: StorageBackend, path: str) -> bytes:
     """Read source bytes from backend. Local files are read directly, S3 via client."""
-    from app.services.storage import StaticFSStorage, S3Storage
-    
+    from app.services.storage import S3Storage, StaticFSStorage
+
     if isinstance(backend, StaticFSStorage):
         # path is relative to base_dir
         # we need to be careful to normalize path (remove leading slash if present)
         rel_path = path.lstrip("/")
         full_path = backend.base_dir / rel_path
         return await asyncio.to_thread(full_path.read_bytes)
-    
+
     if isinstance(backend, S3Storage):
         # path is the key
         key = path.lstrip("/")
         loop = asyncio.get_running_loop()
         response = await loop.run_in_executor(
-            None, 
-            lambda: backend.client.get_object(Bucket=backend.bucket, Key=key)
+            None, lambda: backend.client.get_object(Bucket=backend.bucket, Key=key)
         )
         return response["Body"].read()
 
@@ -111,20 +112,18 @@ async def _fetch_source_bytes(backend: StorageBackend, path: str) -> bytes:
 
 
 def _process_image(
-    data: bytes, 
-    width: int | None, 
-    format_pref: Literal["avif", "webp", "original"]
+    data: bytes, width: int | None, format_pref: Literal["avif", "webp", "original"]
 ) -> tuple[bytes, str]:
     """Synchronous image processing block for thread executor."""
-    
+
     with Image.open(BytesIO(data)) as img:
         # Preserve aspect ratio
         w, h = img.size
-        
+
         if width and width < w:
             new_h = int(h * (width / w))
             img = img.resize((width, new_h), resample=_resolve_resample_filter())
-        
+
         buffer = BytesIO()
         if format_pref == "avif":
             try:
@@ -147,5 +146,6 @@ def _process_image(
 
 def _guess_mime(path: str) -> str:
     import mimetypes
+
     mime, _ = mimetypes.guess_type(path)
     return mime or "application/octet-stream"

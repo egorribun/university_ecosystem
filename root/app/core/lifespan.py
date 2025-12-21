@@ -31,6 +31,10 @@ from app.services.notifications_retention import (
     NotificationsRetentionConfig,
     start_notifications_retention_scheduler,
 )
+from app.services.partition_manager import (
+    ensure_partitions_exist,
+    start_partition_management_scheduler,
+)
 from app.services.password_reset_cleanup import (
     PasswordResetCleanupConfig,
     cleanup_stale_password_reset_tokens,
@@ -50,10 +54,6 @@ from app.services.story_cleanup import (
     StoryCleanupConfig,
     cleanup_expired_stories,
     start_story_cleanup_scheduler,
-)
-from app.services.partition_manager import (
-    ensure_partitions_exist,
-    start_partition_management_scheduler,
 )
 
 

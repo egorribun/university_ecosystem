@@ -27,7 +27,6 @@ from app.core.database import get_db
 from app.deps.cache import etag_matches, format_etag, get_cache
 from app.localization import (
     DEFAULT_LOCALE,
-    SUPPORTED_LOCALES,
     resolve_locale,
     translate,
 )
@@ -51,6 +50,7 @@ async def _get_news_list_version() -> str:
     if not cache.enabled:
         return str(_LOCAL_NEWS_LIST_VERSION)
     from app.deps.cache import RedisCache
+
     if isinstance(cache, RedisCache):
         try:
             client = await cache._get_client()
@@ -68,6 +68,7 @@ async def _increment_news_list_version() -> None:
         _LOCAL_NEWS_LIST_VERSION += 1
         return
     from app.deps.cache import RedisCache
+
     if isinstance(cache, RedisCache):
         try:
             client = await cache._get_client()
@@ -78,7 +79,9 @@ async def _increment_news_list_version() -> None:
     _LOCAL_NEWS_LIST_VERSION += 1
 
 
-def _news_list_cache_key(locale: str | None, limit: int, cursor: str | None, version: str) -> str:
+def _news_list_cache_key(
+    locale: str | None, limit: int, cursor: str | None, version: str
+) -> str:
     normalized = _normalized_cache_locale(locale)
     return f"{_NEWS_LIST_CACHE_PREFIX}:{version}:{normalized}:limit={limit}:cursor={cursor or ''}"
 
@@ -351,7 +354,9 @@ async def update_news(
         await delete_static_file(old_image_url)
     await _increment_news_list_version()
     cache = get_cache()
-    await cache.invalidate(_news_item_cache_key(id, locale), _legacy_news_item_cache_key(id))
+    await cache.invalidate(
+        _news_item_cache_key(id, locale), _legacy_news_item_cache_key(id)
+    )
     serialized = _serialize_news(news, locale)
     return schemas.NewsOut.model_validate(serialized)
 
@@ -382,7 +387,9 @@ async def delete_news(
         await delete_static_file(image_url)
     await _increment_news_list_version()
     cache = get_cache()
-    await cache.invalidate(_news_item_cache_key(id, locale), _legacy_news_item_cache_key(id))
+    await cache.invalidate(
+        _news_item_cache_key(id, locale), _legacy_news_item_cache_key(id)
+    )
     return {"ok": True}
 
 

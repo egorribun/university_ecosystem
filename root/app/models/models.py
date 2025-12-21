@@ -309,7 +309,9 @@ class Event(Base):
     __table_args__ = (
         CheckConstraint("ends_at > starts_at", name="ck_event_time_order"),
     )
-    files = relationship("EventFile", cascade="all, delete-orphan", passive_deletes=True)
+    files = relationship(
+        "EventFile", cascade="all, delete-orphan", passive_deletes=True
+    )
     attendance = relationship(
         "EventAttendance", cascade="all, delete-orphan", passive_deletes=True
     )
@@ -449,9 +451,7 @@ class DataAccessLog(Base):
     context = Column(JSON, nullable=True)
     ip_address = Column(String(64))
     user_agent = Column(String(512))
-    __table_args__ = (
-        {"postgresql_partition_by": "RANGE (created_at)"},
-    )
+    __table_args__ = ({"postgresql_partition_by": "RANGE (created_at)"},)
     created_at = Column(
         DateTime(timezone=True),
         server_default=func.now(),

@@ -774,7 +774,9 @@ async def get_my_events(db: AsyncSession, user_id: int, *, locale: str | None = 
         select(models.Event)
         .join(models.EventAttendance)
         .where(models.EventAttendance.user_id == user_id)
-        .options(selectinload(models.Event.files), selectinload(models.Event.attendance))
+        .options(
+            selectinload(models.Event.files), selectinload(models.Event.attendance)
+        )
     )
     events = (await db.execute(stmt)).scalars().all()
 

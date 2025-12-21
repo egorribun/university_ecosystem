@@ -1,7 +1,4 @@
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from taskiq import Context
-
+from app.core.database import async_session
 from app.core.tkq import broker
 from app.models.models import Event, News
 from app.services.notifications.news_events import (
@@ -10,7 +7,6 @@ from app.services.notifications.news_events import (
 from app.services.notifications.news_events import (
     notify_about_news as _notify_about_news,
 )
-from app.core.database import async_session
 
 
 @broker.task

@@ -31,9 +31,10 @@ async def log_data_access(
     context: dict | None = None,
 ) -> DataAccessLog:
     created_at = datetime.now(UTC)
-    
+
     # Calculate signature
     from app.utils.audit import calculate_log_signature
+
     signature = calculate_log_signature(
         actor_user_id=actor_user_id,
         subject_user_id=subject_user_id,
@@ -43,7 +44,7 @@ async def log_data_access(
         context=context or {},
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
-        created_at=created_at
+        created_at=created_at,
     )
 
     log_entry = DataAccessLog(
