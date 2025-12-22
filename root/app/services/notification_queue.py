@@ -47,6 +47,9 @@ async def start_dead_letter_cleanup_scheduler(
 ) -> Callable[[], Awaitable[None]]:
     """No-op scheduler."""
 
+    async def stop() -> None:
+        pass
+
     return stop
 
 
