@@ -1,9 +1,11 @@
 """Hybrid queue for dispatching notification jobs asynchronously."""
+
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from app.tasks.notifications import (
     enqueue_event_notification_task,
@@ -14,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 # Global metrics instance for testing/monitoring
 _queue_metrics: Any | None = None
-_testing_failed_records: list["EnqueueFailure"] = []
+_testing_failed_records: list[EnqueueFailure] = []
 
 
 @dataclass(slots=True)
@@ -57,9 +59,6 @@ async def start_dead_letter_cleanup_scheduler(
     return stop
 
 
-
-
-
 @dataclass
 class NotificationJob:
     """Legacy dataclass for notification context."""
@@ -72,6 +71,7 @@ class NotificationJob:
 @dataclass
 class EnqueueFailure:
     """Testing wrapper for failed enqueue records."""
+
     job: NotificationJob
     error: str
     source: str

@@ -29,7 +29,6 @@ from app.schemas.schemas import (
     NotificationOut,
     NotificationsListOut,
 )
-
 from app.services.notifications import (
     build_schedule_reminder_message,
     create_notifications_for_users,
@@ -46,9 +45,6 @@ _MISSING_COLUMN_MARKERS = (
     "does not exist",
     "undefined column",
 )
-
-
-
 
 
 def _is_missing_column_error(exc: SQLAlchemyError) -> bool:
@@ -572,6 +568,3 @@ async def check_schedule_and_generate(
         limit=20,
         cursor=None,
     )
-
-
-

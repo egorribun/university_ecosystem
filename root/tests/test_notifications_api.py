@@ -7,8 +7,6 @@ from sqlalchemy import select, text, update
 from app.api.notifications import _serialize_notification
 from app.auth.security import get_password_hash
 from app.core.config import settings
-from app.core.database import async_session
-from app.localization import translate
 from app.models.models import Notification, Schedule
 from app.services.notifications import create_notifications_for_users
 
@@ -355,14 +353,14 @@ async def test_check_schedule_creates_notifications(
     password = "ScheduleCheck123!"
     hashed = get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True, group_id=10)
-    
+
     headers = await _login(async_client, user.email, password)
 
     # Create schedule
     now = datetime.now(UTC)
     start = now + timedelta(minutes=10)
     end = start + timedelta(hours=1)
-    
+
     lesson = Schedule(
         group_id=10,
         start_time=start,
@@ -370,20 +368,19 @@ async def test_check_schedule_creates_notifications(
         weekday=start.weekday(),
         subject="Math",
         teacher="Mr. Smith",
-        room="101"
+        room="101",
     )
     db_session.add(lesson)
     await db_session.commit()
-    
+
     response = await async_client.post(
-        "/notifications/check-schedule?lookahead_minutes=30",
-        headers=headers
+        "/notifications/check-schedule?lookahead_minutes=30", headers=headers
     )
-    
+
     assert response.status_code == 200
     data = response.json()
     assert len(data["items"]) >= 1
-    
+
     # First item should be related to the lesson
     # Note: sort order is newest first.
     first = data["items"][0]
@@ -391,9 +388,3 @@ async def test_check_schedule_creates_notifications(
     # "Math in 101" or similar
     assert "Math" in first["title"] or "Math" in first["body"]
     assert first["type"] == "schedule.reminder"
-
-
-
-
-
-

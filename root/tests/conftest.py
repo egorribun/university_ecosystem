@@ -195,7 +195,8 @@ async def prepare_database() -> AsyncIterator[None]:
 
         # Create partitioned tables with modified schema (single PK) for SQLite
         # DataAccessLog
-        await conn.exec_driver_sql("""
+        await conn.exec_driver_sql(
+            """
             CREATE TABLE IF NOT EXISTS data_access_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -209,10 +210,12 @@ async def prepare_database() -> AsyncIterator[None]:
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 signature VARCHAR(512)
             )
-        """)
+        """
+        )
 
         # Notification
-        await conn.exec_driver_sql("""
+        await conn.exec_driver_sql(
+            """
             CREATE TABLE IF NOT EXISTS notifications (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -227,7 +230,8 @@ async def prepare_database() -> AsyncIterator[None]:
                 read_at DATETIME,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
-        """)
+        """
+        )
         await conn.exec_driver_sql(
             "CREATE INDEX IF NOT EXISTS ix_notifications_user_created ON notifications(user_id, created_at)"
         )
@@ -239,7 +243,8 @@ async def prepare_database() -> AsyncIterator[None]:
         )
 
         # NotificationDelivery
-        await conn.exec_driver_sql("""
+        await conn.exec_driver_sql(
+            """
             CREATE TABLE IF NOT EXISTS notification_deliveries (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 notification_id INTEGER NOT NULL,
@@ -252,7 +257,8 @@ async def prepare_database() -> AsyncIterator[None]:
                 detail TEXT,
                 FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE
             )
-        """)
+        """
+        )
         await conn.exec_driver_sql(
             "CREATE INDEX IF NOT EXISTS ix_notification_deliveries_notif_channel ON notification_deliveries(notification_id, channel)"
         )

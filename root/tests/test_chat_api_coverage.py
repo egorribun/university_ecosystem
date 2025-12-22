@@ -1,0 +1,39 @@
+import pytest
+from httpx import AsyncClient, ASGITransport
+from app.main import app
+from unittest.mock import MagicMock, patch, AsyncMock
+from app.api.deps import get_current_user
+from app.core.database import get_db
+
+@pytest.fixture
+def mock_user():
+    user = MagicMock()
+    user.id = 1
+    user.role = "admin"
+    return user
+
+@pytest.fixture
+def mock_db():
+    return AsyncMock()
+
+@pytest.mark.asyncio
+async def test_chat_api_exhaustive(mock_user, mock_db):
+    app.dependency_overrides[get_current_user] = lambda: mock_user
+    app.dependency_overrides[get_db] = lambda: mock_db
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            mock_res = MagicMock()
+            mock_res.scalars.return_value.all.return_value = []
+            mock_db.execute.return_value = mock_res
+            
+            # get chats
+            await ac.get("/api/v1/chats")
+            
+            # get messages
+            await ac.get("/api/v1/chats/1/messages")
+            
+            # send message - using data since it has Form fields
+            # send_message(chat_id: str, content: str = Form(""), ...)
+            await ac.post("/api/v1/chats/1/messages", data={"content": "hello"})
+    finally:
+        app.dependency_overrides.clear()

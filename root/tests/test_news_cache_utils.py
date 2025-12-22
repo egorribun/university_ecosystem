@@ -15,7 +15,7 @@ def test_normalized_cache_locale_defaults_to_ru_for_unknown():
 
 def test_news_list_cache_key_reflects_locale_and_params():
     key = news._news_list_cache_key("en", 10, None, "v1")
-    assert f":en:" in key
+    assert ":en:" in key
     ru_key = news._news_list_cache_key("es", 10, None, "v1")
     assert f":{news.DEFAULT_LOCALE}:" in ru_key
 
