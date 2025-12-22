@@ -68,3 +68,32 @@ async def retry_dead_lettered_jobs(job_ids: list[int]) -> int:
 async def delete_dead_lettered_jobs(job_ids: list[int]) -> int:
     """No-op stub for legacy dead letter queue deletion."""
     return 0
+
+
+@dataclass
+class NotificationJob:
+    """Legacy dataclass for notification context."""
+
+    kind: str
+    record_id: int
+    locale: str | None = None
+
+
+async def record_enqueue_failure(
+    job: NotificationJob,
+    error: Exception,
+    source: str,
+) -> None:
+    """Log failure to enqueue notification."""
+    logger.error(
+        "Failed to enqueue %s notification for ID %s (source=%s): %s",
+        job.kind,
+        job.record_id,
+        source,
+        error,
+    )
+
+
+async def reset_testing_state() -> None:
+    """No-op for testing state reset."""
+    pass
