@@ -5,6 +5,7 @@ from app.core.config import settings
 
 if settings.environment.lower() in ("test", "testing"):
     from taskiq import InMemoryBroker
+
     broker = InMemoryBroker()
 else:
     result_backend = RedisAsyncResultBackend(
