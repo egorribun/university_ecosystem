@@ -495,9 +495,10 @@ async def test_send_web_push_gone(mock_db):
 
     with (
         patch("app.services.webpush.webpush", side_effect=exc),
-        patch("app.services.webpush._ensure_sync_sessionmaker") as mock_sm,
+        patch("app.services.webpush._ensure_sync_sessionmaker"),
     ):
-        mock_session = mock_sm.return_value.return_value.__enter__.return_value
+        res = send_web_push(sub, {"title": "T"})
+        assert res.status == "gone"
 
 
 @pytest.mark.asyncio

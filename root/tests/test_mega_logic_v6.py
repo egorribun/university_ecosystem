@@ -51,13 +51,13 @@ async def test_user_service_mega():
         ) as m_del,
         patch("app.services.user_service.resolve_locale", return_value="en"),
     ):
-        with pytest.raises(Exception):
+        with pytest.raises(Exception, match="db error"):  # noqa: B017
             await service.upload_avatar(db, student_user, file, request)
         db.rollback.assert_called()
         m_del.assert_called_with("/url")
 
         # upload_cover error
-        with pytest.raises(Exception):
+        with pytest.raises(Exception, match="db error"):  # noqa: B017
             await service.upload_cover(db, student_user, file, request)
 
     # 4. admin create_user branches
