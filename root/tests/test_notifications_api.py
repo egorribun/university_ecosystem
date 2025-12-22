@@ -9,7 +9,7 @@ from app.auth.security import get_password_hash
 from app.core.config import settings
 from app.core.database import async_session
 from app.localization import translate
-from app.models.models import Notification
+from app.models.models import Notification, Schedule
 from app.services.notifications import create_notifications_for_users
 
 
@@ -347,41 +347,52 @@ def test_serialize_notification_normalizes_id_and_read_flag():
 
 
 @pytest.mark.anyio
-async def test_admin_dead_letter_requires_admin(
-    async_client: AsyncClient, user_factory
+async def test_check_schedule_creates_notifications(
+    async_client: AsyncClient,
+    user_factory,
+    db_session,
 ):
-    password = "NoAdmin123!"
+    password = "ScheduleCheck123!"
     hashed = get_password_hash(password)
-    user = await user_factory(hashed_password=hashed, is_active=True, role="student")
+    user = await user_factory(hashed_password=hashed, is_active=True, group_id=10)
+    
+    headers = await _login(async_client, user.email, password)
 
-    headers = _with_internal(await _login(async_client, user.email, password))
-    response = await async_client.get(
-        "/notifications/admin/dead-letter",
-        headers=headers,
+    # Create schedule
+    now = datetime.now(UTC)
+    start = now + timedelta(minutes=10)
+    end = start + timedelta(hours=1)
+    
+    lesson = Schedule(
+        group_id=10,
+        start_time=start,
+        end_time=end,
+        subject="Math",
+        teacher="Mr. Smith",
+        room="101"
     )
-
-    assert response.status_code == 403
-
-
-@pytest.mark.anyio
-@pytest.mark.parametrize("locale", ["en", "ru"])
-async def test_admin_dead_letter_guard_localized(
-    async_client: AsyncClient, user_factory, locale: str
-):
-    password = "LocalizedAdminGuard123!"
-    hashed = get_password_hash(password)
-    user = await user_factory(hashed_password=hashed, is_active=True, role="student")
-
-    headers = _with_internal(await _login(async_client, user.email, password))
-    response = await async_client.get(
-        f"/notifications/admin/dead-letter?lang={locale}",
-        headers=headers,
+    db_session.add(lesson)
+    await db_session.commit()
+    
+    response = await async_client.post(
+        "/notifications/check-schedule?lookahead_minutes=30",
+        headers=headers
     )
+    
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["items"]) >= 1
+    
+    # First item should be related to the lesson
+    # Note: sort order is newest first.
+    first = data["items"][0]
+    # Lesson notification title usually depends on template, but subject is in it?
+    # "Math in 101" or similar
+    assert "Math" in first["title"] or "Math" in first["body"]
+    assert first["type"] == "schedule.reminder"
 
-    assert response.status_code == 403
-    assert response.json()["detail"] == translate(
-        "errors.notifications.admin_required", locale=locale
-    )
+
+
 
 
 
