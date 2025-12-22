@@ -26,18 +26,10 @@ from app.crud import sanitize_optional_text
 from app.localization import localized_text, resolve_locale, translate
 from app.models.models import Notification, Schedule, User
 from app.schemas.schemas import (
-    NotificationDeadLetterJobOut,
-    NotificationDeadLetterListOut,
-    NotificationDeadLetterPurgeIn,
-    NotificationDeadLetterReplayIn,
     NotificationOut,
     NotificationsListOut,
 )
-from app.services.notification_queue import (
-    delete_dead_lettered_jobs,
-    list_dead_lettered_jobs,
-    retry_dead_lettered_jobs,
-)
+
 from app.services.notifications import (
     build_schedule_reminder_message,
     create_notifications_for_users,
@@ -46,11 +38,7 @@ from app.services.notifications import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
-admin_router = APIRouter(
-    prefix="/notifications/admin",
-    tags=["notifications-admin"],
-    include_in_schema=False,
-)
+
 
 _MISSING_COLUMN_MARKERS = (
     "no such column",
@@ -60,16 +48,7 @@ _MISSING_COLUMN_MARKERS = (
 )
 
 
-async def _require_admin_user(
-    request: Request, user: User = Depends(get_current_user)
-) -> User:
-    locale = resolve_locale(request=request, user=user)
-    if user.role != "admin":
-        raise HTTPException(
-            status_code=403,
-            detail=translate("errors.notifications.admin_required", locale=locale),
-        )
-    return user
+
 
 
 def _is_missing_column_error(exc: SQLAlchemyError) -> bool:
@@ -595,35 +574,4 @@ async def check_schedule_and_generate(
     )
 
 
-@admin_router.get(
-    "/dead-letter",
-    response_model=NotificationDeadLetterListOut,
-)
-async def list_dead_letter_queue(
-    _: User = Depends(_require_admin_user),
-    limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
-) -> NotificationDeadLetterListOut:
-    jobs, total = await list_dead_lettered_jobs(limit=limit, offset=offset)
-    return NotificationDeadLetterListOut(
-        items=[NotificationDeadLetterJobOut.from_orm(job) for job in jobs],
-        total=total,
-    )
 
-
-@admin_router.post("/dead-letter/retry")
-async def retry_dead_letter_queue(
-    payload: NotificationDeadLetterReplayIn,
-    _: User = Depends(_require_admin_user),
-):
-    retried = await retry_dead_lettered_jobs(payload.job_ids)
-    return {"retried": retried}
-
-
-@admin_router.post("/dead-letter/purge")
-async def purge_dead_letter_queue(
-    payload: NotificationDeadLetterPurgeIn,
-    _: User = Depends(_require_admin_user),
-):
-    deleted = await delete_dead_lettered_jobs(payload.job_ids)
-    return {"deleted": deleted}

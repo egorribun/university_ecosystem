@@ -56,21 +56,7 @@ async def start_dead_letter_cleanup_scheduler(
     return stop
 
 
-async def list_dead_lettered_jobs(
-    limit: int = 50, offset: int = 0
-) -> tuple[list, int]:
-    """No-op stub for legacy dead letter queue listing."""
-    return [], 0
 
-
-async def retry_dead_lettered_jobs(job_ids: list[int]) -> int:
-    """No-op stub for legacy dead letter queue retry."""
-    return 0
-
-
-async def delete_dead_lettered_jobs(job_ids: list[int]) -> int:
-    """No-op stub for legacy dead letter queue deletion."""
-    return 0
 
 
 @dataclass
