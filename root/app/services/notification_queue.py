@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 # Global metrics instance for testing/monitoring
 _queue_metrics: Any | None = None
-_testing_failed_records: list[NotificationJob] = []
+_testing_failed_records: list["EnqueueFailure"] = []
 
 
 @dataclass(slots=True)
@@ -69,6 +69,15 @@ class NotificationJob:
     locale: str | None = None
 
 
+@dataclass
+class EnqueueFailure:
+    """Testing wrapper for failed enqueue records."""
+    job: NotificationJob
+    error: str
+    source: str
+    attempts: int = 1
+
+
 async def record_enqueue_failure(
     job: NotificationJob,
     error: Exception,
@@ -82,7 +91,7 @@ async def record_enqueue_failure(
         source,
         error,
     )
-    _testing_failed_records.append(job)
+    _testing_failed_records.append(EnqueueFailure(job, str(error), source))
     if _queue_metrics:
         try:
             _queue_metrics.enqueue_failures_total.labels(kind=job.kind).inc()
@@ -101,6 +110,6 @@ async def reset_testing_state() -> None:
     pass
 
 
-async def get_failed_enqueue_records() -> list[NotificationJob]:
+async def get_failed_enqueue_records() -> list[EnqueueFailure]:
     """Get failed enqueue records for testing."""
     return list(_testing_failed_records)

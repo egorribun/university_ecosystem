@@ -367,6 +367,7 @@ async def test_check_schedule_creates_notifications(
         group_id=10,
         start_time=start,
         end_time=end,
+        weekday=start.weekday(),
         subject="Math",
         teacher="Mr. Smith",
         room="101"
