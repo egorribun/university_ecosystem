@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Awaitable, Callable
+from typing import Any, Awaitable, Callable
 
 from app.tasks.notifications import (
     enqueue_event_notification_task,
@@ -11,6 +11,9 @@ from app.tasks.notifications import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Global metrics instance for testing/monitoring
+_queue_metrics: Any | None = None
 
 
 @dataclass(slots=True)
@@ -92,6 +95,16 @@ async def record_enqueue_failure(
         source,
         error,
     )
+    if _queue_metrics:
+        try:
+            _queue_metrics.enqueue_failures_total.labels(kind=job.kind).inc()
+        except Exception:
+            logger.warning("Failed to record metric for enqueue failure", exc_info=True)
+
+
+async def wait_for_all_jobs(timeout: float = 1.0) -> None:
+    """No-op stub for waiting for jobs."""
+    pass
 
 
 async def reset_testing_state() -> None:
