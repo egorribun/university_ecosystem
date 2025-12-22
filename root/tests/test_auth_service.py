@@ -267,7 +267,7 @@ class TestAuthServiceMethods:
     @pytest.mark.asyncio
     async def test_confirm_email_change_success(self, service, mock_db, mock_user):
         """Should confirm email change and update user."""
-        _hash_token("valid_token")  # noqa: F841 - validate function accessible
+        token = "valid_token"
 
         mock_record = MagicMock(spec=models.EmailChangeToken)
         mock_record.user_id = mock_user.id

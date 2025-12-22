@@ -485,6 +485,7 @@ async def test_send_test_no_subs(mock_db, mock_admin, mock_user, mock_request):
 @pytest.mark.asyncio
 async def test_send_web_push_gone(mock_db):
     from pywebpush import WebPushException
+    from app.services.webpush import send_web_push
 
     sub = models.PushSubscription(id=1, endpoint="url", p256dh="k", auth="s")
 
