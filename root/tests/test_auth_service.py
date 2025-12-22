@@ -237,22 +237,29 @@ class TestAuthServiceMethods:
     async def test_initiate_email_change_success(self, service, mock_db, mock_user):
         """Should initiate email change and returns user."""
         from app.schemas import schemas
-        payload = schemas.UserEmailChangeIn(email="new@example.com", password="password")
+
+        payload = schemas.UserEmailChangeIn(
+            email="new@example.com", password="password"
+        )
 
         with MagicMock() as mock_verify:
             mock_verify.return_value = True
             from app.services import auth_service
+
             auth_service.verify_password = mock_verify
 
             # Mock TaskIQ task
             from app.tasks.email import send_auth_email
+
             send_auth_email.kiq = AsyncMock()
 
             # Mock DB interactions
             mock_db.execute.return_value = MagicMock(scalar_one_or_none=lambda: None)
             mock_db.get.return_value = mock_user
 
-            result = await service.initiate_email_change(mock_db, mock_user, payload, MagicMock(), MagicMock())
+            result = await service.initiate_email_change(
+                mock_db, mock_user, payload, MagicMock(), MagicMock()
+            )
             assert result == mock_user
             mock_db.commit.assert_called_once()
             send_auth_email.kiq.assert_called_once()
@@ -273,26 +280,28 @@ class TestAuthServiceMethods:
         # Need many execute results due to recursive calls to attach_pending_email
         mock_res = MagicMock()
         mock_res.scalar_one_or_none.return_value = mock_record
-        
+
         mock_res_none = MagicMock()
         mock_res_none.scalar_one_or_none.return_value = None
-        
+
         mock_res_first = MagicMock()
         mock_res_first.scalars.return_value.first.return_value = mock_record
 
         mock_db.execute.side_effect = [
-            mock_res,       # 1. record = result.scalar_one_or_none()
+            mock_res,  # 1. record = result.scalar_one_or_none()
             mock_res_none,  # 2. existing check
-            MagicMock(),    # 3. update record used=True
-            MagicMock(),    # 4. update others used=True
-            mock_res_first, # 5. first attach_pending_email check
-            mock_res_first, # 6. second attach_pending_email check (if user is not db_user)
-            mock_res_first, # possibly more
+            MagicMock(),  # 3. update record used=True
+            MagicMock(),  # 4. update others used=True
+            mock_res_first,  # 5. first attach_pending_email check
+            mock_res_first,  # 6. second attach_pending_email check (if user is not db_user)
+            mock_res_first,  # possibly more
             mock_res_first,
         ]
         mock_db.get.return_value = mock_user
 
-        result = await service.confirm_email_change(mock_db, mock_user, token, MagicMock())
+        result = await service.confirm_email_change(
+            mock_db, mock_user, token, MagicMock()
+        )
 
         assert result == mock_user
         assert mock_user.email == "new@example.com"
@@ -302,18 +311,27 @@ class TestAuthServiceMethods:
     async def test_change_password_success(self, service, mock_db, mock_user):
         """Should change password and revoke other sessions."""
         from app.schemas import schemas
+
         payload = schemas.UserPasswordChangeIn(
-            current_password="oldpassword123", 
-            new_password="newpassword123"
+            current_password="oldpassword123", new_password="newpassword123"
         )
 
-        with patch("app.services.auth_service.verify_password", side_effect=[True, False]):
-            with patch("app.services.auth_service.get_password_hash", return_value="new_hash"):
-                with patch("app.services.auth_service.revoke_sessions_matching", new_callable=AsyncMock) as mock_revoke:
+        with patch(
+            "app.services.auth_service.verify_password", side_effect=[True, False]
+        ):
+            with patch(
+                "app.services.auth_service.get_password_hash", return_value="new_hash"
+            ):
+                with patch(
+                    "app.services.auth_service.revoke_sessions_matching",
+                    new_callable=AsyncMock,
+                ) as mock_revoke:
                     mock_revoke.return_value = 1
                     mock_db.get.return_value = mock_user
 
-                    success, revoked = await service.change_password(mock_db, mock_user, payload, MagicMock())
+                    success, revoked = await service.change_password(
+                        mock_db, mock_user, payload, MagicMock()
+                    )
 
                     assert success is True
                     assert revoked == 1
@@ -326,8 +344,10 @@ class TestAuthServiceInit:
 
     def test_init_stores_audit_service(self):
         """Should store audit service reference."""
-        from app.services.audit_service import AuditService
         from unittest.mock import MagicMock
+
+        from app.services.audit_service import AuditService
+
         audit = MagicMock(spec=AuditService)
         service = AuthService(audit)
         assert service.audit == audit

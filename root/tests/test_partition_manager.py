@@ -1,13 +1,14 @@
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime, UTC
+from unittest.mock import AsyncMock, patch
+
 import pytest
-from sqlalchemy import text
+
 from app.services.partition_manager import (
+    PARTITIONED_TABLES,
     ensure_partitions_exist,
     start_partition_management_scheduler,
-    PARTITIONED_TABLES
 )
+
 
 class TestPartitionManager:
     @pytest.mark.asyncio
@@ -42,7 +43,10 @@ class TestPartitionManager:
     @pytest.mark.asyncio
     async def test_scheduler_lifecycle(self):
         """Should start and be able to stop scheduler."""
-        with patch("app.services.partition_manager.ensure_partitions_exist", new_callable=AsyncMock) as mock_ensure:
+        with patch(
+            "app.services.partition_manager.ensure_partitions_exist",
+            new_callable=AsyncMock,
+        ) as mock_ensure:
             # use small interval
             stop_func = await start_partition_management_scheduler(interval_seconds=0.1)
 
