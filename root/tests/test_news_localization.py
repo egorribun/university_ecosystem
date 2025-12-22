@@ -10,7 +10,10 @@ def _assert_news_headers(response, expected_language: str) -> None:
     vary_header = response.headers.get("Vary", "")
     vary_values = {value.strip() for value in vary_header.split(",") if value.strip()}
     assert "Accept-Language" in vary_values
-    assert response.headers.get("Cache-Control") == "private, max-age=180"
+    assert (
+        response.headers.get("Cache-Control")
+        == "public, max-age=60, stale-while-revalidate=120"
+    )
 
 
 @pytest.mark.anyio

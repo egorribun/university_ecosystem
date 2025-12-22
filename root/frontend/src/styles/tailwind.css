@@ -94,20 +94,41 @@
   */
   .card-glass {
     @apply relative overflow-hidden rounded-ue-xl border border-glass-border bg-glass text-page-foreground shadow-glass backdrop-blur-md;
+    isolation: isolate;
   }
 
   .card-glass::before {
     content: "";
-    @apply pointer-events-none absolute inset-0 bg-gradient-to-br from-glass-tint1 via-glass-tint2 to-glass-tint3 opacity-80;
+    @apply pointer-events-none absolute inset-0 bg-gradient-to-br from-glass-tint1 via-glass-tint2 to-glass-tint3 opacity-[0.88];
+    z-index: -1;
   }
 
+  /* High-fidelity sheen effect */
   .card-glass::after {
     content: "";
     position: absolute;
     inset: 0;
-    border-radius: inherit;
-    border: 1px solid rgba(255, 255, 255, 0.08);
     pointer-events: none;
+    z-index: 10;
+    background: linear-gradient(
+      125deg,
+      rgba(255, 255, 255, 0.08) 0%,
+      rgba(255, 255, 255, 0.02) 40%,
+      rgba(255, 255, 255, 0) 50%,
+      rgba(255, 255, 255, 0) 100%
+    );
+    border-radius: inherit;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+  }
+
+  .dark .card-glass::after {
+    border-color: rgba(255, 255, 255, 0.06);
+    background: linear-gradient(
+      125deg,
+      rgba(255, 255, 255, 0.05) 0%,
+      rgba(255, 255, 255, 0.01) 40%,
+      transparent 50%
+    );
   }
 
   .btn-gradient {

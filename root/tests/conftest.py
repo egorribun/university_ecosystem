@@ -172,13 +172,97 @@ async def prepare_database() -> AsyncIterator[None]:
         except OSError:
             pass
 
+    # Tables with composite PKs that are incompatible with SQLite autoincrement
+    # We exclude them from create_all and create them separately without composite PK
+    partitioned_tables = {
+        models.DataAccessLog.__table__.name,
+        models.Notification.__table__.name,
+        models.NotificationDelivery.__table__.name,
+    }
+
+    # Create all tables except partitioned ones
     async with engine.begin() as conn:
         await conn.exec_driver_sql("PRAGMA busy_timeout=5000")
         await conn.exec_driver_sql("PRAGMA journal_mode=WAL")
-        await conn.run_sync(Base.metadata.create_all)
-        await conn.run_sync(
-            models.NotificationDelivery.__table__.create, checkfirst=True
+
+        # Create non-partitioned tables
+        def _create_non_partitioned(connection):
+            for table in Base.metadata.sorted_tables:
+                if table.name not in partitioned_tables:
+                    table.create(connection, checkfirst=True)
+
+        await conn.run_sync(_create_non_partitioned)
+
+        # Create partitioned tables with modified schema (single PK) for SQLite
+        # DataAccessLog
+        await conn.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS data_access_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                subject_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                resource_type VARCHAR(64) NOT NULL,
+                resource_id VARCHAR(128),
+                action VARCHAR(64) NOT NULL,
+                context JSON,
+                ip_address VARCHAR(64),
+                user_agent VARCHAR(512),
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                signature VARCHAR(512)
+            )
+        """
         )
+
+        # Notification
+        await conn.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                title VARCHAR NOT NULL,
+                title_en VARCHAR,
+                body TEXT,
+                body_en TEXT,
+                type VARCHAR,
+                url VARCHAR,
+                dedupe_key VARCHAR(255),
+                read BOOLEAN DEFAULT 0,
+                read_at DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_notifications_user_created ON notifications(user_id, created_at)"
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_notifications_dupe_check ON notifications(user_id, title, url, created_at)"
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_notifications_user_dedupe ON notifications(user_id, dedupe_key)"
+        )
+
+        # NotificationDelivery
+        await conn.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS notification_deliveries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                notification_id INTEGER NOT NULL,
+                notification_created_at TIMESTAMP,
+                channel VARCHAR NOT NULL DEFAULT 'inapp',
+                status VARCHAR NOT NULL DEFAULT 'delivered',
+                attempted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                delivered_at DATETIME,
+                status_code INTEGER,
+                detail TEXT,
+                FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE
+            )
+        """
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_notification_deliveries_notif_channel ON notification_deliveries(notification_id, channel)"
+        )
+
     yield
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)

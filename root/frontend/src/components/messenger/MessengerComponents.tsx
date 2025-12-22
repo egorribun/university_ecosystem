@@ -188,8 +188,8 @@ const ChatWindow: React.FC<ChatWindowProps> = memo(({ messages }) => {
                   <div key={att.id}>
                     {att.type === "image" ? (
                       sanitizeUrl(att.url) ? (
-                        <img
-                          src={sanitizeUrl(att.url)!}
+                        <SmartImage
+                          srcRaw={att.url}
                           alt={att.name}
                           className="rounded-xl max-w-full h-auto max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
                           onClick={() => {

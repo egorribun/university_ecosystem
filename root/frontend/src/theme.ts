@@ -32,6 +32,20 @@ const focusRing = {
   dark: "0 0 0 1px rgba(11, 15, 21, 0.92), 0 0 0 4px rgba(var(--mui-palette-primary-mainChannel) / 0.5)",
 } as const
 
+const shadows = {
+  sm: "var(--shadow-1)",
+  md: "var(--shadow-2)",
+  lg: "var(--dash-panel-shadow)",
+  xl: "var(--dash-panel-hover-shadow)",
+} as const
+
+const glass = {
+  bg: "var(--glass-bg)",
+  border: "var(--glass-border)",
+  shadow: "var(--glass-shadow)",
+  blur: "var(--glass-blur)",
+} as const
+
 const baseTheme = extendTheme({
   cssVarPrefix: "ue",
   colorSchemeSelector: "class",
@@ -383,10 +397,13 @@ const baseTheme = extendTheme({
   },
 })
 
-baseTheme.vars.focusRing = focusRing
-baseTheme.vars.radiusScale = radiusScale
-baseTheme.vars.spacingScale = spacingScale
-baseTheme.vars.zIndexTokens = zIndexTokens
+const vars = baseTheme.vars as any
+vars.focusRing = focusRing
+vars.radiusScale = radiusScale
+vars.spacingScale = spacingScale
+vars.zIndexTokens = zIndexTokens
+vars.shadows = shadows
+vars.glass = glass
 
 const theme = responsiveFontSizes(baseTheme)
 

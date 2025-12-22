@@ -1,4 +1,5 @@
 import { type CSSProperties, type KeyboardEvent } from "react"
+import { motion } from "framer-motion"
 import { Link, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded"
@@ -81,20 +82,19 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
 
         {loadingNews && (
           <div className="space-y-4" role="presentation">
-            <div className="flex items-center gap-3">
-              <Skeleton width={44} height={44} rounded="9999px" />
-              <div className="flex-1 space-y-2">
-                <Skeleton height={22} />
-                <Skeleton height={18} width="60%" />
+            {[1, 2].map((i) => (
+              <div
+                key={i}
+                className="flex items-start gap-4 rounded-ue-lg border border-[color:var(--dash-panel-item-divider)] bg-[color:var(--dash-panel-item-bg)] px-4 py-3 opacity-60"
+              >
+                <Skeleton width={44} height={44} rounded="9999px" className="flex-shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton height={20} width="90%" />
+                  <Skeleton height={14} width="70%" />
+                  <Skeleton height={14} width="40%" />
+                </div>
               </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <Skeleton width={44} height={44} rounded="9999px" />
-              <div className="flex-1 space-y-2">
-                <Skeleton height={22} width="80%" />
-                <Skeleton height={18} width="50%" />
-              </div>
-            </div>
+            ))}
           </div>
         )}
         {!loadingNews && news.length === 0 && (
@@ -137,13 +137,35 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
           </ul>
         )}
       </div>
-      <span
+      <motion.span
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top_right,var(--dash-card-news-radial),transparent_68%)] opacity-0 mix-blend-soft-light transition-opacity duration-500 group-hover:opacity-80"
+        initial={{ opacity: 0 }}
+        whileHover={{ opacity: 0.8 }}
+        animate={{
+          scale: [1, 1.1, 1],
+        }}
+        transition={{
+          duration: 4.5,
+          repeat: Infinity,
+          ease: "easeInOut",
+        }}
+        className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top_right,var(--dash-card-news-radial),transparent_68%)] mix-blend-soft-light transition-opacity duration-500"
       />
-      <span
+      <motion.span
         aria-hidden="true"
-        className="pointer-events-none absolute -bottom-20 left-1/3 z-0 h-44 w-44 rounded-full bg-[radial-gradient(circle,var(--dash-card-news-orb),transparent)] opacity-30 blur-3xl mix-blend-soft-light transition duration-700 group-hover:opacity-70"
+        initial={{ opacity: 0.3 }}
+        whileHover={{ opacity: 0.7 }}
+        animate={{
+          scale: [1, 1.18, 1],
+          rotate: [0, -5, 0],
+          x: [0, 10, 0],
+        }}
+        transition={{
+          duration: 6.5,
+          repeat: Infinity,
+          ease: "easeInOut",
+        }}
+        className="pointer-events-none absolute -bottom-20 left-1/3 z-0 h-44 w-44 rounded-full bg-[radial-gradient(circle,var(--dash-card-news-orb),transparent)] blur-3xl mix-blend-soft-light transition-opacity duration-700"
       />
     </Card>
   )

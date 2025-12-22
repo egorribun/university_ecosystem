@@ -215,14 +215,72 @@ export default defineConfig(({ mode }) => {
 
   const toPosix = (value: string) => value.replace(/\\/g, "/")
   const routeChunks = [
-    { name: "map", patterns: [toPosix(resolve(srcDir, "pages/Map.tsx"))] },
-    { name: "schedule", patterns: [toPosix(resolve(srcDir, "pages/Schedule.tsx"))] },
+    {
+      name: "map",
+      patterns: [
+        toPosix(resolve(srcDir, "pages/Map.tsx")),
+        toPosix(resolve(srcDir, "pages/MapContent.tsx")),
+      ],
+    },
+    {
+      name: "schedule",
+      patterns: [
+        toPosix(resolve(srcDir, "pages/Schedule.tsx")),
+        toPosix(resolve(srcDir, "components/schedule")),
+      ],
+    },
     {
       name: "news",
       patterns: [
         toPosix(resolve(srcDir, "pages/News.tsx")),
+        toPosix(resolve(srcDir, "pages/NewsDetail.tsx")),
         toPosix(resolve(srcDir, "components/NewsCard.tsx")),
-        toPosix(resolve(srcDir, "components/NewsDetail.tsx")),
+      ],
+    },
+    {
+      name: "messenger",
+      patterns: [
+        toPosix(resolve(srcDir, "pages/Messenger.tsx")),
+        toPosix(resolve(srcDir, "components/messenger")),
+      ],
+    },
+    {
+      name: "events",
+      patterns: [
+        toPosix(resolve(srcDir, "pages/Events.tsx")),
+        toPosix(resolve(srcDir, "components/EventCard.tsx")),
+        toPosix(resolve(srcDir, "components/EventDetail.tsx")),
+      ],
+    },
+    {
+      name: "profile",
+      patterns: [
+        toPosix(resolve(srcDir, "pages/Profile.tsx")),
+        toPosix(resolve(srcDir, "components/profile")),
+      ],
+    },
+    {
+      name: "settings",
+      patterns: [
+        toPosix(resolve(srcDir, "pages/Settings.tsx")),
+        toPosix(resolve(srcDir, "components/settings")),
+      ],
+    },
+    {
+      name: "auth",
+      patterns: [
+        toPosix(resolve(srcDir, "pages/Login.tsx")),
+        toPosix(resolve(srcDir, "pages/Register.tsx")),
+        toPosix(resolve(srcDir, "pages/ForgotPassword.tsx")),
+        toPosix(resolve(srcDir, "pages/ResetPassword.tsx")),
+      ],
+    },
+    {
+      name: "admin",
+      patterns: [
+        toPosix(resolve(srcDir, "pages/AdminUsers.tsx")),
+        toPosix(resolve(srcDir, "pages/AdminNotifications.tsx")),
+        toPosix(resolve(srcDir, "pages/StoriesAdmin.tsx")),
       ],
     },
   ] as const

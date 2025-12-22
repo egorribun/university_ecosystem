@@ -44,6 +44,8 @@ from app.schemas.schemas import (
     TokenWithProfile,
     UserCreate,
     UserOut,
+    WebAuthnRegistrationOptionsOut,
+    WebAuthnRegistrationVerifyIn,
 )
 from app.services.audit_service import AuditService
 from app.services.auth_service import attach_pending_email
@@ -79,7 +81,7 @@ class LoginIn(BaseModel):
 
 
 class MfaMethodChallengeOut(BaseModel):
-    method: Literal[mfa.MFA_METHOD_TOTP]
+    method: Literal[mfa.MFA_METHOD_TOTP, mfa.MFA_METHOD_WEBAUTHN]
     challenge_token: str
     challenge_expires_at: datetime
     options: dict[str, Any] | None = None
@@ -92,7 +94,7 @@ class PendingMfaResponse(BaseModel):
     status: Literal["mfa_required"] = "mfa_required"
     user_id: int
     session_id: int | None = None
-    default_method: Literal[mfa.MFA_METHOD_TOTP] | None = None
+    default_method: Literal[mfa.MFA_METHOD_TOTP, mfa.MFA_METHOD_WEBAUTHN] | None = None
     methods: list[MfaMethodChallengeOut]
 
 
@@ -113,9 +115,10 @@ class TotpEnrollmentConfirmIn(BaseModel):
 
 
 class MfaVerifyIn(BaseModel):
-    method: Literal[mfa.MFA_METHOD_TOTP]
+    method: Literal[mfa.MFA_METHOD_TOTP, mfa.MFA_METHOD_WEBAUTHN]
     challenge_token: str
     code: str | None = None
+    webauthn_response: dict[str, Any] | None = None
     trust_device: bool = False
 
 
@@ -282,7 +285,18 @@ async def _resolve_mfa_capabilities(db: AsyncSession, *, user: User) -> dict[str
             .limit(1)
         )
         totp_available = bool((await db.execute(legacy_stmt)).scalars().first())
-    return {mfa.MFA_METHOD_TOTP: totp_available}
+
+    webauthn_stmt = (
+        select(mfa.WebAuthnCredential.id)
+        .where(mfa.WebAuthnCredential.user_id == user.id)
+        .limit(1)
+    )
+    webauthn_available = bool((await db.execute(webauthn_stmt)).scalars().first())
+
+    return {
+        mfa.MFA_METHOD_TOTP: totp_available,
+        mfa.MFA_METHOD_WEBAUTHN: webauthn_available,
+    }
 
 
 async def _collect_mfa_challenges(
@@ -294,31 +308,69 @@ async def _collect_mfa_challenges(
     session: ActiveSession | None = None,
 ) -> list[MfaMethodChallengeOut]:
     methods: list[MfaMethodChallengeOut] = []
-    if not capabilities.get(mfa.MFA_METHOD_TOTP):
-        return methods
-    challenge = await mfa.start_totp_verification(
-        db,
-        user=user,
-        session=session,
-        locale=locale,
-    )
-    (
-        attempt_count,
-        attempt_limit,
-        remaining_attempts,
-    ) = mfa.describe_challenge_attempts(
-        challenge, default_limit=settings.mfa_totp_attempt_limit
-    )
-    methods.append(
-        MfaMethodChallengeOut(
-            method=mfa.MFA_METHOD_TOTP,
-            challenge_token=challenge.token,
-            challenge_expires_at=challenge.expires_at,
-            attempt_count=attempt_count,
-            attempt_limit=attempt_limit,
-            remaining_attempts=remaining_attempts,
+
+    # TOTP
+    if capabilities.get(mfa.MFA_METHOD_TOTP):
+        challenge = await mfa.start_totp_verification(
+            db,
+            user=user,
+            session=session,
+            locale=locale,
         )
-    )
+        (
+            attempt_count,
+            attempt_limit,
+            remaining_attempts,
+        ) = mfa.describe_challenge_attempts(
+            challenge, default_limit=settings.mfa_totp_attempt_limit
+        )
+        methods.append(
+            MfaMethodChallengeOut(
+                method=mfa.MFA_METHOD_TOTP,
+                challenge_token=challenge.token,
+                challenge_expires_at=challenge.expires_at,
+                attempt_count=attempt_count,
+                attempt_limit=attempt_limit,
+                remaining_attempts=remaining_attempts,
+            )
+        )
+
+    # WebAuthn
+    if capabilities.get(mfa.MFA_METHOD_WEBAUTHN):
+        from app.services.webauthn import WebAuthnService
+
+        service = WebAuthnService(db)
+        webauthn_options = await service.get_authentication_options(user)
+
+        challenge = await mfa.issue_challenge(
+            db,
+            user_id=user.id,
+            session_id=session.id if session else None,
+            challenge_type=mfa.CHALLENGE_TYPE_WEBAUTHN_AUTH,
+            locale=locale,
+            payload={"options": webauthn_options},
+        )
+
+        (
+            attempt_count,
+            attempt_limit,
+            remaining_attempts,
+        ) = mfa.describe_challenge_attempts(
+            challenge, default_limit=settings.mfa_challenge_max_attempts
+        )
+
+        methods.append(
+            MfaMethodChallengeOut(
+                method=mfa.MFA_METHOD_WEBAUTHN,
+                challenge_token=challenge.token,
+                challenge_expires_at=challenge.expires_at,
+                options=webauthn_options,
+                attempt_count=attempt_count,
+                attempt_limit=attempt_limit,
+                remaining_attempts=remaining_attempts,
+            )
+        )
+
     return methods
 
 
@@ -976,6 +1028,166 @@ async def delete_totp_enrollment(
     return payload
 
 
+@router.post(
+    "/mfa/webauthn/register/start",
+    response_model=WebAuthnRegistrationOptionsOut,
+    dependencies=[Depends(require_fresh_mfa_for_enrollment)],
+)
+async def start_webauthn_registration(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services.webauthn import WebAuthnService
+
+    service = WebAuthnService(db)
+    options = await service.get_registration_options(user)
+
+    # Store challenge in a temporary challenge record
+    challenge = await mfa.issue_challenge(
+        db,
+        user_id=user.id,
+        challenge_type=mfa.CHALLENGE_TYPE_WEBAUTHN_REG,
+        payload={"options": options},
+    )
+
+    await db.commit()
+
+    _audit_log(
+        "auth.mfa.webauthn.enroll_start",
+        request,
+        user_id=user.id,
+        reason="issued",
+        extra={"challenge_token": challenge.token},
+    )
+
+    return WebAuthnRegistrationOptionsOut(publicKey=options["publicKey"])
+
+
+@router.post(
+    "/mfa/webauthn/register/confirm",
+    response_model=MfaFactorStatusOut,
+    dependencies=[Depends(require_fresh_mfa_for_enrollment)],
+)
+async def confirm_webauthn_registration(
+    payload: WebAuthnRegistrationVerifyIn,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    # Verify challenge
+    challenge = await mfa.get_challenge(
+        db,
+        token=payload.challenge,
+        challenge_type=mfa.CHALLENGE_TYPE_WEBAUTHN_REG,
+        user_id=user.id,
+        consume=True,
+    )
+
+    webauthn_challenge = challenge.payload.get("options", {}).get("challenge")
+    if not webauthn_challenge:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Challenge data missing")
+
+    from app.services.webauthn import WebAuthnService
+
+    service = WebAuthnService(db)
+
+    try:
+        await service.verify_registration(
+            user=user,
+            challenge=webauthn_challenge,
+            response=payload.response,
+            label=payload.label,
+        )
+    except Exception as exc:
+        logger.error(f"WebAuthn registration verification failed: {exc}")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "WebAuthn verification failed")
+
+    await mfa.refresh_user_mfa_preferences(db, user=user)
+    session: ActiveSession | None = getattr(request.state, "active_session", None)
+    await mfa.record_mfa_success(
+        db,
+        user=user,
+        session=session,
+        method=mfa.MFA_METHOD_WEBAUTHN,
+    )
+    await db.commit()
+
+    _audit_log(
+        "auth.mfa.webauthn.enroll_complete",
+        request,
+        user_id=user.id,
+        reason="confirmed",
+    )
+
+    return MfaFactorStatusOut(
+        disabled=False,
+        mfa_default_method=user.mfa_default_method,
+        mfa_required=bool(user.mfa_required),
+    )
+
+
+@router.get("/mfa/webauthn", response_model=list[dict[str, Any]])
+async def list_webauthn_credentials(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = (
+        select(mfa.WebAuthnCredential)
+        .where(mfa.WebAuthnCredential.user_id == user.id)
+        .order_by(mfa.WebAuthnCredential.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    return [
+        {
+            "id": c.id,
+            "label": c.label,
+            "created_at": c.created_at,
+            "last_used_at": c.last_used_at,
+            "credential_id": c.credential_id,
+        }
+        for c in result.scalars()
+    ]
+
+
+@router.delete("/mfa/webauthn/{credential_id}", response_model=MfaFactorStatusOut)
+async def delete_webauthn_credential(
+    credential_id: int,
+    request: Request,
+    _: None = Depends(require_fresh_mfa),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = (
+        delete(mfa.WebAuthnCredential)
+        .where(mfa.WebAuthnCredential.id == credential_id)
+        .where(mfa.WebAuthnCredential.user_id == user.id)
+    )
+    result = await db.execute(stmt)
+    await mfa.refresh_user_mfa_preferences(db, user=user)
+    await db.commit()
+
+    payload = MfaFactorStatusOut(
+        disabled=bool(result.rowcount),
+        mfa_default_method=user.mfa_default_method,
+        mfa_required=bool(user.mfa_required),
+    )
+
+    _audit_log(
+        "auth.mfa.webauthn.disabled",
+        request,
+        user_id=user.id,
+        reason="revoked",
+        extra={
+            "disabled": bool(result.rowcount),
+            "credential_id": credential_id,
+            "default_method": payload.mfa_default_method,
+            "mfa_required": payload.mfa_required,
+        },
+    )
+    return payload
+
+
 @router.post("/mfa/verify", response_model=TokenWithProfile)
 async def verify_mfa_challenge(
     payload: MfaVerifyIn,
@@ -983,7 +1195,11 @@ async def verify_mfa_challenge(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    expected_type = mfa.CHALLENGE_TYPE_TOTP_VERIFY
+    if payload.method == mfa.MFA_METHOD_WEBAUTHN:
+        expected_type = mfa.CHALLENGE_TYPE_WEBAUTHN_AUTH
+    else:
+        expected_type = mfa.CHALLENGE_TYPE_TOTP_VERIFY
+
     try:
         challenge = await mfa.get_challenge(
             db,
@@ -1047,24 +1263,56 @@ async def verify_mfa_challenge(
         },
     )
     try:
-        if not payload.code:
-            _audit_log(
-                "auth.mfa.verify.failure",
-                request,
-                user_id=user.id,
-                reason="missing_code",
+        if payload.method == mfa.MFA_METHOD_WEBAUTHN:
+            if not payload.webauthn_response:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST, "WebAuthn response required"
+                )
+
+            from app.services.webauthn import WebAuthnService
+
+            service = WebAuthnService(db)
+
+            # Extract challenge from payload or challenge table?
+            # In _collect_mfa_challenges we put options (containing challenge) into payload['options']
+            webauthn_challenge = challenge.payload.get("options", {}).get("challenge")
+            if not webauthn_challenge:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST, "Challenge data missing"
+                )
+
+            try:
+                await service.verify_authentication(
+                    user=user,
+                    challenge=webauthn_challenge,
+                    response=payload.webauthn_response,
+                )
+                await mfa.consume_challenge(db, challenge)
+            except Exception as exc:
+                logger.error(f"WebAuthn authentication failed: {exc}")
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST, "WebAuthn verification failed"
+                )
+
+        else:
+            if not payload.code:
+                _audit_log(
+                    "auth.mfa.verify.failure",
+                    request,
+                    user_id=user.id,
+                    reason="missing_code",
+                )
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST, "Verification code required"
+                )
+            await mfa.verify_totp_for_user(
+                db,
+                user=user,
+                code=payload.code,
+                challenge=challenge,
+                session_id=challenge.session_id,
+                locale=locale,
             )
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST, "Verification code required"
-            )
-        await mfa.verify_totp_for_user(
-            db,
-            user=user,
-            code=payload.code,
-            challenge=challenge,
-            session_id=challenge.session_id,
-            locale=locale,
-        )
     except HTTPException as exc:
         await db.commit()
         _audit_log(

@@ -17,6 +17,7 @@ from fastapi import (
     status,
 )
 from fastapi.encoders import jsonable_encoder
+from redis.exceptions import RedisError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import crud
@@ -40,23 +41,64 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/news", tags=["news"])
 
-# Allow short-term caching while ensuring language variants are respected.
-_NEWS_CACHE_CONTROL = "private, max-age=180"
+_NEWS_LIST_CACHE_PREFIX = "news:list"
+_NEWS_LIST_VERSION_KEY = f"{_NEWS_LIST_CACHE_PREFIX}:version"
+_LOCAL_NEWS_LIST_VERSION = 0
+
+_NEWS_CACHE_CONTROL = "public, max-age=60, stale-while-revalidate=120"
 _LEGACY_NEWS_LIST_CACHE_KEY = "news:list"
 _LEGACY_NEWS_ITEM_PREFIX = "news:item"
-_CACHE_LOCALES: tuple[str, ...] = tuple(sorted({DEFAULT_LOCALE, *SUPPORTED_LOCALES}))
+_CACHE_LOCALES = frozenset(SUPPORTED_LOCALES)
 
 
 def _normalized_cache_locale(locale: str | None) -> str:
-    candidate = (locale or "").strip().lower()
-    if candidate in SUPPORTED_LOCALES:
-        return candidate
+    """Normalize locale string for cache key purposes."""
+    if locale is None:
+        return DEFAULT_LOCALE
+    if locale in SUPPORTED_LOCALES:
+        return locale
     return DEFAULT_LOCALE
 
 
-def _news_list_cache_key(locale: str | None) -> str:
+async def _get_news_list_version() -> str:
+    cache = get_cache()
+    if not cache.enabled:
+        return str(_LOCAL_NEWS_LIST_VERSION)
+    from app.deps.cache import RedisCache
+
+    if isinstance(cache, RedisCache):
+        try:
+            client = await cache._get_client()
+            raw = await client.get(_NEWS_LIST_VERSION_KEY)
+            return str(int(raw)) if raw is not None else "0"
+        except (RedisError, OSError, TypeError, ValueError):
+            return "0"
+    return "0"
+
+
+async def _increment_news_list_version() -> None:
+    global _LOCAL_NEWS_LIST_VERSION
+    cache = get_cache()
+    if not cache.enabled:
+        _LOCAL_NEWS_LIST_VERSION += 1
+        return
+    from app.deps.cache import RedisCache
+
+    if isinstance(cache, RedisCache):
+        try:
+            client = await cache._get_client()
+            await client.incr(_NEWS_LIST_VERSION_KEY)
+        except (RedisError, OSError):
+            logger.warning("Failed to increment news cache version")
+        return
+    _LOCAL_NEWS_LIST_VERSION += 1
+
+
+def _news_list_cache_key(
+    locale: str | None, limit: int, cursor: str | None, version: str
+) -> str:
     normalized = _normalized_cache_locale(locale)
-    return f"news:list:{normalized}"
+    return f"{_NEWS_LIST_CACHE_PREFIX}:{version}:{normalized}:limit={limit}:cursor={cursor or ''}"
 
 
 def _news_item_cache_key(news_id: int, locale: str | None) -> str:
@@ -117,7 +159,7 @@ def _serialize_news(
 
 def _news_cache_keys(news_id: int | None = None) -> list[str]:
     keys: list[str] = [_LEGACY_NEWS_LIST_CACHE_KEY]
-    keys.extend(f"{_news_list_cache_key(locale)}*" for locale in _CACHE_LOCALES)
+    keys.extend(f"{_NEWS_LIST_CACHE_PREFIX}:{locale}:*" for locale in _CACHE_LOCALES)
     if news_id is not None:
         keys.append(_legacy_news_item_cache_key(news_id))
         keys.extend(_news_item_cache_key(news_id, locale) for locale in _CACHE_LOCALES)
@@ -139,8 +181,7 @@ async def create_news(
             detail=translate("errors.forbidden", locale=locale),
         )
     record = await crud.create_news(db, data)
-    cache = get_cache()
-    await cache.invalidate(*_news_cache_keys(record.id))
+    await _increment_news_list_version()
     serialized = _serialize_news(record, locale)
     try:
         background.add_task(
@@ -180,9 +221,11 @@ async def news_list(
     locale = resolve_locale(request=request)
     normalized_locale = _normalized_cache_locale(locale)
 
-    # Build cache key including pagination params
-    cache_key = f"news:list:{normalized_locale}:limit={limit}:cursor={cursor or ''}"
     cache = get_cache()
+    cache_key: str | None = None
+    if cache.enabled:
+        version = await _get_news_list_version()
+        cache_key = _news_list_cache_key(normalized_locale, limit, cursor, version)
 
     if cache.enabled:
         cached = await cache.get(cache_key)
@@ -324,8 +367,11 @@ async def update_news(
     await db.refresh(news)
     if old_image_url and news.image_url != old_image_url:
         await delete_static_file(old_image_url)
+    await _increment_news_list_version()
     cache = get_cache()
-    await cache.invalidate(*_news_cache_keys(id))
+    await cache.invalidate(
+        _news_item_cache_key(id, locale), _legacy_news_item_cache_key(id)
+    )
     serialized = _serialize_news(news, locale)
     return schemas.NewsOut.model_validate(serialized)
 
@@ -354,8 +400,11 @@ async def delete_news(
     await db.commit()
     if image_url:
         await delete_static_file(image_url)
+    await _increment_news_list_version()
     cache = get_cache()
-    await cache.invalidate(*_news_cache_keys(id))
+    await cache.invalidate(
+        _news_item_cache_key(id, locale), _legacy_news_item_cache_key(id)
+    )
     return {"ok": True}
 
 

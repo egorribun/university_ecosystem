@@ -441,14 +441,15 @@ async def test_forgot_password_sends_email_via_thread(
     event = asyncio.Event()
     captured: dict[str, object] = {}
 
-    async def fake_send_email(to_email, link, full_name, locale):
-        captured["to_email"] = to_email
-        captured["link"] = link
-        captured["full_name"] = full_name
-        captured["locale"] = locale
-        event.set()
+    class FakeTask:
+        async def kiq(self, to_email, link, full_name, locale):
+            captured["to_email"] = to_email
+            captured["link"] = link
+            captured["full_name"] = full_name
+            captured["locale"] = locale
+            event.set()
 
-    monkeypatch.setattr("app.services.auth_service._send_reset_email", fake_send_email)
+    monkeypatch.setattr("app.services.auth_service.send_auth_email", FakeTask())
 
     response = await async_client.post("/password/forgot", json={"email": user.email})
 

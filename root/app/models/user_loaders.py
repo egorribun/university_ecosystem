@@ -8,11 +8,13 @@ from .models import User
 USER_MFA_RELATIONSHIP_NAMES: tuple[str, ...] = (
     "totp_enrollments",
     "mfa_challenges",
+    "webauthn_credentials",
 )
 
 USER_MFA_LOAD_OPTIONS: tuple = (
     selectinload(User.totp_enrollments),
     selectinload(User.mfa_challenges),
+    selectinload(User.webauthn_credentials),
     selectinload(User.preferences),
     selectinload(User.spotify),
 )

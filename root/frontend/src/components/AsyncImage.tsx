@@ -10,7 +10,7 @@ import {
 import InsertPhotoOutlinedIcon from "@mui/icons-material/InsertPhotoOutlined"
 import { Box, Fade, Skeleton, type BoxProps } from "@mui/material"
 
-import { addVersionParam } from "@/utils/media"
+import { addVersionParam, resolveProxyImageUrl } from "@/utils/media"
 
 type Status = "idle" | "loading" | "loaded" | "error"
 
@@ -68,7 +68,8 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
 
     const resolvedSrc = useMemo(() => {
       if (!src) return ""
-      return version != null ? addVersionParam(src, version) : src
+      const proxied = resolveProxyImageUrl(src)
+      return version != null ? addVersionParam(proxied, version) : proxied
     }, [src, version])
 
     useEffect(() => {

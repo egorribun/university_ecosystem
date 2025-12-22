@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import and_, case, func, literal, or_, select, true
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import aliased
+from sqlalchemy.orm import aliased, selectinload
 
 from app.auth import mfa
 from app.auth.security import get_password_hash
@@ -518,7 +518,9 @@ async def get_all_events(
     else:
         conditions.append(models.Event.ends_at < now)
 
-    stmt = select(models.Event)
+    stmt = select(models.Event).options(
+        selectinload(models.Event.files), selectinload(models.Event.attendance)
+    )
     if conditions:
         stmt = stmt.where(and_(*conditions))
     if cursor_values:
@@ -546,13 +548,6 @@ async def get_all_events(
     rows = await db.execute(page_stmt)
     fetched_events = rows.scalars().all()
     events = fetched_events[:safe_limit] if safe_limit else []
-    ids = [e.id for e in events]
-    if ids:
-        counts = await _attendance_counts(db, ids)
-        files_map = await _files_by_event(db, ids)
-    else:
-        counts = {}
-        files_map = {}
 
     total: int | None
     if cursor_values:
@@ -563,49 +558,26 @@ async def get_all_events(
             total_stmt = total_stmt.where(and_(*conditions))
         total = (await db.execute(total_stmt)).scalar_one()
 
-    registered_ids: set[int] = set()
-    qr_map: dict[int, str | None] = {}
-    if user_id and ids:
-        attendance_rows = (
-            (
-                await db.execute(
-                    select(models.EventAttendance).where(
-                        and_(
-                            models.EventAttendance.user_id == user_id,
-                            models.EventAttendance.event_id.in_(ids),
-                        )
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        updated_rows: list[models.EventAttendance] = []
-        for row in attendance_rows:
-            if attendance_tokens.ensure_secret_material(row):
-                db.add(row)
-                updated_rows.append(row)
-        if updated_rows:
-            await db.commit()
-            for row in updated_rows:
-                await db.refresh(row)
-        registered_ids = {row.event_id for row in attendance_rows}
-        qr_map = {
-            row.event_id: attendance_tokens.issue_token(row) for row in attendance_rows
-        }
-
     normalized_locale = normalize_locale(locale)
     result: list[schemas.EventOut] = []
     for event in events:
-        files = files_map.get(event.id, [])
+        # User dynamic data
+        user_attendance = next(
+            (a for a in event.attendance if a.user_id == user_id), None
+        )
+        is_registered = user_attendance is not None
+        qr_token = (
+            attendance_tokens.issue_token(user_attendance) if user_attendance else None
+        )
+
         result.append(
             serialize_event(
                 event,
                 normalized_locale,
-                participant_count=counts.get(event.id, 0),
-                files=files,
-                is_registered=event.id in registered_ids,
-                my_qr_token=qr_map.get(event.id),
+                participant_count=len(event.attendance),
+                files=event.files,
+                is_registered=is_registered,
+                my_qr_token=qr_token,
             )
         )
 
@@ -798,49 +770,34 @@ async def unregister_attendance(
 
 
 async def get_my_events(db: AsyncSession, user_id: int, *, locale: str | None = None):
-    attendance_rows = (
-        (
-            await db.execute(
-                select(models.EventAttendance).where(
-                    models.EventAttendance.user_id == user_id
-                )
-            )
+    stmt = (
+        select(models.Event)
+        .join(models.EventAttendance)
+        .where(models.EventAttendance.user_id == user_id)
+        .options(
+            selectinload(models.Event.files), selectinload(models.Event.attendance)
         )
-        .scalars()
-        .all()
     )
-    if not attendance_rows:
-        return []
-    updated_rows: list[models.EventAttendance] = []
-    for row in attendance_rows:
-        if attendance_tokens.ensure_secret_material(row):
-            db.add(row)
-            updated_rows.append(row)
-    if updated_rows:
-        await db.commit()
-        for row in updated_rows:
-            await db.refresh(row)
-    ids = [row.event_id for row in attendance_rows]
-    qr_map = {
-        row.event_id: attendance_tokens.issue_token(row) for row in attendance_rows
-    }
-    q = select(models.Event).where(models.Event.id.in_(ids))
-    events = (await db.execute(q)).scalars().all()
-    counts = await _attendance_counts(db, ids)
-    files_map = await _files_by_event(db, ids)
+    events = (await db.execute(stmt)).scalars().all()
 
     normalized_locale = normalize_locale(locale)
     result: list[schemas.EventOut] = []
     for event in events:
-        files = files_map.get(event.id, [])
+        user_attendance = next(
+            (a for a in event.attendance if a.user_id == user_id), None
+        )
+        qr_token = (
+            attendance_tokens.issue_token(user_attendance) if user_attendance else None
+        )
+
         result.append(
             serialize_event(
                 event,
                 normalized_locale,
-                participant_count=counts.get(event.id, 0),
-                files=files,
+                participant_count=len(event.attendance),
+                files=event.files,
                 is_registered=True,
-                my_qr_token=qr_map.get(event.id),
+                my_qr_token=qr_token,
             )
         )
     return result

@@ -42,6 +42,54 @@ export function resolveMediaUrl(
   return `${normalizedOrigin}${withLeadingSlash}`
 }
 
+export function resolveProxyImageUrl(
+  raw?: string,
+  width?: number,
+  origin = import.meta.env.VITE_BACKEND_ORIGIN
+): string {
+  if (!raw) return ""
+  const trimmed = String(raw).trim()
+  if (!trimmed || isBlobUrl(trimmed) || hasProtocol(trimmed)) {
+    return resolveMediaUrl(raw, origin)
+  }
+
+  const withLeadingSlash = trimmed.startsWith("/") ? trimmed : `/${trimmed}`
+
+  if (
+    withLeadingSlash.startsWith("/static/") ||
+    withLeadingSlash.startsWith("/media/") ||
+    withLeadingSlash.startsWith("/api/v1/img/")
+  ) {
+    const apiBase = "/api/v1/img"
+    const dev = import.meta.env.DEV === true
+    const cleanOrigin = origin?.trim()
+
+    let base = ""
+    if (cleanOrigin) {
+      base = cleanOrigin.replace(/\/+$/, "")
+    } else if (!dev) {
+      throw new Error("VITE_BACKEND_ORIGIN is not set for production build")
+    }
+
+    // Capture the path relative to static/media or use it as is if already proxy path
+    let proxyPath = withLeadingSlash
+    if (withLeadingSlash.startsWith("/api/v1/img/")) {
+      proxyPath = withLeadingSlash.replace("/api/v1/img/", "/")
+    }
+
+    const url = new URL(`${base}${apiBase}${proxyPath}`, "http://dummy.com")
+    if (width) {
+      url.searchParams.set("w", String(width))
+    }
+
+    // Return absolute URL or path-relative depending on origin presence
+    const result = url.toString().replace("http://dummy.com", "")
+    return result
+  }
+
+  return resolveMediaUrl(raw, origin)
+}
+
 export function addVersionParam(url?: string, version?: string | number): string {
   if (!url) return ""
   if (version === undefined || version === null || version === "") return url

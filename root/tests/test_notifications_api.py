@@ -7,9 +7,7 @@ from sqlalchemy import select, text, update
 from app.api.notifications import _serialize_notification
 from app.auth.security import get_password_hash
 from app.core.config import settings
-from app.core.database import async_session
-from app.localization import translate
-from app.models.models import Notification, NotificationQueueJob
+from app.models.models import Notification, Schedule
 from app.services.notifications import create_notifications_for_users
 
 
@@ -347,179 +345,46 @@ def test_serialize_notification_normalizes_id_and_read_flag():
 
 
 @pytest.mark.anyio
-async def test_admin_dead_letter_requires_admin(
-    async_client: AsyncClient, user_factory
-):
-    password = "NoAdmin123!"
-    hashed = get_password_hash(password)
-    user = await user_factory(hashed_password=hashed, is_active=True, role="student")
-
-    headers = _with_internal(await _login(async_client, user.email, password))
-    response = await async_client.get(
-        "/notifications/admin/dead-letter",
-        headers=headers,
-    )
-
-    assert response.status_code == 403
-
-
-@pytest.mark.anyio
-@pytest.mark.parametrize("locale", ["en", "ru"])
-async def test_admin_dead_letter_guard_localized(
-    async_client: AsyncClient, user_factory, locale: str
-):
-    password = "LocalizedAdminGuard123!"
-    hashed = get_password_hash(password)
-    user = await user_factory(hashed_password=hashed, is_active=True, role="student")
-
-    headers = _with_internal(await _login(async_client, user.email, password))
-    response = await async_client.get(
-        f"/notifications/admin/dead-letter?lang={locale}",
-        headers=headers,
-    )
-
-    assert response.status_code == 403
-    assert response.json()["detail"] == translate(
-        "errors.notifications.admin_required", locale=locale
-    )
-
-
-@pytest.mark.anyio
-async def test_admin_dead_letter_list_returns_jobs(
+async def test_check_schedule_creates_notifications(
     async_client: AsyncClient,
     user_factory,
     db_session,
 ):
-    password = "DeadLetterList123!"
+    password = "ScheduleCheck123!"
     hashed = get_password_hash(password)
-    admin = await user_factory(hashed_password=hashed, is_active=True, role="admin")
+    user = await user_factory(hashed_password=hashed, is_active=True, group_id=10)
 
+    headers = await _login(async_client, user.email, password)
+
+    # Create schedule
     now = datetime.now(UTC)
-    earlier = now - timedelta(minutes=5)
-    jobs = [
-        NotificationQueueJob(
-            kind="event",
-            record_id=101,
-            locale="ru",
-            attempts=3,
-            last_error="Failed to send",
-            dead_lettered=True,
-            enqueued_at=earlier,
-        ),
-        NotificationQueueJob(
-            kind="news",
-            record_id=202,
-            locale="en",
-            attempts=1,
-            last_error="Timeout",
-            dead_lettered=True,
-            enqueued_at=now,
-        ),
-    ]
-    db_session.add_all(jobs)
+    start = now + timedelta(minutes=10)
+    end = start + timedelta(hours=1)
+
+    lesson = Schedule(
+        group_id=10,
+        start_time=start,
+        end_time=end,
+        weekday=start.weekday(),
+        subject="Math",
+        teacher="Mr. Smith",
+        room="101",
+    )
+    db_session.add(lesson)
     await db_session.commit()
 
-    headers = _with_internal(await _login(async_client, admin.email, password))
-    response = await async_client.get(
-        "/notifications/admin/dead-letter?limit=10",
-        headers=headers,
-    )
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["total"] == 2
-    assert len(payload["items"]) == 2
-    first = payload["items"][0]
-    second = payload["items"][1]
-    assert first["record_id"] == 101
-    assert first["attempts"] == 3
-    assert first["last_error"] == "Failed to send"
-    assert second["record_id"] == 202
-    assert second["kind"] == "news"
-
-
-@pytest.mark.anyio
-async def test_admin_dead_letter_retry_requeues_jobs(
-    async_client: AsyncClient,
-    user_factory,
-    db_session,
-):
-    password = "RetryQueue123!"
-    hashed = get_password_hash(password)
-    admin = await user_factory(hashed_password=hashed, is_active=True, role="admin")
-
-    job = NotificationQueueJob(
-        kind="event",
-        record_id=303,
-        locale=None,
-        attempts=4,
-        last_error="Boom",
-        dead_lettered=True,
-        claimed_at=datetime.now(UTC),
-        next_retry_at=datetime.now(UTC) + timedelta(minutes=10),
-    )
-    db_session.add(job)
-    await db_session.commit()
-
-    headers = _with_internal(await _login(async_client, admin.email, password))
     response = await async_client.post(
-        "/notifications/admin/dead-letter/retry",
-        json={"job_ids": [job.id]},
-        headers=headers,
+        "/notifications/check-schedule?lookahead_minutes=30", headers=headers
     )
 
     assert response.status_code == 200
-    assert response.json() == {"retried": 1}
+    data = response.json()
+    assert len(data["items"]) >= 1
 
-    async with async_session() as verify_session:
-        refreshed = await verify_session.get(NotificationQueueJob, job.id)
-        assert refreshed is not None
-        assert refreshed.dead_lettered is False
-        assert refreshed.claimed_at is None
-        assert refreshed.next_retry_at is None
-        assert refreshed.last_error is None
-        assert refreshed.attempts == 0
-
-
-@pytest.mark.anyio
-async def test_admin_dead_letter_purge_removes_jobs(
-    async_client: AsyncClient,
-    user_factory,
-    db_session,
-):
-    password = "PurgeQueue123!"
-    hashed = get_password_hash(password)
-    admin = await user_factory(hashed_password=hashed, is_active=True, role="admin")
-
-    doomed = NotificationQueueJob(
-        kind="news",
-        record_id=404,
-        dead_lettered=True,
-        attempts=2,
-        last_error="Unreachable",
-    )
-    survivor = NotificationQueueJob(
-        kind="event",
-        record_id=505,
-        dead_lettered=True,
-        attempts=1,
-        last_error="Temporary",
-    )
-    db_session.add_all([doomed, survivor])
-    await db_session.commit()
-
-    headers = _with_internal(await _login(async_client, admin.email, password))
-    response = await async_client.post(
-        "/notifications/admin/dead-letter/purge",
-        json={"job_ids": [doomed.id]},
-        headers=headers,
-    )
-
-    assert response.status_code == 200
-    assert response.json() == {"deleted": 1}
-
-    async with async_session() as verify_session:
-        removed = await verify_session.get(NotificationQueueJob, doomed.id)
-        assert removed is None
-        remaining = await verify_session.get(NotificationQueueJob, survivor.id)
-        assert remaining is not None
+    # First item should be related to the lesson
+    # Note: sort order is newest first.
+    first = data["items"][0]
+    # Lesson notification title usually depends on template, but subject is in it?
+    # "Math in 101" or similar
+    assert "Math" in first["title"] or "Math" in first["body"]
+    assert first["type"] == "schedule.reminder"

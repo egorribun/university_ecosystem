@@ -378,6 +378,7 @@ export const handlers = [
   http.get("*/news", () => HttpResponse.json(testNewsItems)),
   http.get("*/auth/sessions", () => HttpResponse.json(testSessions)),
   http.get("*/auth/mfa/totp", () => HttpResponse.json(testUser.totp_enrollments ?? [])),
+  http.get("*/auth/mfa/webauthn", () => HttpResponse.json([])),
   http.post("*/auth/mfa/totp/start", async ({ request }) => {
     const hasActiveTotp = Boolean(
       testUser.totp_enrollments?.some((entry) => entry.confirmed_at && !entry.revoked_at)

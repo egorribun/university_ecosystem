@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ImgHTMLAttributes } from "react"
 import { IMAGE_PLACEHOLDER_URL } from "@/constants/placeholders"
-import { addVersionParam, resolveMediaUrl } from "@/utils/media"
+import { addVersionParam, resolveMediaUrl, resolveProxyImageUrl } from "@/utils/media"
 
 const DEV = import.meta.env.DEV === true
 
@@ -13,7 +13,7 @@ export type SmartImageProps = {
   responsiveWidths?: readonly number[]
 } & Omit<ImgHTMLAttributes<HTMLImageElement>, "src">
 
-function buildSrcSet(url: string, widths: readonly number[]): string {
+function buildSrcSet(rawUrl: string, widths: readonly number[]): string {
   const uniqueWidths = Array.from(
     new Set(widths.filter((value) => Number.isFinite(value) && value > 0))
   ).sort((a, b) => a - b)
@@ -22,14 +22,8 @@ function buildSrcSet(url: string, widths: readonly number[]): string {
 
   return uniqueWidths
     .map((width) => {
-      try {
-        const candidate = new URL(url, window.location.origin)
-        candidate.searchParams.set("w", String(width))
-        return `${candidate.toString()} ${width}w`
-      } catch {
-        const separator = url.includes("?") ? "&" : "?"
-        return `${url}${separator}w=${encodeURIComponent(width)} ${width}w`
-      }
+      const proxyUrl = resolveProxyImageUrl(rawUrl, width)
+      return `${proxyUrl} ${width}w`
     })
     .join(", ")
 }
@@ -49,21 +43,14 @@ export default function SmartImage({
   const isBlobUrl = srcRaw?.startsWith("blob:")
 
   const computed = useMemo(() => {
-    const resolved = resolveMediaUrl(srcRaw)
-    if (!resolved) return ""
-
-    // Sanitize URL to prevent XSS
-    try {
-      const url = new URL(resolved, window.location.origin)
-      const protocol = url.protocol.toLowerCase()
-      if (protocol === "javascript:" || protocol === "data:" || protocol === "vbscript:") return ""
-    } catch {
-      // Invalid URL
-      return ""
+    // We use proxy for all images that are not blobs
+    if (isBlobUrl) {
+      return resolveMediaUrl(srcRaw)
     }
 
-    // Don't add version param to blob URLs — they can't have query params
-    if (isBlobUrl) return resolved
+    // For original src, we don't fix width but still route through proxy for AVIF/WebP
+    const resolved = resolveProxyImageUrl(srcRaw)
+    if (!resolved) return ""
 
     return addVersionParam(resolved, cacheV)
   }, [srcRaw, cacheV, isBlobUrl])
@@ -77,9 +64,9 @@ export default function SmartImage({
   const finalSrc = useFallback || !computed ? fallback : computed
   const srcSet = useMemo(() => {
     // Don't add srcSet for blob URLs — query params break them
-    if (!computed || isBlobUrl) return ""
-    return buildSrcSet(computed, responsiveWidths)
-  }, [computed, responsiveWidths, isBlobUrl])
+    if (!srcRaw || isBlobUrl) return ""
+    return buildSrcSet(srcRaw, responsiveWidths)
+  }, [srcRaw, responsiveWidths, isBlobUrl])
 
   useEffect(() => {
     if (!DEV) return

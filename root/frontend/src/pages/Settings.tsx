@@ -23,6 +23,10 @@ import {
   confirmTotpEnrollment,
   deleteTotpEnrollment,
   deletePendingTotpEnrollment,
+  startWebAuthnRegistration,
+  confirmWebAuthnRegistration,
+  listWebAuthnCredentials,
+  deleteWebAuthnCredential,
 } from "@/api/mfa"
 import TotpQrDisplay from "@/components/mfa/TotpQrDisplay"
 import OtpEntry from "@/components/mfa/OtpEntry"
@@ -37,7 +41,8 @@ import type {
 } from "@/types/Mfa"
 import { useTranslation } from "react-i18next"
 import dayjs from "dayjs"
-import { Settings as SettingsIcon, Moon, Sun, Monitor } from "lucide-react"
+import { Settings as SettingsIcon, Moon, Sun, Monitor, Fingerprint } from "lucide-react"
+import { startRegistration } from "@simplewebauthn/browser"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 const DEFAULT_AVATAR = AVATAR_PLACEHOLDER_URL
 import spotifyLogo from "@/assets/spotify_icon.png"
@@ -2025,6 +2030,83 @@ export default function Settings() {
     [openStepUpFor, refreshMe, resolveDetailMessage, setSnack, setUser, t]
   )
 
+  const {
+    data: webauthnCredentialsData,
+    isFetching: webauthnFetching,
+    refetch: refetchWebAuthn,
+  } = useQuery({
+    queryKey: ["auth", "webauthn", user?.id ?? "me"],
+    queryFn: async () => {
+      const { data } = await listWebAuthnCredentials()
+      return data
+    },
+    enabled: tab === 1 && Boolean(user),
+  })
+
+  const webauthnCredentials = Array.isArray(webauthnCredentialsData) ? webauthnCredentialsData : []
+
+  const [webauthnBusy, setWebauthnBusy] = useState(false)
+
+  const handleRegisterWebAuthn = useCallback(
+    async (options?: { skipStepUp?: boolean }) => {
+      if (webauthnBusy) return
+      setWebauthnBusy(true)
+      try {
+        const { data: startData } = await startWebAuthnRegistration()
+        const attestationResponse = await startRegistration(startData.publicKey)
+        await confirmWebAuthnRegistration({
+          challenge: startData.publicKey.challenge,
+          response: attestationResponse,
+        })
+        await Promise.all([refetchWebAuthn(), refreshMe()])
+        setSnack({ text: t("settings:security.snackbar.webauthnEnabled"), sev: "success" })
+      } catch (error) {
+        if (!options?.skipStepUp && isStepUpError(error)) {
+          openStepUpFor(async () => {
+            await handleRegisterWebAuthn({ skipStepUp: true })
+          })
+          return
+        }
+        let message = resolveDetailMessage(error, t("settings:security.snackbar.webauthnFailed"))
+        if (error instanceof Error && error.name === "NotAllowedError") {
+          message = t("settings:security.webauthn.errors.cancelled")
+        }
+        setSnack({ text: message, sev: "error" })
+      } finally {
+        setWebauthnBusy(false)
+      }
+    },
+    [
+      isStepUpError,
+      openStepUpFor,
+      refetchWebAuthn,
+      refreshMe,
+      resolveDetailMessage,
+      setSnack,
+      t,
+      webauthnBusy,
+    ]
+  )
+
+  const handleDeleteWebAuthn = useCallback(
+    (credentialId: number) => {
+      const action = async () => {
+        try {
+          await deleteWebAuthnCredential(credentialId)
+          await Promise.all([refetchWebAuthn(), refreshMe()])
+          setSnack({ text: t("settings:security.snackbar.webauthnDeleted"), sev: "success" })
+        } catch (error) {
+          setSnack({
+            text: resolveDetailMessage(error, t("settings:security.snackbar.webauthnDeleteFailed")),
+            sev: "error",
+          })
+        }
+      }
+      openStepUpFor(action)
+    },
+    [openStepUpFor, refetchWebAuthn, refreshMe, resolveDetailMessage, setSnack, t]
+  )
+
   const formatSessionTimestamp = useCallback(
     (value: string | null) => {
       if (!value) return t("settings:sessions.lastSeen.never")
@@ -2902,6 +2984,88 @@ export default function Settings() {
                             )}
                           </div>
                         )}
+                      </AccordionSection>
+
+                      <AccordionSection
+                        title={t("settings:security.method.webauthn", {
+                          defaultValue: "Ключи безопасности (WebAuthn)",
+                        })}
+                        subtitle={t("settings:security.webauthn.description", {
+                          defaultValue:
+                            "Используйте отпечаток пальца, лицо или USB-ключ для входа без кодов",
+                        })}
+                      >
+                        <div className="flex flex-col gap-3">
+                          {webauthnCredentials.length ? (
+                            <div className="flex flex-col gap-2.5">
+                              {webauthnCredentials.map((cred: any, index: number) => (
+                                <div
+                                  key={cred.id}
+                                  className={cn(
+                                    "flex flex-col gap-2.5 rounded-[18px] border p-3 transition-colors sm:flex-row sm:items-center sm:justify-between",
+                                    "border-[color:color-mix(in_srgb,var(--glass-border)_88%,transparent)]",
+                                    "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(15,79,170,0.05)_4%)]",
+                                    "dark:border-[rgba(148,163,184,0.24)]",
+                                    "dark:bg-[color:color-mix(in_srgb,var(--card-bg)_90%,rgba(10,18,32,0.92)_10%)]"
+                                  )}
+                                >
+                                  <div className="flex min-w-0 items-center gap-3">
+                                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[color:color-mix(in_srgb,var(--nav-link)_10%,transparent)] text-[color:var(--nav-link)]">
+                                      <Fingerprint className="h-5 w-5" />
+                                    </div>
+                                    <div className="flex min-w-0 flex-col gap-0.5">
+                                      <p className="font-semibold text-[color:color-mix(in_srgb,var(--page-text)_90%,var(--nav-link)_10%)]">
+                                        {cred.label || "Security Key"}
+                                      </p>
+                                      <SectionSubtitle className="text-[10.5px] whitespace-nowrap overflow-hidden text-ellipsis">
+                                        {t("settings:security.webauthn.added", {
+                                          defaultValue: "Добавлен {{value}}",
+                                          value: formatDateTime(cred.created_at) ?? "—",
+                                        })}
+                                        {cred.last_used_at &&
+                                          ` • ${t("settings:security.webauthn.lastUsed", {
+                                            defaultValue: "Использован {{value}}",
+                                            value: formatDateTime(cred.last_used_at),
+                                          })}`}
+                                      </SectionSubtitle>
+                                    </div>
+                                  </div>
+                                  <Button
+                                    variant="outlined"
+                                    color="error"
+                                    size="small"
+                                    onClick={() => handleDeleteWebAuthn(cred.id)}
+                                  >
+                                    {t("common:buttons.delete")}
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <SectionSubtitle className="text-sm">
+                              {t("settings:security.webauthn.empty", {
+                                defaultValue: "У вас пока нет зарегистрированных ключей",
+                              })}
+                            </SectionSubtitle>
+                          )}
+
+                          <Button
+                            variant="contained"
+                            onClick={() => void handleRegisterWebAuthn()}
+                            disabled={webauthnBusy}
+                            startIcon={
+                              webauthnBusy ? (
+                                <CircularProgress size={18} color="inherit" />
+                              ) : (
+                                <Fingerprint className="h-4 w-4" />
+                              )
+                            }
+                          >
+                            {t("settings:security.webauthn.add", {
+                              defaultValue: "Добавить ключ безопасности",
+                            })}
+                          </Button>
+                        </div>
                       </AccordionSection>
                     </div>
                   </SectionCard>

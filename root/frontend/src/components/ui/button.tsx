@@ -1,6 +1,13 @@
-import { forwardRef, type ElementType, type ReactElement, type ReactNode } from "react"
+import {
+  forwardRef,
+  type ElementType,
+  type ReactElement,
+  type ReactNode,
+  type MouseEvent,
+} from "react"
 import { cn } from "@/utils/cn"
 import type { PolymorphicComponentProps, PolymorphicRef } from "@/types/polymorphic"
+import { useHaptics } from "@/hooks/useHaptics"
 
 type ButtonVariant = "solid" | "outline" | "ghost"
 type ButtonSize = "sm" | "md" | "lg"
@@ -14,6 +21,7 @@ type ButtonOwnProps = {
   trailingIcon?: ReactNode
   className?: string
   disabled?: boolean
+  haptics?: boolean | "light" | "medium" | "heavy"
 }
 
 export type ButtonProps<T extends ElementType = "button"> = PolymorphicComponentProps<
@@ -30,9 +38,9 @@ const sizeStyles: Record<ButtonSize, string> = {
 const variantStyles: Record<ButtonVariant, string> = {
   solid: cn(
     "bg-btn-gradient text-white shadow-surface",
-    "hover:bg-btn-gradient-hover hover:shadow-surface-strong",
-    "active:translate-y-[1px]",
-    "motion-reduce:hover:translate-y-0 motion-reduce:active:translate-y-0",
+    "hover:bg-btn-gradient-hover hover:shadow-[0_4px_20px_-6px_rgba(var(--accent-rgb),0.5)] hover:scale-[1.02]",
+    "active:translate-y-[1px] active:scale-[0.98]",
+    "motion-reduce:hover:translate-y-0 motion-reduce:hover:scale-100 motion-reduce:active:translate-y-0 motion-reduce:active:scale-100",
     "disabled:bg-[color:var(--btn-disabled-bg,rgba(148,163,184,0.36))]",
     "disabled:text-[color:var(--btn-disabled-fg,#f1f5f9)]"
   ),
@@ -67,10 +75,27 @@ const ButtonBase = <T extends ElementType = "button">(
   }: ButtonProps<T>,
   ref: PolymorphicRef<T>
 ) => {
-  const { disabled, ...otherProps } = rest as typeof rest & { disabled?: boolean }
+  const {
+    disabled,
+    haptics = true,
+    onClick,
+    ...otherProps
+  } = rest as typeof rest & {
+    disabled?: boolean
+    onClick?: (e: MouseEvent) => void
+  }
+  const { trigger } = useHaptics()
   const Component = (as ?? "button") as ElementType
   const isButtonElement = typeof Component === "string" && Component === "button"
   const isDisabled = Boolean(disabled || loading)
+
+  const handleClick = (e: any) => {
+    if (isDisabled) return
+    if (haptics) {
+      trigger(typeof haptics === "string" ? haptics : "light")
+    }
+    onClick?.(e)
+  }
 
   const sharedProps: Record<string, unknown> = {}
   if (isDisabled) {
@@ -92,6 +117,7 @@ const ButtonBase = <T extends ElementType = "button">(
       )}
       disabled={isButtonElement ? isDisabled : undefined}
       aria-busy={loading ? "true" : undefined}
+      onClick={handleClick}
       {...sharedProps}
       {...otherProps}
     >

@@ -1,0 +1,67 @@
+name: Performance Tests (k6)
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+jobs:
+  k6_test:
+    name: k6 Load Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+          # We need aiosqlite for the fallback DB
+        run: |
+          pip install -r requirements.txt aiosqlite
+
+      - name: Run migrations
+        run: |
+          alembic upgrade head
+        env:
+          DATABASE_URL: sqlite+aiosqlite:///./dev.db
+          SECRET_KEY: development-secret-key
+
+      - name: Start backend
+        run: |
+          uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+          echo "BACKEND_PID=$!" >> $GITHUB_ENV
+        env:
+          DATABASE_URL: sqlite+aiosqlite:///./dev.db
+          SECRET_KEY: development-secret-key
+          ENVIRONMENT: testing
+          RATE_LIMIT_ENABLED: "false"
+
+      - name: Wait for backend to be ready
+        run: |
+          for i in {1..30}; do
+            if curl -s http://127.0.0.1:8000/ready; then
+              echo "Backend is ready"
+              exit 0
+            fi
+            echo "Waiting for backend..."
+            sleep 1
+          done
+          echo "Backend failed to start"
+          exit 1
+
+      - name: Run k6 load test
+        uses: grafana/k6-action@v0.3.1
+        with:
+          filename: tests/performance/load_test.js
+          flags: --env API_BASE_URL=http://127.0.0.1:8000
+
+      - name: Terminate backend
+        if: always()
+        run: |
+          if [ -n "$BACKEND_PID" ]; then
+            kill $BACKEND_PID
+          fi

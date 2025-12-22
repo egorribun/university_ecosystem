@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     FetchedValue,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -50,6 +51,7 @@ class User(Base):
     mfa_required = Column(Boolean, default=False, nullable=False, index=True)
     mfa_default_method = Column(String(64))
     mfa_last_verified_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    webauthn_id = Column(String(128), unique=True, index=True, nullable=True)
 
     avatar_url = Column(String)
     cover_url = Column(String)
@@ -163,6 +165,12 @@ class User(Base):
     )
     trusted_devices = relationship(
         "TrustedDevice",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    webauthn_credentials = relationship(
+        "WebAuthnCredential",
         back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
@@ -301,6 +309,12 @@ class Event(Base):
     __table_args__ = (
         CheckConstraint("ends_at > starts_at", name="ck_event_time_order"),
     )
+    files = relationship(
+        "EventFile", cascade="all, delete-orphan", passive_deletes=True
+    )
+    attendance = relationship(
+        "EventAttendance", cascade="all, delete-orphan", passive_deletes=True
+    )
 
 
 def _generate_session_signing_key() -> str:
@@ -424,7 +438,7 @@ class FailedLoginAttempt(Base):
 class DataAccessLog(Base):
     __tablename__ = "data_access_logs"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     actor_user_id = Column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -437,9 +451,15 @@ class DataAccessLog(Base):
     context = Column(JSON, nullable=True)
     ip_address = Column(String(64))
     user_agent = Column(String(512))
+    __table_args__ = ({"postgresql_partition_by": "RANGE (created_at)"},)
     created_at = Column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+        index=True,
+        primary_key=True,
     )
+    signature = Column(String(512), nullable=True)
 
     actor = relationship("User", foreign_keys=[actor_user_id])
     subject = relationship("User", foreign_keys=[subject_user_id])
@@ -619,7 +639,7 @@ class EmailChangeToken(Base):
 class Notification(Base):
     __tablename__ = "notifications"
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(
         Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
     )
@@ -630,9 +650,22 @@ class Notification(Base):
     type = Column(String, index=True)
     url = Column(String)
     dedupe_key = Column(String(255), index=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     read = Column(Boolean, default=False, index=True)
     read_at = Column(DateTime(timezone=True), index=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        index=True,
+        nullable=False,
+        primary_key=True,
+    )
+
+    __table_args__ = (
+        Index("ix_notifications_user_created", "user_id", "created_at"),
+        Index("ix_notifications_dupe_check", "user_id", "title", "url", "created_at"),
+        Index("ix_notifications_user_dedupe", "user_id", "dedupe_key"),
+        {"postgresql_partition_by": "RANGE (created_at)"},
+    )
 
     user = relationship("User", back_populates="notifications")
     deliveries = relationship(
@@ -640,12 +673,6 @@ class Notification(Base):
         back_populates="notification",
         cascade="all, delete-orphan",
         passive_deletes=True,
-    )
-
-    __table_args__ = (
-        Index("ix_notifications_user_created", "user_id", "created_at"),
-        Index("ix_notifications_dupe_check", "user_id", "title", "url", "created_at"),
-        Index("ix_notifications_user_dedupe", "user_id", "dedupe_key"),
     )
 
 
@@ -664,7 +691,7 @@ class NotificationQueueJob(Base):
     last_error = Column(Text)
     next_retry_at = Column(DateTime(timezone=True), index=True)
     dead_lettered = Column(
-        Boolean, nullable=False, server_default=text("0"), index=True
+        Boolean, nullable=False, server_default=text("false"), index=True
     )
 
     __table_args__ = (
@@ -690,17 +717,17 @@ class NotificationQueueJob(Base):
 class NotificationDelivery(Base):
     __tablename__ = "notification_deliveries"
 
-    id = Column(Integer, primary_key=True)
-    notification_id = Column(
-        Integer,
-        ForeignKey("notifications.id", ondelete="CASCADE"),
-        index=True,
-        nullable=False,
-    )
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    notification_id = Column(Integer, nullable=False, index=True)
+    notification_created_at = Column(DateTime(timezone=True), nullable=False)
     channel = Column(String, nullable=False, default="inapp", index=True)
     status = Column(String, nullable=False, default="delivered", index=True)
     attempted_at = Column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+        index=True,
+        primary_key=True,
     )
     delivered_at = Column(DateTime(timezone=True), index=True)
     status_code = Column(Integer)
@@ -709,7 +736,13 @@ class NotificationDelivery(Base):
     notification = relationship("Notification", back_populates="deliveries")
 
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["notification_id", "notification_created_at"],
+            ["notifications.id", "notifications.created_at"],
+            ondelete="CASCADE",
+        ),
         Index("ix_notification_deliveries_notif_channel", "notification_id", "channel"),
+        {"postgresql_partition_by": "RANGE (attempted_at)"},
     )
 
 
@@ -773,3 +806,30 @@ class TrustedDevice(Base):
     )
 
     user = relationship("User", back_populates="trusted_devices")
+
+
+class WebAuthnCredential(Base):
+    __tablename__ = "webauthn_credentials"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    credential_id = Column(String, unique=True, index=True, nullable=False)
+    public_key = Column(Text, nullable=False)  # Base64 encoded public key
+    sign_count = Column(Integer, default=0, nullable=False)
+    transports = Column(JSON, nullable=True)  # List of allowed transports
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
+    label = Column(String(255), nullable=True)
+    backing_up = Column(Boolean, default=False)
+    backup_state = Column(Boolean, default=False)
+
+    user = relationship("User", back_populates="webauthn_credentials")
+
+
+# Ensure all models are registered with Base.metadata
+from app.models.chat import Chat, Message, Attachment, chat_participants  # noqa
+from app.workers.dead_letter_queue import DeadLetterJob  # noqa

@@ -108,6 +108,25 @@ class MfaFactorStatusOut(BaseModel):
     mfa_required: bool = False
 
 
+class WebAuthnRegistrationOptionsOut(BaseModel):
+    publicKey: dict[str, Any]
+
+
+class WebAuthnRegistrationVerifyIn(BaseModel):
+    challenge: str
+    response: dict[str, Any]
+    label: str | None = None
+
+
+class WebAuthnAuthenticationOptionsOut(BaseModel):
+    publicKey: dict[str, Any]
+
+
+class WebAuthnAuthenticationVerifyIn(BaseModel):
+    challenge: str
+    response: dict[str, Any]
+
+
 class UserOut(OrmModel, UserBase):
     id: int
     is_active: bool

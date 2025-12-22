@@ -19,6 +19,7 @@ import type { StoryItem } from "@/types/Story"
 import { ScheduleCard } from "@/components/dashboard/ScheduleCard"
 import { NewsCard } from "@/components/dashboard/NewsCard"
 import { EventsCard } from "@/components/dashboard/EventsCard"
+import Magnetic from "@/components/Magnetic"
 
 const fadeDelayStyle = (value: string): CSSProperties =>
   ({ "--fade-delay": value }) as CSSProperties
@@ -184,15 +185,17 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <div className="hidden justify-end md:flex lg:col-span-4">
-                  <Button
-                    variant="outline"
-                    size="md"
-                    className="whitespace-nowrap px-5 transition-transform duration-300 hover:-translate-y-[2px]"
-                    onClick={() => navigate("/profile")}
-                    aria-label={t("navigation:aria.openProfile")}
-                  >
-                    {t("navigation:menu.profile")}
-                  </Button>
+                  <Magnetic strength={0.25}>
+                    <Button
+                      variant="outline"
+                      size="md"
+                      className="whitespace-nowrap px-5 transition-transform duration-300 hover:-translate-y-[2px]"
+                      onClick={() => navigate("/profile")}
+                      aria-label={t("navigation:aria.openProfile")}
+                    >
+                      {t("navigation:menu.profile")}
+                    </Button>
+                  </Magnetic>
                 </div>
               </div>
             </header>

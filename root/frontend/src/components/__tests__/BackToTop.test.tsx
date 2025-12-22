@@ -19,37 +19,54 @@ describe("BackToTop", () => {
     vi.restoreAllMocks()
   })
 
-  it("renders hidden button by default", () => {
-    const { container } = render(<BackToTop />)
-    const button = screen.getByRole("button", { name: getLabel() })
-    expect(button).toBeInTheDocument()
-    expect(button).not.toHaveClass("visible")
-    expect(container.firstChild).toMatchSnapshot()
+  it("does not render button when not scrolled", () => {
+    render(<BackToTop />)
+    const button = screen.queryByRole("button", { name: getLabel() })
+    expect(button).not.toBeInTheDocument()
   })
 
-  it("toggles visibility after scrolling", async () => {
+  it("renders button after scrolling past threshold", async () => {
     render(<BackToTop />)
-    const button = screen.getByRole("button", { name: getLabel() })
 
     setScrollY(500)
     fireEvent.scroll(window)
 
-    await waitFor(() => expect(button).toHaveClass("visible"))
+    await waitFor(() => {
+      const button = screen.getByRole("button", { name: getLabel() })
+      expect(button).toBeInTheDocument()
+    })
+  })
+
+  it("hides button when scrolled back to top", async () => {
+    render(<BackToTop />)
+
+    setScrollY(500)
+    fireEvent.scroll(window)
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: getLabel() })).toBeInTheDocument()
+    })
 
     setScrollY(0)
     fireEvent.scroll(window)
 
-    await waitFor(() => expect(button).not.toHaveClass("visible"))
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: getLabel() })).not.toBeInTheDocument()
+    })
   })
 
-  it("scrolls smoothly to top when clicked", () => {
+  it("scrolls smoothly to top when clicked", async () => {
     const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => {})
-    const { getByRole } = render(<BackToTop />)
-    const button = getByRole("button", { name: getLabel() })
+    render(<BackToTop />)
 
     setScrollY(500)
     fireEvent.scroll(window)
 
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: getLabel() })).toBeInTheDocument()
+    })
+
+    const button = screen.getByRole("button", { name: getLabel() })
     fireEvent.click(button)
 
     expect(scrollTo).toHaveBeenCalledTimes(1)

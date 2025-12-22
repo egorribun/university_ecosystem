@@ -11,6 +11,7 @@ import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 const DEFAULT_AVATAR = AVATAR_PLACEHOLDER_URL
 import PageFadeIn from "../components/PageFadeIn"
 import Layout from "../components/Layout"
+import SmartImage from "@/components/SmartImage"
 import {
   CircularProgress,
   Snackbar,
@@ -709,11 +710,17 @@ export default function Profile() {
                       <div
                         className={`absolute inset-0 bg-center bg-cover ${reduceMotion ? "" : "transition-transform duration-[1200ms] cubic-bezier-[0.33,1,0.68,1]"}`}
                         style={{
-                          backgroundImage: coverImageUrl ? `url(${coverImageUrl})` : undefined,
                           transform: `translateY(${coverParallax}px) scale(${coverScale})`,
                           filter: "saturate(1) contrast(1.02) brightness(0.98)",
                         }}
-                      />
+                      >
+                        <SmartImage
+                          srcRaw={user?.cover_url ?? undefined}
+                          fallback={profileBg}
+                          cacheV={coverVersion}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
                       {/* Dark Matte Overlay */}
                       <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[rgba(6,9,20,0.85)] dark:to-[rgba(6,9,20,0.92)] from-35%" />
 
@@ -724,21 +731,14 @@ export default function Profile() {
                       >
                         <div className="avatar-ring w-full h-full">
                           <div className="relative w-full h-full rounded-full bg-white/10 overflow-hidden">
-                            {avatarImageUrl ? (
-                              <img
-                                src={avatarImageUrl}
-                                alt={user?.full_name ?? undefined}
-                                onError={handleAvatarImgError}
-                                loading="lazy"
-                                decoding="async"
-                                referrerPolicy="no-referrer"
-                                className="w-full h-full rounded-full object-cover"
-                              />
-                            ) : (
-                              <div className="w-full h-full rounded-full bg-white/10 text-white/90 flex items-center justify-center text-[clamp(28px,6vw,64px)] font-bold">
-                                {user?.full_name?.[0]}
-                              </div>
-                            )}
+                            <SmartImage
+                              srcRaw={user?.avatar_url ?? undefined}
+                              fallback={DEFAULT_AVATAR}
+                              cacheV={avatarVersion}
+                              alt={user?.full_name ?? undefined}
+                              className="w-full h-full rounded-full object-cover"
+                              onError={handleAvatarImgError}
+                            />
                           </div>
                         </div>
 

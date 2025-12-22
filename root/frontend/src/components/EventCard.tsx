@@ -22,6 +22,7 @@ import EditIcon from "@mui/icons-material/Edit"
 import CloseIcon from "@mui/icons-material/Close"
 import { useAuth } from "../contexts/AuthContext"
 import SmartImage from "@/components/SmartImage"
+import { motion } from "framer-motion"
 import { cn } from "@/utils/cn"
 import { useTranslation } from "react-i18next"
 import { Button, Badge, Tooltip } from "@/components/ui"
@@ -573,19 +574,27 @@ const EventCardComponent: FC<EventCardProps> = ({
   }
   const hoveringDisabled = editOpen || qrOpen
 
-  const entranceDelay = `${(animationIndex % 10) * 80}ms`
+  const entranceEase = [0.22, 1, 0.36, 1] as const
 
   return (
-    <div
-      className="w-full animate-in fade-in slide-in-from-bottom-3 duration-500 fill-mode-both"
-      style={{ animationDelay: entranceDelay }}
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 16, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{
+        duration: 0.45,
+        delay: (animationIndex % 10) * 0.06,
+        ease: entranceEase,
+      }}
+      whileHover={{ y: -4, transition: { duration: 0.2 } }}
+      className="w-full"
     >
       <div
         className={cn(
-          "group relative flex flex-col overflow-hidden rounded-ue-xl border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] text-[color:var(--page-text)] shadow-surface transition-[transform,box-shadow] duration-300 ease-out w-full p-5 transform-gpu will-change-[transform,box-shadow]",
+          "card-glass group relative flex flex-col transition-[box-shadow] duration-300 ease-out w-full p-5 transform-gpu will-change-transform",
           hoveringDisabled
             ? "cursor-default"
-            : "cursor-pointer hover:-translate-y-[2px] hover:scale-[1.015] hover:shadow-surface-strong active:scale-[0.995]"
+            : "cursor-pointer hover:shadow-glass-strong active:scale-[0.985]"
         )}
         style={{ width: "100%" }}
         role="button"
@@ -1032,7 +1041,7 @@ const EventCardComponent: FC<EventCardProps> = ({
 
         <Snackbar open={!!snack} message={snack} onClose={() => setSnack("")} />
       </div>
-    </div>
+    </motion.div>
   )
 }
 

@@ -8,7 +8,11 @@ export type MfaChallenge = components["schemas"]["MfaChallengeOut"]
 export type TotpEnrollmentStartResponse = components["schemas"]["TotpEnrollmentStartOut"]
 export type TotpEnrollmentStartPayload = components["schemas"]["TotpEnrollmentStartIn"]
 export type TotpEnrollmentConfirmPayload = components["schemas"]["TotpEnrollmentConfirmIn"]
-export type MfaVerifyPayload = components["schemas"]["MfaVerifyIn"] & {
+export type MfaVerifyPayload = {
+  method: "totp" | "webauthn"
+  challenge_token: string
+  code?: string
+  webauthn_response?: any
   trust_device?: boolean
 }
 

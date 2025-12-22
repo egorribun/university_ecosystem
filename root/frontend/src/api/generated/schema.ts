@@ -175,6 +175,74 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  "/api/v1/auth/mfa/webauthn/register/start": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Start Webauthn Registration */
+    post: operations["start_webauthn_registration_api_v1_auth_mfa_webauthn_register_start_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/auth/mfa/webauthn/register/confirm": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Confirm Webauthn Registration */
+    post: operations["confirm_webauthn_registration_api_v1_auth_mfa_webauthn_register_confirm_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/auth/mfa/webauthn": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List Webauthn Credentials */
+    get: operations["list_webauthn_credentials_api_v1_auth_mfa_webauthn_get"]
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/auth/mfa/webauthn/{credential_id}": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** Delete Webauthn Credential */
+    delete: operations["delete_webauthn_credential_api_v1_auth_mfa_webauthn__credential_id__delete"]
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   "/api/v1/auth/mfa/verify": {
     parameters: {
       query?: never
@@ -1363,6 +1431,28 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  "/api/v1/img/{path}": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * Proxy Image
+     * @description Public image proxy endpoint.
+     *     Retrieves an image from storage, optimizes it for the requesting browser,
+     *     and applies optional resizing.
+     */
+    get: operations["proxy_image_api_v1_img__path__get"]
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   "/webpush/vapid-public-key": {
     parameters: {
       query?: never
@@ -2076,9 +2166,9 @@ export interface components {
     MfaMethodChallengeOut: {
       /**
        * Method
-       * @constant
+       * @enum {string}
        */
-      method: "totp"
+      method: "totp" | "webauthn"
       /** Challenge Token */
       challenge_token: string
       /**
@@ -2121,13 +2211,17 @@ export interface components {
     MfaVerifyIn: {
       /**
        * Method
-       * @constant
+       * @enum {string}
        */
-      method: "totp"
+      method: "totp" | "webauthn"
       /** Challenge Token */
       challenge_token: string
       /** Code */
       code?: string | null
+      /** Webauthn Response */
+      webauthn_response?: {
+        [key: string]: unknown
+      } | null
       /**
        * Trust Device
        * @default false
@@ -2320,7 +2414,7 @@ export interface components {
       /** Session Id */
       session_id?: number | null
       /** Default Method */
-      default_method?: "totp" | null
+      default_method?: ("totp" | "webauthn") | null
       /** Methods */
       methods: components["schemas"]["MfaMethodChallengeOut"][]
     }
@@ -2972,6 +3066,24 @@ export interface components {
       /** Error Type */
       type: string
     }
+    /** WebAuthnRegistrationOptionsOut */
+    WebAuthnRegistrationOptionsOut: {
+      /** Publickey */
+      publicKey: {
+        [key: string]: unknown
+      }
+    }
+    /** WebAuthnRegistrationVerifyIn */
+    WebAuthnRegistrationVerifyIn: {
+      /** Challenge */
+      challenge: string
+      /** Response */
+      response: {
+        [key: string]: unknown
+      }
+      /** Label */
+      label?: string | null
+    }
   }
   responses: never
   parameters: never
@@ -3246,6 +3358,112 @@ export interface operations {
       header?: never
       path: {
         enrollment_id: number
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["MfaFactorStatusOut"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  start_webauthn_registration_api_v1_auth_mfa_webauthn_register_start_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["WebAuthnRegistrationOptionsOut"]
+        }
+      }
+    }
+  }
+  confirm_webauthn_registration_api_v1_auth_mfa_webauthn_register_confirm_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WebAuthnRegistrationVerifyIn"]
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["MfaFactorStatusOut"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  list_webauthn_credentials_api_v1_auth_mfa_webauthn_get: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": {
+            [key: string]: unknown
+          }[]
+        }
+      }
+    }
+  }
+  delete_webauthn_credential_api_v1_auth_mfa_webauthn__credential_id__delete: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        credential_id: number
       }
       cookie?: never
     }
@@ -5856,6 +6074,41 @@ export interface operations {
         }
         content: {
           "application/json": components["schemas"]["ChatMaintenanceResult"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  proxy_image_api_v1_img__path__get: {
+    parameters: {
+      query?: {
+        w?: number | null
+      }
+      header?: {
+        accept?: string | null
+      }
+      path: {
+        path: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": unknown
         }
       }
       /** @description Validation Error */

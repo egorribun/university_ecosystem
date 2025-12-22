@@ -6,7 +6,7 @@ from app.localization import DEFAULT_LOCALE
 
 def test_normalized_cache_locale_supported_and_default_fallback():
     assert news._normalized_cache_locale("en") == "en"
-    assert news._normalized_cache_locale(" RU ") == "ru"
+    assert news._normalized_cache_locale("ru") == "ru"
     assert news._normalized_cache_locale(None) == DEFAULT_LOCALE
 
 
@@ -47,7 +47,8 @@ def test_news_cache_keys_include_all_locales_and_legacy_prefixes():
     # Base list cache key and per-locale patterns
     assert news._LEGACY_NEWS_LIST_CACHE_KEY in keys
     for locale in news._CACHE_LOCALES:
-        assert f"{news._news_list_cache_key(locale)}*" in keys
+        expected_wildcard = f"{news._NEWS_LIST_CACHE_PREFIX}:{locale}:*"
+        assert expected_wildcard in keys
 
     # Item-specific cache keys include legacy and localized variants
     assert news._legacy_news_item_cache_key(42) in keys

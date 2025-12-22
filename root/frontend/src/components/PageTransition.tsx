@@ -62,15 +62,32 @@ const PageTransition: FC<Props> = ({ children }) => {
   }
 
   const { LazyMotion, domAnimation, motion } = motionModule
-  const initial = hasPainted ? { opacity: 0.001, y: 12 } : false
+  const initial = hasPainted ? { opacity: 0.001, y: 16 } : false
 
   return (
     <LazyMotion features={domAnimation}>
       <div style={{ position: "relative", minHeight: "100%", background: "var(--page-bg)" }}>
         <motion.div
           initial={initial}
-          animate={{ opacity: 1, y: 0, transition: { duration: 0.2, ease: [0.2, 0, 0, 1] } }}
-          exit={{ opacity: 0.001, y: -10, transition: { duration: 0.16, ease: [0.4, 0, 0.2, 1] } }}
+          animate={{
+            opacity: 1,
+            y: 0,
+            scale: 1,
+            transition: {
+              duration: 0.5,
+              ease: [0.16, 1, 0.3, 1], // Custom Quintic ease-out
+              scale: { duration: 0.6 },
+            },
+          }}
+          exit={{
+            opacity: 0,
+            y: 12,
+            scale: 0.98,
+            transition: {
+              duration: 0.25,
+              ease: [0.7, 0, 0.84, 0], // Custom Cubic ease-in
+            },
+          }}
           style={{
             position: "relative",
             zIndex: 1,
