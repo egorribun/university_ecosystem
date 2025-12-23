@@ -1453,6 +1453,29 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  "/api/v1/csp-report": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * Receive Csp Report
+     * @description Receive CSP violation reports from browsers.
+     *
+     *     Browsers send POST requests with Content-Type: application/csp-report
+     *     when a CSP policy is violated.
+     */
+    post: operations["receive_csp_report_api_v1_csp_report_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   "/webpush/vapid-public-key": {
     parameters: {
       query?: never
@@ -6119,6 +6142,24 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["HTTPValidationError"]
         }
+      }
+    }
+  }
+  receive_csp_report_api_v1_csp_report_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      204: {
+        headers: {
+          [name: string]: unknown
+        }
+        content?: never
       }
     }
   }
