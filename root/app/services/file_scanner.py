@@ -240,7 +240,7 @@ async def scan_for_malware(
             except Exception:
                 logger.warning("Failed to quarantine infected payload", exc_info=True)
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=translate("errors.files.infected", locale=locale),
         )
 

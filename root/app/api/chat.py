@@ -90,28 +90,58 @@ async def get_chats(
     Returns chats ordered by last message timestamp (newest first).
     Use the `next_cursor` from the response to fetch the next page.
     """
-    # Subquery to find latest message timestamp for ordering
+    from sqlalchemy import case, func, literal_column
+    from sqlalchemy.orm import contains_eager
+
+    # Subquery: last message timestamp per chat (for ordering)
     last_message_subquery = (
         select(Message.created_at)
         .where(Message.chat_id == Chat.id)
         .order_by(Message.created_at.desc())
         .limit(1)
+        .correlate(Chat)
         .scalar_subquery()
     )
 
+    # Subquery: unread count per chat (messages not from current user, unread)
+    unread_count_subquery = (
+        select(func.count())
+        .select_from(Message)
+        .where(
+            Message.chat_id == Chat.id,
+            Message.read_status == False,  # noqa: E712
+            Message.sender_id != current_user.id,
+        )
+        .correlate(Chat)
+        .scalar_subquery()
+    )
+
+    # Subquery: last message ID per chat
+    last_message_id_subquery = (
+        select(Message.id)
+        .where(Message.chat_id == Chat.id)
+        .order_by(Message.created_at.desc())
+        .limit(1)
+        .correlate(Chat)
+        .scalar_subquery()
+    )
+
+    # Main query with aggregated data
     query = (
-        select(Chat)
+        select(
+            Chat,
+            unread_count_subquery.label("unread_count"),
+            last_message_id_subquery.label("last_message_id"),
+        )
         .join(Chat.participants)
         .where(User.id == current_user.id)
-        .options(selectinload(Chat.participants), selectinload(Chat.messages))
+        .options(selectinload(Chat.participants))
     )
 
     # Apply cursor filter if provided
     cursor_info = _decode_cursor(cursor)
     if cursor_info:
         cursor_dt, cursor_id = cursor_info
-        # Filter for chats with older last message or same time but
-        # lexicographically smaller ID
         query = query.where(
             or_(
                 Chat.updated_at < cursor_dt,
@@ -121,38 +151,58 @@ async def get_chats(
 
     query = query.order_by(last_message_subquery.desc().nulls_last()).limit(limit + 1)
     result = await session.execute(query)
-    chats = result.scalars().all()
-    participant_ids: set[int] = set()
+    rows = result.all()
 
-    for chat in chats:
+    # Check if there are more results
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+
+    # Collect participant IDs for presence check
+    participant_ids: set[int] = set()
+    chat_data_map: dict[str, dict] = {}
+
+    for row in rows:
+        chat = row[0]
+        unread_count = row[1] or 0
+        last_message_id = row[2]
+
         for participant in chat.participants:
             participant_ids.add(participant.id)
 
-    # Check if there are more results
-    has_more = len(chats) > limit
-    chats = chats[:limit]
+        chat_data_map[chat.id] = {
+            "chat": chat,
+            "unread_count": unread_count,
+            "last_message_id": last_message_id,
+        }
 
-    # Process chats to add last_message and unread_count
+    # Fetch last messages in one query
+    last_message_ids = [
+        data["last_message_id"]
+        for data in chat_data_map.values()
+        if data["last_message_id"]
+    ]
+    last_messages_map: dict[str, Message] = {}
+    if last_message_ids:
+        messages_result = await session.execute(
+            select(Message)
+            .where(Message.id.in_(last_message_ids))
+            .options(selectinload(Message.sender), selectinload(Message.attachments))
+        )
+        for msg in messages_result.scalars().all():
+            last_messages_map[msg.id] = msg
+
+    # Build responses
     chat_responses = []
-    for chat in chats:
-        # Sort messages to find the last one
-        sorted_messages = sorted(
-            chat.messages, key=lambda m: m.created_at, reverse=True
-        )
-        last_message = sorted_messages[0] if sorted_messages else None
-
-        unread_count = sum(
-            1
-            for m in chat.messages
-            if not m.read_status and m.sender_id != current_user.id
-        )
+    for chat_id, data in chat_data_map.items():
+        chat = data["chat"]
+        last_message = last_messages_map.get(data["last_message_id"])
 
         chat_responses.append(
             ChatResponse(
                 id=chat.id,
                 participants=chat.participants,
                 last_message=last_message,
-                unread_count=unread_count,
+                unread_count=data["unread_count"],
                 created_at=chat.created_at,
                 updated_at=chat.updated_at,
             )
@@ -160,8 +210,8 @@ async def get_chats(
 
     # Build next cursor
     next_cursor = None
-    if has_more and chat_responses:
-        last_chat = chats[-1]
+    if has_more and rows:
+        last_chat = rows[-1][0]
         next_cursor = _encode_cursor(last_chat.updated_at, last_chat.id)
 
     presence_map = await build_presence_map(participant_ids, session=session)
