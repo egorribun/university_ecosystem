@@ -609,22 +609,54 @@ async def get_event(
 ):
     locale = resolve_locale(request=request, user=user)
     _set_language_headers(response, locale)
-    q = await db.get(models.Event, id)
+
+    # Single query for event with files eagerly loaded
+    from sqlalchemy.orm import selectinload as load_files
+
+    result = await db.execute(
+        select(models.Event)
+        .where(models.Event.id == id)
+        .options(load_files(models.Event.files))
+    )
+    q = result.scalar_one_or_none()
     if not q:
         raise HTTPException(
             status_code=404,
             detail=translate("errors.events.not_found", locale=locale),
         )
-    attendance = (
-        await db.execute(
-            select(models.EventAttendance).where(
-                and_(
-                    models.EventAttendance.event_id == q.id,
-                    models.EventAttendance.user_id == user.id,
-                )
+
+    # Fetch attendance and participant count in parallel using a single query
+    attendance_and_count_result = await db.execute(
+        select(
+            models.EventAttendance,
+            (
+                select(func.count())
+                .select_from(models.EventAttendance)
+                .where(models.EventAttendance.event_id == id)
+                .correlate(None)
+                .scalar_subquery()
+            ).label("participant_count"),
+        ).where(
+            and_(
+                models.EventAttendance.event_id == id,
+                models.EventAttendance.user_id == user.id,
             )
         )
-    ).scalar_one_or_none()
+    )
+    row = attendance_and_count_result.first()
+
+    attendance = row[0] if row else None
+    participant_count = row[1] if row else 0
+
+    # If no attendance row, still get participant count
+    if row is None:
+        count_result = await db.execute(
+            select(func.count())
+            .select_from(models.EventAttendance)
+            .where(models.EventAttendance.event_id == id)
+        )
+        participant_count = count_result.scalar() or 0
+
     attendance_token: str | None = None
     if attendance:
         if attendance_tokens.ensure_secret_material(attendance):
@@ -632,22 +664,10 @@ async def get_event(
             await db.commit()
             await db.refresh(attendance)
         attendance_token = attendance_tokens.issue_token(attendance)
-    files = (
-        (
-            await db.execute(
-                select(models.EventFile).where(models.EventFile.event_id == q.id)
-            )
-        )
-        .scalars()
-        .all()
-    )
-    participant_count = (
-        await db.execute(
-            select(func.count())
-            .select_from(models.EventAttendance)
-            .where(models.EventAttendance.event_id == q.id)
-        )
-    ).scalar()
+
+    # Files are already loaded via selectinload
+    files = getattr(q, "files", []) or []
+
     payload = crud.serialize_event(
         q,
         locale,

@@ -84,9 +84,12 @@ def cleanup() -> None:
         _sync_engine = None
         _Session = None
 
-    if session_factory is not None and hasattr(session_factory, "close_all"):
+    if session_factory is not None:
         try:
-            session_factory.close_all()
+            # Use the class method instead of deprecated instance method
+            from sqlalchemy.orm import Session
+
+            Session.close_all_sessions()
         except Exception:  # pragma: no cover - defensive logging
             logger.exception("Failed to close webpush session factory")
 
