@@ -50,7 +50,9 @@ class TestGuessUnknownMime:
         assert _guess_mime("image.webp") == "image/webp"
 
     def test_guess_unknown(self):
-        assert _guess_mime("file.xyz") == "application/octet-stream"
+        # Use extension that's unknown on all platforms
+        # .xyz is known as chemical/x-xyz on Linux
+        assert _guess_mime("file.unknownextension123") == "application/octet-stream"
 
     def test_guess_with_path(self):
         assert _guess_mime("/uploads/images/photo.jpg") == "image/jpeg"
