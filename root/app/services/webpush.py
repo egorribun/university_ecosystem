@@ -88,6 +88,7 @@ def cleanup() -> None:
         try:
             # Use the class method instead of deprecated instance method
             from sqlalchemy.orm import Session
+
             Session.close_all_sessions()
         except Exception:  # pragma: no cover - defensive logging
             logger.exception("Failed to close webpush session factory")

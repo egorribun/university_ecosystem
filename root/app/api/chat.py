@@ -90,8 +90,7 @@ async def get_chats(
     Returns chats ordered by last message timestamp (newest first).
     Use the `next_cursor` from the response to fetch the next page.
     """
-    from sqlalchemy import case, func, literal_column
-    from sqlalchemy.orm import contains_eager
+    from sqlalchemy import func
 
     # Subquery: last message timestamp per chat (for ordering)
     last_message_subquery = (

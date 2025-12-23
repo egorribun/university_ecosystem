@@ -34,4 +34,3 @@ router.include_router(stats_router)
 router.include_router(chat_router)
 router.include_router(images_router)
 router.include_router(csp_report_router)
-

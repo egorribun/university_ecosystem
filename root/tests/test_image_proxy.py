@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
 from io import BytesIO
-from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -18,7 +16,7 @@ from app.services.image_proxy import (
 )
 
 if TYPE_CHECKING:
-    from app.services.storage import StorageBackend
+    pass
 
 
 @pytest.fixture
@@ -169,7 +167,7 @@ class TestGetTransformedImage:
             ) as mock_fetch,
         ):
             mock_cache.get.return_value = None
-            mock_fetch.side_effect = IOError("Network error")
+            mock_fetch.side_effect = OSError("Network error")
 
             with pytest.raises(ValueError, match="Could not load image"):
                 await get_transformed_image(
