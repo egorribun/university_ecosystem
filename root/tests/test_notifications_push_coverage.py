@@ -120,8 +120,12 @@ async def test_subscribe_flow(mock_db, mock_user, mock_request):
 
     # 2. Existing subscription from different user - now transfers ownership (no conflict)
     existing = models.PushSubscription(
-        id=1, user_id=99, endpoint="https://push.com/123",
-        p256dh="old_key", auth="old_secret", topics=["old_topic"]
+        id=1,
+        user_id=99,
+        endpoint="https://push.com/123",
+        p256dh="old_key",
+        auth="old_secret",
+        topics=["old_topic"],
     )
     mock_db.execute.return_value = MagicMock(
         scalar_one_or_none=MagicMock(return_value=existing)
