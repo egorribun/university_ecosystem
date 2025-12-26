@@ -435,7 +435,9 @@ async def subscribe(
             # First, try to find an existing subscription with this endpoint
             existing = (
                 await db.execute(
-                    select(PushSubscription).where(PushSubscription.endpoint == endpoint)
+                    select(PushSubscription).where(
+                        PushSubscription.endpoint == endpoint
+                    )
                 )
             ).scalar_one_or_none()
 
@@ -511,7 +513,9 @@ async def subscribe(
             # Final attempt: try to find and update existing
             existing = (
                 await db.execute(
-                    select(PushSubscription).where(PushSubscription.endpoint == endpoint)
+                    select(PushSubscription).where(
+                        PushSubscription.endpoint == endpoint
+                    )
                 )
             ).scalar_one_or_none()
 
@@ -546,14 +550,19 @@ async def subscribe(
                     status_code=status.HTTP_409_CONFLICT,
                     detail={
                         "error": "duplicate_endpoint",
-                        "message": translate("errors.push.subscription_exists", locale=locale),
+                        "message": translate(
+                            "errors.push.subscription_exists", locale=locale
+                        ),
                     },
                 )
 
     if subscription is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"error": "subscription_failed", "message": "Failed to create subscription"},
+            detail={
+                "error": "subscription_failed",
+                "message": "Failed to create subscription",
+            },
         )
 
     return _serialize_subscription(subscription)
