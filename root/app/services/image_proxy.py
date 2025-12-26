@@ -109,7 +109,9 @@ async def _fetch_source_bytes(backend: StorageBackend, path: str) -> bytes:
         # Handle case where spaces in URL were meant to be underscores on disk
         if not full_path.exists() and " " in str(rel_path):
             underscored_rel = Path(str(rel_path).replace(" ", "_"))
-            underscored_path = _validate_path_within_base(backend.base_dir, underscored_rel)
+            underscored_path = _validate_path_within_base(
+                backend.base_dir, underscored_rel
+            )
             if underscored_path.exists():
                 full_path = underscored_path
 
