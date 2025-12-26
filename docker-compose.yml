@@ -8,7 +8,7 @@ services:
       - root/.env
     environment:
       # Using host machine's PostgreSQL database
-      DATABASE_URL: postgresql+asyncpg://postgres:1@host.docker.internal:5432/university
+      DATABASE_URL: postgresql+asyncpg://postgres:DevSecurePass2024!@host.docker.internal:5432/university
       FRONTEND_ORIGIN: http://localhost:8081
       FRONTEND_ORIGINS: http://localhost:8081,http://localhost:8080
       NOTIFICATIONS_SCHEDULER_INLINE_ENABLED: "false"
@@ -60,7 +60,7 @@ services:
     env_file:
       - root/.env
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:1@host.docker.internal:5432/university
+      DATABASE_URL: postgresql+asyncpg://postgres:DevSecurePass2024!@host.docker.internal:5432/university
       NOTIFICATIONS_WORKER_METRICS_HOST: 0.0.0.0
       NOTIFICATIONS_WORKER_METRICS_PORT: "9101"
       CACHE_ENABLED: "true"
@@ -118,7 +118,7 @@ services:
     env_file:
       - ${ENV_FILE:-root/.env.example}
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://postgres:1@postgres:5432/university}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://postgres:DevSecurePass2024!@postgres:5432/university}
       SECRET_KEY: "dev_secret_key_1234567890"
     depends_on:
       postgres:
