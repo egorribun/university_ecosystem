@@ -103,11 +103,13 @@ async def _fetch_source_bytes(backend: StorageBackend, path: str) -> bytes:
             # Fallback to direct path usage if extraction fails
             rel_path = Path(path.lstrip("/"))
 
-        full_path = backend.base_dir / rel_path
+        # Security: Validate path is within base directory (prevent path traversal)
+        full_path = _validate_path_within_base(backend.base_dir, rel_path)
 
         # Handle case where spaces in URL were meant to be underscores on disk
         if not full_path.exists() and " " in str(rel_path):
-            underscored_path = backend.base_dir / str(rel_path).replace(" ", "_")
+            underscored_rel = Path(str(rel_path).replace(" ", "_"))
+            underscored_path = _validate_path_within_base(backend.base_dir, underscored_rel)
             if underscored_path.exists():
                 full_path = underscored_path
 
@@ -121,6 +123,10 @@ async def _fetch_source_bytes(backend: StorageBackend, path: str) -> bytes:
         key = backend._extract_key(normalized_path)
         if key is None:
             key = path.lstrip("/")
+
+        # Security: Validate key doesn't contain path traversal sequences
+        if ".." in key or key.startswith("/"):
+            raise ValueError("Invalid S3 key: path traversal detected")
 
         # Handle potential space/underscore mismatch for S3 as well
         # (Though less likely to be an issue with S3 keys unless manually renamed)
@@ -141,6 +147,24 @@ async def _fetch_source_bytes(backend: StorageBackend, path: str) -> bytes:
         return response["Body"].read()
 
     raise ValueError("Unsupported storage backend for image proxy")
+
+
+def _validate_path_within_base(base_dir: Path, rel_path: Path) -> Path:
+    """
+    Validate that the resolved path stays within base_dir.
+    Prevents path traversal attacks (e.g., using '../' to escape).
+    """
+    # Resolve to absolute path to handle any '..' or '.' in the path
+    full_path = (base_dir / rel_path).resolve()
+    base_resolved = base_dir.resolve()
+
+    # Check that the resolved path is within the base directory
+    try:
+        full_path.relative_to(base_resolved)
+    except ValueError:
+        raise ValueError(f"Path traversal attempt detected: {rel_path}")
+
+    return full_path
 
 
 def _process_image(
