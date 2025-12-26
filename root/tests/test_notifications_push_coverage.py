@@ -582,19 +582,16 @@ async def test_send_web_push_error(mock_db):
 
     sub = models.PushSubscription(id=1, endpoint="url", p256dh="k", auth="s")
 
-    # Mocking generic error
+    # Mocking generic error with status that doesn't trigger "gone" cleanup
     mock_response = MagicMock()
     mock_response.status_code = 500
-    exc = WebPushException("Error", response=mock_response)
+    # Message should NOT contain "404" or "410" to avoid gone detection
+    exc = WebPushException("Internal Server Error", response=mock_response)
 
-    with (
-        patch("app.services.webpush.webpush", side_effect=exc),
-        patch(
-            "app.services.webpush._ensure_sync_sessionmaker", return_value=MagicMock()
-        ),
-    ):
+    with patch("app.services.webpush.webpush", side_effect=exc):
         res = send_web_push(sub, {"title": "T"})
         assert res.status == "error"
+        assert res.status_code == 500
 
 
 def test_quiet_hours_advanced():
