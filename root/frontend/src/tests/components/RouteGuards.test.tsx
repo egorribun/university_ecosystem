@@ -23,9 +23,11 @@ describe("PrivateRoute", () => {
     mockUseAuth.mockReturnValue({ isAuth: false, loading: true, user: null })
 
     const { container } = render(
-      <PrivateRoute>
-        <div>Secret content</div>
-      </PrivateRoute>
+      <MemoryRouter>
+        <PrivateRoute>
+          <div>Secret content</div>
+        </PrivateRoute>
+      </MemoryRouter>
     )
 
     const status = screen.getByRole("status")
@@ -42,9 +44,11 @@ describe("PrivateRoute", () => {
     mockUseAuth.mockReturnValue({ isAuth: true, loading: false, user: { role: "student" } })
 
     render(
-      <PrivateRoute>
-        <div>Protected dashboard</div>
-      </PrivateRoute>
+      <MemoryRouter>
+        <PrivateRoute>
+          <div>Protected dashboard</div>
+        </PrivateRoute>
+      </MemoryRouter>
     )
 
     expect(screen.getByText("Protected dashboard")).toBeInTheDocument()

@@ -50,12 +50,11 @@ describe("resolveMediaUrl", () => {
     expect(resolveMediaUrl("media/avatar.png")).toBe("/media/avatar.png")
   })
 
-  it("throws in production when origin is missing", async () => {
+  it("falls back to relative path in production when origin is missing", async () => {
     setEnv("DEV", false)
     const { resolveMediaUrl } = await import("@/utils/media")
-    expect(() => resolveMediaUrl("/media/avatar.png")).toThrowError(
-      /VITE_BACKEND_ORIGIN is not set/
-    )
+    // Now falls back to relative path instead of throwing
+    expect(resolveMediaUrl("/media/avatar.png")).toBe("/media/avatar.png")
   })
 
   it("allows overriding origin explicitly", async () => {
