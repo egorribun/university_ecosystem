@@ -638,7 +638,6 @@ export async function ensurePushSubscription(
   }
 }
 
-
 type UnsubscribePushOptions = {
   registration?: ServiceWorkerRegistration
   preserveConsent?: boolean

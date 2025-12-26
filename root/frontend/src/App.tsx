@@ -173,7 +173,10 @@ function AppContent() {
           <Route path="/profile" element={<PrivateRoute>{wrap(<Profile />)}</PrivateRoute>} />
           <Route path="/settings" element={<PrivateRoute>{wrap(<Settings />)}</PrivateRoute>} />
           <Route path="/messenger" element={<PrivateRoute>{wrap(<Messenger />)}</PrivateRoute>} />
-          <Route path="/messenger/:chatId" element={<PrivateRoute>{wrap(<Messenger />)}</PrivateRoute>} />
+          <Route
+            path="/messenger/:chatId"
+            element={<PrivateRoute>{wrap(<Messenger />)}</PrivateRoute>}
+          />
           <Route path="/admin/users" element={<AdminRoute>{wrap(<AdminUsers />)}</AdminRoute>} />
           <Route
             path="/admin/notifications"

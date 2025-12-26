@@ -359,7 +359,6 @@ export default function Messenger() {
     }
   }, [selectedChatId, markAsRead])
 
-
   // Helper to get the other participant
   const getOtherParticipant = (chat: Chat) => {
     return chat.participants.find((p) => p.id !== user?.id)
