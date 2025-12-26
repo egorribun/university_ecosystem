@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { useTranslation } from "react-i18next"
+import { useNavigate, useParams } from "react-router-dom"
 import {
   ContactList,
   ChatWindow,
@@ -98,6 +99,8 @@ function ConfirmDialog({
 export default function Messenger() {
   const { t } = useTranslation(["messenger", "common"])
   const { user } = useAuth()
+  const { chatId } = useParams<{ chatId: string }>()
+  const navigate = useNavigate()
   const isMobile = useMediaQuery("(max-width: 768px)")
   const queryClient = useQueryClient()
 
@@ -143,12 +146,39 @@ export default function Messenger() {
     },
   })
 
+  // Update selectedChatId when chatId param changes (e.g. from notification)
   // Fetch Chats with paginated response
   const { data: chatsData, isLoading: chatsLoading } = useQuery({
     queryKey: ["chats"],
     queryFn: () => chatApi.getChats(),
   })
   const chats = chatsData?.items ?? []
+
+  // Fetch single chat data if specified via URL but not in the first page of chats
+  const { data: singleChatData } = useQuery({
+    queryKey: ["chats", chatId],
+    queryFn: () => (chatId ? chatApi.getChat(chatId) : Promise.reject("No chatId")),
+    enabled: !!chatId && !chats.some((c) => c.id === chatId),
+    retry: false,
+  })
+
+  // Ensure selectedChatId stays in sync with URL
+  useEffect(() => {
+    if (chatId) {
+      setSelectedChatId(chatId)
+    } else {
+      setSelectedChatId(null)
+    }
+  }, [chatId])
+
+  // Get current active chat object (either from list or direct fetch)
+  const activeChat = useMemo(() => {
+    if (!selectedChatId) return null
+    const inList = chats.find((c) => c.id === selectedChatId)
+    if (inList) return inList
+    if (singleChatData && singleChatData.id === selectedChatId) return singleChatData
+    return null
+  }, [selectedChatId, chats, singleChatData])
 
   useEffect(() => {
     if (!chatsData?.items) return
@@ -329,7 +359,6 @@ export default function Messenger() {
     }
   }, [selectedChatId, markAsRead])
 
-  const activeChat = chats.find((c) => c.id === selectedChatId)
 
   // Helper to get the other participant
   const getOtherParticipant = (chat: Chat) => {
@@ -490,7 +519,7 @@ export default function Messenger() {
         <ContactList
           contacts={contacts}
           selectedId={selectedChatId}
-          onSelect={(id) => setSelectedChatId(id)}
+          onSelect={(id) => navigate(`/messenger/${id}`)}
         />
       </div>
 

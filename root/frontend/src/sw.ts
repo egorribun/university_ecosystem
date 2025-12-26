@@ -689,10 +689,16 @@ try {
     (import.meta.env.VITE_APP_VERSION as string | undefined) ||
     (import.meta.env.APP_VERSION as string | undefined) ||
     "app-shell"
+  // Filter out entries that conflict with our manual shell additions
+  const excludedUrls = new Set([APP_SHELL_URL, OFFLINE_URL, "/index.html", "index.html"])
+  const filteredManifestEntries = manifestEntries.filter((entry) => {
+    const url = typeof entry === "string" ? entry : entry?.url
+    return url && !excludedUrls.has(url)
+  })
   precacheAndRoute([
     { url: APP_SHELL_URL, revision: shellRevision },
     { url: OFFLINE_URL, revision: shellRevision },
-    ...manifestEntries,
+    ...filteredManifestEntries,
   ])
   clientsClaim()
   void self.skipWaiting()

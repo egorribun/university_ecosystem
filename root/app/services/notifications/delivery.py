@@ -160,6 +160,7 @@ async def create_notifications_for_users(
             delivery_rows.append(
                 _build_delivery_row(
                     notification_id,
+                    now,
                     status="skipped_no_credentials",
                     attempted_at=attempt_ts,
                 )
@@ -188,6 +189,7 @@ async def create_notifications_for_users(
                 delivery_rows.append(
                     _build_delivery_row(
                         notification_id,
+                        now,
                         status="skipped_no_subscription",
                         attempted_at=attempt_ts,
                     )
@@ -255,6 +257,7 @@ async def create_notifications_for_users(
                     delivery_rows.append(
                         _build_delivery_row(
                             notification_id,
+                            now,
                             status="skipped_topic",
                             detail=f"subscription:{sub.id}",
                         )
@@ -279,6 +282,7 @@ async def create_notifications_for_users(
                         delivery_rows.append(
                             _build_delivery_row(
                                 notification_id,
+                                now,
                                 status=result.status,
                                 attempted_at=attempt_ts,
                                 delivered=result.status == "sent",
@@ -290,6 +294,7 @@ async def create_notifications_for_users(
                         delivery_rows.append(
                             _build_delivery_row(
                                 notification_id,
+                                now,
                                 status="error",
                                 attempted_at=attempt_ts,
                                 detail=f"subscription:{sub.id}; exception:{result}",

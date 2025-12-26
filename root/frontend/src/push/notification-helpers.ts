@@ -1,21 +1,12 @@
-import type { i18n as I18nInstance } from "i18next"
-
+// Simple fallback strings for Service Worker context
+// No i18n import to keep SW bundle small
 const fallbackNotifications = {
   defaultTitle: "Новое уведомление",
   defaultBody: "У вас есть новое уведомление.",
 }
 
-let i18nInstance: I18nInstance | null = null
-
-if (typeof window !== "undefined") {
-  import("@/i18n/config")
-    .then((module) => {
-      i18nInstance = module.default
-    })
-    .catch(() => {
-      i18nInstance = null
-    })
-}
+const translateNotification = (key: keyof typeof fallbackNotifications) =>
+  fallbackNotifications[key]
 
 export type NotificationData = {
   url?: string
@@ -56,11 +47,6 @@ export type PushPayload = {
 }
 
 export const DEFAULT_ICON = "/maskable-icon-192.png"
-
-const translateNotification = (
-  key: keyof typeof fallbackNotifications,
-  options?: Record<string, unknown>
-) => i18nInstance?.t(`notifications:${key}`, options) ?? fallbackNotifications[key]
 
 export const getDefaultNotificationTitle = () => translateNotification("defaultTitle")
 

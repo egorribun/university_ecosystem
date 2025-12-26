@@ -92,20 +92,52 @@ async def _fetch_source_bytes(backend: StorageBackend, path: str) -> bytes:
     """Read source bytes from backend. Local files are read directly, S3 via client."""
     from app.services.storage import S3Storage, StaticFSStorage
 
+    # Normalize path: ensure it doesn't have double slashes and has a leading slash for extraction logic
+    normalized_path = "/" + path.lstrip("/")
+
     if isinstance(backend, StaticFSStorage):
-        # path is relative to base_dir
-        # we need to be careful to normalize path (remove leading slash if present)
-        rel_path = path.lstrip("/")
+        # The path might contain the base_url prefix (e.g. "/static/avatars/...")
+        # StaticFSStorage._extract_relative_path handles stripping this prefix.
+        rel_path = backend._extract_relative_path(normalized_path)
+        if rel_path is None:
+            # Fallback to direct path usage if extraction fails
+            rel_path = Path(path.lstrip("/"))
+
         full_path = backend.base_dir / rel_path
+
+        # Handle case where spaces in URL were meant to be underscores on disk
+        if not full_path.exists() and " " in str(rel_path):
+            underscored_path = backend.base_dir / str(rel_path).replace(" ", "_")
+            if underscored_path.exists():
+                full_path = underscored_path
+
+        if not full_path.exists():
+            raise FileNotFoundError(f"Image not found at {full_path}")
+
         return await asyncio.to_thread(full_path.read_bytes)
 
     if isinstance(backend, S3Storage):
-        # path is the key
-        key = path.lstrip("/")
+        # S3Storage._extract_key handles stripping base_url
+        key = backend._extract_key(normalized_path)
+        if key is None:
+            key = path.lstrip("/")
+
+        # Handle potential space/underscore mismatch for S3 as well
+        # (Though less likely to be an issue with S3 keys unless manually renamed)
         loop = asyncio.get_running_loop()
-        response = await loop.run_in_executor(
-            None, lambda: backend.client.get_object(Bucket=backend.bucket, Key=key)
-        )
+        try:
+            response = await loop.run_in_executor(
+                None, lambda: backend.client.get_object(Bucket=backend.bucket, Key=key)
+            )
+        except backend.client.exceptions.NoSuchKey:
+            if " " in key:
+                key = key.replace(" ", "_")
+                response = await loop.run_in_executor(
+                    None,
+                    lambda: backend.client.get_object(Bucket=backend.bucket, Key=key),
+                )
+            else:
+                raise
         return response["Body"].read()
 
     raise ValueError("Unsupported storage backend for image proxy")

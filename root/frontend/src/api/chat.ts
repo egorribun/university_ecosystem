@@ -65,6 +65,11 @@ export const chatApi = {
     return response.data
   },
 
+  getChat: async (chatId: string): Promise<Chat> => {
+    const response = await client.get<Chat>(`/chats/${chatId}`)
+    return response.data
+  },
+
   createChat: async (participantId: string) => {
     const response = await client.post<Chat>("/chats", { participant_id: Number(participantId) })
     return response.data

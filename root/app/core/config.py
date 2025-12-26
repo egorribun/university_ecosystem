@@ -272,7 +272,7 @@ class Settings(BaseSettings):
     internal_auth_token: str | None = None
     cors_allow_credentials: bool = True
     cors_allow_methods: str | list[str] = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
-    cors_allow_headers: str | list[str] = "Authorization,Content-Type"
+    cors_allow_headers: str | list[str] = "Accept,Accept-Language,Authorization,Content-Language,Content-Type,Origin,X-Requested-With,x-profile-cache-envelope"
     cors_expose_headers: str | list[str] = ""
     rate_limit_enabled: bool = True
     rate_limit_default: str | list[str] = "100/minute"

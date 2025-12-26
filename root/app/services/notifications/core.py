@@ -114,6 +114,7 @@ def _normalize_translation_map(
 
 def _build_delivery_row(
     notification_id: int,
+    notification_created_at: dt.datetime,
     *,
     status: str,
     channel: str = "webpush",
@@ -126,6 +127,7 @@ def _build_delivery_row(
     attempt_ts = attempted_at or dt.datetime.now(UTC)
     row: dict[str, Any] = {
         "notification_id": int(notification_id),
+        "notification_created_at": notification_created_at,
         "channel": channel,
         "status": status,
         "attempted_at": attempt_ts,
