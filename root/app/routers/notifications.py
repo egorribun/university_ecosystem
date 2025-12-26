@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import UTC, datetime
 from typing import Annotated, Any
@@ -265,7 +266,7 @@ def _aggregate_results(
 
 
 async def _refresh_user_topic_preferences(db: AsyncSession, *, user_id: int) -> None:
-    """Synchronize stored user topic preferences with subscription data."""
+    """Synchronize stored user topic preferences with subscription data with robust upsert."""
 
     topics_rows = (
         await db.execute(
@@ -281,17 +282,38 @@ async def _refresh_user_topic_preferences(db: AsyncSession, *, user_id: int) -> 
         else:
             aggregated.append(str(row))
     normalized = sort_topics(aggregated, settings_obj=settings)
-    record = (
-        await db.execute(select(UserPushTopic).where(UserPushTopic.user_id == user_id))
-    ).scalar_one_or_none()
-    if normalized:
-        topics_copy = list(normalized)
-        if record is None:
-            db.add(UserPushTopic(user_id=user_id, topics=topics_copy))
-        else:
-            record.topics = topics_copy
-    elif record is not None:
-        await db.delete(record)
+
+    try:
+        # Avoid creating multiple topics records for the same user in parallel
+        async with db.begin_nested():
+            record = (
+                await db.execute(
+                    select(UserPushTopic).where(UserPushTopic.user_id == user_id)
+                )
+            ).scalar_one_or_none()
+
+            if normalized:
+                topics_copy = list(normalized)
+                if record is None:
+                    db.add(UserPushTopic(user_id=user_id, topics=topics_copy))
+                else:
+                    record.topics = topics_copy
+            elif record is not None:
+                await db.delete(record)
+            await db.flush()
+    except IntegrityError:
+        # Another process might have inserted it between select and flush
+        record = (
+            await db.execute(
+                select(UserPushTopic).where(UserPushTopic.user_id == user_id)
+            )
+        ).scalar_one_or_none()
+        if record:
+            if normalized:
+                record.topics = list(normalized)
+            else:
+                await db.delete(record)
+            await db.flush()
 
 
 async def _validate_subscription_payload(
@@ -399,62 +421,139 @@ async def subscribe(
     if len(user_agent) > 512:
         user_agent = user_agent[:512]
 
-    existing = (
-        await db.execute(
-            select(PushSubscription).where(PushSubscription.endpoint == endpoint)
-        )
-    ).scalar_one_or_none()
-
     now = datetime.now(UTC)
-    try:
-        normalized_topics = resolve_topics(
-            payload.topics, existing.topics if existing else None
-        )
-        topics_copy = list(normalized_topics)
-        if existing:
-            if existing.user_id != user.id:
+    subscription: PushSubscription | None = None
+    max_attempts = 3
+
+    logger.info(
+        "push.subscribe.start",
+        extra={"endpoint_prefix": endpoint[:50], "user_id": user.id},
+    )
+
+    for attempt in range(max_attempts):
+        try:
+            # First, try to find an existing subscription with this endpoint
+            existing = (
+                await db.execute(
+                    select(PushSubscription).where(PushSubscription.endpoint == endpoint)
+                )
+            ).scalar_one_or_none()
+
+            logger.debug(
+                "push.subscribe.attempt",
+                extra={
+                    "attempt": attempt + 1,
+                    "existing": existing is not None,
+                    "endpoint_prefix": endpoint[:50],
+                },
+            )
+
+            if existing:
+                # Transfer ownership or update existing subscription
+                payload_topics = payload.topics
+                normalized_topics = resolve_topics(payload_topics, existing.topics)
+                topics_copy = list(normalized_topics)
+
+                existing.p256dh = p256dh
+                existing.auth = auth
+                existing.user_id = user.id
+                existing.user_agent = user_agent or None
+                existing.last_seen_at = now
+                if existing.created_at is None:
+                    existing.created_at = now
+                existing.topics = topics_copy
+                subscription = existing
+            else:
+                # Try to create a new one
+                normalized_topics = resolve_topics(payload.topics, None)
+                subscription = PushSubscription(
+                    endpoint=endpoint,
+                    p256dh=p256dh,
+                    auth=auth,
+                    user_id=user.id,
+                    user_agent=user_agent or None,
+                    last_seen_at=now,
+                    created_at=now,
+                    topics=list(normalized_topics),
+                )
+                db.add(subscription)
+
+            await db.flush()
+            await _refresh_user_topic_preferences(db, user_id=user.id)
+            await db.commit()
+            await db.refresh(subscription)
+            logger.info(
+                "push.subscribe.success",
+                extra={
+                    "attempt": attempt + 1,
+                    "subscription_id": subscription.id,
+                    "endpoint_prefix": endpoint[:50],
+                },
+            )
+            break  # Success, exit retry loop
+        except IntegrityError as e:
+            # Race condition: another request created the subscription concurrently
+            logger.warning(
+                "push.subscribe.integrity_error",
+                extra={
+                    "attempt": attempt + 1,
+                    "error": str(e)[:200],
+                    "endpoint_prefix": endpoint[:50],
+                },
+            )
+            await db.rollback()
+
+            if attempt < max_attempts - 1:
+                # Small delay before retry to let the other transaction complete
+                await asyncio.sleep(0.05 * (attempt + 1))
+                continue
+
+            # Final attempt: try to find and update existing
+            existing = (
+                await db.execute(
+                    select(PushSubscription).where(PushSubscription.endpoint == endpoint)
+                )
+            ).scalar_one_or_none()
+
+            if existing:
+                normalized_topics = resolve_topics(payload.topics, existing.topics)
+                existing.p256dh = p256dh
+                existing.auth = auth
+                existing.user_id = user.id
+                existing.user_agent = user_agent or None
+                existing.last_seen_at = now
+                existing.topics = list(normalized_topics)
+                await db.flush()
+                await _refresh_user_topic_preferences(db, user_id=user.id)
+                await db.commit()
+                await db.refresh(existing)
+                subscription = existing
+                logger.info(
+                    "push.subscribe.recovered",
+                    extra={
+                        "subscription_id": existing.id,
+                        "endpoint_prefix": endpoint[:50],
+                    },
+                )
+            else:
+                # Log warning but return success - subscription likely exists
+                # but we couldn't find it due to transaction isolation
+                logger.warning(
+                    "push.subscribe.not_found_after_error",
+                    extra={"endpoint_prefix": endpoint[:50], "user_id": user.id},
+                )
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail={
                         "error": "duplicate_endpoint",
-                        "message": translate(
-                            "errors.push.subscription_exists", locale=locale
-                        ),
+                        "message": translate("errors.push.subscription_exists", locale=locale),
                     },
                 )
-            existing.p256dh = p256dh
-            existing.auth = auth
-            existing.user_id = user.id
-            existing.user_agent = user_agent or None
-            existing.last_seen_at = now
-            if existing.created_at is None:
-                existing.created_at = now
-            existing.topics = topics_copy
-            subscription = existing
-        else:
-            subscription = PushSubscription(
-                endpoint=endpoint,
-                p256dh=p256dh,
-                auth=auth,
-                user_id=user.id,
-                user_agent=user_agent or None,
-                last_seen_at=now,
-                created_at=now,
-                topics=topics_copy,
-            )
-            db.add(subscription)
-        await db.flush()
-        await _refresh_user_topic_preferences(db, user_id=user.id)
-        await db.commit()
-        await db.refresh(subscription)
-    except IntegrityError:
-        await db.rollback()
+
+    if subscription is None:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "error": "duplicate_endpoint",
-                "message": translate("errors.push.subscription_exists", locale=locale),
-            },
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "subscription_failed", "message": "Failed to create subscription"},
         )
 
     return _serialize_subscription(subscription)
