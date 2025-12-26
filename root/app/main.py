@@ -91,7 +91,6 @@ if settings.response_compression_enabled:
     )
 
 
-
 app.add_middleware(SecurityHeadersMiddleware, settings=settings)
 
 app.add_middleware(
