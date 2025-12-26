@@ -118,9 +118,10 @@ async def test_subscribe_flow(mock_db, mock_user, mock_request):
         mock_db.add.assert_called()
         mock_db.commit.assert_called()
 
-    # 2. Existing subscription - Conflict (different user)
+    # 2. Existing subscription from different user - now transfers ownership (no conflict)
     existing = models.PushSubscription(
-        id=1, user_id=99, endpoint="https://push.com/123"
+        id=1, user_id=99, endpoint="https://push.com/123",
+        p256dh="old_key", auth="old_secret", topics=["old_topic"]
     )
     mock_db.execute.return_value = MagicMock(
         scalar_one_or_none=MagicMock(return_value=existing)
@@ -130,10 +131,14 @@ async def test_subscribe_flow(mock_db, mock_user, mock_request):
         patch("app.routers.notifications.ensure_push_subscription_schema", AsyncMock()),
         patch("app.routers.notifications.enforce_rate_limit", AsyncMock()),
         patch("app.routers.notifications.resolve_locale", return_value="en"),
+        patch("app.routers.notifications.resolve_topics", return_value=["news"]),
+        patch("app.routers.notifications._refresh_user_topic_preferences", AsyncMock()),
     ):
-        with pytest.raises(HTTPException) as exc:
-            await subscribe(payload, mock_request, mock_db, mock_user)
-        assert exc.value.status_code == 409
+        # Should succeed with ownership transfer, not raise HTTPException
+        res = await subscribe(payload, mock_request, mock_db, mock_user)
+        assert res.endpoint == "https://push.com/123"
+        # Ownership should be transferred to mock_user
+        assert existing.user_id == mock_user.id
 
 
 @pytest.mark.asyncio
