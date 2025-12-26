@@ -248,7 +248,7 @@ async def prepare_database() -> AsyncIterator[None]:
             CREATE TABLE IF NOT EXISTS notification_deliveries (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 notification_id INTEGER NOT NULL,
-                notification_created_at TIMESTAMP,
+                notification_created_at TIMESTAMP NOT NULL,
                 channel VARCHAR NOT NULL DEFAULT 'inapp',
                 status VARCHAR NOT NULL DEFAULT 'delivered',
                 attempted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

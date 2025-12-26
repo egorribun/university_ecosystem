@@ -90,14 +90,6 @@ if settings.response_compression_enabled:
         quality=5,
     )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_allow_origins_list,
-    allow_credentials=settings.cors_allow_credentials_effective,
-    allow_methods=settings.cors_allow_methods_list,
-    allow_headers=settings.cors_allow_headers_list,
-    expose_headers=settings.cors_expose_headers_list,
-)
 
 app.add_middleware(SecurityHeadersMiddleware, settings=settings)
 
@@ -176,6 +168,18 @@ if ProxyHeadersMiddleware:
 static_dir = settings.static_dir_path
 static_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+print(f"DEBUG: CORS Origins: {settings.cors_allow_origins_list}")
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_allow_origins_list,
+    allow_credentials=settings.cors_allow_credentials_effective,
+    allow_methods=settings.cors_allow_methods_list,
+    allow_headers=settings.cors_allow_headers_list,
+    expose_headers=settings.cors_expose_headers_list,
+)
 
 
 @app.get("/")

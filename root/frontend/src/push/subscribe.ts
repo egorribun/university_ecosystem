@@ -1,8 +1,9 @@
+import { isAxiosError } from "axios"
 import { deleteSubscription, getVapidPublicKey, saveSubscription } from "@/api/notifications"
 import { logError, logWarning } from "@/app/logger"
 
 const SUBSCRIPTION_EXPIRY_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000 // 3 days
-const PERSIST_MAX_ATTEMPTS = 5
+const PERSIST_MAX_ATTEMPTS = 3
 const PERSIST_BASE_DELAY_MS = 500
 const PUSH_LAST_SYNC_STORAGE_KEY = "push:last_sync"
 const PUSH_SUB_STORAGE_KEY = "push:last_payload"
@@ -10,7 +11,8 @@ const PUSH_TOPICS_STORAGE_KEY = "push:last_topics"
 const PUSH_TOPICS_STORAGE_VERSION = 2
 const PROFILE_CACHE_STORAGE_KEY = "ecosystem.profile.cache.v1"
 
-const ensureLocks = new Map<string, Promise<PushSubscription | null>>()
+// Global lock to prevent ANY concurrent ensurePushSubscription calls
+let globalEnsureLock: Promise<PushSubscription | null> | null = null
 const SERVICE_WORKER_READY_TIMEOUT_MS = 2000
 let cachedVapidPublicKey: string | null | undefined
 
@@ -338,31 +340,76 @@ function removeStoredValue(key: string) {
   } catch {}
 }
 
+let syncInProgress = false
+let globalSyncLock: Promise<PushSubscription | null> | null = null
+
 async function persistSubscriptionWithBackoff(
   payload: Parameters<typeof saveSubscription>[0],
   topics?: string[]
 ): Promise<Awaited<ReturnType<typeof saveSubscription>> | null> {
+  if (syncInProgress) {
+    logWarning("Push subscription sync already in progress, skipping redundant attempt")
+    return null
+  }
+
+  syncInProgress = true
   let attempt = 0
   // Add jitter to reduce the probability of thundering herd
   const jitter = () => Math.random() * PERSIST_BASE_DELAY_MS
 
-  for (;;) {
-    try {
-      const response = await saveSubscription(payload, topics)
-      const normalizedTopics = response?.topics ?? (topics ? [...topics].sort() : [])
-      setStoredValue(PUSH_SUB_STORAGE_KEY, JSON.stringify(payload))
-      setStoredValue(PUSH_LAST_SYNC_STORAGE_KEY, Date.now().toString())
-      setPersistedTopics(normalizedTopics)
-      return response
-    } catch (error) {
-      attempt += 1
-      if (attempt >= PERSIST_MAX_ATTEMPTS) {
-        logError("Failed to persist push subscription", error)
-        throw error
+  try {
+    for (;;) {
+      try {
+        const response = await saveSubscription(payload, topics)
+        const normalizedTopics = response?.topics ?? (topics ? [...topics].sort() : [])
+        setStoredValue(PUSH_SUB_STORAGE_KEY, JSON.stringify(payload))
+        setStoredValue(PUSH_LAST_SYNC_STORAGE_KEY, Date.now().toString())
+        setPersistedTopics(normalizedTopics)
+        return response
+      } catch (error) {
+        const isConflict =
+          (isAxiosError(error) && error.response?.status === 409) ||
+          (error &&
+            typeof error === "object" &&
+            "response" in error &&
+            (error as any).response?.status === 409) ||
+          (error instanceof Error && error.message.includes("409"))
+
+        if (isConflict) {
+          // 409 means the subscription already exists on the server - treat as success
+          logWarning("Subscription already exists (409), treating as success")
+          setStoredValue(PUSH_SUB_STORAGE_KEY, JSON.stringify(payload))
+          setStoredValue(PUSH_LAST_SYNC_STORAGE_KEY, Date.now().toString())
+          if (topics) {
+            setPersistedTopics(topics)
+          }
+          return null
+        }
+
+        const isRateLimited =
+          (isAxiosError(error) && error.response?.status === 429) ||
+          (error &&
+            typeof error === "object" &&
+            "response" in error &&
+            (error as any).response?.status === 429)
+
+        if (isRateLimited) {
+          // 429 means too many requests - stop immediately, don't retry
+          logWarning("Rate limited (429), stopping retries")
+          return null
+        }
+
+        attempt += 1
+        if (attempt >= PERSIST_MAX_ATTEMPTS) {
+          logError("Failed to persist push subscription", error)
+          throw error
+        }
+        const delay = Math.min(30000, 2 ** (attempt - 1) * PERSIST_BASE_DELAY_MS) + jitter()
+        await sleep(delay)
       }
-      const delay = Math.min(30000, 2 ** (attempt - 1) * PERSIST_BASE_DELAY_MS) + jitter()
-      await sleep(delay)
     }
+  } finally {
+    syncInProgress = false
   }
 }
 
@@ -490,17 +537,13 @@ export async function ensurePushSubscription(
     return null
   }
 
-  const topics = options?.topics
-  const lockKey = JSON.stringify({
-    key: options?.vapidPublicKey || null,
-    topics: topics ? [...topics].sort() : [],
-    requestPermission: Boolean(options?.requestPermission),
-  })
-
-  const existingLock = ensureLocks.get(lockKey)
-  if (existingLock) {
-    return existingLock
+  // Use global lock to prevent ANY concurrent calls, regardless of parameters
+  if (globalEnsureLock) {
+    logWarning("ensurePushSubscription already in progress, awaiting existing lock")
+    return globalEnsureLock
   }
+
+  const topics = options?.topics
 
   const task = (async () => {
     const reg = await resolveServiceWorkerRegistration(options?.registration)
@@ -586,12 +629,12 @@ export async function ensurePushSubscription(
     return sub
   })()
 
-  ensureLocks.set(lockKey, task)
+  globalEnsureLock = task
 
   try {
     return await task
   } finally {
-    ensureLocks.delete(lockKey)
+    globalEnsureLock = null
   }
 }
 
@@ -689,17 +732,32 @@ export async function softSyncPushSubscription(
   if (typeof Notification === "undefined") return null
   if (Notification.permission !== "granted") return null
 
+  // Prevent parallel sync attempts by reusing existing sync
+  if (globalSyncLock) {
+    logWarning("Push sync already in progress, awaiting existing lock")
+    return globalSyncLock
+  }
+
   const storedTopics = options?.topics ?? parseStoredTopics(getStoredValue(PUSH_TOPICS_STORAGE_KEY))
+
+  globalSyncLock = (async () => {
+    try {
+      const subscription = await ensurePushSubscription({
+        vapidPublicKey: options?.vapidPublicKey,
+        registration: options?.registration,
+        topics: storedTopics,
+        requestPermission: false,
+      })
+      return subscription
+    } catch (error) {
+      logError("Failed to soft sync push subscription", error)
+      return null
+    }
+  })()
+
   try {
-    const subscription = await ensurePushSubscription({
-      vapidPublicKey: options?.vapidPublicKey,
-      registration: options?.registration,
-      topics: storedTopics,
-      requestPermission: false,
-    })
-    return subscription
-  } catch (error) {
-    logError("Failed to soft sync push subscription", error)
-    return null
+    return await globalSyncLock
+  } finally {
+    globalSyncLock = null
   }
 }

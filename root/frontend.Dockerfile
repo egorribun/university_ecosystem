@@ -5,7 +5,8 @@ WORKDIR /app
 
 FROM base AS deps
 COPY root/frontend/package.json root/frontend/package-lock.json ./
-RUN --mount=type=cache,target=/root/.npm npm ci
+COPY root/frontend/scripts ./scripts/
+RUN --mount=type=cache,target=/root/.npm npm ci --legacy-peer-deps
 
 FROM base AS builder
 ARG VITE_BACKEND_ORIGIN=http://localhost:8000

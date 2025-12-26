@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Link, useNavigate } from "react-router-dom"
+import { Link, useNavigate, useLocation } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import {
   Calendar,
@@ -108,7 +108,10 @@ const Spinner = () => (
 const Login = () => {
   const { t } = useTranslation(["auth"])
   const navigate = useNavigate()
+  const location = useLocation()
   const { login, pendingMfa, submitMfaChallenge } = useAuth()
+
+  const from = (location.state as any)?.from?.pathname || "/dashboard"
 
   const savedEmail = useRef<string>(localStorage.getItem("auth:lastEmail") || "")
   const [trustDevice, setTrustDevice] = useState<boolean>(
@@ -252,7 +255,7 @@ const Login = () => {
         return
       }
 
-      navigate("/dashboard")
+      navigate(from, { replace: true })
     } catch (err) {
       let message = t("auth:login.error")
       if (err instanceof Error && err.message) {
@@ -286,7 +289,7 @@ const Login = () => {
           challengeToken: otpChallenge.challenge_token,
           trustDevice,
         })
-        navigate("/dashboard")
+        navigate(from, { replace: true })
       } catch (err) {
         if (err instanceof ChallengeLockedError) {
           setMfaError(err.message)
@@ -329,7 +332,7 @@ const Login = () => {
         challengeToken: webauthnChallenge.challenge_token,
         trustDevice,
       })
-      navigate("/dashboard")
+      navigate(from, { replace: true })
     } catch (err) {
       let message = t("auth:mfa.errors.generic")
       if (err instanceof Error && err.message) {

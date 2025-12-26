@@ -322,6 +322,66 @@ async def create_chat(
     )
 
 
+@router.get("/{chat_id}", response_model=ChatResponse)
+async def get_chat(
+    chat_id: str,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """
+    Get details for a specific chat.
+    """
+    chat = await session.get(Chat, chat_id, options=[selectinload(Chat.participants)])
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+
+    if current_user not in chat.participants:
+        raise HTTPException(status_code=403, detail="Not a participant")
+
+    # Fetch last message and unread count for ChatResponse consistency
+    from sqlalchemy import func
+
+    unread_count_query = (
+        select(func.count())
+        .select_from(Message)
+        .where(
+            Message.chat_id == chat_id,
+            Message.read_status == False,  # noqa: E712
+            Message.sender_id != current_user.id,
+        )
+    )
+    unread_count_res = await session.execute(unread_count_query)
+    unread_count = unread_count_res.scalar_one()
+
+    last_msg_query = (
+        select(Message)
+        .where(Message.chat_id == chat_id)
+        .order_by(Message.created_at.desc())
+        .limit(1)
+        .options(selectinload(Message.sender), selectinload(Message.attachments))
+    )
+    last_msg_res = await session.execute(last_msg_query)
+    last_message = last_msg_res.scalar_one_or_none()
+
+    presence_map = await build_presence_map(
+        [p.id for p in chat.participants], session=session
+    )
+
+    participant_status = {
+        p.id: presence_map.get(p.id, PresenceStatus()) for p in chat.participants
+    }
+
+    return ChatResponse(
+        id=chat.id,
+        participants=chat.participants,
+        last_message=last_message,
+        unread_count=unread_count,
+        created_at=chat.created_at,
+        updated_at=chat.updated_at,
+        presence=participant_status,
+    )
+
+
 @router.get("/{chat_id}/messages", response_model=MessagesListOut)
 async def get_messages(
     chat_id: str,

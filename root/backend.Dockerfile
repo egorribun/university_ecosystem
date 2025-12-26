@@ -10,8 +10,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /build
 
-RUN --mount=type=cache,target=/var/lib/apt/lists \
-    --mount=type=cache,target=/var/cache/apt \
+RUN --mount=type=cache,id=apt-lists-builder,target=/var/lib/apt/lists \
+    --mount=type=cache,id=apt-cache-builder,target=/var/cache/apt \
     apt-get update \
     && apt-get install -y --no-install-recommends build-essential \
     && rm -rf /var/lib/apt/lists/*
@@ -34,8 +34,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN --mount=type=cache,target=/var/lib/apt/lists \
-    --mount=type=cache,target=/var/cache/apt \
+RUN --mount=type=cache,id=apt-lists-runtime,target=/var/lib/apt/lists \
+    --mount=type=cache,id=apt-cache-runtime,target=/var/cache/apt \
     apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/* \
@@ -47,6 +47,9 @@ COPY --chown=app:app root/app ./app
 COPY --chown=app:app root/alembic ./alembic
 COPY --chown=app:app root/alembic.ini ./alembic.ini
 COPY --chown=app:app root/create_invite_code.py ./create_invite_code.py
+
+RUN mkdir -p /app/cache && chown app:app /app/cache
+
 
 USER app
 

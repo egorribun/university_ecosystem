@@ -702,7 +702,18 @@ async def start_worker_monitoring_server(
     )
     server = uvicorn.Server(config)
     task = asyncio.create_task(server.serve())
-    await server.started.wait()
+
+    # Wait for server to start - handle both old (Event) and new (bool) Uvicorn versions
+    started = getattr(server, "started", None)
+    if started is not None and hasattr(started, "wait"):
+        # Old Uvicorn: started is an asyncio.Event
+        await started.wait()
+    else:
+        # New Uvicorn (0.30+): started is a bool, poll until ready
+        for _ in range(100):  # 10 second timeout
+            if getattr(server, "started", False):
+                break
+            await asyncio.sleep(0.1)
 
     async def _stop() -> None:
         if not server.should_exit:

@@ -1341,6 +1341,30 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  "/api/v1/chats/{chat_id}": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * Get Chat
+     * @description Get details for a specific chat.
+     */
+    get: operations["get_chat_api_v1_chats__chat_id__get"]
+    put?: never
+    post?: never
+    /**
+     * Delete Chat
+     * @description Delete a chat entirely for all participants (messages, attachments, links).
+     */
+    delete: operations["delete_chat_api_v1_chats__chat_id__delete"]
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   "/api/v1/chats/{chat_id}/messages": {
     parameters: {
       query?: never
@@ -1406,26 +1430,6 @@ export interface paths {
      */
     post: operations["clear_chat_history_api_v1_chats__chat_id__clear_post"]
     delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
-  "/api/v1/chats/{chat_id}": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    post?: never
-    /**
-     * Delete Chat
-     * @description Delete a chat entirely for all participants (messages, attachments, links).
-     */
-    delete: operations["delete_chat_api_v1_chats__chat_id__delete"]
     options?: never
     head?: never
     patch?: never
@@ -5946,6 +5950,68 @@ export interface operations {
       }
     }
   }
+  get_chat_api_v1_chats__chat_id__get: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        chat_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["ChatResponse"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  delete_chat_api_v1_chats__chat_id__delete: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        chat_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["ChatMaintenanceResult"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
   get_messages_api_v1_chats__chat_id__messages_get: {
     parameters: {
       query?: {
@@ -6049,37 +6115,6 @@ export interface operations {
     }
   }
   clear_chat_history_api_v1_chats__chat_id__clear_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        chat_id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["ChatMaintenanceResult"]
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  delete_chat_api_v1_chats__chat_id__delete: {
     parameters: {
       query?: never
       header?: never

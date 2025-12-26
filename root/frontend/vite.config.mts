@@ -133,7 +133,7 @@ export default defineConfig(({ mode }) => {
       strategies: "injectManifest",
       srcDir: "src",
       filename: "sw.ts",
-      includeAssets: ["offline.html", "static-shell-i18n.js"],
+      includeAssets: [],
       workbox: {
         clientsClaim: true,
         skipWaiting: true,
@@ -179,7 +179,7 @@ export default defineConfig(({ mode }) => {
       ...(manifest ? { manifest } : {}),
       injectManifest: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,json}"],
-        globIgnores: ["**/bundle-stats.*"],
+        globIgnores: ["**/bundle-stats.*", "**/offline.html"],
       },
       devOptions: {
         enabled:
@@ -286,6 +286,7 @@ export default defineConfig(({ mode }) => {
   ] as const
 
   return {
+    base: "/",
     plugins,
     resolve: {
       alias: {

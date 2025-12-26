@@ -92,23 +92,115 @@ async def _fetch_source_bytes(backend: StorageBackend, path: str) -> bytes:
     """Read source bytes from backend. Local files are read directly, S3 via client."""
     from app.services.storage import S3Storage, StaticFSStorage
 
+    # Security: Early validation of user input to block path traversal
+    # This returns a sanitized copy, making the data flow clearer for static analysis
+    sanitized_path = _sanitize_path_input(path)
+
+    # Normalize path: ensure it doesn't have double slashes and has a leading slash for extraction logic
+    normalized_path = "/" + sanitized_path.lstrip("/")
+
     if isinstance(backend, StaticFSStorage):
-        # path is relative to base_dir
-        # we need to be careful to normalize path (remove leading slash if present)
-        rel_path = path.lstrip("/")
-        full_path = backend.base_dir / rel_path
-        return await asyncio.to_thread(full_path.read_bytes)
+        # The path might contain the base_url prefix (e.g. "/static/avatars/...")
+        # StaticFSStorage._extract_relative_path handles stripping this prefix.
+        rel_path = backend._extract_relative_path(normalized_path)
+        if rel_path is None:
+            # Fallback to direct path usage if extraction fails
+            # Safe: sanitized_path has been validated (no "..", no null bytes)
+            rel_path = Path(sanitized_path.lstrip("/"))  # lgtm[py/path-injection]
+
+        # Security: Validate path is within base directory (prevent path traversal)
+        # This is our secondary defense layer after early sanitization
+        full_path = _validate_path_within_base(backend.base_dir, rel_path)
+
+        # Handle case where spaces in URL were meant to be underscores on disk
+        # Safe: full_path is validated to be within base_dir by _validate_path_within_base
+        if not full_path.exists() and " " in str(rel_path):  # lgtm[py/path-injection]
+            underscored_rel = Path(str(rel_path).replace(" ", "_"))
+            underscored_path = _validate_path_within_base(
+                backend.base_dir, underscored_rel
+            )
+            if underscored_path.exists():  # lgtm[py/path-injection]
+                full_path = underscored_path
+
+        if not full_path.exists():  # lgtm[py/path-injection]
+            raise FileNotFoundError(f"Image not found at {full_path}")
+
+        return await asyncio.to_thread(full_path.read_bytes)  # lgtm[py/path-injection]
 
     if isinstance(backend, S3Storage):
-        # path is the key
-        key = path.lstrip("/")
+        # S3Storage._extract_key handles stripping base_url
+        key = backend._extract_key(normalized_path)
+        if key is None:
+            key = sanitized_path.lstrip("/")
+
+        # Security: Validate key doesn't contain path traversal sequences
+        if ".." in key or key.startswith("/"):
+            raise ValueError("Invalid S3 key: path traversal detected")
+
+        # Handle potential space/underscore mismatch for S3 as well
+        # (Though less likely to be an issue with S3 keys unless manually renamed)
         loop = asyncio.get_running_loop()
-        response = await loop.run_in_executor(
-            None, lambda: backend.client.get_object(Bucket=backend.bucket, Key=key)
-        )
+        try:
+            response = await loop.run_in_executor(
+                None, lambda: backend.client.get_object(Bucket=backend.bucket, Key=key)
+            )
+        except backend.client.exceptions.NoSuchKey:
+            if " " in key:
+                key = key.replace(" ", "_")
+                response = await loop.run_in_executor(
+                    None,
+                    lambda: backend.client.get_object(Bucket=backend.bucket, Key=key),
+                )
+            else:
+                raise
         return response["Body"].read()
 
     raise ValueError("Unsupported storage backend for image proxy")
+
+
+def _sanitize_path_input(path: str) -> str:
+    """
+    Validate and sanitize user-provided path input.
+    Returns the validated path.
+    Raises ValueError if path contains traversal sequences.
+    """
+    # Block path traversal patterns
+    if ".." in path:
+        raise ValueError("Path traversal detected: '..' not allowed")
+
+    # Block absolute paths (Unix and Windows)
+    if path.startswith("/") and path.count("/") > 1 and path[1:].startswith("/"):
+        raise ValueError("Absolute path not allowed")
+
+    # Block Windows absolute paths
+    if len(path) > 1 and path[1] == ":":
+        raise ValueError("Windows absolute path not allowed")
+
+    # Block null bytes (can be used to bypass filters)
+    if "\x00" in path:
+        raise ValueError("Null byte in path not allowed")
+
+    # Return validated path - signals to static analyzers that output is safe
+    return path
+
+
+def _validate_path_within_base(base_dir: Path, rel_path: Path) -> Path:
+    """
+    Validate that the resolved path stays within base_dir.
+    Prevents path traversal attacks (e.g., using '../' to escape).
+    """
+    # Resolve to absolute path to handle any '..' or '.' in the path
+    # Safe: input is pre-validated by _sanitize_path_input (no "..", null bytes, etc.)
+    full_path = (base_dir / rel_path).resolve()  # lgtm[py/path-injection]
+    base_resolved = base_dir.resolve()
+
+    # Check that the resolved path is within the base directory
+    try:
+        full_path.relative_to(base_resolved)
+    except ValueError:
+        raise ValueError(f"Path traversal attempt detected: {rel_path}")
+
+    return full_path
 
 
 def _process_image(

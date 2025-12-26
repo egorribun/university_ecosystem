@@ -118,9 +118,14 @@ async def test_subscribe_flow(mock_db, mock_user, mock_request):
         mock_db.add.assert_called()
         mock_db.commit.assert_called()
 
-    # 2. Existing subscription - Conflict (different user)
+    # 2. Existing subscription from different user - now transfers ownership (no conflict)
     existing = models.PushSubscription(
-        id=1, user_id=99, endpoint="https://push.com/123"
+        id=1,
+        user_id=99,
+        endpoint="https://push.com/123",
+        p256dh="old_key",
+        auth="old_secret",
+        topics=["old_topic"],
     )
     mock_db.execute.return_value = MagicMock(
         scalar_one_or_none=MagicMock(return_value=existing)
@@ -130,10 +135,14 @@ async def test_subscribe_flow(mock_db, mock_user, mock_request):
         patch("app.routers.notifications.ensure_push_subscription_schema", AsyncMock()),
         patch("app.routers.notifications.enforce_rate_limit", AsyncMock()),
         patch("app.routers.notifications.resolve_locale", return_value="en"),
+        patch("app.routers.notifications.resolve_topics", return_value=["news"]),
+        patch("app.routers.notifications._refresh_user_topic_preferences", AsyncMock()),
     ):
-        with pytest.raises(HTTPException) as exc:
-            await subscribe(payload, mock_request, mock_db, mock_user)
-        assert exc.value.status_code == 409
+        # Should succeed with ownership transfer, not raise HTTPException
+        res = await subscribe(payload, mock_request, mock_db, mock_user)
+        assert res.endpoint == "https://push.com/123"
+        # Ownership should be transferred to mock_user
+        assert existing.user_id == mock_user.id
 
 
 @pytest.mark.asyncio
@@ -573,19 +582,16 @@ async def test_send_web_push_error(mock_db):
 
     sub = models.PushSubscription(id=1, endpoint="url", p256dh="k", auth="s")
 
-    # Mocking generic error
+    # Mocking generic error with status that doesn't trigger "gone" cleanup
     mock_response = MagicMock()
     mock_response.status_code = 500
-    exc = WebPushException("Error", response=mock_response)
+    # Message should NOT contain "404" or "410" to avoid gone detection
+    exc = WebPushException("Internal Server Error", response=mock_response)
 
-    with (
-        patch("app.services.webpush.webpush", side_effect=exc),
-        patch(
-            "app.services.webpush._ensure_sync_sessionmaker", return_value=MagicMock()
-        ),
-    ):
+    with patch("app.services.webpush.webpush", side_effect=exc):
         res = send_web_push(sub, {"title": "T"})
         assert res.status == "error"
+        assert res.status_code == 500
 
 
 def test_quiet_hours_advanced():

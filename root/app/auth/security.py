@@ -202,7 +202,7 @@ async def create_access_token(
                 session_backend = await get_session_backend()
                 for old_session in oldest_sessions:
                     old_session.revoked_at = now
-                    await session_backend.revoke_session(user_id, old_session.jti)
+                    await session_backend.revoke_session(old_session.jti)
 
         await db.commit()
         await db.refresh(session)

@@ -29,13 +29,11 @@ export function resolveMediaUrl(
   }
 
   const dev = import.meta.env.DEV === true
-  const cleanOrigin = origin?.trim()
+  const cleanOrigin = origin?.trim() ?? ""
 
+  // Empty origin means use relative paths (nginx proxy)
   if (!cleanOrigin) {
-    if (dev) {
-      return withLeadingSlash
-    }
-    throw new Error("VITE_BACKEND_ORIGIN is not set for production build")
+    return withLeadingSlash
   }
 
   const normalizedOrigin = cleanOrigin.replace(/\/+$/, "")
@@ -61,15 +59,10 @@ export function resolveProxyImageUrl(
     withLeadingSlash.startsWith("/api/v1/img/")
   ) {
     const apiBase = "/api/v1/img"
-    const dev = import.meta.env.DEV === true
-    const cleanOrigin = origin?.trim()
+    const cleanOrigin = origin?.trim() ?? ""
 
-    let base = ""
-    if (cleanOrigin) {
-      base = cleanOrigin.replace(/\/+$/, "")
-    } else if (!dev) {
-      throw new Error("VITE_BACKEND_ORIGIN is not set for production build")
-    }
+    // Empty origin means use relative paths (nginx proxy)
+    const base = cleanOrigin ? cleanOrigin.replace(/\/+$/, "") : ""
 
     // Capture the path relative to static/media or use it as is if already proxy path
     let proxyPath = withLeadingSlash

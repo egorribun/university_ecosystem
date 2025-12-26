@@ -12,7 +12,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "202512230001_chat_message_index"
-down_revision = "202512210001_add_session_fingerprint_columns"
+down_revision = "202512210001"
 branch_labels = None
 depends_on = None
 
