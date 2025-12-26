@@ -92,6 +92,9 @@ async def _fetch_source_bytes(backend: StorageBackend, path: str) -> bytes:
     """Read source bytes from backend. Local files are read directly, S3 via client."""
     from app.services.storage import S3Storage, StaticFSStorage
 
+    # Security: Early validation of user input to block path traversal
+    _sanitize_path_input(path)
+
     # Normalize path: ensure it doesn't have double slashes and has a leading slash for extraction logic
     normalized_path = "/" + path.lstrip("/")
 
@@ -149,6 +152,28 @@ async def _fetch_source_bytes(backend: StorageBackend, path: str) -> bytes:
         return response["Body"].read()
 
     raise ValueError("Unsupported storage backend for image proxy")
+
+
+def _sanitize_path_input(path: str) -> None:
+    """
+    Validate and sanitize user-provided path input.
+    Raises ValueError if path contains traversal sequences.
+    """
+    # Block path traversal patterns
+    if ".." in path:
+        raise ValueError("Path traversal detected: '..' not allowed")
+
+    # Block absolute paths (Unix and Windows)
+    if path.startswith("/") and path.count("/") > 1 and path[1:].startswith("/"):
+        raise ValueError("Absolute path not allowed")
+
+    # Block Windows absolute paths
+    if len(path) > 1 and path[1] == ":":
+        raise ValueError("Windows absolute path not allowed")
+
+    # Block null bytes (can be used to bypass filters)
+    if "\x00" in path:
+        raise ValueError("Null byte in path not allowed")
 
 
 def _validate_path_within_base(base_dir: Path, rel_path: Path) -> Path:
