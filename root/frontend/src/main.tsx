@@ -77,9 +77,13 @@ async function bootstrap() {
           import("./push/subscribe"),
         ])
         const { registerServiceWorker } = SWMod
-        const { ensurePushSubscription, hasPushConsent } = PushMod
+        const { ensurePushSubscription, hasPushConsent, recoverPushConsentFromBrowser } = PushMod
         const registration = await registerServiceWorker("/sw.js")
         if (!registration) return
+
+        // Try to recover consent if localStorage was cleared but browser still has subscription
+        await recoverPushConsentFromBrowser()
+
         if (!hasPushConsent()) return
         try {
           await ensurePushSubscription({ registration, requestPermission: false })

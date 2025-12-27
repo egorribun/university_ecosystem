@@ -650,13 +650,20 @@ export default function Activity() {
                   key={option.value}
                   onClick={() => setPeriod(option.value)}
                   className={cn(
-                    "rounded-full border-0 px-4 py-1.5 text-sm font-bold transition-all duration-150",
+                    "relative rounded-full border-0 px-4 py-1.5 text-sm font-bold transition-colors duration-150",
                     period === option.value
-                      ? "bg-[color:var(--nav-link)] text-white shadow-[0_4px_12px_color-mix(in_srgb,var(--nav-link)_35%,transparent)] dark:shadow-[0_8px_24px_color-mix(in_srgb,var(--nav-link)_45%,transparent)]"
+                      ? "text-white"
                       : "bg-transparent text-[color:var(--page-text)] hover:bg-[color:color-mix(in_srgb,var(--nav-link)_8%,transparent)] hover:text-[color:var(--nav-link)]"
                   )}
                 >
-                  {option.label}
+                  {period === option.value && (
+                    <motion.span
+                      layoutId="activity-period-indicator"
+                      className="absolute inset-0 rounded-full bg-[color:var(--nav-link)] shadow-[0_4px_12px_color-mix(in_srgb,var(--nav-link)_35%,transparent)] dark:shadow-[0_8px_24px_color-mix(in_srgb,var(--nav-link)_45%,transparent)]"
+                      transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                    />
+                  )}
+                  <span className="relative z-10">{option.label}</span>
                 </button>
               ))}
             </motion.div>

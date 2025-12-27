@@ -21,6 +21,7 @@ import { useTranslation } from "react-i18next"
 import { AppShellProvider } from "./contexts/AppShellContext"
 import { AdminRoute, PrivateRoute } from "./components/RouteGuards"
 import { prefetchRouteModules } from "./utils/prefetchRoutes"
+import { usePushSync } from "./hooks/usePushSync"
 import { LiveRegionProvider } from "./components/LiveRegionProvider"
 import OfflineIndicator from "./components/OfflineIndicator"
 
@@ -71,6 +72,9 @@ function AppContent() {
   const queryClient = useQueryClient()
   const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const { isAuth } = useAuth()
+
+  // Global push subscription sync
+  usePushSync(isAuth)
 
   const hideNavbar =
     location.pathname === "/login" ||
