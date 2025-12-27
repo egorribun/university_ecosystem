@@ -5,13 +5,12 @@ import {
   Stack,
   Typography,
   IconButton,
-  ToggleButtonGroup,
-  ToggleButton,
   Tooltip,
   Snackbar,
   Alert,
   useMediaQuery,
 } from "@mui/material"
+import { motion } from "framer-motion"
 import { alpha, useTheme } from "@mui/material/styles"
 import OpenInNewIcon from "@mui/icons-material/OpenInNew"
 import MapIcon from "@mui/icons-material/Map"
@@ -328,55 +327,55 @@ export default function MapContent() {
           >
             <Stack direction="row" spacing={1} sx={{ pointerEvents: "auto" }}>
               <Box className="glass glass--panel">
-                <ToggleButtonGroup
-                  exclusive
-                  value={layer}
-                  onChange={(_, v: LayerMode | null) => {
-                    if (v) setLayer(v)
-                  }}
-                  sx={{
-                    "& .MuiToggleButtonGroup-grouped": { border: 0, px: 1.5, m: 0 },
-                    "& .MuiToggleButton-root": {
-                      borderRadius: 0,
-                      touchAction: "manipulation",
-                      color: toggleBaseColor,
-                      transition: "color 160ms ease",
-                      "& .MuiSvgIcon-root": {
-                        color: "inherit",
-                        transition: "color 160ms ease",
-                      },
-                      "&:hover": {
-                        color: toggleHoverColor,
-                        "& .MuiSvgIcon-root": { color: "inherit" },
-                      },
-                    },
-                    "& .MuiToggleButton-root.Mui-selected": {
-                      bgcolor: toggleSelectedBg,
-                      color: toggleSelectedColor,
-                      "&:hover": {
-                        bgcolor: toggleSelectedBg,
-                      },
-                    },
-                    "& .MuiToggleButton-root.Mui-selected .MuiSvgIcon-root": { color: "inherit" },
-                  }}
+                <div
+                  className="relative flex items-center gap-0.5 rounded-lg p-0.5"
+                  style={{ background: alpha(theme.palette.background.paper, 0.6) }}
                 >
-                  <ToggleButton value="map" disableRipple aria-label={t("map.layerAria.map")}>
-                    <MapIcon fontSize="small" sx={{ color: "inherit" }} />
-                    {!isMobile && (
-                      <Box component="span" ml={1} sx={{ color: "inherit" }}>
-                        {t("map.layer.map")}
-                      </Box>
+                  <button
+                    onClick={() => setLayer("map")}
+                    aria-label={t("map.layerAria.map")}
+                    className="relative flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
+                    style={{
+                      color: layer === "map" ? toggleSelectedColor : toggleBaseColor,
+                      touchAction: "manipulation",
+                    }}
+                  >
+                    {layer === "map" && (
+                      <motion.span
+                        layoutId="map-layer-indicator"
+                        className="absolute inset-0 rounded-md"
+                        style={{ background: toggleSelectedBg }}
+                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                      />
                     )}
-                  </ToggleButton>
-                  <ToggleButton value="hybrid" disableRipple aria-label={t("map.layerAria.hybrid")}>
-                    <SatelliteAltIcon fontSize="small" sx={{ color: "inherit" }} />
-                    {!isMobile && (
-                      <Box component="span" ml={1} sx={{ color: "inherit" }}>
-                        {t("map.layer.hybrid")}
-                      </Box>
+                    <span className="relative z-10 flex items-center gap-1">
+                      <MapIcon fontSize="small" />
+                      {!isMobile && <span>{t("map.layer.map")}</span>}
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => setLayer("hybrid")}
+                    aria-label={t("map.layerAria.hybrid")}
+                    className="relative flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
+                    style={{
+                      color: layer === "hybrid" ? toggleSelectedColor : toggleBaseColor,
+                      touchAction: "manipulation",
+                    }}
+                  >
+                    {layer === "hybrid" && (
+                      <motion.span
+                        layoutId="map-layer-indicator"
+                        className="absolute inset-0 rounded-md"
+                        style={{ background: toggleSelectedBg }}
+                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                      />
                     )}
-                  </ToggleButton>
-                </ToggleButtonGroup>
+                    <span className="relative z-10 flex items-center gap-1">
+                      <SatelliteAltIcon fontSize="small" />
+                      {!isMobile && <span>{t("map.layer.hybrid")}</span>}
+                    </span>
+                  </button>
+                </div>
               </Box>
             </Stack>
           </Stack>

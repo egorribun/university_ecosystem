@@ -433,6 +433,48 @@ export function setPushConsent(consented: boolean): void {
   } catch {}
 }
 
+/**
+ * Recovers push consent from browser state when localStorage was cleared.
+ * If Notification.permission is 'granted' and browser has an active push subscription,
+ * restores the consent flag and triggers a sync with the server.
+ *
+ * @returns true if consent was recovered and sync was initiated
+ */
+export async function recoverPushConsentFromBrowser(): Promise<boolean> {
+  if (!isPushSupported()) return false
+  if (typeof Notification === "undefined") return false
+
+  // Already have consent, nothing to recover
+  if (hasPushConsent()) return false
+
+  // Browser permission not granted, can't recover
+  if (Notification.permission !== "granted") return false
+
+  // Check if browser still has an active push subscription
+  const registration = await resolveServiceWorkerRegistration()
+  if (!registration) return false
+
+  try {
+    const subscription = await registration.pushManager.getSubscription()
+    if (!subscription) return false
+
+    // Browser has active subscription but localStorage lost consent - restore it
+    setPushConsent(true)
+
+    // Re-sync subscription with server
+    const payload = subscription.toJSON() as Parameters<typeof saveSubscription>[0]
+    try {
+      await persistSubscriptionWithBackoff(payload)
+    } catch (error) {
+      logWarning("Failed to re-sync recovered push subscription", error)
+    }
+
+    return true
+  } catch {
+    return false
+  }
+}
+
 export async function resolveServiceWorkerRegistration(
   registration?: ServiceWorkerRegistration
 ): Promise<ServiceWorkerRegistration | null> {

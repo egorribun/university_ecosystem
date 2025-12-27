@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next"
 import { isAxiosError } from "axios"
 import { useQueryClient } from "@tanstack/react-query"
 import api, { API_UNAUTHORIZED_EVENT } from "@/api/client"
-import { hasPushConsent, softSyncPushSubscription, unsubscribePush } from "@/push/subscribe"
+import { hasPushConsent, softSyncPushSubscription, recoverPushConsentFromBrowser } from "@/push/subscribe"
 import { SPOTIFY_REAUTH_EVENT } from "@/hooks/useNowPlaying"
 import type { PendingMfaResponse, MfaVerifyPayload } from "@/types/Mfa"
 import type { User } from "@/types/User"
@@ -159,6 +159,14 @@ export const useAuthApi = (
           if (data.user.spotify_connected) {
             window.dispatchEvent(new Event(SPOTIFY_REAUTH_EVENT))
           }
+
+          // Recover push consent if browser still has subscription after storage was cleared
+          recoverPushConsentFromBrowser().then((recovered) => {
+            if (recovered || hasPushConsent()) {
+              softSyncPushSubscription().catch(() => {})
+            }
+          }).catch(() => {})
+
           void prefetchDashboardData(data.user)
           return null
         }
@@ -193,8 +201,12 @@ export const useAuthApi = (
   const logout = useCallback(async () => {
     try {
       if (user) {
+        // Don't fully unsubscribe - just clear local consent
+        // This allows push subscription to be recovered on next login
+        // The browser subscription remains, server association is cleared
         if (hasPushConsent()) {
-          await unsubscribePush()
+          const { setPushConsent } = await import("@/push/subscribe")
+          setPushConsent(false)
         }
         await api.post("/auth/logout")
       }
@@ -240,6 +252,14 @@ export const useAuthApi = (
           if (data.user.spotify_connected) {
             window.dispatchEvent(new Event(SPOTIFY_REAUTH_EVENT))
           }
+
+          // Recover push consent if browser still has subscription after storage was cleared
+          recoverPushConsentFromBrowser().then((recovered) => {
+            if (recovered || hasPushConsent()) {
+              softSyncPushSubscription().catch(() => {})
+            }
+          }).catch(() => {})
+
           void prefetchDashboardData(data.user)
         }
       } catch (error) {
@@ -300,6 +320,10 @@ export const useAuthApi = (
     try {
       const profile = await fetchCurrentUser()
       setUser(profile)
+
+      // Try to recover push consent if localStorage was cleared but browser still has subscription
+      await recoverPushConsentFromBrowser()
+
       if (hasPushConsent()) {
         softSyncPushSubscription().catch(() => {
           /* ignore */

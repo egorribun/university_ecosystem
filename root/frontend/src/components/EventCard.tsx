@@ -20,6 +20,7 @@ import MoreVertIcon from "@mui/icons-material/MoreVert"
 import DeleteIcon from "@mui/icons-material/Delete"
 import EditIcon from "@mui/icons-material/Edit"
 import CloseIcon from "@mui/icons-material/Close"
+import QrCodeIcon from "@mui/icons-material/QrCode"
 import { useAuth } from "../contexts/AuthContext"
 import SmartImage from "@/components/SmartImage"
 import { motion } from "framer-motion"
@@ -800,13 +801,11 @@ const EventCardComponent: FC<EventCardProps> = ({
                         e.stopPropagation()
                         setQrOpen(true)
                       }}
-                      className="block rounded-[12px] overflow-hidden shadow-[var(--ios-card-shadow)] transition-transform duration-150 hover:scale-105 active:scale-95"
+                      className="relative flex items-center justify-center p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-gradient-to-br from-[color:var(--nav-link)] to-[color:color-mix(in_srgb,var(--nav-link)_80%,#3b82f6_20%)] hover:from-[color:color-mix(in_srgb,var(--nav-link)_90%,white_10%)] hover:to-[color:color-mix(in_srgb,var(--nav-link)_70%,#3b82f6_30%)] border border-white/20 shadow-[0_4px_16px_-4px_color-mix(in_srgb,var(--nav-link)_50%,transparent_50%),inset_0_1px_0_rgba(255,255,255,0.15)] transition-all duration-300 hover:scale-105 hover:shadow-[0_8px_24px_-4px_color-mix(in_srgb,var(--nav-link)_60%,transparent_40%)] active:scale-95 group/qr overflow-hidden"
                     >
-                      <SmartImage
-                        srcRaw={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(qr)}&size=600x600`}
-                        alt={t("events:card.alt.qr")}
-                        className="h-[100px] w-[100px] bg-white object-cover cursor-pointer"
-                      />
+                      {/* Shimmer effect */}
+                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover/qr:translate-x-full transition-transform duration-700 ease-out" />
+                      <QrCodeIcon className="w-7 h-7 sm:w-8 sm:h-8 text-white drop-shadow-sm relative z-10" />
                     </button>
                   </Tooltip>
 

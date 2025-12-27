@@ -13,6 +13,7 @@ import React, {
   type CSSProperties,
 } from "react"
 import ReactDOM from "react-dom"
+import { motion, useAnimation } from "framer-motion"
 import { cn } from "@/utils/cn"
 import SmartImage from "@/components/SmartImage"
 import type { AlertProps } from "@mui/material/Alert"
@@ -1002,10 +1003,12 @@ export function Tab({
   label,
   selected,
   onClick,
+  layoutId = "settings-tab-indicator",
 }: {
   label: string
   selected?: boolean
   onClick?: () => void
+  layoutId?: string
 }) {
   return (
     <button
@@ -1015,15 +1018,26 @@ export function Tab({
       onClick={onClick}
       className={cn(
         "relative min-h-[44px] whitespace-nowrap rounded-[14px] px-4 py-2 text-sm font-semibold tracking-tight",
-        "transition-all duration-200 focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]",
+        "transition-colors duration-200 focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]",
         selected
-          ? "bg-[color:color-mix(in_srgb,var(--nav-link)_18%,white_82%)] text-[color:color-mix(in_srgb,var(--nav-link)_90%,var(--nav-text)_10%)] shadow-[0_12px_28px_rgba(15,79,170,0.22)]"
+          ? "text-[color:color-mix(in_srgb,var(--nav-link)_90%,var(--nav-text)_10%)]"
           : "text-[color:color-mix(in_srgb,var(--page-text)_82%,var(--secondary-text)_18%)] hover:bg-[color:color-mix(in_srgb,var(--nav-link)_10%,white_90%)] hover:text-[color:var(--nav-link)]"
       )}
     >
-      <span className="flex items-center gap-1.5">
+      {selected && (
+        <motion.span
+          layoutId={layoutId}
+          className="absolute inset-0 rounded-[14px] bg-[color:color-mix(in_srgb,var(--nav-link)_18%,white_82%)] shadow-[0_12px_28px_rgba(15,79,170,0.22)] dark:bg-[color:color-mix(in_srgb,var(--nav-link)_24%,rgba(10,18,32,0.76))] dark:shadow-[0_8px_24px_rgba(5,9,17,0.45)]"
+          transition={{ type: "spring", stiffness: 400, damping: 30 }}
+        />
+      )}
+      <span className="relative z-10 flex items-center gap-1.5">
         {selected && (
-          <span className="h-2 w-2 rounded-full bg-[color:var(--nav-link)] shadow-[0_0_0_3px_rgba(15,79,170,0.2)]" />
+          <motion.span
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            className="h-2 w-2 rounded-full bg-[color:var(--nav-link)] shadow-[0_0_0_3px_rgba(15,79,170,0.2)]"
+          />
         )}
         {label}
       </span>
@@ -1047,6 +1061,26 @@ export function SwitchControl({
   const [hover, setHover] = useState(false)
   const [focus, setFocus] = useState(false)
 
+  const controls = useAnimation()
+  const isFirstRender = React.useRef(true)
+
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false
+      return
+    }
+    controls.start({
+      x: checked ? 26 : 0,
+      scaleX: [1, 1.6, 0.85, 1.1, 1],
+      scaleY: [1, 0.7, 1.15, 0.95, 1],
+      transition: {
+        x: { type: "spring", stiffness: 200, damping: 20 },
+        scaleX: { duration: 0.5, ease: "easeInOut", times: [0, 0.4, 0.7, 0.9, 1] },
+        scaleY: { duration: 0.5, ease: "easeInOut", times: [0, 0.4, 0.7, 0.9, 1] },
+      }
+    })
+  }, [checked, controls])
+
   return (
     <span
       className={cn(
@@ -1067,42 +1101,42 @@ export function SwitchControl({
         )}
       />
       {/* Track */}
-      <span
+      <motion.span
         className={cn(
-          "absolute inset-0 rounded-full border transition-all duration-200",
-          checked
-            ? [
-                "border-[color:color-mix(in_srgb,var(--nav-link)_36%,transparent)]",
-                "bg-[color:color-mix(in_srgb,var(--nav-link)_24%,white_76%)]",
-                "shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]",
-              ]
-            : hover && !disabled
-              ? [
-                  "border-[color:color-mix(in_srgb,var(--nav-link)_22%,transparent)]",
-                  "bg-[color:color-mix(in_srgb,var(--card-bg)_95%,rgba(15,79,170,0.12)_5%)]",
-                ]
-              : [
-                  "border-[color:color-mix(in_srgb,var(--glass-border)_82%,transparent)]",
-                  "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(15,40,85,0.06)_4%)]",
-                ],
-          "dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]",
-          checked
-            ? "dark:border-[rgba(127,182,230,0.55)] dark:bg-[color:color-mix(in_srgb,rgba(127,182,230,0.55),rgba(17,24,32,0.45))]"
-            : hover && !disabled
-              ? "dark:border-[rgba(127,182,230,0.35)] dark:bg-[color:color-mix(in_srgb,rgba(127,182,230,0.15),rgba(10,16,24,0.85))]"
-              : "dark:border-[rgba(148,163,184,0.28)] dark:bg-[color:color-mix(in_srgb,rgba(16,24,38,0.92),rgba(127,182,230,0.12))]"
+          "absolute inset-0 rounded-full border",
+          "dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]"
         )}
+        animate={{
+          borderColor: checked
+            ? "color-mix(in srgb, var(--nav-link) 36%, transparent)"
+            : hover && !disabled
+              ? "color-mix(in srgb, var(--nav-link) 22%, transparent)"
+              : "color-mix(in srgb, var(--glass-border) 82%, transparent)",
+          backgroundColor: checked
+            ? "color-mix(in srgb, var(--nav-link) 24%, white 76%)"
+            : hover && !disabled
+              ? "color-mix(in srgb, var(--card-bg) 95%, rgba(15,79,170,0.12) 5%)"
+              : "color-mix(in srgb, var(--card-bg) 96%, rgba(15,40,85,0.06) 4%)",
+          boxShadow: checked
+            ? "inset 0 1px 0 rgba(255,255,255,0.6)"
+            : "none",
+        }}
+        transition={{ duration: 0.2 }}
       />
-      {/* Thumb */}
-      <span
+      {/* Thumb with stretching animation */}
+      <motion.span
+        initial={{ x: checked ? 26 : 0, scaleX: 1, scaleY: 1 }}
+        animate={controls}
         className={cn(
-          "relative z-10 h-[22px] w-[22px] rounded-full bg-white",
-          "transition-transform duration-200 ease-[cubic-bezier(0.2,0.9,0.22,1)]",
+          "relative z-10 block h-[22px] rounded-full bg-white",
           "shadow-[0_2px_8px_rgba(15,40,85,0.18),0_0_0_1px_rgba(15,40,85,0.1)_inset]",
           "dark:bg-[color:color-mix(in_srgb,#0F1623,rgba(255,255,255,0.85))]",
-          "dark:shadow-[0_2px_10px_rgba(5,9,17,0.65),0_0_0_1px_rgba(127,182,230,0.2)_inset]",
-          checked ? "translate-x-[26px]" : "translate-x-0"
+          "dark:shadow-[0_2px_10px_rgba(5,9,17,0.65),0_0_0_1px_rgba(127,182,230,0.2)_inset]"
         )}
+        style={{
+          width: 22,
+          transformOrigin: checked ? "left center" : "right center",
+        }}
       />
       <input
         id={inputId}
