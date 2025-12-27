@@ -38,8 +38,7 @@ async function setupServiceWorker() {
       import("./push/subscribe"),
     ])
     const { registerServiceWorker } = SWMod
-    const { ensurePushSubscription, hasPushConsent, recoverPushConsentFromBrowser } =
-      PushMod
+    const { ensurePushSubscription, hasPushConsent, recoverPushConsentFromBrowser } = PushMod
     const registration = await registerServiceWorker("/sw.js")
     if (!registration) return
 

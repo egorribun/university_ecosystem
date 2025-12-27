@@ -27,7 +27,7 @@ function run(command, commandArgs, options = {}) {
 async function main() {
   await run("vite", ["build", ...sanitizedArgs], {
     cwd: path.resolve(process.cwd()),
-    shell: true
+    shell: true,
   })
   if (wantsReport) {
     await run("node", [path.resolve(process.cwd(), "scripts/check-bundle-budget.mjs")])
