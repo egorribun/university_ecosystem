@@ -271,6 +271,10 @@ async def create_notifications_for_users(
 
             if tasks:
                 results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                valid_results = [r for r in results if isinstance(r, WebPushResult)]
+                await webpush_module.process_push_results(valid_results)
+
                 for (sub, notification_id), result in zip(
                     send_jobs, results, strict=False
                 ):

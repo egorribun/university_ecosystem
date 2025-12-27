@@ -142,7 +142,9 @@ const Register = () => {
       return
     }
     try {
-      const { default: zxcvbn } = await import("zxcvbn")
+      const { zxcvbn, zxcvbnOptions } = await import("@zxcvbn-ts/core")
+      const zxcvbnCommon = await import("@zxcvbn-ts/language-common")
+      zxcvbnOptions.setOptions(zxcvbnCommon)
       const score = zxcvbn(value).score
       setStrength(score)
     } catch {

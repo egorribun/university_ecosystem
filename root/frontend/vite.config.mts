@@ -307,7 +307,7 @@ export default defineConfig(({ mode }) => {
       proxy,
     },
     optimizeDeps: {
-      exclude: ["jspdf", "qrcode", "zxcvbn"],
+      exclude: ["jspdf", "qrcode"],
     },
     modulepreload: { polyfill: false },
     build: {

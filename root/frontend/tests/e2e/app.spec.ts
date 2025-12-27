@@ -83,12 +83,54 @@ test.describe("University ecosystem app", () => {
     await page.waitForURL(/\/events$/)
 
     await expect(page.getByText(/Событие 10/)).toBeVisible()
-    const loadMore = page.getByRole("button", { name: /Загрузить ещё|Load more/ })
+    const loadMore = page.getByRole("button", { name: /Загрузить ещё|Load more/i })
     await expect(loadMore).toBeVisible()
 
     await loadMore.click()
 
     await expect(page.getByText(/Событие 27/)).toBeVisible()
     await expect(loadMore).toBeHidden()
+  })
+
+  test("persists theme preference across reloads", async ({ page }) => {
+    const mock = await useMockApi(page)
+    await mock.login(page)
+
+    await page.goto("/settings")
+    await page.waitForURL(/\/settings$/)
+
+    // Toggle theme to Dark using Radio Group
+    const darkOption = page.getByRole("radio", { name: /темная|dark/i })
+    await darkOption.check()
+    await expect(darkOption).toBeChecked()
+
+    await page.reload()
+    await expect(page.getByRole("radio", { name: /темная|dark/i })).toBeChecked()
+  })
+
+  test("allows updating user profile settings", async ({ page }) => {
+    const mock = await useMockApi(page)
+    await mock.login(page)
+
+    // Go to profile edit mode
+    await page.goto("/profile?edit=1")
+    await page.waitForURL(/\/profile/)
+
+    const saveBtn = page.getByTestId("profile-save-button")
+    await expect(saveBtn).toBeVisible()
+
+    const aboutInput = page.getByTestId("profile-about-input")
+    await expect(aboutInput).toBeVisible()
+    await aboutInput.fill("Updated bio")
+
+    // Save
+    await saveBtn.click()
+
+    // Verify success toast or state update (Mock API returns updated profile)
+    await expect(page.getByText("Updated bio")).toBeVisible()
+
+    // Verify persistence
+    await page.reload()
+    await expect(page.getByText("Updated bio")).toBeVisible()
   })
 })

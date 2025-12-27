@@ -297,7 +297,16 @@ class Settings(BaseSettings):
     webauthn_origin: str = "http://localhost:5173"
     trusted_device_expire_days: int = 30
     trusted_device_cookie_name: str = "trusted_device"
-    security_csp: str = ""
+    security_csp: str = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "img-src 'self' data: https: blob:; "
+        "connect-src 'self' https://api.spotify.com https://fcm.googleapis.com https://fcmregistrations.googleapis.com https://*.push.services.mozilla.com https://*.push.apple.com; "
+        "font-src 'self' data: https://fonts.gstatic.com; "
+        "object-src 'none'; "
+        "base-uri 'self';"
+    )
     # Extra hosts for connect-src; merged with defaults dynamically.
     security_connect_src_extra: str | list[str] = (
         "https://api.spotify.com,"

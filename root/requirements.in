@@ -46,6 +46,7 @@ opentelemetry-instrumentation-asgi==0.60b0
 opentelemetry-instrumentation-fastapi==0.60b0
 opentelemetry-instrumentation-httpx==0.60b0
 opentelemetry-instrumentation-sqlalchemy==0.60b0
+opentelemetry-instrumentation-redis==0.60b0
 opentelemetry-instrumentation-asyncpg==0.60b0
 opentelemetry-semantic-conventions==0.60b0
 sentry-sdk[opentelemetry]>=2,<3

@@ -33,6 +33,7 @@ from app.schemas import schemas
 from app.services.audit_service import AuditService
 from app.services.auth_service import AuthService, attach_pending_email
 from app.services.data_access import (
+    batch_log_data_access,
     export_access_logs,
     log_data_access,
     serialize_access_logs_csv,
@@ -340,16 +341,17 @@ async def get_users(
         limit=limit,
         offset=offset,
     )
-    for item in users:
-        await log_data_access(
-            db,
-            actor_user_id=user.id,
-            subject_user_id=item.id,
-            resource_type="profile",
-            resource_id=str(item.id),
-            action="read",
-            request=request,
-        )
+    log_entries = [
+        {
+            "actor_user_id": user.id,
+            "subject_user_id": item.id,
+            "resource_type": "profile",
+            "resource_id": str(item.id),
+            "action": "read",
+        }
+        for item in users
+    ]
+    await batch_log_data_access(db, entries=log_entries, request=request)
     return users
 
 

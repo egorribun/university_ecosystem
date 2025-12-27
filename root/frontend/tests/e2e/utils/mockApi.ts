@@ -424,24 +424,38 @@ export async function useMockApi(page: Page) {
     if (pathname === "api/users/me") {
       const auth = route.request().headers()["authorization"]
       console.log(`[mock] /users/me -> loggedIn=${state.loggedIn} auth=${auth ?? "none"}`)
-      if (state.loggedIn || auth?.includes("mock-token")) {
-        const profile: User = {
-          ...state.profile,
-          totp_enrollments: state.totp.enrollments.map((entry) => ({ ...entry })),
-        }
-        state.profile.totp_enrollments = profile.totp_enrollments
-        await route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify(profile),
-        })
-      } else {
+
+      if (!state.loggedIn && !auth?.includes("mock-token")) {
         await route.fulfill({
           status: 401,
           contentType: "application/json",
           body: JSON.stringify({ detail: "Unauthorized" }),
         })
+        return
       }
+
+      if (method === "PUT" || method === "PATCH") {
+        try {
+          const updates = route.request().postDataJSON() ?? {}
+          if (updates && typeof updates === "object") {
+            state.profile = { ...state.profile, ...updates }
+          }
+        } catch (e) {
+          console.error("Failed to parse update body", e)
+        }
+      }
+
+      const profile: User = {
+        ...state.profile,
+        totp_enrollments: state.totp.enrollments.map((entry) => ({ ...entry })),
+      }
+      state.profile.totp_enrollments = profile.totp_enrollments
+
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(profile),
+      })
       return
     }
 

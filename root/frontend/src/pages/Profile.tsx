@@ -1026,6 +1026,7 @@ export default function Profile() {
                                   {t("profile:form.about")}
                                 </label>
                                 <textarea
+                                  data-testid="profile-about-input"
                                   value={about}
                                   onChange={(e) => setAbout(e.target.value)}
                                   rows={3}
@@ -1126,6 +1127,7 @@ export default function Profile() {
                           {/* Action Buttons */}
                           <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-center pt-2">
                             <button
+                              data-testid="profile-save-button"
                               onClick={handleSave}
                               disabled={saving}
                               className="w-full sm:w-auto py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg sm:rounded-xl bg-nav-link dark:bg-nav-link text-white dark:text-[#0b121f] font-extrabold tracking-wide text-sm sm:text-base shadow-surface hover:shadow-surface-strong transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.01] hover:bg-[#0d4494] dark:hover:bg-[#69a9dc] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:scale-100 disabled:hover:bg-nav-link dark:disabled:hover:bg-nav-link border border-nav-link/20 dark:border-nav-link/30"
