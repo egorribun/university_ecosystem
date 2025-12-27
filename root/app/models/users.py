@@ -1,4 +1,3 @@
-from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
@@ -19,7 +18,7 @@ from app.core.database import Base
 from app.models.enums import UserRole
 
 if TYPE_CHECKING:
-    from app.models.spotify import SpotifyIntegration
+    pass
 
 
 def _create_spotify_integration(value):

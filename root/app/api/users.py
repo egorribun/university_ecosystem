@@ -33,9 +33,9 @@ from app.schemas import schemas
 from app.services.audit_service import AuditService
 from app.services.auth_service import AuthService, attach_pending_email
 from app.services.data_access import (
+    batch_log_data_access,
     export_access_logs,
     log_data_access,
-    batch_log_data_access,
     serialize_access_logs_csv,
 )
 from app.services.notifications import create_notifications_for_users
