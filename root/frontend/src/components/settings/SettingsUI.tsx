@@ -1077,7 +1077,7 @@ export function SwitchControl({
         x: { type: "spring", stiffness: 200, damping: 20 },
         scaleX: { duration: 0.5, ease: "easeInOut", times: [0, 0.4, 0.7, 0.9, 1] },
         scaleY: { duration: 0.5, ease: "easeInOut", times: [0, 0.4, 0.7, 0.9, 1] },
-      }
+      },
     })
   }, [checked, controls])
 
@@ -1117,9 +1117,7 @@ export function SwitchControl({
             : hover && !disabled
               ? "color-mix(in srgb, var(--card-bg) 95%, rgba(15,79,170,0.12) 5%)"
               : "color-mix(in srgb, var(--card-bg) 96%, rgba(15,40,85,0.06) 4%)",
-          boxShadow: checked
-            ? "inset 0 1px 0 rgba(255,255,255,0.6)"
-            : "none",
+          boxShadow: checked ? "inset 0 1px 0 rgba(255,255,255,0.6)" : "none",
         }}
         transition={{ duration: 0.2 }}
       />

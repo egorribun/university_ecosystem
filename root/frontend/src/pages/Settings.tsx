@@ -81,7 +81,6 @@ import {
   type ThemeMode,
 } from "../components/settings/SettingsUI"
 
-
 const fadeDelayStyle = (value: string): CSSProperties =>
   ({ "--fade-delay": value }) as CSSProperties
 
@@ -128,8 +127,6 @@ const securityStatusChipClassName = cn(
 )
 
 // Tailwind CSS components
-
-
 
 export default function Settings() {
   const navigate = useNavigate()

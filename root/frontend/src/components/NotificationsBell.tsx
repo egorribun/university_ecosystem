@@ -223,9 +223,7 @@ export default function NotificationsBell() {
                     <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center text-red-500 mb-2">
                       <Info className="w-6 h-6" />
                     </div>
-                    <p className="text-sm text-red-500/80">
-                      {t("system:notificationsBell.error")}
-                    </p>
+                    <p className="text-sm text-red-500/80">{t("system:notificationsBell.error")}</p>
                     <button
                       onClick={() => refetch()}
                       className="text-xs bg-slate-10 hover:bg-slate-20 text-page-foreground px-3 py-1.5 rounded-lg transition-colors"
@@ -263,10 +261,7 @@ export default function NotificationsBell() {
                             if (!n.link) e.preventDefault()
                             if (!n.read) markRead(n.id)
                           }}
-                          className={cn(
-                            "flex gap-3",
-                            n.link ? "cursor-pointer" : "cursor-default"
-                          )}
+                          className={cn("flex gap-3", n.link ? "cursor-pointer" : "cursor-default")}
                           target={n.link ? "_blank" : undefined}
                           rel={n.link ? "noopener noreferrer" : undefined}
                         >
