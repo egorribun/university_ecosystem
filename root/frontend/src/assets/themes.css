@@ -12,6 +12,12 @@
   --badge-prac: #2e7d32;
   --badge-lab: #b7791f;
   --secondary-text: #4c5a6f;
+  --color-primary-main: #0F4FAA;
+  --color-primary-light: #3F7BDF;
+  --color-primary-dark: #123F84;
+  --color-primary-contrast: #ffffff;
+  --color-secondary-main: #17406F;
+  --color-secondary-contrast: #ffffff;
   --table-header-bg: #e5edf8;
   --table-row-hover: #edf3fb;
   --table-row-today: #dfe8f6;
@@ -211,6 +217,12 @@ body.dark {
   --badge-prac: #4ade80;
   --badge-lab: #fbbf24;
   --secondary-text: #9fb2cc;
+  --color-primary-main: #7FB6E6;
+  --color-primary-light: #9DC8F0;
+  --color-primary-dark: #2F4F75;
+  --color-primary-contrast: #050B14;
+  --color-secondary-main: #1B3A5D;
+  --color-secondary-contrast: #DDE6F7;
   --table-header-bg: #0f1929;
   --table-row-hover: #132033;
   --table-row-today: #14263c;

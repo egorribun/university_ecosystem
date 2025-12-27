@@ -23,5 +23,4 @@ from app.models.schedule import Group, Schedule
 from app.models.spotify import SpotifyIntegration
 from app.models.stories import Story
 from app.models.users import InviteCode, User, UserPreferences
-from app.models.chat import Chat, Message, Attachment, chat_participants
-from app.workers.dead_letter_queue import DeadLetterJob
+from app.models.chat import Chat, Message, Attachment

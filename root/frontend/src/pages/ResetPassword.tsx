@@ -75,7 +75,9 @@ export default function ResetPassword() {
       return
     }
     try {
-      const { default: zxcvbn } = await import("zxcvbn")
+      const { zxcvbn, zxcvbnOptions } = await import("@zxcvbn-ts/core")
+      const zxcvbnCommon = await import("@zxcvbn-ts/language-common")
+      zxcvbnOptions.setOptions(zxcvbnCommon)
       const res = zxcvbn(v)
       setStrength(res.score)
       const tips =

@@ -1,0 +1,32 @@
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
+from sqlalchemy.orm import relationship
+
+from app.core.database import Base
+from app.utils.encryption import EncryptedString
+
+
+class SpotifyIntegration(Base):
+    __tablename__ = "spotify_integrations"
+
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    spotify_user_id = Column(String, unique=True, index=True)
+    access_token = Column(EncryptedString())
+    refresh_token = Column(EncryptedString())
+    token_expires_at = Column(DateTime(timezone=True), index=True)
+    scope = Column(String)
+    display_name = Column(String)
+    is_connected = Column(Boolean, default=False, index=True)
+    is_playing = Column(Boolean, default=False, index=True)
+    last_checked_at = Column(DateTime(timezone=True), index=True)
+    last_track_id = Column(String, index=True)
+    last_track_name = Column(String)
+    last_artist_name = Column(String)
+    last_album_name = Column(String)
+    last_track_url = Column(String)
+    last_album_image_url = Column(String)
+
+    user = relationship("User", back_populates="spotify")

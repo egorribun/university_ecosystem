@@ -51,37 +51,37 @@
       })();
     </script>
     <style>
-      :root { 
-        --initial-bg: #060B14; 
+      :root {
+        --initial-bg: #060B14;
       }
-      html { 
-        background: var(--initial-bg, #060B14) !important; 
-        background-color: var(--initial-bg, #060B14) !important; 
-        min-height: 100vh; 
-        min-height: 100svh; 
-        min-height: 100dvh; 
-        height: auto; 
+      html {
+        background: var(--initial-bg, #060B14) !important;
+        background-color: var(--initial-bg, #060B14) !important;
+        min-height: 100vh;
+        min-height: 100svh;
+        min-height: 100dvh;
+        height: auto;
         scrollbar-gutter: stable;
         visibility: visible;
       }
-      body { 
-        background: var(--initial-bg, #060B14) !important; 
-        background-color: var(--initial-bg, #060B14) !important; 
-        margin: 0; 
+      body {
+        background: var(--initial-bg, #060B14) !important;
+        background-color: var(--initial-bg, #060B14) !important;
+        margin: 0;
         overscroll-behavior-y: none;
-        min-height: 100vh; 
-        min-height: 100svh; 
-        min-height: 100dvh; 
+        min-height: 100vh;
+        min-height: 100svh;
+        min-height: 100dvh;
         height: auto;
         opacity: 1;
         visibility: visible;
       }
-      #root { 
-        background: var(--initial-bg, #060B14) !important; 
-        background-color: var(--initial-bg, #060B14) !important; 
-        min-height: 100vh; 
-        min-height: 100svh; 
-        min-height: 100dvh; 
+      #root {
+        background: var(--initial-bg, #060B14) !important;
+        background-color: var(--initial-bg, #060B14) !important;
+        min-height: 100vh;
+        min-height: 100svh;
+        min-height: 100dvh;
         height: auto;
         opacity: 0;
         transition: opacity 0.15s ease-in;
@@ -101,6 +101,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
+        default-src 'self';
+        script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com;
+        style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+        img-src 'self' data: https: blob:;
+        connect-src 'self' https://api.spotify.com https://fcm.googleapis.com https://fcmregistrations.googleapis.com https://*.push.services.mozilla.com https://*.push.apple.com;
+        font-src 'self' data: https://fonts.gstatic.com;
+        object-src 'none';
+        base-uri 'self';
+      "
+    />
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#E8F1FB" />
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#060B14" />
     <meta

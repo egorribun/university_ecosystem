@@ -518,9 +518,35 @@ async def get_all_events(
     else:
         conditions.append(models.Event.ends_at < now)
 
-    stmt = select(models.Event).options(
-        selectinload(models.Event.files), selectinload(models.Event.attendance)
+    # Optimization: Calculate participant count via subquery to avoid loading all attendance records
+    participant_count_sub = (
+        select(func.count())
+        .select_from(models.EventAttendance)
+        .where(models.EventAttendance.event_id == models.Event.id)
+        .correlate(models.Event)
+        .scalar_subquery()
+        .label("participant_count")
     )
+
+    # Optimization: Fetch current user's attendance via outer join
+    user_attendance_alias = aliased(models.EventAttendance)
+
+    stmt = (
+        select(
+            models.Event,
+            participant_count_sub,
+            user_attendance_alias,
+        )
+        .outerjoin(
+            user_attendance_alias,
+            and_(
+                user_attendance_alias.event_id == models.Event.id,
+                user_attendance_alias.user_id == user_id,
+            ),
+        )
+        .options(selectinload(models.Event.files))
+    )
+
     if conditions:
         stmt = stmt.where(and_(*conditions))
     if cursor_values:
@@ -546,8 +572,13 @@ async def get_all_events(
     fetch_limit = safe_limit + 1 if safe_limit > 0 else 1
     page_stmt = ordered_stmt.limit(fetch_limit)
     rows = await db.execute(page_stmt)
-    fetched_events = rows.scalars().all()
-    events = fetched_events[:safe_limit] if safe_limit else []
+    # rows.all() returns a list of tuples: (Event, participant_count, EventAttendance|None)
+    fetched_data = rows.all()
+    # Separate events object list for cursor logic
+    fetched_events = [row[0] for row in fetched_data]
+
+    data_slice = fetched_data[:safe_limit] if safe_limit else []
+    events_slice = fetched_events[:safe_limit] if safe_limit else []
 
     total: int | None
     if cursor_values:
@@ -560,11 +591,8 @@ async def get_all_events(
 
     normalized_locale = normalize_locale(locale)
     result: list[schemas.EventOut] = []
-    for event in events:
-        # User dynamic data
-        user_attendance = next(
-            (a for a in event.attendance if a.user_id == user_id), None
-        )
+
+    for event, p_count, user_attendance in data_slice:
         is_registered = user_attendance is not None
         qr_token = (
             attendance_tokens.issue_token(user_attendance) if user_attendance else None
@@ -574,17 +602,17 @@ async def get_all_events(
             serialize_event(
                 event,
                 normalized_locale,
-                participant_count=len(event.attendance),
+                participant_count=p_count or 0,
                 files=event.files,
                 is_registered=is_registered,
                 my_qr_token=qr_token,
             )
         )
 
-    has_more = len(fetched_events) > len(events)
+    has_more = len(fetched_events) > len(events_slice)
     next_cursor: str | None = None
-    if has_more and events:
-        last_event = events[-1]
+    if has_more and events_slice:
+        last_event = events_slice[-1]
         next_cursor = _encode_event_cursor(last_event.starts_at, last_event.id)
 
     return schemas.PaginatedEvents(
@@ -600,6 +628,7 @@ async def get_all_events(
 async def create_event(db: AsyncSession, event: schemas.EventCreate, user_id: int):
     starts_at = _ensure_utc(event.starts_at)
     ends_at = _ensure_utc(event.ends_at)
+
     if ends_at <= starts_at:
         raise ValueError(translate(_EVENT_TIME_ORDER_KEY))
     record = models.Event(

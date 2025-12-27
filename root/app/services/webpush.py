@@ -601,12 +601,6 @@ def send_web_push(sub: PushSubscription, data: dict) -> WebPushResult:
         elif message:
             gone = "404" in message or "410" in message
         if gone:
-            session_factory = _ensure_sync_sessionmaker()
-            with session_factory() as session:
-                session.execute(
-                    delete(PushSubscription).where(PushSubscription.id == sub.id)
-                )
-                session.commit()
             _log_event(
                 "send",
                 user_id=user_id,
@@ -656,15 +650,7 @@ def send_web_push(sub: PushSubscription, data: dict) -> WebPushResult:
             status="error",
             error=str(exc),
         )
-    now = datetime.now(UTC)
-    session_factory = _ensure_sync_sessionmaker()
-    with session_factory() as session:
-        session.execute(
-            update(PushSubscription)
-            .where(PushSubscription.id == sub.id)
-            .values(last_seen_at=now)
-        )
-        session.commit()
+
     _log_event("send", user_id=user_id, endpoint=sub.endpoint, status="sent")
     return WebPushResult(
         subscription_id=sub.id,
@@ -672,6 +658,28 @@ def send_web_push(sub: PushSubscription, data: dict) -> WebPushResult:
         user_id=user_id,
         status="sent",
     )
+
+
+async def process_push_results(results: list[WebPushResult]) -> None:
+    gone_ids = [r.subscription_id for r in results if r.status == "gone"]
+    sent_ids = [r.subscription_id for r in results if r.status == "sent"]
+
+    if not gone_ids and not sent_ids:
+        return
+
+    await _ensure_async_sessionmaker()
+    async with async_session() as session:
+        if gone_ids:
+            await session.execute(
+                delete(PushSubscription).where(PushSubscription.id.in_(gone_ids))
+            )
+        if sent_ids:
+            await session.execute(
+                update(PushSubscription)
+                .where(PushSubscription.id.in_(sent_ids))
+                .values(last_seen_at=datetime.now(UTC))
+            )
+        await session.commit()
 
 
 async def send_to_user(
@@ -743,6 +751,8 @@ async def send_to_user(
         )
         return []
     results = await asyncio.gather(*tasks)
+    await process_push_results(list(results))
+
     _log_event(
         "dispatch",
         user_id=user_id,
@@ -804,6 +814,8 @@ async def broadcast_to_topic(
         )
         tasks.append(asyncio.to_thread(send_web_push, sub, prepared))
     results = await asyncio.gather(*tasks)
+    await process_push_results(list(results))
+
     _log_event(
         "broadcast",
         topic=normalized_topic,

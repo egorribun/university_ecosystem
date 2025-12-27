@@ -65,6 +65,61 @@ async def log_data_access(
     return log_entry
 
 
+async def batch_log_data_access(
+    db: AsyncSession,
+    *,
+    entries: list[dict],
+    request: Request,
+) -> None:
+    if not entries:
+        return
+
+    created_at = datetime.now(UTC)
+    from app.utils.audit import calculate_log_signature
+
+    log_entries = []
+    ip_address = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+
+    for entry in entries:
+        actor_user_id = entry.get("actor_user_id")
+        subject_user_id = entry.get("subject_user_id")
+        resource_type = entry.get("resource_type")
+        resource_id = entry.get("resource_id")
+        action = entry.get("action")
+        context = entry.get("context", {})
+
+        signature = calculate_log_signature(
+            actor_user_id=actor_user_id,
+            subject_user_id=subject_user_id,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            action=action,
+            context=context,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            created_at=created_at,
+        )
+
+        log_entries.append(
+            DataAccessLog(
+                actor_user_id=actor_user_id,
+                subject_user_id=subject_user_id,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                action=action,
+                context=context,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                created_at=created_at,
+                signature=signature,
+            )
+        )
+
+    db.add_all(log_entries)
+    await db.commit()
+
+
 async def cleanup_access_logs(
     *, db: AsyncSession | None = None, retention_days: int = 180
 ) -> int:

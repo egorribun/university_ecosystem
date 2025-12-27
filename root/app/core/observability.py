@@ -21,6 +21,8 @@ from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+from opentelemetry.instrumentation.redis import RedisInstrumentor
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
@@ -373,6 +375,22 @@ def _configure_otel(engine: AsyncEngine) -> TracerProvider | None:
             _sqlalchemy_instrumented = True
         except Exception:
             pass
+
+    # Instrument Redis if not already instrumented
+    try:
+        RedisInstrumentor().instrument(
+            tracer_provider=tracer_provider,
+        )
+    except Exception:
+        pass
+
+    # Instrument HTTPX if not already instrumented
+    try:
+        HTTPXClientInstrumentor().instrument(
+            tracer_provider=tracer_provider,
+        )
+    except Exception:
+        pass
 
     _otel_configured = True
     return tracer_provider
