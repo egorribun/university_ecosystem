@@ -217,7 +217,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         """Return (limit, window_seconds, pattern) for a given request path."""
         for endpoint_limit in self._endpoint_limits:
             if path.startswith(endpoint_limit.pattern):
-                return endpoint_limit.limit, endpoint_limit.window_seconds, endpoint_limit.pattern
+                return (
+                    endpoint_limit.limit,
+                    endpoint_limit.window_seconds,
+                    endpoint_limit.pattern,
+                )
         return self._limit, self._window_seconds, "default"
 
 
@@ -237,7 +241,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         # Include path pattern in identifier for per-endpoint isolation
         base_identifier = self._build_identifier(request)
-        identifier = f"{base_identifier}:{path_pattern}" if path_pattern else base_identifier
+        if path_pattern:
+            identifier = f"{base_identifier}:{path_pattern}"
+        else:
+            identifier = base_identifier
 
         try:
             info = await self._check_limit(identifier, path_limit, path_window)
@@ -267,13 +274,19 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
 
     async def _check_limit(
-        self, identifier: str, limit: int | None = None, window_seconds: int | None = None
+        self,
+        identifier: str,
+        limit: int | None = None,
+        window_seconds: int | None = None,
     ) -> RateLimitInfo:
         redis_url = self._redis_url if self._storage_backend == "redis" else None
         namespace = self._namespace if self._storage_backend == "memory" else ""
         # Use provided limits or fall back to defaults
         effective_limit = limit if limit is not None else self._limit
-        effective_window = window_seconds if window_seconds is not None else self._window_seconds
+        if window_seconds is not None:
+            effective_window = window_seconds
+        else:
+            effective_window = self._window_seconds
         info = await check_rate_limit(
             identifier=identifier,
             namespace=namespace,

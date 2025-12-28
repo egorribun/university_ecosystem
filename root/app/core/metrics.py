@@ -227,6 +227,125 @@ _GPU_LOAD = (
     else None
 )
 
+# Business metrics for product analytics
+_LOGIN_SUCCESS = (
+    Counter(
+        "auth_login_success_total",
+        "Total successful login attempts",
+        registry=REGISTRY,
+    )
+    if Counter is not None
+    else None
+)
+
+_LOGIN_FAILURE = (
+    Counter(
+        "auth_login_failure_total",
+        "Total failed login attempts",
+        ("reason",),
+        registry=REGISTRY,
+    )
+    if Counter is not None
+    else None
+)
+
+_NOTIFICATIONS_DELIVERED = (
+    Counter(
+        "notifications_delivered_total",
+        "Total notifications successfully delivered",
+        ("type",),
+        registry=REGISTRY,
+    )
+    if Counter is not None
+    else None
+)
+
+_NOTIFICATIONS_FAILED = (
+    Counter(
+        "notifications_failed_total",
+        "Total notifications that failed to deliver",
+        ("type", "reason"),
+        registry=REGISTRY,
+    )
+    if Counter is not None
+    else None
+)
+
+_EVENT_REGISTRATIONS = (
+    Counter(
+        "event_registrations_total",
+        "Total event registrations",
+        registry=REGISTRY,
+    )
+    if Counter is not None
+    else None
+)
+
+_ACTIVE_USERS = (
+    Gauge(
+        "active_users_count",
+        "Number of currently active users",
+        ("period",),
+        registry=REGISTRY,
+    )
+    if Gauge is not None
+    else None
+)
+
+_MFA_ADOPTION = (
+    Gauge(
+        "mfa_enabled_users_total",
+        "Number of users with MFA enabled",
+        registry=REGISTRY,
+    )
+    if Gauge is not None
+    else None
+)
+
+
+def record_login_success() -> None:
+    """Record a successful login."""
+    if _LOGIN_SUCCESS is not None:
+        _LOGIN_SUCCESS.inc()
+
+
+def record_login_failure(reason: str = "invalid_credentials") -> None:
+    """Record a failed login attempt."""
+    if _LOGIN_FAILURE is not None:
+        _LOGIN_FAILURE.labels(reason=reason).inc()
+
+
+def record_notification_delivered(notification_type: str) -> None:
+    """Record a successfully delivered notification."""
+    if _NOTIFICATIONS_DELIVERED is not None:
+        _NOTIFICATIONS_DELIVERED.labels(type=notification_type).inc()
+
+
+def record_notification_failed(notification_type: str, reason: str) -> None:
+    """Record a failed notification delivery."""
+    if _NOTIFICATIONS_FAILED is not None:
+        _NOTIFICATIONS_FAILED.labels(type=notification_type, reason=reason).inc()
+
+
+def record_event_registration() -> None:
+    """Record an event registration."""
+    if _EVENT_REGISTRATIONS is not None:
+        _EVENT_REGISTRATIONS.inc()
+
+
+def set_active_users(count: int, period: str = "daily") -> None:
+    """Set the active users count for a period."""
+    if _ACTIVE_USERS is not None:
+        _ACTIVE_USERS.labels(period=period).set(float(count))
+
+
+def set_mfa_adoption(count: int) -> None:
+    """Set the MFA adoption count."""
+    if _MFA_ADOPTION is not None:
+        _MFA_ADOPTION.set(float(count))
+
+
+
 _CONFIGURED_ATTR = "_metrics_configured"
 _PLACEHOLDER_PASSWORDS = {"changeme"}
 _LOOPBACK_HOSTNAMES = {"localhost"}
