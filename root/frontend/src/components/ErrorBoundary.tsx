@@ -1,7 +1,6 @@
-import { Component, type ErrorInfo, type ReactNode } from 'react'
-import * as Sentry from '@sentry/react'
-import './ErrorBoundary.css'
-
+import { Component, type ErrorInfo, type ReactNode } from "react"
+import * as Sentry from "@sentry/react"
+import "./ErrorBoundary.css"
 
 interface ErrorBoundaryProps {
   children: ReactNode
@@ -50,7 +49,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
     // Log to console in development
     if (import.meta.env.DEV) {
-      console.error('ErrorBoundary caught an error:', error, errorInfo)
+      console.error("ErrorBoundary caught an error:", error, errorInfo)
     }
   }
 
@@ -67,7 +66,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   handleGoHome = (): void => {
-    window.location.href = '/'
+    window.location.href = "/"
   }
 
   render(): ReactNode {
@@ -87,9 +86,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               <details className="error-boundary__details">
                 <summary>Подробности ошибки</summary>
                 <pre>{this.state.error.toString()}</pre>
-                {this.state.errorInfo && (
-                  <pre>{this.state.errorInfo.componentStack}</pre>
-                )}
+                {this.state.errorInfo && <pre>{this.state.errorInfo.componentStack}</pre>}
               </details>
             )}
             <div className="error-boundary__actions">

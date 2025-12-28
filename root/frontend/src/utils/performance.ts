@@ -44,7 +44,7 @@ export function measure(name: string, startMark: string, endMark?: string): numb
     } else {
       performance.measure(name, startMark)
     }
-    const entries = performance.getEntriesByName(name, 'measure')
+    const entries = performance.getEntriesByName(name, "measure")
     return entries[entries.length - 1]?.duration ?? 0
   } catch {
     return 0
@@ -67,13 +67,13 @@ export function getWebVitals(): WebVitals {
 
   try {
     // FCP
-    const fcpEntries = performance.getEntriesByName('first-contentful-paint')
+    const fcpEntries = performance.getEntriesByName("first-contentful-paint")
     if (fcpEntries.length > 0) {
       vitals.fcp = fcpEntries[0].startTime
     }
 
     // TTFB from navigation timing
-    const navEntries = performance.getEntriesByType('navigation') as PerformanceNavigationTiming[]
+    const navEntries = performance.getEntriesByType("navigation") as PerformanceNavigationTiming[]
     if (navEntries.length > 0) {
       vitals.ttfb = navEntries[0].responseStart - navEntries[0].requestStart
     }
@@ -89,14 +89,14 @@ export function getWebVitals(): WebVitals {
  */
 export function reportMetric(name: string, value: number, tags?: Record<string, string>): void {
   // Send to OpenTelemetry if configured
-  if (typeof window !== 'undefined' && 'otel' in window) {
+  if (typeof window !== "undefined" && "otel" in window) {
     // @ts-expect-error - otel may be injected
     window.otel?.recordMetric?.(name, value, tags)
   }
 
   // Log in development
   if (import.meta.env.DEV) {
-    console.debug(`[Metric] ${name}=${value.toFixed(2)}`, tags ?? '')
+    console.debug(`[Metric] ${name}=${value.toFixed(2)}`, tags ?? "")
   }
 }
 

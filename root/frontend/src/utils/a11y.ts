@@ -8,9 +8,9 @@
 /**
  * Announce a message to screen readers.
  */
-export function announce(message: string, priority: 'polite' | 'assertive' = 'polite'): void {
+export function announce(message: string, priority: "polite" | "assertive" = "polite"): void {
   const container = getOrCreateAnnouncer(priority)
-  container.textContent = ''
+  container.textContent = ""
   // Force reflow for screen reader to pick up change
   void container.offsetHeight
   container.textContent = message
@@ -19,16 +19,16 @@ export function announce(message: string, priority: 'polite' | 'assertive' = 'po
 /**
  * Get or create the live region container.
  */
-function getOrCreateAnnouncer(priority: 'polite' | 'assertive'): HTMLDivElement {
+function getOrCreateAnnouncer(priority: "polite" | "assertive"): HTMLDivElement {
   const id = `sr-announcer-${priority}`
   let container = document.getElementById(id) as HTMLDivElement | null
 
   if (!container) {
-    container = document.createElement('div')
+    container = document.createElement("div")
     container.id = id
-    container.setAttribute('role', 'status')
-    container.setAttribute('aria-live', priority)
-    container.setAttribute('aria-atomic', 'true')
+    container.setAttribute("role", "status")
+    container.setAttribute("aria-live", priority)
+    container.setAttribute("aria-atomic", "true")
     container.style.cssText = `
       position: absolute;
       width: 1px;
@@ -64,7 +64,7 @@ export class FocusTrap {
     this.previouslyFocused = document.activeElement
     this.updateFocusableElements()
 
-    document.addEventListener('keydown', this.handleKeyDown)
+    document.addEventListener("keydown", this.handleKeyDown)
 
     // Focus first focusable element
     if (this.firstFocusable) {
@@ -73,7 +73,7 @@ export class FocusTrap {
   }
 
   deactivate(): void {
-    document.removeEventListener('keydown', this.handleKeyDown)
+    document.removeEventListener("keydown", this.handleKeyDown)
 
     // Return focus to previously focused element
     if (this.previouslyFocused instanceof HTMLElement) {
@@ -83,13 +83,13 @@ export class FocusTrap {
 
   private updateFocusableElements(): void {
     const focusableSelectors = [
-      'button:not([disabled])',
-      'a[href]',
-      'input:not([disabled])',
-      'select:not([disabled])',
-      'textarea:not([disabled])',
+      "button:not([disabled])",
+      "a[href]",
+      "input:not([disabled])",
+      "select:not([disabled])",
+      "textarea:not([disabled])",
       '[tabindex]:not([tabindex="-1"])',
-    ].join(', ')
+    ].join(", ")
 
     const focusable = Array.from(
       this.container.querySelectorAll<HTMLElement>(focusableSelectors)
@@ -100,7 +100,7 @@ export class FocusTrap {
   }
 
   private handleKeyDown(event: KeyboardEvent): void {
-    if (event.key !== 'Tab') return
+    if (event.key !== "Tab") return
 
     this.updateFocusableElements()
 
@@ -124,28 +124,28 @@ export class FocusTrap {
  * Check if user prefers reduced motion.
  */
 export function prefersReducedMotion(): boolean {
-  return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches
 }
 
 /**
  * Subscribe to reduced motion preference changes.
  */
 export function onReducedMotionChange(callback: (prefersReduced: boolean) => void): () => void {
-  const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+  const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)")
 
   const handler = (event: MediaQueryListEvent) => {
     callback(event.matches)
   }
 
-  mediaQuery.addEventListener('change', handler)
-  return () => mediaQuery.removeEventListener('change', handler)
+  mediaQuery.addEventListener("change", handler)
+  return () => mediaQuery.removeEventListener("change", handler)
 }
 
 /**
  * Generate a unique ID for accessibility associations.
  */
 let idCounter = 0
-export function generateId(prefix = 'a11y'): string {
+export function generateId(prefix = "a11y"): string {
   return `${prefix}-${++idCounter}`
 }
 
@@ -153,11 +153,11 @@ export function generateId(prefix = 'a11y'): string {
  * Skip link component helper - returns focus to main content.
  */
 export function skipToMainContent(): void {
-  const main = document.querySelector('main') || document.querySelector('[role="main"]')
+  const main = document.querySelector("main") || document.querySelector('[role="main"]')
   if (main instanceof HTMLElement) {
     main.tabIndex = -1
     main.focus()
-    main.removeAttribute('tabindex')
+    main.removeAttribute("tabindex")
   }
 }
 
