@@ -79,6 +79,30 @@ class AuditService:
             return logging.getLogger("app.access")
         return self.logger
 
+    def _redact_sensitive(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Return a copy of data with sensitive fields redacted."""
+        # Define keys that are likely to contain secrets.
+        sensitive_keys = {
+            "password",
+            "new_password",
+            "old_password",
+            "passcode",
+            "otp",
+            "code",
+            "token",
+            "access_token",
+            "refresh_token",
+            "secret",
+        }
+        redacted = {}
+        for key, value in data.items():
+            key_lower = key.lower()
+            if key_lower in sensitive_keys:
+                redacted[key] = "***REDACTED***"
+            else:
+                redacted[key] = value
+        return redacted
+
     def log(
         self,
         event: str | SecurityEvent,
@@ -109,8 +133,11 @@ class AuditService:
         # Remove None values for cleaner logs
         payload = {k: v for k, v in payload.items() if v is not None}
 
+        # Redact sensitive fields before logging
+        redacted_payload = self._redact_sensitive(payload)
+
         target_logger = self._select_logger(event_str)
-        target_logger.log(level, json.dumps(payload), extra=payload)
+        target_logger.log(level, json.dumps(redacted_payload), extra=redacted_payload)
 
     # Convenience methods for common security events
 
