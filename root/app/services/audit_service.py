@@ -147,9 +147,7 @@ class AuditService:
             level=logging.WARNING,
         )
 
-    def access_denied(
-        self, request: Request, user_id: int | None, reason: str
-    ) -> None:
+    def access_denied(self, request: Request, user_id: int | None, reason: str) -> None:
         """Log access denial."""
         self.log(
             SecurityEvent.ACCESS_DENIED,
@@ -159,9 +157,7 @@ class AuditService:
             level=logging.WARNING,
         )
 
-    def rate_limit_exceeded(
-        self, request: Request, user_id: int | None = None
-    ) -> None:
+    def rate_limit_exceeded(self, request: Request, user_id: int | None = None) -> None:
         """Log rate limit exceeded event."""
         self.log(
             SecurityEvent.RATE_LIMIT_EXCEEDED,

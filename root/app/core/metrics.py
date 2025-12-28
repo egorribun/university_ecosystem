@@ -345,7 +345,6 @@ def set_mfa_adoption(count: int) -> None:
         _MFA_ADOPTION.set(float(count))
 
 
-
 _CONFIGURED_ATTR = "_metrics_configured"
 _PLACEHOLDER_PASSWORDS = {"changeme"}
 _LOOPBACK_HOSTNAMES = {"localhost"}

@@ -11,7 +11,7 @@ import functools
 import logging
 import random
 from collections.abc import Awaitable, Callable
-from typing import Any, ParamSpec, TypeVar
+from typing import ParamSpec, TypeVar
 
 logger = logging.getLogger(__name__)
 

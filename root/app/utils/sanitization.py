@@ -10,8 +10,7 @@ from __future__ import annotations
 import html
 import re
 import unicodedata
-from pathlib import Path, PurePath
-from typing import Any
+from pathlib import Path
 
 
 def sanitize_html(text: str, allow_basic_tags: bool = False) -> str:
@@ -131,7 +130,9 @@ def sanitize_email(email: str) -> str:
     return email.strip().lower() if email else ""
 
 
-def sanitize_url(url: str, allowed_schemes: tuple[str, ...] = ("http", "https")) -> str | None:
+def sanitize_url(
+    url: str, allowed_schemes: tuple[str, ...] = ("http", "https")
+) -> str | None:
     """
     Validate and sanitize a URL.
 

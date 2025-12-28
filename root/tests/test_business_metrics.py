@@ -1,12 +1,11 @@
 """Tests for business metrics helper functions."""
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 
 def test_record_login_success():
     """Test login success metric recording."""
-    from app.core.metrics import record_login_success, _LOGIN_SUCCESS
+    from app.core.metrics import _LOGIN_SUCCESS, record_login_success
 
     if _LOGIN_SUCCESS is not None:
         with patch.object(_LOGIN_SUCCESS, "inc") as mock_inc:
@@ -16,11 +15,13 @@ def test_record_login_success():
 
 def test_record_login_failure():
     """Test login failure metric recording with reason."""
-    from app.core.metrics import record_login_failure, _LOGIN_FAILURE
+    from app.core.metrics import _LOGIN_FAILURE, record_login_failure
 
     if _LOGIN_FAILURE is not None:
         mock_labels = MagicMock()
-        with patch.object(_LOGIN_FAILURE, "labels", return_value=mock_labels) as mock_method:
+        with patch.object(
+            _LOGIN_FAILURE, "labels", return_value=mock_labels
+        ) as mock_method:
             record_login_failure("invalid_password")
             mock_method.assert_called_once_with(reason="invalid_password")
             mock_labels.inc.assert_called_once()
@@ -28,18 +29,20 @@ def test_record_login_failure():
 
 def test_record_login_failure_default_reason():
     """Test login failure with default reason."""
-    from app.core.metrics import record_login_failure, _LOGIN_FAILURE
+    from app.core.metrics import _LOGIN_FAILURE, record_login_failure
 
     if _LOGIN_FAILURE is not None:
         mock_labels = MagicMock()
-        with patch.object(_LOGIN_FAILURE, "labels", return_value=mock_labels) as mock_method:
+        with patch.object(
+            _LOGIN_FAILURE, "labels", return_value=mock_labels
+        ) as mock_method:
             record_login_failure()
             mock_method.assert_called_once_with(reason="invalid_credentials")
 
 
 def test_record_notification_delivered():
     """Test notification delivered metric."""
-    from app.core.metrics import record_notification_delivered, _NOTIFICATIONS_DELIVERED
+    from app.core.metrics import _NOTIFICATIONS_DELIVERED, record_notification_delivered
 
     if _NOTIFICATIONS_DELIVERED is not None:
         mock_labels = MagicMock()
@@ -53,7 +56,7 @@ def test_record_notification_delivered():
 
 def test_record_notification_failed():
     """Test notification failed metric."""
-    from app.core.metrics import record_notification_failed, _NOTIFICATIONS_FAILED
+    from app.core.metrics import _NOTIFICATIONS_FAILED, record_notification_failed
 
     if _NOTIFICATIONS_FAILED is not None:
         mock_labels = MagicMock()
@@ -67,7 +70,7 @@ def test_record_notification_failed():
 
 def test_record_event_registration():
     """Test event registration metric."""
-    from app.core.metrics import record_event_registration, _EVENT_REGISTRATIONS
+    from app.core.metrics import _EVENT_REGISTRATIONS, record_event_registration
 
     if _EVENT_REGISTRATIONS is not None:
         with patch.object(_EVENT_REGISTRATIONS, "inc") as mock_inc:
@@ -77,11 +80,13 @@ def test_record_event_registration():
 
 def test_set_active_users():
     """Test active users gauge."""
-    from app.core.metrics import set_active_users, _ACTIVE_USERS
+    from app.core.metrics import _ACTIVE_USERS, set_active_users
 
     if _ACTIVE_USERS is not None:
         mock_labels = MagicMock()
-        with patch.object(_ACTIVE_USERS, "labels", return_value=mock_labels) as mock_method:
+        with patch.object(
+            _ACTIVE_USERS, "labels", return_value=mock_labels
+        ) as mock_method:
             set_active_users(150, period="weekly")
             mock_method.assert_called_once_with(period="weekly")
             mock_labels.set.assert_called_once_with(150.0)
@@ -89,18 +94,20 @@ def test_set_active_users():
 
 def test_set_active_users_default_period():
     """Test active users gauge with default daily period."""
-    from app.core.metrics import set_active_users, _ACTIVE_USERS
+    from app.core.metrics import _ACTIVE_USERS, set_active_users
 
     if _ACTIVE_USERS is not None:
         mock_labels = MagicMock()
-        with patch.object(_ACTIVE_USERS, "labels", return_value=mock_labels) as mock_method:
+        with patch.object(
+            _ACTIVE_USERS, "labels", return_value=mock_labels
+        ) as mock_method:
             set_active_users(100)
             mock_method.assert_called_once_with(period="daily")
 
 
 def test_set_mfa_adoption():
     """Test MFA adoption gauge."""
-    from app.core.metrics import set_mfa_adoption, _MFA_ADOPTION
+    from app.core.metrics import _MFA_ADOPTION, set_mfa_adoption
 
     if _MFA_ADOPTION is not None:
         with patch.object(_MFA_ADOPTION, "set") as mock_set:

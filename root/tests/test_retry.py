@@ -1,9 +1,10 @@
 """Tests for retry utilities."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from app.utils.retry import retry_async, with_retry, RetryExhausted
+import pytest
+
+from app.utils.retry import RetryExhausted, retry_async, with_retry
 
 
 @pytest.mark.anyio
@@ -69,7 +70,9 @@ async def test_retry_async_non_retryable_exception():
 @pytest.mark.anyio
 async def test_retry_async_on_retry_callback():
     """Test on_retry callback is called on each retry."""
-    mock_fn = AsyncMock(side_effect=[ValueError("fail1"), ValueError("fail2"), "success"])
+    mock_fn = AsyncMock(
+        side_effect=[ValueError("fail1"), ValueError("fail2"), "success"]
+    )
     callback = MagicMock()
 
     result = await retry_async(

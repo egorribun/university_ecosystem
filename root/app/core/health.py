@@ -99,7 +99,9 @@ async def check_database_health(db: AsyncSession) -> DatabaseHealthResult:
         )
 
 
-async def check_database_connectivity(db: AsyncSession, timeout_ms: float = 5000) -> bool:
+async def check_database_connectivity(
+    db: AsyncSession, timeout_ms: float = 5000
+) -> bool:
     """
     Quick connectivity check with timeout.
 

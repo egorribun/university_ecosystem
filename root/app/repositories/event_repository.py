@@ -20,9 +20,7 @@ class EventRepository(BaseRepository[Event, dict, dict]):
     def model(self) -> type[Event]:
         return Event
 
-    async def get_upcoming(
-        self, *, skip: int = 0, limit: int = 20
-    ) -> list[Event]:
+    async def get_upcoming(self, *, skip: int = 0, limit: int = 20) -> list[Event]:
         """Get upcoming events ordered by start date."""
         now = datetime.now(UTC)
         result = await self.db.execute(

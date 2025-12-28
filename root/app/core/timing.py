@@ -8,12 +8,9 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Callable
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-
-from app.core.config import settings
 
 logger = logging.getLogger("app.timing")
 
@@ -67,4 +64,8 @@ def create_timing_middleware() -> type[RequestTimingMiddleware]:
     return RequestTimingMiddleware
 
 
-__all__ = ["RequestTimingMiddleware", "create_timing_middleware", "SLOW_REQUEST_THRESHOLD_MS"]
+__all__ = [
+    "RequestTimingMiddleware",
+    "create_timing_middleware",
+    "SLOW_REQUEST_THRESHOLD_MS",
+]

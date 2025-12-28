@@ -1,15 +1,15 @@
 """Tests for Domain Events System."""
 
+from unittest.mock import AsyncMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock
 
 from app.core.events import (
-    DomainEvent,
     EventBus,
-    UserCreated,
-    UserLoggedIn,
     EventCreated,
     NotificationSent,
+    UserCreated,
+    UserLoggedIn,
     event_bus,
 )
 

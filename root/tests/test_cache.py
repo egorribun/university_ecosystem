@@ -138,4 +138,3 @@ async def test_cache_invalidator_flush():
     # Flushing again returns 0
     count2 = await inv.flush()
     assert count2 == 0
-

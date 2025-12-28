@@ -224,8 +224,6 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 )
         return self._limit, self._window_seconds, "default"
 
-
-
     async def dispatch(self, request: Request, call_next):  # type: ignore[override]
         method = request.method.upper()
         path = request.url.path or ""
@@ -251,7 +249,6 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         except (RedisError, OSError):
             return await call_next(request)
 
-
         if not info.allowed:
             retry_after_seconds = max(0, info.retry_after)
             headers = {"Retry-After": str(retry_after_seconds)}
@@ -271,7 +268,6 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 "X-RateLimit-Remaining", str(max(0, info.remaining))
             )
         return response
-
 
     async def _check_limit(
         self,
@@ -295,7 +291,6 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             redis_url=redis_url,
         )
         return info
-
 
     def _build_identifier(self, request: Request) -> str:
         token = self._extract_bearer_token(request.headers.get("authorization"))

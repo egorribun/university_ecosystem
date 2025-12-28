@@ -1,7 +1,5 @@
 """Tests for Feature Flags system."""
 
-import pytest
-
 from app.core.feature_flags import (
     FeatureFlag,
     FeatureFlagService,

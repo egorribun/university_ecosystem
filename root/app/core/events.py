@@ -10,9 +10,10 @@ import asyncio
 import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Callable, Coroutine
+from typing import Any
 from uuid import uuid4
 
 logger = logging.getLogger(__name__)
@@ -174,9 +175,7 @@ class EventBus:
             logger.debug("No handlers for event %s", event_type)
             return
 
-        logger.debug(
-            "Publishing %s to %d handlers", event_type, len(handlers)
-        )
+        logger.debug("Publishing %s to %d handlers", event_type, len(handlers))
 
         # Execute handlers concurrently
         tasks = [
@@ -185,9 +184,7 @@ class EventBus:
         ]
         await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def _safe_handle(
-        self, handler: EventHandler, event: DomainEvent
-    ) -> None:
+    async def _safe_handle(self, handler: EventHandler, event: DomainEvent) -> None:
         """Execute handler with error protection."""
         try:
             await handler(event)

@@ -1,9 +1,10 @@
 """Tests for Repository Pattern."""
 
-import pytest
 from unittest.mock import MagicMock
 
-from app.repositories.base import BaseRepository, ReadOnlyRepository, ModelT
+import pytest
+
+from app.repositories.base import BaseRepository, ModelT, ReadOnlyRepository
 
 
 def test_base_repository_is_abstract():
@@ -45,7 +46,8 @@ def test_event_repository_import():
 
 def test_repository_init():
     """Test repository __init__ package exports."""
-    from app.repositories import BaseRepository as BR, ReadOnlyRepository as ROR
+    from app.repositories import BaseRepository as BR
+    from app.repositories import ReadOnlyRepository as ROR
 
     assert BR is BaseRepository
     assert ROR is ReadOnlyRepository

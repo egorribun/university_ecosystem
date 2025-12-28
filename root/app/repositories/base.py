@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from typing import Any, Generic, TypeVar
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import Base
@@ -48,9 +48,7 @@ class BaseRepository(ABC, Generic[ModelT, CreateSchemaT, UpdateSchemaT]):
         """Get multiple records by IDs."""
         if not ids:
             return []
-        result = await self.db.execute(
-            select(self.model).where(self.model.id.in_(ids))
-        )
+        result = await self.db.execute(select(self.model).where(self.model.id.in_(ids)))
         return list(result.scalars().all())
 
     async def list(
@@ -105,9 +103,7 @@ class BaseRepository(ABC, Generic[ModelT, CreateSchemaT, UpdateSchemaT]):
 
     async def delete(self, id: int) -> bool:
         """Delete a record by ID."""
-        result = await self.db.execute(
-            delete(self.model).where(self.model.id == id)
-        )
+        result = await self.db.execute(delete(self.model).where(self.model.id == id))
         return (result.rowcount or 0) > 0
 
     async def exists(self, id: int) -> bool:
@@ -126,8 +122,7 @@ class ReadOnlyRepository(ABC, Generic[ModelT]):
 
     @property
     @abstractmethod
-    def model(self) -> type[ModelT]:
-        ...
+    def model(self) -> type[ModelT]: ...
 
     async def get(self, id: int) -> ModelT | None:
         result = await self.db.execute(select(self.model).where(self.model.id == id))
@@ -139,4 +134,10 @@ class ReadOnlyRepository(ABC, Generic[ModelT]):
         return list(result.scalars().all())
 
 
-__all__ = ["BaseRepository", "ReadOnlyRepository", "ModelT", "CreateSchemaT", "UpdateSchemaT"]
+__all__ = [
+    "BaseRepository",
+    "ReadOnlyRepository",
+    "ModelT",
+    "CreateSchemaT",
+    "UpdateSchemaT",
+]

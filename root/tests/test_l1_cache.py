@@ -1,15 +1,14 @@
 """Tests for L1/L2 cache layer."""
 
-import pytest
 import time
 
 from app.core.cache import (
     CacheEntry,
     LRUCache,
     MultiLayerCache,
-    user_cache,
-    schedule_cache,
     config_cache,
+    schedule_cache,
+    user_cache,
 )
 
 

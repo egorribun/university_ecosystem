@@ -1,13 +1,12 @@
 """Tests for input sanitization utilities."""
 
-import pytest
 from pathlib import Path
 
 from app.utils.sanitization import (
-    sanitize_html,
-    sanitize_filename,
-    sanitize_path,
     sanitize_email,
+    sanitize_filename,
+    sanitize_html,
+    sanitize_path,
     sanitize_url,
     strip_control_chars,
     truncate,
@@ -85,6 +84,7 @@ class TestSanitizePath:
     def test_allows_valid_path(self):
         """Test valid paths within base are allowed."""
         import tempfile
+
         with tempfile.TemporaryDirectory() as tmpdir:
             base = Path(tmpdir)
             subdir = base / "subdir"

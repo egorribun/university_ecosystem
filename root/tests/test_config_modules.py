@@ -1,11 +1,9 @@
 """Tests for modular configuration settings."""
 
-import pytest
-
-from app.config import DatabaseSettings, SecuritySettings, NotificationsSettings
+from app.config import DatabaseSettings, NotificationsSettings, SecuritySettings
 from app.config.database import DatabaseSettings as DBSettings
-from app.config.security import SecuritySettings as SecSettings
 from app.config.notifications import NotificationsSettings as NotifSettings
+from app.config.security import SecuritySettings as SecSettings
 
 
 class TestDatabaseSettings:

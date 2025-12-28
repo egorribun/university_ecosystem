@@ -1,8 +1,6 @@
 """Tests for the enhanced audit service."""
 
 import logging
-
-import pytest
 from unittest.mock import MagicMock, patch
 
 from app.services.audit_service import (
