@@ -590,9 +590,7 @@ class ProgressiveDelayTracker:
             return await self._record_failure_redis(identifier)
         return await self._record_failure_memory(identifier)
 
-    async def _record_failure_redis(
-        self, identifier: str
-    ) -> ProgressiveDelayInfo:
+    async def _record_failure_redis(self, identifier: str) -> ProgressiveDelayInfo:
         """Record failure in Redis."""
         try:
             client = await _get_shared_client(self._redis_url)
@@ -611,15 +609,11 @@ class ProgressiveDelayTracker:
         except (RedisError, OSError):
             return await self._record_failure_memory(identifier)
 
-    async def _record_failure_memory(
-        self, identifier: str
-    ) -> ProgressiveDelayInfo:
+    async def _record_failure_memory(self, identifier: str) -> ProgressiveDelayInfo:
         """Record failure in memory."""
         now = time.time()
         async with _progressive_delay_memory_lock:
-            failures, last_time = _progressive_delay_memory.get(
-                identifier, (0, 0.0)
-            )
+            failures, last_time = _progressive_delay_memory.get(identifier, (0, 0.0))
             # Reset if TTL expired
             if now - last_time > self._ttl:
                 failures = 0
@@ -669,9 +663,7 @@ class ProgressiveDelayTracker:
         """Get delay info from memory."""
         now = time.time()
         async with _progressive_delay_memory_lock:
-            failures, last_time = _progressive_delay_memory.get(
-                identifier, (0, 0.0)
-            )
+            failures, last_time = _progressive_delay_memory.get(identifier, (0, 0.0))
             if now - last_time > self._ttl:
                 failures = 0
 
@@ -743,4 +735,3 @@ def get_progressive_delay_tracker(
     if _global_progressive_tracker is None:
         _global_progressive_tracker = ProgressiveDelayTracker(redis_url=redis_url)
     return _global_progressive_tracker
-

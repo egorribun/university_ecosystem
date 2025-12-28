@@ -34,9 +34,7 @@ class NotificationRepository(BaseRepository[Notification, dict, dict]):
         if unread_only:
             stmt = stmt.where(Notification.read.is_(False))
 
-        stmt = (
-            stmt.order_by(Notification.created_at.desc()).offset(skip).limit(limit)
-        )
+        stmt = stmt.order_by(Notification.created_at.desc()).offset(skip).limit(limit)
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
@@ -58,9 +56,7 @@ class NotificationRepository(BaseRepository[Notification, dict, dict]):
         )
         return result.scalar() or 0
 
-    async def mark_as_read(
-        self, notification_ids: list[int], user_id: int
-    ) -> int:
+    async def mark_as_read(self, notification_ids: list[int], user_id: int) -> int:
         """Mark notifications as read. Returns count of updated records."""
         if not notification_ids:
             return 0

@@ -9,8 +9,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from pydantic import AfterValidator, BeforeValidator, Field
-from pydantic.functional_validators import WrapValidator
+from pydantic import AfterValidator
 
 from app.utils.sanitization import (
     sanitize_email,
