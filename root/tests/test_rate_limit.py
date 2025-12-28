@@ -406,7 +406,7 @@ async def test_rate_limit_middleware_allows_when_redis_fails(monkeypatch):
     async def _ping():  # pragma: no cover - simple response
         return {"ok": True}
 
-    async def fail_check(self, identifier):  # type: ignore[no-untyped-def]
+    async def fail_check(self, identifier, limit=None, window_seconds=None):  # type: ignore[no-untyped-def]
         raise RedisError("boom")
 
     monkeypatch.setattr(RateLimitMiddleware, "_check_limit", fail_check)
@@ -490,3 +490,66 @@ async def test_check_rate_limit_blocks_after_limit(
 
     assert blocked.allowed is False
     assert blocked.remaining == 0
+
+
+@pytest.mark.anyio
+async def test_rate_limit_per_endpoint_limits():
+    """Test that different endpoints get different rate limits."""
+    from app.core.rate_limit import EndpointRateLimit
+
+    app = FastAPI()
+
+    # Create custom endpoint limits for testing
+    custom_limits = (
+        EndpointRateLimit("/auth/login", 2, 60),  # Strict: 2/min
+        EndpointRateLimit("/api/", 5, 60),  # Medium: 5/min
+    )
+
+    app.add_middleware(
+        RateLimitMiddleware,
+        storage_backend="memory",
+        redis_url="memory://",
+        limit=10,  # Default: 10/min
+        window_seconds=60,
+        endpoint_limits=custom_limits,
+    )
+
+    @app.post("/auth/login")
+    async def _login():  # pragma: no cover - minimal endpoint
+        return {"ok": True}
+
+    @app.get("/api/data")
+    async def _api_data():  # pragma: no cover - minimal endpoint
+        return {"data": []}
+
+    @app.get("/other")
+    async def _other():  # pragma: no cover - minimal endpoint
+        return {"other": True}
+
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://testserver"
+    ) as client:
+        # Auth endpoint should be blocked after 2 requests
+        for i in range(2):
+            resp = await client.post("/auth/login")
+            assert resp.status_code == 200, f"Auth request {i+1} should succeed"
+            assert resp.headers.get("X-RateLimit-Limit") == "2"
+
+        blocked_auth = await client.post("/auth/login")
+        assert blocked_auth.status_code == 429, "Auth endpoint should be blocked"
+
+        # API endpoint should still work (different limit)
+        for i in range(5):
+            resp = await client.get("/api/data")
+            assert resp.status_code == 200, f"API request {i+1} should succeed"
+            assert resp.headers.get("X-RateLimit-Limit") == "5"
+
+        blocked_api = await client.get("/api/data")
+        assert blocked_api.status_code == 429, "API endpoint should be blocked"
+
+        # /other uses default limit (10/min) - should still work
+        for i in range(5):
+            resp = await client.get("/other")
+            assert resp.status_code == 200, f"Other request {i+1} should succeed"
+            assert resp.headers.get("X-RateLimit-Limit") == "10"

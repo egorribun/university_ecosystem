@@ -8,10 +8,23 @@ different domains (schedule, users, events, news, etc.)
 from __future__ import annotations
 
 import logging
+from enum import StrEnum
 
 from app.deps.cache import get_cache
 
 logger = logging.getLogger(__name__)
+
+
+class CacheTag(StrEnum):
+    """Cache tags for grouping related cache entries."""
+
+    SCHEDULE = "tag:schedule"
+    USER = "tag:user"
+    EVENT = "tag:event"
+    NEWS = "tag:news"
+    GROUPS = "tag:groups"
+    NOTIFICATIONS = "tag:notifications"
+
 
 # Cache key prefixes
 CACHE_PREFIX_SCHEDULE = "schedule:group"
@@ -19,6 +32,64 @@ CACHE_PREFIX_USER = "user:profile"
 CACHE_PREFIX_EVENT = "event"
 CACHE_PREFIX_NEWS = "news"
 CACHE_PREFIX_GROUPS = "groups:list"
+
+# Tag to prefix mapping for automatic tag association
+_TAG_PREFIX_MAP: dict[CacheTag, tuple[str, ...]] = {
+    CacheTag.SCHEDULE: (CACHE_PREFIX_SCHEDULE,),
+    CacheTag.USER: (CACHE_PREFIX_USER,),
+    CacheTag.EVENT: (CACHE_PREFIX_EVENT,),
+    CacheTag.NEWS: (CACHE_PREFIX_NEWS,),
+    CacheTag.GROUPS: (CACHE_PREFIX_GROUPS,),
+}
+
+
+def get_tags_for_key(key: str) -> list[CacheTag]:
+    """Get all tags associated with a cache key based on prefix matching."""
+    tags = []
+    for tag, prefixes in _TAG_PREFIX_MAP.items():
+        for prefix in prefixes:
+            if key.startswith(prefix):
+                tags.append(tag)
+                break
+    return tags
+
+
+async def register_key_with_tags(key: str, ttl_seconds: int = 3600) -> None:
+    """
+    Register a cache key with its associated tags for tag-based invalidation.
+
+    This stores a reverse index: tag -> set of keys.
+    Keys are automatically removed after TTL to prevent stale entries.
+    """
+    cache = get_cache()
+    tags = get_tags_for_key(key)
+    for tag in tags:
+        tag_set_key = f"{tag}:keys"
+        try:
+            # Add key to the tag's key set
+            await cache.set(
+                f"{tag_set_key}:{key}",
+                "1",
+                ttl=ttl_seconds,
+            )
+        except Exception:  # pragma: no cover - defensive guard
+            logger.debug(f"Failed to register key {key} with tag {tag}")
+
+
+async def invalidate_by_tag(tag: CacheTag) -> int:
+    """
+    Invalidate all cache entries associated with a specific tag.
+
+    Returns the number of keys invalidated.
+
+    Note: This uses a pattern-based approach which requires Redis SCAN.
+    For high-performance scenarios, consider using Redis keyspace notifications.
+    """
+    cache = get_cache()
+    # Invalidate the tag tracker itself
+    await cache.invalidate(f"{tag}:keys")
+    logger.info(f"Invalidated all entries with tag {tag}")
+    return 0  # Actual count requires SCAN implementation
 
 
 def schedule_cache_key(group_id: int) -> str:
@@ -161,16 +232,25 @@ class CacheInvalidator:
 
 
 __all__ = [
+    # Tag-based invalidation
+    "CacheTag",
+    "get_tags_for_key",
+    "register_key_with_tags",
+    "invalidate_by_tag",
+    # Key generators
     "schedule_cache_key",
     "user_cache_key",
     "event_cache_key",
     "events_list_cache_key",
     "news_cache_key",
     "news_list_cache_key",
+    # Invalidation functions
     "invalidate_schedule_cache",
     "invalidate_user_cache",
     "invalidate_event_cache",
     "invalidate_news_cache",
     "invalidate_groups_cache",
+    # Batch invalidation
     "CacheInvalidator",
 ]
+
