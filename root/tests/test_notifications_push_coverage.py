@@ -588,7 +588,10 @@ async def test_send_web_push_error(mock_db):
     # Message should NOT contain "404" or "410" to avoid gone detection
     exc = WebPushException("Internal Server Error", response=mock_response)
 
-    with patch("app.services.webpush.webpush", side_effect=exc):
+    with (
+        patch("app.services.webpush.webpush", side_effect=exc),
+        patch("app.services.webpush._ensure_sync_sessionmaker"),
+    ):
         res = send_web_push(sub, {"title": "T"})
         assert res.status == "error"
         assert res.status_code == 500
