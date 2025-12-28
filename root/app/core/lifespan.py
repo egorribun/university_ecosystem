@@ -61,6 +61,12 @@ from app.services.story_cleanup import (
 async def lifespan(app: FastAPI):
     await broker.startup()
     await wait_db(max_attempts=10, delay=0.5)
+
+    # Configure domain event handlers
+    from app.services.event_handlers import configure_event_handlers
+
+    configure_event_handlers()
+
     if settings.auto_create_schema:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
