@@ -22,7 +22,7 @@ from app.core.events import (
 )
 
 if TYPE_CHECKING:
-    from app.core.cache import MultiLayerCache
+    pass
 
 logger = logging.getLogger(__name__)
 

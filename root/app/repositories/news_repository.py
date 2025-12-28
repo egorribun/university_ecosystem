@@ -18,15 +18,10 @@ class NewsRepository(BaseRepository[News, dict, dict]):
     def model(self) -> type[News]:
         return News
 
-    async def get_published(
-        self, *, skip: int = 0, limit: int = 20
-    ) -> list[News]:
+    async def get_published(self, *, skip: int = 0, limit: int = 20) -> list[News]:
         """Get published news ordered by creation date descending."""
         result = await self.db.execute(
-            select(News)
-            .order_by(News.created_at.desc())
-            .offset(skip)
-            .limit(limit)
+            select(News).order_by(News.created_at.desc()).offset(skip).limit(limit)
         )
         return list(result.scalars().all())
 
@@ -34,9 +29,7 @@ class NewsRepository(BaseRepository[News, dict, dict]):
         """Get the latest news items."""
         return await self.get_published(skip=0, limit=limit)
 
-    async def search(
-        self, query: str, *, skip: int = 0, limit: int = 20
-    ) -> list[News]:
+    async def search(self, query: str, *, skip: int = 0, limit: int = 20) -> list[News]:
         """Search news by title (case-insensitive)."""
         pattern = f"%{query.strip().lower()}%"
         result = await self.db.execute(

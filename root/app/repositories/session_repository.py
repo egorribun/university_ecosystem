@@ -90,9 +90,7 @@ class SessionRepository(BaseRepository[ActiveSession, dict, dict]):
         await self.db.flush()
         return (result.rowcount or 0) > 0
 
-    async def revoke_all_except(
-        self, user_id: int, current_session_id: int
-    ) -> int:
+    async def revoke_all_except(self, user_id: int, current_session_id: int) -> int:
         """Revoke all sessions except the current one. Returns count of revoked."""
         now = datetime.now(UTC)
         result = await self.db.execute(
@@ -127,9 +125,7 @@ class SessionRepository(BaseRepository[ActiveSession, dict, dict]):
 
     async def cleanup_expired(self, max_age_days: int = 30) -> int:
         """Delete sessions older than max_age_days. Returns count deleted."""
-        cutoff = datetime.now(UTC).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
+        cutoff = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
         # Subtract days manually for clarity
         from datetime import timedelta
 

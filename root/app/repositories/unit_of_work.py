@@ -19,7 +19,7 @@ from app.repositories.story_repository import StoryRepository
 from app.repositories.user_repository import UserRepository
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    pass
 
 
 class UnitOfWork:
@@ -43,7 +43,7 @@ class UnitOfWork:
         self._session_factory = session_factory
         self._session: AsyncSession | None = None
 
-    async def __aenter__(self) -> "UnitOfWork":
+    async def __aenter__(self) -> UnitOfWork:
         """Enter async context and initialize repositories."""
         self._session = self._session_factory()
 

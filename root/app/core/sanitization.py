@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -53,9 +54,7 @@ class SanitizationMiddleware(BaseHTTPMiddleware):
         self._skip_paths = skip_paths
         self._max_depth = max_depth
 
-    async def dispatch(
-        self, request: Request, call_next: Callable
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
         if not self._enabled:
             return await call_next(request)
 
@@ -108,10 +107,7 @@ class SanitizationMiddleware(BaseHTTPMiddleware):
             return result
 
         if isinstance(value, dict):
-            return {
-                k: self._sanitize_value(v, depth + 1)
-                for k, v in value.items()
-            }
+            return {k: self._sanitize_value(v, depth + 1) for k, v in value.items()}
 
         if isinstance(value, list):
             return [self._sanitize_value(item, depth + 1) for item in value]
