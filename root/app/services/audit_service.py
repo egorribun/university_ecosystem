@@ -7,14 +7,21 @@ with request correlation and component-specific log routing.
 
 from __future__ import annotations
 
+import hmac
 import json
 import logging
+from datetime import UTC, datetime
 from enum import StrEnum
+from hashlib import sha256
 from typing import Any
 
 from fastapi import Request
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.observability import get_request_id
+from app.models.logs import DataAccessLog
 
 logger = logging.getLogger("app.audit")
 
@@ -202,15 +209,6 @@ audit_service = AuditService()
 # Secure Audit Service with HMAC Integrity
 # ============================================================================
 
-import hmac
-from hashlib import sha256
-
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.core.config import settings
-from app.models.logs import DataAccessLog
-
 
 class SecureAuditService:
     """
@@ -226,8 +224,6 @@ class SecureAuditService:
 
     def _compute_signature(self, log: DataAccessLog) -> str:
         """Compute HMAC signature for an audit log entry."""
-        from datetime import UTC, datetime
-
         data_parts = [
             str(log.id or ""),
             str(log.actor_user_id or ""),

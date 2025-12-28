@@ -29,6 +29,7 @@ from app.core.lifespan import lifespan
 from app.core.metrics import configure_metrics, record_health_probe
 from app.core.observability import configure_observability
 from app.core.rate_limit import RateLimitMiddleware, parse_rate_limit
+from app.core.sanitization import SanitizationMiddleware
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.core.versioning import API_VERSION
 from app.deps.cache import get_cache
@@ -95,8 +96,6 @@ if settings.response_compression_enabled:
 app.add_middleware(SecurityHeadersMiddleware, settings=settings)
 
 # Input sanitization middleware for defense-in-depth
-from app.core.sanitization import SanitizationMiddleware
-
 app.add_middleware(
     SanitizationMiddleware,
     enabled=True,
