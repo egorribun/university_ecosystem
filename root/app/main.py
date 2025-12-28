@@ -94,15 +94,6 @@ if settings.response_compression_enabled:
 
 app.add_middleware(SecurityHeadersMiddleware, settings=settings)
 
-# Input sanitization middleware for defense-in-depth
-from app.core.sanitization import SanitizationMiddleware
-
-app.add_middleware(
-    SanitizationMiddleware,
-    enabled=True,
-    skip_paths=("/api/internal/",),
-)
-
 app.add_middleware(
     InternalAccessMiddleware,
     allowed_ips=settings.internal_allowed_ips_list,
