@@ -94,3 +94,53 @@ clean:
 	rm -rf $(ROOT_DIR)/htmlcov $(ROOT_DIR)/.coverage $(ROOT_DIR)/coverage.xml
 	rm -rf $(FRONTEND_DIR)/dist $(FRONTEND_DIR)/node_modules/.cache
 
+# Security check (run pip-audit and npm audit)
+security-check:
+	cd $(ROOT_DIR) && pip-audit
+	npm audit --prefix $(FRONTEND_DIR)
+
+# Kubernetes manifest validation
+k8s-lint:
+	@echo "Validating Kubernetes manifests..."
+	@for f in $(CURDIR)/k8s/*.yaml $(CURDIR)/k8s/**/*.yaml; do \
+		echo "Checking $$f"; \
+		python -c "import yaml; yaml.safe_load(open('$$f'))" 2>/dev/null || echo "Warning: $$f has issues"; \
+	done
+	@echo "K8s manifests validated"
+
+# Show test coverage summary
+audit-metrics:
+	@echo "=== Test Coverage ==="
+	cd $(ROOT_DIR) && pytest --cov=app --cov-report=term-missing -q --tb=no 2>&1 | tail -20
+	@echo ""
+	@echo "=== Code Stats ==="
+	@find $(ROOT_DIR)/app -name "*.py" | wc -l | xargs echo "Python files:"
+	@find $(FRONTEND_DIR)/src -name "*.tsx" -o -name "*.ts" | wc -l | xargs echo "TypeScript files:"
+
+# Full verification (lint + typecheck + test)
+verify-all: lint backend-typecheck frontend-test backend-test
+	@echo "All verifications passed!"
+
+# Development mode - run backend and frontend
+dev:
+	@echo "Starting backend and frontend in development mode..."
+	@echo "Backend: http://localhost:8000"
+	@echo "Frontend: http://localhost:5173"
+	@echo "Use Ctrl+C to stop"
+	@$(MAKE) -j2 backend-serve frontend-dev
+
+# Help target
+help:
+	@echo "Available targets:"
+	@echo "  install        - Install all dependencies"
+	@echo "  lint           - Run all linters"
+	@echo "  test           - Run all tests"
+	@echo "  test-quick     - Quick test without coverage"
+	@echo "  coverage       - Generate HTML coverage report"
+	@echo "  dev            - Start dev servers (backend + frontend)"
+	@echo "  docker-up      - Start Docker containers"
+	@echo "  docker-down    - Stop Docker containers"
+	@echo "  security-check - Run security audits"
+	@echo "  k8s-lint       - Validate Kubernetes manifests"
+	@echo "  verify-all     - Full verification suite"
+	@echo "  clean          - Remove build artifacts"

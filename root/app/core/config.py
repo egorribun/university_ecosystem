@@ -279,9 +279,14 @@ class Settings(BaseSettings):
     rate_limit_enabled: bool = True
     rate_limit_default: str | list[str] = "100/minute"
     rate_limit_sensitive: str = "5/minute"
+    rate_limit_auth: str = "5/minute"  # Login, MFA, password reset endpoints
+    rate_limit_upload: str = "10/minute"  # File upload endpoints
+    rate_limit_admin: str = "50/minute"  # Admin endpoints
+    rate_limit_websocket: str = "30/minute"  # WebSocket connections
     rate_limit_storage_backend: str = "memory"
     rate_limit_storage_uri: str = "memory://"
     rate_limit_headers_enabled: bool = True
+
     auth_lockout_thresholds: str | list[str] = "5:30,8:300,10:3600"
     auth_lockout_history_minutes: int = 1_440
     mfa_enabled: bool = False

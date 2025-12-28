@@ -150,6 +150,37 @@ def set_rate_limit_client_factory(factory: _RedisFactory | None) -> None:
         _redis_factory = factory
 
 
+@dataclass(frozen=True, slots=True)
+class EndpointRateLimit:
+    """Configuration for endpoint-specific rate limits."""
+
+    pattern: str  # Path prefix pattern
+    limit: int
+    window_seconds: int
+
+
+# Default endpoint-specific rate limits
+DEFAULT_ENDPOINT_LIMITS: tuple[EndpointRateLimit, ...] = (
+    # Auth endpoints - strictest limits
+    EndpointRateLimit("/api/v1/auth/login", 5, 60),
+    EndpointRateLimit("/api/v1/auth/register", 5, 60),
+    EndpointRateLimit("/api/v1/auth/password-reset", 3, 60),
+    EndpointRateLimit("/api/v1/auth/mfa", 5, 60),
+    EndpointRateLimit("/api/v1/auth/totp", 5, 60),
+    EndpointRateLimit("/token", 5, 60),
+    # Upload endpoints
+    EndpointRateLimit("/api/v1/users/me/avatar", 10, 60),
+    EndpointRateLimit("/api/v1/news/", 10, 60),
+    EndpointRateLimit("/api/v1/events/", 20, 60),
+    EndpointRateLimit("/api/v1/chat/", 30, 60),
+    # Admin endpoints
+    EndpointRateLimit("/api/v1/admin", 50, 60),
+    EndpointRateLimit("/api/internal", 100, 60),
+    # WebSocket
+    EndpointRateLimit("/ws", 30, 60),
+)
+
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(
         self,
@@ -161,6 +192,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         enabled: bool = True,
         headers_enabled: bool = True,
         storage_backend: str = "redis",
+        endpoint_limits: tuple[EndpointRateLimit, ...] | None = None,
     ) -> None:
         super().__init__(app)
         backend = (storage_backend or "redis").strip().lower()
@@ -174,10 +206,23 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if self._storage_backend == "redis":
             self._enabled = self._enabled and bool(self._redis_url)
         self._headers_enabled = headers_enabled
+        # Per-endpoint rate limits
+        self._endpoint_limits = endpoint_limits or DEFAULT_ENDPOINT_LIMITS
         # Each middleware instance should maintain isolated counters when using the
         # in-process memory backend so multiple apps/tests sharing a process do not
         # influence each other.
         self._namespace = f"middleware:{uuid.uuid4().hex}"
+
+    def _get_limits_for_path(self, path: str) -> tuple[int, int, str]:
+        """Return (limit, window_seconds, pattern) for a given request path."""
+        for endpoint_limit in self._endpoint_limits:
+            if path.startswith(endpoint_limit.pattern):
+                return (
+                    endpoint_limit.limit,
+                    endpoint_limit.window_seconds,
+                    endpoint_limit.pattern,
+                )
+        return self._limit, self._window_seconds, "default"
 
     async def dispatch(self, request: Request, call_next):  # type: ignore[override]
         method = request.method.upper()
@@ -189,9 +234,18 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if not self._enabled or self._should_skip(method, path):
             return await call_next(request)
 
-        identifier = self._build_identifier(request)
+        # Get endpoint-specific rate limits and the matching pattern
+        path_limit, path_window, path_pattern = self._get_limits_for_path(path)
+
+        # Include path pattern in identifier for per-endpoint isolation
+        base_identifier = self._build_identifier(request)
+        if path_pattern:
+            identifier = f"{base_identifier}:{path_pattern}"
+        else:
+            identifier = base_identifier
+
         try:
-            info = await self._check_limit(identifier)
+            info = await self._check_limit(identifier, path_limit, path_window)
         except (RedisError, OSError):
             return await call_next(request)
 
@@ -199,7 +253,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             retry_after_seconds = max(0, info.retry_after)
             headers = {"Retry-After": str(retry_after_seconds)}
             if self._headers_enabled:
-                headers["X-RateLimit-Limit"] = str(self._limit)
+                headers["X-RateLimit-Limit"] = str(path_limit)
                 headers["X-RateLimit-Remaining"] = "0"
             return JSONResponse(
                 status_code=429,
@@ -209,20 +263,31 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         response = await call_next(request)
         if self._headers_enabled:
-            response.headers.setdefault("X-RateLimit-Limit", str(self._limit))
+            response.headers.setdefault("X-RateLimit-Limit", str(path_limit))
             response.headers.setdefault(
                 "X-RateLimit-Remaining", str(max(0, info.remaining))
             )
         return response
 
-    async def _check_limit(self, identifier: str) -> RateLimitInfo:
+    async def _check_limit(
+        self,
+        identifier: str,
+        limit: int | None = None,
+        window_seconds: int | None = None,
+    ) -> RateLimitInfo:
         redis_url = self._redis_url if self._storage_backend == "redis" else None
         namespace = self._namespace if self._storage_backend == "memory" else ""
+        # Use provided limits or fall back to defaults
+        effective_limit = limit if limit is not None else self._limit
+        if window_seconds is not None:
+            effective_window = window_seconds
+        else:
+            effective_window = self._window_seconds
         info = await check_rate_limit(
             identifier=identifier,
             namespace=namespace,
-            limit=self._limit,
-            window_seconds=self._window_seconds,
+            limit=effective_limit,
+            window_seconds=effective_window,
             redis_url=redis_url,
         )
         return info

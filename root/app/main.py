@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 import uuid
 from functools import lru_cache
@@ -169,7 +170,9 @@ static_dir = settings.static_dir_path
 static_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
-print(f"DEBUG: CORS Origins: {settings.cors_allow_origins_list}")
+
+_logger = logging.getLogger(__name__)
+_logger.debug("CORS Origins configured: %s", settings.cors_allow_origins_list)
 
 
 app.add_middleware(
