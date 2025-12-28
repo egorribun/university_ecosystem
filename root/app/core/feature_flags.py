@@ -57,7 +57,7 @@ class FeatureFlag:
         """Determine if user falls within percentage rollout."""
         # Create deterministic hash from flag name + user_id
         hash_input = f"{self.name}:{user_id}"
-        hash_value = int(hashlib.md5(hash_input.encode()).hexdigest()[:8], 16)
+        hash_value = int(hashlib.sha256(hash_input.encode()).hexdigest()[:8], 16)
         user_bucket = hash_value % 100
         return user_bucket < self.percentage
 
