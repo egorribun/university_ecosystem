@@ -585,6 +585,8 @@ async def test_send_web_push_error(mock_db):
     # Mocking generic error with status that doesn't trigger "gone" cleanup
     mock_response = MagicMock()
     mock_response.status_code = 500
+    # Explicitly set text to avoid MagicMock id containing "404" or "410"
+    mock_response.text = "Internal Server Error"
     # Message should NOT contain "404" or "410" to avoid gone detection
     exc = WebPushException("Internal Server Error", response=mock_response)
 
