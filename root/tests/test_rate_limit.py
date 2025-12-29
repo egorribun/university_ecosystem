@@ -533,7 +533,7 @@ async def test_rate_limit_per_endpoint_limits():
         # Auth endpoint should be blocked after 2 requests
         for i in range(2):
             resp = await client.post("/auth/login")
-            assert resp.status_code == 200, f"Auth request {i+1} should succeed"
+            assert resp.status_code == 200, f"Auth request {i + 1} should succeed"
             assert resp.headers.get("X-RateLimit-Limit") == "2"
 
         blocked_auth = await client.post("/auth/login")
@@ -542,7 +542,7 @@ async def test_rate_limit_per_endpoint_limits():
         # API endpoint should still work (different limit)
         for i in range(5):
             resp = await client.get("/api/data")
-            assert resp.status_code == 200, f"API request {i+1} should succeed"
+            assert resp.status_code == 200, f"API request {i + 1} should succeed"
             assert resp.headers.get("X-RateLimit-Limit") == "5"
 
         blocked_api = await client.get("/api/data")
@@ -551,5 +551,5 @@ async def test_rate_limit_per_endpoint_limits():
         # /other uses default limit (10/min) - should still work
         for i in range(5):
             resp = await client.get("/other")
-            assert resp.status_code == 200, f"Other request {i+1} should succeed"
+            assert resp.status_code == 200, f"Other request {i + 1} should succeed"
             assert resp.headers.get("X-RateLimit-Limit") == "10"

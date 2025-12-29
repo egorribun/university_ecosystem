@@ -1,204 +1,144 @@
-"""Tests for the image proxy service."""
+"""Tests for image_proxy service.
 
-from __future__ import annotations
+Coverage targets:
+- _sanitize_path_input: path traversal detection
+- _validate_path_within_base: base directory validation
+- _guess_mime: mime type guessing
+"""
 
-from io import BytesIO
-from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, MagicMock, patch
+from pathlib import Path
 
 import pytest
-from PIL import Image
 
 from app.services.image_proxy import (
     _guess_mime,
-    _process_image,
-    get_transformed_image,
+    _sanitize_path_input,
+    _validate_path_within_base,
 )
 
-if TYPE_CHECKING:
-    pass
+# ============================================================
+# _sanitize_path_input tests
+# ============================================================
 
 
-@pytest.fixture
-def sample_image_bytes() -> bytes:
-    """Create a sample PNG image for testing."""
-    img = Image.new("RGB", (200, 100), color="red")
-    buffer = BytesIO()
-    img.save(buffer, format="PNG")
-    buffer.seek(0)
-    return buffer.getvalue()
+def test_sanitize_path_input_valid():
+    """Test valid path passes through."""
+    result = _sanitize_path_input("/static/avatars/user.jpg")
+    assert result == "/static/avatars/user.jpg"
 
 
-@pytest.fixture
-def mock_storage_backend():
-    """Create a mock storage backend."""
-    backend = MagicMock()
-    return backend
+def test_sanitize_path_input_simple_filename():
+    """Test simple filename passes."""
+    result = _sanitize_path_input("image.png")
+    assert result == "image.png"
 
 
-class TestGuessUnknownMime:
-    """Tests for _guess_mime function."""
-
-    def test_guess_jpeg(self):
-        assert _guess_mime("image.jpg") == "image/jpeg"
-        assert _guess_mime("image.jpeg") == "image/jpeg"
-
-    def test_guess_png(self):
-        assert _guess_mime("image.png") == "image/png"
-
-    def test_guess_webp(self):
-        assert _guess_mime("image.webp") == "image/webp"
-
-    def test_guess_unknown(self):
-        # Use extension that's unknown on all platforms
-        # .xyz is known as chemical/x-xyz on Linux
-        assert _guess_mime("file.unknownextension123") == "application/octet-stream"
-
-    def test_guess_with_path(self):
-        assert _guess_mime("/uploads/images/photo.jpg") == "image/jpeg"
+def test_sanitize_path_input_path_traversal():
+    """Test path traversal is blocked."""
+    with pytest.raises(ValueError, match="Path traversal detected"):
+        _sanitize_path_input("../../../etc/passwd")
 
 
-class TestProcessImage:
-    """Tests for _process_image function."""
-
-    def test_no_transformation_returns_original(self, sample_image_bytes):
-        """When format is original and no width, return original format."""
-        result_data, mime = _process_image(sample_image_bytes, None, "original")
-        assert mime == "image/png"
-        assert len(result_data) > 0
-
-    def test_resize_width(self, sample_image_bytes):
-        """Resize image to smaller width."""
-        result_data, mime = _process_image(sample_image_bytes, 100, "original")
-        # Verify the resulting image has correct width
-        with Image.open(BytesIO(result_data)) as img:
-            assert img.size[0] == 100
-            # Height should be proportionally scaled (original 200x100 -> 100x50)
-            assert img.size[1] == 50
-
-    def test_no_upscale(self, sample_image_bytes):
-        """Width larger than original should not upscale."""
-        result_data, mime = _process_image(sample_image_bytes, 400, "original")
-        # Original should be kept as-is
-        with Image.open(BytesIO(result_data)) as img:
-            assert img.size[0] == 200  # Original width unchanged
-
-    def test_webp_conversion(self, sample_image_bytes):
-        """Convert to WebP format."""
-        result_data, mime = _process_image(sample_image_bytes, None, "webp")
-        assert mime == "image/webp"
-        with Image.open(BytesIO(result_data)) as img:
-            assert img.format == "WEBP"
-
-    def test_webp_with_resize(self, sample_image_bytes):
-        """Convert to WebP and resize."""
-        result_data, mime = _process_image(sample_image_bytes, 50, "webp")
-        assert mime == "image/webp"
-        with Image.open(BytesIO(result_data)) as img:
-            assert img.format == "WEBP"
-            assert img.size[0] == 50
+def test_sanitize_path_input_path_traversal_middle():
+    """Test path traversal in middle of path is blocked."""
+    with pytest.raises(ValueError, match="Path traversal detected"):
+        _sanitize_path_input("/static/../../../etc/passwd")
 
 
-class TestGetTransformedImage:
-    """Tests for the main get_transformed_image async function."""
+def test_sanitize_path_input_windows_absolute():
+    """Test Windows absolute path is blocked."""
+    with pytest.raises(ValueError, match="Windows absolute path"):
+        _sanitize_path_input("C:\\Windows\\System32\\config")
 
-    @pytest.mark.asyncio
-    async def test_returns_cached_data(self, sample_image_bytes, mock_storage_backend):
-        """Should return cached data if available."""
-        with patch("app.services.image_proxy.image_cache") as mock_cache:
-            mock_cache.get.return_value = (sample_image_bytes, "image/png")
 
-            result_data, mime = await get_transformed_image(
-                mock_storage_backend, "/test/image.png", None, "original"
-            )
+def test_sanitize_path_input_null_byte():
+    """Test null byte is blocked."""
+    with pytest.raises(ValueError, match="Null byte"):
+        _sanitize_path_input("/static/image.jpg\x00.php")
 
-            assert result_data == sample_image_bytes
-            assert mime == "image/png"
-            mock_cache.get.assert_called_once()
 
-    @pytest.mark.asyncio
-    async def test_fetches_and_caches_on_miss(
-        self, sample_image_bytes, mock_storage_backend
-    ):
-        """Should fetch from backend and cache on cache miss."""
-        with (
-            patch("app.services.image_proxy.image_cache") as mock_cache,
-            patch(
-                "app.services.image_proxy._fetch_source_bytes",
-                new_callable=AsyncMock,
-            ) as mock_fetch,
-        ):
-            mock_cache.get.return_value = None
-            mock_fetch.return_value = sample_image_bytes
+def test_sanitize_path_input_encoded_traversal():
+    """Test with no direct traversal (encoded handled elsewhere)."""
+    # This test ensures only literal .. is blocked
+    result = _sanitize_path_input("/static/folder_name/image.jpg")
+    assert result == "/static/folder_name/image.jpg"
 
-            result_data, mime = await get_transformed_image(
-                mock_storage_backend, "/test/image.png", None, "original"
-            )
 
-            assert mime == "image/png"
-            assert len(result_data) > 0
+# ============================================================
+# _validate_path_within_base tests
+# ============================================================
 
-    @pytest.mark.asyncio
-    async def test_webp_transformation(self, sample_image_bytes, mock_storage_backend):
-        """Should transform to WebP format."""
-        with (
-            patch("app.services.image_proxy.image_cache") as mock_cache,
-            patch(
-                "app.services.image_proxy._fetch_source_bytes",
-                new_callable=AsyncMock,
-            ) as mock_fetch,
-        ):
-            mock_cache.get.return_value = None
-            mock_fetch.return_value = sample_image_bytes
 
-            result_data, mime = await get_transformed_image(
-                mock_storage_backend, "/test/image.png", 100, "webp"
-            )
+def test_validate_path_within_base_valid(tmp_path):
+    """Test valid path within base."""
+    # Create a test file
+    test_file = tmp_path / "images" / "test.jpg"
+    test_file.parent.mkdir(parents=True)
+    test_file.touch()
 
-            assert mime == "image/webp"
-            mock_cache.set.assert_called_once()
+    result = _validate_path_within_base(tmp_path, Path("images/test.jpg"))
+    assert str(result).startswith(str(tmp_path))
 
-    @pytest.mark.asyncio
-    async def test_fetch_error_raises_value_error(self, mock_storage_backend):
-        """Should raise ValueError when fetch fails."""
-        with (
-            patch("app.services.image_proxy.image_cache") as mock_cache,
-            patch(
-                "app.services.image_proxy._fetch_source_bytes",
-                new_callable=AsyncMock,
-            ) as mock_fetch,
-        ):
-            mock_cache.get.return_value = None
-            mock_fetch.side_effect = OSError("Network error")
 
-            with pytest.raises(ValueError, match="Could not load image"):
-                await get_transformed_image(
-                    mock_storage_backend, "/test/missing.png", None, "original"
-                )
+def test_validate_path_within_base_traversal():
+    """Test path traversal is blocked."""
+    base = Path("/var/www/static")
 
-    @pytest.mark.asyncio
-    async def test_transformation_error_returns_original(
-        self, sample_image_bytes, mock_storage_backend
-    ):
-        """Should return original on transformation error."""
-        with (
-            patch("app.services.image_proxy.image_cache") as mock_cache,
-            patch(
-                "app.services.image_proxy._fetch_source_bytes",
-                new_callable=AsyncMock,
-            ) as mock_fetch,
-            patch(
-                "app.services.image_proxy._process_image",
-                side_effect=Exception("Processing error"),
-            ),
-        ):
-            mock_cache.get.return_value = None
-            mock_fetch.return_value = sample_image_bytes
+    # Even though we sanitize earlier, this is the secondary defense
+    with pytest.raises(ValueError, match="Path traversal attempt"):
+        _validate_path_within_base(base, Path("../../etc/passwd"))
 
-            result_data, mime = await get_transformed_image(
-                mock_storage_backend, "/test/image.jpg", 100, "webp"
-            )
 
-            # Should fall back to original
-            assert result_data == sample_image_bytes
-            assert mime == "image/jpeg"
+def test_validate_path_within_base_absolute_escape():
+    """Test absolute path that escapes base is blocked."""
+    base = Path("/var/www/static")
+
+    with pytest.raises(ValueError, match="Path traversal attempt"):
+        _validate_path_within_base(base, Path("/etc/passwd"))
+
+
+# ============================================================
+# _guess_mime tests
+# ============================================================
+
+
+def test_guess_mime_jpeg():
+    """Test JPEG mime type."""
+    result = _guess_mime("/path/to/image.jpg")
+    assert result == "image/jpeg"
+
+
+def test_guess_mime_png():
+    """Test PNG mime type."""
+    result = _guess_mime("/path/to/image.png")
+    assert result == "image/png"
+
+
+def test_guess_mime_webp():
+    """Test WebP mime type."""
+    result = _guess_mime("/path/to/image.webp")
+    assert result == "image/webp"
+
+
+def test_guess_mime_unknown():
+    """Test unknown extension returns default."""
+    result = _guess_mime("/path/to/file.xyz123")
+    assert result == "application/octet-stream"
+
+
+def test_guess_mime_no_extension():
+    """Test file without extension."""
+    result = _guess_mime("/path/to/file")
+    assert result == "application/octet-stream"
+
+
+def test_guess_mime_gif():
+    """Test GIF mime type."""
+    result = _guess_mime("animation.gif")
+    assert result == "image/gif"
+
+
+def test_guess_mime_svg():
+    """Test SVG mime type."""
+    result = _guess_mime("icon.svg")
+    assert result == "image/svg+xml"

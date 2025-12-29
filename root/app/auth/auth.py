@@ -1503,3 +1503,9 @@ async def logout(
             )
 
     _clear_access_token_cookie(response)
+
+    # Security enhancement: instruct browser to clear all site data
+    # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Clear-Site-Data
+    response.headers["Clear-Site-Data"] = '"cache", "cookies", "storage"'
+
+    return {"message": "Logged out successfully"}
