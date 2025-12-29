@@ -501,9 +501,7 @@ async def test_upload_avatar_success(service, mock_db, mock_user, mock_request):
             return_value="/static/avatars/new.jpg",
         ):
             with patch("app.services.user_service.ensure_mfa_relationships_loaded"):
-                await service.upload_avatar(
-                    mock_db, mock_user, mock_file, mock_request
-                )
+                await service.upload_avatar(mock_db, mock_user, mock_file, mock_request)
 
     assert mock_user.avatar_url == "/static/avatars/new.jpg"
     mock_db.commit.assert_called_once()
