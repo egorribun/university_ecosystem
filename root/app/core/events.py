@@ -13,12 +13,31 @@ from collections import defaultdict
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
+
+if TYPE_CHECKING:
+    from app.core.event_dlq import DeadLetterQueue
 
 logger = logging.getLogger(__name__)
 
 EventHandler = Callable[["DomainEvent"], Coroutine[Any, Any, None]]
+EventMiddleware = Callable[
+    ["DomainEvent", Callable[["DomainEvent"], Coroutine[Any, Any, None]]],
+    Coroutine[Any, Any, None],
+]
+
+
+@dataclass
+class EventMetadata:
+    """Metadata attached to every event for tracing and retry tracking."""
+
+    correlation_id: str | None = None
+    causation_id: str | None = None
+    user_id: int | None = None
+    source: str = "app"
+    retry_count: int = 0
+    max_retries: int = 3
 
 
 @dataclass
@@ -27,6 +46,7 @@ class DomainEvent(ABC):
 
     event_id: str = field(default_factory=lambda: str(uuid4()))
     occurred_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    metadata: EventMetadata = field(default_factory=EventMetadata)
 
     @property
     @abstractmethod
@@ -138,14 +158,33 @@ class NotificationSent(DomainEvent):
 
 class EventBus:
     """
-    Simple in-memory event bus for domain events.
+    In-memory event bus for domain events.
 
-    Supports async handlers and wildcard subscriptions.
+    Supports:
+    - Async handlers with concurrent execution
+    - Wildcard subscriptions (subscribe to all events)
+    - Middleware pipeline for cross-cutting concerns
+    - Dead Letter Queue integration for failed events
     """
 
     def __init__(self) -> None:
         self._handlers: dict[str, list[EventHandler]] = defaultdict(list)
         self._all_handlers: list[EventHandler] = []
+        self._middleware: list[EventMiddleware] = []
+        self._dlq: "DeadLetterQueue | None" = None
+
+    def add_middleware(self, middleware: EventMiddleware) -> None:
+        """
+        Add middleware to the processing pipeline.
+
+        Middleware is executed in order added (first added = outermost).
+        """
+        self._middleware.append(middleware)
+        logger.debug("Middleware added: %s", getattr(middleware, "__name__", type(middleware).__name__))
+
+    def set_dlq(self, dlq: "DeadLetterQueue") -> None:
+        """Set the Dead Letter Queue for failed events."""
+        self._dlq = dlq
 
     def subscribe(self, event_type: str, handler: EventHandler) -> None:
         """Subscribe a handler to a specific event type."""
@@ -162,9 +201,26 @@ class EventBus:
         if handler in self._handlers[event_type]:
             self._handlers[event_type].remove(handler)
 
+    def unsubscribe_all(self, handler: EventHandler) -> None:
+        """Unsubscribe a handler from all events."""
+        if handler in self._all_handlers:
+            self._all_handlers.remove(handler)
+
+    def clear(self) -> None:
+        """Clear all handlers and middleware."""
+        self._handlers.clear()
+        self._all_handlers.clear()
+        self._middleware.clear()
+
+    def get_handler_count(self, event_type: str | None = None) -> int:
+        """Get number of handlers for a specific event type or all."""
+        if event_type:
+            return len(self._handlers.get(event_type, [])) + len(self._all_handlers)
+        return sum(len(h) for h in self._handlers.values()) + len(self._all_handlers)
+
     async def publish(self, event: DomainEvent) -> None:
         """
-        Publish an event to all interested handlers.
+        Publish an event through the middleware pipeline to all handlers.
 
         Handlers are executed concurrently.
         """
@@ -177,15 +233,33 @@ class EventBus:
 
         logger.debug("Publishing %s to %d handlers", event_type, len(handlers))
 
-        # Execute handlers concurrently
-        tasks = [
-            asyncio.create_task(self._safe_handle(handler, event))
-            for handler in handlers
-        ]
-        await asyncio.gather(*tasks, return_exceptions=True)
+        # Define the core handler execution
+        async def execute_handlers(evt: DomainEvent) -> None:
+            tasks = [
+                asyncio.create_task(self._safe_handle(handler, evt))
+                for handler in handlers
+            ]
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Build middleware chain (last added wraps innermost)
+        handler_chain = execute_handlers
+        for middleware in reversed(self._middleware):
+            prev_handler = handler_chain
+
+            async def wrapped(
+                evt: DomainEvent,
+                _mw: EventMiddleware = middleware,
+                _next: Any = prev_handler,
+            ) -> None:
+                await _mw(evt, _next)
+
+            handler_chain = wrapped
+
+        # Execute the chain
+        await handler_chain(event)
 
     async def _safe_handle(self, handler: EventHandler, event: DomainEvent) -> None:
-        """Execute handler with error protection."""
+        """Execute handler with error protection and optional DLQ."""
         try:
             await handler(event)
         except Exception as e:
@@ -195,6 +269,9 @@ class EventBus:
                 event.event_type,
                 e,
             )
+            # Send to DLQ if configured
+            if self._dlq is not None:
+                await self._dlq.add(event, e, handler.__name__)
 
 
 # Global event bus instance
@@ -202,6 +279,11 @@ event_bus = EventBus()
 
 
 __all__ = [
+    # Types
+    "EventHandler",
+    "EventMiddleware",
+    "EventMetadata",
+    # Core
     "DomainEvent",
     "EventBus",
     "event_bus",
