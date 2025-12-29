@@ -4,7 +4,7 @@ Tests focus on the cleanup scheduler and config, avoiding SQLAlchemy clause issu
 """
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -13,7 +13,6 @@ from app.services.session_cleanup import (
     cleanup_expired_sessions,
     start_session_cleanup_scheduler,
 )
-
 
 # ============================================================
 # SessionCleanupConfig tests
@@ -63,12 +62,9 @@ async def test_cleanup_expired_sessions_with_db():
     mock_db.commit = AsyncMock()
 
     with patch(
-        "app.services.session_cleanup.delete_sessions_matching",
-        return_value=5
+        "app.services.session_cleanup.delete_sessions_matching", return_value=5
     ) as mock_delete:
-        result = await cleanup_expired_sessions(
-            db=mock_db, now=datetime.now(UTC)
-        )
+        result = await cleanup_expired_sessions(db=mock_db, now=datetime.now(UTC))
 
     assert result == 5
     mock_delete.assert_called_once()
@@ -81,13 +77,8 @@ async def test_cleanup_expired_sessions_no_deleted():
     mock_db = AsyncMock()
     mock_db.commit = AsyncMock()
 
-    with patch(
-        "app.services.session_cleanup.delete_sessions_matching",
-        return_value=0
-    ):
-        result = await cleanup_expired_sessions(
-            db=mock_db, now=datetime.now(UTC)
-        )
+    with patch("app.services.session_cleanup.delete_sessions_matching", return_value=0):
+        result = await cleanup_expired_sessions(db=mock_db, now=datetime.now(UTC))
 
     assert result == 0
 
@@ -103,8 +94,7 @@ async def test_cleanup_expired_sessions_creates_own_session():
         mock_factory.return_value.__aexit__.return_value = None
 
         with patch(
-            "app.services.session_cleanup.delete_sessions_matching",
-            return_value=2
+            "app.services.session_cleanup.delete_sessions_matching", return_value=2
         ):
             result = await cleanup_expired_sessions()
 
@@ -119,10 +109,7 @@ async def test_cleanup_expired_sessions_creates_own_session():
 @pytest.mark.anyio
 async def test_start_session_cleanup_scheduler_returns_stop_function():
     """Test scheduler returns a callable stop function."""
-    with patch(
-        "app.services.session_cleanup.cleanup_expired_sessions",
-        return_value=0
-    ):
+    with patch("app.services.session_cleanup.cleanup_expired_sessions", return_value=0):
         stop_fn = await start_session_cleanup_scheduler(
             config=SessionCleanupConfig(interval_seconds=100000)
         )
@@ -131,6 +118,3 @@ async def test_start_session_cleanup_scheduler_returns_stop_function():
 
     # Clean up by stopping the scheduler
     await stop_fn()
-
-
-

@@ -27,7 +27,7 @@ class FailedEvent:
     Contains the original event, error details, and metadata about the failure.
     """
 
-    event: "DomainEvent"
+    event: DomainEvent
     error: str
     error_type: str
     failed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
@@ -89,7 +89,7 @@ class DeadLetterQueue:
 
     async def add(
         self,
-        event: "DomainEvent",
+        event: DomainEvent,
         error: Exception,
         handler_name: str | None = None,
     ) -> None:
@@ -169,7 +169,7 @@ class DeadLetterQueue:
 
     async def replay(
         self,
-        bus: "EventBus",
+        bus: EventBus,
         *,
         event_type: str | None = None,
         clear_on_success: bool = True,
@@ -248,7 +248,9 @@ class DeadLetterQueue:
         by_error: dict[str, int] = {}
 
         for failed in events:
-            by_type[failed.event.event_type] = by_type.get(failed.event.event_type, 0) + 1
+            by_type[failed.event.event_type] = (
+                by_type.get(failed.event.event_type, 0) + 1
+            )
             by_error[failed.error_type] = by_error.get(failed.error_type, 0) + 1
 
         return {

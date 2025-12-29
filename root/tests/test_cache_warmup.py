@@ -8,7 +8,7 @@ Coverage targets:
 """
 
 import time
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -18,7 +18,6 @@ from app.services.cache_warmup import (
     _schedule_cache_key,
     warm_cache,
 )
-
 
 # ============================================================
 # _is_entry_fresh tests

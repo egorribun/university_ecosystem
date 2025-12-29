@@ -5,7 +5,7 @@ Coverage targets:
 - start_notifications_retention_scheduler: disabled case, scheduler creation
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -13,7 +13,6 @@ from app.services.notifications_retention import (
     NotificationsRetentionConfig,
     start_notifications_retention_scheduler,
 )
-
 
 # ============================================================
 # NotificationsRetentionConfig tests
@@ -88,7 +87,7 @@ async def test_start_scheduler_default():
     """Test scheduler starts with default config."""
     with patch(
         "app.services.notifications_retention.cleanup_stale_notifications",
-        return_value=(10, 5)
+        return_value=(10, 5),
     ):
         stop_fn = await start_notifications_retention_scheduler(
             config=NotificationsRetentionConfig(interval_seconds=100000)

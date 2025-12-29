@@ -8,7 +8,7 @@ Tests for:
 - Dead Letter Queue
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -31,7 +31,6 @@ from app.core.events import (
     EventMetadata,
     UserCreated,
 )
-
 
 # ============================================================
 # EventMetadata Tests

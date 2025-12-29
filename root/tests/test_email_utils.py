@@ -7,16 +7,13 @@ Coverage targets:
 """
 
 import logging
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 from app.utils.email import (
     _redact_sensitive_query,
     build_reset_email_content,
     send_reset_email,
 )
-
 
 # ============================================================
 # build_reset_email_content tests

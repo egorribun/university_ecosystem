@@ -7,7 +7,6 @@ Coverage targets:
 """
 
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -16,7 +15,6 @@ from app.services.image_proxy import (
     _sanitize_path_input,
     _validate_path_within_base,
 )
-
 
 # ============================================================
 # _sanitize_path_input tests

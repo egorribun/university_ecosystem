@@ -72,7 +72,7 @@ async def test_scheduler_run_forever_success(mock_metrics):
             raise asyncio.CancelledError()
         return 3
 
-    with patch.object(scheduler, 'run_once', side_effect=mock_run_once):
+    with patch.object(scheduler, "run_once", side_effect=mock_run_once):
         with pytest.raises(asyncio.CancelledError):
             await scheduler.run_forever()
 
@@ -96,7 +96,7 @@ async def test_scheduler_run_forever_failure(mock_metrics):
             raise ValueError("Test error")
         raise asyncio.CancelledError()
 
-    with patch.object(scheduler, 'run_once', side_effect=mock_run_once):
+    with patch.object(scheduler, "run_once", side_effect=mock_run_once):
         with pytest.raises(asyncio.CancelledError):
             await scheduler.run_forever()
 
@@ -111,7 +111,9 @@ async def test_scheduler_run_forever_failure(mock_metrics):
 @pytest.mark.anyio
 async def test_start_notifications_scheduler_lifecycle():
     """Test starting and stopping the scheduler."""
-    with patch("app.workers.notifications.NotificationsScheduler") as mock_scheduler_cls:
+    with patch(
+        "app.workers.notifications.NotificationsScheduler"
+    ) as mock_scheduler_cls:
         mock_scheduler = mock_scheduler_cls.return_value
         mock_scheduler.run_forever = AsyncMock()
 

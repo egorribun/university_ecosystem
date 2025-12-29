@@ -171,7 +171,7 @@ class EventBus:
         self._handlers: dict[str, list[EventHandler]] = defaultdict(list)
         self._all_handlers: list[EventHandler] = []
         self._middleware: list[EventMiddleware] = []
-        self._dlq: "DeadLetterQueue | None" = None
+        self._dlq: DeadLetterQueue | None = None
 
     def add_middleware(self, middleware: EventMiddleware) -> None:
         """
@@ -180,9 +180,12 @@ class EventBus:
         Middleware is executed in order added (first added = outermost).
         """
         self._middleware.append(middleware)
-        logger.debug("Middleware added: %s", getattr(middleware, "__name__", type(middleware).__name__))
+        logger.debug(
+            "Middleware added: %s",
+            getattr(middleware, "__name__", type(middleware).__name__),
+        )
 
-    def set_dlq(self, dlq: "DeadLetterQueue") -> None:
+    def set_dlq(self, dlq: DeadLetterQueue) -> None:
         """Set the Dead Letter Queue for failed events."""
         self._dlq = dlq
 

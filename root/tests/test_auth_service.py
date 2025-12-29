@@ -3,12 +3,7 @@
 Only tests that work without complex async mocking.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
-
 from app.services.auth_service import _hash_token
-
 
 # ============================================================
 # Helper function tests

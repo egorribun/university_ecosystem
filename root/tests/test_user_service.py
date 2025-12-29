@@ -12,7 +12,6 @@ Coverage targets:
 - delete_user_data: confirm check, full anonymization
 """
 
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -224,7 +223,9 @@ async def test_create_user_success(service, mock_db, mock_admin_user, mock_reque
     mock_new_user.id = 100
 
     with patch("app.services.user_service.resolve_locale", return_value="en"):
-        with patch("app.services.user_service.crud.create_user", return_value=mock_new_user):
+        with patch(
+            "app.services.user_service.crud.create_user", return_value=mock_new_user
+        ):
             result = await service.create_user(
                 mock_db, data, mock_request, mock_admin_user
             )
@@ -238,9 +239,7 @@ async def test_create_user_success(service, mock_db, mock_admin_user, mock_reque
 
 
 @pytest.mark.anyio
-async def test_get_users_non_admin_no_search(
-    service, mock_db, mock_user, mock_request
-):
+async def test_get_users_non_admin_no_search(service, mock_db, mock_user, mock_request):
     """Test get_users fails for non-admin without search."""
     with patch("app.services.user_service.resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc_info:
@@ -272,9 +271,7 @@ async def test_get_users_admin(service, mock_db, mock_admin_user, mock_request):
     mock_users = [MagicMock(), MagicMock()]
 
     with patch("app.services.user_service.resolve_locale", return_value="en"):
-        with patch(
-            "app.services.user_service.crud.get_users", return_value=mock_users
-        ):
+        with patch("app.services.user_service.crud.get_users", return_value=mock_users):
             result = await service.get_users(mock_db, mock_request, mock_admin_user)
 
     assert len(result) == 2
@@ -286,9 +283,7 @@ async def test_get_users_admin(service, mock_db, mock_admin_user, mock_request):
 
 
 @pytest.mark.anyio
-async def test_admin_update_user_forbidden(
-    service, mock_db, mock_user, mock_request
-):
+async def test_admin_update_user_forbidden(service, mock_db, mock_user, mock_request):
     """Test admin_update_user fails for non-admin."""
     data = MagicMock()
 
@@ -353,9 +348,7 @@ async def test_admin_update_user_mfa_reset(
 
 
 @pytest.mark.anyio
-async def test_admin_delete_user_forbidden(
-    service, mock_db, mock_user, mock_request
-):
+async def test_admin_delete_user_forbidden(service, mock_db, mock_user, mock_request):
     """Test admin_delete_user fails for non-admin."""
     with patch("app.services.user_service.resolve_locale", return_value="en"):
         with pytest.raises(HTTPException) as exc_info:
@@ -379,9 +372,7 @@ async def test_admin_delete_user_not_found(
 
 
 @pytest.mark.anyio
-async def test_admin_delete_user_self(
-    service, mock_db, mock_admin_user, mock_request
-):
+async def test_admin_delete_user_self(service, mock_db, mock_admin_user, mock_request):
     """Test admin cannot delete themselves."""
     mock_db.get.return_value = mock_admin_user
 
@@ -506,7 +497,8 @@ async def test_upload_avatar_success(service, mock_db, mock_user, mock_request):
 
     with patch("app.services.user_service.resolve_locale", return_value="en"):
         with patch(
-            "app.services.user_service.save_upload", return_value="/static/avatars/new.jpg"
+            "app.services.user_service.save_upload",
+            return_value="/static/avatars/new.jpg",
         ):
             with patch("app.services.user_service.ensure_mfa_relationships_loaded"):
                 result = await service.upload_avatar(
@@ -526,7 +518,8 @@ async def test_upload_avatar_commit_failure(service, mock_db, mock_user, mock_re
 
     with patch("app.services.user_service.resolve_locale", return_value="en"):
         with patch(
-            "app.services.user_service.save_upload", return_value="/static/avatars/new.jpg"
+            "app.services.user_service.save_upload",
+            return_value="/static/avatars/new.jpg",
         ):
             with patch("app.services.user_service.delete_static_file") as mock_delete:
                 with pytest.raises(Exception, match="Commit failed"):

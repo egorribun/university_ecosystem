@@ -9,7 +9,6 @@ Coverage targets:
 - _normalize_mime_type: cleanup
 """
 
-from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -22,7 +21,6 @@ from app.utils.files import (
     detect_mime_type,
     normalize_filename_prefix,
 )
-
 
 # ============================================================
 # normalize_filename_prefix tests
@@ -101,7 +99,9 @@ def test_detect_mime_type_pdf():
 def test_normalize_mime_type():
     """Test normalizing mime strings."""
     assert _normalize_mime_type("IMAGE/PNG") == "image/png"
-    assert _normalize_mime_type("  application/PDF; charset=utf-8  ") == "application/pdf"
+    assert (
+        _normalize_mime_type("  application/PDF; charset=utf-8  ") == "application/pdf"
+    )
     assert _normalize_mime_type(None) == ""
 
 
@@ -120,10 +120,7 @@ async def test_quarantine_payload(tmp_path):
 
     with patch("app.utils.files._get_storage_backend", return_value=mock_backend):
         await _quarantine_payload(
-            data,
-            subdir="avatars",
-            prefix="user",
-            reason="malware"
+            data, subdir="avatars", prefix="user", reason="malware"
         )
 
     mock_backend.save_file.assert_called_once()

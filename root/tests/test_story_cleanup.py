@@ -17,7 +17,6 @@ from app.services.story_cleanup import (
     start_story_cleanup_scheduler,
 )
 
-
 # ============================================================
 # StoryCleanupConfig tests
 # ============================================================
@@ -133,10 +132,7 @@ async def test_cleanup_expired_stories_creates_session():
 @pytest.mark.anyio
 async def test_start_story_cleanup_scheduler_returns_stop():
     """Test scheduler returns a callable stop function."""
-    with patch(
-        "app.services.story_cleanup.cleanup_expired_stories",
-        return_value=0
-    ):
+    with patch("app.services.story_cleanup.cleanup_expired_stories", return_value=0):
         stop_fn = await start_story_cleanup_scheduler(
             config=StoryCleanupConfig(interval_seconds=100000)
         )

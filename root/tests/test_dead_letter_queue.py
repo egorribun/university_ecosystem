@@ -6,8 +6,7 @@ Coverage targets:
 - DeadLetterQueue: various operations
 """
 
-from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -16,7 +15,6 @@ from app.workers.dead_letter_queue import (
     JobStatus,
     compute_job_hash,
 )
-
 
 # ============================================================
 # JobStatus tests
@@ -103,7 +101,7 @@ async def test_add_failed_job_success(dlq, mock_session):
     job = await dlq.add_failed_job(
         job_type="email",
         payload={"to": "user@example.com"},
-        error_message="Connection failed"
+        error_message="Connection failed",
     )
 
     mock_session.add.assert_called_once()
@@ -121,7 +119,7 @@ async def test_add_failed_job_duplicate(dlq, mock_session):
     result = await dlq.add_failed_job(
         job_type="email",
         payload={"to": "user@example.com"},
-        error_message="Connection failed"
+        error_message="Connection failed",
     )
 
     assert result is None

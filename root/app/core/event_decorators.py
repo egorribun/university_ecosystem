@@ -78,7 +78,7 @@ def subscribe_all(func: EventHandler) -> EventHandler:
     return func
 
 
-def register_decorated_handlers(bus: "EventBus") -> int:
+def register_decorated_handlers(bus: EventBus) -> int:
     """
     Register all decorated handlers with the given event bus.
 

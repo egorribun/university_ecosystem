@@ -70,7 +70,9 @@ def test_static_fs_extract_path(static_storage):
     assert static_storage._extract_relative_path("/static/a.jpg") == Path("a.jpg")
 
     # If prefix doesn't match, it still returns the Path as long as it's not absolute or escaping
-    assert static_storage._extract_relative_path("/other/path.txt") == Path("other/path.txt")
+    assert static_storage._extract_relative_path("/other/path.txt") == Path(
+        "other/path.txt"
+    )
     assert static_storage._extract_relative_path("") is None
 
 
@@ -92,9 +94,7 @@ def mock_s3_client():
 def s3_storage(mock_s3_client):
     """Create S3Storage with mock client."""
     return S3Storage(
-        bucket="test-bucket",
-        client=mock_s3_client,
-        base_url="https://cdn.example.com"
+        bucket="test-bucket", client=mock_s3_client, base_url="https://cdn.example.com"
     )
 
 
@@ -102,7 +102,9 @@ def s3_storage(mock_s3_client):
 async def test_s3_save_file_success(s3_storage, mock_s3_client):
     """Test saving a file to S3."""
     data = b"s3 data"
-    url = await s3_storage.save_file("docs/file.pdf", data, content_type="application/pdf")
+    url = await s3_storage.save_file(
+        "docs/file.pdf", data, content_type="application/pdf"
+    )
 
     assert url == "https://cdn.example.com/docs/file.pdf"
     mock_s3_client.put_object.assert_called_once()
@@ -113,8 +115,7 @@ async def test_s3_delete_file(s3_storage, mock_s3_client):
     """Test deleting a file from S3."""
     await s3_storage.delete_file("https://cdn.example.com/images/old.png")
     mock_s3_client.delete_object.assert_called_once_with(
-        Bucket="test-bucket",
-        Key="images/old.png"
+        Bucket="test-bucket", Key="images/old.png"
     )
 
 
@@ -122,7 +123,9 @@ def test_s3_extract_key(s3_storage):
     """Test extracting key from S3 URL."""
     assert s3_storage._extract_key("https://cdn.example.com/my-key") == "my-key"
     assert s3_storage._extract_key("/my-key") == "my-key"
-    assert s3_storage._extract_key("s3://test-bucket/direct/key.jpg") == "direct/key.jpg"
+    assert (
+        s3_storage._extract_key("s3://test-bucket/direct/key.jpg") == "direct/key.jpg"
+    )
     assert s3_storage._extract_key("s3://other-bucket/key.jpg") is None
 
 

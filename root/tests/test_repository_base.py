@@ -8,15 +8,13 @@ Tests cover:
 Uses actual SQLAlchemy models (User) for realistic testing.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.users import User
 from app.repositories.base import BaseRepository, ReadOnlyRepository
-
 
 # ============================================================
 # Test Fixtures using real SQLAlchemy model
@@ -210,6 +208,7 @@ async def test_repository_create_calls_db_methods(mock_db):
     mock_db.add.assert_called_once()
     mock_db.flush.assert_called_once()
     mock_db.refresh.assert_called_once()
+
 
 @pytest.mark.anyio
 async def test_repository_create_with_pydantic(repository, mock_db):

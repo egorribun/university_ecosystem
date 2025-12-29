@@ -23,7 +23,7 @@ class EventRetryExhausted(Exception):
 
     def __init__(
         self,
-        event: "DomainEvent",
+        event: DomainEvent,
         original_error: Exception,
         attempts: int,
     ) -> None:
@@ -97,8 +97,8 @@ class RetryMiddleware:
 
     async def __call__(
         self,
-        event: "DomainEvent",
-        next_handler: Callable[["DomainEvent"], Awaitable[None]],
+        event: DomainEvent,
+        next_handler: Callable[[DomainEvent], Awaitable[None]],
     ) -> None:
         """
         Execute the handler with retry logic.
@@ -115,7 +115,9 @@ class RetryMiddleware:
         for attempt in range(self.config.max_retries + 1):
             try:
                 # Update retry metadata if available
-                if hasattr(event, "metadata") and hasattr(event.metadata, "retry_count"):
+                if hasattr(event, "metadata") and hasattr(
+                    event.metadata, "retry_count"
+                ):
                     event.metadata.retry_count = attempt
 
                 await next_handler(event)
@@ -167,8 +169,8 @@ def with_retry(
     base_delay: float = 0.1,
     max_delay: float = 10.0,
 ) -> Callable[
-    [Callable[["DomainEvent"], Awaitable[None]]],
-    Callable[["DomainEvent"], Awaitable[None]],
+    [Callable[[DomainEvent], Awaitable[None]]],
+    Callable[[DomainEvent], Awaitable[None]],
 ]:
     """
     Decorator to add retry logic to individual handlers.
@@ -180,15 +182,15 @@ def with_retry(
     """
 
     def decorator(
-        func: Callable[["DomainEvent"], Awaitable[None]],
-    ) -> Callable[["DomainEvent"], Awaitable[None]]:
+        func: Callable[[DomainEvent], Awaitable[None]],
+    ) -> Callable[[DomainEvent], Awaitable[None]]:
         middleware = RetryMiddleware(
             max_retries=max_retries,
             base_delay=base_delay,
             max_delay=max_delay,
         )
 
-        async def wrapper(event: "DomainEvent") -> None:
+        async def wrapper(event: DomainEvent) -> None:
             await middleware(event, func)
 
         wrapper.__name__ = func.__name__
