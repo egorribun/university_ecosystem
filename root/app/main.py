@@ -7,8 +7,6 @@ import uuid
 from functools import lru_cache
 from pathlib import Path
 
-from alembic.config import Config
-from alembic.script import ScriptDirectory
 from brotli_asgi import BrotliMiddleware
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,6 +15,8 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from app.api.internal import INTERNAL_ROUTE_PREFIXES
 from app.api.internal import router as internal_api_router
 from app.api.public import router as public_api_router
