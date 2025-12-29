@@ -98,7 +98,7 @@ async def test_add_failed_job_success(dlq, mock_session):
     mock_result.scalar_one_or_none.return_value = None
     mock_session.execute.return_value = mock_result
 
-    job = await dlq.add_failed_job(
+    await dlq.add_failed_job(
         job_type="email",
         payload={"to": "user@example.com"},
         error_message="Connection failed",

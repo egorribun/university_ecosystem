@@ -150,7 +150,7 @@ async def test_update_user_profile_preferences(
     with patch("app.services.user_service.resolve_locale", return_value="en"):
         with patch("app.services.user_service.ensure_mfa_relationships_loaded"):
             with patch("app.services.user_service.attach_pending_email"):
-                result = await service.update_user_profile(
+                await service.update_user_profile(
                     mock_db, mock_user, data, mock_request
                 )
 
@@ -335,7 +335,7 @@ async def test_admin_update_user_mfa_reset(
             with patch(
                 "app.services.user_service.create_notifications_for_users"
             ) as mock_notify:
-                result = await service.admin_update_user(
+                await service.admin_update_user(
                     mock_db, 2, data, mock_request, mock_admin_user
                 )
 
@@ -416,7 +416,7 @@ async def test_delete_avatar_with_existing(service, mock_db, mock_user):
 
     with patch("app.services.user_service.delete_static_file") as mock_delete:
         with patch("app.services.user_service.ensure_mfa_relationships_loaded"):
-            result = await service.delete_avatar(mock_db, mock_user)
+            await service.delete_avatar(mock_db, mock_user)
 
     mock_delete.assert_called_once_with("/static/avatars/test.jpg")
     mock_db.commit.assert_called_once()
@@ -430,7 +430,7 @@ async def test_delete_avatar_without_existing(service, mock_db, mock_user):
 
     with patch("app.services.user_service.delete_static_file") as mock_delete:
         with patch("app.services.user_service.ensure_mfa_relationships_loaded"):
-            result = await service.delete_avatar(mock_db, mock_user)
+            await service.delete_avatar(mock_db, mock_user)
 
     mock_delete.assert_not_called()
 
@@ -443,7 +443,7 @@ async def test_delete_cover_with_existing(service, mock_db, mock_user):
 
     with patch("app.services.user_service.delete_static_file") as mock_delete:
         with patch("app.services.user_service.ensure_mfa_relationships_loaded"):
-            result = await service.delete_cover(mock_db, mock_user)
+            await service.delete_cover(mock_db, mock_user)
 
     mock_delete.assert_called_once()
 
@@ -501,7 +501,7 @@ async def test_upload_avatar_success(service, mock_db, mock_user, mock_request):
             return_value="/static/avatars/new.jpg",
         ):
             with patch("app.services.user_service.ensure_mfa_relationships_loaded"):
-                result = await service.upload_avatar(
+                await service.upload_avatar(
                     mock_db, mock_user, mock_file, mock_request
                 )
 
