@@ -237,9 +237,7 @@ def _reset_storage_probe_cache() -> None:
 
 
 def _reset_migration_probe_cache() -> None:
-    _migration_probe_cache.update(
-        {"expires_at": 0.0, "statuses": {}, "latency": 0.0}
-    )
+    _migration_probe_cache.update({"expires_at": 0.0, "statuses": {}, "latency": 0.0})
 
 
 def _reset_health_probe_caches() -> None:
@@ -322,9 +320,11 @@ async def _probe_db_migrations(*, refresh_cache: bool = False) -> tuple[dict, fl
     start = time.perf_counter()
     statuses: dict[str, str | list[str]] = {"db_migrations": "ok"}
     try:
-        migrations_current, current_versions, expected_versions = (
-            await _migrations_are_current()
-        )
+        (
+            migrations_current,
+            current_versions,
+            expected_versions,
+        ) = await _migrations_are_current()
         if not migrations_current:
             statuses["db_migrations"] = "error"
             statuses["db_migrations_current"] = sorted(current_versions)
@@ -426,9 +426,7 @@ async def _probe_db(*, refresh_cache: bool = False) -> tuple[dict, dict[str, flo
             statuses.update(migration_statuses)
             if migration_statuses.get("db_migrations") == "error":
                 db_status = "error"
-            latencies["db_migrations_latency_ms"] = max(
-                migration_latency * 1000, 0.0
-            )
+            latencies["db_migrations_latency_ms"] = max(migration_latency * 1000, 0.0)
         except Exception:
             db_status = "error"
     statuses["db"] = db_status
