@@ -84,6 +84,8 @@ scan_for_malware = _scan_for_malware
 
 _RESPONSE_COMPRESSION_MINIMUM_SIZE = 512
 
+_HEALTH_PROBE_CACHE_TTL_SECONDS = 45.0
+
 if settings.response_compression_enabled:
     app.add_middleware(
         BrotliMiddleware,
@@ -221,11 +223,28 @@ _storage_probe_cache: dict[str, float | str] = {
     "latency": 0.0,
 }
 
+_migration_probe_cache: dict[str, float | dict[str, str | list[str]]] = {
+    "expires_at": 0.0,
+    "statuses": {},
+    "latency": 0.0,
+}
+
 
 def _reset_storage_probe_cache() -> None:
     _storage_probe_cache.update(
         {"expires_at": 0.0, "status": "unknown", "latency": 0.0}
     )
+
+
+def _reset_migration_probe_cache() -> None:
+    _migration_probe_cache.update(
+        {"expires_at": 0.0, "statuses": {}, "latency": 0.0}
+    )
+
+
+def _reset_health_probe_caches() -> None:
+    _reset_storage_probe_cache()
+    _reset_migration_probe_cache()
 
 
 async def _lightweight_storage_probe(backend) -> str | None:
@@ -253,10 +272,10 @@ async def _write_delete_storage_probe(backend) -> str:
     return "ok"
 
 
-async def _probe_storage() -> tuple[str, float]:
+async def _probe_storage(*, refresh_cache: bool = False) -> tuple[str, float]:
     now = time.monotonic()
     cached_expires_at = float(_storage_probe_cache.get("expires_at", 0.0) or 0.0)
-    if cached_expires_at > now:
+    if not refresh_cache and cached_expires_at > now:
         status = str(_storage_probe_cache.get("status", "unknown"))
         latency_seconds = float(_storage_probe_cache.get("latency", 0.0) or 0.0)
         return status, latency_seconds
@@ -283,49 +302,48 @@ async def _probe_storage() -> tuple[str, float]:
     latency_seconds = max(elapsed, 0.0)
     _storage_probe_cache.update(
         {
-            "expires_at": now
-            + max(settings.health_storage_probe_min_interval_seconds, 0.0),
+            "expires_at": now + _HEALTH_PROBE_CACHE_TTL_SECONDS,
             "status": status,
             "latency": latency_seconds,
         }
     )
+    record_health_probe("storage", status, latency_seconds)
     return status, latency_seconds
 
 
-@app.get("/healthz")
-async def healthz():
-    statuses: dict[str, str] = {}
+async def _probe_db_migrations(*, refresh_cache: bool = False) -> tuple[dict, float]:
+    now = time.monotonic()
+    cached_expires_at = float(_migration_probe_cache.get("expires_at", 0.0) or 0.0)
+    if not refresh_cache and cached_expires_at > now:
+        cached_statuses = dict(_migration_probe_cache.get("statuses", {}))
+        cached_latency = float(_migration_probe_cache.get("latency", 0.0) or 0.0)
+        return cached_statuses, cached_latency
 
-    latencies: dict[str, float] = {}
-
-    db_status = "ok"
-    db_start = time.perf_counter()
+    start = time.perf_counter()
+    statuses: dict[str, str | list[str]] = {"db_migrations": "ok"}
     try:
-        async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
+        migrations_current, current_versions, expected_versions = (
+            await _migrations_are_current()
+        )
+        if not migrations_current:
+            statuses["db_migrations"] = "error"
+            statuses["db_migrations_current"] = sorted(current_versions)
+            statuses["db_migrations_expected"] = sorted(expected_versions)
     except Exception:
-        db_status = "error"
-    else:
-        try:
-            (
-                migrations_current,
-                current_versions,
-                expected_versions,
-            ) = await _migrations_are_current()
-            if not migrations_current:
-                db_status = "error"
-                statuses["db_migrations"] = "error"
-                statuses["db_migrations_current"] = sorted(current_versions)
-                statuses["db_migrations_expected"] = sorted(expected_versions)
-        except Exception:
-            db_status = "error"
-    statuses["db"] = db_status
-    if db_status == "error":
-        statuses.setdefault("db_migrations", "error")
-    db_elapsed = time.perf_counter() - db_start
-    latencies["db_latency_ms"] = max(db_elapsed * 1000, 0.0)
-    record_health_probe("db", db_status, db_elapsed)
+        statuses["db_migrations"] = "error"
+    elapsed = time.perf_counter() - start
+    latency_seconds = max(elapsed, 0.0)
+    _migration_probe_cache.update(
+        {
+            "expires_at": now + _HEALTH_PROBE_CACHE_TTL_SECONDS,
+            "statuses": statuses,
+            "latency": latency_seconds,
+        }
+    )
+    return statuses, latency_seconds
 
+
+async def _probe_cache() -> tuple[dict[str, str], dict[str, float]]:
     cache_status = "disabled"
     cache_start = time.perf_counter()
     try:
@@ -347,15 +365,13 @@ async def healthz():
     except Exception:
         cache_status = "error"
     cache_elapsed = time.perf_counter() - cache_start
-    statuses["cache"] = cache_status
-    latencies["cache_latency_ms"] = max(cache_elapsed * 1000, 0.0)
+    statuses = {"cache": cache_status}
+    latencies = {"cache_latency_ms": max(cache_elapsed * 1000, 0.0)}
     record_health_probe("cache", cache_status, cache_elapsed)
+    return statuses, latencies
 
-    storage_status, storage_elapsed = await _probe_storage()
-    statuses["storage"] = storage_status
-    latencies["storage_latency_ms"] = max(storage_elapsed * 1000, 0.0)
-    record_health_probe("storage", storage_status, storage_elapsed)
 
+async def _probe_notification_queue() -> tuple[dict[str, str], dict[str, float]]:
     queue_status = "ok"
     queue_start = time.perf_counter()
     if getattr(settings, "notifications_queue_in_memory_only", False):
@@ -369,10 +385,13 @@ async def healthz():
         except Exception:
             queue_status = "error"
     queue_elapsed = time.perf_counter() - queue_start
-    statuses["notification_queue"] = queue_status
-    latencies["notification_queue_latency_ms"] = max(queue_elapsed * 1000, 0.0)
+    statuses = {"notification_queue": queue_status}
+    latencies = {"notification_queue_latency_ms": max(queue_elapsed * 1000, 0.0)}
     record_health_probe("notification_queue", queue_status, queue_elapsed)
+    return statuses, latencies
 
+
+async def _probe_file_scanner() -> tuple[dict[str, str], dict[str, float]]:
     scanner_start = time.perf_counter()
     if getattr(settings, "event_file_scanner_enabled", False):
         scanner_status = "ok"
@@ -383,9 +402,75 @@ async def healthz():
     else:
         scanner_status = "disabled"
     scanner_elapsed = time.perf_counter() - scanner_start
-    statuses["file_scanner"] = scanner_status
-    latencies["file_scanner_latency_ms"] = max(scanner_elapsed * 1000, 0.0)
+    statuses = {"file_scanner": scanner_status}
+    latencies = {"file_scanner_latency_ms": max(scanner_elapsed * 1000, 0.0)}
     record_health_probe("file_scanner", scanner_status, scanner_elapsed)
+    return statuses, latencies
+
+
+async def _probe_db(*, refresh_cache: bool = False) -> tuple[dict, dict[str, float]]:
+    statuses: dict[str, str | list[str]] = {}
+    latencies: dict[str, float] = {}
+    db_status = "ok"
+    db_start = time.perf_counter()
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+    except Exception:
+        db_status = "error"
+    else:
+        try:
+            migration_statuses, migration_latency = await _probe_db_migrations(
+                refresh_cache=refresh_cache
+            )
+            statuses.update(migration_statuses)
+            if migration_statuses.get("db_migrations") == "error":
+                db_status = "error"
+            latencies["db_migrations_latency_ms"] = max(
+                migration_latency * 1000, 0.0
+            )
+        except Exception:
+            db_status = "error"
+    statuses["db"] = db_status
+    if db_status == "error":
+        statuses.setdefault("db_migrations", "error")
+    db_elapsed = time.perf_counter() - db_start
+    latencies["db_latency_ms"] = max(db_elapsed * 1000, 0.0)
+    record_health_probe("db", db_status, db_elapsed)
+    return statuses, latencies
+
+
+def _should_refresh_health_cache(request: Request) -> bool:
+    refresh_value = request.query_params.get("refresh") or request.headers.get(
+        "x-health-refresh"
+    )
+    if refresh_value is None:
+        return False
+    normalized = str(refresh_value).strip().lower()
+    return normalized in {"1", "true", "yes", "refresh", "force"}
+
+
+@app.get("/healthz")
+async def healthz(request: Request):
+    refresh_requested = _should_refresh_health_cache(request)
+    if refresh_requested:
+        _reset_health_probe_caches()
+
+    db_task = _probe_db(refresh_cache=refresh_requested)
+    cache_task = _probe_cache()
+    storage_task = _probe_storage(refresh_cache=refresh_requested)
+    queue_task = _probe_notification_queue()
+    scanner_task = _probe_file_scanner()
+
+    probe_results = await asyncio.gather(
+        db_task, cache_task, storage_task, queue_task, scanner_task
+    )
+
+    statuses: dict[str, str | list[str]] = {}
+    latencies: dict[str, float] = {}
+    for probe_statuses, probe_latencies in probe_results:
+        statuses.update(probe_statuses)
+        latencies.update(probe_latencies)
 
     overall_ok = all(value != "error" for value in statuses.values())
     http_status = (
