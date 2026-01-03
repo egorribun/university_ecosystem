@@ -44,12 +44,19 @@ def upgrade() -> None:
     if not _column_exists(bind, _TABLE_NAME, _COLUMN_NAME):
         op.add_column(_TABLE_NAME, _COLUMN)
 
+    # Define columns manually to avoid FK reflection issues with autoload
     metadata = sa.MetaData()
-    active_sessions = sa.Table(_TABLE_NAME, metadata, autoload_with=bind)
+    active_sessions = sa.Table(
+
+        _TABLE_NAME,
+        metadata,
+        sa.Column("id", sa.Integer, primary_key=True),
+        sa.Column("signing_key", sa.String(), nullable=True),
+    )
 
     update_stmt = (
         sa.update(active_sessions)
-        .where(active_sessions.c.id == sa.bindparam("id"))
+        .where(active_sessions.c.id == sa.bindparam("sess_id"))
         .values(signing_key=sa.bindparam("signing_key"))
     )
 
@@ -59,8 +66,9 @@ def upgrade() -> None:
     rows = result.fetchall()
     for row in rows:
         bind.execute(
-            update_stmt, {"id": row.id, "signing_key": secrets.token_urlsafe(32)}
+            update_stmt, {"sess_id": row.id, "signing_key": secrets.token_urlsafe(32)}
         )
+
 
     with op.batch_alter_table(_TABLE_NAME) as batch_op:
         batch_op.alter_column(
