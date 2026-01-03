@@ -107,8 +107,8 @@ def test_settings_warn_when_env_matches_example(monkeypatch, caplog, tmp_path):
         example_path.write_bytes(test_example_content)
 
         with _temporary_env_file(test_example_content) as env_path:
-            from app.core.config import base as base_module
             from app.core import config as config_module
+            from app.core.config import base as base_module
 
             with caplog.at_level("WARNING"):
                 importlib.reload(base_module)
