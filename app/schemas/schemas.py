@@ -81,8 +81,6 @@ class UserCreate(UserBase):
     invite_code: str | None = None
 
 
-
-
 class NewsCommentOut(BaseModel):
     id: int
     content: str
