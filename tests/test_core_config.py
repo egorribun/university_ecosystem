@@ -84,14 +84,16 @@ def test_settings_allow_development_defaults_when_opted_in(monkeypatch):
 
 
 def test_settings_warn_when_env_matches_example(monkeypatch, caplog, tmp_path):
-    monkeypatch.delenv("DATABASE_URL", raising=False)
-    monkeypatch.delenv("SECRET_KEY", raising=False)
-
     # Create a complete .env.example with all required vars for the test
     secret_key = "Qj7p4R2zYx8N1a5Hk9V3u0Mw6Tg4Lr8Cz2Jv5Qw7Xn1Dk6Fh0Sg3Vb9Pp4Rz8Lm2"
+    database_url = "postgresql+asyncpg://test:test@localhost/test"
     test_example_content = (
-        f"DATABASE_URL=postgresql+asyncpg://test:test@localhost/test\nSECRET_KEY={secret_key}\n"
+        f"DATABASE_URL={database_url}\nSECRET_KEY={secret_key}\n"
     ).encode()
+
+    # Set env vars directly to work around Pydantic caching model_config.env_file
+    monkeypatch.setenv("DATABASE_URL", database_url)
+    monkeypatch.setenv("SECRET_KEY", secret_key)
 
     # Write both .env and .env.example with identical content
     example_path = BACKEND_ROOT / ".env.example"
@@ -105,8 +107,8 @@ def test_settings_warn_when_env_matches_example(monkeypatch, caplog, tmp_path):
         example_path.write_bytes(test_example_content)
 
         with _temporary_env_file(test_example_content) as env_path:
-            from app.core import config as config_module
             from app.core.config import base as base_module
+            from app.core import config as config_module
 
             with caplog.at_level("WARNING"):
                 importlib.reload(base_module)
