@@ -112,7 +112,20 @@ async function ensureConfigSymlink(sourcePath, destinationDir) {
   await fs.symlink(relative, destination);
 }
 
+async function ensureWrapperExecutable() {
+  // Ensure the wrapper script itself is executable on Unix systems
+  if (process.platform !== "win32") {
+    try {
+      await fs.chmod(wrapper, 0o755);
+    } catch (error) {
+      // Ignore errors if we can't set permissions (e.g. read-only filesystem)
+      console.warn(`Warning: Could not set executable permissions on ${wrapper}:`, error.message);
+    }
+  }
+}
+
 async function main() {
+  await ensureWrapperExecutable();
   await fs.mkdir(binDir, { recursive: true });
   await Promise.all(localCandidates.map(ensureLocalSymlink));
   await Promise.all(globalCandidates.map(ensureGlobalSymlink));
