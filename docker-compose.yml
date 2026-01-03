@@ -2,10 +2,10 @@ services:
   backend:
     build:
       context: .
-      dockerfile: root/backend.Dockerfile
+      dockerfile: backend.Dockerfile
       target: runtime
     env_file:
-      - path: root/.env
+      - path: .env
         required: false
     environment:
       # Using host machine's PostgreSQL database
@@ -41,7 +41,7 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: root/frontend.Dockerfile
+      dockerfile: frontend.Dockerfile
       target: runtime
       args:
         VITE_BACKEND_ORIGIN: ""
@@ -57,11 +57,11 @@ services:
   notifications-worker:
     build:
       context: .
-      dockerfile: root/backend.Dockerfile
+      dockerfile: backend.Dockerfile
       target: runtime
     command: python -m app.workers.notifications
     env_file:
-      - path: root/.env
+      - path: .env
         required: false
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:DevSecurePass2024!@host.docker.internal:5432/university
@@ -116,11 +116,11 @@ services:
   migrations:
     build:
       context: .
-      dockerfile: root/backend.Dockerfile
+      dockerfile: backend.Dockerfile
       target: runtime
     command: alembic stamp head
     env_file:
-      - ${ENV_FILE:-root/.env.example}
+      - ${ENV_FILE:-.env.example}
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://postgres:DevSecurePass2024!@postgres:5432/university}
       SECRET_KEY: ${SECRET_KEY:-Qj7p4R2zYx8N1a5Hk9V3u0Mw6Tg4Lr8Cz2Jv5Qw7Xn1Dk6Fh0Sg3Vb9Pp4Rz8Lm2}
@@ -128,6 +128,18 @@ services:
       postgres:
         condition: service_healthy
     restart: on-failure
+
+  imgproxy:
+    image: darthsim/imgproxy:latest
+    ports:
+      - "8082:8080"
+    environment:
+      IMGPROXY_KEY: ${IMGPROXY_KEY}
+      IMGPROXY_SALT: ${IMGPROXY_SALT}
+      IMGPROXY_ALLOWED_SOURCES: "http://backend:8000/,https://*,http://*"
+      IMGPROXY_USE_ETAG: "true"
+      IMGPROXY_DEVELOPMENT_ERRORS_MODE: "true"
+    restart: unless-stopped
 
 volumes:
   postgres-data:
