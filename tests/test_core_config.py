@@ -38,8 +38,10 @@ def test_settings_require_real_secret_when_env_missing(monkeypatch):
     monkeypatch.delenv("SECRET_KEY", raising=False)
 
     with _temporary_env_file(None):
+        from app.core.config import base as base_module
         from app.core import config as config_module
 
+        importlib.reload(base_module)
         config_module = importlib.reload(config_module)
 
         assert config_module._ENV_FILE is None
@@ -62,8 +64,10 @@ def test_settings_allow_development_defaults_when_opted_in(monkeypatch):
     monkeypatch.delenv("SECRET_KEY", raising=False)
 
     with _temporary_env_file(None):
+        from app.core.config import base as base_module
         from app.core import config as config_module
 
+        importlib.reload(base_module)
         config_module = importlib.reload(config_module)
 
         settings = config_module.Settings(_allow_missing=True)
@@ -101,9 +105,11 @@ def test_settings_warn_when_env_matches_example(monkeypatch, caplog, tmp_path):
         example_path.write_bytes(test_example_content)
 
         with _temporary_env_file(test_example_content) as env_path:
+            from app.core.config import base as base_module
             from app.core import config as config_module
 
             with caplog.at_level("WARNING"):
+                importlib.reload(base_module)
                 config_module = importlib.reload(config_module)
 
             assert env_path.resolve() == config_module._ENV_FILE
@@ -131,8 +137,10 @@ def test_notifications_allowed_push_topics_parsed(monkeypatch):
     )
 
     with _temporary_env_file(None):
+        from app.core.config import base as base_module
         from app.core import config as config_module
 
+        importlib.reload(base_module)
         config_module = importlib.reload(config_module)
         settings = config_module.Settings(_allow_missing=True)
 

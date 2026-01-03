@@ -21,7 +21,8 @@ def _ensure_time(value: datetime | time | None) -> time | None:
     if value is None:
         return None
     if isinstance(value, datetime):
-        return value.timetz() if value.tzinfo else value.time()
+        # Always return naive time for consistent iCal generation
+        return value.time()
     return value
 
 

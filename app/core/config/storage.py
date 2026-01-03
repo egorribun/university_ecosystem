@@ -73,6 +73,14 @@ class StorageSettings(BaseAppSettings):
             if m.strip()
         }
 
+    @cached_property
+    def chat_attachment_allowed_extensions_set(self) -> set[str]:
+        return {
+            e.strip().lower().lstrip(".")
+            for e in _coerce_str_list(self.chat_attachment_allowed_extensions)
+            if e.strip()
+        }
+
     @property
     def event_file_allowed_mime_types_set(self) -> set[str]:
         return {

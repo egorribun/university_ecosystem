@@ -219,6 +219,29 @@ class FeatureFlagService:
             return default
         return flag.is_enabled_for_user(user_id)
 
+    def get(self, name: str) -> FeatureFlag | None:
+        """Get a feature flag by name."""
+        return self._flags.get(name)
+
+    def enable(self, name: str) -> None:
+        """Enable a feature flag (sync, in-memory only)."""
+        flag = self._flags.get(name)
+        if flag:
+            flag.status = FlagStatus.ENABLED
+
+    def disable(self, name: str) -> None:
+        """Disable a feature flag (sync, in-memory only)."""
+        flag = self._flags.get(name)
+        if flag:
+            flag.status = FlagStatus.DISABLED
+
+    def set_percentage(self, name: str, percentage: int) -> None:
+        """Set percentage rollout for a flag (sync, in-memory only)."""
+        flag = self._flags.get(name)
+        if flag:
+            flag.status = FlagStatus.PERCENTAGE
+            flag.percentage = max(0, min(100, percentage))
+
     async def update(self, name: str, **kwargs) -> bool:
         """
         Update a feature flag and persist to Redis.
