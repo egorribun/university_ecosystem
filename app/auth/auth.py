@@ -262,6 +262,7 @@ async def _build_token_response(
     if refreshed_user is not None:
         user = refreshed_user
     from app.services.auth_service import attach_pending_email
+
     enriched_user = await attach_pending_email(db, user)
     if enriched_user is not None:
         user = enriched_user
