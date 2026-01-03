@@ -60,7 +60,8 @@ async def test_user_service_basics():
     # Mock db.get to return user
     db.get.return_value = user
     # Mock db.execute to return a mock result
-    # We use MagicMock for the result because scalars() is a synchronous call in SQLAlchemy
+    # We use MagicMock for the result because scalars() is a
+    # synchronous call in SQLAlchemy
     mock_result = MagicMock()
     mock_result.scalars.return_value.first.return_value = None
     mock_result.scalars.return_value.all.return_value = []

@@ -31,7 +31,8 @@ class EventRetryExhausted(Exception):
         self.original_error = original_error
         self.attempts = attempts
         super().__init__(
-            f"Event {event.event_type} failed after {attempts} attempts: {original_error}"
+            f"Event {event.event_type} failed after {attempts} "
+            f"attempts: {original_error}"
         )
 
 

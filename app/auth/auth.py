@@ -852,7 +852,8 @@ async def login_passkey_start(
         # Avoid user enumeration by failing generic if needed,
         # but for WebAuthn identifying we usually need the user
         # to get their keys.
-        # If we want to support discoverable credentials, we would return generic options.
+        # If we want to support discoverable credentials, we would
+        # return generic options.
         # For now, identified flow is required.
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,

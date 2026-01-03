@@ -234,13 +234,16 @@ async def prepare_database() -> AsyncIterator[None]:
         """
         )
         await conn.exec_driver_sql(
-            "CREATE INDEX IF NOT EXISTS ix_notifications_user_created ON notifications(user_id, created_at)"
+            "CREATE INDEX IF NOT EXISTS ix_notifications_user_created "
+            "ON notifications(user_id, created_at)"
         )
         await conn.exec_driver_sql(
-            "CREATE INDEX IF NOT EXISTS ix_notifications_dupe_check ON notifications(user_id, title, url, created_at)"
+            "CREATE INDEX IF NOT EXISTS ix_notifications_dupe_check "
+            "ON notifications(user_id, title, url, created_at)"
         )
         await conn.exec_driver_sql(
-            "CREATE INDEX IF NOT EXISTS ix_notifications_user_dedupe ON notifications(user_id, dedupe_key)"
+            "CREATE INDEX IF NOT EXISTS ix_notifications_user_dedupe "
+            "ON notifications(user_id, dedupe_key)"
         )
 
         # NotificationDelivery
@@ -256,12 +259,14 @@ async def prepare_database() -> AsyncIterator[None]:
                 delivered_at DATETIME,
                 status_code INTEGER,
                 detail TEXT,
-                FOREIGN KEY (notification_id) REFERENCES notifications(id) ON DELETE CASCADE
+                FOREIGN KEY (notification_id)
+                REFERENCES notifications(id) ON DELETE CASCADE
             )
         """
         )
         await conn.exec_driver_sql(
-            "CREATE INDEX IF NOT EXISTS ix_notification_deliveries_notif_channel ON notification_deliveries(notification_id, channel)"
+            "CREATE INDEX IF NOT EXISTS ix_notification_deliveries_notif_channel "
+            "ON notification_deliveries(notification_id, channel)"
         )
 
     yield
@@ -292,7 +297,8 @@ async def clean_database(prepare_database: None) -> AsyncIterator[None]:
 
             logging.warning(
                 (
-                    "SQLite database locked during test cleanup, retrying in %.1fs (attempt %d/%d)"
+                    "SQLite database locked during test cleanup, retrying in "
+                    "%.1fs (attempt %d/%d)"
                 ),
                 delay,
                 attempt,

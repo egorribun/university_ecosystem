@@ -55,7 +55,8 @@ async def test_security_headers_production_mode(monkeypatch):
     assert headers.get("X-Frame-Options") == "DENY"
     assert headers.get("Referrer-Policy") == "no-referrer"
     assert (
-        headers.get("Permissions-Policy") == "geolocation=(), microphone=(), camera=()"
+        headers.get("Permissions-Policy")
+        == "geolocation=(), microphone=(), camera=()"
     )
     assert headers.get("Cross-Origin-Opener-Policy") == "same-origin"
     assert headers.get("Cross-Origin-Embedder-Policy") == "require-corp"
@@ -124,7 +125,8 @@ async def test_security_headers_development_report_only(monkeypatch):
     report_only = headers.get("Content-Security-Policy-Report-Only", "")
     assert "default-src 'self'" in report_only
     assert (
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:5173 'report-sample'"
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' "
+        "http://localhost:5173 'report-sample'"
     ) in report_only
     assert (
         "trusted-types app dompurify-news goog#html 'allow-duplicates'" in report_only

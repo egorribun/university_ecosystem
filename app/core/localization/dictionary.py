@@ -14,7 +14,8 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
     },
     "email.reset.instructions": {
         "ru": (
-            "Вы запросили сброс пароля в Экосистеме ГУУ. Ссылка действует {minutes} минут."
+            "Вы запросили сброс пароля в Экосистеме ГУУ. "
+            "Ссылка действует {minutes} минут."
         ),
         "en": (
             "You requested a password reset in the GUU Ecosystem. "
@@ -103,7 +104,8 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
     },
     "notifications.mfa.reset.body": {
         "ru": (
-            "Администратор отключил ваши MFA-методы. Настройте защиту повторно при следующем входе."
+            "Администратор отключил ваши MFA-методы. "
+            "Настройте защиту повторно при следующем входе."
         ),
         "en": (
             "An administrator removed your MFA methods. "

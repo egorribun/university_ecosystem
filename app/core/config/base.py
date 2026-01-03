@@ -32,7 +32,8 @@ def _resolve_env_file(base_dir: Path) -> Path | None:
             else:
                 if candidate_bytes == example_bytes:
                     logging.getLogger(__name__).warning(
-                        "%s is identical to %s; update it with real secrets before deploying.",
+                        "%s is identical to %s; update it with real secrets "
+                        "before deploying.",
                         candidate,
                         example_path,
                     )

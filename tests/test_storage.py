@@ -65,11 +65,13 @@ def test_static_fs_extract_path(static_storage):
     # Prefix match
     assert static_storage._extract_relative_path("/static/a/b.txt") == Path("a/b.txt")
 
-    # Implementation doesn't handle schema-based URL extraction for StaticFS (simple string slicing)
+    # Implementation doesn't handle schema-based URL extraction for
+    # StaticFS (simple string slicing)
     # So we test what it DOES support
     assert static_storage._extract_relative_path("/static/a.jpg") == Path("a.jpg")
 
-    # If prefix doesn't match, it still returns the Path as long as it's not absolute or escaping
+    # If prefix doesn't match, it still returns the Path as long as
+    # it's not absolute or escaping
     assert static_storage._extract_relative_path("/other/path.txt") == Path(
         "other/path.txt"
     )

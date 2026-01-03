@@ -118,7 +118,8 @@ async def test_subscribe_flow(mock_db, mock_user, mock_request):
         mock_db.add.assert_called()
         mock_db.commit.assert_called()
 
-    # 2. Existing subscription from different user - now transfers ownership (no conflict)
+    # 2. Existing subscription from different user - now transfers
+    # ownership (no conflict)
     existing = models.PushSubscription(
         id=1,
         user_id=99,
@@ -558,7 +559,8 @@ async def test_admin_topic_routes(mock_db, mock_admin, mock_request):
         )
         assert res.user_id == 999
         # Assuming admin_update_user_topics updates the record in DB
-        # The actual logic in notifications.py for update is missing from my view but I'll assume standard flow
+        # The actual logic in notifications.py for update is missing
+        # from my view but I'll assume standard flow
         assert res.email == "target@e.com"
 
 

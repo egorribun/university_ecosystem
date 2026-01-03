@@ -418,7 +418,8 @@ async def test_spotify_tokens_are_encrypted_in_database(
     # Query spotify_integrations table instead of users table
     row = await db_session.execute(
         sa.text(
-            "SELECT access_token, refresh_token FROM spotify_integrations WHERE user_id = :user_id"
+            "SELECT access_token, refresh_token FROM spotify_integrations "
+            "WHERE user_id = :user_id"
         ),
         {"user_id": user.id},
     )

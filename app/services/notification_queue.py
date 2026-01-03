@@ -44,7 +44,10 @@ async def shutdown_notification_queue() -> None:
 
 
 async def cleanup_dead_lettered_jobs(retention_days: int = 30) -> int:
-    """No-op: Dead letter cleanup is not supported in TaskIQ mode (or handled by TaskIQ)."""
+    """
+    No-op: Dead letter cleanup is not supported in TaskIQ mode
+    (or handled by TaskIQ).
+    """
     return 0
 
 

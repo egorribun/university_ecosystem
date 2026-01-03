@@ -266,7 +266,10 @@ def _aggregate_results(
 
 
 async def _refresh_user_topic_preferences(db: AsyncSession, *, user_id: int) -> None:
-    """Synchronize stored user topic preferences with subscription data with robust upsert."""
+    """
+    Synchronize stored user topic preferences with subscription data
+    with robust upsert.
+    """
 
     topics_rows = (
         await db.execute(

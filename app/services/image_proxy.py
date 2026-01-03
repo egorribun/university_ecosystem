@@ -55,9 +55,12 @@ async def get_transformed_image(
         return data, mime
 
     # If not in cache, fetch from storage backend
-    # Note: StorageBackend protocol doesn't have a direct 'get_file_bytes' method in the protocol,
-    # but the implementations (StaticFSStorage, S3Storage) effectively work with paths.
-    # However, save_file returns a URL. We might need to fetch the file bytes differently.
+    # Note: StorageBackend protocol doesn't have a direct 'get_file_bytes'
+    # method in the protocol,
+    # but the implementations (StaticFSStorage, S3Storage) effectively work
+    # with paths.
+    # However, save_file returns a URL. We might need to fetch the file
+    # bytes differently.
 
     # We need a way to get file bytes from the backend or direct from disk/S3
     # Let's add a helper or look for one.
@@ -96,7 +99,8 @@ async def _fetch_source_bytes(backend: StorageBackend, path: str) -> bytes:
     # This returns a sanitized copy, making the data flow clearer for static analysis
     sanitized_path = _sanitize_path_input(path)
 
-    # Normalize path: ensure it doesn't have double slashes and has a leading slash for extraction logic
+    # Normalize path: ensure it doesn't have double slashes and has a
+    # leading slash for extraction logic
     normalized_path = "/" + sanitized_path.lstrip("/")
 
     if isinstance(backend, StaticFSStorage):
@@ -113,7 +117,8 @@ async def _fetch_source_bytes(backend: StorageBackend, path: str) -> bytes:
         full_path = _validate_path_within_base(backend.base_dir, rel_path)
 
         # Handle case where spaces in URL were meant to be underscores on disk
-        # Safe: full_path is validated to be within base_dir by _validate_path_within_base
+        # Safe: full_path is validated to be within base_dir by
+        # _validate_path_within_base
         if not full_path.exists() and " " in str(rel_path):  # lgtm[py/path-injection]
             underscored_rel = Path(str(rel_path).replace(" ", "_"))
             underscored_path = _validate_path_within_base(

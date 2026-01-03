@@ -96,15 +96,17 @@ class TestCriticalQueryPlans:
                 "Index Scan",
                 "Index Only Scan",
                 "Bitmap Index Scan",
-            ), f"User email lookup should use index, got: {plan['node_type']}"
+            ), (
+                f"User email lookup should use index, got: {plan['node_type']}"
+            )
 
     async def test_notifications_by_user_uses_index(self):
         """Verify that fetching notifications by user_id uses an index."""
         async with async_session() as session:
             query = """
-                SELECT * FROM notifications 
-                WHERE user_id = 1 
-                ORDER BY created_at DESC 
+                SELECT * FROM notifications
+                WHERE user_id = 1
+                ORDER BY created_at DESC
                 LIMIT 20
             """
             plan = await analyze_query_plan(session, query)
@@ -112,7 +114,10 @@ class TestCriticalQueryPlans:
             # Either indexed access or efficient scan on small table
             assert (
                 plan["estimated_cost"] < 1000 or plan["uses_index"]
-            ), f"Notifications query should be efficient, cost: {plan['estimated_cost']}"
+            ), (
+                f"Notifications query should be efficient, cost: "
+                f"{plan['estimated_cost']}"
+            )
 
     async def test_chat_messages_uses_index(self):
         """Verify that chat messages lookup uses chat_id index."""
@@ -126,15 +131,18 @@ class TestCriticalQueryPlans:
 
             assert (
                 plan["estimated_cost"] < 500 or plan["uses_index"]
-            ), f"Chat messages query should be efficient, cost: {plan['estimated_cost']}"
+            ), (
+                f"Chat messages query should be efficient, cost: "
+                f"{plan['estimated_cost']}"
+            )
 
     async def test_events_active_uses_index(self):
         """Verify that filtering active events uses an index."""
         async with async_session() as session:
             query = """
-                SELECT * FROM events 
-                WHERE is_active = true 
-                ORDER BY starts_at ASC 
+                SELECT * FROM events
+                WHERE is_active = true
+                ORDER BY starts_at ASC
                 LIMIT 20
             """
             plan = await analyze_query_plan(session, query)
@@ -149,8 +157,8 @@ class TestCriticalQueryPlans:
         async with async_session() as session:
             # Use actual table name 'schedule' and column 'start_time'
             query = """
-                SELECT * FROM schedule 
-                WHERE group_id = 1 
+                SELECT * FROM schedule
+                WHERE group_id = 1
                 AND start_time BETWEEN '2024-01-01' AND '2024-01-07'
             """
             plan = await analyze_query_plan(session, query)

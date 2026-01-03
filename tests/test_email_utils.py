@@ -25,7 +25,8 @@ def test_build_reset_email_content_default():
     link = "https://example.com/reset?token=123"
     subject, plain, html = build_reset_email_content(link, "John Doe")
 
-    # John Doe is used in HTML greeting but not necessarily in PLAIN (depending on translation)
+    # John Doe is used in HTML greeting but not necessarily in PLAIN
+    # (depending on translation)
     assert "John Doe" in html
     assert link in plain
     assert link in html
@@ -38,7 +39,8 @@ def test_build_reset_email_content_no_name():
     link = "https://example.com/reset?token=123"
     subject, plain, html = build_reset_email_content(link)
 
-    # Check that name placeholder isn't leaking raw (like ", ") if translation doesn't handle it
+    # Check that name placeholder isn't leaking raw (like ", ")
+    # if translation doesn't handle it
     # We just want to ensure it doesn't crash
     assert link in plain
     assert link in html

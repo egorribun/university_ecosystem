@@ -518,7 +518,8 @@ async def get_all_events(
     else:
         conditions.append(models.Event.ends_at < now)
 
-    # Optimization: Calculate participant count via subquery to avoid loading all attendance records
+    # Optimization: Calculate participant count via subquery to avoid loading
+    # all attendance records
     participant_count_sub = (
         select(func.count())
         .select_from(models.EventAttendance)
@@ -572,7 +573,8 @@ async def get_all_events(
     fetch_limit = safe_limit + 1 if safe_limit > 0 else 1
     page_stmt = ordered_stmt.limit(fetch_limit)
     rows = await db.execute(page_stmt)
-    # rows.all() returns a list of tuples: (Event, participant_count, EventAttendance|None)
+    # rows.all() returns a list of tuples:
+    # (Event, participant_count, EventAttendance|None)
     fetched_data = rows.all()
     # Separate events object list for cursor logic
     fetched_events = [row[0] for row in fetched_data]

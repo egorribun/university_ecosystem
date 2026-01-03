@@ -32,8 +32,8 @@ def get_optimized_image_url(
     if not settings.imgproxy_key or not settings.imgproxy_salt:
         return original_url
 
-    # Check if we should even try proxying
-    # Local files might need to be prefixed with the backend URL for imgproxy to fetch them
+    # Local files might need to be prefixed with the backend URL
+    # for imgproxy to fetch them
     full_source_url = original_url
     if original_url.startswith("/"):
         # For imgproxy to fetch it, we need to provide a full URL

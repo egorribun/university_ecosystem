@@ -127,7 +127,8 @@ class SecuritySettings(BaseAppSettings):
         normalized = value.strip().lower()
         if normalized not in {"same-origin", "same-site", "cross-origin"}:
             raise ValueError(
-                "CORP_VALUE must be one of 'same-origin', 'same-site', or 'cross-origin'"
+                "CORP_VALUE must be one of 'same-origin', 'same-site', "
+                "or 'cross-origin'"
             )
         return normalized
 

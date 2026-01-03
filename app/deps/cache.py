@@ -362,7 +362,8 @@ def cached(
             # Resolve TTL
             seconds = int(ttl.total_seconds()) if isinstance(ttl, timedelta) else ttl
 
-            # Optimization: If we have multiple layers, we can potentially use different TTLs
+            # Optimization: If we have multiple layers, we can potentially use
+            # different TTLs
             # but for now we follow the BaseCache interface.
             # If it's a TieredCache, we could technically override set behavior here
             # but sticking to standard for now.
@@ -379,7 +380,8 @@ _cache_backend: BaseCache | None = None
 
 
 def _normalize_payload(payload: Any) -> tuple[Any, bytes]:
-    # Use jsonable_encoder to handle Pydantic models, SQLAlchemy models (partially), etc.
+    # Use jsonable_encoder to handle Pydantic models, SQLAlchemy models
+    # (partially), etc.
     jsonable = jsonable_encoder(payload)
     serialized = json.dumps(
         jsonable,
