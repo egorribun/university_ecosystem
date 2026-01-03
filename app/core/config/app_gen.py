@@ -58,6 +58,8 @@ class AppGeneralSettings(BaseAppSettings):
     @property
     def metrics_allowlist_entries(self) -> list[str]:
         return _coerce_str_list(self.metrics_allowlist)
+
+
 def _coerce_str_list(values: object) -> list[str]:
     if not values:
         return []
@@ -65,6 +67,7 @@ def _coerce_str_list(values: object) -> list[str]:
         items = [item.strip() for item in values.split(",")]
     else:
         from collections.abc import Iterable
+
         if isinstance(values, Iterable):
             items = [str(item).strip() for item in values]
         else:
