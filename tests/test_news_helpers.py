@@ -1,7 +1,7 @@
 import pytest
-from app.core.localization import DEFAULT_LOCALE
 
 from app.api import news
+from app.core.localization import DEFAULT_LOCALE
 
 
 def test_normalized_cache_locale_supported_and_default_fallback():

@@ -33,9 +33,6 @@ class SecuritySettings(BaseAppSettings):
     app_base_url: str = "http://localhost:5173"
     trusted_hosts: str | list[str] = "localhost,127.0.0.1"
 
-
-
-
     request_id_header: str = "x-request-id"
     trace_header: str = "x-trace-id"
 

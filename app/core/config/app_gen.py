@@ -41,7 +41,6 @@ class AppGeneralSettings(BaseAppSettings):
 
     health_storage_probe_min_interval_seconds: int = 3600
 
-
     @field_validator("auto_create_schema", mode="before")
     @classmethod
     def _default_auto_create_schema(

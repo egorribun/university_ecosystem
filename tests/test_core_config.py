@@ -8,7 +8,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BACKEND_ROOT = PROJECT_ROOT
 
 
-
 @contextmanager
 def _temporary_env_file(content: bytes | None):
     env_path = BACKEND_ROOT / ".env"

@@ -5,6 +5,7 @@ import logging
 import time
 from collections.abc import AsyncGenerator
 from contextvars import ContextVar
+from typing import TYPE_CHECKING
 
 from sqlalchemy import event, text
 from sqlalchemy.exc import DBAPIError
@@ -17,11 +18,9 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
 
-from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from app.core.config import Settings
 from app.core.config import settings
-
 
 logger = logging.getLogger(__name__)
 slow_query_logger = logging.getLogger("slow_queries")
@@ -35,8 +34,7 @@ _query_start_time: ContextVar[float | None] = ContextVar(
 )
 
 
-def _build_engine_kwargs(current_settings: "Settings") -> dict[str, object]:
-
+def _build_engine_kwargs(current_settings: Settings) -> dict[str, object]:
     kwargs: dict[str, object] = {
         "pool_pre_ping": True,
         "echo": False,
@@ -90,8 +88,7 @@ def _after_cursor_execute(
         )
 
 
-def _setup_slow_query_logging(engine: AsyncEngine, current_settings: "Settings") -> None:
-
+def _setup_slow_query_logging(engine: AsyncEngine, current_settings: Settings) -> None:
     """
     Set up slow query logging for the given engine.
 
@@ -110,9 +107,8 @@ def _setup_slow_query_logging(engine: AsyncEngine, current_settings: "Settings")
 
 
 def create_session_factory(
-    current_settings: "Settings" = settings,
+    current_settings: Settings = settings,
 ) -> tuple[AsyncEngine, async_sessionmaker[AsyncSession]]:
-
     engine_kwargs = _build_engine_kwargs(current_settings)
     engine = create_async_engine(current_settings.database_url, **engine_kwargs)
 

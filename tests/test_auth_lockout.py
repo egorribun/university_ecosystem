@@ -3,12 +3,12 @@ import json
 import logging
 
 import pytest
-from app.core.localization import translate
 from fastapi import status
 from sqlalchemy import select
 
 from app.auth.security import get_password_hash
 from app.core.config import settings
+from app.core.localization import translate
 from app.models.models import FailedLoginAttempt
 
 pytestmark = pytest.mark.anyio("asyncio")

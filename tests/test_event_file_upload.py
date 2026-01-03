@@ -10,13 +10,13 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from app.core.localization import translate
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy import select
 from starlette.datastructures import Headers
 
 from app.api import events
 from app.core.config import settings
+from app.core.localization import translate
 from app.models import models
 from app.schemas import schemas
 from app.utils import files

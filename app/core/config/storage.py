@@ -3,7 +3,6 @@ from __future__ import annotations
 from functools import cached_property
 from pathlib import Path
 
-
 from pydantic import AliasChoices, Field, field_validator
 
 from .base import _PROJECT_ROOT, BaseAppSettings, _coerce_int_list
@@ -81,7 +80,6 @@ class StorageSettings(BaseAppSettings):
             for m in _coerce_str_list(self.event_file_allowed_mime_types)
             if m.strip()
         }
-
 
     @field_validator("storage_backend")
     @classmethod

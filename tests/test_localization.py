@@ -1,5 +1,6 @@
-from app.core.localization import resolve_locale, translate
 from starlette.datastructures import Headers, QueryParams
+
+from app.core.localization import resolve_locale, translate
 
 
 class _DummyRequest:
