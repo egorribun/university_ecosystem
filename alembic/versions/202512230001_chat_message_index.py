@@ -19,7 +19,8 @@ depends_on = None
 
 def upgrade() -> None:
     # Composite index for unread message count queries:
-    # SELECT COUNT(*) FROM messages WHERE chat_id = ? AND read_status = false AND sender_id != ?
+    # SELECT COUNT(*) FROM messages WHERE chat_id = ?
+    # AND read_status = false AND sender_id != ?
     op.create_index(
         "ix_messages_chat_unread_sender",
         "messages",

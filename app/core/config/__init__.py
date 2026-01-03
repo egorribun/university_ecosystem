@@ -2,14 +2,12 @@ from __future__ import annotations
 
 import logging
 from functools import cached_property
-from pathlib import Path
 
 from pydantic import ValidationInfo, field_validator
 
 from .app_gen import AppGeneralSettings
 from .base import (
     _DEVELOPMENT_ENVIRONMENTS,
-    _ENV_FILE,
     _PROJECT_ROOT,
 )
 from .base import (

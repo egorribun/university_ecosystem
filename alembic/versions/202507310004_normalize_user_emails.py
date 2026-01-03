@@ -41,7 +41,8 @@ def upgrade() -> None:
     if dialect in {"postgresql", "sqlite"}:
         op.execute(
             sa.text(
-                "CREATE UNIQUE INDEX IF NOT EXISTS ux_users_lower_email ON users (lower(email))"
+                "CREATE UNIQUE INDEX IF NOT EXISTS ux_users_lower_email "
+                "ON users (lower(email))"
             )
         )
     else:

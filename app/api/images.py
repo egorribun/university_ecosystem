@@ -42,7 +42,8 @@ async def proxy_image(
 
     backend = _get_storage_backend()
     try:
-        # Path might have leading slash from URL capturing, strip it for backend compatibility
+        # Path might have leading slash from URL capturing,
+        # strip it for backend compatibility
         normalized_path = path.lstrip("/")
 
         data, mime = await get_transformed_image(

@@ -81,18 +81,6 @@ class UserCreate(UserBase):
     invite_code: str | None = None
 
 
-class NewsBase(BaseModel):
-    title: str
-    content: str
-    image_url: str | None = None
-
-
-class NewsOut(NewsBase):
-    id: int
-    created_at: datetime
-    image_url: str | None = None
-
-    model_config = ConfigDict(from_attributes=True)
 
 
 class NewsCommentOut(BaseModel):

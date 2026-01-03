@@ -1,3 +1,5 @@
+from fastapi import APIRouter
+
 from .audit import router as audit_router
 from .feature_flags import router as feature_flags_router
 

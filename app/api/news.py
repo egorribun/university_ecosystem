@@ -98,7 +98,10 @@ def _news_list_cache_key(
     locale: str | None, limit: int, cursor: str | None, version: str
 ) -> str:
     normalized = _normalized_cache_locale(locale)
-    return f"{_NEWS_LIST_CACHE_PREFIX}:{version}:{normalized}:limit={limit}:cursor={cursor or ''}"
+    return (
+        f"{_NEWS_LIST_CACHE_PREFIX}:{version}:{normalized}:"
+        f"limit={limit}:cursor={cursor or ''}"
+    )
 
 
 def _news_item_cache_key(news_id: int, locale: str | None) -> str:

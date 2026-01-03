@@ -44,6 +44,7 @@ from app.schemas.schemas import (
     TokenWithProfile,
     UserCreate,
     UserOut,
+    WebAuthnAuthenticationOptionsOut,
     WebAuthnRegistrationOptionsOut,
     WebAuthnRegistrationVerifyIn,
 )
@@ -849,7 +850,8 @@ async def login_passkey_start(
     user = res.scalars().first()
     if not user or not user.is_active:
         # Avoid user enumeration by failing generic if needed,
-        # but for WebAuthn identifying we usually need the user to get their keys.
+        # but for WebAuthn identifying we usually need the user
+        # to get their keys.
         # If we want to support discoverable credentials, we would return generic options.
         # For now, identified flow is required.
         raise HTTPException(
@@ -1441,7 +1443,8 @@ async def verify_mfa_challenge(
             service = WebAuthnService(db)
 
             # Extract challenge from payload or challenge table?
-            # In _collect_mfa_challenges we put options (containing challenge) into payload['options']
+            # In _collect_mfa_challenges we put options
+            # (containing challenge) into payload['options']
             webauthn_challenge = challenge.payload.get("options", {}).get("challenge")
             if not webauthn_challenge:
                 raise HTTPException(

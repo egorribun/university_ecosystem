@@ -51,8 +51,12 @@ def upgrade() -> None:
     # Migrate data
     op.execute(
         """
-        INSERT INTO data_access_logs (id, actor_user_id, subject_user_id, resource_type, resource_id, action, context, ip_address, user_agent, created_at, signature)
-        SELECT id, actor_user_id, subject_user_id, resource_type, resource_id, action, context, ip_address, user_agent, created_at, signature
+        INSERT INTO data_access_logs (
+            id, actor_user_id, subject_user_id, resource_type, resource_id,
+            action, context, ip_address, user_agent, created_at, signature
+        )
+        SELECT id, actor_user_id, subject_user_id, resource_type, resource_id,
+               action, context, ip_address, user_agent, created_at, signature
         FROM data_access_logs_old;
     """
     )
@@ -86,8 +90,12 @@ def upgrade() -> None:
     )
     op.execute(
         """
-        INSERT INTO notifications (id, user_id, title, title_en, body, body_en, type, url, dedupe_key, created_at, read, read_at)
-        SELECT id, user_id, title, title_en, body, body_en, type, url, dedupe_key, created_at, read, read_at
+        INSERT INTO notifications (
+            id, user_id, title, title_en, body, body_en, type, url,
+            dedupe_key, created_at, read, read_at
+        )
+        SELECT id, user_id, title, title_en, body, body_en, type, url,
+               dedupe_key, created_at, read, read_at
         FROM notifications_old;
     """
     )
@@ -109,20 +117,26 @@ def upgrade() -> None:
             status_code INTEGER,
             detail TEXT,
             PRIMARY KEY (id, attempted_at),
-            FOREIGN KEY (notification_id, notification_created_at) REFERENCES notifications(id, created_at) ON DELETE CASCADE
+            FOREIGN KEY (notification_id, notification_created_at)
+                REFERENCES notifications(id, created_at) ON DELETE CASCADE
         ) PARTITION BY RANGE (attempted_at);
     """
     )
     op.execute(
         """
-        CREATE TABLE notification_deliveries_default PARTITION OF notification_deliveries DEFAULT;
+        CREATE TABLE notification_deliveries_default
+        PARTITION OF notification_deliveries DEFAULT;
     """
     )
     # Migrate data with join
     op.execute(
         """
-        INSERT INTO notification_deliveries (id, notification_id, notification_created_at, channel, status, attempted_at, delivered_at, status_code, detail)
-        SELECT d.id, d.notification_id, n.created_at, d.channel, d.status, d.attempted_at, d.delivered_at, d.status_code, d.detail
+        INSERT INTO notification_deliveries (
+            id, notification_id, notification_created_at, channel, status,
+            attempted_at, delivered_at, status_code, detail
+        )
+        SELECT d.id, d.notification_id, n.created_at, d.channel, d.status,
+               d.attempted_at, d.delivered_at, d.status_code, d.detail
         FROM notification_deliveries_old d
         JOIN notifications_old n ON d.notification_id = n.id;
     """
@@ -175,7 +189,8 @@ def downgrade() -> None:
         """
         CREATE TABLE notification_deliveries (
             id SERIAL PRIMARY KEY,
-            notification_id INTEGER NOT NULL REFERENCES notifications(id) ON DELETE CASCADE,
+            notification_id INTEGER NOT NULL
+                REFERENCES notifications(id) ON DELETE CASCADE,
             channel VARCHAR NOT NULL DEFAULT 'inapp',
             status VARCHAR NOT NULL DEFAULT 'delivered',
             attempted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -187,8 +202,12 @@ def downgrade() -> None:
     )
     op.execute(
         """
-        INSERT INTO notification_deliveries (id, notification_id, channel, status, attempted_at, delivered_at, status_code, detail)
-        SELECT id, notification_id, channel, status, attempted_at, delivered_at, status_code, detail
+        INSERT INTO notification_deliveries (
+            id, notification_id, channel, status, attempted_at,
+            delivered_at, status_code, detail
+        )
+        SELECT id, notification_id, channel, status, attempted_at,
+               delivered_at, status_code, detail
         FROM notification_deliveries_part;
     """
     )

@@ -100,7 +100,7 @@ class TestEnsureTime:
         assert result == t
 
     def test_ensure_time_from_datetime(self):
-        dt = datetime(2024, 1, 15, 9, 30, 0)
+        dt = datetime(2024, 1, 15, 9, 30, 0, tzinfo=UTC)
         result = _ensure_time(dt)
         assert result == time(9, 30, 0)
 
@@ -369,8 +369,8 @@ class TestGenerateScheduleIcs:
         group = self._make_mock_group()
         lesson = self._make_mock_lesson()
         # Some ORMs might return datetime instead of time
-        lesson.start_time = datetime(2024, 1, 15, 9, 0, 0)
-        lesson.end_time = datetime(2024, 1, 15, 10, 30, 0)
+        lesson.start_time = datetime(2024, 1, 15, 9, 0, 0, tzinfo=UTC)
+        lesson.end_time = datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
 
         result = generate_schedule_ics(group, [lesson], weeks=1)
 
