@@ -85,7 +85,6 @@ def upgrade() -> None:
         )
 
 
-
 def downgrade() -> None:
     """Remove the signing_key column."""
 
