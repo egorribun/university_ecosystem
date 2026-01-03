@@ -64,7 +64,10 @@ export function SyncStatus() {
       <Tooltip
         title={
           !isOnline
-            ? t("common:sync.offline", { count: pendingCount, defaultValue: `Offline (${pendingCount} queued)` })
+            ? t("common:sync.offline", {
+                count: pendingCount,
+                defaultValue: `Offline (${pendingCount} queued)`,
+              })
             : t("common:sync.online", { defaultValue: "All synced" })
         }
       >

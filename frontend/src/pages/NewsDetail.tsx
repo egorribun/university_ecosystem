@@ -599,7 +599,9 @@ export default function NewsDetail() {
           <footer className="w-full max-w-4xl mt-12 border-t border-white/10 pt-10">
             <div className="flex items-center gap-3 mb-8">
               <ChatBubbleOutlineIcon className="text-[color:var(--nav-link)]" />
-              <h2 className="text-xl font-bold">{t("news:sections.comments", { defaultValue: "Комментарии" })}</h2>
+              <h2 className="text-xl font-bold">
+                {t("news:sections.comments", { defaultValue: "Комментарии" })}
+              </h2>
               <span className="px-2 py-0.5 rounded-full bg-glass/20 text-xs font-bold tabular-nums">
                 {comments.length}
               </span>
@@ -608,13 +610,20 @@ export default function NewsDetail() {
             <div className="space-y-6 mb-10">
               {comments.length === 0 ? (
                 <p className="text-[color:var(--secondary-text)] italic py-4">
-                  {t("news:states.noComments", { defaultValue: "Пока нет ни одного комментария. Будьте первым!" })}
+                  {t("news:states.noComments", {
+                    defaultValue: "Пока нет ни одного комментария. Будьте первым!",
+                  })}
                 </p>
               ) : (
                 comments.map((comment) => (
-                  <div key={comment.id} className="flex flex-col gap-2 p-4 rounded-ue-lg bg-glass/5 border border-white/5">
+                  <div
+                    key={comment.id}
+                    className="flex flex-col gap-2 p-4 rounded-ue-lg bg-glass/5 border border-white/5"
+                  >
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-sm text-[color:var(--page-text)]">{comment.user_name}</span>
+                      <span className="font-bold text-sm text-[color:var(--page-text)]">
+                        {comment.user_name}
+                      </span>
                       <time className="text-[0.7rem] text-[color:var(--secondary-text)] uppercase font-semibold">
                         {getMoscowDate(comment.created_at)}
                       </time>
@@ -630,7 +639,9 @@ export default function NewsDetail() {
                 <textarea
                   value={commentText}
                   onChange={(e) => setCommentText(e.target.value)}
-                  placeholder={t("news:form.commentPlaceholder", { defaultValue: "Напишите что-нибудь..." })}
+                  placeholder={t("news:form.commentPlaceholder", {
+                    defaultValue: "Напишите что-нибудь...",
+                  })}
                   className={cn(textareaClass, "min-h-[100px]")}
                 />
                 <div className="flex justify-end">

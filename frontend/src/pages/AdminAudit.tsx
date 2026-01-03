@@ -50,7 +50,7 @@ function Row({ log }: { log: AuditLog }) {
         hover
         sx={{
           "& > *": { borderBottom: "unset" },
-          bgcolor: log.is_valid ? "transparent" : "rgba(239, 68, 68, 0.05)"
+          bgcolor: log.is_valid ? "transparent" : "rgba(239, 68, 68, 0.05)",
         }}
       >
         <TableCell width={50}>
@@ -101,30 +101,52 @@ function Row({ log }: { log: AuditLog }) {
       <TableRow>
         <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={6}>
           <Collapse in={open} timeout="auto" unmountOnExit>
-            <Box sx={{ margin: 2, p: 2, bgcolor: "rgba(0,0,0,0.02)", borderRadius: 2, border: "1px solid var(--glass-border)" }}>
+            <Box
+              sx={{
+                margin: 2,
+                p: 2,
+                bgcolor: "rgba(0,0,0,0.02)",
+                borderRadius: 2,
+                border: "1px solid var(--glass-border)",
+              }}
+            >
               <Typography variant="subtitle2" gutterBottom component="div" fontWeight={700}>
                 Details
               </Typography>
               <Stack spacing={1}>
                 <Box display="flex" gap={2}>
-                  <Typography variant="caption" fontWeight={700}>Resource ID:</Typography>
+                  <Typography variant="caption" fontWeight={700}>
+                    Resource ID:
+                  </Typography>
                   <Typography variant="caption">{log.resource_id || "N/A"}</Typography>
                 </Box>
                 <Box display="flex" gap={2}>
-                  <Typography variant="caption" fontWeight={700}>Subject:</Typography>
-                  <Typography variant="caption">{log.subject_name || "N/A"} ({log.subject_user_id || "N/A"})</Typography>
+                  <Typography variant="caption" fontWeight={700}>
+                    Subject:
+                  </Typography>
+                  <Typography variant="caption">
+                    {log.subject_name || "N/A"} ({log.subject_user_id || "N/A"})
+                  </Typography>
                 </Box>
                 <Box display="flex" gap={2}>
-                  <Typography variant="caption" fontWeight={700}>IP Address:</Typography>
+                  <Typography variant="caption" fontWeight={700}>
+                    IP Address:
+                  </Typography>
                   <Typography variant="caption">{log.ip_address || "Unknown"}</Typography>
                 </Box>
                 <Box display="flex" gap={2}>
-                  <Typography variant="caption" fontWeight={700}>User Agent:</Typography>
-                  <Typography variant="caption" sx={{ wordBreak: "break-all" }}>{log.user_agent || "N/A"}</Typography>
+                  <Typography variant="caption" fontWeight={700}>
+                    User Agent:
+                  </Typography>
+                  <Typography variant="caption" sx={{ wordBreak: "break-all" }}>
+                    {log.user_agent || "N/A"}
+                  </Typography>
                 </Box>
                 {log.context && Object.keys(log.context).length > 0 && (
                   <Box>
-                    <Typography variant="caption" fontWeight={700}>Context:</Typography>
+                    <Typography variant="caption" fontWeight={700}>
+                      Context:
+                    </Typography>
                     <Paper
                       variant="outlined"
                       sx={{
@@ -135,7 +157,7 @@ function Row({ log }: { log: AuditLog }) {
                         fontFamily: "monospace",
                         fontSize: "0.75rem",
                         maxHeight: 200,
-                        overflow: "auto"
+                        overflow: "auto",
                       }}
                     >
                       <pre>{JSON.stringify(log.context, null, 2)}</pre>
@@ -183,7 +205,7 @@ export default function AdminAudit() {
     void fetchLogs()
   }, [fetchLogs])
 
-  const handleChangePage = (event: unknown,控制: number) => {
+  const handleChangePage = (event: unknown, 控制: number) => {
     setPage(控制)
   }
 
@@ -205,10 +227,7 @@ export default function AdminAudit() {
         }}
       >
         <Box maxWidth={1400} mx="auto">
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-          >
+          <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
             <Typography
               variant="h4"
               fontWeight={800}
@@ -217,7 +236,7 @@ export default function AdminAudit() {
                 background: "linear-gradient(45deg, #fbbf24, #f59e0b)",
                 WebkitBackgroundClip: "text",
                 WebkitTextFillColor: "transparent",
-                letterSpacing: "-0.02em"
+                letterSpacing: "-0.02em",
               }}
             >
               {t("audit.title", "Secure Audit Logs")}
@@ -227,21 +246,22 @@ export default function AdminAudit() {
           {/* Filters */}
           <Paper
             sx={{
-                p: 2, mb: 3,
-                borderRadius: 3,
-                display: "flex",
-                gap: 2,
-                flexWrap: "wrap",
-                bgcolor: "var(--surface-accent)",
-                border: "1px solid var(--glass-border)"
+              p: 2,
+              mb: 3,
+              borderRadius: 3,
+              display: "flex",
+              gap: 2,
+              flexWrap: "wrap",
+              bgcolor: "var(--surface-accent)",
+              border: "1px solid var(--glass-border)",
             }}
           >
-             <TextField
+            <TextField
               label="Resource Type"
               variant="outlined"
               size="small"
               value={filters.resource_type}
-              onChange={(e) => setFilters(f => ({ ...f, resource_type: e.target.value }))}
+              onChange={(e) => setFilters((f) => ({ ...f, resource_type: e.target.value }))}
               sx={{ minWidth: 200 }}
             />
             <TextField
@@ -249,7 +269,7 @@ export default function AdminAudit() {
               variant="outlined"
               size="small"
               value={filters.action}
-              onChange={(e) => setFilters(f => ({ ...f, action: e.target.value }))}
+              onChange={(e) => setFilters((f) => ({ ...f, action: e.target.value }))}
               sx={{ minWidth: 200 }}
             />
           </Paper>
@@ -266,41 +286,51 @@ export default function AdminAudit() {
             }}
           >
             {loading && logs.length === 0 ? (
-                <Box display="flex" justifyContent="center" p={10}>
-                    <CircularProgress color="inherit" />
-                </Box>
+              <Box display="flex" justifyContent="center" p={10}>
+                <CircularProgress color="inherit" />
+              </Box>
             ) : (
-                <>
+              <>
                 <Table>
-                <TableHead>
+                  <TableHead>
                     <TableRow sx={{ bgcolor: "rgba(0,0,0,0.05)" }}>
-                    <TableCell />
-                    <TableCell sx={{ fontWeight: 700, color: "var(--page-text)" }}>Time</TableCell>
-                    <TableCell sx={{ fontWeight: 700, color: "var(--page-text)" }}>Actor</TableCell>
-                    <TableCell sx={{ fontWeight: 700, color: "var(--page-text)" }}>Action</TableCell>
-                    <TableCell sx={{ fontWeight: 700, color: "var(--page-text)" }}>Target</TableCell>
-                    <TableCell align="center" sx={{ fontWeight: 700, color: "var(--page-text)" }}>Integrity</TableCell>
+                      <TableCell />
+                      <TableCell sx={{ fontWeight: 700, color: "var(--page-text)" }}>
+                        Time
+                      </TableCell>
+                      <TableCell sx={{ fontWeight: 700, color: "var(--page-text)" }}>
+                        Actor
+                      </TableCell>
+                      <TableCell sx={{ fontWeight: 700, color: "var(--page-text)" }}>
+                        Action
+                      </TableCell>
+                      <TableCell sx={{ fontWeight: 700, color: "var(--page-text)" }}>
+                        Target
+                      </TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 700, color: "var(--page-text)" }}>
+                        Integrity
+                      </TableCell>
                     </TableRow>
-                </TableHead>
-                <TableBody>
+                  </TableHead>
+                  <TableBody>
                     <AnimatePresence mode="popLayout">
-                    {logs.map((log) => (
+                      {logs.map((log) => (
                         <Row key={log.id} log={log} />
-                    ))}
+                      ))}
                     </AnimatePresence>
-                </TableBody>
+                  </TableBody>
                 </Table>
                 <TablePagination
-                    rowsPerPageOptions={[25, 50, 100]}
-                    component="div"
-                    count={total}
-                    rowsPerPage={rowsPerPage}
-                    page={page}
-                    onPageChange={handleChangePage}
-                    onRowsPerPageChange={handleChangeRowsPerPage}
-                    sx={{ color: "var(--page-text)" }}
+                  rowsPerPageOptions={[25, 50, 100]}
+                  component="div"
+                  count={total}
+                  rowsPerPage={rowsPerPage}
+                  page={page}
+                  onPageChange={handleChangePage}
+                  onRowsPerPageChange={handleChangeRowsPerPage}
+                  sx={{ color: "var(--page-text)" }}
                 />
-                </>
+              </>
             )}
           </TableContainer>
         </Box>

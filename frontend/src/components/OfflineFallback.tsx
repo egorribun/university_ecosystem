@@ -51,7 +51,7 @@ export function OfflineFallback({ onRetry }: OfflineFallbackProps) {
       >
         <Button
           variant="solid"
-          onClick={() => onRetry ? onRetry() : window.location.reload()}
+          onClick={() => (onRetry ? onRetry() : window.location.reload())}
           leadingIcon={<RefreshIcon />}
         >
           {t("offlineFallback.retry")}

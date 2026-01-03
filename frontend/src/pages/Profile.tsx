@@ -7,7 +7,7 @@ import type { User } from "@/types/User"
 import type {
   WebAuthnCredential,
   WebAuthnRegistrationOptionsOut,
-  WebAuthnRegistrationVerifyIn
+  WebAuthnRegistrationVerifyIn,
 } from "@/types/Mfa"
 import profileBg from "../assets/background.png"
 import guuLogo from "../assets/guu_logo.png"
@@ -531,10 +531,15 @@ export default function Profile() {
         <PageFadeIn>
           <div className="max-w-[1400px] mx-auto w-full px-4 py-12">
             <Card className="overflow-hidden">
-               <div className="h-64 relative">
+              <div className="h-64 relative">
                 <Skeleton width="100%" height="100%" />
                 <div className="absolute -bottom-16 left-12">
-                   <Skeleton width={160} height={160} rounded="50%" className="border-4 border-white" />
+                  <Skeleton
+                    width={160}
+                    height={160}
+                    rounded="50%"
+                    className="border-4 border-white"
+                  />
                 </div>
               </div>
               <div className="pt-20 px-12 pb-12 space-y-6">
@@ -1364,7 +1369,7 @@ export default function Profile() {
                                           </span>
                                           <span className="text-secondary text-[10px] sm:text-xs">
                                             {t("profile:passkeys.added", {
-                                              date: new Date(pk.created_at).toLocaleDateString()
+                                              date: new Date(pk.created_at).toLocaleDateString(),
                                             })}
                                           </span>
                                         </div>
@@ -1519,9 +1524,7 @@ export default function Profile() {
           {t("profile:dialog.addPasskey.title")}
         </DialogTitle>
         <DialogContent className="flex flex-col gap-4 p-6">
-          <p className="text-secondary text-sm">
-            {t("profile:dialog.addPasskey.description")}
-          </p>
+          <p className="text-secondary text-sm">{t("profile:dialog.addPasskey.description")}</p>
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-bold text-page-foreground">
               {t("profile:dialog.addPasskey.labelField")}
@@ -1550,9 +1553,7 @@ export default function Profile() {
             disabled={registerPasskeyMutation.isPending || !passkeyLabel.trim()}
             className="flex-1 py-2.5 px-4 rounded-xl bg-nav-link text-white font-black text-sm shadow-lg hover:shadow-nav-link/25 disabled:opacity-50 transition-all duration-200"
           >
-            {registerPasskeyMutation.isPending
-              ? t("profile:form.saving")
-              : t("common:buttons.add")}
+            {registerPasskeyMutation.isPending ? t("profile:form.saving") : t("common:buttons.add")}
           </button>
         </DialogActions>
       </Dialog>

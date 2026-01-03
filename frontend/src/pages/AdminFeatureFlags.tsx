@@ -52,36 +52,45 @@ export default function AdminFeatureFlags() {
   const handlePercentageChange = async (name: string, value: number) => {
     await api.patch(`/admin/feature-flags/${name}`, {
       status: "percentage",
-      percentage: value
+      percentage: value,
     })
     void fetchFlags()
   }
 
   const getStatusColor = (status: FlagStatus) => {
     switch (status) {
-      case "enabled": return "success"
-      case "percentage": return "info"
-      default: return "default"
+      case "enabled":
+        return "success"
+      case "percentage":
+        return "info"
+      default:
+        return "default"
     }
   }
 
   if (loading) {
     return (
       <Layout>
-        <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh" bgcolor="var(--page-bg)">
-            <CircularProgress
-                variant="indeterminate"
-                disableShrink
-                sx={{
-                color: "var(--primary-main)",
-                animationDuration: "550ms",
-                [`& .${circularProgressClasses.circle}`]: {
-                    strokeLinecap: "round",
-                },
-                }}
-                size={40}
-                thickness={4}
-            />
+        <Box
+          display="flex"
+          justifyContent="center"
+          alignItems="center"
+          minHeight="100vh"
+          bgcolor="var(--page-bg)"
+        >
+          <CircularProgress
+            variant="indeterminate"
+            disableShrink
+            sx={{
+              color: "var(--primary-main)",
+              animationDuration: "550ms",
+              [`& .${circularProgressClasses.circle}`]: {
+                strokeLinecap: "round",
+              },
+            }}
+            size={40}
+            thickness={4}
+          />
         </Box>
       </Layout>
     )
@@ -113,7 +122,7 @@ export default function AdminFeatureFlags() {
                 background: "linear-gradient(45deg, var(--primary-main), #818cf8)",
                 WebkitBackgroundClip: "text",
                 WebkitTextFillColor: "transparent",
-                letterSpacing: "-0.02em"
+                letterSpacing: "-0.02em",
               }}
             >
               {t("featureFlags.title", "Dynamic Feature Flags")}
@@ -134,10 +143,18 @@ export default function AdminFeatureFlags() {
             <Table>
               <TableHead>
                 <TableRow sx={{ bgcolor: "rgba(0,0,0,0.05)" }}>
-                  <TableCell sx={{ fontWeight: 700, color: "var(--page-text)" }}>{t("featureFlags.table.flag", "Feature Flag")}</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: "var(--page-text)" }}>{t("featureFlags.table.status", "Status")}</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: "var(--page-text)" }}>{t("featureFlags.table.rollout", "Rollout")}</TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 700, color: "var(--page-text)" }}>{t("featureFlags.table.details", "Details")}</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: "var(--page-text)" }}>
+                    {t("featureFlags.table.flag", "Feature Flag")}
+                  </TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: "var(--page-text)" }}>
+                    {t("featureFlags.table.status", "Status")}
+                  </TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: "var(--page-text)" }}>
+                    {t("featureFlags.table.rollout", "Rollout")}
+                  </TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 700, color: "var(--page-text)" }}>
+                    {t("featureFlags.table.details", "Details")}
+                  </TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -152,7 +169,7 @@ export default function AdminFeatureFlags() {
                       hover
                       sx={{
                         "&:last-child td, &:last-child th": { border: 0 },
-                        transition: "background-color 0.2s"
+                        transition: "background-color 0.2s",
                       }}
                     >
                       <TableCell>
@@ -178,12 +195,12 @@ export default function AdminFeatureFlags() {
                             onChange={() => handleToggle(flag.name, flag.status)}
                             color="primary"
                             sx={{
-                                "& .MuiSwitch-switchBase.Mui-checked": {
-                                  color: "var(--primary-main)",
-                                },
-                                "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": {
-                                  backgroundColor: "var(--primary-main)",
-                                },
+                              "& .MuiSwitch-switchBase.Mui-checked": {
+                                color: "var(--primary-main)",
+                              },
+                              "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": {
+                                backgroundColor: "var(--primary-main)",
+                              },
                             }}
                           />
                         </Stack>
@@ -193,7 +210,9 @@ export default function AdminFeatureFlags() {
                           <Box px={2}>
                             <Slider
                               value={flag.percentage}
-                              onChange={(_, val) => handlePercentageChange(flag.name, val as number)}
+                              onChange={(_, val) =>
+                                handlePercentageChange(flag.name, val as number)
+                              }
                               valueLabelDisplay="auto"
                               step={5}
                               marks

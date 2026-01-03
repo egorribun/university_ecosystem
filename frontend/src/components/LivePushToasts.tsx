@@ -148,7 +148,7 @@ export default function LivePushToasts() {
           title: t("sync.title"),
           body: t("sync.body"),
           data: { severity: "success" },
-          timestamp: Date.now()
+          timestamp: Date.now(),
         }
         const normalized = toActiveToast(toast)
         if (normalized) enqueue(normalized)

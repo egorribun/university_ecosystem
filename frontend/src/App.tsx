@@ -198,10 +198,7 @@ function AppContent() {
             path="/admin/feature-flags"
             element={<AdminRoute>{wrap(<AdminFeatureFlags />)}</AdminRoute>}
           />
-          <Route
-            path="/admin/audit"
-            element={<AdminRoute>{wrap(<AdminAudit />)}</AdminRoute>}
-          />
+          <Route path="/admin/audit" element={<AdminRoute>{wrap(<AdminAudit />)}</AdminRoute>} />
           <Route path="*" element={<Navigate to="/dashboard" />} />
         </Routes>
       </Suspense>
