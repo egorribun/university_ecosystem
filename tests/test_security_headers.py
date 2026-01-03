@@ -106,7 +106,7 @@ async def test_security_headers_production_mode(monkeypatch):
             wildcard_found = True
             break
         try:
-             # Also check if it's the exact host if wildcard wasn't literal
+            # Also check if it's the exact host if wildcard wasn't literal
             parsed = urllib.parse.urlparse(token)
             if parsed.hostname == "push.services.mozilla.com":
                 wildcard_found = True
