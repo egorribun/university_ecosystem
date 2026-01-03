@@ -29,9 +29,15 @@ def upgrade() -> None:
     bind = op.get_bind()
 
     inspector = sa.inspect(bind)
+
+    # Check if users table exists
+    if "users" not in inspector.get_table_names():
+        return
+
     user_columns = {column["name"] for column in inspector.get_columns("users")}
     if "email" not in user_columns:
         return
+
 
     op.execute(sa.text("UPDATE users SET email = lower(email)"))
 
@@ -56,8 +62,15 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     bind = op.get_bind()
+
+    # Check if users table exists
+    inspector = sa.inspect(bind)
+    if "users" not in inspector.get_table_names():
+        return
+
     dialect = bind.dialect.name
     if dialect in {"postgresql", "sqlite"}:
         op.execute(sa.text("DROP INDEX IF EXISTS ux_users_lower_email"))
     else:
         op.drop_index("ux_users_lower_email", table_name="users")
+
