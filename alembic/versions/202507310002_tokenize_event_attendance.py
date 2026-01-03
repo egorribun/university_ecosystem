@@ -168,7 +168,6 @@ def downgrade() -> None:
             "event_attendance", sa.Column("qr_code", sa.String(), nullable=True)
         )
 
-
     attendance = sa.table(
         "event_attendance",
         sa.column("id", sa.Integer()),
