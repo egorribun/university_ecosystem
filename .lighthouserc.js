@@ -15,10 +15,10 @@ module.exports = {
   ci: {
     collect: {
       numberOfRuns: 3,
-      staticDistDir: 'frontend/dist',
+      staticDistDir: path.join(__dirname, 'frontend/dist'),
       chromePath,
       settings: {
-        budgetsPath: 'budget.json',
+        budgetsPath: path.join(__dirname, 'budget.json'),
         chromeFlags:
           '--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type',
         chromePath,

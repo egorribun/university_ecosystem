@@ -439,7 +439,7 @@ jobs:
           npx lhci assert \
             --config=../.lighthouserc.js \
             --preset=lighthouse:recommended \
-            --budgetsFile=budget.json
+            --budgetsFile=../budget.json
         continue-on-error: true
       - name: Generate Lighthouse reports
         run: npx lhci upload --config=../.lighthouserc.js
@@ -670,4 +670,4 @@ jobs:
           npx lhci assert \
             --config=../.lighthouserc.js \
             --preset=lighthouse:recommended \
-            --budgetsFile=budget.json
+            --budgetsFile=../budget.json
