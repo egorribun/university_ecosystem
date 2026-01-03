@@ -429,7 +429,9 @@ export const useProfileSync = (
     let mounted = true
     const init = async () => {
       if (typeof window === "undefined") return
-      try { migrateProfileCache() } catch {}
+      try {
+        migrateProfileCache()
+      } catch {}
 
       const signingKey = readStoredSessionSigningKey()
       if (signingKey) {
@@ -441,7 +443,9 @@ export const useProfileSync = (
       if (mounted) setInitializing(false)
     }
     init()
-    return () => { mounted = false }
+    return () => {
+      mounted = false
+    }
   }, [])
 
   const broadcastProfileEvent = useCallback((message: ProfileBroadcastMessage) => {
