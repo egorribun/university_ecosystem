@@ -16,7 +16,9 @@ const PROCESS_QUEUE_MESSAGE: ServiceWorkerMessage = {
 const notifyUpdateAvailable = (registration: ServiceWorkerRegistration) => {
   const detail: ServiceWorkerUpdateEventDetail = {
     update: async () => {
-      registration.waiting?.postMessage(SKIP_WAITING_MESSAGE)
+      if (registration.waiting && typeof registration.waiting.postMessage === "function") {
+        registration.waiting.postMessage(SKIP_WAITING_MESSAGE)
+      }
     },
   }
 
@@ -28,11 +30,15 @@ const notifyUpdateAvailable = (registration: ServiceWorkerRegistration) => {
 const requestQueueProcessing = (registration: ServiceWorkerRegistration) => {
   const controller = navigator.serviceWorker.controller
   if (controller) {
-    controller.postMessage(PROCESS_QUEUE_MESSAGE)
+    if (typeof controller.postMessage === "function") {
+      controller.postMessage(PROCESS_QUEUE_MESSAGE)
+    }
     return
   }
 
-  registration.active?.postMessage(PROCESS_QUEUE_MESSAGE)
+  if (registration.active && typeof registration.active.postMessage === "function") {
+    registration.active.postMessage(PROCESS_QUEUE_MESSAGE)
+  }
 }
 
 export async function registerServiceWorker(path = "/sw.js") {

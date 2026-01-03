@@ -65,7 +65,9 @@ const createBaseProfile = (): User => ({
   role: "student",
   group_id: null,
   avatar_url: null,
+  avatar_url_optimized: null,
   cover_url: null,
+  cover_url_optimized: null,
   about: null,
   record_book_number: "IU-21-123",
   status: "active",
@@ -283,6 +285,10 @@ export async function useMockApi(page: Page) {
       if (window.name !== "__mock_api_initialized__") {
         window.localStorage.clear()
         window.sessionStorage.clear()
+        try {
+          // @ts-ignore
+          delete window.navigator.serviceWorker
+        } catch {}
         window.name = "__mock_api_initialized__"
       }
       window.localStorage.setItem("ue:language", "ru")
@@ -1099,7 +1105,7 @@ export async function useMockApi(page: Page) {
       const emailField = currentPage.locator('input[name="username"]')
       await emailField.fill("student@example.com")
       await currentPage.locator('input[name="password"]').fill("Password123")
-      await currentPage.getByRole("button", { name: /Sign in|Войти/ }).click()
+      await currentPage.locator('button[type="submit"]').click()
       await expect(currentPage).toHaveURL(/\/dashboard$/)
     },
   }

@@ -5,9 +5,9 @@ const storageKey = "ue:language"
 
 test.describe("Language switching and RTL support", () => {
   test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => {
-      window.localStorage.setItem(storageKey, "ru")
-    })
+    await page.addInitScript((key) => {
+      window.localStorage.setItem(key, "ru")
+    }, storageKey)
   })
 
   test("switches locales, direction and translations", async ({ page }) => {
