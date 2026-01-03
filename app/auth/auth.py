@@ -58,7 +58,6 @@ logger = logging.getLogger("app.auth")
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-
 def _audit_log(
     action: str,
     request: Request,
@@ -979,7 +978,6 @@ async def login_passkey_verify(
             expires=td_expires,
             path="/",
         )
-
 
     await db.commit()
     _audit_log(
