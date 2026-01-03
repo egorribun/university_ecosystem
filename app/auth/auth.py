@@ -54,6 +54,44 @@ from app.utils.ratelimit import sensitive_route_limit
 
 logger = logging.getLogger("app.auth")
 
+try:
+    # Lazy import to avoid hard dependency issues if cryptography is missing at startup.
+    from cryptography.fernet import Fernet
+except ImportError:  # pragma: no cover - handled by environment configuration
+    Fernet = None  # type: ignore[assignment]
+
+
+def _get_trusted_device_fernet() -> "Fernet | None":  # type: ignore[name-defined]
+    """
+    Return a Fernet instance for encrypting/decrypting trusted device tokens.
+
+    Falls back to None if the cryptography library is not available.
+    The key is derived from the main application secret to avoid introducing
+    a new required setting here.
+    """
+    if Fernet is None:
+        return None
+    # Derive a stable Fernet key from the main secret key.
+    import base64
+    import hashlib
+
+    secret = settings.secret_key.encode("utf-8")
+    digest = hashlib.sha256(secret).digest()
+    fernet_key = base64.urlsafe_b64encode(digest)
+    return Fernet(fernet_key)
+
+
+def _encrypt_trusted_device_token(raw_token: str) -> str:
+    """
+    Encrypt the trusted device token before storing it in a cookie.
+
+    If encryption support is unavailable, the raw token is returned unchanged.
+    """
+    f = _get_trusted_device_fernet()
+    if f is None:
+        return raw_token
+    return f.encrypt(raw_token.encode("utf-8")).decode("utf-8")
+
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -968,10 +1006,11 @@ async def login_passkey_verify(
         client_ip, user_agent = _extract_client_info(request)
         td_token, td_expires = await mfa.create_trusted_device_token(
             db, user=user, user_agent=user_agent, ip_address=client_ip
+        encrypted_td_token = _encrypt_trusted_device_token(td_token)
         )
         response.set_cookie(
             settings.trusted_device_cookie_name,
-            td_token,
+            encrypted_td_token,
             httponly=True,
             secure=settings.cookie_secure,
             samesite=settings.cookie_samesite,
