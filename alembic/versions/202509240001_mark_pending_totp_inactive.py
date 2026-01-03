@@ -29,7 +29,6 @@ def _alter_is_active_default(server_default: sa.sql.elements.TextClause) -> None
     op.alter_column(_TABLE_NAME, "is_active", **alter_kwargs)
 
 
-
 def _table_exists(inspector) -> bool:
     return _TABLE_NAME in inspector.get_table_names()
 
