@@ -56,6 +56,40 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  "/api/v1/auth/login/passkey/start": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Login Passkey Start */
+    post: operations["login_passkey_start_api_v1_auth_login_passkey_start_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/auth/login/passkey/verify": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Login Passkey Verify */
+    post: operations["login_passkey_verify_api_v1_auth_login_passkey_verify_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   "/api/v1/auth/login": {
     parameters: {
       query?: never
@@ -1141,6 +1175,57 @@ export interface paths {
     patch: operations["update_news_api_v1_news__id__patch"]
     trace?: never
   }
+  "/api/v1/news/{id}/like": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Like News */
+    post: operations["like_news_api_v1_news__id__like_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/news/{id}/comment": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Comment On News */
+    post: operations["comment_on_news_api_v1_news__id__comment_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/news/{id}/interactions": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Get News Interact */
+    get: operations["get_news_interact_api_v1_news__id__interactions_get"]
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   "/api/v1/news/upload_image": {
     parameters: {
       query?: never
@@ -1341,6 +1426,30 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  "/api/v1/chats/{chat_id}": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * Get Chat
+     * @description Get details for a specific chat.
+     */
+    get: operations["get_chat_api_v1_chats__chat_id__get"]
+    put?: never
+    post?: never
+    /**
+     * Delete Chat
+     * @description Delete a chat entirely for all participants (messages, attachments, links).
+     */
+    delete: operations["delete_chat_api_v1_chats__chat_id__delete"]
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   "/api/v1/chats/{chat_id}/messages": {
     parameters: {
       query?: never
@@ -1411,26 +1520,6 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  "/api/v1/chats/{chat_id}": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    post?: never
-    /**
-     * Delete Chat
-     * @description Delete a chat entirely for all participants (messages, attachments, links).
-     */
-    delete: operations["delete_chat_api_v1_chats__chat_id__delete"]
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
   "/api/v1/img/{path}": {
     parameters: {
       query?: never
@@ -1470,6 +1559,66 @@ export interface paths {
      *     when a CSP policy is violated.
      */
     post: operations["receive_csp_report_api_v1_csp_report_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/admin/feature-flags": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * List Feature Flags
+     * @description List all registered feature flags.
+     */
+    get: operations["list_feature_flags_admin_feature_flags_get"]
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/admin/feature-flags/{name}": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    /**
+     * Update Feature Flag
+     * @description Update a feature flag's status or percentage.
+     */
+    patch: operations["update_feature_flag_admin_feature_flags__name__patch"]
+    trace?: never
+  }
+  "/admin/audit": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * List Audit Logs
+     * @description List audit logs with filtering and integrity verification.
+     */
+    get: operations["list_audit_logs_admin_audit_get"]
+    put?: never
+    post?: never
     delete?: never
     options?: never
     head?: never
@@ -1675,6 +1824,52 @@ export interface components {
       filename: string
       /** Size */
       size: number
+    }
+    /** AuditLogListOut */
+    AuditLogListOut: {
+      /** Items */
+      items: components["schemas"]["AuditLogOut"][]
+      /** Total */
+      total: number
+    }
+    /** AuditLogOut */
+    AuditLogOut: {
+      /** Id */
+      id: number
+      /** Actor User Id */
+      actor_user_id?: number | null
+      /** Actor Name */
+      actor_name?: string | null
+      /** Subject User Id */
+      subject_user_id?: number | null
+      /** Subject Name */
+      subject_name?: string | null
+      /** Resource Type */
+      resource_type: string
+      /** Resource Id */
+      resource_id?: string | null
+      /** Action */
+      action: string
+      /** Context */
+      context?: {
+        [key: string]: unknown
+      } | null
+      /** Ip Address */
+      ip_address?: string | null
+      /** User Agent */
+      user_agent?: string | null
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string
+      /** Is Valid */
+      is_valid: boolean
+    }
+    /** Body_comment_on_news_api_v1_news__id__comment_post */
+    Body_comment_on_news_api_v1_news__id__comment_post: {
+      /** Content */
+      content: string
     }
     /** Body_login_api_v1_auth_login_post */
     Body_login_api_v1_auth_login_post: {
@@ -2026,6 +2221,8 @@ export interface components {
       is_registered?: boolean | null
       /** My Qr Token */
       my_qr_token?: string | null
+      /** Image Url Optimized */
+      readonly image_url_optimized: string | null
     }
     /** EventUpdate */
     EventUpdate: {
@@ -2060,6 +2257,34 @@ export interface components {
       /** About En */
       about_en?: string | null
     }
+    /** FeatureFlagOut */
+    FeatureFlagOut: {
+      /** Name */
+      name: string
+      /** Status */
+      status: string
+      /** Description */
+      description: string
+      /** Percentage */
+      percentage: number
+      /** Allowed Users */
+      allowed_users: number[]
+      /** Allowed Groups */
+      allowed_groups: string[]
+      /** Metadata */
+      metadata: {
+        [key: string]: unknown
+      }
+    }
+    /** FeatureFlagUpdateIn */
+    FeatureFlagUpdateIn: {
+      /** Status */
+      status?: string | null
+      /** Percentage */
+      percentage?: number | null
+      /** Description */
+      description?: string | null
+    }
     /** ForgotPasswordIn */
     ForgotPasswordIn: {
       /**
@@ -2093,6 +2318,28 @@ export interface components {
       email: string
       /** Password */
       password: string
+      /**
+       * Trust Device
+       * @default false
+       */
+      trust_device: boolean
+    }
+    /** LoginPasskeyStartIn */
+    LoginPasskeyStartIn: {
+      /**
+       * Email
+       * Format: email
+       */
+      email: string
+    }
+    /** LoginPasskeyVerifyIn */
+    LoginPasskeyVerifyIn: {
+      /** Challenge Token */
+      challenge_token: string
+      /** Webauthn Response */
+      webauthn_response: {
+        [key: string]: unknown
+      }
       /**
        * Trust Device
        * @default false
@@ -2251,6 +2498,22 @@ export interface components {
        */
       trust_device: boolean
     }
+    /** NewsCommentOut */
+    NewsCommentOut: {
+      /** Id */
+      id: number
+      /** Content */
+      content: string
+      /** User Id */
+      user_id: number
+      /** User Name */
+      user_name: string
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string
+    }
     /** NewsCreate */
     NewsCreate: {
       /** Title */
@@ -2263,6 +2526,15 @@ export interface components {
       content_en?: string | null
       /** Image Url */
       image_url?: string | null
+    }
+    /** NewsInteractionsOut */
+    NewsInteractionsOut: {
+      /** Likes Count */
+      likes_count: number
+      /** Is Liked */
+      is_liked: boolean
+      /** Comments */
+      comments: components["schemas"]["NewsCommentOut"][]
     }
     /** NewsOut */
     NewsOut: {
@@ -2283,6 +2555,8 @@ export interface components {
        * Format: date-time
        */
       created_at: string
+      /** Image Url Optimized */
+      readonly image_url_optimized: string | null
     }
     /** NewsUpdate */
     NewsUpdate: {
@@ -2797,6 +3071,8 @@ export interface components {
        * Format: date-time
        */
       created_at: string
+      /** Cover Url Optimized */
+      readonly cover_url_optimized: string | null
     }
     /** StoryUpdate */
     StoryUpdate: {
@@ -3027,6 +3303,10 @@ export interface components {
       totp_enrollments?: components["schemas"]["MfaTotpEnrollmentOut"][]
       /** Mfa Challenges */
       mfa_challenges?: components["schemas"]["MfaChallengeOut"][]
+      /** Avatar Url Optimized */
+      readonly avatar_url_optimized: string | null
+      /** Cover Url Optimized */
+      readonly cover_url_optimized: string | null
     }
     /** UserPasswordChangeIn */
     UserPasswordChangeIn: {
@@ -3088,6 +3368,15 @@ export interface components {
       msg: string
       /** Error Type */
       type: string
+    }
+    /** WebAuthnAuthenticationOptionsOut */
+    WebAuthnAuthenticationOptionsOut: {
+      /** Publickey */
+      publicKey: {
+        [key: string]: unknown
+      }
+      /** Challenge Token */
+      challenge_token: string
     }
     /** WebAuthnRegistrationOptionsOut */
     WebAuthnRegistrationOptionsOut: {
@@ -3172,6 +3461,72 @@ export interface operations {
         }
         content: {
           "application/json": unknown
+        }
+      }
+    }
+  }
+  login_passkey_start_api_v1_auth_login_passkey_start_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["LoginPasskeyStartIn"]
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["WebAuthnAuthenticationOptionsOut"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  login_passkey_verify_api_v1_auth_login_passkey_verify_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["LoginPasskeyVerifyIn"]
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["TokenWithProfile"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
         }
       }
     }
@@ -5445,6 +5800,103 @@ export interface operations {
       }
     }
   }
+  like_news_api_v1_news__id__like_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: number
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": unknown
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  comment_on_news_api_v1_news__id__comment_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: number
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["Body_comment_on_news_api_v1_news__id__comment_post"]
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["NewsCommentOut"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  get_news_interact_api_v1_news__id__interactions_get: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        id: number
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["NewsInteractionsOut"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
   upload_news_image_api_v1_news_upload_image_post: {
     parameters: {
       query?: never
@@ -5946,6 +6398,68 @@ export interface operations {
       }
     }
   }
+  get_chat_api_v1_chats__chat_id__get: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        chat_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["ChatResponse"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  delete_chat_api_v1_chats__chat_id__delete: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        chat_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["ChatMaintenanceResult"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
   get_messages_api_v1_chats__chat_id__messages_get: {
     parameters: {
       query?: {
@@ -6079,37 +6593,6 @@ export interface operations {
       }
     }
   }
-  delete_chat_api_v1_chats__chat_id__delete: {
-    parameters: {
-      query?: never
-      header?: never
-      path: {
-        chat_id: string
-      }
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["ChatMaintenanceResult"]
-        }
-      }
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
   proxy_image_api_v1_img__path__get: {
     parameters: {
       query?: {
@@ -6160,6 +6643,97 @@ export interface operations {
           [name: string]: unknown
         }
         content?: never
+      }
+    }
+  }
+  list_feature_flags_admin_feature_flags_get: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["FeatureFlagOut"][]
+        }
+      }
+    }
+  }
+  update_feature_flag_admin_feature_flags__name__patch: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        name: string
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["FeatureFlagUpdateIn"]
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["FeatureFlagOut"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  list_audit_logs_admin_audit_get: {
+    parameters: {
+      query?: {
+        limit?: number
+        offset?: number
+        actor_id?: number | null
+        subject_id?: number | null
+        resource_type?: string | null
+        action?: string | null
+      }
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["AuditLogListOut"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
       }
     }
   }
