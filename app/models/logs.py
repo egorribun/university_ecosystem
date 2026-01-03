@@ -9,6 +9,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 
+from app.core.config import settings
 from app.core.database import Base
 
 
@@ -34,7 +35,7 @@ class DataAccessLog(Base):
         server_default=func.now(),
         nullable=False,
         index=True,
-        primary_key=True,
+        primary_key=not settings.database_url.startswith("sqlite"),
     )
     signature = Column(String(512), nullable=True)
 

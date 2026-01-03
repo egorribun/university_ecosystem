@@ -16,6 +16,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 
+from app.core.config import settings
 from app.core.database import Base
 
 
@@ -40,7 +41,7 @@ class Notification(Base):
         server_default=func.now(),
         index=True,
         nullable=False,
-        primary_key=True,
+        primary_key=not settings.database_url.startswith("sqlite"),
     )
 
     __table_args__ = (
@@ -110,7 +111,7 @@ class NotificationDelivery(Base):
         server_default=func.now(),
         nullable=False,
         index=True,
-        primary_key=True,
+        primary_key=not settings.database_url.startswith("sqlite"),
     )
     delivered_at = Column(DateTime(timezone=True), index=True)
     status_code = Column(Integer)
