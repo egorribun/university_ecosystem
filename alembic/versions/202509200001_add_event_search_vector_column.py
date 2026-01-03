@@ -37,7 +37,6 @@ def upgrade() -> None:
             )
         return
 
-
     op.execute(sa.text(f"DROP INDEX IF EXISTS {_OLD_INDEX_NAME}"))
 
     op.execute(
@@ -85,7 +84,6 @@ def downgrade() -> None:
     if dialect != "postgresql":
         op.drop_column("events", "search_vector")
         return
-
 
     op.execute(sa.text(f"DROP INDEX IF EXISTS {_NEW_INDEX_NAME}"))
     op.execute(sa.text("ALTER TABLE events DROP COLUMN IF EXISTS search_vector"))
