@@ -5,7 +5,7 @@ from pathlib import Path
 
 from pydantic import AliasChoices, Field, field_validator
 
-from .base import _PROJECT_ROOT, BaseAppSettings, _coerce_int_list
+from .base import _PROJECT_ROOT, BaseAppSettings, _coerce_int_list, _coerce_str_list
 
 
 class StorageSettings(BaseAppSettings):
