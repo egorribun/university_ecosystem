@@ -257,14 +257,11 @@ async def _lock_challenge(
                 "event": "auth.mfa.challenge.locked",
                 "user_id": challenge.user_id,
                 "challenge_id": challenge.id,
-                "challenge_type": challenge.challenge_type,
-                "method": method,
-                "attempt_count": int(getattr(challenge, "attempt_count", 0) or 0),
-                "attempt_limit": limit,
+                # Redacted detailed metadata to satisfy CodeQL "Clear-text logging" check
             },
             ensure_ascii=False,
         )
-    )  # Log only non-sensitive metadata (IDs, counts, types). No secrets are logged.
+    )  # Log only non-sensitive metadata. No secrets are logged.
     message = translate("errors.auth.mfa_challenge_locked", locale=locale)
     raise HTTPException(status_code=status_code, detail=message)
 

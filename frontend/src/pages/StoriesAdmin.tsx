@@ -29,6 +29,7 @@ import apiClient from "@/api/client"
 import { isAxiosError } from "axios"
 import { useTranslation } from "react-i18next"
 import { useLocaleFormatters } from "@/i18n/formatters"
+import { sanitizeUrl } from "@/utils/media"
 
 function formatInputDate(value: string | dayjs.Dayjs) {
   const parsed = typeof value === "string" ? dayjs(value) : value
@@ -287,7 +288,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
               >
                 {coverPreview ? (
                   <img
-                    src={coverPreview}
+                    src={sanitizeUrl(coverPreview) ?? ""}
                     alt={t("stories:list.coverAlt", { title: story.title })}
                     style={{ width: "100%", height: "100%", objectFit: "cover" }}
                   />
@@ -662,7 +663,7 @@ export default function StoriesAdmin() {
                       }}
                     >
                       <img
-                        src={coverPreview}
+                        src={sanitizeUrl(coverPreview) ?? ""}
                         alt={t("stories:form.previewAlt")}
                         style={{ width: "100%", display: "block" }}
                       />

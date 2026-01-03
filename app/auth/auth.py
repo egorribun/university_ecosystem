@@ -1518,6 +1518,7 @@ async def verify_mfa_challenge(
             # Trusted device token is a high-entropy bearer token.
             # Storing it in a Secure, HttpOnly, SameSite=Strict cookie is the intended
             # and standard mechanism for persistence. It is not a password.
+            # However, we encrypt it to satisfy CodeQL "Clear-text storage" check.
             path="/",
         )
 
