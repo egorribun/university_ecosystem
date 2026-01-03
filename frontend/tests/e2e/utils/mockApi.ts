@@ -286,7 +286,7 @@ export async function useMockApi(page: Page) {
         window.localStorage.clear()
         window.sessionStorage.clear()
         try {
-          // @ts-ignore
+          // @ts-expect-error: Force delete read-only property for E2E
           delete window.navigator.serviceWorker
         } catch {}
         window.name = "__mock_api_initialized__"
