@@ -839,8 +839,9 @@ export default function Schedule() {
         )}
       </div>
     )
+  }
 
-    const renderTable = () => {
+  const renderTable = () => {
       const visibleRows = tableRows.slice(0, rowLimit)
       return (
         <div
@@ -1412,7 +1413,7 @@ export default function Schedule() {
                             background: getLessonTypeColor(lType),
                           }}
                         >
-                          {lType ? (lessonTypeLabels.get(lType) ?? lType) : ""}
+                          {lType ? (lessonTypeLabels.get(lType as string) ?? lType) : ""}
                         </Badge>
                       </div>
                       <div className="space-y-1">
@@ -1826,4 +1827,3 @@ export default function Schedule() {
       }
     }
   }
-}

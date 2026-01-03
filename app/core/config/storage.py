@@ -73,12 +73,20 @@ class StorageSettings(BaseAppSettings):
             if m.strip()
         }
 
-    @cached_property
+    @property
     def event_file_allowed_mime_types_set(self) -> set[str]:
         return {
             m.strip().lower()
             for m in _coerce_str_list(self.event_file_allowed_mime_types)
             if m.strip()
+        }
+
+    @property
+    def event_file_allowed_extensions_set(self) -> set[str]:
+        return {
+            e.strip().lower().lstrip(".")
+            for e in _coerce_str_list(self.event_file_allowed_extensions)
+            if e.strip()
         }
 
     @field_validator("storage_backend")

@@ -297,7 +297,7 @@ async def test_upload_avatar_cleans_up_on_commit_failure(
         headers=Headers({"content-type": "image/png"}),
     )
 
-    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
 
     delete_calls: list[str] = []
     original_delete = delete_static_file
@@ -340,7 +340,7 @@ async def test_upload_cover_cleans_up_on_commit_failure(
         headers=Headers({"content-type": "image/png"}),
     )
 
-    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
 
     delete_calls: list[str] = []
     original_delete = delete_static_file

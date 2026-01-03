@@ -37,7 +37,7 @@ const newsItemSchema: z.ZodType<NewsItem> = z.object({
   title_en: z.string().nullable().optional(),
   content_en: z.string().nullable().optional(),
   image_url: z.string().nullable().optional(),
-  image_url_optimized: z.string().nullable().optional(),
+  image_url_optimized: z.string().nullable(),
 })
 
 const newsListSchema = z.array(newsItemSchema)

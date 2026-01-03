@@ -54,3 +54,19 @@ class AppGeneralSettings(BaseAppSettings):
     @cached_property
     def is_development(self) -> bool:
         return str(self.environment).lower() in _DEVELOPMENT_ENVIRONMENTS
+
+    @property
+    def metrics_allowlist_entries(self) -> list[str]:
+        return _coerce_str_list(self.metrics_allowlist)
+def _coerce_str_list(values: object) -> list[str]:
+    if not values:
+        return []
+    if isinstance(values, str):
+        items = [item.strip() for item in values.split(",")]
+    else:
+        from collections.abc import Iterable
+        if isinstance(values, Iterable):
+            items = [str(item).strip() for item in values]
+        else:
+            items = [str(values).strip()]
+    return [item for item in items if item]

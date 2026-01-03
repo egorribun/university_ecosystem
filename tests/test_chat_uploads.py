@@ -91,7 +91,7 @@ async def test_send_message_blocks_infected_file(
         headers=Headers({"content-type": "text/plain"}),
     )
 
-    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
     monkeypatch.setattr(settings, "chat_attachment_allowed_mime_types", ["text/plain"])
     monkeypatch.setattr(settings, "chat_attachment_allowed_extensions", [".txt"])
     monkeypatch.setattr(settings, "chat_attachment_max_size_bytes", 1024)

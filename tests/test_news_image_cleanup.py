@@ -22,7 +22,7 @@ async def test_update_news_removes_replaced_image(
     old_path.parent.mkdir(parents=True, exist_ok=True)
     old_path.write_bytes(b"old")
 
-    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
 
     payload = schemas.NewsUpdate(image_url="/static/news_images/new.png")
 
@@ -50,7 +50,7 @@ async def test_delete_news_removes_image_file(
     image_path.parent.mkdir(parents=True, exist_ok=True)
     image_path.write_bytes(b"payload")
 
-    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
 
     result = await news.delete_news(record.id, request=None, db=db_session, user=admin)
 

@@ -112,7 +112,7 @@ async def test_upload_event_file_offloads_io(
 
     monkeypatch.setattr(files, "asyncio", asyncio)
     monkeypatch.setattr(files.asyncio, "to_thread", fake_to_thread)
-    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
     monkeypatch.setattr(settings, "event_file_allowed_mime_types", ["text/plain"])
     monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt"])
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
@@ -144,7 +144,7 @@ async def test_upload_event_file_cleans_up_on_commit_failure(
         headers=Headers({"content-type": "text/plain"}),
     )
 
-    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
     monkeypatch.setattr(settings, "event_file_allowed_mime_types", ["text/plain"])
     monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt"])
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
@@ -188,7 +188,7 @@ async def test_upload_event_file_rejects_large_payload(
         headers=Headers({"content-type": "text/plain"}),
     )
 
-    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
     monkeypatch.setattr(settings, "event_file_allowed_mime_types", ["text/plain"])
     monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt"])
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 8)
@@ -218,7 +218,7 @@ async def test_upload_event_file_respects_scanner_limit(
         headers=Headers({"content-type": "text/plain"}),
     )
 
-    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
     monkeypatch.setattr(settings, "event_file_allowed_mime_types", ["text/plain"])
     monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt"])
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 2048)
@@ -253,7 +253,7 @@ async def test_upload_event_file_rejects_forbidden_type(
         headers=Headers({"content-type": "application/x-msdownload"}),
     )
 
-    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
     monkeypatch.setattr(settings, "event_file_allowed_mime_types", ["text/plain"])
     monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt"])
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
@@ -285,7 +285,7 @@ async def test_upload_event_file_rejects_mismatched_metadata(
         headers=Headers({"content-type": "text/plain"}),
     )
 
-    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
     monkeypatch.setattr(
         settings,
         "event_file_allowed_mime_types",
@@ -323,7 +323,7 @@ async def test_upload_event_file_rejects_infected_payload(
         headers=Headers({"content-type": "text/plain"}),
     )
 
-    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
     monkeypatch.setattr(settings, "event_file_allowed_mime_types", ["text/plain"])
     monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt"])
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
@@ -366,7 +366,7 @@ async def test_upload_event_file_rejects_detected_type_not_allowed(
         headers=Headers({"content-type": "text/plain"}),
     )
 
-    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
     monkeypatch.setattr(settings, "event_file_allowed_mime_types", ["text/plain"])
     monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt"])
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
@@ -398,7 +398,7 @@ async def test_upload_event_file_allows_multipage_pdf(
         headers=Headers({"content-type": "application/pdf"}),
     )
 
-    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
     monkeypatch.setattr(settings, "event_file_allowed_mime_types", ["application/pdf"])
     monkeypatch.setattr(settings, "event_file_allowed_extensions", [".pdf"])
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 2048)
@@ -439,7 +439,7 @@ async def test_upload_event_file_quarantines_polyglot_pdf(
         headers=Headers({"content-type": "application/pdf"}),
     )
 
-    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
     monkeypatch.setattr(settings, "event_file_allowed_mime_types", ["application/pdf"])
     monkeypatch.setattr(settings, "event_file_allowed_extensions", [".pdf"])
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 2048)
@@ -473,7 +473,7 @@ async def test_upload_event_file_quarantines_svg_with_js(
         headers=Headers({"content-type": "image/svg+xml"}),
     )
 
-    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
     monkeypatch.setattr(
         settings,
         "event_file_allowed_mime_types",
@@ -513,7 +513,7 @@ async def test_upload_event_file_allows_clean_payload_with_scanner(
         headers=Headers({"content-type": "text/plain"}),
     )
 
-    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
     monkeypatch.setattr(settings, "event_file_allowed_mime_types", ["text/plain"])
     monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt"])
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
@@ -558,7 +558,7 @@ async def test_update_event_replaces_image_removes_old_file(
     await db_session.commit()
     await db_session.refresh(event)
 
-    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
 
     payload = schemas.EventUpdate(image_url="/static/event_images/new.png")
     result = await events.update_event(
@@ -583,7 +583,7 @@ async def test_delete_event_file_removes_payload(
         headers=Headers({"content-type": "text/plain"}),
     )
 
-    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
     monkeypatch.setattr(settings, "event_file_allowed_mime_types", ["text/plain"])
     monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt"])
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)
@@ -610,7 +610,7 @@ async def test_delete_event_removes_all_files(
     admin = await user_factory(role="admin")
     event = await _create_event(db_session, admin)
 
-    monkeypatch.setattr(settings, "static_dir_path", tmp_path)
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
     monkeypatch.setattr(settings, "event_file_allowed_mime_types", ["text/plain"])
     monkeypatch.setattr(settings, "event_file_allowed_extensions", [".txt"])
     monkeypatch.setattr(settings, "event_file_max_size_bytes", 1024)

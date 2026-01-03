@@ -46,7 +46,7 @@ export default function SmartImage({
   const computed = useMemo(() => {
     // We use proxy for all images that are not blobs
     if (isBlobUrl) {
-      return sanitizeUrl(srcRaw) ? resolveMediaUrl(srcRaw!) : ""
+      return sanitizeUrl(srcRaw || "") ? resolveMediaUrl(srcRaw) : ""
     }
 
     if (!sanitizeUrl(srcRaw || "")) return ""
