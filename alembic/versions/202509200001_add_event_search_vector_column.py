@@ -21,17 +21,22 @@ _OLD_INDEX_NAME = "ix_events_search_text"
 def upgrade() -> None:
     bind = op.get_bind()
     dialect = bind.dialect.name
+    inspector = sa.inspect(bind)
+
+    # Check if events table exists
+    if "events" not in inspector.get_table_names():
+        return
 
     if dialect != "postgresql":
         # SQLite keeps a plain column for compatibility even though full-text
         # search falls back to LIKE queries in application code.
-        inspector = sa.inspect(bind)
         existing = {column["name"] for column in inspector.get_columns("events")}
         if "search_vector" not in existing:
             op.add_column(
                 "events", sa.Column("search_vector", sa.Text(), nullable=True)
             )
         return
+
 
     op.execute(sa.text(f"DROP INDEX IF EXISTS {_OLD_INDEX_NAME}"))
 
@@ -71,10 +76,16 @@ def upgrade() -> None:
 def downgrade() -> None:
     bind = op.get_bind()
     dialect = bind.dialect.name
+    inspector = sa.inspect(bind)
+
+    # Check if events table exists
+    if "events" not in inspector.get_table_names():
+        return
 
     if dialect != "postgresql":
         op.drop_column("events", "search_vector")
         return
+
 
     op.execute(sa.text(f"DROP INDEX IF EXISTS {_NEW_INDEX_NAME}"))
     op.execute(sa.text("ALTER TABLE events DROP COLUMN IF EXISTS search_vector"))
