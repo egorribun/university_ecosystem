@@ -56,7 +56,6 @@ def upgrade() -> None:
             ),
         )
 
-
     inspector = sa.inspect(bind)
     existing_indexes = (
         {index["name"] for index in inspector.get_indexes(table_name)}
@@ -88,4 +87,3 @@ def downgrade() -> None:
     op.drop_index("ix_data_access_logs_subject", table_name="data_access_logs")
     op.drop_index("ix_data_access_logs_actor", table_name="data_access_logs")
     op.drop_table("data_access_logs")
-

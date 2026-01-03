@@ -70,7 +70,9 @@ def downgrade():
     if "dnd_start" not in existing_columns:
         op.add_column(
             "users",
-            sa.Column("dnd_start", postgresql.TIME(), autoincrement=False, nullable=True),
+            sa.Column(
+                "dnd_start", postgresql.TIME(), autoincrement=False, nullable=True
+            ),
         )
     if "dnd_enabled" not in existing_columns:
         op.add_column(
@@ -83,4 +85,3 @@ def downgrade():
                 nullable=False,
             ),
         )
-
