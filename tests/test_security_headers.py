@@ -83,6 +83,9 @@ async def test_security_headers_production_mode(monkeypatch):
     assert "'self'" in style_src
     assert "'unsafe-inline'" in style_src
 
+    connect_src = directives.get("connect-src", [])
+    csp_tokens = script_src + connect_src
+
     def check_csp_host(domain: str) -> bool:
         for token in csp_tokens:
             if "://" not in token:

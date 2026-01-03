@@ -256,8 +256,8 @@ async def _lock_challenge(
             {
                 "event": "auth.mfa.challenge.locked",
                 "user_id": challenge.user_id,
+                # Redacted metadata for CodeQL check
                 "challenge_id": challenge.id,
-                # Redacted detailed metadata to satisfy CodeQL "Clear-text logging" check
             },
             ensure_ascii=False,
         )
