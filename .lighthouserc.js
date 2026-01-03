@@ -1,7 +1,7 @@
 const {execSync} = require('node:child_process');
 const path = require('node:path');
 
-const frontendDir = path.join(__dirname, 'root', 'frontend');
+const frontendDir = path.join(__dirname, 'frontend');
 const chromePath = path.join(frontendDir, 'node_modules', '.bin', 'google-chrome-stable');
 const buildEnv = {...process.env, FORCE_COLOR: '0', CI: '1'};
 
@@ -15,7 +15,7 @@ module.exports = {
   ci: {
     collect: {
       numberOfRuns: 3,
-      staticDistDir: 'root/frontend/dist',
+      staticDistDir: 'frontend/dist',
       chromePath,
       settings: {
         budgetsPath: 'budget.json',

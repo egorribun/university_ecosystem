@@ -432,17 +432,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Collect Lighthouse metrics
-        run: npx lhci collect --config=.lighthouserc.js
+        run: npx lhci collect --config=../.lighthouserc.js
       - name: Run Lighthouse assertions
         id: lighthouse_assert
         run: |
           npx lhci assert \
-            --config=.lighthouserc.js \
+            --config=../.lighthouserc.js \
             --preset=lighthouse:recommended \
             --budgetsFile=budget.json
         continue-on-error: true
       - name: Generate Lighthouse reports
-        run: npx lhci upload --config=.lighthouserc.js
+        run: npx lhci upload --config=../.lighthouserc.js
       - name: Build Lighthouse summary
         id: lighthouse_summary
         run: |
@@ -668,6 +668,6 @@ jobs:
         if: steps.download_lighthouse_results.outcome == 'success'
         run: |
           npx lhci assert \
-            --config=.lighthouserc.js \
+            --config=../.lighthouserc.js \
             --preset=lighthouse:recommended \
             --budgetsFile=budget.json
