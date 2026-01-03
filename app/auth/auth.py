@@ -50,6 +50,7 @@ from app.schemas.schemas import (
     WebAuthnRegistrationVerifyIn,
 )
 from app.services.audit_service import AuditService
+from app.utils.encryption import encrypt_string
 from app.utils.ratelimit import sensitive_route_limit
 
 logger = logging.getLogger("app.auth")
@@ -817,7 +818,7 @@ async def _perform_login(
         )
         response.set_cookie(
             settings.trusted_device_cookie_name,
-            td_token,
+            encrypt_string(td_token),
             httponly=True,
             secure=settings.cookie_secure,
             samesite=settings.cookie_samesite,
@@ -975,7 +976,7 @@ async def login_passkey_verify(
         td_token_hashed = hashlib.sha256(td_token.encode("utf-8")).hexdigest()
         response.set_cookie(
             settings.trusted_device_cookie_name,
-            td_token_hashed,
+            encrypt_string(td_token_hashed),
             httponly=True,
             secure=settings.cookie_secure,
             samesite=settings.cookie_samesite,
@@ -1514,7 +1515,7 @@ async def verify_mfa_challenge(
         )
         response.set_cookie(
             settings.trusted_device_cookie_name,
-            td_token,
+            encrypt_string(td_token),
             httponly=True,
             secure=settings.cookie_secure,
             samesite=settings.cookie_samesite,

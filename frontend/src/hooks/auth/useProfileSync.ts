@@ -170,7 +170,7 @@ const readCachedUser = (signingKey: string | null): User | undefined => {
 
         const key = CryptoJS.PBKDF2(signingKey, salt, {
           keySize: 256 / 32,
-          iterations: 1000
+          iterations: 100000
         })
 
         const bytes = CryptoJS.AES.decrypt(ciphertext, key, {

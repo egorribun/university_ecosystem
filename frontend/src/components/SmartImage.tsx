@@ -86,7 +86,7 @@ export default function SmartImage({
       loading="lazy"
       decoding="async"
       style={mergedStyle}
-      src={finalSrc}
+      src={sanitizeUrl(finalSrc || "")}
       srcSet={srcSet || undefined}
       sizes={srcSet ? sizes : undefined}
       onLoad={(event) => {

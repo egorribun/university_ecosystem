@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback, memo } from "react"
+import { sanitizeUrl } from "@/utils/media"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { useTranslation } from "react-i18next"
 import {
@@ -20,7 +21,6 @@ import client from "../../api/client"
 import type { User } from "../../types/User"
 import SmartImage from "@/components/SmartImage"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
-import { sanitizeUrl } from "@/utils/media"
 
 export interface Contact {
   id: string
@@ -368,7 +368,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
                   <img
                     src={
                       ["image/png", "image/jpeg", "image/gif", "image/webp"].includes(file.type)
-                        ? URL.createObjectURL(file)
+                        ? sanitizeUrl(URL.createObjectURL(file))
                         : ""
                     }
                     alt={file.name}

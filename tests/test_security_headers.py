@@ -89,10 +89,11 @@ async def test_security_headers_production_mode(monkeypatch):
     # We use urlparse to safely extract hostnames
     csp_hosts = set()
     for token in csp_tokens:
-        if token.startswith("http://") or token.startswith("https://"):
+        # CodeQL fix: ensure strict URL parsing
+        if "://" in token:
             try:
                 parsed = urllib.parse.urlparse(token)
-                if parsed.hostname:
+                if parsed.scheme in ("http", "https") and parsed.hostname:
                     csp_hosts.add(parsed.hostname)
             except ValueError:
                 continue
