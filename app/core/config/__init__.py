@@ -8,8 +8,10 @@ from pydantic import ValidationInfo, field_validator
 from .app_gen import AppGeneralSettings
 from .base import (
     _DEVELOPMENT_ENVIRONMENTS,
-    _ENV_FILE as _ENV_FILE,
     _PROJECT_ROOT,
+)
+from .base import (
+    _ENV_FILE as _ENV_FILE,
 )
 from .base import (
     _should_allow_development_defaults as _base_should_allow,
