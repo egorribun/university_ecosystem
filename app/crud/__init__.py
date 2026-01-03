@@ -1413,7 +1413,8 @@ async def get_news_interactions(
     is_liked = False
     if current_user_id:
         liked_stmt = select(models.NewsLike.id).where(
-            models.NewsLike.news_id == news_id, models.NewsLike.user_id == current_user_id
+            models.NewsLike.news_id == news_id,
+            models.NewsLike.user_id == current_user_id,
         )
         is_liked = (await db.execute(liked_stmt)).scalar() is not None
 

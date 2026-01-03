@@ -8,7 +8,6 @@ Create Date: 2025-12-23 11:54:48.110013
 
 from collections.abc import Sequence
 
-
 # revision identifiers, used by Alembic.
 revision: str = "ede66395ff71"
 down_revision: str | None = ("202512230001_chat_message_index", "6a898bba5589")

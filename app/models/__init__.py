@@ -45,8 +45,12 @@ from app.models.events import (
 from app.models.logs import DataAccessLog as DataAccessLog
 from app.models.news import (
     News as News,
-    NewsLike as NewsLike,
+)
+from app.models.news import (
     NewsComment as NewsComment,
+)
+from app.models.news import (
+    NewsLike as NewsLike,
 )
 from app.models.notifications import (
     Notification as Notification,

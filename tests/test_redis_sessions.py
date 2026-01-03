@@ -1,9 +1,9 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from fakeredis.aioredis import FakeRedis
 
 from app.auth.redis_session import RedisSessionBackend
+from fakeredis.aioredis import FakeRedis
 
 
 @pytest.mark.anyio

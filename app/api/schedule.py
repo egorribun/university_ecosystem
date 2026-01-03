@@ -19,8 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import crud
 from app.api.deps import get_current_user
 from app.core.database import get_db
-from app.deps.cache import etag_matches, format_etag, get_cache
 from app.core.localization import resolve_locale, translate, translate_lesson_type
+from app.deps.cache import etag_matches, format_etag, get_cache
 from app.models import models
 from app.schemas import schemas
 

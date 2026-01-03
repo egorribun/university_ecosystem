@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from functools import cached_property
-from pydantic import Field, field_validator, ValidationInfo
-from .base import BaseAppSettings, _DEVELOPMENT_ENVIRONMENTS, _coerce_int_list
+
+from pydantic import ValidationInfo, field_validator
+
+from .base import _DEVELOPMENT_ENVIRONMENTS, BaseAppSettings
 
 
 class AppGeneralSettings(BaseAppSettings):

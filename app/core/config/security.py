@@ -5,14 +5,13 @@ from functools import cached_property
 from typing import Any
 from urllib.parse import urlparse
 
-from pydantic import AliasChoices, Field, field_validator, ValidationInfo
+from pydantic import ValidationInfo, field_validator
 
 from .base import (
     BaseAppSettings,
     _coerce_str_list,
     _validate_non_empty,
     _validate_positive_int,
-    _DEVELOPMENT_ENVIRONMENTS,
 )
 
 _logger = logging.getLogger(__name__)

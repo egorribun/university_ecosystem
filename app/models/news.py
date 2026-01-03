@@ -15,16 +15,24 @@ class News(Base):
     image_url = Column(String)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
-    likes = relationship("NewsLike", back_populates="news", cascade="all, delete-orphan")
-    comments = relationship("NewsComment", back_populates="news", cascade="all, delete-orphan")
+    likes = relationship(
+        "NewsLike", back_populates="news", cascade="all, delete-orphan"
+    )
+    comments = relationship(
+        "NewsComment", back_populates="news", cascade="all, delete-orphan"
+    )
 
 
 class NewsLike(Base):
     __tablename__ = "news_likes"
 
     id = Column(Integer, primary_key=True)
-    news_id = Column(Integer, ForeignKey("news.id", ondelete="CASCADE"), nullable=False, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    news_id = Column(
+        Integer, ForeignKey("news.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     news = relationship("News", back_populates="likes")
@@ -35,8 +43,12 @@ class NewsComment(Base):
     __tablename__ = "news_comments"
 
     id = Column(Integer, primary_key=True)
-    news_id = Column(Integer, ForeignKey("news.id", ondelete="CASCADE"), nullable=False, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    news_id = Column(
+        Integer, ForeignKey("news.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     content = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

@@ -6,12 +6,12 @@ from collections.abc import Awaitable, Callable
 from fastapi import HTTPException, Request, status
 
 from app.core.config import settings
+from app.core.localization import resolve_locale, translate
 from app.core.rate_limit import (
     RateLimitExceeded,
     enforce_rate_limit,
     parse_rate_limit,
 )
-from app.core.localization import resolve_locale, translate
 
 DEFAULT_LIMIT = 5
 DEFAULT_WINDOW_SECONDS = 60

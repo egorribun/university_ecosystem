@@ -7,9 +7,9 @@ from pydantic import (
     ConfigDict,
     EmailStr,
     Field,
+    computed_field,
     field_validator,
     model_validator,
-    computed_field,
 )
 from pydantic_core import PydanticCustomError
 

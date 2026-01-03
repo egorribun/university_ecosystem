@@ -6,10 +6,11 @@ import hashlib
 import json
 import logging
 import time as time_module
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from functools import wraps
-from typing import Any, Callable, TypeVar, ParamSpec
+from typing import Any, ParamSpec, TypeVar
 
 from fastapi.encoders import jsonable_encoder
 from redis.asyncio import Redis

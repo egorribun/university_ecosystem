@@ -22,8 +22,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.core.database import get_db
-from app.crud import sanitize_optional_text
 from app.core.localization import localized_text, resolve_locale, translate
+from app.crud import sanitize_optional_text
 from app.models.models import Notification, Schedule, User
 from app.schemas.schemas import (
     NotificationOut,

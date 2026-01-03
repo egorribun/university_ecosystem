@@ -1,17 +1,17 @@
 from __future__ import annotations
 
 from .core import (
-    SUPPORTED_LOCALES,
     DEFAULT_LOCALE,
-    resolve_locale,
-    normalize_locale,
+    SUPPORTED_LOCALES,
     localized_text,
+    normalize_locale,
+    resolve_locale,
 )
 from .formatting import (
+    resolve_weekday_index,
     translate,
     translate_lesson_type,
     weekday_aliases,
-    resolve_weekday_index,
 )
 
 __all__ = [
