@@ -55,8 +55,7 @@ async def test_security_headers_production_mode(monkeypatch):
     assert headers.get("X-Frame-Options") == "DENY"
     assert headers.get("Referrer-Policy") == "no-referrer"
     assert (
-        headers.get("Permissions-Policy")
-        == "geolocation=(), microphone=(), camera=()"
+        headers.get("Permissions-Policy") == "geolocation=(), microphone=(), camera=()"
     )
     assert headers.get("Cross-Origin-Opener-Policy") == "same-origin"
     assert headers.get("Cross-Origin-Embedder-Policy") == "require-corp"
