@@ -38,7 +38,6 @@ def upgrade() -> None:
     if "email" not in user_columns:
         return
 
-
     op.execute(sa.text("UPDATE users SET email = lower(email)"))
 
     _ensure_no_duplicates(bind)
@@ -73,4 +72,3 @@ def downgrade() -> None:
         op.execute(sa.text("DROP INDEX IF EXISTS ux_users_lower_email"))
     else:
         op.drop_index("ux_users_lower_email", table_name="users")
-
