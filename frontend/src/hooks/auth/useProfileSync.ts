@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
-import CryptoJS from "crypto-js"
 
 import api, { resetEtagCache } from "@/api/client"
 import type { User } from "@/types/User"
@@ -9,7 +8,7 @@ import { signSnapshot } from "./useSessionCrypto"
 import type { PendingMfaState, SetUserArg, UserState } from "@/types/Auth"
 
 const PROFILE_CACHE_BASE_KEY = "ecosystem.profile.cache"
-const PROFILE_CACHE_SCHEMA_VERSION = 3
+const PROFILE_CACHE_SCHEMA_VERSION = 4
 export const PROFILE_CACHE_STORAGE_KEY = `${PROFILE_CACHE_BASE_KEY}.v${PROFILE_CACHE_SCHEMA_VERSION}`
 const PROFILE_CACHE_VERSION_KEY = `${PROFILE_CACHE_BASE_KEY}.version`
 const LEGACY_PROFILE_CACHE_KEYS = ["ecosystem.profile.cache.v1"]
@@ -133,7 +132,122 @@ const getCachedEnvelopeHeader = (): string | null => {
   }
 }
 
-const readCachedUser = (signingKey: string | null): User | undefined => {
+const getCrypto = () => {
+  if (typeof window !== "undefined" && window.crypto && window.crypto.subtle) {
+    return window.crypto.subtle
+  }
+  return null
+}
+
+const importKey = async (password: string) => {
+  const subtle = getCrypto()
+  if (!subtle) return null
+  const enc = new TextEncoder()
+  return subtle.importKey("raw", enc.encode(password), { name: "PBKDF2" }, false, ["deriveKey"])
+}
+
+const deriveKey = async (keyMaterial: CryptoKey, salt: Uint8Array) => {
+  const subtle = getCrypto()
+  if (!subtle) return null
+  return subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt: salt as any,
+      iterations: 600000,
+      hash: "SHA-256",
+    },
+    keyMaterial,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"]
+  )
+}
+
+const encryptData = async (
+  data: CachedUserSnapshot,
+  signingKey: string
+): Promise<string | null> => {
+  const subtle = getCrypto()
+  if (!subtle) return null
+  try {
+    const keyMaterial = await importKey(signingKey)
+    if (!keyMaterial) return null
+
+    const salt = window.crypto.getRandomValues(new Uint8Array(16))
+    const key = await deriveKey(keyMaterial, salt)
+    if (!key) return null
+
+    const iv = window.crypto.getRandomValues(new Uint8Array(12))
+    const encodedData = new TextEncoder().encode(JSON.stringify(data))
+
+    const ciphertext = await subtle.encrypt({ name: "AES-GCM", iv }, key, encodedData)
+
+    // Format: hex(salt):hex(iv):base64(ciphertext)
+    const saltHex = Array.from(salt)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("")
+    const ivHex = Array.from(iv)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("")
+    const ciphertextBase64 = btoa(String.fromCharCode(...new Uint8Array(ciphertext)))
+
+    return `${saltHex}:${ivHex}:${ciphertextBase64}`
+  } catch (e) {
+    console.error("Encryption failed", e)
+    return null
+  }
+}
+
+const decryptData = async (
+  encryptedString: string,
+  signingKey: string
+): Promise<CachedUserSnapshot | null> => {
+  const subtle = getCrypto()
+  if (!subtle) return null
+  try {
+    const parts = encryptedString.split(":")
+    if (parts.length !== 3) return null
+    const [saltHex, ivHex, ciphertextBase64] = parts
+
+    const salt = new Uint8Array(saltHex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)))
+    const iv = new Uint8Array(ivHex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)))
+    const ciphertext = Uint8Array.from(atob(ciphertextBase64), (c) => c.charCodeAt(0))
+
+    const keyMaterial = await importKey(signingKey)
+    if (!keyMaterial) return null
+    const key = await deriveKey(keyMaterial, salt)
+    if (!key) return null
+
+    const decrypted = await subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext)
+    const decoded = new TextDecoder().decode(decrypted)
+    return JSON.parse(decoded) as CachedUserSnapshot
+  } catch (e) {
+    // Decryption failed (wrong key or tampering)
+    return null
+  }
+}
+
+// HMAC Signature using Web Crypto
+const signPayload = async (payload: CacheSignaturePayload, signingKey: string): Promise<string> => {
+  const subtle = getCrypto()
+  if (!subtle) return ""
+  try {
+    const enc = new TextEncoder()
+    const keyMaterial = await subtle.importKey(
+      "raw",
+      enc.encode(signingKey),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    )
+    const signature = await subtle.sign("HMAC", keyMaterial, enc.encode(JSON.stringify(payload)))
+    return btoa(String.fromCharCode(...new Uint8Array(signature)))
+  } catch {
+    return ""
+  }
+}
+
+const readCachedUserAsync = async (signingKey: string | null): Promise<User | undefined> => {
   if (!signingKey) {
     clearProfileCacheStorage()
     return undefined
@@ -156,72 +270,35 @@ const readCachedUser = (signingKey: string | null): User | undefined => {
     clearProfileCacheStorage()
     return undefined
   }
-  // Data should be encrypted string
-  let snapshotData: CachedUserSnapshot
-  if (typeof candidate.data === "string") {
-    try {
-      if (candidate.data.includes(":")) {
-        // v3 format: salt:iv:ciphertext
-        const [saltHex, ivHex, ciphertext] = candidate.data.split(":")
-        if (!saltHex || !ivHex || !ciphertext) throw new Error("Invalid format")
 
-        const salt = CryptoJS.enc.Hex.parse(saltHex)
-        const iv = CryptoJS.enc.Hex.parse(ivHex)
-
-        const key = CryptoJS.PBKDF2(signingKey, salt, {
-          keySize: 256 / 32,
-          iterations: 600000
-        })
-
-        const bytes = CryptoJS.AES.decrypt(ciphertext, key, {
-          iv: iv,
-          padding: CryptoJS.pad.Pkcs7,
-          mode: CryptoJS.mode.CBC
-        })
-        const decrypted = bytes.toString(CryptoJS.enc.Utf8)
-        if (!decrypted) throw new Error("Decryption failed")
-        snapshotData = JSON.parse(decrypted) as CachedUserSnapshot
-      } else {
-        // Legacy v2 format (direct AES with signingKey as key)
-        const bytes = CryptoJS.AES.decrypt(candidate.data, signingKey)
-        const decrypted = bytes.toString(CryptoJS.enc.Utf8)
-        snapshotData = JSON.parse(decrypted) as CachedUserSnapshot
-      }
-    } catch {
-      clearProfileCacheStorage()
-      return undefined
-    }
-  } else {
-    // Fallback for legacy plain object data (optional, or just clear it)
-    snapshotData = candidate.data as CachedUserSnapshot
-  }
-
+  // Verify signature
   const payload: CacheSignaturePayload = {
     version: candidate.version,
     expiresAt: candidate.expiresAt,
     data: candidate.data,
   }
-
-  // Verify signature to detect tampering
-  const expectedSignature = CryptoJS.HmacSHA256(JSON.stringify(payload), signingKey).toString(
-    CryptoJS.enc.Base64
-  )
-
+  const expectedSignature = await signPayload(payload, signingKey)
   if (candidate.signature !== expectedSignature) {
-    // Signature mismatch - cache has been tampered with
     clearProfileCacheStorage()
     return undefined
   }
 
-  const snapshot = snapshotData
-  if (!snapshot || typeof snapshot.id !== "number") {
+  let snapshotData: CachedUserSnapshot | null = null
+  if (typeof candidate.data === "string") {
+    snapshotData = await decryptData(candidate.data, signingKey)
+  } else {
+    // Legacy support or fallback? strictly string for v4
+    snapshotData = null
+  }
+
+  if (!snapshotData || typeof snapshotData.id !== "number") {
     clearProfileCacheStorage()
     return undefined
   }
-  return createOptimisticUser(snapshot)
+  return createOptimisticUser(snapshotData)
 }
 
-const persistUserToCache = (value: User | null, signingKey: string | null) => {
+const persistUserToCacheAsync = async (value: User | null, signingKey: string | null) => {
   if (typeof localStorage === "undefined") return
   try {
     if (value != null && signingKey) {
@@ -234,23 +311,8 @@ const persistUserToCache = (value: User | null, signingKey: string | null) => {
         mfa_last_verified_at: value.mfa_last_verified_at,
       }
 
-      // Encrypt with PBKDF2 key derivation and random salt/IV
-      const salt = CryptoJS.lib.WordArray.random(128 / 8)
-      const iv = CryptoJS.lib.WordArray.random(128 / 8)
-
-      const key = CryptoJS.PBKDF2(signingKey, salt, {
-        keySize: 256 / 32,
-        iterations: 600000
-      })
-
-      const encrypted = CryptoJS.AES.encrypt(JSON.stringify(snapshot), key, {
-        iv: iv,
-        padding: CryptoJS.pad.Pkcs7,
-        mode: CryptoJS.mode.CBC
-      })
-
-      // Store in format: salt:iv:ciphertext
-      const encryptedData = `${salt.toString()}:${iv.toString()}:${encrypted.toString()}`
+      const encryptedData = await encryptData(snapshot, signingKey)
+      if (!encryptedData) return
 
       const payload: CacheSignaturePayload = {
         version: PROFILE_CACHE_SCHEMA_VERSION,
@@ -258,10 +320,7 @@ const persistUserToCache = (value: User | null, signingKey: string | null) => {
         data: encryptedData,
       }
 
-      // Generate HMAC signature for integrity check
-      const signature = CryptoJS.HmacSHA256(JSON.stringify(payload), signingKey).toString(
-        CryptoJS.enc.Base64
-      )
+      const signature = await signPayload(payload, signingKey)
 
       const envelope: CachedProfileEnvelope = {
         ...payload,
@@ -350,13 +409,6 @@ const readStoredSessionSigningKey = (): string | null => {
   }
 }
 
-const initializeCachedUser = (): UserState => {
-  if (typeof window === "undefined") return null
-  migrateProfileCache()
-  const signingKey = readStoredSessionSigningKey()
-  return readCachedUser(signingKey) ?? null
-}
-
 export const useProfileSync = (
   sessionSigningKey: string | null,
   updateSessionSigningKey: (key: string | null) => void,
@@ -364,14 +416,33 @@ export const useProfileSync = (
   ensureSessionSigningKey: () => Promise<string | null>
 ) => {
   const queryClient = useQueryClient()
-  const [userState, setUserState] = useState<UserState>(initializeCachedUser)
+  const [userState, setUserState] = useState<UserState>(null)
   const [pendingMfaState, setPendingMfaState] = useState<PendingMfaState | null>(null)
   const cachedUserRef = useRef<UserState>(userState)
   const userStateRef = useRef<UserState>(userState)
   const pendingMfaRef = useRef<PendingMfaState | null>(pendingMfaState)
-  const [initializing, setInitializing] = useState<boolean>(() => userState == null)
+  const [initializing, setInitializing] = useState<boolean>(true)
   const [authOperation, setAuthOperation] = useState(false)
   const activeRequestRef = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    let mounted = true
+    const init = async () => {
+      if (typeof window === "undefined") return
+      try { migrateProfileCache() } catch {}
+
+      const signingKey = readStoredSessionSigningKey()
+      if (signingKey) {
+        const cached = await readCachedUserAsync(signingKey)
+        if (mounted && cached) {
+          setUserState(cached)
+        }
+      }
+      if (mounted) setInitializing(false)
+    }
+    init()
+    return () => { mounted = false }
+  }, [])
 
   const broadcastProfileEvent = useCallback((message: ProfileBroadcastMessage) => {
     if (typeof window === "undefined") return
@@ -413,7 +484,7 @@ export const useProfileSync = (
         // Removed side effect: userStateRef.current = normalized
         if (persist) {
           const key = readStoredSessionSigningKey()
-          persistUserToCache(normalized, key)
+          persistUserToCacheAsync(normalized, key)
         }
         queryClient.setQueryData<UserState>(currentUserQueryKey, normalized)
         return normalized
@@ -469,7 +540,7 @@ export const useProfileSync = (
 
   useEffect(() => {
     if (sessionSigningKey && userState) {
-      persistUserToCache(userState, sessionSigningKey)
+      persistUserToCacheAsync(userState, sessionSigningKey)
     }
   }, [sessionSigningKey, userState])
 
@@ -483,9 +554,9 @@ export const useProfileSync = (
   useEffect(() => {
     if (typeof window === "undefined") return
 
-    const syncFromCache = () => {
+    const syncFromCache = async () => {
       const key = readStoredSessionSigningKey()
-      const cached = readCachedUser(key)
+      const cached = await readCachedUserAsync(key)
       if (!cached) {
         // Cache was deleted or is invalid - clear user state
         applyUserState(() => null, { persist: false })
