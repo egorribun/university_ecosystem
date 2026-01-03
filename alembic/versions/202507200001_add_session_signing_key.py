@@ -47,7 +47,6 @@ def upgrade() -> None:
     # Define columns manually to avoid FK reflection issues with autoload
     metadata = sa.MetaData()
     active_sessions = sa.Table(
-
         _TABLE_NAME,
         metadata,
         sa.Column("id", sa.Integer, primary_key=True),
@@ -68,7 +67,6 @@ def upgrade() -> None:
         bind.execute(
             update_stmt, {"sess_id": row.id, "signing_key": secrets.token_urlsafe(32)}
         )
-
 
     with op.batch_alter_table(_TABLE_NAME) as batch_op:
         batch_op.alter_column(
