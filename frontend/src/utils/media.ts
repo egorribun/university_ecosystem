@@ -118,24 +118,33 @@ export function sanitizeUrl(url: string): string | null {
     const parsed = new URL(url, base)
     const protocol = parsed.protocol.toLowerCase()
 
-    // Block dangerous protocols
+    // Block dangerous protocols outright
     if (protocol === "javascript:" || protocol === "vbscript:") {
       return null
     }
 
-    // Block dangerous data types (text/html, etc) - though protocol is just 'data:'
-    // We can check the start of path for MIME type if strictly needed, but browsers
-    // execute javascript in data:text/html.
+    // Only allow safe protocols: http, https, blob, mailto, tel, and data:image/*
     if (protocol === "data:") {
       const pathname = parsed.pathname.toLowerCase()
-      // Allow images, block everything else
+      // Allow images, block everything else (e.g. text/html, application/xml)
       if (!pathname.startsWith("image/")) {
+        return null
+      }
+    } else {
+      const allowedProtocols = new Set(["http:", "https:", "blob:", "mailto:", "tel:"])
+      if (!allowedProtocols.has(protocol)) {
         return null
       }
     }
 
-    return url
+    // Return a normalized, sanitized URL string. For relative URLs we strip the dummy base.
+    const sanitized = parsed.toString()
+    if (base === "http://dummy.com") {
+      return sanitized.replace(base, "")
+    }
+    return sanitized
   } catch {
+    // If parsing fails, treat URL as unsafe
     return null
   }
 }
