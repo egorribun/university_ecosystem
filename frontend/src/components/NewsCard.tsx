@@ -301,7 +301,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       whileHover={{ y: -4 }}
       transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
       className={cn(
-        "card-glass group relative flex flex-col transition-[box-shadow] duration-300 ease-out h-[320px] md:h-[480px] w-full transform-gpu",
+        "card-glass group relative flex flex-col transition-[box-shadow] duration-300 ease-out h-[280px] md:h-[480px] w-full transform-gpu",
         hoveringDisabled
           ? "cursor-default"
           : "cursor-pointer hover:shadow-glass-strong active:scale-[0.985]"
@@ -366,11 +366,20 @@ const NewsCardComponent: FC<NewsCardProps> = ({
         </div>
       )}
 
-      <button
-        type="button"
+      <div
+        role="button"
+        tabIndex={0}
         onClick={handleCardClick}
-        disabled={hoveringDisabled}
-        className="group/button relative flex h-full flex-1 flex-col text-left focus-visible:outline-none disabled:cursor-default disabled:opacity-100"
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault()
+            handleCardClick()
+          }
+        }}
+        className={cn(
+          "group/button relative flex h-full flex-1 flex-col text-left focus-visible:outline-none",
+          hoveringDisabled ? "cursor-default opacity-100" : "cursor-pointer"
+        )}
       >
         <div className="relative w-full overflow-hidden border-b border-white/10 bg-[linear-gradient(135deg,rgba(29,78,216,0.18),rgba(59,130,246,0.08))]">
           <div
@@ -390,7 +399,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
                     : t("news:alt.heroFallback")
                 }
                 sizes="(min-width: 1200px) 640px, (min-width: 900px) 520px, 100vw"
-                className="relative h-[120px] w-full object-cover transition duration-700 ease-out md:h-[220px]"
+                className="relative h-[110px] w-full object-cover transition duration-700 ease-out md:h-[220px]"
                 onLoad={handleCardImageReady}
                 onError={handleCardImageReady}
               />
@@ -400,7 +409,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
               />
             </>
           ) : (
-            <div className="flex h-[120px] w-full items-center justify-center bg-glass/70 text-white/70 md:h-[220px]">
+            <div className="flex h-[110px] w-full items-center justify-center bg-glass/70 text-white/70 md:h-[220px]">
               <ArticleIcon className="h-12 w-12" fontSize="large" />
             </div>
           )}
@@ -465,7 +474,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
             />
           </div>
         </div>
-      </button>
+      </div>
 
       <Dialog
         open={editOpen}

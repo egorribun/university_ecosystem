@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
+import { hmac } from "@noble/hashes/hmac"
+import { sha256 } from "@noble/hashes/sha256"
 
 import api, { resetEtagCache } from "@/api/client"
 import type { User } from "@/types/User"
@@ -247,6 +249,21 @@ const signPayload = async (payload: CacheSignaturePayload, signingKey: string): 
   }
 }
 
+const verifySignatureSync = (
+  payload: CacheSignaturePayload,
+  signature: string,
+  signingKey: string
+): boolean => {
+  try {
+    const enc = new TextEncoder()
+    const signatureBytes = hmac(sha256, enc.encode(signingKey), enc.encode(JSON.stringify(payload)))
+    const expected = btoa(String.fromCharCode(...signatureBytes))
+    return signature === expected
+  } catch {
+    return false
+  }
+}
+
 const readCachedUserAsync = async (signingKey: string | null): Promise<User | undefined> => {
   if (!signingKey) {
     clearProfileCacheStorage()
@@ -416,12 +433,37 @@ export const useProfileSync = (
   ensureSessionSigningKey: () => Promise<string | null>
 ) => {
   const queryClient = useQueryClient()
-  const [userState, setUserState] = useState<UserState>(null)
+  const [userState, setUserState] = useState<UserState>(() => {
+    if (typeof window === "undefined") return null
+    const signingKey = sessionStorage.getItem(`${PROFILE_CACHE_BASE_KEY}.sessionKey`)
+    if (!signingKey) return null
+    const candidate = readCachedEnvelope()
+    if (!candidate) return null
+    if (candidate.version !== PROFILE_CACHE_SCHEMA_VERSION) return null
+    if (candidate.expiresAt <= Date.now()) return null
+
+    const payload: CacheSignaturePayload = {
+      version: candidate.version,
+      expiresAt: candidate.expiresAt,
+      data: candidate.data,
+    }
+
+    if (verifySignatureSync(payload, candidate.signature, signingKey)) {
+      if (typeof candidate.data !== "string") {
+        return createOptimisticUser(candidate.data)
+      }
+    }
+    return null
+  })
   const [pendingMfaState, setPendingMfaState] = useState<PendingMfaState | null>(null)
   const cachedUserRef = useRef<UserState>(userState)
   const userStateRef = useRef<UserState>(userState)
   const pendingMfaRef = useRef<PendingMfaState | null>(pendingMfaState)
-  const [initializing, setInitializing] = useState<boolean>(true)
+  const [initializing, setInitializing] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true
+    if (userState !== null) return false
+    return !readCachedEnvelope() || !sessionStorage.getItem(`${PROFILE_CACHE_BASE_KEY}.sessionKey`)
+  })
   const [authOperation, setAuthOperation] = useState(false)
   const activeRequestRef = useRef<AbortController | null>(null)
 
@@ -440,6 +482,8 @@ export const useProfileSync = (
           setUserState(cached)
         }
       }
+      // If we didn't have a cache, initializing was already true, now we set it to false
+      // If we DID have a cache, initializing was already false, setting it to false is fine
       if (mounted) setInitializing(false)
     }
     init()
@@ -573,7 +617,6 @@ export const useProfileSync = (
           if (!prev) return cached
           // If we have a full user object, don't overwrite it with a skeleton from cache
           // Only update the fields that are actually in the cache snapshot.
-          console.log("Syncing from cache, merging fields...")
           return {
             ...prev,
             id: cached.id,
@@ -652,7 +695,8 @@ export const useProfileSync = (
     const controller = new AbortController()
     activeRequestRef.current?.abort()
     activeRequestRef.current = controller
-    if (userStateRef.current == null) {
+    const hasCache = !!localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
+    if (userStateRef.current == null && !hasCache) {
       setInitializing(true)
     }
     ;(async () => {

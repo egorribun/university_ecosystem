@@ -649,6 +649,7 @@ async function processPendingNewsInteractions(): Promise<void> {
 
   const db = await openDatabase()
   const tx = db.transaction(NEWS_INTERACTION_STORE, "readonly")
+  attachTransactionFinalizers(db, tx)
   const store = tx.objectStore(NEWS_INTERACTION_STORE)
   const records = (await new Promise<any[]>((resolve, reject) => {
     const req = store.getAll()

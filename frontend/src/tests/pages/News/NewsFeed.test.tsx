@@ -95,6 +95,16 @@ describe("News page interaction", () => {
   beforeEach(() => {
     vi.resetModules()
     server.resetHandlers()
+    server.use(
+      http.get("*/news/*/interactions", () => {
+        return HttpResponse.json({
+          views_count: 5,
+          is_viewed: true,
+          likes_count: 2,
+          is_liked: false,
+        })
+      })
+    )
   })
 
   it("fetches and displays news list", async () => {
