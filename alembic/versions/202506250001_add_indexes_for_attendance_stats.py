@@ -33,7 +33,9 @@ def upgrade() -> None:
     if "events" in table_names and not _has_index(inspector, "events", ("starts_at",)):
         op.create_index("ix_events_starts_at", "events", ["starts_at"])
 
-    if "event_attendance" in table_names and not _has_index(inspector, "event_attendance", ("user_id",)):
+    if "event_attendance" in table_names and not _has_index(
+        inspector, "event_attendance", ("user_id",)
+    ):
         op.create_index("ix_event_attendance_user_id", "event_attendance", ["user_id"])
 
 
@@ -46,4 +48,3 @@ def downgrade() -> None:
         op.drop_index("ix_event_attendance_user_id", table_name="event_attendance")
     if "events" in table_names:
         op.drop_index("ix_events_starts_at", table_name="events")
-
