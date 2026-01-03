@@ -93,12 +93,19 @@ def _table_columns(bind, table_name: str) -> set[str]:
 
 def upgrade() -> None:
     bind = op.get_bind()
+
+    # Check if table exists first
+    inspector = inspect(bind)
+    if "event_attendance" not in inspector.get_table_names():
+        return
+
     existing_columns = _table_columns(bind, "event_attendance")
 
     if "qr_secret" not in existing_columns:
         op.add_column(
             "event_attendance", sa.Column("qr_secret", sa.String(), nullable=True)
         )
+
     if "qr_hmac" not in existing_columns:
         op.add_column(
             "event_attendance", sa.Column("qr_hmac", sa.String(), nullable=True)
@@ -148,12 +155,19 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     bind = op.get_bind()
+
+    # Check if table exists first
+    inspector = inspect(bind)
+    if "event_attendance" not in inspector.get_table_names():
+        return
+
     existing_columns = _table_columns(bind, "event_attendance")
 
     if "qr_code" not in existing_columns:
         op.add_column(
             "event_attendance", sa.Column("qr_code", sa.String(), nullable=True)
         )
+
 
     attendance = sa.table(
         "event_attendance",
