@@ -16,14 +16,15 @@ for candidate in (REPO_ROOT, PROJECT_ROOT):
 import inspect
 import logging
 
-import fakeredis.aioredis
 import httpx
 import pytest
-from asgi_lifespan import LifespanManager
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.compiler import compiles
+
+import fakeredis.aioredis
+from asgi_lifespan import LifespanManager
 
 pytest_plugins = ("pytest_asyncio", "pytest_cov")
 

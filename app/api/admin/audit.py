@@ -1,8 +1,5 @@
-from datetime import datetime
-from typing import List, Optional
-
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select, func, or_
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -15,22 +12,23 @@ from app.services.audit_service import get_secure_audit_service
 
 router = APIRouter(prefix="/audit", tags=["admin-audit"])
 
+
 def require_admin(user: models.User = Depends(get_current_user)):
     if user.role != "admin":
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required"
+            status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required"
         )
     return user
+
 
 @router.get("", response_model=schemas.AuditLogListOut)
 async def list_audit_logs(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    actor_id: Optional[int] = None,
-    subject_id: Optional[int] = None,
-    resource_type: Optional[str] = None,
-    action: Optional[str] = None,
+    actor_id: int | None = None,
+    subject_id: int | None = None,
+    resource_type: str | None = None,
+    action: str | None = None,
     db: AsyncSession = Depends(get_db),
     _: models.User = Depends(require_admin),
 ):
@@ -44,7 +42,7 @@ async def list_audit_logs(
         select(
             DataAccessLog,
             Actor.full_name.label("actor_name"),
-            Subject.full_name.label("subject_name")
+            Subject.full_name.label("subject_name"),
         )
         .outerjoin(Actor, DataAccessLog.actor_user_id == Actor.id)
         .outerjoin(Subject, DataAccessLog.subject_user_id == Subject.id)
@@ -102,7 +100,7 @@ async def list_audit_logs(
                 ip_address=log.ip_address,
                 user_agent=log.user_agent,
                 created_at=log.created_at,
-                is_valid=is_valid
+                is_valid=is_valid,
             )
         )
 

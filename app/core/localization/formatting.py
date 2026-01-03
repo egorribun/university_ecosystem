@@ -4,7 +4,6 @@ from collections.abc import Mapping
 from functools import lru_cache
 from typing import Any
 
-from .core import normalize_locale
 from .dictionary import TRANSLATIONS
 
 _LESSON_TYPE_TRANSLATIONS: Mapping[str, str] = {
@@ -72,7 +71,7 @@ def translate(
     default: str | None = None,
     **kwargs: Any,
 ) -> str:
-    from .core import resolve_locale, DEFAULT_LOCALE
+    from .core import DEFAULT_LOCALE, resolve_locale
 
     resolved = resolve_locale(locale=locale, request=request, user=user)
     entry = TRANSLATIONS.get(key)

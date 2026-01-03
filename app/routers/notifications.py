@@ -18,8 +18,8 @@ from sqlalchemy.orm import selectinload
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.rate_limit import RateLimitExceeded, RateLimitInfo, enforce_rate_limit
 from app.core.localization import resolve_locale, translate
+from app.core.rate_limit import RateLimitExceeded, RateLimitInfo, enforce_rate_limit
 from app.models.models import PushSubscription, User, UserPushTopic
 from app.services.notifications import prepare_push_payload_for_user
 from app.services.push_schema import ensure_push_subscription_schema

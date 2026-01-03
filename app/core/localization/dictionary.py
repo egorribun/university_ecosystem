@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from collections.abc import Mapping
 
 TRANSLATIONS: Mapping[str, Mapping[str, str]] = {

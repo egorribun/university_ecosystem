@@ -3,10 +3,11 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
-from typing import Any, Literal
+from typing import Literal
 from urllib.parse import urljoin
 
 from app.core.config import settings
+
 
 def get_optimized_image_url(
     original_url: str | None,
@@ -41,7 +42,9 @@ def get_optimized_image_url(
         full_source_url = urljoin(backend_url, original_url)
 
     # Encode source URL
-    source_url_encoded = base64.urlsafe_b64encode(full_source_url.encode()).rstrip(b"=").decode()
+    source_url_encoded = (
+        base64.urlsafe_b64encode(full_source_url.encode()).rstrip(b"=").decode()
+    )
 
     # Build processing options
     # Refer to imgproxy documentation for more options
@@ -49,7 +52,9 @@ def get_optimized_image_url(
     width = width or 0
     height = height or 0
 
-    options = f"/rs:{resizing_type}:{width}:{height}:{int(enlarge)}:{int(extend)}/g:{gravity}"
+    options = (
+        f"/rs:{resizing_type}:{width}:{height}:{int(enlarge)}:{int(extend)}/g:{gravity}"
+    )
     if extension:
         path = f"{options}/{source_url_encoded}.{extension}"
     else:

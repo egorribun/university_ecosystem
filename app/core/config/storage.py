@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+
 from pydantic import AliasChoices, Field, field_validator
-from .base import BaseAppSettings, _PROJECT_ROOT, _coerce_int_list
+
+from .base import _PROJECT_ROOT, BaseAppSettings, _coerce_int_list
 
 
 class StorageSettings(BaseAppSettings):
@@ -72,9 +74,7 @@ class StorageSettings(BaseAppSettings):
 
     @field_validator("image_proxy_allowed_widths", mode="before")
     @classmethod
-    def _validate_image_proxy_widths(
-        cls, value: str | list[int] | None
-    ) -> list[int]:
+    def _validate_image_proxy_widths(cls, value: str | list[int] | None) -> list[int]:
         return sorted(_coerce_int_list(value))
 
     @property

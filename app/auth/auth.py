@@ -854,7 +854,9 @@ async def login_passkey_start(
         # For now, identified flow is required.
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,
-            translate("errors.auth.credentials_invalid", locale=resolve_locale(request)),
+            translate(
+                "errors.auth.credentials_invalid", locale=resolve_locale(request)
+            ),
         )
 
     from app.services.webauthn import WebAuthnService

@@ -7,15 +7,16 @@ percentage rollouts, user targeting, and environment-based defaults.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
-import asyncio
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 from typing import Any
 
 from redis.asyncio import Redis
+
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -114,7 +115,8 @@ class FeatureFlagService:
 
         self._redis = redis or (
             Redis.from_url(settings.cache_redis_url, decode_responses=True)
-            if settings.cache_redis_url else None
+            if settings.cache_redis_url
+            else None
         )
 
         if self._redis:
@@ -238,9 +240,7 @@ class FeatureFlagService:
         if self._redis:
             try:
                 await self._redis.hset(
-                    FEATURE_FLAGS_KEY,
-                    name,
-                    json.dumps(flag.to_dict())
+                    FEATURE_FLAGS_KEY, name, json.dumps(flag.to_dict())
                 )
                 # Broadcast update
                 await self._redis.publish(FEATURE_FLAGS_CHANNEL, name)

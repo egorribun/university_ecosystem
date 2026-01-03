@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 from pydantic import field_validator
-from .base import BaseAppSettings, _validate_positive_int, _validate_non_negative_int, _validate_positive_float
+
+from .base import (
+    BaseAppSettings,
+    _validate_non_negative_int,
+    _validate_positive_float,
+    _validate_positive_int,
+)
 
 
 class DatabaseSettings(BaseAppSettings):
