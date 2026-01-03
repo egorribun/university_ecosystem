@@ -1,6 +1,7 @@
 import logging
 import math
 import secrets
+import hashlib
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, cast
@@ -969,9 +970,11 @@ async def login_passkey_verify(
         td_token, td_expires = await mfa.create_trusted_device_token(
             db, user=user, user_agent=user_agent, ip_address=client_ip
         )
+        # Store only a hashed representation of the trusted device token in the cookie
+        td_token_hashed = hashlib.sha256(td_token.encode("utf-8")).hexdigest()
         response.set_cookie(
             settings.trusted_device_cookie_name,
-            td_token,
+            td_token_hashed,
             httponly=True,
             secure=settings.cookie_secure,
             samesite=settings.cookie_samesite,
