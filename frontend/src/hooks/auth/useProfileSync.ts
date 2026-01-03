@@ -170,7 +170,7 @@ const readCachedUser = (signingKey: string | null): User | undefined => {
 
         const key = CryptoJS.PBKDF2(signingKey, salt, {
           keySize: 256 / 32,
-          iterations: 100000
+          iterations: 600000
         })
 
         const bytes = CryptoJS.AES.decrypt(ciphertext, key, {
@@ -240,8 +240,7 @@ const persistUserToCache = (value: User | null, signingKey: string | null) => {
 
       const key = CryptoJS.PBKDF2(signingKey, salt, {
         keySize: 256 / 32,
-        // Use a sufficiently large iteration count to make offline guessing expensive
-        iterations: 100000
+        iterations: 600000
       })
 
       const encrypted = CryptoJS.AES.encrypt(JSON.stringify(snapshot), key, {

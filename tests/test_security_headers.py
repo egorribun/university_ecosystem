@@ -83,29 +83,37 @@ async def test_security_headers_production_mode(monkeypatch):
     assert "'self'" in style_src
     assert "'unsafe-inline'" in style_src
 
-    csp_tokens = set(csp.split())
-    # Parse the hostnames from CSP token URLs to accurately match the allowed host
-    # CodeQL alert: Incomplete URL substring sanitization
-    # We use urlparse to safely extract hostnames
-    csp_hosts = set()
-    for token in csp_tokens:
-        # CodeQL fix: ensure strict URL parsing
-        if "://" in token:
+    def check_csp_host(domain: str) -> bool:
+        for token in csp_tokens:
+            if "://" not in token:
+                continue
             try:
                 parsed = urllib.parse.urlparse(token)
-                if parsed.scheme in ("http", "https") and parsed.hostname:
-                    csp_hosts.add(parsed.hostname)
+                if parsed.scheme in ("http", "https") and parsed.hostname == domain:
+                    return True
             except ValueError:
                 continue
+        return False
 
-    assert "api.spotify.com" in csp_hosts
-    assert "fcm.googleapis.com" in csp_hosts
-    assert "fcmregistrations.googleapis.com" in csp_hosts
+    assert check_csp_host("api.spotify.com")
+    assert check_csp_host("fcm.googleapis.com")
+    assert check_csp_host("fcmregistrations.googleapis.com")
 
     # Check for wildcard domain properly
-    assert "push.services.mozilla.com" in csp_hosts or any(
-        token == "https://*.push.services.mozilla.com" for token in csp_tokens
-    )
+    wildcard_found = False
+    for token in csp_tokens:
+        if token == "https://*.push.services.mozilla.com":
+            wildcard_found = True
+            break
+        try:
+             # Also check if it's the exact host if wildcard wasn't literal
+            parsed = urllib.parse.urlparse(token)
+            if parsed.hostname == "push.services.mozilla.com":
+                wildcard_found = True
+                break
+        except ValueError:
+            pass
+    assert wildcard_found
 
     assert "Content-Security-Policy-Report-Only" not in headers
 
