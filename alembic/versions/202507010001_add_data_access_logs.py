@@ -26,6 +26,10 @@ def upgrade() -> None:
     inspector = sa.inspect(bind)
     table_name = "data_access_logs"
 
+    # Skip on SQLite - this table uses PostgreSQL-specific types
+    if bind.dialect.name == "sqlite":
+        return
+
     if not _table_exists(inspector, table_name):
         op.create_table(
             table_name,
@@ -52,6 +56,7 @@ def upgrade() -> None:
             ),
         )
 
+
     inspector = sa.inspect(bind)
     existing_indexes = (
         {index["name"] for index in inspector.get_indexes(table_name)}
@@ -72,8 +77,15 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
+
+    # Skip on SQLite
+    if bind.dialect.name == "sqlite":
+        return
+
     op.drop_index("ix_data_access_logs_resource", table_name="data_access_logs")
     op.drop_index("ix_data_access_logs_created_at", table_name="data_access_logs")
     op.drop_index("ix_data_access_logs_subject", table_name="data_access_logs")
     op.drop_index("ix_data_access_logs_actor", table_name="data_access_logs")
     op.drop_table("data_access_logs")
+

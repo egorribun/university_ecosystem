@@ -19,41 +19,68 @@ depends_on = None
 
 
 def upgrade():
-    # Drop columns if they exist
-    # We use checkfirst=True logic implicitly by catching errors or inspecting,
-    # but standard alembic commands usually assume state.
-    # However, since we are fixing a drift, we should be careful.
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
 
-    # But for simplicity in this generated file:
-    op.drop_column("users", "dnd_enabled")
-    op.drop_column("users", "dnd_start")
-    op.drop_column("users", "dnd_end")
-    op.drop_column("users", "timezone")
+    # Check if users table exists
+    if "users" not in inspector.get_table_names():
+        return
+
+    # SQLite doesn't support DROP COLUMN - skip on SQLite
+    if bind.dialect.name == "sqlite":
+        return
+
+    # Get existing columns
+    existing_columns = {col["name"] for col in inspector.get_columns("users")}
+
+    # Drop columns if they exist
+    columns_to_drop = ["dnd_enabled", "dnd_start", "dnd_end", "timezone"]
+    for col in columns_to_drop:
+        if col in existing_columns:
+            op.drop_column("users", col)
 
 
 def downgrade():
-    # Add columns back
-    op.add_column(
-        "users",
-        sa.Column(
-            "timezone", sa.VARCHAR(length=64), autoincrement=False, nullable=True
-        ),
-    )
-    op.add_column(
-        "users",
-        sa.Column("dnd_end", postgresql.TIME(), autoincrement=False, nullable=True),
-    )
-    op.add_column(
-        "users",
-        sa.Column("dnd_start", postgresql.TIME(), autoincrement=False, nullable=True),
-    )
-    op.add_column(
-        "users",
-        sa.Column(
-            "dnd_enabled",
-            sa.BOOLEAN(),
-            server_default=sa.text("false"),
-            autoincrement=False,
-            nullable=False,
-        ),
-    )
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+
+    # Check if users table exists
+    if "users" not in inspector.get_table_names():
+        return
+
+    # SQLite - skip
+    if bind.dialect.name == "sqlite":
+        return
+
+    existing_columns = {col["name"] for col in inspector.get_columns("users")}
+
+    # Add columns back if they don't exist
+    if "timezone" not in existing_columns:
+        op.add_column(
+            "users",
+            sa.Column(
+                "timezone", sa.VARCHAR(length=64), autoincrement=False, nullable=True
+            ),
+        )
+    if "dnd_end" not in existing_columns:
+        op.add_column(
+            "users",
+            sa.Column("dnd_end", postgresql.TIME(), autoincrement=False, nullable=True),
+        )
+    if "dnd_start" not in existing_columns:
+        op.add_column(
+            "users",
+            sa.Column("dnd_start", postgresql.TIME(), autoincrement=False, nullable=True),
+        )
+    if "dnd_enabled" not in existing_columns:
+        op.add_column(
+            "users",
+            sa.Column(
+                "dnd_enabled",
+                sa.BOOLEAN(),
+                server_default=sa.text("false"),
+                autoincrement=False,
+                nullable=False,
+            ),
+        )
+

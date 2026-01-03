@@ -9,6 +9,7 @@ Create Date: 2025-12-23 10:30:00.000000
 """
 
 from alembic import op
+import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = "202512230001_chat_message_index"
@@ -18,6 +19,13 @@ depends_on = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+
+    # Check if messages table exists
+    if "messages" not in inspector.get_table_names():
+        return
+
     # Composite index for unread message count queries:
     # SELECT COUNT(*) FROM messages WHERE chat_id = ?
     # AND read_status = false AND sender_id != ?
@@ -38,5 +46,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+
+    # Check if messages table exists
+    if "messages" not in inspector.get_table_names():
+        return
+
     op.drop_index("ix_messages_chat_created_at", table_name="messages")
     op.drop_index("ix_messages_chat_unread_sender", table_name="messages")
+
