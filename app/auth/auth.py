@@ -50,7 +50,6 @@ from app.schemas.schemas import (
     WebAuthnRegistrationVerifyIn,
 )
 from app.services.audit_service import AuditService
-from app.services.auth_service import attach_pending_email
 from app.utils.ratelimit import sensitive_route_limit
 
 logger = logging.getLogger("app.auth")
@@ -262,6 +261,7 @@ async def _build_token_response(
     refreshed_user = await ensure_mfa_relationships_loaded(db, user)
     if refreshed_user is not None:
         user = refreshed_user
+    from app.services.auth_service import attach_pending_email
     enriched_user = await attach_pending_email(db, user)
     if enriched_user is not None:
         user = enriched_user
