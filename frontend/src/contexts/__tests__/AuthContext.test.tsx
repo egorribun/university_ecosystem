@@ -164,9 +164,12 @@ describe("AuthProvider caching", () => {
     await waitFor(() => expect(result.current.user).toBeTruthy(), { timeout: 15000 })
 
     // Wait for the cache to be persisted
-    await waitFor(() => {
-      expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeTruthy()
-    }, { timeout: 5000 })
+    await waitFor(
+      () => {
+        expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeTruthy()
+      },
+      { timeout: 5000 }
+    )
 
     const cachedEnvelope = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
     const parsed = JSON.parse(cachedEnvelope!)
@@ -187,7 +190,9 @@ describe("AuthProvider caching", () => {
     })
 
     await waitFor(() => expect(result.current.user).toBeNull(), { timeout: 15000 })
-    await waitFor(() => expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull(), { timeout: 10000 })
+    await waitFor(() => expect(localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)).toBeNull(), {
+      timeout: 10000,
+    })
     expect(queryClient.getQueryData(currentUserQueryKey)).toBeNull()
 
     queryClient.clear()
