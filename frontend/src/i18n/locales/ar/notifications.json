@@ -37,5 +37,9 @@
     "topicDisabled": "Topic “{{label}}” disabled",
     "updateFailed": "Couldn't update notification preferences",
     "detectFailed": "Couldn't determine push subscription"
+  },
+  "sync": {
+    "title": "مزامنة",
+    "body": "تم حفظ إجراءاتك بنجاح"
   }
 }

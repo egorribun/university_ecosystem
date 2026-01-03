@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from functools import cached_property
 from pathlib import Path
+
 
 from pydantic import AliasChoices, Field, field_validator
 
@@ -9,6 +11,8 @@ from .base import _PROJECT_ROOT, BaseAppSettings, _coerce_int_list
 
 class StorageSettings(BaseAppSettings):
     storage_backend: str = "static"
+    health_storage_probe_enabled: bool = True
+
     storage_static_base_url: str = "/static"
     storage_s3_bucket: str = ""
     storage_s3_region: str = ""
@@ -61,6 +65,23 @@ class StorageSettings(BaseAppSettings):
     )
     chat_attachment_max_size_bytes: int = 15 * 1024 * 1024
     chat_attachment_max_files: int = 5
+
+    @cached_property
+    def chat_attachment_allowed_mime_types_set(self) -> set[str]:
+        return {
+            m.strip().lower()
+            for m in _coerce_str_list(self.chat_attachment_allowed_mime_types)
+            if m.strip()
+        }
+
+    @cached_property
+    def event_file_allowed_mime_types_set(self) -> set[str]:
+        return {
+            m.strip().lower()
+            for m in _coerce_str_list(self.event_file_allowed_mime_types)
+            if m.strip()
+        }
+
 
     @field_validator("storage_backend")
     @classmethod

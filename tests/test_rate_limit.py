@@ -1,5 +1,6 @@
 import httpx
 import pytest
+from app.core.localization import translate
 from fastapi import Depends, FastAPI, Response, status
 from hypothesis import HealthCheck, given
 from hypothesis import settings as hypo_settings
@@ -10,7 +11,6 @@ from app.auth.security import get_password_hash
 from app.core import rate_limit
 from app.core.config import settings
 from app.core.rate_limit import RateLimitMiddleware
-from app.localization import translate
 from app.utils import ratelimit as ratelimit_module
 
 

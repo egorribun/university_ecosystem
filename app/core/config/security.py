@@ -23,11 +23,18 @@ class SecuritySettings(BaseAppSettings):
     jwt_active_kid: str | None = None
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
+    api_v2_prefix: str = "/api/v2"
+    monitoring_heavy_probe_enabled: bool = False
+    audit_log_secret: str = "development-audit-secret"
+
     max_sessions_per_user: int = 5
     frontend_origin: str = "http://localhost:5173"
     frontend_origins: str | list[str] = ""
     app_base_url: str = "http://localhost:5173"
     trusted_hosts: str | list[str] = "localhost,127.0.0.1"
+
+
+
 
     request_id_header: str = "x-request-id"
     trace_header: str = "x-trace-id"

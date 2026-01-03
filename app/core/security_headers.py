@@ -8,11 +8,15 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.responses import FileResponse, Response
 from starlette.types import ASGIApp
 
-from app.core.config import Settings
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from app.core.config import Settings
+
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app: ASGIApp, *, settings: Settings):
+    def __init__(self, app: ASGIApp, *, settings: "Settings"):
+
         super().__init__(app)
         self._settings = settings
 

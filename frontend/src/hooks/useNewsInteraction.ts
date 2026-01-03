@@ -43,7 +43,7 @@ async function queueInteraction(url: string, payload: any) {
   if ("serviceWorker" in navigator && "SyncManager" in window) {
     const registration = await navigator.serviceWorker.ready
     try {
-      // @ts-expect-error
+      // @ts-expect-error: sync is not yet standard in all browsers
       await registration.sync.register(NEWS_INTERACTION_SYNC_TAG)
     } catch (e) {
       console.warn("Failed to register background sync", e)

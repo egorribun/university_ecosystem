@@ -72,6 +72,7 @@ export function SyncStatus() {
           initial={{ opacity: 0, scale: 0.8 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.8 }}
+          role="status"
           className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-glass/20 backdrop-blur-sm border border-white/10"
         >
           {isOnline ? (

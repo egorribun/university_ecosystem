@@ -2,12 +2,12 @@ from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from app.core.localization import translate
 from sqlalchemy import event
 from sqlalchemy.exc import IntegrityError
 
 from app import crud
 from app.auth.security import get_password_hash
-from app.localization import translate
 from app.models import models
 from app.schemas import schemas
 

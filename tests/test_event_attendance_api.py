@@ -1,11 +1,11 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from app.core.localization import translate
 from fastapi import status
 from sqlalchemy import select
 
 from app.auth.security import get_password_hash
-from app.localization import translate
 from app.models import models
 from app.services import attendance_tokens
 

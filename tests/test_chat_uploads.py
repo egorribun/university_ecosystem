@@ -3,13 +3,13 @@
 import io
 
 import pytest
+from app.core.localization import translate
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy import select
 from starlette.datastructures import Headers
 
 from app.api import chat as chat_api
 from app.core.config import settings
-from app.localization import translate
 from app.models.chat import Attachment, Chat
 from app.utils import files
 

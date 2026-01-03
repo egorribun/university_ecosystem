@@ -533,6 +533,7 @@ export default function Schedule() {
     return todayLessons.find((l) => (parseMinutes(l.start_time) ?? 0) > minutesNow) || null
   }, [todayLessons, currentLesson, minutesNow, hasToday])
 
+
   const [timeLeftText, setTimeLeftText] = useState<string>("")
   useEffect(() => {
     const calc = () => {
@@ -721,6 +722,7 @@ export default function Schedule() {
       </div>
     )
   }
+
 
   const lessonCardHeight = 148
 
@@ -990,6 +992,7 @@ export default function Schedule() {
     )
   }
 
+
   const renderMobileDayAnchors = () => (
     <div className="flex gap-2 overflow-x-auto pb-2 px-1 scrollbar-hide">
       {weekdayBackend.map((day, i) => (
@@ -1104,6 +1107,9 @@ export default function Schedule() {
                         )}
                       >
                         <div className="flex flex-wrap items-center gap-2">
+
+
+
                           <Badge
                             size="xs"
                             className="chip-type font-semibold shadow-[0_2px_6px_rgba(0,0,0,0.12)] dark:shadow-[0_4px_10px_rgba(0,0,0,0.24)]"
@@ -1174,7 +1180,7 @@ export default function Schedule() {
     </div>
   )
 
-  if (loading)
+  if (loading) {
     return (
       <Layout>
         <PageFadeIn>
@@ -1205,6 +1211,8 @@ export default function Schedule() {
         </PageFadeIn>
       </Layout>
     )
+  }
+
 
   const inputClass =
     "w-full rounded-xl border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] px-4 py-3 text-[0.98rem] font-medium text-[color:var(--page-text)] shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)] transition-all duration-200 focus:border-[color:var(--nav-link)] focus:outline-none focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--nav-link)_15%,transparent)] placeholder:text-[color:color-mix(in_srgb,var(--placeholder-fg)_70%,transparent)] dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_90%,transparent_10%)] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.08)] dark:focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--nav-link)_20%,transparent)] dark:placeholder:text-[color:color-mix(in_srgb,var(--placeholder-fg)_75%,transparent)]"
@@ -1284,11 +1292,13 @@ export default function Schedule() {
                       className="chip-time font-medium border-[color:color-mix(in_srgb,white_14%,var(--nav-link)_86%)] bg-[color:color-mix(in_srgb,var(--card-bg)_92%,white_8%)] text-[color:var(--page-text)] dark:border-[color:color-mix(in_srgb,white_10%,var(--nav-link)_90%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_90%,transparent_10%)] dark:text-[color:var(--page-text)]"
                       leadingIcon={<AccessTimeIcon className="text-[16px]" />}
                     >
-                      {currentLesson ? `${getTimeStr(currentLesson)}–${getEndTimeStr(currentLesson)}` : ""}
+                      {currentLesson ? `${getTimeStr(currentLesson!)}–${getEndTimeStr(currentLesson!)}` : ""}
+
                     </Badge>
                     <h3 className="text-lg font-extrabold tracking-tight text-[color:var(--page-text)]">
-                      {currentLesson.subject}
+                      {currentLesson?.subject}
                     </h3>
+
                     {!!timeLeftText && (
                       <Badge
                         size="sm"
@@ -1305,7 +1315,7 @@ export default function Schedule() {
                       leadingIcon={<SchoolIcon className="text-[16px]" />}
                       className="font-medium border-[color:color-mix(in_srgb,white_14%,var(--nav-link)_86%)] bg-[color:color-mix(in_srgb,var(--card-bg)_92%,white_8%)] text-[color:var(--page-text)] dark:border-[color:color-mix(in_srgb,white_10%,var(--nav-link)_90%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_90%,transparent_10%)] dark:text-[color:var(--page-text)]"
                     >
-                      {currentLesson.teacher}
+                      {currentLesson?.teacher}
                     </Badge>
                     <Badge
                       size="sm"
@@ -1313,8 +1323,9 @@ export default function Schedule() {
                       leadingIcon={<RoomIcon className="text-[16px]" />}
                       className="font-medium border-[color:color-mix(in_srgb,white_14%,var(--nav-link)_86%)] bg-[color:color-mix(in_srgb,var(--card-bg)_92%,white_8%)] text-[color:var(--page-text)] dark:border-[color:color-mix(in_srgb,white_10%,var(--nav-link)_90%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_90%,transparent_10%)] dark:text-[color:var(--page-text)]"
                     >
-                      {currentLesson.room}
+                      {currentLesson?.room}
                     </Badge>
+
                   </div>
                   <ProgressBar
                     value={currentProgress}
@@ -1339,11 +1350,13 @@ export default function Schedule() {
                     className="chip-time font-medium border-[color:color-mix(in_srgb,white_14%,var(--nav-link)_86%)] bg-[color:color-mix(in_srgb,var(--card-bg)_92%,white_8%)] text-[color:var(--page-text)] dark:border-[color:color-mix(in_srgb,white_10%,var(--nav-link)_90%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_90%,transparent_10%)] dark:text-[color:var(--page-text)]"
                     leadingIcon={<AccessTimeIcon className="text-[16px]" />}
                   >
-                    {nextLesson ? `${getTimeStr(nextLesson)}–${getEndTimeStr(nextLesson)}` : ""}
+                    {nextLesson ? `${getTimeStr(nextLesson!)}–${getEndTimeStr(nextLesson!)}` : ""}
+
                   </Badge>
                   <h3 className="text-lg font-extrabold tracking-tight text-[color:var(--page-text)]">
-                    {nextLesson.subject}
+                    {nextLesson?.subject}
                   </h3>
+
                   {!!timeLeftText && (
                     <Badge
                       size="sm"
@@ -1389,75 +1402,61 @@ export default function Schedule() {
             onClose={() => setOpenDialog(false)}
             title={dialogLesson?.subject || t("schedule:dialog.detailsFallback")}
           >
-            {dialogLesson && (
-              <div className="space-y-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
-                    {t("schedule:dialog.typeLabel")}:
-                  </span>
-                  <Badge
-                    size="sm"
-                    className="font-semibold"
-                    style={{
-                      color: "#fff",
-                      background: getLessonTypeColor(dialogLesson.lesson_type),
-                    }}
-                  >
-                    {lessonTypeLabels.get(dialogLesson.lesson_type ?? "") ??
-                      dialogLesson.lesson_type ??
-                      ""}
-                  </Badge>
-                </div>
-                <div className="space-y-1">
-                  <span className="text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
-                    {t("schedule:dialog.timeLabel")}:
-                  </span>
-                  <p className="text-base text-[color:var(--page-text)]">
-                    {getTimeStr(dialogLesson)}–{getEndTimeStr(dialogLesson)}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <span className="text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
-                    {t("schedule:dialog.teacherLabel")}:
-                  </span>
-                  <p className="text-base text-[color:var(--page-text)]">{dialogLesson.teacher}</p>
-                </div>
-                <div className="space-y-1">
-                  <span className="text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
-                    {t("schedule:dialog.roomLabel")}:
-                  </span>
-                  <p className="text-base text-[color:var(--page-text)]">{dialogLesson.room}</p>
-                </div>
-                <div className="flex gap-3 pt-2">
-                  {(user?.role === "admin" || user?.role === "teacher") && (
-                    <Button
-                      variant="solid"
-                      onClick={() => {
-                        const lessonData = dialogLesson || currentLesson || nextLesson
-                        if (!lessonData) return
-                        setEditing(true)
-                        setEditLesson({
-                          ...lessonData,
-                          lesson_type: resolveLessonTypeId(lessonData.lesson_type),
-                        })
-                        setOpenDialog(false)
-                      }}
-                      className="font-semibold"
-                    >
-                      {t("schedule:buttons.edit")}
-                    </Button>
-                  )}
-                  <Button
-                    variant="outline"
-                    onClick={() => setOpenDialog(false)}
-                    className="font-semibold"
-                  >
-                    {t("schedule:buttons.close")}
-                  </Button>
-                </div>
-              </div>
-            )}
+            {(() => {
+              const lesson = dialogLesson
+              if (lesson) {
+                const lType = lesson.lesson_type
+                return (
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
+                        {t("schedule:dialog.typeLabel")}:
+                      </span>
+                      <Badge
+                        size="sm"
+                        className="font-semibold"
+                        style={{
+                          color: "#fff",
+                          background: getLessonTypeColor(lType),
+                        }}
+                      >
+                        {lType ? (lessonTypeLabels.get(lType) ?? lType) : ""}
+                      </Badge>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
+                        {t("schedule:dialog.timeLabel")}:
+                      </span>
+                      <p className="text-base text-[color:var(--page-text)]">
+                        {`${getTimeStr(lesson)}–${getEndTimeStr(lesson)}`}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
+                        {t("schedule:dialog.teacherLabel")}:
+                      </span>
+                      <p className="text-base text-[color:var(--page-text)]">
+                        {lesson.teacher || t("schedule:dialog.noTeacher")}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
+                        {t("schedule:dialog.roomLabel")}:
+                      </span>
+                      <p className="text-base text-[color:var(--page-text)]">
+                        {lesson.room || t("schedule:dialog.noRoom")}
+                      </p>
+                    </div>
+                  </div>
+                )
+              }
+              return null
+            })()}
+
+
           </Dialog>
+
+
 
           <Dialog
             open={editing}
@@ -1472,10 +1471,13 @@ export default function Schedule() {
                   </label>
                   <input
                     type="text"
-                    value={editLesson.subject || ""}
-                    onChange={(e) => setEditLesson({ ...editLesson, subject: e.target.value })}
+                    value={editLesson?.subject || ""}
+                    onChange={(e) =>
+                      setEditLesson((prev) => (prev ? { ...prev, subject: e.target.value } : null))
+                    }
                     className={inputClass}
                   />
+
                 </div>
                 <div>
                   <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
@@ -1483,10 +1485,13 @@ export default function Schedule() {
                   </label>
                   <input
                     type="text"
-                    value={editLesson.teacher || ""}
-                    onChange={(e) => setEditLesson({ ...editLesson, teacher: e.target.value })}
+                    value={editLesson?.teacher || ""}
+                    onChange={(e) =>
+                      setEditLesson((prev) => (prev ? { ...prev, teacher: e.target.value } : null))
+                    }
                     className={inputClass}
                   />
+
                 </div>
                 <div>
                   <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
@@ -1494,20 +1499,26 @@ export default function Schedule() {
                   </label>
                   <input
                     type="text"
-                    value={editLesson.room || ""}
-                    onChange={(e) => setEditLesson({ ...editLesson, room: e.target.value })}
+                    value={editLesson?.room || ""}
+                    onChange={(e) =>
+                      setEditLesson((prev) => (prev ? { ...prev, room: e.target.value } : null))
+                    }
                     className={inputClass}
                   />
+
                 </div>
                 <div>
                   <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                     {t("schedule:form.lessonType")}
                   </label>
                   <select
-                    value={editLesson.lesson_type || ""}
-                    onChange={(e) => setEditLesson({ ...editLesson, lesson_type: e.target.value })}
+                    value={editLesson?.lesson_type || ""}
+                    onChange={(e) =>
+                      setEditLesson((prev) => (prev ? { ...prev, lesson_type: e.target.value } : null))
+                    }
                     className={inputClass}
                   >
+
                     {editingLessonTypeOptions.map((option) => (
                       <option key={option.value} value={option.value}>
                         {option.label}
@@ -1520,10 +1531,13 @@ export default function Schedule() {
                     {t("schedule:form.day")}
                   </label>
                   <select
-                    value={editLesson.weekday}
-                    onChange={(e) => setEditLesson({ ...editLesson, weekday: e.target.value })}
+                    value={editLesson?.weekday || ""}
+                    onChange={(e) =>
+                      setEditLesson((prev) => (prev ? { ...prev, weekday: e.target.value } : null))
+                    }
                     className={inputClass}
                   >
+
                     {weekdayBackend.map((day) => (
                       <option key={day} value={day}>
                         {getDayLabel(day)}
@@ -1537,17 +1551,22 @@ export default function Schedule() {
                   </label>
                   <input
                     type="time"
-                    value={getTimeStr(editLesson)}
+                    value={editLesson ? getTimeStr(editLesson) : ""}
                     onChange={(e) =>
-                      setEditLesson({
-                        ...editLesson,
-                        start_time: `${
-                          editLesson.start_time?.slice(0, 11) || dayjs().format("YYYY-MM-DDT")
-                        }${e.target.value}:00`,
-                      })
+                      setEditLesson((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              start_time: `${
+                                prev.start_time?.slice(0, 11) || dayjs().format("YYYY-MM-DDT")
+                              }${e.target.value}:00`,
+                            }
+                          : null
+                      )
                     }
                     className={inputClass}
                   />
+
                 </div>
                 <div>
                   <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
@@ -1555,24 +1574,30 @@ export default function Schedule() {
                   </label>
                   <input
                     type="time"
-                    value={getEndTimeStr(editLesson)}
+                    value={editLesson ? getEndTimeStr(editLesson) : ""}
                     onChange={(e) =>
-                      setEditLesson({
-                        ...editLesson,
-                        end_time: `${
-                          editLesson.end_time?.slice(0, 11) || dayjs().format("YYYY-MM-DDT")
-                        }${e.target.value}:00`,
-                      })
+                      setEditLesson((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              end_time: `${
+                                prev.end_time?.slice(0, 11) || dayjs().format("YYYY-MM-DDT")
+                              }${e.target.value}:00`,
+                            }
+                          : null
+                      )
                     }
                     className={inputClass}
                   />
+
                 </div>
                 <div>
                   <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
                     {t("schedule:form.week")}
                   </label>
                   <select
-                    value={editLesson.parity}
+                    value={editLesson?.parity ?? "both"}
+
                     onChange={(e) =>
                       setEditLesson((prev) =>
                         prev ? { ...prev, parity: e.target.value as LessonParity } : prev
@@ -1813,3 +1838,5 @@ export default function Schedule() {
     }
   }
 }
+}
+

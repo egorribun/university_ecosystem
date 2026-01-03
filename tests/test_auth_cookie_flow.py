@@ -5,12 +5,12 @@ import json
 from datetime import UTC, datetime
 
 import pytest
+from app.core.localization import translate
 from fastapi import status
 from sqlalchemy import select
 
 from app.auth.security import decode_token, get_password_hash
 from app.core.config import settings
-from app.localization import translate
 from app.models.models import ActiveSession
 
 pytestmark = pytest.mark.anyio("asyncio")

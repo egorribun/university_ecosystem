@@ -33,6 +33,14 @@ class AppGeneralSettings(BaseAppSettings):
     metrics_basic_auth_username: str = ""
     metrics_basic_auth_password: str = ""
     metrics_allowlist: str | list[str] = ""
+    monitoring_heavy_probe_enabled: bool = False
+    health_storage_probe_enabled: bool = True
+
+    api_v2_prefix: str = "/api/v2"
+    audit_log_secret: str = "development-audit-secret"
+
+    health_storage_probe_min_interval_seconds: int = 3600
+
 
     @field_validator("auto_create_schema", mode="before")
     @classmethod

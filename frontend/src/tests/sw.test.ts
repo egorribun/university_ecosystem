@@ -69,7 +69,10 @@ const resolveRequestKey = (request: RequestInfo | URL): string => {
 
 const createCacheInstance = (store: CacheEntryStore): Cache => {
   const put = async (request: RequestInfo | URL, response: Response) => {
-    store.set(resolveRequestKey(request), response)
+    store.set(resolveRequestKey(request), {
+      ...response,
+      clone: () => ({ ...response }),
+    } as Response)
   }
 
   return {

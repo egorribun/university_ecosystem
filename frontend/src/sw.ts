@@ -234,8 +234,10 @@ const mediaRouteHandler = async ({ event }: RouteHandlerCallbackOptions) => {
   }
   try {
     const response = await fetch(request)
-    const clone = response.clone()
-    void cacheMediaResponse(request, clone, fetchEvent)
+    if (response && typeof response.clone === "function") {
+      const clone = response.clone()
+      void cacheMediaResponse(request, clone, fetchEvent)
+    }
     return response
   } catch (error) {
     const cached = await matchMediaCaches(request)

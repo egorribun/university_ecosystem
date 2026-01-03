@@ -11,8 +11,8 @@ from sqlalchemy.orm import aliased, selectinload
 from app.auth import mfa
 from app.auth.security import get_password_hash
 from app.core.config import settings
-from app.core.localization import translate
-from app.deps.cache import BaseCache, cached, localized_text, normalize_locale
+from app.core.localization import localized_text, normalize_locale, translate
+from app.deps.cache import BaseCache, cached
 from app.models import models
 from app.models.enums import UserRole
 from app.models.user_loaders import (

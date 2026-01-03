@@ -3,10 +3,10 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from app.core.localization import normalize_locale, translate
 
 import app.auth.auth as auth
 import app.crud as crud
-from app.localization import normalize_locale, translate
 from app.models import models
 from app.utils.files import detect_mime_type, normalize_filename_prefix, save_attachment
 

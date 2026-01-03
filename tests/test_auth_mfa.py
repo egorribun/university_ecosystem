@@ -5,13 +5,13 @@ import logging
 
 import pyotp
 import pytest
+from app.core.localization import translate
 from fastapi import status
 from sqlalchemy import select
 
 from app.auth import mfa
 from app.auth.security import get_password_hash
 from app.core.config import settings
-from app.localization import translate
 from app.management import reset_mfa
 from app.models import models
 
