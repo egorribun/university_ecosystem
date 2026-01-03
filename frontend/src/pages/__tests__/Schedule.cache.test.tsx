@@ -9,6 +9,7 @@ import type { ReactNode } from "react"
 type AuthState = {
   isAuth: boolean
   login: ReturnType<typeof vi.fn>
+  loginWithPasskey: ReturnType<typeof vi.fn>
   logout: ReturnType<typeof vi.fn>
   refresh: ReturnType<typeof vi.fn>
   user: User | null
@@ -31,7 +32,9 @@ const baseUser: User = {
   role: "student",
   group_id: 1,
   avatar_url: null,
+  avatar_url_optimized: null,
   cover_url: null,
+  cover_url_optimized: null,
   about: null,
   record_book_number: null,
   status: null,
@@ -61,6 +64,7 @@ const baseUser: User = {
 const authState: AuthState = {
   isAuth: true,
   login: vi.fn(),
+  loginWithPasskey: vi.fn(),
   logout: vi.fn(),
   refresh: vi.fn(),
   user: baseUser,

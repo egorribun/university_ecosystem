@@ -41,7 +41,9 @@ export const testUser: User = {
   role: "student",
   group_id: null,
   avatar_url: null,
+  avatar_url_optimized: null,
   cover_url: null,
+  cover_url_optimized: null,
   about: null,
   record_book_number: null,
   status: null,
@@ -241,6 +243,7 @@ const createBaseEvents = (): Event[] => {
       is_active: true,
       speaker: null,
       image_url: null,
+      image_url_optimized: null,
       about: null,
       about_en: null,
       files: [],
@@ -274,6 +277,7 @@ const createTestStories = (): StoryItem[] => {
       short_text: `Story preview ${id}`,
       short_text_en: `Story preview ${id}`,
       cover_url: null,
+      cover_url_optimized: null,
       cta_url: null,
       published_at: publishedAt,
       expires_at: expiresAt,
@@ -295,6 +299,7 @@ const createTestNews = (): NewsItem[] => {
       title_en: `News item ${id}`,
       content_en: `News content ${id}`,
       image_url: null,
+      image_url_optimized: null,
       created_at: new Date(now.getTime() - index * 24 * 60 * 60 * 1000).toISOString(),
     }
   })

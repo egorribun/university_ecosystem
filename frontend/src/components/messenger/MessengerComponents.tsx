@@ -368,7 +368,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
                   <img
                     src={
                       ["image/png", "image/jpeg", "image/gif", "image/webp"].includes(file.type)
-                        ? sanitizeUrl(URL.createObjectURL(file))
+                        ? sanitizeUrl(URL.createObjectURL(file)) || undefined
                         : ""
                     }
                     alt={file.name}

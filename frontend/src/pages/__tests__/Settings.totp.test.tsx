@@ -71,6 +71,7 @@ const renderSettings = (options?: RenderSettingsOptions) => {
           setUser,
           logout: vi.fn(),
           login: vi.fn(),
+          loginWithPasskey: vi.fn(),
           refresh: vi.fn(),
           isAuth: true,
           loading: false,

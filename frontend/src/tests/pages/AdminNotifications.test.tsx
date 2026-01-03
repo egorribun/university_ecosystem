@@ -19,7 +19,9 @@ const adminUser: User = {
   role: "admin",
   group_id: null,
   avatar_url: null,
+  avatar_url_optimized: null,
   cover_url: null,
+  cover_url_optimized: null,
   about: null,
   record_book_number: null,
   status: null,
@@ -49,6 +51,7 @@ const adminUser: User = {
 const authValue = {
   isAuth: true,
   login: vi.fn(),
+  loginWithPasskey: vi.fn(),
   logout: vi.fn(),
   user: adminUser,
   loading: false,

@@ -1397,7 +1397,7 @@ export default function Schedule() {
               {(() => {
                 const lesson = dialogLesson
                 if (lesson) {
-                  const lType = lesson.lesson_type
+                  const lType = lesson!.lesson_type
                   return (
                     <div className="space-y-4">
                       <div className="flex flex-wrap items-center gap-2">
@@ -1420,7 +1420,7 @@ export default function Schedule() {
                           {t("schedule:dialog.timeLabel")}:
                         </span>
                         <p className="text-base text-[color:var(--page-text)]">
-                          {`${getTimeStr(lesson)}–${getEndTimeStr(lesson)}`}
+                          {`${getTimeStr(lesson!)}–${getEndTimeStr(lesson!)}`}
                         </p>
                       </div>
                       <div className="space-y-1">
@@ -1428,7 +1428,7 @@ export default function Schedule() {
                           {t("schedule:dialog.teacherLabel")}:
                         </span>
                         <p className="text-base text-[color:var(--page-text)]">
-                          {lesson.teacher || t("schedule:dialog.noTeacher")}
+                          {lesson!.teacher || t("schedule:dialog.noTeacher")}
                         </p>
                       </div>
                       <div className="space-y-1">
@@ -1436,7 +1436,7 @@ export default function Schedule() {
                           {t("schedule:dialog.roomLabel")}:
                         </span>
                         <p className="text-base text-[color:var(--page-text)]">
-                          {lesson.room || t("schedule:dialog.noRoom")}
+                          {lesson!.room || t("schedule:dialog.noRoom")}
                         </p>
                       </div>
                     </div>
@@ -1542,7 +1542,7 @@ export default function Schedule() {
                     </label>
                     <input
                       type="time"
-                      value={editLesson ? getTimeStr(editLesson) : ""}
+                      value={editLesson ? getTimeStr(editLesson!) : ""}
                       onChange={(e) =>
                         setEditLesson((prev) =>
                           prev
@@ -1564,7 +1564,7 @@ export default function Schedule() {
                     </label>
                     <input
                       type="time"
-                      value={editLesson ? getEndTimeStr(editLesson) : ""}
+                      value={editLesson ? getEndTimeStr(editLesson!) : ""}
                       onChange={(e) =>
                         setEditLesson((prev) =>
                           prev

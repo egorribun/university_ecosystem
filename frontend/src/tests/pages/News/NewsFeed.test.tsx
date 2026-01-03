@@ -14,7 +14,9 @@ const baseUser: User = {
   role: "student",
   group_id: null,
   avatar_url: null,
+  avatar_url_optimized: null,
   cover_url: null,
+  cover_url_optimized: null,
   about: null,
   record_book_number: null,
   status: null,
@@ -52,6 +54,7 @@ const renderNewsPage = async (queryClient?: QueryClient) => {
   const authValue: AuthContextValue = {
     isAuth: true,
     login: vi.fn().mockResolvedValue(null),
+    loginWithPasskey: vi.fn().mockResolvedValue(null),
     logout: vi.fn().mockResolvedValue(undefined),
     user: baseUser,
     loading: false,

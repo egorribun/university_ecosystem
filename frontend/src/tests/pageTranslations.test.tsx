@@ -50,7 +50,9 @@ const {
     role: "student",
     group_id: 1,
     avatar_url: null,
+    avatar_url_optimized: null,
     cover_url: null,
+    cover_url_optimized: null,
     about: "",
     record_book_number: null,
     status: "active",
@@ -102,6 +104,7 @@ const {
       role: "admin",
       group_id: null,
       avatar_url: null,
+      avatar_url_optimized: null,
     },
     {
       id: 2,
@@ -110,6 +113,7 @@ const {
       role: "student",
       group_id: 1,
       avatar_url: null,
+      avatar_url_optimized: null,
     },
   ]
   const sampleEvent = {
@@ -129,6 +133,7 @@ const {
     is_active: true,
     speaker: "Mentor",
     image_url: null,
+    image_url_optimized: null,
     about: null,
     about_en: null,
     files: [],
@@ -144,6 +149,7 @@ const {
       short_text: "Welcome week highlights",
       short_text_en: "Welcome week highlights",
       cover_url: null,
+      cover_url_optimized: null,
       cta_url: "/events",
       published_at: new Date(Date.now() - 600_000).toISOString(),
       expires_at: new Date(Date.now() + 86_400_000).toISOString(),
@@ -160,6 +166,7 @@ const {
       content: "Reading halls reopen next week.",
       created_at: new Date().toISOString(),
       image_url: null,
+      image_url_optimized: null,
       pinned: false,
     },
   ]
@@ -278,6 +285,7 @@ const { weatherResult } = vi.hoisted(() => {
 const authState = {
   isAuth: true,
   login: vi.fn(),
+  loginWithPasskey: vi.fn(),
   logout: vi.fn(),
   refresh: vi.fn(),
   user: baseUser,

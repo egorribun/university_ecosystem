@@ -38,6 +38,7 @@ const buildEvent = (id: number): Event => {
     is_active: true,
     speaker: null,
     image_url: null,
+    image_url_optimized: null,
     about: null,
     about_en: null,
     files: [],
@@ -52,6 +53,7 @@ type AuthContextValue = ContextType<typeof AuthContext>
 const authValue: AuthContextValue = {
   isAuth: true,
   login: vi.fn(),
+  loginWithPasskey: vi.fn(),
   logout: vi.fn(),
   user: {
     id: 1,
@@ -60,7 +62,9 @@ const authValue: AuthContextValue = {
     role: "student",
     group_id: null,
     avatar_url: null,
+    avatar_url_optimized: null,
     cover_url: null,
+    cover_url_optimized: null,
     about: null,
     record_book_number: null,
     status: null,
