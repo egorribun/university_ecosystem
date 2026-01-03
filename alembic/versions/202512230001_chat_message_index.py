@@ -8,8 +8,9 @@ Revises: 202512210001_add_session_fingerprint_columns
 Create Date: 2025-12-23 10:30:00.000000
 """
 
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "202512230001_chat_message_index"
@@ -55,4 +56,3 @@ def downgrade() -> None:
 
     op.drop_index("ix_messages_chat_created_at", table_name="messages")
     op.drop_index("ix_messages_chat_unread_sender", table_name="messages")
-
