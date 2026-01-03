@@ -60,34 +60,61 @@ async def test_security_headers_production_mode(monkeypatch):
     assert headers.get("Cross-Origin-Opener-Policy") == "same-origin"
     assert headers.get("Cross-Origin-Embedder-Policy") == "require-corp"
     assert headers.get("Cross-Origin-Resource-Policy") == "same-site"
+
     csp = headers.get("Content-Security-Policy", "")
-    assert "default-src 'self'" in csp
-    assert "frame-ancestors 'self'" in csp
-    assert "img-src 'self' data: blob:" in csp
-    assert "script-src 'self' 'nonce-" in csp
-    assert "'strict-dynamic'" in csp
-    assert "'report-sample'" in csp
-    assert "style-src 'self' 'unsafe-inline'" in csp
+    directives = _parse_csp(csp)
+
+    assert "'self'" in directives.get("default-src", [])
+    assert "'self'" in directives.get("frame-ancestors", [])
+
+    img_src = directives.get("img-src", [])
+    assert "'self'" in img_src
+    assert "data:" in img_src
+    assert "blob:" in img_src
+
+    script_src = directives.get("script-src", [])
+    assert "'self'" in script_src
+    assert "'strict-dynamic'" in script_src
+    assert "'report-sample'" in script_src
+    # Check for nonce
+    assert any(token.startswith("'nonce-") for token in script_src)
+
+    style_src = directives.get("style-src", [])
+    assert "'self'" in style_src
+    assert "'unsafe-inline'" in style_src
+
     csp_tokens = set(csp.split())
-    assert "api.spotify.com" in (
-        urllib.parse.urlparse(token).hostname
-        for token in csp_tokens
-        if token.startswith("http://") or token.startswith("https://")
-    )
     # Parse the hostnames from CSP token URLs to accurately match the allowed host
-    csp_hosts = set(
-        urllib.parse.urlparse(token).hostname
-        for token in csp_tokens
-        if token.startswith("http://") or token.startswith("https://")
-    )
+    # CodeQL alert: Incomplete URL substring sanitization
+    # We use urlparse to safely extract hostnames
+    csp_hosts = set()
+    for token in csp_tokens:
+        if token.startswith("http://") or token.startswith("https://"):
+            try:
+                parsed = urllib.parse.urlparse(token)
+                if parsed.hostname:
+                    csp_hosts.add(parsed.hostname)
+            except ValueError:
+                continue
+
+    assert "api.spotify.com" in csp_hosts
     assert "fcm.googleapis.com" in csp_hosts
     assert "fcmregistrations.googleapis.com" in csp_hosts
+
+    # Check for wildcard domain properly
     assert "push.services.mozilla.com" in csp_hosts or any(
         token == "https://*.push.services.mozilla.com" for token in csp_tokens
     )
+
     assert "Content-Security-Policy-Report-Only" not in headers
-    assert "trusted-types app dompurify-news goog#html 'allow-duplicates'" in csp
-    assert "require-trusted-types-for 'script'" in csp
+
+    trusted_types = directives.get("trusted-types", [])
+    assert "app" in trusted_types
+    assert "dompurify-news" in trusted_types
+    assert "goog#html" in trusted_types
+    assert "'allow-duplicates'" in trusted_types
+
+    assert "'script'" in directives.get("require-trusted-types-for", [])
 
 
 @pytest.mark.anyio
@@ -121,22 +148,56 @@ async def test_security_headers_development_report_only(monkeypatch):
     headers = response.headers
     assert "Strict-Transport-Security" not in headers
     assert "Content-Security-Policy" not in headers
+
     report_only = headers.get("Content-Security-Policy-Report-Only", "")
-    assert "default-src 'self'" in report_only
-    assert (
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' "
-        "http://localhost:5173 'report-sample'"
-    ) in report_only
-    assert (
-        "trusted-types app dompurify-news goog#html 'allow-duplicates'" in report_only
-    )
-    assert "require-trusted-types-for 'script'" not in report_only
+    directives = _parse_csp(report_only)
+
+    assert "'self'" in directives.get("default-src", [])
+
+    script_src = directives.get("script-src", [])
+    assert "'self'" in script_src
+    assert "'unsafe-inline'" in script_src
+    assert "'unsafe-eval'" in script_src
+    assert "http://localhost:5173" in script_src
+    assert "'report-sample'" in script_src
+
+    trusted_types = directives.get("trusted-types", [])
+    assert "app" in trusted_types
+    assert "dompurify-news" in trusted_types
+    assert "goog#html" in trusted_types
+    assert "'allow-duplicates'" in trusted_types
+
+    assert "require-trusted-types-for" not in directives
+
+    # Check connect-src implicitly or just check raw inclusion for specific dev URLs
+    # Since we parsed directives, we can check where they are.
+    # Usually localhost is in script-src or connect-src.
+    # The original test assumed they are present SOMEWHERE.
     assert "http://localhost:5173" in report_only
     assert "http://127.0.0.1:8000" in report_only
     assert "ws://localhost:5173" in report_only
+
     assert "Cross-Origin-Opener-Policy" not in headers
     assert "Cross-Origin-Embedder-Policy" not in headers
     assert "Cross-Origin-Resource-Policy" not in headers
+
+
+def _parse_csp(header_value: str) -> dict[str, list[str]]:
+    """Parse CSP header into a dict of directives."""
+    directives = {}
+    if not header_value:
+        return directives
+    for part in header_value.split(";"):
+        part = part.strip()
+        if not part:
+            continue
+        tokens = part.split()
+        if not tokens:
+            continue
+        directive = tokens[0]
+        values = tokens[1:]
+        directives[directive] = values
+    return directives
 
 
 @pytest.mark.anyio

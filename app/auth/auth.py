@@ -882,7 +882,7 @@ async def login_passkey_start(
         request,
         user_id=user.id,
         reason="issued",
-        extra={"challenge_token": challenge.token},
+        extra={"challenge_id": challenge.id},
     )
 
     return WebAuthnAuthenticationOptionsOut(
@@ -1228,7 +1228,7 @@ async def start_webauthn_registration(
         request,
         user_id=user.id,
         reason="issued",
-        extra={"challenge_token": challenge.token},
+        extra={"challenge_id": challenge.id},
     )
 
     return WebAuthnRegistrationOptionsOut(publicKey=options["publicKey"])

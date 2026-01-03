@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type CSSProperties, type ImgHTMLAttributes } from "react"
 import { IMAGE_PLACEHOLDER_URL } from "@/constants/placeholders"
-import { addVersionParam, resolveMediaUrl, resolveProxyImageUrl } from "@/utils/media"
+import { addVersionParam, resolveMediaUrl, resolveProxyImageUrl, sanitizeUrl } from "@/utils/media"
 
 const DEV = import.meta.env.DEV === true
 
@@ -14,6 +14,7 @@ export type SmartImageProps = {
 } & Omit<ImgHTMLAttributes<HTMLImageElement>, "src">
 
 function buildSrcSet(rawUrl: string, widths: readonly number[]): string {
+  if (!sanitizeUrl(rawUrl)) return ""
   const uniqueWidths = Array.from(
     new Set(widths.filter((value) => Number.isFinite(value) && value > 0))
   ).sort((a, b) => a - b)
@@ -45,8 +46,10 @@ export default function SmartImage({
   const computed = useMemo(() => {
     // We use proxy for all images that are not blobs
     if (isBlobUrl) {
-      return resolveMediaUrl(srcRaw)
+      return sanitizeUrl(srcRaw) ? resolveMediaUrl(srcRaw) : ""
     }
+
+    if (!sanitizeUrl(srcRaw || "")) return ""
 
     // For original src, we don't fix width but still route through proxy for AVIF/WebP
     const resolved = resolveProxyImageUrl(srcRaw)

@@ -16,6 +16,10 @@ export function resolveMediaUrl(
     return trimmed
   }
 
+  // Check for dangerous protocols
+  const dangerous = /^\s*(javascript:|vbscript:|data:text\/)/i.test(trimmed)
+  if (dangerous) return ""
+
   if (hasProtocol(trimmed)) {
     return trimmed
   }
@@ -99,5 +103,39 @@ export function addVersionParam(url?: string, version?: string | number): string
   } catch {
     const separator = url.includes("?") ? "&" : "?"
     return `${url}${separator}_v=${encodeURIComponent(value)}`
+  }
+}
+
+/**
+ * Sanitize a URL to prevent XSS attacks (javascript:, vbscript:, data:html).
+ * Allows http, https, blob, mailto, tel, data:image.
+ */
+export function sanitizeUrl(url: string): string | null {
+  if (!url) return null
+  try {
+    // If it's a relative URL, we need a base to parse it
+    const base = typeof window !== "undefined" ? window.location.origin : "http://dummy.com"
+    const parsed = new URL(url, base)
+    const protocol = parsed.protocol.toLowerCase()
+
+    // Block dangerous protocols
+    if (protocol === "javascript:" || protocol === "vbscript:") {
+      return null
+    }
+
+    // Block dangerous data types (text/html, etc) - though protocol is just 'data:'
+    // We can check the start of path for MIME type if strictly needed, but browsers
+    // execute javascript in data:text/html.
+    if (protocol === "data:") {
+      const pathname = parsed.pathname.toLowerCase()
+      // Allow images, block everything else
+      if (!pathname.startsWith("image/")) {
+        return null
+      }
+    }
+
+    return url
+  } catch {
+    return null
   }
 }

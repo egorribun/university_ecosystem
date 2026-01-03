@@ -9,7 +9,7 @@ import { signSnapshot } from "./useSessionCrypto"
 import type { PendingMfaState, SetUserArg, UserState } from "@/types/Auth"
 
 const PROFILE_CACHE_BASE_KEY = "ecosystem.profile.cache"
-const PROFILE_CACHE_SCHEMA_VERSION = 2
+const PROFILE_CACHE_SCHEMA_VERSION = 3
 export const PROFILE_CACHE_STORAGE_KEY = `${PROFILE_CACHE_BASE_KEY}.v${PROFILE_CACHE_SCHEMA_VERSION}`
 const PROFILE_CACHE_VERSION_KEY = `${PROFILE_CACHE_BASE_KEY}.version`
 const LEGACY_PROFILE_CACHE_KEYS = ["ecosystem.profile.cache.v1"]
@@ -96,6 +96,8 @@ const createOptimisticUser = (snapshot: CachedUserSnapshot): User => ({
   mfa_last_verified_at: snapshot.mfa_last_verified_at ?? null,
   totp_enrollments: [],
   mfa_challenges: [],
+  avatar_url_optimized: null,
+  cover_url_optimized: null,
 })
 
 const clearProfileCacheStorage = () => {
@@ -158,9 +160,33 @@ const readCachedUser = (signingKey: string | null): User | undefined => {
   let snapshotData: CachedUserSnapshot
   if (typeof candidate.data === "string") {
     try {
-      const bytes = CryptoJS.AES.decrypt(candidate.data, signingKey)
-      const decrypted = bytes.toString(CryptoJS.enc.Utf8)
-      snapshotData = JSON.parse(decrypted) as CachedUserSnapshot
+      if (candidate.data.includes(":")) {
+        // v3 format: salt:iv:ciphertext
+        const [saltHex, ivHex, ciphertext] = candidate.data.split(":")
+        if (!saltHex || !ivHex || !ciphertext) throw new Error("Invalid format")
+
+        const salt = CryptoJS.enc.Hex.parse(saltHex)
+        const iv = CryptoJS.enc.Hex.parse(ivHex)
+
+        const key = CryptoJS.PBKDF2(signingKey, salt, {
+          keySize: 256 / 32,
+          iterations: 1000
+        })
+
+        const bytes = CryptoJS.AES.decrypt(ciphertext, key, {
+          iv: iv,
+          padding: CryptoJS.pad.Pkcs7,
+          mode: CryptoJS.mode.CBC
+        })
+        const decrypted = bytes.toString(CryptoJS.enc.Utf8)
+        if (!decrypted) throw new Error("Decryption failed")
+        snapshotData = JSON.parse(decrypted) as CachedUserSnapshot
+      } else {
+        // Legacy v2 format (direct AES with signingKey as key)
+        const bytes = CryptoJS.AES.decrypt(candidate.data, signingKey)
+        const decrypted = bytes.toString(CryptoJS.enc.Utf8)
+        snapshotData = JSON.parse(decrypted) as CachedUserSnapshot
+      }
     } catch {
       clearProfileCacheStorage()
       return undefined
@@ -208,8 +234,23 @@ const persistUserToCache = (value: User | null, signingKey: string | null) => {
         mfa_last_verified_at: value.mfa_last_verified_at,
       }
 
-      // Encrypt the data to prevent clear text storage of sensitive information
-      const encryptedData = CryptoJS.AES.encrypt(JSON.stringify(snapshot), signingKey).toString()
+      // Encrypt with PBKDF2 key derivation and random salt/IV
+      const salt = CryptoJS.lib.WordArray.random(128 / 8)
+      const iv = CryptoJS.lib.WordArray.random(128 / 8)
+
+      const key = CryptoJS.PBKDF2(signingKey, salt, {
+        keySize: 256 / 32,
+        iterations: 1000
+      })
+
+      const encrypted = CryptoJS.AES.encrypt(JSON.stringify(snapshot), key, {
+        iv: iv,
+        padding: CryptoJS.pad.Pkcs7,
+        mode: CryptoJS.mode.CBC
+      })
+
+      // Store in format: salt:iv:ciphertext
+      const encryptedData = `${salt.toString()}:${iv.toString()}:${encrypted.toString()}`
 
       const payload: CacheSignaturePayload = {
         version: PROFILE_CACHE_SCHEMA_VERSION,

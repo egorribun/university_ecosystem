@@ -20,21 +20,7 @@ import client from "../../api/client"
 import type { User } from "../../types/User"
 import SmartImage from "@/components/SmartImage"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
-
-// Sanitize URLs to prevent XSS attacks
-function sanitizeUrl(url: string): string | null {
-  try {
-    const parsed = new URL(url, window.location.origin)
-    const protocol = parsed.protocol.toLowerCase()
-    // Only allow http, https, and blob (for local object URLs)
-    if (protocol === "javascript:" || protocol === "data:" || protocol === "vbscript:") {
-      return null
-    }
-    return url
-  } catch {
-    return null
-  }
-}
+import { sanitizeUrl } from "@/utils/media"
 
 export interface Contact {
   id: string
