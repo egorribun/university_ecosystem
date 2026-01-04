@@ -1143,6 +1143,32 @@ export async function useMockApi(page: Page) {
       return
     }
 
+    if (pathname.startsWith("api/events")) {
+      const urlParams = new URLSearchParams(url.search)
+      const limit = parseInt(urlParams.get("limit") ?? "50", 10)
+      const items = mockEvents.slice(0, limit)
+      const hasMore = mockEvents.length > limit
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ items, has_more: hasMore, next_cursor: null }),
+      })
+      return
+    }
+
+    if (pathname.startsWith("api/news")) {
+      const urlParams = new URLSearchParams(url.search)
+      const limit = parseInt(urlParams.get("limit") ?? "10", 10)
+      const items = mockNews.slice(0, limit)
+      const hasMore = mockNews.length > limit
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ items, has_more: hasMore, next_cursor: null }),
+      })
+      return
+    }
+
     await route.fulfill({
       status: 200,
       contentType: "application/json",
