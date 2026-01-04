@@ -413,7 +413,7 @@ async def async_client(
         _start_password_reset_cleanup_scheduler,
     )
 
-    async def _mock_migrations_current() -> tuple[bool, set[str], set[str]]:
+    async def _mock_migrations_current(conn=None) -> tuple[bool, set[str], set[str]]:
         return True, set(), set()
 
     monkeypatch.setattr(main, "_migrations_are_current", _mock_migrations_current)
@@ -500,7 +500,7 @@ async def root_client(
         _start_password_reset_cleanup_scheduler,
     )
 
-    async def _mock_migrations_current() -> tuple[bool, set[str], set[str]]:
+    async def _mock_migrations_current(conn=None) -> tuple[bool, set[str], set[str]]:
         return True, set(), set()
 
     monkeypatch.setattr(main, "_migrations_are_current", _mock_migrations_current)

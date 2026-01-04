@@ -199,21 +199,44 @@ async def root():
     return {"status": "ok"}
 
 
-@lru_cache
-def _get_alembic_script() -> ScriptDirectory:
-    project_root = Path(__file__).resolve().parents[1]
-    config = Config(str(project_root / "alembic.ini"))
-    config.set_main_option("script_location", str(project_root / "alembic"))
-    return ScriptDirectory.from_config(config)
+_migration_cache: dict[str, float | tuple] = {
+    "expires_at": 0.0,
+    "result": (),
+}
 
 
-async def _migrations_are_current() -> tuple[bool, set[str], set[str]]:
+async def _migrations_are_current(
+    conn=None,
+) -> tuple[bool, set[str], set[str]]:
+    now = time.monotonic()
+    if _migration_cache["expires_at"] > now:
+        return _migration_cache["result"]  # type: ignore
+
     script = _get_alembic_script()
     expected_heads = set(script.get_heads())
-    async with engine.connect() as conn:
+
+    async def _fetch():
         result = await conn.execute(text("SELECT version_num FROM alembic_version"))
-        current_versions = {row[0] for row in result}
-    return current_versions == expected_heads, current_versions, expected_heads
+        return {row[0] for row in result}
+
+    if conn:
+        current_versions = await _fetch()
+    else:
+        async with engine.connect() as conn_new:
+            current_versions = await _fetch()
+
+    res = (
+        current_versions == expected_heads,
+        current_versions,
+        expected_heads,
+    )
+    _migration_cache.update(
+        {
+            "expires_at": now + 60.0,
+            "result": res,
+        }
+    )
+    return res
 
 
 _storage_probe_cache: dict[str, float | str] = {
@@ -223,9 +246,28 @@ _storage_probe_cache: dict[str, float | str] = {
 }
 
 
+_health_cache: dict[str, float | dict | int] = {
+    "expires_at": 0.0,
+    "payload": {},
+    "status_code": 200,
+}
+
+
 def _reset_storage_probe_cache() -> None:
     _storage_probe_cache.update(
         {"expires_at": 0.0, "status": "unknown", "latency": 0.0}
+    )
+
+
+def _reset_migration_cache() -> None:
+    _migration_cache.update(
+        {"expires_at": 0.0, "result": ()}
+    )
+
+
+def _reset_health_cache() -> None:
+    _health_cache.update(
+        {"expires_at": 0.0, "payload": {}, "status_code": 200}
     )
 
 
@@ -252,6 +294,11 @@ async def _write_delete_storage_probe(backend) -> str:
     except Exception:
         return "error"
     return "ok"
+
+
+async def _check_queue(conn) -> None:
+    if not getattr(settings, "notifications_queue_in_memory_only", False):
+        await conn.execute(text("SELECT 1 FROM notification_queue_jobs"))
 
 
 async def _probe_storage() -> tuple[str, float]:
@@ -295,31 +342,53 @@ async def _probe_storage() -> tuple[str, float]:
 
 @app.get("/healthz")
 async def healthz():
-    statuses: dict[str, str] = {}
+    now = time.monotonic()
+    if _health_cache["expires_at"] > now:
+        return JSONResponse(
+            status_code=_health_cache["status_code"],  # type: ignore
+            content=_health_cache["payload"],  # type: ignore
+        )
 
+    statuses: dict[str, str] = {}
     latencies: dict[str, float] = {}
 
     db_status = "ok"
     db_start = time.perf_counter()
     try:
         async with engine.connect() as conn:
+            # 1. Connectivity check
             await conn.execute(text("SELECT 1"))
+
+            # 2. Migrations check (reuses connection if cache expired)
+            try:
+                (
+                    migrations_current,
+                    current_versions,
+                    expected_versions,
+                ) = await _migrations_are_current(conn=conn)
+                if not migrations_current:
+                    db_status = "error"
+                    statuses["db_migrations"] = "error"
+                    statuses["db_migrations_current"] = sorted(current_versions)
+                    statuses["db_migrations_expected"] = sorted(expected_versions)
+            except Exception:
+                db_status = "error"
+
+            # 3. Queue status (reuses connection)
+            queue_status = "ok"
+            queue_start = time.perf_counter()
+            try:
+                await _check_queue(conn)
+            except (OperationalError, Exception):
+                queue_status = "error"
+            queue_elapsed = time.perf_counter() - queue_start
+            statuses["notification_queue"] = queue_status
+            latencies["notification_queue_latency_ms"] = max(queue_elapsed * 1000, 0.0)
+            record_health_probe("notification_queue", queue_status, queue_elapsed)
+
     except Exception:
         db_status = "error"
-    else:
-        try:
-            (
-                migrations_current,
-                current_versions,
-                expected_versions,
-            ) = await _migrations_are_current()
-            if not migrations_current:
-                db_status = "error"
-                statuses["db_migrations"] = "error"
-                statuses["db_migrations_current"] = sorted(current_versions)
-                statuses["db_migrations_expected"] = sorted(expected_versions)
-        except Exception:
-            db_status = "error"
+
     statuses["db"] = db_status
     if db_status == "error":
         statuses.setdefault("db_migrations", "error")
@@ -357,23 +426,6 @@ async def healthz():
     latencies["storage_latency_ms"] = max(storage_elapsed * 1000, 0.0)
     record_health_probe("storage", storage_status, storage_elapsed)
 
-    queue_status = "ok"
-    queue_start = time.perf_counter()
-    if getattr(settings, "notifications_queue_in_memory_only", False):
-        queue_status = "ok"
-    else:
-        try:
-            async with async_session() as session:
-                await session.execute(text("SELECT 1 FROM notification_queue_jobs"))
-        except OperationalError:
-            queue_status = "error"
-        except Exception:
-            queue_status = "error"
-    queue_elapsed = time.perf_counter() - queue_start
-    statuses["notification_queue"] = queue_status
-    latencies["notification_queue_latency_ms"] = max(queue_elapsed * 1000, 0.0)
-    record_health_probe("notification_queue", queue_status, queue_elapsed)
-
     scanner_start = time.perf_counter()
     if getattr(settings, "event_file_scanner_enabled", False):
         scanner_status = "ok"
@@ -393,6 +445,14 @@ async def healthz():
         status.HTTP_200_OK if overall_ok else status.HTTP_503_SERVICE_UNAVAILABLE
     )
     payload = {"status": "ok" if overall_ok else "error", **statuses, **latencies}
+
+    _health_cache.update(
+        {
+            "expires_at": now + 5.0,
+            "payload": payload,
+            "status_code": http_status,
+        }
+    )
     return JSONResponse(status_code=http_status, content=payload)
 
 

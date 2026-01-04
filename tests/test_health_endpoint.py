@@ -43,10 +43,14 @@ def _assert_latency_present(data: dict, key: str) -> None:
 
 
 @pytest.fixture(autouse=True)
-def reset_storage_cache():
+def reset_health_caches():
     main._reset_storage_probe_cache()
+    main._reset_migration_cache()
+    main._reset_health_cache()
     yield
     main._reset_storage_probe_cache()
+    main._reset_migration_cache()
+    main._reset_health_cache()
 
 
 @pytest.fixture
@@ -224,7 +228,10 @@ async def test_healthcheck_storage_probe_uses_cache(async_client, monkeypatch):
 
 @pytest.mark.anyio("asyncio")
 async def test_healthcheck_notification_queue_failure(async_client, monkeypatch):
-    monkeypatch.setattr(main, "async_session", lambda: _FailingSession())
+    async def _failing_queue_check(conn):
+        raise RuntimeError("queue unavailable")
+
+    monkeypatch.setattr(main, "_check_queue", _failing_queue_check)
 
     response = await async_client.get("http://testserver/healthz")
     data = response.json()
@@ -249,7 +256,7 @@ async def test_healthcheck_notification_queue_missing_table(
 async def test_healthcheck_reports_migration_versions_on_drift(
     async_client, monkeypatch
 ):
-    async def _mock_migrations_are_current() -> tuple[bool, set[str], set[str]]:
+    async def _mock_migrations_are_current(conn=None) -> tuple[bool, set[str], set[str]]:
         return False, {"current"}, {"expected"}
 
     monkeypatch.setattr(main, "_migrations_are_current", _mock_migrations_are_current)
