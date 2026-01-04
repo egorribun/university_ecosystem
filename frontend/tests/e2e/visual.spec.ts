@@ -19,7 +19,7 @@ test.describe("Visual regression tests", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    await page.getByRole("link", { name: "Новости" }).first().click()
+    await page.goto("/news")
     await page.waitForURL(/\/news$/)
     await page.waitForTimeout(500)
 
@@ -33,7 +33,7 @@ test.describe("Visual regression tests", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    await page.getByRole("link", { name: "Расписание" }).first().click()
+    await page.goto("/schedule")
     await page.waitForURL(/\/schedule$/)
     await page.waitForTimeout(500)
 

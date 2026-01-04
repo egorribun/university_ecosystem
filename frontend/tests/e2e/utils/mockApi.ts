@@ -1156,6 +1156,24 @@ export async function useMockApi(page: Page) {
       return
     }
 
+    if (pathname.startsWith("api/schedule")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(mockSchedule),
+      })
+      return
+    }
+
+    if (pathname.startsWith("api/groups")) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(mockGroups),
+      })
+      return
+    }
+
     if (pathname.startsWith("api/news")) {
       const urlParams = new URLSearchParams(url.search)
       const limit = parseInt(urlParams.get("limit") ?? "10", 10)
