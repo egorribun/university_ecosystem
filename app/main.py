@@ -195,6 +195,14 @@ async def root():
     return {"status": "ok"}
 
 
+@lru_cache
+def _get_alembic_script() -> ScriptDirectory:
+    project_root = Path(__file__).resolve().parents[1]
+    config = Config(str(project_root / "alembic.ini"))
+    config.set_main_option("script_location", str(project_root / "alembic"))
+    return ScriptDirectory.from_config(config)
+
+
 _migration_cache: dict[str, float | tuple] = {
     "expires_at": 0.0,
     "result": (),
@@ -211,15 +219,15 @@ async def _migrations_are_current(
     script = _get_alembic_script()
     expected_heads = set(script.get_heads())
 
-    async def _fetch():
-        result = await conn.execute(text("SELECT version_num FROM alembic_version"))
+    async def _fetch(c):
+        result = await c.execute(text("SELECT version_num FROM alembic_version"))
         return {row[0] for row in result}
 
     if conn:
-        current_versions = await _fetch()
+        current_versions = await _fetch(conn)
     else:
         async with engine.connect() as conn_new:
-            current_versions = await _fetch()
+            current_versions = await _fetch(conn_new)
 
     res = (
         current_versions == expected_heads,
