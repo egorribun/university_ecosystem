@@ -53,29 +53,8 @@ def reset_health_caches():
     main._reset_health_cache()
 
 
-@pytest.fixture
-def missing_table_operational_error(monkeypatch):
-    class _UndefinedTableError(Exception):
-        pgcode = "42P01"
-        sqlstate = "42P01"
 
-        def __str__(self) -> str:
-            return "relation notification_queue_job does not exist"
 
-    error = OperationalError("SELECT", None, _UndefinedTableError())
-
-    class _MissingTableSession:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-        async def execute(self, stmt):
-            raise error
-
-    monkeypatch.setattr(main, "async_session", lambda: _MissingTableSession())
-    return error
 
 
 @pytest.mark.anyio("asyncio")
@@ -242,7 +221,7 @@ async def test_healthcheck_notification_queue_failure(async_client, monkeypatch)
 
 @pytest.mark.anyio("asyncio")
 async def test_healthcheck_notification_queue_missing_table(
-    async_client, missing_table_operational_error, monkeypatch
+    async_client, monkeypatch
 ):
     monkeypatch.setattr(main.settings, "notifications_queue_in_memory_only", True)
     response = await async_client.get("http://testserver/healthz")
