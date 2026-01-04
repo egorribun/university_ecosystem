@@ -326,10 +326,28 @@ export async function useMockApi(page: Page) {
   })
 
   await page.route("**/*", async (route) => {
-    const url = new URL(route.request().url())
+    const request = route.request()
+    const url = new URL(request.url())
+    const method = request.method().toUpperCase()
+
+    // Handle external APIs like weather
+    if (url.hostname === "api.open-meteo.com") {
+      console.log(`[mock] intercepted external API: ${url.href}`)
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          current: {
+            temperature_2m: 20,
+            weather_code: 0,
+          },
+        }),
+      })
+      return
+    }
+
     let pathname = url.pathname.replace(/^\/+/u, "")
     pathname = pathname.startsWith("api/v1/") ? pathname.replace(/^api\/v1\//u, "api/") : pathname
-    const method = route.request().method().toUpperCase()
 
     if (
       pathname === "auth/login" ||
@@ -409,8 +427,28 @@ export async function useMockApi(page: Page) {
       return
     }
 
-    if (!pathname.startsWith("api/") && !pathname.startsWith("auth/")) {
+    const proxiedPaths = [
+      "api/",
+      "auth/",
+      "static/",
+      "media/",
+      "spotify",
+      "notifications",
+      "push/",
+    ]
+    const isProxied = proxiedPaths.some((p) => pathname.startsWith(p))
+
+    if (!isProxied) {
       await route.continue()
+      return
+    }
+
+    if (pathname === "api/auth/mfa/webauthn") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ status: "not_supported" }),
+      })
       return
     }
 
@@ -1082,6 +1120,33 @@ export async function useMockApi(page: Page) {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ ok: true }),
+      })
+      return
+    }
+
+    if (pathname === "api/notifications/check-schedule") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true }),
+      })
+      return
+    }
+
+    if (pathname === "api/auth/session/signing-key") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ signing_key: "test-session-signing-key" }),
+      })
+      return
+    }
+
+    if (pathname === "api/stories") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([]),
       })
       return
     }
