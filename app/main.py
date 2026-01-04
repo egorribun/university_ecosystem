@@ -4,8 +4,6 @@ import asyncio
 import logging
 import time
 import uuid
-from functools import lru_cache
-from pathlib import Path
 
 from brotli_asgi import BrotliMiddleware
 from fastapi import FastAPI, Request, status
@@ -15,15 +13,13 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
-from alembic.config import Config
-from alembic.script import ScriptDirectory
 from app.api.admin import router as admin_api_router
 from app.api.internal import INTERNAL_ROUTE_PREFIXES
 from app.api.internal import router as internal_api_router
 from app.api.public import router as public_api_router
 from app.api.websocket import router as websocket_router
 from app.core.config import settings
-from app.core.database import async_session, engine, wait_db
+from app.core.database import engine, wait_db
 from app.core.exceptions import AppException
 from app.core.internal_access import InternalAccessMiddleware
 from app.core.lifespan import lifespan
@@ -260,15 +256,11 @@ def _reset_storage_probe_cache() -> None:
 
 
 def _reset_migration_cache() -> None:
-    _migration_cache.update(
-        {"expires_at": 0.0, "result": ()}
-    )
+    _migration_cache.update({"expires_at": 0.0, "result": ()})
 
 
 def _reset_health_cache() -> None:
-    _health_cache.update(
-        {"expires_at": 0.0, "payload": {}, "status_code": 200}
-    )
+    _health_cache.update({"expires_at": 0.0, "payload": {}, "status_code": 200})
 
 
 async def _lightweight_storage_probe(backend) -> str | None:

@@ -256,7 +256,9 @@ async def test_healthcheck_notification_queue_missing_table(
 async def test_healthcheck_reports_migration_versions_on_drift(
     async_client, monkeypatch
 ):
-    async def _mock_migrations_are_current(conn=None) -> tuple[bool, set[str], set[str]]:
+    async def _mock_migrations_are_current(
+        conn=None,
+    ) -> tuple[bool, set[str], set[str]]:
         return False, {"current"}, {"expected"}
 
     monkeypatch.setattr(main, "_migrations_are_current", _mock_migrations_are_current)
