@@ -8,7 +8,7 @@ test.describe("Schedule export", () => {
     const mock = await useMockApi(page)
     await mock.login(page)
 
-    await page.getByRole("link", { name: "Расписание" }).click()
+    await page.goto("/schedule")
     await expect(page).toHaveURL(/\/schedule$/)
 
     const downloadPromise = page.waitForEvent("download")

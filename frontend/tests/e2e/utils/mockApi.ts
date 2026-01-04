@@ -1156,6 +1156,29 @@ export async function useMockApi(page: Page) {
       return
     }
 
+    if (pathname.includes("export") || pathname.endsWith(".ics")) {
+      const icsContent = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//University//Schedule//RU
+BEGIN:VEVENT
+DTSTART:20240115T090000
+DTEND:20240115T103000
+SUMMARY:Математика
+LOCATION:А-101
+DESCRIPTION:Лекция - Проф. Смирнов
+END:VEVENT
+END:VCALENDAR`
+      await route.fulfill({
+        status: 200,
+        contentType: "text/calendar",
+        headers: {
+          "Content-Disposition": "attachment; filename=schedule-iu-21.ics",
+        },
+        body: icsContent,
+      })
+      return
+    }
+
     if (pathname.startsWith("api/schedule")) {
       await route.fulfill({
         status: 200,
@@ -1164,6 +1187,7 @@ export async function useMockApi(page: Page) {
       })
       return
     }
+
 
     if (pathname.startsWith("api/groups")) {
       await route.fulfill({
@@ -1179,9 +1203,35 @@ export async function useMockApi(page: Page) {
       const limit = parseInt(urlParams.get("limit") ?? "10", 10)
       const items = mockNews.slice(0, limit)
       const hasMore = mockNews.length > limit
+
+      // Handle ETag for caching tests
+      const ifNoneMatch = route.request().headers()["if-none-match"]
+      const currentEtag = state.newsVersion
+
+      if (state.offline) {
+        state.newsLog.push({ header: ifNoneMatch, status: 503 })
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Service unavailable" }),
+        })
+        return
+      }
+
+      if (ifNoneMatch && ifNoneMatch === currentEtag) {
+        state.newsLog.push({ header: ifNoneMatch, status: 304 })
+        await route.fulfill({
+          status: 304,
+          headers: { "ETag": currentEtag },
+        })
+        return
+      }
+
+      state.newsLog.push({ header: ifNoneMatch, status: 200 })
       await route.fulfill({
         status: 200,
         contentType: "application/json",
+        headers: { "ETag": currentEtag },
         body: JSON.stringify({ items, has_more: hasMore, next_cursor: null }),
       })
       return

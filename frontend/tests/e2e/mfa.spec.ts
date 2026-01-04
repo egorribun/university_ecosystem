@@ -32,7 +32,7 @@ test.describe("Multi-factor authentication flows", () => {
 
     await page.locator('input[name="username"]').fill("mfa@example.com")
     await page.locator('input[name="password"]').fill("Password123")
-    await page.getByRole("button", { name: /Sign in|Войти/i }).click()
+    await page.locator('button[type="submit"]').click()
 
     await expect(page.getByText(/Verify it's you|Подтвердите свою личность/i)).toBeVisible()
 
@@ -50,7 +50,7 @@ test.describe("Multi-factor authentication flows", () => {
 
     await page.locator('input[name="username"]').fill("mfa@example.com")
     await page.locator('input[name="password"]').fill("Password123")
-    await page.getByRole("button", { name: /Sign in|Войти/i }).click()
+    await page.locator('button[type="submit"]').click()
 
     await expect(page.getByText(/Verify it's you|Подтвердите свою личность/i)).toBeVisible()
 
