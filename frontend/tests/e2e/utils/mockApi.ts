@@ -102,6 +102,8 @@ const mockNews = [
     content: "Кампус переходит на новую систему расписаний.",
     content_en: "The campus is switching to a new scheduling system.",
     created_at: "2025-01-01T10:00:00Z",
+    image_url: "/fallbacks/news_placeholder.png",
+    image_url_optimized: null,
   },
   {
     id: 2,
@@ -110,8 +112,11 @@ const mockNews = [
     content: "Расширены часы работы библиотечного центра.",
     content_en: "The library has extended its opening hours.",
     created_at: "2025-01-03T12:30:00Z",
+    image_url: "/fallbacks/news_placeholder.png",
+    image_url_optimized: null,
   },
 ]
+
 
 const now = new Date()
 const mockEvents = Array.from({ length: 18 }, (_, index) => {
@@ -1237,7 +1242,63 @@ END:VCALENDAR`
       return
     }
 
+    // News detail endpoint - /api/news/:id
+    const newsDetailMatch = pathname.match(/^api\/news\/(\d+)$/)
+    if (newsDetailMatch) {
+      const newsId = parseInt(newsDetailMatch[1], 10)
+      const newsItem = mockNews.find((n) => n.id === newsId)
+      if (newsItem) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(newsItem),
+        })
+      } else {
+        await route.fulfill({
+          status: 404,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "News not found" }),
+        })
+      }
+      return
+    }
+
+    // Admin dead-letter jobs endpoints
+    if (pathname === "api/admin/dead-letter-jobs" || pathname.startsWith("api/admin/notifications")) {
+      if (method === "GET") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(state.deadLetterJobs),
+        })
+        return
+      }
+      if (method === "POST") {
+        let payload: { job_ids?: number[] } = {}
+        try {
+          payload = JSON.parse(route.request().postData() ?? "{}")
+        } catch { /* ignore */ }
+
+        if (pathname.includes("retry")) {
+          // Retry removes jobs from dead-letter queue
+          const idsToRemove = new Set(payload.job_ids ?? [])
+          state.deadLetterJobs = state.deadLetterJobs.filter((j) => !idsToRemove.has(j.id))
+        }
+        if (pathname.includes("purge") || pathname.includes("delete")) {
+          const idsToRemove = new Set(payload.job_ids ?? [])
+          state.deadLetterJobs = state.deadLetterJobs.filter((j) => !idsToRemove.has(j.id))
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ success: true, affected: payload.job_ids?.length ?? 0 }),
+        })
+        return
+      }
+    }
+
     await route.fulfill({
+
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({}),

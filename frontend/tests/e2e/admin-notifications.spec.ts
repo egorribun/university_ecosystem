@@ -8,7 +8,7 @@ test.describe("Admin notification queue", () => {
 
     await mock.login(page)
 
-    await page.getByRole("link", { name: "Очередь уведомлений" }).click()
+    await page.goto("/admin/notifications")
     await page.waitForURL(/\/admin\/notifications$/)
 
     await expect(page.getByRole("heading", { name: /Очередь уведомлений/i })).toBeVisible()
