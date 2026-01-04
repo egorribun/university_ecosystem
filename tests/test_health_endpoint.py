@@ -1,6 +1,5 @@
 import pytest
 from fastapi import status
-from sqlalchemy.exc import OperationalError
 
 from app import main
 
@@ -51,10 +50,6 @@ def reset_health_caches():
     main._reset_storage_probe_cache()
     main._reset_migration_cache()
     main._reset_health_cache()
-
-
-
-
 
 
 @pytest.mark.anyio("asyncio")
@@ -220,9 +215,7 @@ async def test_healthcheck_notification_queue_failure(async_client, monkeypatch)
 
 
 @pytest.mark.anyio("asyncio")
-async def test_healthcheck_notification_queue_missing_table(
-    async_client, monkeypatch
-):
+async def test_healthcheck_notification_queue_missing_table(async_client, monkeypatch):
     monkeypatch.setattr(main.settings, "notifications_queue_in_memory_only", True)
     response = await async_client.get("http://testserver/healthz")
     data = response.json()
