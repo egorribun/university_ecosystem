@@ -427,15 +427,7 @@ export async function useMockApi(page: Page) {
       return
     }
 
-    const proxiedPaths = [
-      "api/",
-      "auth/",
-      "static/",
-      "media/",
-      "spotify",
-      "notifications",
-      "push/",
-    ]
+    const proxiedPaths = ["api/", "auth/", "static/", "media/", "spotify", "notifications", "push/"]
     const isProxied = proxiedPaths.some((p) => pathname.startsWith(p))
 
     if (!isProxied) {
