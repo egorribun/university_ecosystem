@@ -13,7 +13,9 @@ test.describe("Admin notification queue", () => {
     await page.waitForLoadState("networkidle")
     await page.waitForURL(/\/admin\/notifications$/, { timeout: 15000 })
 
-    await expect(page.getByRole("heading", { name: /Очередь уведомлений/i })).toBeVisible({ timeout: 15000 })
+    await expect(page.getByRole("heading", { name: /Очередь уведомлений/i })).toBeVisible({
+      timeout: 15000,
+    })
     const firstCheckbox = page.getByRole("checkbox", { name: "Выбрать задачу 1" })
     await firstCheckbox.check()
 

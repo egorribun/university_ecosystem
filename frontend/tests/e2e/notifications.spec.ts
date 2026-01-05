@@ -317,7 +317,10 @@ test.describe("Push notifications", () => {
 
     await Promise.all([
       page.waitForURL(/\/news$/),
-      page.locator('[role="alert"]').getByRole("button", { name: /Open|Открыть/i }).click(),
+      page
+        .locator('[role="alert"]')
+        .getByRole("button", { name: /Open|Открыть/i })
+        .click(),
     ])
     await expect(page.getByText(/Новости университета|University news/i)).toBeVisible()
   })
