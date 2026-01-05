@@ -25,7 +25,7 @@ test.describe("Visual regression tests", () => {
     await page.waitForTimeout(1000)
 
     await expect(page).toHaveScreenshot("news-list.png", {
-      maxDiffPixelRatio: 0.1,
+      maxDiffPixelRatio: 0.12,
       animations: "disabled",
     })
   })

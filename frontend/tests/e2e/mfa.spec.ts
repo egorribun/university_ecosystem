@@ -35,7 +35,7 @@ test.describe("Multi-factor authentication flows", () => {
     await startPromise
     await page.waitForTimeout(1000)
     await expect(
-      page.getByText(/Завершите настройку|Finish setup|Confirm setup|Scan|QR/i)
+      page.getByText(/Завершите настройку|Finish setup|Confirm setup|Scan|QR/i).first()
     ).toBeVisible({ timeout: 30000 })
 
     const otpInput = page.getByLabel(/Код из приложения|Authenticator code/i).first()

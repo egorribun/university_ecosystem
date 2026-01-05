@@ -34,6 +34,19 @@ type AdminDeadLetterJob = {
   next_retry_at: string | null
 }
 
+type SessionMock = {
+  id: number
+  user_id: number
+  jti: string
+  created_at: string
+  expires_at: string
+  revoked_at: string | null
+  ip_address: string
+  user_agent: string
+  last_seen_at: string
+  is_current?: boolean
+}
+
 type MockState = {
   loggedIn: boolean
   newsVersion: string
@@ -46,24 +59,12 @@ type MockState = {
   deadLetterJobs: AdminDeadLetterJob[]
 }
 
-type SessionMock = {
-  id: number
-  user_id: number
-  jti: string
-  created_at: string
-  expires_at: string
-  revoked_at: string | null
-  ip_address: string
-  user_agent: string
-  last_seen_at: string
-}
-
 const createBaseProfile = (): User => ({
   id: 1,
   email: "student@example.com",
   full_name: "Иван Иванов",
   role: "student",
-  group_id: null,
+  group_id: 1,
   avatar_url: null,
   avatar_url_optimized: null,
   cover_url: null,
@@ -173,6 +174,11 @@ const createDeadLetterJobs = (): AdminDeadLetterJob[] => [
   },
 ]
 
+const getWeekdayName = (): string => {
+  const names = ["Воскресенье", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"]
+  return names[new Date().getDay()]
+}
+
 const mockSchedule = [
   {
     id: 101,
@@ -180,7 +186,7 @@ const mockSchedule = [
     teacher: "Проф. Смирнов",
     room: "А-101",
     lesson_type: "Лекция",
-    weekday: "Понедельник",
+    weekday: getWeekdayName(),
     start_time: "00:00",
     end_time: "23:59",
     parity: "both" as const,
@@ -200,6 +206,7 @@ const createMockSessions = (): SessionMock[] => {
       ip_address: "198.51.100.20",
       user_agent: "Playwright Test Browser",
       last_seen_at: new Date(now).toISOString(),
+      is_current: true,
     },
     {
       id: 2,
@@ -211,6 +218,7 @@ const createMockSessions = (): SessionMock[] => {
       ip_address: "203.0.113.50",
       user_agent: "Safari/17.0 (iPhone; CPU iPhone OS)",
       last_seen_at: new Date(now - 15 * 60 * 1000).toISOString(),
+      is_current: false,
     },
   ]
 }
@@ -490,6 +498,15 @@ export async function useMockApi(page: Page) {
       return
     }
 
+    // --- Groups ---
+    if (normPath.includes("api/groups")) {
+      await route.fulfill({
+        status: 200,
+        body: JSON.stringify([{ id: 1, name: "ИУ-21", faculty: "ИТ" }]),
+      })
+      return
+    }
+
     // --- Schedule ---
     if (normPath.includes("api/schedule")) {
       await route.fulfill({ status: 200, body: JSON.stringify(mockSchedule) })
@@ -507,9 +524,13 @@ export async function useMockApi(page: Page) {
         if (idMatch) {
           const id = parseInt(idMatch[1], 10)
           const session = state.sessions.find((s) => s.id === id)
-          if (session) session.revoked_at = new Date().toISOString()
+          if (session) {
+            session.revoked_at = new Date().toISOString()
+            await route.fulfill({ status: 200, body: JSON.stringify(session) })
+            return
+          }
         }
-        await route.fulfill({ status: 200, body: JSON.stringify({ success: true }) })
+        await route.fulfill({ status: 404, body: JSON.stringify({ detail: "Session not found" }) })
         return
       }
     }
@@ -520,7 +541,7 @@ export async function useMockApi(page: Page) {
       const enrollment: MfaTotpEnrollment = {
         id: state.totp.nextId++,
         user_id: state.profile.id,
-        label: "App",
+        label: "Приложение 1",
         is_active: false,
         confirmed_at: null,
         revoked_at: null,
@@ -572,9 +593,19 @@ export async function useMockApi(page: Page) {
     if (
       normPath.includes("admin/dead-letter") ||
       normPath.includes("admin/notifications") ||
-      normPath.includes("notifications")
+      normPath.startsWith("api/notifications")
     ) {
-      if (normPath.includes("retry") || normPath.includes("purge")) {
+      if (normPath.includes("retry")) {
+        // Retry removes the first job (simulating successful retry)
+        if (state.deadLetterJobs.length > 0) {
+          state.deadLetterJobs = state.deadLetterJobs.slice(1)
+        }
+        await route.fulfill({ status: 200, body: JSON.stringify({ success: true }) })
+        return
+      }
+      if (normPath.includes("purge")) {
+        // Purge removes remaining jobs
+        state.deadLetterJobs = []
         await route.fulfill({ status: 200, body: JSON.stringify({ success: true }) })
         return
       }

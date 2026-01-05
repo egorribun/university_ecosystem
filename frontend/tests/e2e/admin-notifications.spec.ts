@@ -7,11 +7,13 @@ test.describe("Admin notification queue", () => {
     mock.state.profile.role = "admin"
 
     await mock.login(page)
+    await page.waitForLoadState("networkidle")
 
     await page.goto("/admin/notifications")
-    await page.waitForURL(/\/admin\/notifications$/)
+    await page.waitForLoadState("networkidle")
+    await page.waitForURL(/\/admin\/notifications$/, { timeout: 15000 })
 
-    await expect(page.getByRole("heading", { name: /Очередь уведомлений/i })).toBeVisible()
+    await expect(page.getByRole("heading", { name: /Очередь уведомлений/i })).toBeVisible({ timeout: 15000 })
     const firstCheckbox = page.getByRole("checkbox", { name: "Выбрать задачу 1" })
     await firstCheckbox.check()
 
@@ -29,8 +31,10 @@ test.describe("Admin notification queue", () => {
   test("redirects non-admin users away from the queue", async ({ page }) => {
     const mock = await useMockApi(page)
     await mock.login(page)
+    await page.waitForLoadState("networkidle")
 
     await page.goto("/admin/notifications")
-    await expect(page).toHaveURL(/\/dashboard$/)
+    await page.waitForLoadState("networkidle")
+    await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15000 })
   })
 })

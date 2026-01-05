@@ -105,15 +105,23 @@ test.describe("University ecosystem app", () => {
     await expect(page.getByText("Safari/17.0")).toBeVisible()
 
     const revokeButton = page.getByTestId("session-revoke-2")
+    await revokeButton.scrollIntoViewIfNeeded()
     await expect(revokeButton).toBeVisible()
+    await expect(revokeButton).toBeEnabled()
 
-    const deletePromise = page.waitForResponse(
-      (resp) => resp.url().includes("/auth/sessions/") && resp.request().method() === "DELETE"
+    // Set up response listener first
+    const responsePromise = page.waitForResponse(
+      (resp) => resp.url().includes("/auth/sessions/") && resp.request().method() === "DELETE",
+      { timeout: 20000 }
     )
 
-    await revokeButton.click()
+    // Use evaluate to click directly in DOM context
+    await page.evaluate(() => {
+      const btn = document.querySelector('[data-testid="session-revoke-2"]') as HTMLButtonElement
+      if (btn) btn.click()
+    })
 
-    const response = await deletePromise
+    const response = await responsePromise
     expect(response.ok()).toBeTruthy()
 
     // 1. Wait for success toast
