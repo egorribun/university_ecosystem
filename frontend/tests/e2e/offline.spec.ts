@@ -38,7 +38,9 @@ test.describe("PWA offline support", () => {
 
     await page.goto("/offline.html", { waitUntil: "domcontentloaded" })
     await expect(page.locator("h1")).toBeVisible({ timeout: 10000 })
-    await expect(page.getByRole("heading", { name: /No network connection|Нет подключения к сети/i })).toBeVisible()
+    await expect(
+      page.getByRole("heading", { name: /No network connection|Нет подключения к сети/i })
+    ).toBeVisible()
 
     await page.goto("/dashboard", { waitUntil: "networkidle" })
 
@@ -46,13 +48,17 @@ test.describe("PWA offline support", () => {
     try {
       // For SPA, navigation to a cached route should still work but show offline indicator
       await page.goto("/news", { waitUntil: "domcontentloaded" })
-      const offlineIndicator = page.locator('[role="status"]').filter({ hasText: /offline|подключения/i })
+      const offlineIndicator = page
+        .locator('[role="status"]')
+        .filter({ hasText: /offline|подключения/i })
       await expect(offlineIndicator).toBeVisible({ timeout: 10000 })
 
       // Explicitly check the fallback page too
       await page.goto("/offline.html", { waitUntil: "domcontentloaded" })
       await expect(page.locator("h1")).toBeVisible()
-      await expect(page.getByRole("heading", { name: /No network connection|Нет подключения к сети/i })).toBeVisible()
+      await expect(
+        page.getByRole("heading", { name: /No network connection|Нет подключения к сети/i })
+      ).toBeVisible()
     } finally {
       await context.setOffline(false)
     }

@@ -260,7 +260,9 @@ test.describe("Push notifications", () => {
         window.__mockNotificationClick?.("open-news")
       }),
     ])
-    await expect(page.getByRole("heading", { name: /Новости университета|University news|News/i }).first()).toBeVisible({ timeout: 15000 })
+    await expect(
+      page.getByRole("heading", { name: /Новости университета|University news|News/i }).first()
+    ).toBeVisible({ timeout: 15000 })
 
     await Promise.all([
       page.waitForURL(/\/schedule$/),

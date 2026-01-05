@@ -288,9 +288,11 @@ export async function useMockApi(page: Page) {
       window.addEventListener("unhandledrejection", (event) => {
         const error = event.reason
         if (error && typeof error === "object" && error.isAxiosError) {
-           console.error(`[GlobalErrors] Axios error: ${error.message} (${error.config?.url}) status=${error.response?.status} data=${JSON.stringify(error.response?.data)}`)
+          console.error(
+            `[GlobalErrors] Axios error: ${error.message} (${error.config?.url}) status=${error.response?.status} data=${JSON.stringify(error.response?.data)}`
+          )
         } else {
-           console.error(`[GlobalErrors] Unhandled rejection: ${error?.message || error}`)
+          console.error(`[GlobalErrors] Unhandled rejection: ${error?.message || error}`)
         }
       })
     } catch {}
@@ -299,7 +301,9 @@ export async function useMockApi(page: Page) {
   page.on("console", (msg) => {
     const location = msg.location()
     if (msg.type() === "error" || msg.text().includes("[sw]") || msg.text().includes("[mock]")) {
-       console.log(`[console:${msg.type()}] ${msg.text()}${location?.url ? ` (${location.url})` : ""}`)
+      console.log(
+        `[console:${msg.type()}] ${msg.text()}${location?.url ? ` (${location.url})` : ""}`
+      )
     }
   })
 
@@ -325,9 +329,13 @@ export async function useMockApi(page: Page) {
     console.log(`[mock] Intercepting ${method} /${pathname} (normalized: ${normPath})`)
 
     if (state.offline && (normPath.startsWith("api/") || normPath.startsWith("auth/"))) {
-       console.log(`[mock] Simulating OFFLINE for ${normPath}`)
-       await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ detail: "Offline" }) })
-       return
+      console.log(`[mock] Simulating OFFLINE for ${normPath}`)
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "Offline" }),
+      })
+      return
     }
 
     // --- Authentication ---
@@ -339,13 +347,13 @@ export async function useMockApi(page: Page) {
 
       try {
         if ((headers["content-type"] ?? "").includes("application/json")) {
-           const parsed = JSON.parse(postData)
-           username = parsed.username || ""
-           password = parsed.password || ""
+          const parsed = JSON.parse(postData)
+          username = parsed.username || ""
+          password = parsed.password || ""
         } else {
-           const params = new URLSearchParams(postData)
-           username = params.get("username") || ""
-           password = params.get("password") || ""
+          const params = new URLSearchParams(postData)
+          username = params.get("username") || ""
+          password = params.get("password") || ""
         }
       } catch {}
 
@@ -365,7 +373,11 @@ export async function useMockApi(page: Page) {
       }
 
       if (username === "mfa@example.com") {
-        const challenge = createMfaChallenge({ includeTotp: true, defaultMethod: "totp", sessionId: 84 })
+        const challenge = createMfaChallenge({
+          includeTotp: true,
+          defaultMethod: "totp",
+          sessionId: 84,
+        })
         state.mfa.loginChallenge = challenge
         await route.fulfill({
           status: 202,
@@ -397,29 +409,32 @@ export async function useMockApi(page: Page) {
     if (normPath.includes("api/news")) {
       const detailMatch = normPath.match(/api\/news\/(\d+)/)
       if (detailMatch) {
-         const id = parseInt(detailMatch[1], 10)
-         const entry = mockNews.find(n => n.id === id) || mockNews[0]
-         await route.fulfill({ status: 200, body: JSON.stringify(entry) })
-         return
+        const id = parseInt(detailMatch[1], 10)
+        const entry = mockNews.find((n) => n.id === id) || mockNews[0]
+        await route.fulfill({ status: 200, body: JSON.stringify(entry) })
+        return
       }
 
-      state.newsLog.push({ header: request.headers()["if-none-match"], status: request.headers()["if-none-match"] === state.newsVersion ? 304 : 200 })
+      state.newsLog.push({
+        header: request.headers()["if-none-match"],
+        status: request.headers()["if-none-match"] === state.newsVersion ? 304 : 200,
+      })
       if (request.headers()["if-none-match"] === state.newsVersion) {
         await route.fulfill({
           status: 304,
           headers: {
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Credentials": "true",
-            "ETag": state.newsVersion,
-            "Cache-Control": "no-cache"
-          }
+            ETag: state.newsVersion,
+            "Cache-Control": "no-cache",
+          },
         })
         return
       }
 
       const headers = request.headers()
       const locale = (headers["accept-language"] || "").startsWith("en") ? "en" : "ru"
-      const localized = mockNews.map(n => ({
+      const localized = mockNews.map((n) => ({
         ...n,
         title: locale === "en" ? n.title_en : n.title,
         content: locale === "en" ? n.content_en : n.content,
@@ -428,7 +443,12 @@ export async function useMockApi(page: Page) {
       await route.fulfill({
         status: 200,
         headers: { ETag: state.newsVersion },
-        body: JSON.stringify({ items: localized, total: localized.length, limit: 12, has_more: false }),
+        body: JSON.stringify({
+          items: localized,
+          total: localized.length,
+          limit: 12,
+          has_more: false,
+        }),
       })
       return
     }
@@ -447,12 +467,15 @@ export async function useMockApi(page: Page) {
 
       const startIndex = decodeCursor(cursorParam)
       const slice = mockEvents.slice(startIndex, startIndex + limit)
-      const nextCursor = startIndex + slice.length < mockEvents.length ? encodeCursor(startIndex + slice.length) : null
+      const nextCursor =
+        startIndex + slice.length < mockEvents.length
+          ? encodeCursor(startIndex + slice.length)
+          : null
 
       await route.fulfill({
         status: 200,
         body: JSON.stringify({
-          items: slice.map(e => ({
+          items: slice.map((e) => ({
             ...e,
             title: locale === "en" ? e.title_en : e.title,
             description: locale === "en" ? e.description_en : e.description,
@@ -482,9 +505,9 @@ export async function useMockApi(page: Page) {
       if (method === "DELETE") {
         const idMatch = normPath.match(/sessions\/(\d+)/)
         if (idMatch) {
-           const id = parseInt(idMatch[1], 10)
-           const session = state.sessions.find(s => s.id === id)
-           if (session) session.revoked_at = new Date().toISOString()
+          const id = parseInt(idMatch[1], 10)
+          const session = state.sessions.find((s) => s.id === id)
+          if (session) session.revoked_at = new Date().toISOString()
         }
         await route.fulfill({ status: 200, body: JSON.stringify({ success: true }) })
         return
@@ -524,7 +547,10 @@ export async function useMockApi(page: Page) {
       const data = request.postDataJSON() ?? {}
       const code = data.code || data.otp_code
       if (code === "000000") {
-        await route.fulfill({ status: 401, body: JSON.stringify({ detail: "Invalid verification code" }) })
+        await route.fulfill({
+          status: 401,
+          body: JSON.stringify({ detail: "Invalid verification code" }),
+        })
         return
       }
       state.loggedIn = true
@@ -543,20 +569,31 @@ export async function useMockApi(page: Page) {
     }
 
     // --- Notifications & Admin ---
-    if (normPath.includes("admin/dead-letter") || normPath.includes("admin/notifications") || normPath.includes("notifications")) {
-       if (normPath.includes("retry") || normPath.includes("purge")) {
-          await route.fulfill({ status: 200, body: JSON.stringify({ success: true }) })
-          return
-       }
-       await route.fulfill({ status: 200, body: JSON.stringify({ items: state.deadLetterJobs, total: state.deadLetterJobs.length, notifications: [] }) })
-       return
+    if (
+      normPath.includes("admin/dead-letter") ||
+      normPath.includes("admin/notifications") ||
+      normPath.includes("notifications")
+    ) {
+      if (normPath.includes("retry") || normPath.includes("purge")) {
+        await route.fulfill({ status: 200, body: JSON.stringify({ success: true }) })
+        return
+      }
+      await route.fulfill({
+        status: 200,
+        body: JSON.stringify({
+          items: state.deadLetterJobs,
+          total: state.deadLetterJobs.length,
+          notifications: [],
+        }),
+      })
+      return
     }
 
     // --- Catch-all for API/Auth to prevent external hits during tests ---
     if (normPath.startsWith("api/") || normPath.startsWith("auth/")) {
-       console.log(`[mock] Generic 200 for unhandled path: ${normPath}`)
-       await route.fulfill({ status: 200, body: "{}" })
-       return
+      console.log(`[mock] Generic 200 for unhandled path: ${normPath}`)
+      await route.fulfill({ status: 200, body: "{}" })
+      return
     }
 
     await route.continue()

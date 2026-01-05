@@ -117,7 +117,9 @@ test.describe("University ecosystem app", () => {
     expect(response.ok()).toBeTruthy()
 
     // 1. Wait for success toast
-    await expect(page.getByText(/Сессия завершена|Session ended/i).first()).toBeVisible({ timeout: 15000 })
+    await expect(page.getByText(/Сессия завершена|Session ended/i).first()).toBeVisible({
+      timeout: 15000,
+    })
 
     // 2. Reload to ensure persistence
     await page.reload()
@@ -140,10 +142,10 @@ test.describe("University ecosystem app", () => {
     const loadMore = page.getByRole("button", { name: /Загрузить ещё|Load more/i })
 
     if (await loadMore.isVisible()) {
-        await loadMore.click()
-        await expect(page.getByText(/Событие 25/i).first()).toBeVisible()
+      await loadMore.click()
+      await expect(page.getByText(/Событие 25/i).first()).toBeVisible()
     } else {
-        await expect(page.getByText(/Событие 49/i).first()).toBeVisible()
+      await expect(page.getByText(/Событие 49/i).first()).toBeVisible()
     }
   })
 

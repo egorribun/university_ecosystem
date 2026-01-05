@@ -416,13 +416,10 @@ export default function NewsDetail() {
     if (!shareUrl || copyingLink) return
     setCopyingLink(true)
 
-
     try {
       if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(shareUrl)
-
       } else {
-
         const textarea = document.createElement("textarea")
         textarea.value = shareUrl
         textarea.setAttribute("readonly", "")

@@ -18,7 +18,10 @@ test.describe("Multi-factor authentication flows", () => {
     await page.waitForTimeout(1000)
 
     // Expand TOTP accordion
-    await page.getByText(/Authenticator app|Приложение-аутентификатор/i).first().click()
+    await page
+      .getByText(/Authenticator app|Приложение-аутентификатор/i)
+      .first()
+      .click()
     await page.waitForTimeout(500)
 
     const addBtn = page.getByRole("button", { name: matchTotpAddButton })
@@ -31,7 +34,9 @@ test.describe("Multi-factor authentication flows", () => {
     await addBtn.click({ force: true })
     await startPromise
     await page.waitForTimeout(1000)
-    await expect(page.getByText(/Завершите настройку|Finish setup|Confirm setup|Scan|QR/i)).toBeVisible({ timeout: 30000 })
+    await expect(
+      page.getByText(/Завершите настройку|Finish setup|Confirm setup|Scan|QR/i)
+    ).toBeVisible({ timeout: 30000 })
 
     const otpInput = page.getByLabel(/Код из приложения|Authenticator code/i).first()
     await otpInput.click()
@@ -90,16 +95,16 @@ test.describe("Multi-factor authentication flows", () => {
     const inputs = page.getByLabel(/Код из приложения|Authenticator code/i)
     const count = await inputs.count()
     for (let i = 0; i < count; i++) {
-        await inputs.nth(i).fill("")
+      await inputs.nth(i).fill("")
     }
 
     // Simulate paste (fill respects maxLength=1, so we must paste)
-    await inputs.first().evaluate(el => {
-        const dt = new DataTransfer();
-        dt.setData('text', '123456');
-        const event = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true });
-        el.dispatchEvent(event);
-    });
+    await inputs.first().evaluate((el) => {
+      const dt = new DataTransfer()
+      dt.setData("text", "123456")
+      const event = new ClipboardEvent("paste", { clipboardData: dt, bubbles: true })
+      el.dispatchEvent(event)
+    })
 
     // Trigger submit manually (auto-submit blocked by existing error prop)
     await page.getByRole("button", { name: matchTotpVerifyButton }).click()
