@@ -56,7 +56,8 @@ describe("API ETag interceptor", () => {
     expect(firstResponse.status).toBe(200)
 
     const secondResponse = await api.get("/events", config)
-    expect(secondResponse.status).toBe(304)
+    expect(secondResponse.status).toBe(200)
+    expect(secondResponse.data).toEqual(firstResponse.data)
 
     expect(observedIfNoneMatch).toEqual([null, '"etag-123"'])
   })
