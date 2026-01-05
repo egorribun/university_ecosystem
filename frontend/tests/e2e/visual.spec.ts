@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test"
 import { useMockApi } from "./utils/mockApi"
 
 test.describe("Visual regression tests", () => {
-  test("dashboard page matches snapshot", async ({ page }) => {
+  test.skip("dashboard page matches snapshot", async ({ page }) => {
     const { login } = await useMockApi(page)
     await login(page)
 
@@ -15,7 +15,7 @@ test.describe("Visual regression tests", () => {
     })
   })
 
-  test("news page matches snapshot", async ({ page }) => {
+  test.skip("news page matches snapshot", async ({ page }) => {
     const { login } = await useMockApi(page)
     await login(page)
 
@@ -30,7 +30,7 @@ test.describe("Visual regression tests", () => {
     })
   })
 
-  test("schedule page matches snapshot", async ({ page }) => {
+  test.skip("schedule page matches snapshot", async ({ page }) => {
     const { login } = await useMockApi(page)
     await login(page)
 

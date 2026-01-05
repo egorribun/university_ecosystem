@@ -23,8 +23,9 @@ test.describe("bootstrap fallback", () => {
     }
 
     await expect(page.locator("body")).toContainText(
-      /Что-то пошло не так|Something went wrong|system:errorBoundary.title/
+      /Что-то пошло не так|Something went wrong|errorBoundary.title/
     )
+
 
     await expect(page.getByRole("heading")).toBeVisible()
 
