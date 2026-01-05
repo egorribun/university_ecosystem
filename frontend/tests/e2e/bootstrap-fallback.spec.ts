@@ -26,7 +26,6 @@ test.describe("bootstrap fallback", () => {
       /Что-то пошло не так|Something went wrong|errorBoundary.title/
     )
 
-
     await expect(page.getByRole("heading")).toBeVisible()
 
     await expect(page.getByRole("button", { name: /Перезагрузить|Reload/i })).toBeVisible()
