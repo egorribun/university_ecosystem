@@ -260,7 +260,7 @@ test.describe("Push notifications", () => {
         window.__mockNotificationClick?.("open-news")
       }),
     ])
-    await expect(page.getByText("Новости Университета")).toBeVisible()
+    await expect(page.getByText(/Новости университета|University news/i)).toBeVisible()
 
     await Promise.all([
       page.waitForURL(/\/schedule$/),
@@ -268,7 +268,7 @@ test.describe("Push notifications", () => {
         window.__mockNotificationClick?.("open-schedule")
       }),
     ])
-    await expect(page.getByText("Расписание моей группы")).toBeVisible()
+    await expect(page.getByText(/Моё расписание|My schedule/i)).toBeVisible()
   })
 
   test("shows in-app toast instead of system notification for visible clients", async ({
@@ -308,6 +308,6 @@ test.describe("Push notifications", () => {
       page.waitForURL(/\/news$/),
       page.getByRole("button", { name: "Открыть" }).click(),
     ])
-    await expect(page.getByText("Новости Университета")).toBeVisible()
+    await expect(page.getByText(/Новости университета|University news/i)).toBeVisible()
   })
 })

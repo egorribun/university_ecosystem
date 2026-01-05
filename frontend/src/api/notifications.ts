@@ -77,21 +77,21 @@ export const checkSchedule = (lookaheadMinutes: number = 15) =>
   })
 
 export const fetchDeadLetterQueue = async (params?: { limit?: number; offset?: number }) => {
-  const response = await api.get("/api/v1/notifications/admin/dead-letter", {
+  const response = await api.get("/notifications/admin/dead-letter", {
     params,
   })
   return ensureValidResponse(
     deadLetterListSchema,
     response.data,
-    "GET /api/v1/notifications/admin/dead-letter"
+    "GET /notifications/admin/dead-letter"
   )
 }
 
 export const retryDeadLetterJobs = (jobIds: number[]) =>
-  api.post("/api/v1/notifications/admin/dead-letter/retry", { job_ids: jobIds })
+  api.post("/notifications/admin/dead-letter/retry", { job_ids: jobIds })
 
 export const purgeDeadLetterJobs = (jobIds: number[]) =>
-  api.post("/api/v1/notifications/admin/dead-letter/purge", { job_ids: jobIds })
+  api.post("/notifications/admin/dead-letter/purge", { job_ids: jobIds })
 
 export async function saveSubscription(
   sub: PushSubscriptionJSON,

@@ -70,12 +70,13 @@ const getApiCacheName = () =>
 
 const getApiStrategy = () => {
   const cacheName = getApiCacheName()
+  console.log(`[sw] Using strategy for cache: ${cacheName}`)
   const existing = apiStrategies.get(cacheName)
   if (existing) {
     return existing
   }
 
-  const strategy = new StaleWhileRevalidate({
+  const strategy = new NetworkFirst({
     cacheName,
     plugins: [API_CACHE_PLUGIN],
   })
@@ -101,8 +102,11 @@ const buildOfflineApiResponse = (kind: ApiFallbackKind) =>
 
 const matchApiCache = async (request: Request) => {
   try {
-    const cache = await caches.open(getApiCacheName())
+    const cacheName = getApiCacheName()
+    console.log(`[sw] Matching cache: ${cacheName} for ${request.url}`)
+    const cache = await caches.open(cacheName)
     const cached = await cache.match(request)
+    console.log(`[sw] Cache match result for ${request.url}: ${cached ? "FOUND" : "MISS"}`)
     return cached ?? null
   } catch (error) {
     logWarning("SW: failed to read cached API response", error)
@@ -137,8 +141,10 @@ const purgeSessionCaches = async () => {
 
 const setSessionCacheKey = (hash: unknown) => {
   if (typeof hash === "string" && hash.length > 0) {
+    console.log(`[sw] Setting session cache key: ${hash}`)
     sessionCacheHash = hash
   } else {
+    console.log("[sw] Clearing session cache key")
     sessionCacheHash = null
   }
   apiStrategies.clear()
@@ -774,20 +780,7 @@ try {
   throw error
 }
 
-registerRoute(
-  new NavigationRoute(
-    async (options) => {
-      try {
-        const cachedResponse = await caches.match(APP_SHELL_URL)
-        if (cachedResponse) return cachedResponse
-      } catch (e) {
-        logError("SW: navigation route fallback failed", e)
-      }
-      return fetch(options.request)
-    },
-    { allowlist: [/^\/[^_].*/] }
-  )
-)
+
 
 self.addEventListener("message", (event) => {
   if (!event.data || typeof event.data !== "object" || !("type" in event.data)) {
@@ -823,14 +816,21 @@ const appShellNavigationHandler = createHandlerBoundToURL(APP_SHELL_URL)
 
 const createApiHandler =
   (kind: ApiFallbackKind) => async (options: RouteHandlerCallbackOptions) => {
+    const { request } = options
     try {
-      return await getApiStrategy().handle(options)
+      console.log(`[sw] createApiHandler: fetching ${request.url} (kind: ${kind})`)
+      const response = await getApiStrategy().handle(options)
+      if (!response || response.status >= 500) {
+        throw new Error(`API error: ${response?.status ?? "no response"}`)
+      }
+      return response
     } catch (error) {
-      logWarning(`SW: falling back to cached ${kind} response`, error)
-      const cached = await matchApiCache(options.request)
+      logWarning(`SW: falling back to cached ${kind} response for ${request.url}`, error)
+      const cached = await matchApiCache(request)
       if (cached) {
         return cached
       }
+      console.log(`[sw] No cache match for ${request.url}, returning built-in fallback`)
       return buildOfflineApiResponse(kind)
     }
   }

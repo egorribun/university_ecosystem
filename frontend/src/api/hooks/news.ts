@@ -167,6 +167,24 @@ export const useNewsListQuery = (
     [queryClient, normalized, queryKey]
   )
 
+  // Read from localStorage as fallback for offline mode
+  const placeholderData = useMemo(() => {
+    if (typeof window === "undefined") return undefined
+    try {
+      const cached = localStorage.getItem(`news:list:${normalized.language}`)
+      if (!cached) return undefined
+      const items: NewsItem[] = JSON.parse(cached)
+      if (!Array.isArray(items) || items.length === 0) return undefined
+      // Wrap in the expected InfiniteData structure
+      return {
+        pages: [{ items, total: items.length, limit: 12, cursor: null, next_cursor: null, has_more: false }],
+        pageParams: [null],
+      }
+    } catch {
+      return undefined
+    }
+  }, [normalized.language])
+
   const query = useInfiniteQuery<
     PaginatedResponse<NewsItem>,
     Error,
@@ -179,6 +197,7 @@ export const useNewsListQuery = (
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage: PaginatedResponse<NewsItem>) => lastPage?.next_cursor ?? null,
     queryFn,
+    placeholderData,
     ...rest,
   })
 

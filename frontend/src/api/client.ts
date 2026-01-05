@@ -113,7 +113,112 @@ const clientQueueTimestamps: number[] = []
 let clientQueueTimer: ReturnType<typeof setTimeout> | null = null
 let clientQueueResetAt = 0
 
-const etagCache = new Map<string, string>()
+// localStorage-backed ETag cache for persistence across page reloads
+const ETAG_CACHE_KEY = "ue:etag-cache"
+const RESPONSE_CACHE_KEY = "ue:response-cache"
+
+const loadEtagCache = (): Map<string, string> => {
+  if (typeof window === "undefined") return new Map()
+  try {
+    const stored = localStorage.getItem(ETAG_CACHE_KEY)
+    if (stored) {
+      const entries: [string, string][] = JSON.parse(stored)
+      return new Map(entries)
+    }
+  } catch {}
+  return new Map()
+}
+
+const saveEtagCache = (cache: Map<string, string>) => {
+  if (typeof window === "undefined") return
+  try {
+    const entries = Array.from(cache.entries())
+    localStorage.setItem(ETAG_CACHE_KEY, JSON.stringify(entries))
+  } catch {}
+}
+
+// Response body cache for 304 handling
+const loadResponseCache = (): Map<string, unknown> => {
+  if (typeof window === "undefined") return new Map()
+  try {
+    const stored = localStorage.getItem(RESPONSE_CACHE_KEY)
+    if (stored) {
+      const entries: [string, unknown][] = JSON.parse(stored)
+      return new Map(entries)
+    }
+  } catch {}
+  return new Map()
+}
+
+const saveResponseCache = (cache: Map<string, unknown>) => {
+  if (typeof window === "undefined") return
+  try {
+    const entries = Array.from(cache.entries())
+    localStorage.setItem(RESPONSE_CACHE_KEY, JSON.stringify(entries))
+  } catch {}
+}
+
+// Create a proxy wrapper that syncs with localStorage
+const createEtagCache = () => {
+  let cache = loadEtagCache()
+  return {
+    get(key: string): string | undefined {
+      cache = loadEtagCache() // Always read fresh from localStorage
+      return cache.get(key)
+    },
+    set(key: string, value: string) {
+      cache = loadEtagCache()
+      cache.set(key, value)
+      saveEtagCache(cache)
+    },
+    delete(key: string) {
+      cache = loadEtagCache()
+      cache.delete(key)
+      saveEtagCache(cache)
+    },
+    clear() {
+      cache.clear()
+      if (typeof window !== "undefined") {
+        try { localStorage.removeItem(ETAG_CACHE_KEY) } catch {}
+      }
+    }
+  }
+}
+
+// Response body cache for 304 handling
+const createResponseCache = () => {
+  let cache = loadResponseCache()
+  return {
+    get(key: string): unknown | undefined {
+      cache = loadResponseCache()
+      return cache.get(key)
+    },
+    set(key: string, value: unknown) {
+      cache = loadResponseCache()
+      cache.set(key, value)
+      saveResponseCache(cache)
+    },
+    delete(key: string) {
+      cache = loadResponseCache()
+      cache.delete(key)
+      saveResponseCache(cache)
+    },
+    clear() {
+      cache.clear()
+      if (typeof window !== "undefined") {
+        try { localStorage.removeItem(RESPONSE_CACHE_KEY) } catch {}
+      }
+    }
+  }
+}
+
+const etagCache = createEtagCache()
+const responseCache = createResponseCache()
+
+export const resetEtagCache = () => {
+  etagCache.clear()
+  responseCache.clear()
+}
 
 const updateTraceContext = (headers: AxiosHeaders | Record<string, unknown> | undefined) => {
   if (!headers) {
@@ -128,8 +233,6 @@ const updateTraceContext = (headers: AxiosHeaders | Record<string, unknown> | un
     setTraceContext(null)
   }
 }
-
-export const resetEtagCache = () => etagCache.clear()
 
 const pruneClientQueueTimestamps = () => {
   const threshold = Date.now() - RATE_LIMIT_WINDOW_MS
@@ -418,8 +521,23 @@ api.interceptors.response.use(
       const tag = responseHeaders.get("etag") ?? responseHeaders.get("ETag")
       if (typeof tag === "string" && tag.trim()) {
         etagCache.set(etagKey, tag)
+        // Cache response body for 304 handling
+        if (r.status === 200 && r.data) {
+          responseCache.set(etagKey, r.data)
+        }
       } else {
         etagCache.delete(etagKey)
+        responseCache.delete(etagKey)
+      }
+
+      // Handle 304 Not Modified - return cached data
+      if (r.status === 304) {
+        const cachedData = responseCache.get(etagKey)
+        if (cachedData) {
+          r.data = cachedData
+          // Change status to 200 so the app treats it as success
+          r.status = 200
+        }
       }
     }
     updateTraceContext(r.headers as AxiosHeaders)

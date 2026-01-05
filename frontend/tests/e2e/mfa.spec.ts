@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test"
 import { useMockApi } from "./utils/mockApi"
 
-const matchTotpAddButton = /Set up authenticator app|Настроить приложение/i
-const matchTotpVerifyButton = /Verify|Подтвердить/i
+const matchTotpAddButton = /Подключить приложение|Set up authenticator app/i
+const matchTotpVerifyButton = /Подтвердить|Verify|Confirm/i
 
 test.describe("Multi-factor authentication flows", () => {
   test("allows enabling TOTP in settings", async ({ page }) => {
@@ -13,15 +13,18 @@ test.describe("Multi-factor authentication flows", () => {
     await page.waitForURL(/\/settings$/)
 
     await page.getByRole("button", { name: matchTotpAddButton }).click()
-    await expect(page.getByText(/Finish setup|Завершите настройку/i)).toBeVisible()
+    await expect(page.getByText(/Завершите настройку|Finish setup/i)).toBeVisible()
 
-    await page.getByLabel(/Authenticator code|Код из приложения/i).fill("123456")
-    await page.getByRole("button", { name: matchTotpVerifyButton }).click()
+    const otpInput = page.getByLabel(/Код из приложения|Authenticator code/i).first()
+    await otpInput.click()
+    await page.keyboard.type("123456", { delay: 50 })
 
+    const verifyBtn = page.getByRole("button", { name: matchTotpVerifyButton })
+    // The component might auto-submit, but we also ensure the button is at least enabled or we just wait for the success state
     await expect(
-      page.getByText(/Authenticator app connected|Приложение-аутентификатор подключено/i)
-    ).toBeVisible()
-    await expect(page.getByText(/Authenticator 1|Аутентификатор 1/i)).toBeVisible()
+      page.getByText(/Приложение-аутентификатор подключено|Authenticator app connected/i)
+    ).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText(/Приложение \d|Authenticator \d/i)).toBeVisible()
   })
 
   test("completes login when an OTP challenge is returned", async ({ page }) => {
@@ -34,12 +37,13 @@ test.describe("Multi-factor authentication flows", () => {
     await page.locator('input[name="password"]').fill("Password123")
     await page.locator('button[type="submit"]').click()
 
-    await expect(page.getByText(/Verify it's you|Подтвердите свою личность/i)).toBeVisible()
+    await expect(page.getByText(/Подтвердите личность|Verify it's you/i)).toBeVisible()
 
-    await page.getByLabel(/Authenticator code|Код из приложения/i).fill("123456")
-    await page.getByRole("button", { name: matchTotpVerifyButton }).click()
+    const otpInput = page.getByLabel(/Код из приложения|Authenticator code/i).first()
+    await otpInput.click()
+    await page.keyboard.type("123456", { delay: 50 })
 
-    await expect(page).toHaveURL(/\/dashboard$/)
+    await expect(page).toHaveURL(/\/dashboard$/, { timeout: 10000 })
   })
 
   test("shows an error for invalid OTP attempts and allows retry", async ({ page }) => {
@@ -52,17 +56,17 @@ test.describe("Multi-factor authentication flows", () => {
     await page.locator('input[name="password"]').fill("Password123")
     await page.locator('button[type="submit"]').click()
 
-    await expect(page.getByText(/Verify it's you|Подтвердите свою личность/i)).toBeVisible()
+    await expect(page.getByText(/Подтвердите личность|Verify it's you/i)).toBeVisible()
 
-    const otpInput = page.getByLabel(/Authenticator code|Код из приложения/i)
-    await otpInput.fill("000000")
-    await page.getByRole("button", { name: matchTotpVerifyButton }).click()
+    const otpInput = page.getByLabel(/Код из приложения|Authenticator code/i).first()
+    await otpInput.click()
+    await page.keyboard.type("000000", { delay: 50 })
 
-    await expect(page.getByText(/Invalid verification code|Неверный код/i)).toBeVisible()
+    await expect(page.getByText(/Неверный код|Invalid verification code/i)).toBeVisible()
 
-    await otpInput.fill("123456")
-    await page.getByRole("button", { name: matchTotpVerifyButton }).click()
+    await otpInput.click()
+    await page.keyboard.type("123456", { delay: 50 })
 
-    await expect(page).toHaveURL(/\/dashboard$/)
+    await expect(page).toHaveURL(/\/dashboard$/, { timeout: 10000 })
   })
 })

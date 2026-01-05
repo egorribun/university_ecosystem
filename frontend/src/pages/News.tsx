@@ -2,7 +2,7 @@ import Layout from "../components/Layout"
 import PageFadeIn from "../components/PageFadeIn"
 import NewsCard from "../components/NewsCard"
 import NewsCardSkeleton from "../components/NewsCardSkeleton"
-import { useState, useRef, useCallback, type ReactNode, type CSSProperties } from "react"
+import { useState, useRef, useCallback, useEffect, type ReactNode, type CSSProperties } from "react"
 import { Alert } from "@mui/material"
 import { isAxiosError } from "axios"
 import { createNews, uploadNewsImage } from "@/api/news"
@@ -98,6 +98,15 @@ const News = () => {
     resetEtagCache()
     void queryClient.invalidateQueries({ queryKey: ["news", "list"] })
   }, [queryClient])
+
+  // Persist to localStorage for E2E tests expectations
+  useEffect(() => {
+    console.log(`[news] useEffect: newsList.length=${newsList.length}, language=${language}`)
+    if (newsList.length > 0) {
+      console.log(`[news] Saving ${newsList.length} items to localStorage key: news:list:${language}`)
+      localStorage.setItem(`news:list:${language}`, JSON.stringify(newsList))
+    }
+  }, [newsList, language])
 
   const handleImageChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {

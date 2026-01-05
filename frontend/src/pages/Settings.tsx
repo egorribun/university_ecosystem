@@ -221,7 +221,9 @@ export default function Settings() {
 
   const revokeSessionMutation = useMutation({
     mutationFn: async (sessionId: number) => {
+      console.log(`[settings] mutationFn: deleting session ${sessionId}`)
       const { data } = await api.delete<ActiveSession>(`/auth/sessions/${sessionId}`)
+      console.log(`[settings] mutationFn: session ${sessionId} deleted, returning data`, data)
       return data
     },
   })
@@ -625,12 +627,18 @@ export default function Settings() {
   const handleRevokeSession = useCallback(
     async (sessionId: number, options?: { skipStepUp?: boolean }) => {
       try {
+        console.log(`[settings] Revoking session ${sessionId}...`)
         const result = await revokeSessionMutation.mutateAsync(sessionId)
+        console.log(`[settings] Session ${sessionId} revoked successfully`, result)
         setSnack({ text: t("settings:sessions.snackbar.revoked"), sev: "success" })
+
+        // Update cache immediately and then invalidate to be safe
         queryClient.setQueryData<ActiveSession[] | undefined>(sessionsKey, (prev) => {
-          if (!Array.isArray(prev)) return [result]
-          return prev.map((session) => (session.id === result.id ? result : session))
+          if (!Array.isArray(prev)) return prev
+          return prev.map((s) => (s.id === result.id ? result : s))
         })
+        await queryClient.invalidateQueries({ queryKey: sessionsKey })
+        console.log(`[settings] Sessions query invalidated for ${JSON.stringify(sessionsKey)}`)
         if (result?.is_current) {
           await logout()
         }
@@ -1196,7 +1204,7 @@ export default function Settings() {
                     <RadioGroup row value={theme} onChange={handleThemeChange}>
                       <FormControlLabel
                         value="system"
-                        control={<Radio />}
+                        control={<Radio data-testid="theme-option-system" />}
                         label={
                           <span className="flex items-center gap-2 text-[color:color-mix(in_srgb,var(--page-text)_82%,var(--secondary-text)_18%)]">
                             <Monitor className="h-5 w-5" />
@@ -1206,7 +1214,7 @@ export default function Settings() {
                       />
                       <FormControlLabel
                         value="light"
-                        control={<Radio />}
+                        control={<Radio data-testid="theme-option-light" />}
                         label={
                           <span className="flex items-center gap-2 text-[color:color-mix(in_srgb,var(--page-text)_82%,var(--secondary-text)_18%)]">
                             <Sun className="h-5 w-5" />
@@ -1216,7 +1224,7 @@ export default function Settings() {
                       />
                       <FormControlLabel
                         value="dark"
-                        control={<Radio />}
+                        control={<Radio data-testid="theme-option-dark" />}
                         label={
                           <span className="flex items-center gap-2 text-[color:color-mix(in_srgb,var(--page-text)_82%,var(--secondary-text)_18%)]">
                             <Moon className="h-5 w-5" />
@@ -1705,7 +1713,7 @@ export default function Settings() {
                             </SectionSubtitle>
                           </div>
 
-                          {sessionsFetching ? (
+                          {sessions.length === 0 && sessionsFetching ? (
                             <div className="mt-3 flex flex-row items-center gap-2.5">
                               <CircularProgress size={18} />
                               <p className="text-sm font-semibold text-[color:color-mix(in_srgb,var(--page-text)_84%,var(--secondary-text)_16%)]">
@@ -1722,7 +1730,8 @@ export default function Settings() {
                             </SectionSubtitle>
                           ) : (
                             <div className="flex flex-col gap-3 mt-3">
-                              {sortedSessions.map((session) => {
+                              {sortedSessions.map((session, idx) => {
+                                console.log(`[settings] Rendering sessions[${idx}]: ID=${session.id} UA=${session.user_agent} revoked=${!!session.revoked_at} (${session.revoked_at})`)
                                 const isRevoked = Boolean(session.revoked_at)
                                 const lastSeen = session.last_seen_at ?? session.created_at
                                 const timelineSource = session.revoked_at ?? lastSeen
@@ -1742,6 +1751,8 @@ export default function Settings() {
                                     : t("settings:sessions.status.active")
                                 const disableRevoke =
                                   session.is_current || isRevoked || revokeSessionMutation.isPending
+
+                                console.log(`[settings] Session ${session.id} final statusLabel: ${statusLabel}`)
 
                                 return (
                                   <SessionItem
@@ -1773,6 +1784,8 @@ export default function Settings() {
                                     </div>
                                     <div className="flex flex-row flex-wrap items-center justify-start gap-2 gap-y-1.5 sm:justify-end">
                                       <Chip
+                                        key={isRevoked ? "revoked" : "active"}
+                                        data-testid={`session-status-${session.id}`}
                                         size="small"
                                         label={statusLabel}
                                         variant="outlined"
@@ -1781,11 +1794,15 @@ export default function Settings() {
                                       />
                                       {!session.is_current && !isRevoked && (
                                         <Button
+                                          data-testid={`session-revoke-${session.id}`}
                                           size="small"
                                           variant="text"
                                           color="error"
                                           disabled={disableRevoke}
-                                          onClick={() => void handleRevokeSession(session.id)}
+                                          onClick={() => {
+                                            console.log(`[settings] Clicked revoke for session ${session.id}`)
+                                            void handleRevokeSession(session.id)
+                                          }}
                                         >
                                           {t("settings:sessions.revoke")}
                                         </Button>

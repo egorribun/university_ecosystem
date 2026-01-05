@@ -89,7 +89,7 @@ root.render(
       <CssVarsProvider
         theme={theme}
         defaultMode="system"
-        modeStorageKey="theme"
+        modeStorageKey="ue-mode"
         disableTransitionOnChange
       >
         <CssBaseline enableColorScheme />

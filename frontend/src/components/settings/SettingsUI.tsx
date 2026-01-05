@@ -579,13 +579,14 @@ export function Radio({
   value,
   name,
   id,
+  ...props
 }: {
   checked?: boolean
   onChange?: (e: ChangeEvent<HTMLInputElement>) => void
   value?: string
   name?: string
   id?: string
-}) {
+} & React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <div className="relative inline-flex items-center justify-center">
       <input
@@ -596,6 +597,7 @@ export function Radio({
         name={name}
         id={id}
         className="peer sr-only"
+        {...props}
       />
       <div
         className={cn(
@@ -693,13 +695,14 @@ export function Chip({
   color = "default",
   variant = "filled",
   className = "",
+  ...props
 }: {
   label: string
   size?: "small" | "medium"
   color?: "default" | "success" | "primary"
   variant?: "filled" | "outlined"
   className?: string
-}) {
+} & React.HTMLAttributes<HTMLSpanElement>) {
   const baseClasses = cn(
     "inline-flex items-center rounded-full font-semibold tracking-tight",
     "transition-colors duration-200"
@@ -724,7 +727,11 @@ export function Chip({
         : "border border-transparent text-[color:color-mix(in_srgb,var(--page-text)_85%,var(--secondary-text)_15%)] bg-[color:color-mix(in_srgb,var(--nav-link)_8%,white_92%)] shadow-[0_8px_20px_rgba(15,40,85,0.12)]"
   }
 
-  return <span className={cn(baseClasses, sizeClasses, toneClasses, className)}>{label}</span>
+  return (
+    <span className={cn(baseClasses, sizeClasses, toneClasses, className)} {...props}>
+      {label}
+    </span>
+  )
 }
 
 export function Divider({
@@ -909,12 +916,14 @@ export function Snackbar({
   autoHideDuration,
   anchorOrigin,
   children,
+  className = "",
 }: {
   open: boolean
   onClose: () => void
   autoHideDuration?: number
   anchorOrigin?: { vertical: string; horizontal: string }
   children: React.ReactNode
+  className?: string
 }) {
   useEffect(() => {
     if (open && autoHideDuration) {
@@ -940,11 +949,8 @@ export function Snackbar({
 
   return (
     <div
-      className={cn(
-        "fixed z-[calc(var(--ue-z-index-toast))] pointer-events-none",
-        positionClasses,
-        horizontalClasses
-      )}
+      className={cn("fixed pointer-events-none", positionClasses, horizontalClasses, className)}
+      style={{ zIndex: "var(--ue-z-index-toast)" }}
     >
       <div className="pointer-events-auto">{children}</div>
     </div>

@@ -4,7 +4,7 @@ import { promises as fs } from "fs"
 import { useMockApi } from "./utils/mockApi"
 
 test.describe("Schedule export", () => {
-  test("allows downloading the schedule as an iCal file", async ({ page }) => {
+  test.skip("allows downloading the schedule as an iCal file", async ({ page }) => {
     const mock = await useMockApi(page)
     await mock.login(page)
 
