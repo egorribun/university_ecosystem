@@ -1,0 +1,45 @@
+{
+  "defaultTitle": "University Ecosystem",
+  "defaultBody": "You have a new notification.",
+  "toast": {
+    "open": "Open"
+  },
+  "reminders": {
+    "startsSoon": "In {{minutes}} min."
+  },
+  "topics": {
+    "schedule": "Schedule",
+    "news": "News",
+    "events": "Events",
+    "system": "System"
+  },
+  "permission": {
+    "granted": "allowed",
+    "denied": "blocked",
+    "default": "not requested"
+  },
+  "messages": {
+    "noTopics": "No topics selected",
+    "browserUnsupported": "Your browser doesn't support push notifications",
+    "notificationsUnsupported": "Notifications aren't supported in this browser",
+    "workerNotReady": "The service worker isn't ready yet",
+    "enableInSettings": "Enable notifications in your browser settings to receive pushes",
+    "confirmPermission": "Approve the notification request to receive pushes",
+    "subscriptionFailed": "Couldn't create a push subscription",
+    "enabled": "Notifications enabled",
+    "enableFailed": "Couldn't enable notifications",
+    "workerUnavailable": "Service worker unavailable",
+    "disabled": "Notifications disabled",
+    "disabledLocal": "Notifications disabled locally",
+    "disableFailed": "Couldn't disable notifications",
+    "subscriptionPermissionHint": "Subscription unavailable: check your browser permissions",
+    "topicEnabled": "Topic “{{label}}” enabled",
+    "topicDisabled": "Topic “{{label}}” disabled",
+    "updateFailed": "Couldn't update notification preferences",
+    "detectFailed": "Couldn't determine push subscription"
+  },
+  "sync": {
+    "title": "مزامنة",
+    "body": "تم حفظ إجراءاتك بنجاح"
+  }
+}

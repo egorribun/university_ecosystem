@@ -41,6 +41,10 @@ def _is_weak(value: str) -> bool:
     normalized = value.strip().strip("\"'").lower()
     if not normalized:
         return False
+    # Ignore variable expansion like ${VAR} or $VAR as their real
+    # strength is checked where they are defined.
+    if normalized.startswith("$"):
+        return False
     if normalized in BANNED_VALUES:
         return True
     if len(normalized) < MIN_LENGTH and not _is_placeholder(normalized):

@@ -1,0 +1,295 @@
+from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from sqlalchemy import event
+from sqlalchemy.exc import IntegrityError
+
+from app import crud
+from app.auth.security import get_password_hash
+from app.core.localization import translate
+from app.models import models
+from app.schemas import schemas
+
+pytestmark = pytest.mark.anyio("asyncio")
+
+
+@contextmanager
+def _capture_statements(session):
+    statements: list[str] = []
+    engine = session.bind
+    if engine is None:
+        yield statements
+        return
+
+    sync_engine = engine.sync_engine
+
+    def _before_cursor_execute(
+        _conn, _cursor, statement, _parameters, _context, _executemany
+    ) -> None:
+        statements.append(statement)
+
+    event.listen(sync_engine, "before_cursor_execute", _before_cursor_execute)
+    try:
+        yield statements
+    finally:
+        event.remove(sync_engine, "before_cursor_execute", _before_cursor_execute)
+
+
+async def _login(async_client, email: str, password: str) -> dict[str, str]:
+    response = await async_client.post(
+        "/auth/login",
+        data={"username": email, "password": password},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert response.status_code == 200
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+async def test_create_event_guard(db_session, user_factory):
+    user = await user_factory()
+    starts = datetime.now(UTC)
+    payload = schemas.EventCreate.model_construct(
+        title="Invalid",
+        description=None,
+        location=None,
+        event_type=None,
+        starts_at=starts,
+        ends_at=starts,
+        speaker=None,
+        image_url=None,
+        about=None,
+    )
+    with pytest.raises(
+        ValueError,
+        match=translate("validation.events.end_after_start"),
+    ):
+        await crud.create_event(db_session, payload, user_id=user.id)
+
+
+async def test_update_event_guard(db_session, user_factory):
+    user = await user_factory()
+    starts = datetime.now(UTC)
+    ends = starts + timedelta(hours=1)
+    valid = schemas.EventCreate(
+        title="Valid",
+        starts_at=starts,
+        ends_at=ends,
+    )
+    record = await crud.create_event(db_session, valid, user_id=user.id)
+    invalid_update = schemas.EventUpdate.model_construct(
+        starts_at=starts,
+        ends_at=starts,
+        fields_set={"starts_at", "ends_at"},
+    )
+    with pytest.raises(
+        ValueError,
+        match=translate("validation.events.end_after_start"),
+    ):
+        await crud.update_event(db_session, record, invalid_update)
+
+
+async def test_event_model_check_constraint(db_session, user_factory):
+    user = await user_factory()
+    starts = datetime.now(UTC)
+    event = models.Event(
+        title="Broken",
+        starts_at=starts,
+        ends_at=starts,
+        created_by=user.id,
+    )
+    db_session.add(event)
+    with pytest.raises(IntegrityError):
+        await db_session.commit()
+    await db_session.rollback()
+
+
+async def test_get_all_events_respects_locale(db_session, user_factory):
+    admin = await user_factory(role="admin")
+    student = await user_factory()
+    starts = datetime.now(UTC)
+    event = models.Event(
+        title="Русское название",
+        title_en="English title",
+        description="Описание",
+        description_en="English description",
+        location="Москва",
+        location_en="Moscow",
+        event_type="лекция",
+        event_type_en="Lecture",
+        about="Русский текст",
+        about_en="English text",
+        starts_at=starts,
+        ends_at=starts + timedelta(hours=2),
+        created_by=admin.id,
+    )
+    db_session.add(event)
+    await db_session.commit()
+    await db_session.refresh(event)
+
+    ru_events = await crud.get_all_events(db_session, user_id=student.id, locale="ru")
+    en_events = await crud.get_all_events(db_session, user_id=student.id, locale="en")
+
+    assert ru_events.items[0].title == "Русское название"
+    assert ru_events.items[0].title_en == "English title"
+    assert en_events.items[0].title == "English title"
+    assert en_events.items[0].title_en == "English title"
+    assert ru_events.items[0].description == "Описание"
+    assert en_events.items[0].description == "English description"
+    assert ru_events.items[0].location == "Москва"
+    assert en_events.items[0].location == "Moscow"
+    assert ru_events.items[0].event_type == "лекция"
+    assert en_events.items[0].event_type == "Lecture"
+    assert ru_events.items[0].about == "Русский текст"
+    assert en_events.items[0].about == "English text"
+
+
+async def test_get_all_events_cursor_respects_ordering_and_gaps(
+    db_session, user_factory
+):
+    admin = await user_factory(role="admin")
+    student = await user_factory()
+    base = datetime.now(UTC) + timedelta(days=1)
+
+    def _build_event(delta: timedelta, title: str) -> models.Event:
+        return models.Event(
+            title=title,
+            starts_at=base + delta,
+            ends_at=base + delta + timedelta(hours=1),
+            created_by=admin.id,
+            is_active=True,
+        )
+
+    initial_events = [
+        _build_event(timedelta(hours=1), "Event A"),
+        _build_event(timedelta(hours=2), "Event B"),
+        _build_event(timedelta(hours=3), "Event C"),
+        _build_event(timedelta(hours=3), "Event D"),
+    ]
+    db_session.add_all(initial_events)
+    await db_session.commit()
+    for event_record in initial_events:
+        await db_session.refresh(event_record)
+
+    first_page = await crud.get_all_events(
+        db_session,
+        user_id=student.id,
+        locale="en",
+        limit=2,
+    )
+    assert [item.title for item in first_page.items] == ["Event A", "Event B"]
+    assert first_page.next_cursor is not None
+
+    inserted = _build_event(timedelta(hours=2, minutes=30), "Inserted Event")
+    db_session.add(inserted)
+    await db_session.commit()
+    await db_session.refresh(inserted)
+
+    second_page = await crud.get_all_events(
+        db_session,
+        user_id=student.id,
+        locale="en",
+        limit=2,
+        cursor=first_page.next_cursor,
+    )
+    assert second_page.cursor == first_page.next_cursor
+    assert [item.title for item in second_page.items] == [
+        "Inserted Event",
+        "Event C",
+    ]
+    assert second_page.next_cursor is not None
+
+    third_page = await crud.get_all_events(
+        db_session,
+        user_id=student.id,
+        locale="en",
+        limit=2,
+        cursor=second_page.next_cursor,
+    )
+    assert third_page.cursor == second_page.next_cursor
+    assert [item.title for item in third_page.items] == ["Event D"]
+    assert third_page.next_cursor is None
+
+
+async def test_get_all_events_cursor_skips_total_on_followup_pages(
+    db_session, user_factory
+):
+    admin = await user_factory(role="admin")
+    student = await user_factory()
+    base = datetime.now(UTC) + timedelta(days=1)
+
+    events = [
+        models.Event(
+            title=f"Event {idx}",
+            starts_at=base + timedelta(hours=idx),
+            ends_at=base + timedelta(hours=idx, minutes=30),
+            created_by=admin.id,
+            is_active=True,
+        )
+        for idx in range(5)
+    ]
+    db_session.add_all(events)
+    await db_session.commit()
+    for event_record in events:
+        await db_session.refresh(event_record)
+
+    first_page = await crud.get_all_events(
+        db_session,
+        user_id=student.id,
+        locale="en",
+        limit=2,
+    )
+    assert first_page.total == 5
+    assert first_page.next_cursor is not None
+
+    with _capture_statements(db_session) as statements:
+        second_page = await crud.get_all_events(
+            db_session,
+            user_id=student.id,
+            locale="en",
+            limit=2,
+            cursor=first_page.next_cursor,
+        )
+
+    assert second_page.total is None
+    lowered_statements = [stmt.lower() for stmt in statements]
+    assert not any(
+        "count" in stmt and " from events" in stmt for stmt in lowered_statements
+    )
+
+
+async def test_event_detail_returns_qr_code_after_registration(
+    async_client, db_session, user_factory
+):
+    password = "QrCodePass123!"
+    student = await user_factory(
+        hashed_password=get_password_hash(password), is_active=True
+    )
+    admin = await user_factory(role="admin")
+
+    now = datetime.now(UTC)
+    event = models.Event(
+        title="QR enabled",
+        starts_at=now + timedelta(hours=1),
+        ends_at=now + timedelta(hours=2),
+        created_by=admin.id,
+        is_active=True,
+    )
+    db_session.add(event)
+    await db_session.commit()
+    await db_session.refresh(event)
+
+    headers = await _login(async_client, student.email, password)
+
+    attend_response = await async_client.post(
+        "/events/attendance", headers=headers, json={"event_id": event.id}
+    )
+    assert attend_response.status_code == 200
+    qr_token = attend_response.json()["qr_token"]
+    assert qr_token
+
+    detail_response = await async_client.get(f"/events/{event.id}", headers=headers)
+    assert detail_response.status_code == 200
+    payload = detail_response.json()
+    assert payload["my_qr_token"] == qr_token

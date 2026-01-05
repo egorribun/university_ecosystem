@@ -39,7 +39,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: root/backend.Dockerfile
+          file: backend.Dockerfile
           tags: ${{ env.IMAGE_REF }}
           pull: true
           load: true
@@ -91,7 +91,7 @@ PY2
           severity: ${{ env.TRIVY_SEVERITY }}
           ignore-unfixed: true
           security-checks: 'vuln,config,secret'
-          skip-dirs: 'node_modules,root/node_modules,root/frontend/node_modules'
+          skip-dirs: 'node_modules,frontend/node_modules'
           exit-code: '1'
 
       - name: Upload SARIF (image)

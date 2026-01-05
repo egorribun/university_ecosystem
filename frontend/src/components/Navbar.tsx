@@ -1,0 +1,375 @@
+import { Link, useNavigate, useLocation } from "react-router-dom"
+import { useState, useEffect, useRef, useMemo, useCallback } from "react"
+import Skeleton from "@mui/material/Skeleton"
+import { useAuth } from "../contexts/AuthContext"
+import guuLogo from "../assets/guu_logo.png"
+import SmartImage from "@/components/SmartImage"
+import NotificationsBell from "@/components/NotificationsBell"
+import MessengerButton from "@/components/MessengerButton"
+import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
+import { useTranslation } from "react-i18next"
+import useMediaQuery from "@/hooks/useMediaQuery"
+import useFocusTrap from "@/hooks/useFocusTrap"
+import useScrollRestoration from "@/hooks/useScrollRestoration"
+import { useAppShell } from "@/contexts/AppShellContext"
+import { getNavigationConfig } from "@/config/navigation"
+import SettingsIcon from "@mui/icons-material/Settings"
+import { cn } from "@/utils/cn"
+import { MobileMenu } from "@/components/navbar/MobileMenu"
+import { SyncStatus } from "@/components/SyncStatus"
+
+const AVATAR_FALLBACK = AVATAR_PLACEHOLDER_URL
+
+function parseCacheVersion(input: unknown): number | undefined {
+  if (typeof input === "number" && Number.isFinite(input)) return input
+  if (typeof input === "string") {
+    const numeric = Number(input)
+    if (!Number.isNaN(numeric)) return numeric
+    const parsed = Date.parse(input)
+    if (!Number.isNaN(parsed)) return parsed
+  }
+  return undefined
+}
+
+const Navbar = () => {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const pathname = location.pathname
+  const { user, isAuth, loading } = useAuth()
+  const { t } = useTranslation(["navigation"])
+  const { setOverlayState } = useAppShell()
+
+  const [mobileMenu, setMobileMenu] = useState(false)
+
+  const isMobile = useMediaQuery("(max-width: 1350px)")
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
+  const { scrollToTop, markScrollFromBottom, isSamePath } = useScrollRestoration(location.pathname)
+  const prevIsMobile = useRef(isMobile)
+  const navRef = useRef<HTMLElement | null>(null)
+  const burgerBtnRef = useRef<HTMLButtonElement | null>(null)
+  const drawerTrapRef = useFocusTrap<HTMLDivElement>({
+    active: mobileMenu && isMobile,
+    onDeactivate: () => setMobileMenu(false),
+  })
+
+  useEffect(() => {
+    if (prevIsMobile.current !== isMobile && !isMobile) setMobileMenu(false)
+    prevIsMobile.current = isMobile
+  }, [isMobile])
+
+  useEffect(() => {
+    setMobileMenu(false)
+  }, [location.pathname])
+
+  useEffect(() => {
+    if (mobileMenu && isMobile) {
+      setOverlayState("mobile-drawer", {
+        scrollLocked: true,
+        blurred: !prefersReducedMotion,
+      })
+    } else {
+      setOverlayState("mobile-drawer", null)
+    }
+    return () => {
+      setOverlayState("mobile-drawer", null)
+    }
+  }, [isMobile, mobileMenu, prefersReducedMotion, setOverlayState])
+
+  useEffect(() => {
+    if (prefersReducedMotion) return
+    navRef.current?.classList.add("navbar-animate-in")
+  }, [prefersReducedMotion])
+
+  const avatarCacheV = useMemo(() => {
+    const raw =
+      (user as any)?.avatar_updated_at ??
+      (user as any)?.avatar_version ??
+      (user as any)?.updated_at ??
+      undefined
+    return parseCacheVersion(raw)
+  }, [user])
+
+  const avatarFallback = AVATAR_FALLBACK
+
+  const avatarSource = user?.avatar_url || ""
+  const hasAvatar = Boolean(avatarSource)
+
+  const menuLinks = useMemo(() => {
+    return getNavigationConfig(t, user?.role)
+  }, [t, user?.role])
+
+  const profileAlt = user?.full_name
+    ? t("navigation:aria.profileAvatarNamed", { name: user.full_name })
+    : t("navigation:aria.profileAvatar")
+  const profileTitle = t("navigation:aria.openProfile")
+
+  const isActive = useCallback(
+    (to: string) => {
+      if (to === "/dashboard") {
+        return pathname === "/" || pathname === "/dashboard" || pathname.startsWith("/dashboard/")
+      }
+      return pathname === to
+    },
+    [pathname]
+  )
+
+  const isSameTarget = useCallback((to: string) => isSamePath(to), [isSamePath])
+
+  const go = useCallback(
+    (to: string) => {
+      if (isSameTarget(to)) {
+        scrollToTop(prefersReducedMotion ? "auto" : "smooth")
+      } else {
+        markScrollFromBottom()
+        navigate(to)
+      }
+    },
+    [isSameTarget, markScrollFromBottom, navigate, prefersReducedMotion, scrollToTop]
+  )
+
+  const avatarSize = isMobile ? "clamp(32px, 8vw, 36px)" : "36px"
+
+  return (
+    <>
+      <nav
+        ref={navRef}
+        className={cn(
+          "navbar-root sticky top-[env(safe-area-inset-top,0px)] z-[var(--ue-z-index-nav)] w-full overflow-x-hidden flex flex-col justify-center",
+          isMobile ? "min-h-[56px]" : "min-h-[64px]",
+          prefersReducedMotion && "transition-none animate-none"
+        )}
+      >
+        <div className="flex h-full w-full items-center px-[clamp(8px,2vw,16px)] box-border">
+          <Link
+            to="/dashboard"
+            aria-label={t("navigation:aria.homeLink")}
+            className={cn(
+              "brand inline-flex min-w-0 items-center rounded-xl p-1.5 no-underline",
+              isMobile ? "gap-2" : "gap-2.5"
+            )}
+            onPointerDown={markScrollFromBottom}
+            onClick={(e) => {
+              if (isSameTarget("/dashboard")) {
+                e.preventDefault()
+                scrollToTop(prefersReducedMotion ? "auto" : "smooth")
+              }
+            }}
+          >
+            <div className="flex items-center justify-center shrink-0 rounded-full bg-white shadow-[0_0_8px_rgba(0,0,0,0.13)] w-[clamp(32px,8vw,52px)] h-[clamp(32px,8vw,52px)]">
+              <SmartImage
+                srcRaw={guuLogo}
+                alt={t("navigation:brandAlt")}
+                className="object-contain w-[clamp(24px,6.5vw,42px)] h-[clamp(24px,6.5vw,42px)]"
+                loading="eager"
+                fetchPriority="high"
+                sizes="(min-width: 1351px) 42px, (min-width: 768px) 34px, 24px"
+                responsiveWidths={[28, 36, 48, 64]}
+                decoding="async"
+              />
+            </div>
+            <span className="whitespace-nowrap font-extrabold tracking-wide text-white text-[clamp(13px,3.5vw,22px)]">
+              {t("navigation:brandName")}
+            </span>
+          </Link>
+
+          {isMobile ? (
+            <div className="ml-auto flex items-center gap-[clamp(10px,3vw,20px)]">
+              <SyncStatus />
+              <MessengerButton />
+              <NotificationsBell />
+              {isAuth && user && !loading ? (
+                <SmartImage
+                  srcRaw={hasAvatar ? avatarSource : avatarFallback}
+                  cacheV={hasAvatar ? avatarCacheV : undefined}
+                  fallback={avatarFallback}
+                  alt={profileAlt}
+                  title={profileTitle}
+                  className="block cursor-pointer rounded-full border border-[#d7d7d7] bg-white object-cover w-[clamp(24px,6vw,36px)] h-[clamp(24px,6vw,36px)] shrink-0"
+                  onClick={() => go("/profile")}
+                />
+              ) : (
+                <Skeleton
+                  variant="circular"
+                  sx={{
+                    bgcolor: "rgba(255,255,255,0.32)",
+                    width: "clamp(24px, 6vw, 36px)",
+                    height: "clamp(24px, 6vw, 36px)",
+                  }}
+                  aria-hidden="true"
+                  className="shrink-0"
+                />
+              )}
+              <button
+                type="button"
+                className="flex shrink-0 cursor-pointer items-center justify-center rounded-xl border border-white/18 bg-gradient-to-b from-white/12 to-white/5 p-0 text-white/92 shadow-[inset_0_1px_0_rgba(255,255,255,0.24)] backdrop-blur-md backdrop-saturate-150"
+                style={{
+                  width: "clamp(24px, 6vw, 36px)",
+                  height: "clamp(24px, 6vw, 36px)",
+                  minWidth: "clamp(24px, 6vw, 36px)",
+                  minHeight: "clamp(24px, 6vw, 36px)",
+                  marginLeft: "clamp(6px, 1.5vw, 10px)",
+                }}
+                onClick={() => setMobileMenu((v) => !v)}
+                aria-label={
+                  mobileMenu ? t("navigation:aria.closeMenu") : t("navigation:aria.openMenu")
+                }
+                aria-expanded={mobileMenu}
+                aria-controls="mobile-drawer"
+                ref={burgerBtnRef}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                  className="overflow-visible stroke-white w-[clamp(16px,4vw,24px)] h-[clamp(16px,4vw,24px)]"
+                >
+                  <line
+                    x1="4"
+                    y1="8"
+                    x2="20"
+                    y2="8"
+                    style={{
+                      transformOrigin: "12px 8px",
+                      transform: mobileMenu
+                        ? "translateY(4px) rotate(45deg)"
+                        : "translateY(0) rotate(0)",
+                      transition: "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                    }}
+                  />
+                  <line
+                    x1="4"
+                    y1="12"
+                    x2="20"
+                    y2="12"
+                    style={{
+                      opacity: mobileMenu ? 0 : 1,
+                      transition: "opacity 0.2s ease-in-out",
+                    }}
+                  />
+                  <line
+                    x1="4"
+                    y1="16"
+                    x2="20"
+                    y2="16"
+                    style={{
+                      transformOrigin: "12px 16px",
+                      transform: mobileMenu
+                        ? "translateY(-4px) rotate(-45deg)"
+                        : "translateY(0) rotate(0)",
+                      transition: "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                    }}
+                  />
+                </svg>
+              </button>
+            </div>
+          ) : (
+            <>
+              <ul className="ml-4 flex flex-1 flex-row flex-wrap items-center gap-2 m-0 p-0 min-w-0 list-none text-[1.03rem] font-medium">
+                {menuLinks.map((item) => (
+                  <li key={item.to}>
+                    <Link
+                      to={item.to}
+                      className={`menu-link${isActive(item.to) ? " active" : ""}`}
+                      onPointerDown={markScrollFromBottom}
+                      onClick={(e) => {
+                        if (isSameTarget(item.to)) {
+                          e.preventDefault()
+                          scrollToTop(prefersReducedMotion ? "auto" : "smooth")
+                        }
+                      }}
+                    >
+                      {item.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              {loading ? (
+                <div className="ml-auto flex items-center gap-2.5" aria-hidden="true">
+                  <Skeleton
+                    variant="circular"
+                    width={36}
+                    height={36}
+                    sx={{ bgcolor: "rgba(255,255,255,0.25)" }}
+                  />
+                  <Skeleton
+                    variant="rectangular"
+                    width={96}
+                    height={18}
+                    sx={{ borderRadius: 1, bgcolor: "rgba(255,255,255,0.25)" }}
+                  />
+                  <Skeleton
+                    variant="circular"
+                    width={32}
+                    height={32}
+                    sx={{ bgcolor: "rgba(255,255,255,0.25)" }}
+                  />
+                </div>
+              ) : (
+                isAuth &&
+                user && (
+                  <div className="ml-auto flex min-w-0 items-center gap-2.5 whitespace-nowrap">
+                    <SyncStatus />
+                    <MessengerButton />
+                    <NotificationsBell />
+                    <SmartImage
+                      srcRaw={hasAvatar ? avatarSource : avatarFallback}
+                      cacheV={hasAvatar ? avatarCacheV : undefined}
+                      fallback={avatarFallback}
+                      alt={profileAlt}
+                      title={profileTitle}
+                      className="block h-9 w-9 cursor-pointer rounded-full border-[1.5px] border-[#ccc] bg-white object-cover"
+                      onClick={() => go("/profile")}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => go("/profile")}
+                      aria-label={profileTitle}
+                      title={profileTitle}
+                      className="cursor-pointer border-none bg-transparent p-0 m-0 font-semibold text-white font-[family-name:var(--font-ui)] tracking-[var(--ls-ui)] leading-[var(--lh-ui)] text-[1.01rem]"
+                    >
+                      {user.full_name}
+                    </button>
+                    <button
+                      type="button"
+                      className="menu-btn-settings"
+                      onClick={() => go("/settings")}
+                      aria-label={t("navigation:menu.settings")}
+                      title={t("navigation:menu.settings")}
+                    >
+                      <SettingsIcon
+                        style={{
+                          fontSize: "20px",
+                          opacity: 0.9,
+                        }}
+                      />
+                    </button>
+                  </div>
+                )
+              )}
+            </>
+          )}
+        </div>
+      </nav>
+
+      {isMobile && (
+        <MobileMenu
+          isOpen={mobileMenu}
+          onClose={() => setMobileMenu(false)}
+          menuLinks={menuLinks}
+          isActive={isActive}
+          go={go}
+          user={user}
+          isAuth={!!isAuth}
+          prefersReducedMotion={prefersReducedMotion}
+          drawerTrapRef={drawerTrapRef}
+        />
+      )}
+    </>
+  )
+}
+
+export default Navbar
