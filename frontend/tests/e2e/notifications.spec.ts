@@ -260,7 +260,7 @@ test.describe("Push notifications", () => {
         window.__mockNotificationClick?.("open-news")
       }),
     ])
-    await expect(page.getByText(/Новости университета|University news/i)).toBeVisible()
+    await expect(page.getByRole("heading", { name: /Новости университета|University news|News/i }).first()).toBeVisible({ timeout: 15000 })
 
     await Promise.all([
       page.waitForURL(/\/schedule$/),
@@ -282,6 +282,7 @@ test.describe("Push notifications", () => {
     )
     expect(initialCalls).toBe(0)
 
+    await page.waitForTimeout(1000)
     await page.evaluate(
       ({ payload }) => {
         window.__mockPush?.(payload)
@@ -296,7 +297,7 @@ test.describe("Push notifications", () => {
       }
     )
 
-    const toast = page.getByRole("alert")
+    const toast = page.getByRole("alert").first()
     await expect(toast).toBeVisible()
     await expect(toast).toContainText("Событие началось")
     await expect(toast).toContainText("Хакатон ГУУ стартовал")
@@ -306,7 +307,7 @@ test.describe("Push notifications", () => {
 
     await Promise.all([
       page.waitForURL(/\/news$/),
-      page.getByRole("button", { name: "Открыть" }).click(),
+      page.getByRole("button", { name: /Open|Открыть/i }).click(),
     ])
     await expect(page.getByText(/Новости университета|University news/i)).toBeVisible()
   })

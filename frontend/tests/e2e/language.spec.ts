@@ -18,11 +18,11 @@ test.describe("Language switching and RTL support", () => {
     await expect(page.getByRole("heading", { name: "Настройки" })).toBeVisible()
     await expect(page.locator("html")).toHaveAttribute("dir", "ltr")
 
-    await page.getByRole("radio", { name: "English" }).click({ force: true })
+    await page.getByText("Английский").click()
     await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible()
     await expect(page.locator("html")).toHaveAttribute("lang", "en")
 
-    await page.getByRole("radio", { name: "العربية" }).click({ force: true })
+    await page.getByText("Arabic (RTL)").click()
     await expect(page.getByRole("heading", { name: "الإعدادات" })).toBeVisible()
     await expect(page.locator("html")).toHaveAttribute("dir", "rtl")
 

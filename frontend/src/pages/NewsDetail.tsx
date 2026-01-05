@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import ArrowBackIcon from "@mui/icons-material/ArrowBack"
 import EditIcon from "@mui/icons-material/Edit"
 import DeleteIcon from "@mui/icons-material/Delete"
+import { Snackbar, Alert } from "@mui/material"
 import SaveIcon from "@mui/icons-material/Save"
 import CloseIcon from "@mui/icons-material/Close"
 import PhotoCamera from "@mui/icons-material/PhotoCamera"
@@ -415,10 +416,13 @@ export default function NewsDetail() {
     if (!shareUrl || copyingLink) return
     setCopyingLink(true)
 
+
     try {
       if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(shareUrl)
+
       } else {
+
         const textarea = document.createElement("textarea")
         textarea.value = shareUrl
         textarea.setAttribute("readonly", "")
@@ -431,7 +435,9 @@ export default function NewsDetail() {
       }
 
       setCopiedLink(true)
-      setSnack(t("news:notifications.linkCopied"))
+      const msg = t("news:notifications.linkCopied")
+
+      setSnack(msg)
       if (copyTimeoutRef.current) {
         window.clearTimeout(copyTimeoutRef.current)
       }
@@ -872,11 +878,22 @@ export default function NewsDetail() {
         </p>
       </Dialog>
 
-      {snack ? (
-        <div className="fixed bottom-6 left-1/2 z-[999] w-[min(90vw,360px)] -translate-x-1/2 rounded-ue-lg border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)]/95 px-4 py-3 text-center text-[0.95rem] font-semibold text-[color:var(--page-text)] shadow-surface-strong backdrop-blur-xl">
+      <Snackbar
+        open={!!snack}
+        autoHideDuration={2400}
+        onClose={() => setSnack("")}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+        className="z-[9999]"
+      >
+        <Alert
+          onClose={() => setSnack("")}
+          severity="success"
+          sx={{ width: "100%" }}
+          variant="filled"
+        >
           {snack}
-        </div>
-      ) : null}
+        </Alert>
+      </Snackbar>
     </Layout>
   )
 }

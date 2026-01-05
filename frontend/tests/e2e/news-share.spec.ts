@@ -35,7 +35,7 @@ test.describe("News detail sharing (desktop)", () => {
     // When share API is undefined, a dialog opens. We need to click "Copy link".
     await page.getByRole("button", { name: /Скопировать ссылку|Copy link/i }).click()
 
-    await expect(page.getByText(/Ссылка скопирована|Link copied/i)).toBeVisible()
+    await expect(page.getByText(/Ссылка скопирована|Link copied/i).first()).toBeVisible()
     const copiedLink = await page.evaluate(
       () => (window as typeof window & { __copiedLink?: string }).__copiedLink
     )

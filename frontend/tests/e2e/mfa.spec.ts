@@ -11,9 +11,27 @@ test.describe("Multi-factor authentication flows", () => {
 
     await page.goto("/settings")
     await page.waitForURL(/\/settings$/)
+    await page.waitForTimeout(500) // Allow tabs to initialize
 
-    await page.getByRole("button", { name: matchTotpAddButton }).click({ force: true })
-    await expect(page.getByText(/Завершите настройку|Finish setup/i)).toBeVisible()
+    // Switch to Account tab
+    await page.getByRole("tab", { name: /Account|Аккаунт/i }).click()
+    await page.waitForTimeout(1000)
+
+    // Expand TOTP accordion
+    await page.getByText(/Authenticator app|Приложение-аутентификатор/i).first().click()
+    await page.waitForTimeout(500)
+
+    const addBtn = page.getByRole("button", { name: matchTotpAddButton })
+    await expect(addBtn).toBeVisible({ timeout: 15000 })
+
+    const startPromise = page.waitForResponse(
+      (r) => r.url().includes("auth/mfa/totp/start") && r.status() === 200,
+      { timeout: 20000 }
+    )
+    await addBtn.click({ force: true })
+    await startPromise
+    await page.waitForTimeout(1000)
+    await expect(page.getByText(/Завершите настройку|Finish setup|Confirm setup|Scan|QR/i)).toBeVisible({ timeout: 30000 })
 
     const otpInput = page.getByLabel(/Код из приложения|Authenticator code/i).first()
     await otpInput.click()
@@ -62,10 +80,29 @@ test.describe("Multi-factor authentication flows", () => {
     await otpInput.click()
     await page.keyboard.type("000000", { delay: 50 })
 
-    await expect(page.getByText(/Неверный код|Invalid verification code/i)).toBeVisible()
+    await page.waitForTimeout(500) // Wait for validation/API response rendering
+    // Assert on the specific error element
+    const errorMsg = page.locator("p.text-red-500")
+    await expect(errorMsg).toBeVisible({ timeout: 15000 })
+    await expect(errorMsg).toHaveText(/Неверный код|Invalid verification code/i)
 
-    await otpInput.click()
-    await page.keyboard.type("123456", { delay: 50 })
+    // Clear inputs before retrying
+    const inputs = page.getByLabel(/Код из приложения|Authenticator code/i)
+    const count = await inputs.count()
+    for (let i = 0; i < count; i++) {
+        await inputs.nth(i).fill("")
+    }
+
+    // Simulate paste (fill respects maxLength=1, so we must paste)
+    await inputs.first().evaluate(el => {
+        const dt = new DataTransfer();
+        dt.setData('text', '123456');
+        const event = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true });
+        el.dispatchEvent(event);
+    });
+
+    // Trigger submit manually (auto-submit blocked by existing error prop)
+    await page.getByRole("button", { name: matchTotpVerifyButton }).click()
 
     await expect(page).toHaveURL(/\/dashboard$/, { timeout: 10000 })
   })

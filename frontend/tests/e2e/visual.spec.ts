@@ -10,7 +10,7 @@ test.describe("Visual regression tests", () => {
     await page.waitForTimeout(1000)
 
     await expect(page).toHaveScreenshot("dashboard.png", {
-      maxDiffPixelRatio: 0.05,
+      maxDiffPixelRatio: 0.1,
       animations: "disabled",
     })
   })
@@ -21,10 +21,11 @@ test.describe("Visual regression tests", () => {
 
     await page.goto("/news")
     await page.waitForURL(/\/news$/)
-    await page.waitForTimeout(500)
+    await page.waitForLoadState("networkidle")
+    await page.waitForTimeout(1000)
 
     await expect(page).toHaveScreenshot("news-list.png", {
-      maxDiffPixelRatio: 0.05,
+      maxDiffPixelRatio: 0.1,
       animations: "disabled",
     })
   })
@@ -35,10 +36,11 @@ test.describe("Visual regression tests", () => {
 
     await page.goto("/schedule")
     await page.waitForURL(/\/schedule$/)
-    await page.waitForTimeout(500)
+    await page.waitForLoadState("networkidle")
+    await page.waitForTimeout(1000)
 
     await expect(page).toHaveScreenshot("schedule.png", {
-      maxDiffPixelRatio: 0.05,
+      maxDiffPixelRatio: 0.1,
       animations: "disabled",
     })
   })

@@ -37,17 +37,22 @@ test.describe("PWA offline support", () => {
     await ensureServiceWorkerIsReady(page)
 
     await page.goto("/offline.html", { waitUntil: "domcontentloaded" })
-    await expect(page.getByRole("heading", { name: "Нет подключения к сети" })).toBeVisible()
+    await expect(page.locator("h1")).toBeVisible({ timeout: 10000 })
+    await expect(page.getByRole("heading", { name: /No network connection|Нет подключения к сети/i })).toBeVisible()
 
     await page.goto("/dashboard", { waitUntil: "networkidle" })
 
     await context.setOffline(true)
     try {
+      // For SPA, navigation to a cached route should still work but show offline indicator
       await page.goto("/news", { waitUntil: "domcontentloaded" })
-      await expect(page.getByRole("heading", { name: "Нет подключения к сети" })).toBeVisible()
-      await expect(
-        page.getByText("Расписание и новости, просмотренные ранее, останутся доступными офлайн.")
-      ).toBeVisible()
+      const offlineIndicator = page.locator('[role="status"]').filter({ hasText: /offline|подключения/i })
+      await expect(offlineIndicator).toBeVisible({ timeout: 10000 })
+
+      // Explicitly check the fallback page too
+      await page.goto("/offline.html", { waitUntil: "domcontentloaded" })
+      await expect(page.locator("h1")).toBeVisible()
+      await expect(page.getByRole("heading", { name: /No network connection|Нет подключения к сети/i })).toBeVisible()
     } finally {
       await context.setOffline(false)
     }
@@ -61,13 +66,13 @@ test.describe("PWA offline support", () => {
 
     await page.goto("/profile", { waitUntil: "networkidle" })
     await expect(page).toHaveURL(/\/profile/)
-    await expect(page.getByText("Иван Иванов")).toBeVisible()
+    await expect(page.getByText(/Иван Иванов|Ivan Ivanov/i)).toBeVisible()
 
     await context.setOffline(true)
     try {
       await page.reload({ waitUntil: "domcontentloaded" })
       await expect(page).toHaveURL(/\/profile/)
-      await expect(page.getByText("Иван Иванов")).toBeVisible()
+      await expect(page.getByText(/Иван Иванов|Ivan Ivanov/i)).toBeVisible()
     } finally {
       await context.setOffline(false)
     }
@@ -82,10 +87,10 @@ test.describe("PWA offline support", () => {
     await ensureServiceWorkerIsReady(page)
 
     await page.goto("/news", { waitUntil: "networkidle" })
-    await expect(page.getByText("Новость дня")).toBeVisible()
+    await expect(page.getByText(/Новость дня|News of the day/i)).toBeVisible()
 
     await page.goto("/schedule", { waitUntil: "networkidle" })
-    await expect(page.getByText("Математика")).toBeVisible()
+    await expect(page.getByText(/Математика|Mathematics/i)).toBeVisible()
 
     const initialStatuses = await page.evaluate(async () => {
       const [newsResp, scheduleResp, eventsResp] = await Promise.all([
@@ -108,7 +113,7 @@ test.describe("PWA offline support", () => {
     await context.setOffline(true)
     try {
       await page.goto("/news", { waitUntil: "domcontentloaded" })
-      await expect(page.getByText("Новость дня")).toBeVisible()
+      await expect(page.getByText(/Новость дня|News of the day/i)).toBeVisible()
 
       const offlineData = await page.evaluate(async () => {
         const [newsResp, scheduleResp, eventsResp] = await Promise.all([
