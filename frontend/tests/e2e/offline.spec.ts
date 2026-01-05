@@ -85,9 +85,10 @@ test.describe("PWA offline support", () => {
   })
 
   // Skip: Service Worker caching doesn't work properly in mocked E2E environment
-  test.skip(
-    "news, schedule, and events stay cached for offline navigation",
-    async ({ page, context }) => {
+  test.skip("news, schedule, and events stay cached for offline navigation", async ({
+    page,
+    context,
+  }) => {
     const mock = await useMockApi(page)
     await mock.login(page)
     await ensureServiceWorkerIsReady(page)

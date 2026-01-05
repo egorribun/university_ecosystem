@@ -294,7 +294,6 @@ export async function useMockApi(page: Page) {
       }
       window.localStorage.setItem("ue:language", "ru")
 
-
       window.addEventListener("unhandledrejection", (event) => {
         const error = event.reason
         if (error && typeof error === "object" && error.isAxiosError) {
@@ -337,7 +336,6 @@ export async function useMockApi(page: Page) {
     const normPath = pathname.replace(/^api\/v1\//u, "api/")
 
     if (state.offline && (normPath.startsWith("api/") || normPath.startsWith("auth/"))) {
-
       console.log(`[mock] Simulating OFFLINE for ${normPath}`)
 
       await route.fulfill({
@@ -435,7 +433,6 @@ export async function useMockApi(page: Page) {
 
       if (is304) {
         await route.fulfill({
-
           status: 304,
           headers: {
             "Access-Control-Allow-Origin": "*",
@@ -446,7 +443,6 @@ export async function useMockApi(page: Page) {
         })
         return
       }
-
 
       const headers = request.headers()
       const locale = (headers["accept-language"] || "").startsWith("en") ? "en" : "ru"
