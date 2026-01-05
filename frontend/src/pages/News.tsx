@@ -103,7 +103,9 @@ const News = () => {
   useEffect(() => {
     console.log(`[news] useEffect: newsList.length=${newsList.length}, language=${language}`)
     if (newsList.length > 0) {
-      console.log(`[news] Saving ${newsList.length} items to localStorage key: news:list:${language}`)
+      console.log(
+        `[news] Saving ${newsList.length} items to localStorage key: news:list:${language}`
+      )
       localStorage.setItem(`news:list:${language}`, JSON.stringify(newsList))
     }
   }, [newsList, language])

@@ -177,7 +177,16 @@ export const useNewsListQuery = (
       if (!Array.isArray(items) || items.length === 0) return undefined
       // Wrap in the expected InfiniteData structure
       return {
-        pages: [{ items, total: items.length, limit: 12, cursor: null, next_cursor: null, has_more: false }],
+        pages: [
+          {
+            items,
+            total: items.length,
+            limit: 12,
+            cursor: null,
+            next_cursor: null,
+            has_more: false,
+          },
+        ],
         pageParams: [null],
       }
     } catch {

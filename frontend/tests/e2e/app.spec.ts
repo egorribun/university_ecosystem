@@ -15,11 +15,17 @@ test.describe("University ecosystem app", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    await page.getByRole("link", { name: /Посмотреть все|See all/i }).first().click()
+    await page
+      .getByRole("link", { name: /Посмотреть все|See all/i })
+      .first()
+      .click()
     await expect(page).toHaveURL(/\/news$/)
     await expect(page.getByRole("heading", { name: /Новости|News/i })).toBeVisible()
 
-    await page.getByRole("link", { name: /На главную|На главну|Home/i }).first().click()
+    await page
+      .getByRole("link", { name: /На главную|На главну|Home/i })
+      .first()
+      .click()
     await expect(page).toHaveURL(/\/dashboard$/)
 
     await page.getByRole("link", { name: /Полное расписание|Full schedule/i }).click()
@@ -31,7 +37,10 @@ test.describe("University ecosystem app", () => {
     const mock = await useMockApi(page)
     await mock.login(page)
 
-    await page.getByRole("link", { name: /Посмотреть все|See all/i }).first().click()
+    await page
+      .getByRole("link", { name: /Посмотреть все|See all/i })
+      .first()
+      .click()
     await expect(page.getByText("Новость дня")).toBeVisible()
 
     // Wait for the cache effect to run and verify it's saved
@@ -42,7 +51,8 @@ test.describe("University ecosystem app", () => {
       const cached = await page.evaluate(() => localStorage.getItem("news:list:ru"))
       if (!cached) throw new Error("news:list:ru not found in localStorage")
       const parsed = JSON.parse(cached)
-      if (!Array.isArray(parsed) || parsed.length === 0) throw new Error("news:list:ru is empty or invalid")
+      if (!Array.isArray(parsed) || parsed.length === 0)
+        throw new Error("news:list:ru is empty or invalid")
     }).toPass({ timeout: 10000 })
 
     console.log("[test] Reloading page to verify ETag caching...")
@@ -58,7 +68,10 @@ test.describe("University ecosystem app", () => {
     await mock.login(page)
 
     // 1. Visit news page to populate localStorage
-    await page.getByRole("link", { name: /Посмотреть все|See all/i }).first().click()
+    await page
+      .getByRole("link", { name: /Посмотреть все|See all/i })
+      .first()
+      .click()
     await expect(page.getByText("Новость дня")).toBeVisible()
 
     // 2. Wait for localStorage to be populated
@@ -93,20 +106,24 @@ test.describe("University ecosystem app", () => {
     await expect(revokeButton).toBeVisible()
 
     // Listen for the DELETE request to be sure it fires
-    const deletePromise = page.waitForResponse(resp =>
-      resp.url().includes("/auth/sessions/2") && resp.request().method() === "DELETE"
-    );
+    const deletePromise = page.waitForResponse(
+      (resp) => resp.url().includes("/auth/sessions/2") && resp.request().method() === "DELETE"
+    )
 
     console.log("[test] Clicking revoke button for session 2 via evaluate...")
     await page.evaluate((id) => {
-      const btn = document.querySelector(`[data-testid="session-revoke-${id}"]`) as HTMLButtonElement | null;
+      const btn = document.querySelector(
+        `[data-testid="session-revoke-${id}"]`
+      ) as HTMLButtonElement | null
       if (!btn) {
-        console.error(`[test-js] Button session-revoke-${id} NOT FOUND`);
-        return;
+        console.error(`[test-js] Button session-revoke-${id} NOT FOUND`)
+        return
       }
-      console.log(`[test-js] Button state: disabled=${btn.disabled}, hidden=${btn.hidden}, offsetParent=${btn.offsetParent !== null}`);
-      btn.click();
-    }, 2);
+      console.log(
+        `[test-js] Button state: disabled=${btn.disabled}, hidden=${btn.hidden}, offsetParent=${btn.offsetParent !== null}`
+      )
+      btn.click()
+    }, 2)
 
     const response = await deletePromise
     console.log(`[test] DELETE response status: ${response.status()}`)

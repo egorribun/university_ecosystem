@@ -1731,7 +1731,9 @@ export default function Settings() {
                           ) : (
                             <div className="flex flex-col gap-3 mt-3">
                               {sortedSessions.map((session, idx) => {
-                                console.log(`[settings] Rendering sessions[${idx}]: ID=${session.id} UA=${session.user_agent} revoked=${!!session.revoked_at} (${session.revoked_at})`)
+                                console.log(
+                                  `[settings] Rendering sessions[${idx}]: ID=${session.id} UA=${session.user_agent} revoked=${!!session.revoked_at} (${session.revoked_at})`
+                                )
                                 const isRevoked = Boolean(session.revoked_at)
                                 const lastSeen = session.last_seen_at ?? session.created_at
                                 const timelineSource = session.revoked_at ?? lastSeen
@@ -1752,7 +1754,9 @@ export default function Settings() {
                                 const disableRevoke =
                                   session.is_current || isRevoked || revokeSessionMutation.isPending
 
-                                console.log(`[settings] Session ${session.id} final statusLabel: ${statusLabel}`)
+                                console.log(
+                                  `[settings] Session ${session.id} final statusLabel: ${statusLabel}`
+                                )
 
                                 return (
                                   <SessionItem
@@ -1800,7 +1804,9 @@ export default function Settings() {
                                           color="error"
                                           disabled={disableRevoke}
                                           onClick={() => {
-                                            console.log(`[settings] Clicked revoke for session ${session.id}`)
+                                            console.log(
+                                              `[settings] Clicked revoke for session ${session.id}`
+                                            )
                                             void handleRevokeSession(session.id)
                                           }}
                                         >

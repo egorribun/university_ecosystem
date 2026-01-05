@@ -780,8 +780,6 @@ try {
   throw error
 }
 
-
-
 self.addEventListener("message", (event) => {
   if (!event.data || typeof event.data !== "object" || !("type" in event.data)) {
     return

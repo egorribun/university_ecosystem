@@ -179,9 +179,11 @@ const createEtagCache = () => {
     clear() {
       cache.clear()
       if (typeof window !== "undefined") {
-        try { localStorage.removeItem(ETAG_CACHE_KEY) } catch {}
+        try {
+          localStorage.removeItem(ETAG_CACHE_KEY)
+        } catch {}
       }
-    }
+    },
   }
 }
 
@@ -206,9 +208,11 @@ const createResponseCache = () => {
     clear() {
       cache.clear()
       if (typeof window !== "undefined") {
-        try { localStorage.removeItem(RESPONSE_CACHE_KEY) } catch {}
+        try {
+          localStorage.removeItem(RESPONSE_CACHE_KEY)
+        } catch {}
       }
-    }
+    },
   }
 }
 

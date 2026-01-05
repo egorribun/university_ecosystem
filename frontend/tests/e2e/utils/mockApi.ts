@@ -117,7 +117,6 @@ const mockNews = [
   },
 ]
 
-
 const now = new Date()
 const mockEvents = Array.from({ length: 18 }, (_, index) => {
   const id = index + 10
@@ -445,7 +444,11 @@ export async function useMockApi(page: Page) {
     if (pathname === "api/users/me") {
       const auth = route.request().headers()["authorization"]
       if (!state.loggedIn && !auth?.includes("mock-token")) {
-        await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ detail: "Unauthorized" }) })
+        await route.fulfill({
+          status: 401,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Unauthorized" }),
+        })
         return
       }
       if (method === "PUT" || method === "PATCH") {
@@ -453,14 +456,25 @@ export async function useMockApi(page: Page) {
         state.profile = { ...state.profile, ...updates }
       }
       const profile = { ...state.profile, totp_enrollments: state.totp.enrollments }
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(profile) })
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(profile),
+      })
       return
     }
 
     // --- Admin Dead-Letter & Notifications ---
-    if (pathname === "api/notifications/admin/dead-letter" || pathname === "api/admin/dead-letter-jobs") {
+    if (
+      pathname === "api/notifications/admin/dead-letter" ||
+      pathname === "api/admin/dead-letter-jobs"
+    ) {
       if (!state.loggedIn || state.profile.role !== "admin") {
-        await route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ detail: "Forbidden" }) })
+        await route.fulfill({
+          status: 403,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Forbidden" }),
+        })
         return
       }
       await route.fulfill({
@@ -472,17 +486,23 @@ export async function useMockApi(page: Page) {
     }
 
     if (
-      (pathname === "api/notifications/admin/dead-letter/retry" || pathname === "api/admin/notifications/retry") &&
+      (pathname === "api/notifications/admin/dead-letter/retry" ||
+        pathname === "api/admin/notifications/retry") &&
       method === "POST"
     ) {
       const payload = route.request().postDataJSON() ?? {}
       const removed = mutateDeadLetterJobs(payload.job_ids)
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ retried: removed, affected: removed }) })
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ retried: removed, affected: removed }),
+      })
       return
     }
 
     if (
-      (pathname === "api/notifications/admin/dead-letter/purge" || pathname === "api/admin/notifications/purge") &&
+      (pathname === "api/notifications/admin/dead-letter/purge" ||
+        pathname === "api/admin/notifications/purge") &&
       method === "POST"
     ) {
       const payload = route.request().postDataJSON() ?? {}
@@ -502,10 +522,18 @@ export async function useMockApi(page: Page) {
       const id = parseInt(newsDetailMatch[1], 10)
       const entry = mockNews.find((n) => n.id === id)
       if (!entry) {
-        await route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ detail: "Not found" }) })
+        await route.fulfill({
+          status: 404,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Not found" }),
+        })
         return
       }
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(entry) })
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(entry),
+      })
       return
     }
 
@@ -515,7 +543,9 @@ export async function useMockApi(page: Page) {
       const acceptLanguage = headers["accept-language"]?.toLowerCase() ?? ""
       const locale = acceptLanguage.startsWith("en") ? "en" : "ru"
 
-      console.log(`[mock-news] Received request. If-None-Match: "${ifNoneMatch}", newsVersion: "${state.newsVersion}", offline: ${state.offline}`)
+      console.log(
+        `[mock-news] Received request. If-None-Match: "${ifNoneMatch}", newsVersion: "${state.newsVersion}", offline: ${state.offline}`
+      )
 
       // Strip quotes from If-None-Match header if present (HTTP ETags are quoted)
       const normalizedEtag = ifNoneMatch?.replace(/^"|"$/g, "")
@@ -528,7 +558,11 @@ export async function useMockApi(page: Page) {
 
       if (state.offline) {
         state.newsLog.push({ header: ifNoneMatch, status: 503 })
-        await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ detail: "Offline" }) })
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Offline" }),
+        })
         return
       }
 
@@ -561,7 +595,11 @@ export async function useMockApi(page: Page) {
 
     // --- Events ---
     if (pathname === "api/events/my") {
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockEvents.slice(0, 3)) })
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(mockEvents.slice(0, 3)),
+      })
       return
     }
 
@@ -575,27 +613,44 @@ export async function useMockApi(page: Page) {
         try {
           const payload = JSON.parse(value) as { id?: number }
           return typeof payload?.id === "number" ? payload : null
-        } catch { return null }
+        } catch {
+          return null
+        }
       }
-      const encodeCursor = (event: any) => event ? JSON.stringify({ id: event.id, starts_at: event.starts_at }) : null
+      const encodeCursor = (event: any) =>
+        event ? JSON.stringify({ id: event.id, starts_at: event.starts_at }) : null
 
       const decodedCursor = decodeCursor(cursorParam)
       const sortedEvents = [...mockEvents].sort((a, b) => a.id - b.id)
-      const startIndex = decodedCursor ? sortedEvents.findIndex(e => e.id === decodedCursor.id) + 1 : 0
+      const startIndex = decodedCursor
+        ? sortedEvents.findIndex((e) => e.id === decodedCursor.id) + 1
+        : 0
       const slice = sortedEvents.slice(startIndex, startIndex + limit)
-      const nextCursor = startIndex + slice.length < sortedEvents.length ? encodeCursor(slice[slice.length - 1]) : null
+      const nextCursor =
+        startIndex + slice.length < sortedEvents.length
+          ? encodeCursor(slice[slice.length - 1])
+          : null
 
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ items: slice, has_more: !!nextCursor, next_cursor: nextCursor, total: sortedEvents.length }),
+        body: JSON.stringify({
+          items: slice,
+          has_more: !!nextCursor,
+          next_cursor: nextCursor,
+          total: sortedEvents.length,
+        }),
       })
       return
     }
 
     // --- Schedule & Groups ---
     if (pathname === "api/schedule") {
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockSchedule) })
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(mockSchedule),
+      })
       return
     }
 
@@ -611,28 +666,42 @@ export async function useMockApi(page: Page) {
     }
 
     if (pathname === "api/groups") {
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(mockGroups) })
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(mockGroups),
+      })
       return
     }
 
     // --- Auth & MFA (Continued) ---
     if (pathname === "api/auth/mfa/webauthn") {
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "not_supported" }) })
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ status: "not_supported" }),
+      })
       return
     }
 
     if (pathname === "api/auth/sessions") {
       if (!state.loggedIn) {
-        await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ detail: "Unauthorized" }) })
+        await route.fulfill({
+          status: 401,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Unauthorized" }),
+        })
         return
       }
       const sessions = state.sessions.map((s, i) => ({ ...s, is_current: i === 0 }))
-      console.log(`[mock] GET /api/v1/auth/sessions: returning ${sessions.length} sessions. Sessions: ${JSON.stringify(sessions.map(s => ({ id: s.id, revoked: !!s.revoked_at })))}`)
+      console.log(
+        `[mock] GET /api/v1/auth/sessions: returning ${sessions.length} sessions. Sessions: ${JSON.stringify(sessions.map((s) => ({ id: s.id, revoked: !!s.revoked_at })))}`
+      )
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         headers: { "Cache-Control": "no-cache, no-store, must-revalidate" },
-        body: JSON.stringify(sessions)
+        body: JSON.stringify(sessions),
       })
       return
     }
@@ -643,7 +712,11 @@ export async function useMockApi(page: Page) {
         console.log(`[mock] Intercepted DELETE ${pathname}`)
         if (!state.loggedIn) {
           console.log(`[mock] Session DELETE failed: NOT LOGGED IN`)
-          await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ detail: "Unauthorized" }) })
+          await route.fulfill({
+            status: 401,
+            contentType: "application/json",
+            body: JSON.stringify({ detail: "Unauthorized" }),
+          })
           return
         }
         const id = parseInt(sessionDeleteMatch[1], 10)
@@ -651,7 +724,11 @@ export async function useMockApi(page: Page) {
         const session = state.sessions.find((s) => s.id === id)
         if (!session) {
           console.log(`[mock] Session DELETE failed: session ${id} not found`)
-          await route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ detail: "Not found" }) })
+          await route.fulfill({
+            status: 404,
+            contentType: "application/json",
+            body: JSON.stringify({ detail: "Not found" }),
+          })
           return
         }
         console.log(`[mock] Revoking session ${id}`)
@@ -661,7 +738,7 @@ export async function useMockApi(page: Page) {
           status: 200,
           contentType: "application/json",
           headers: { "Cache-Control": "no-cache, no-store, must-revalidate" },
-          body: JSON.stringify(responseData)
+          body: JSON.stringify(responseData),
         })
         return
       } else if (method === "GET") {
@@ -671,35 +748,67 @@ export async function useMockApi(page: Page) {
 
     if (pathname === "api/auth/mfa/totp/start") {
       const secret = "JBSW Y3DP EHJK"
-      const enrollment: MfaTotpEnrollment = { id: state.totp.nextId++, user_id: state.profile.id, label: "App", is_active: false, confirmed_at: null, revoked_at: null, created_at: new Date().toISOString() }
+      const enrollment: MfaTotpEnrollment = {
+        id: state.totp.nextId++,
+        user_id: state.profile.id,
+        label: "App",
+        is_active: false,
+        confirmed_at: null,
+        revoked_at: null,
+        created_at: new Date().toISOString(),
+      }
       state.totp.pending = { enrollment, secret, otpauth_url: `otpauth://totp/U?secret=${secret}` }
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(state.totp.pending) })
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(state.totp.pending),
+      })
       return
     }
 
     if (pathname === "api/auth/mfa/totp/confirm") {
       const payload = route.request().postDataJSON() ?? {}
       if (payload.code !== "123456") {
-        await route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ detail: "Invalid code" }) })
+        await route.fulfill({
+          status: 400,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Invalid code" }),
+        })
         return
       }
-      const confirmed: MfaTotpEnrollment = { ...state.totp.pending!.enrollment, is_active: true, confirmed_at: new Date().toISOString() }
+      const confirmed: MfaTotpEnrollment = {
+        ...state.totp.pending!.enrollment,
+        is_active: true,
+        confirmed_at: new Date().toISOString(),
+      }
       state.totp.enrollments = [confirmed]
       state.profile.totp_enrollments = [confirmed]
       state.profile.mfa_default_method = "totp"
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(confirmed) })
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(confirmed),
+      })
       return
     }
 
     if (pathname === "api/auth/mfa/totp") {
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(state.totp.enrollments) })
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(state.totp.enrollments),
+      })
       return
     }
 
     if (pathname === "api/auth/mfa/verify") {
       const payload = route.request().postDataJSON() ?? {}
       if (payload.code !== "123456") {
-        await route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ detail: "Invalid verification code" }) })
+        await route.fulfill({
+          status: 400,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Invalid verification code" }),
+        })
         return
       }
       state.loggedIn = true
@@ -707,19 +816,31 @@ export async function useMockApi(page: Page) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ access_token: "mock-token", token_type: "bearer", user: state.profile }),
+        body: JSON.stringify({
+          access_token: "mock-token",
+          token_type: "bearer",
+          user: state.profile,
+        }),
       })
       return
     }
 
     // --- Stats ---
     if (pathname.startsWith("api/stats/")) {
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ percent: 85, average: 4.8, events: 5, recent: [] }) })
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ percent: 85, average: 4.8, events: 5, recent: [] }),
+      })
       return
     }
 
     if (pathname === "api/notifications") {
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [], unread_count: 0, has_more: false }) })
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ items: [], unread_count: 0, has_more: false }),
+      })
       return
     }
 
