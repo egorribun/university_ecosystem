@@ -293,6 +293,8 @@ export async function useMockApi(page: Page) {
         window.name = "__mock_api_initialized__"
       }
       window.localStorage.setItem("ue:language", "ru")
+
+
       window.addEventListener("unhandledrejection", (event) => {
         const error = event.reason
         if (error && typeof error === "object" && error.isAxiosError) {
@@ -334,10 +336,10 @@ export async function useMockApi(page: Page) {
     // Normalize v1 paths ONLY for matching, but keep it permissive
     const normPath = pathname.replace(/^api\/v1\//u, "api/")
 
-    console.log(`[mock] Intercepting ${method} /${pathname} (normalized: ${normPath})`)
-
     if (state.offline && (normPath.startsWith("api/") || normPath.startsWith("auth/"))) {
+
       console.log(`[mock] Simulating OFFLINE for ${normPath}`)
+
       await route.fulfill({
         status: 503,
         contentType: "application/json",
@@ -423,12 +425,17 @@ export async function useMockApi(page: Page) {
         return
       }
 
+      const ifNoneMatch = request.headers()["if-none-match"] || request.headers()["If-None-Match"]
+      const is304 = ifNoneMatch === state.newsVersion
+
       state.newsLog.push({
-        header: request.headers()["if-none-match"],
-        status: request.headers()["if-none-match"] === state.newsVersion ? 304 : 200,
+        header: ifNoneMatch,
+        status: is304 ? 304 : 200,
       })
-      if (request.headers()["if-none-match"] === state.newsVersion) {
+
+      if (is304) {
         await route.fulfill({
+
           status: 304,
           headers: {
             "Access-Control-Allow-Origin": "*",
@@ -439,6 +446,7 @@ export async function useMockApi(page: Page) {
         })
         return
       }
+
 
       const headers = request.headers()
       const locale = (headers["accept-language"] || "").startsWith("en") ? "en" : "ru"
@@ -590,11 +598,7 @@ export async function useMockApi(page: Page) {
     }
 
     // --- Notifications & Admin ---
-    if (
-      normPath.includes("admin/dead-letter") ||
-      normPath.includes("admin/notifications") ||
-      normPath.startsWith("api/notifications")
-    ) {
+    if (normPath.includes("api/notifications/admin/dead-letter")) {
       if (normPath.includes("retry")) {
         // Retry removes the first job (simulating successful retry)
         if (state.deadLetterJobs.length > 0) {
@@ -609,10 +613,12 @@ export async function useMockApi(page: Page) {
         await route.fulfill({ status: 200, body: JSON.stringify({ success: true }) })
         return
       }
+
       await route.fulfill({
         status: 200,
         body: JSON.stringify({
           items: state.deadLetterJobs,
+
           total: state.deadLetterJobs.length,
           notifications: [],
         }),
@@ -620,7 +626,22 @@ export async function useMockApi(page: Page) {
       return
     }
 
+    if (normPath === "api/notifications" || normPath === "api/notifications/check-schedule") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          items: [],
+          unread_count: 0,
+          has_more: false,
+          notifications: [],
+        }),
+      })
+      return
+    }
+
     // --- Catch-all for API/Auth to prevent external hits during tests ---
+
     if (normPath.startsWith("api/") || normPath.startsWith("auth/")) {
       console.log(`[mock] Generic 200 for unhandled path: ${normPath}`)
       await route.fulfill({ status: 200, body: "{}" })
