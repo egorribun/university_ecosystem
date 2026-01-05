@@ -6,15 +6,16 @@ test.describe("bootstrap fallback", () => {
       ;(
         window as typeof window & { __APP_BOOTSTRAP_FORCE_ERROR__?: boolean }
       ).__APP_BOOTSTRAP_FORCE_ERROR__ = true
+      window.localStorage.setItem("ue:language", "ru")
     })
 
     await page.goto("/")
 
     await expect(
-      page.getByRole("heading", { name: "Не удалось загрузить приложение" })
+      page.getByRole("heading", { name: "Что-то пошло не так" })
     ).toBeVisible()
     await expect(
-      page.getByText("Попробуйте перезагрузить страницу или очистить кэш браузера", {
+      page.getByText("Мы уже работаем над проблемой", {
         exact: false,
       })
     ).toBeVisible()

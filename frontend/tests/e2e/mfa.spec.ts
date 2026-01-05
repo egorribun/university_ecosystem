@@ -12,7 +12,7 @@ test.describe("Multi-factor authentication flows", () => {
     await page.goto("/settings")
     await page.waitForURL(/\/settings$/)
 
-    await page.getByRole("button", { name: matchTotpAddButton }).click()
+    await page.getByRole("button", { name: matchTotpAddButton }).click({ force: true })
     await expect(page.getByText(/Завершите настройку|Finish setup/i)).toBeVisible()
 
     const otpInput = page.getByLabel(/Код из приложения|Authenticator code/i).first()

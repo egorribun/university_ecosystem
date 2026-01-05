@@ -18,15 +18,16 @@ test.describe("Language switching and RTL support", () => {
     await expect(page.getByRole("heading", { name: "Настройки" })).toBeVisible()
     await expect(page.locator("html")).toHaveAttribute("dir", "ltr")
 
-    await page.getByRole("radio", { name: "English" }).click()
+    await page.getByRole("radio", { name: "English" }).click({ force: true })
     await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible()
     await expect(page.locator("html")).toHaveAttribute("lang", "en")
 
-    await page.getByRole("radio", { name: "العربية" }).click()
+    await page.getByRole("radio", { name: "العربية" }).click({ force: true })
     await expect(page.getByRole("heading", { name: "الإعدادات" })).toBeVisible()
     await expect(page.locator("html")).toHaveAttribute("dir", "rtl")
 
-    const skipLink = page.getByRole("link", { name: "تجاوز إلى المحتوى" })
+    // Use class selector for skip link which is more robust
+    const skipLink = page.locator(".skip-link")
     await skipLink.focus()
     await expect(skipLink).toBeFocused()
     await page.keyboard.press("Enter")

@@ -812,12 +812,14 @@ export async function useMockApi(page: Page) {
         return
       }
       state.loggedIn = true
+      state.profile.mfa_required = false
       state.profile.mfa_last_verified_at = new Date().toISOString()
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
           access_token: "mock-token",
+          refresh_token: "mock-refresh",
           token_type: "bearer",
           user: state.profile,
         }),
