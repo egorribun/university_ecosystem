@@ -307,7 +307,8 @@ export default defineConfig(({ mode }) => {
       proxy,
     },
     optimizeDeps: {
-      exclude: ["jspdf", "qrcode"],
+      exclude: ["qrcode"],
+
     },
     modulepreload: { polyfill: false },
     build: {
@@ -334,8 +335,8 @@ export default defineConfig(({ mode }) => {
             if (normalizedId.includes("react-router")) return "router"
             if (normalizedId.includes("dayjs")) return "dayjs"
             if (normalizedId.includes("zxcvbn")) return "zxcvbn"
-            if (normalizedId.includes("jspdf")) return "pdf"
           },
+
         },
       },
     },
