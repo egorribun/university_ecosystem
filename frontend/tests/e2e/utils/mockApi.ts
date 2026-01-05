@@ -318,7 +318,7 @@ export async function useMockApi(page: Page) {
       return
     }
 
-    let pathname = url.pathname.replace(/^\/+/u, "")
+    const pathname = url.pathname.replace(/^\/+/u, "")
     // Normalize v1 paths ONLY for matching, but keep it permissive
     const normPath = pathname.replace(/^api\/v1\//u, "api/")
 
