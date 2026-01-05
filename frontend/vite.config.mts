@@ -308,7 +308,6 @@ export default defineConfig(({ mode }) => {
     },
     optimizeDeps: {
       exclude: ["qrcode"],
-
     },
     modulepreload: { polyfill: false },
     build: {
@@ -336,7 +335,6 @@ export default defineConfig(({ mode }) => {
             if (normalizedId.includes("dayjs")) return "dayjs"
             if (normalizedId.includes("zxcvbn")) return "zxcvbn"
           },
-
         },
       },
     },
