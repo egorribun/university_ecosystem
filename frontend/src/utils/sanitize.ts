@@ -1,15 +1,21 @@
-import DOMPurify, { type Config } from "dompurify"
 import type { TrustedHTML, TrustedTypePolicyFactory } from "trusted-types/lib"
+
+let dompurifyInstance: any = null
+async function getDOMPurify() {
+  if (dompurifyInstance) return dompurifyInstance
+  dompurifyInstance = (await import("dompurify")).default
+  return dompurifyInstance
+}
 
 type TrustedPolicy = ReturnType<TrustedTypePolicyFactory["createPolicy"]>
 
-const HTML_CONFIG: Config = Object.freeze({
+const HTML_CONFIG = Object.freeze({
   USE_PROFILES: { html: true },
   ALLOW_DATA_ATTR: false,
   KEEP_CONTENT: false,
 })
 
-const TEXT_CONFIG: Config = Object.freeze({
+const TEXT_CONFIG = Object.freeze({
   ALLOWED_TAGS: [],
   ALLOWED_ATTR: [],
   KEEP_CONTENT: false,
@@ -20,10 +26,13 @@ type TrustedTypesWindow = Window & {
   __dompurifyNewsPolicy?: TrustedPolicy | false
 }
 
-const createPolicy = (win: TrustedTypesWindow): TrustedPolicy | null => {
+const createPolicy = async (win: TrustedTypesWindow): Promise<TrustedPolicy | null> => {
   if (!win.trustedTypes) return null
   if (win.__dompurifyNewsPolicy === false) return null
   if (win.__dompurifyNewsPolicy) return win.__dompurifyNewsPolicy
+
+  const DOMPurify = await getDOMPurify()
+
   try {
     win.__dompurifyNewsPolicy = win.trustedTypes.createPolicy("dompurify-news", {
       createHTML: (dirty: string) => DOMPurify.sanitize(dirty, HTML_CONFIG),
@@ -35,11 +44,13 @@ const createPolicy = (win: TrustedTypesWindow): TrustedPolicy | null => {
   return win.__dompurifyNewsPolicy || null
 }
 
-export const sanitizeNewsHtml = (dirty: string | null | undefined): string | TrustedHTML => {
+export const sanitizeNewsHtml = async (dirty: string | null | undefined): Promise<string | TrustedHTML> => {
   const source = dirty ?? ""
+  const DOMPurify = await getDOMPurify()
+
   if (typeof window !== "undefined") {
     const win = window as TrustedTypesWindow
-    const policy = createPolicy(win)
+    const policy = await createPolicy(win)
     if (policy) {
       return policy.createHTML(source)
     }
@@ -47,7 +58,8 @@ export const sanitizeNewsHtml = (dirty: string | null | undefined): string | Tru
   return DOMPurify.sanitize(source, HTML_CONFIG)
 }
 
-export const sanitizeNewsText = (dirty: string | null | undefined): string => {
+export const sanitizeNewsText = async (dirty: string | null | undefined): Promise<string> => {
+  const DOMPurify = await getDOMPurify()
   return DOMPurify.sanitize(dirty ?? "", TEXT_CONFIG) as string
 }
 

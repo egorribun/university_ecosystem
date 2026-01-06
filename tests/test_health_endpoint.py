@@ -2,6 +2,11 @@ import pytest
 from fastapi import status
 
 from app import main
+from app.api import health
+from app.utils import migrations
+from app.deps import cache as cache_deps
+from app.utils import files as file_utils
+from app.services import file_scanner as scanner_service
 
 
 class _SuccessfulCache:
@@ -43,13 +48,13 @@ def _assert_latency_present(data: dict, key: str) -> None:
 
 @pytest.fixture(autouse=True)
 def reset_health_caches():
-    main._reset_storage_probe_cache()
-    main._reset_migration_cache()
-    main._reset_health_cache()
+    health.reset_storage_probe_cache()
+    migrations.reset_migration_cache()
+    health.reset_health_cache()
     yield
-    main._reset_storage_probe_cache()
-    main._reset_migration_cache()
-    main._reset_health_cache()
+    health.reset_storage_probe_cache()
+    migrations.reset_migration_cache()
+    health.reset_health_cache()
 
 
 @pytest.mark.anyio("asyncio")
@@ -86,7 +91,7 @@ async def test_healthcheck_database_failure_returns_503(async_client, monkeypatc
         def connect(self):
             return _FailingConnection()
 
-    monkeypatch.setattr(main, "engine", _FailingEngine())
+    monkeypatch.setattr(health, "engine", _FailingEngine())
 
     response = await async_client.get("http://testserver/healthz")
     data = response.json()
@@ -99,7 +104,7 @@ async def test_healthcheck_database_failure_returns_503(async_client, monkeypatc
 @pytest.mark.anyio("asyncio")
 async def test_healthcheck_cache_success(async_client, monkeypatch):
     cache = _SuccessfulCache()
-    monkeypatch.setattr(main, "get_cache", lambda: cache)
+    monkeypatch.setattr(health, "get_cache", lambda: cache)
 
     response = await async_client.get("http://testserver/healthz")
     data = response.json()
@@ -110,7 +115,7 @@ async def test_healthcheck_cache_success(async_client, monkeypatch):
 
 @pytest.mark.anyio("asyncio")
 async def test_healthcheck_cache_failure(async_client, monkeypatch):
-    monkeypatch.setattr(main, "get_cache", lambda: _FailingCache())
+    monkeypatch.setattr(health, "get_cache", lambda: _FailingCache())
 
     response = await async_client.get("http://testserver/healthz")
     data = response.json()
@@ -130,8 +135,8 @@ async def test_healthcheck_storage_failure(async_client, monkeypatch):
         async def delete_file(self, file_url: str) -> None:
             return None
 
-    monkeypatch.setattr(main.settings, "health_storage_probe_enabled", True)
-    monkeypatch.setattr(main, "_get_storage_backend", lambda: _FailingStorage())
+    monkeypatch.setattr(health.settings, "health_storage_probe_enabled", True)
+    monkeypatch.setattr(health, "_get_storage_backend", lambda: _FailingStorage())
 
     response = await async_client.get("http://testserver/healthz")
     data = response.json()
@@ -144,7 +149,7 @@ async def test_healthcheck_storage_failure(async_client, monkeypatch):
 async def test_healthcheck_storage_probe_skips_heavy_when_disabled(
     async_client, monkeypatch
 ):
-    monkeypatch.setattr(main.settings, "health_storage_probe_enabled", False)
+    monkeypatch.setattr(health.settings, "health_storage_probe_enabled", False)
 
     probes = {"light": 0, "heavy": 0}
 
@@ -156,9 +161,9 @@ async def test_healthcheck_storage_probe_skips_heavy_when_disabled(
         probes["heavy"] += 1
         raise AssertionError("heavy probe should not run when disabled")
 
-    monkeypatch.setattr(main, "_lightweight_storage_probe", _fake_lightweight_probe)
-    monkeypatch.setattr(main, "_write_delete_storage_probe", _unexpected_heavy_probe)
-    monkeypatch.setattr(main, "_get_storage_backend", lambda: object())
+    monkeypatch.setattr(health, "_lightweight_storage_probe", _fake_lightweight_probe)
+    monkeypatch.setattr(health, "_write_delete_storage_probe", _unexpected_heavy_probe)
+    monkeypatch.setattr(health, "_get_storage_backend", lambda: object())
 
     response = await async_client.get("http://testserver/healthz")
     data = response.json()
@@ -171,9 +176,9 @@ async def test_healthcheck_storage_probe_skips_heavy_when_disabled(
 
 @pytest.mark.anyio("asyncio")
 async def test_healthcheck_storage_probe_uses_cache(async_client, monkeypatch):
-    monkeypatch.setattr(main.settings, "health_storage_probe_enabled", True)
+    monkeypatch.setattr(health.settings, "health_storage_probe_enabled", True)
     monkeypatch.setattr(
-        main.settings, "health_storage_probe_min_interval_seconds", 60.0
+        health.settings, "health_storage_probe_min_interval_seconds", 60.0
     )
 
     probes = {"light": 0, "heavy": 0}
@@ -186,9 +191,9 @@ async def test_healthcheck_storage_probe_uses_cache(async_client, monkeypatch):
         probes["light"] += 1
         return None
 
-    monkeypatch.setattr(main, "_lightweight_storage_probe", _lightweight_probe)
-    monkeypatch.setattr(main, "_write_delete_storage_probe", _heavy_probe)
-    monkeypatch.setattr(main, "_get_storage_backend", lambda: object())
+    monkeypatch.setattr(health, "_lightweight_storage_probe", _lightweight_probe)
+    monkeypatch.setattr(health, "_write_delete_storage_probe", _heavy_probe)
+    monkeypatch.setattr(health, "_get_storage_backend", lambda: object())
 
     first = await async_client.get("http://testserver/healthz")
     second = await async_client.get("http://testserver/healthz")
@@ -205,7 +210,7 @@ async def test_healthcheck_notification_queue_failure(async_client, monkeypatch)
     async def _failing_queue_check(conn):
         raise RuntimeError("queue unavailable")
 
-    monkeypatch.setattr(main, "_check_queue", _failing_queue_check)
+    monkeypatch.setattr(health, "_check_queue", _failing_queue_check)
 
     response = await async_client.get("http://testserver/healthz")
     data = response.json()
@@ -216,7 +221,7 @@ async def test_healthcheck_notification_queue_failure(async_client, monkeypatch)
 
 @pytest.mark.anyio("asyncio")
 async def test_healthcheck_notification_queue_missing_table(async_client, monkeypatch):
-    monkeypatch.setattr(main.settings, "notifications_queue_in_memory_only", True)
+    monkeypatch.setattr(health.settings, "notifications_queue_in_memory_only", True)
     response = await async_client.get("http://testserver/healthz")
     data = response.json()
     assert response.status_code == status.HTTP_200_OK
@@ -233,7 +238,7 @@ async def test_healthcheck_reports_migration_versions_on_drift(
     ) -> tuple[bool, set[str], set[str]]:
         return False, {"current"}, {"expected"}
 
-    monkeypatch.setattr(main, "_migrations_are_current", _mock_migrations_are_current)
+    monkeypatch.setattr(health, "migrations_are_current", _mock_migrations_are_current)
 
     response = await async_client.get("http://testserver/healthz")
     data = response.json()
@@ -248,12 +253,12 @@ async def test_healthcheck_reports_migration_versions_on_drift(
 
 @pytest.mark.anyio("asyncio")
 async def test_healthcheck_file_scanner_success(async_client, monkeypatch):
-    monkeypatch.setattr(main.settings, "event_file_scanner_enabled", True)
+    monkeypatch.setattr(health.settings, "event_file_scanner_enabled", True)
 
     async def _fake_health_check() -> None:
         return None
 
-    monkeypatch.setattr(main, "check_file_scanner_health", _fake_health_check)
+    monkeypatch.setattr(health, "check_file_scanner_health", _fake_health_check)
 
     response = await async_client.get("http://testserver/healthz")
     data = response.json()
@@ -264,12 +269,12 @@ async def test_healthcheck_file_scanner_success(async_client, monkeypatch):
 
 @pytest.mark.anyio("asyncio")
 async def test_healthcheck_file_scanner_failure(async_client, monkeypatch):
-    monkeypatch.setattr(main.settings, "event_file_scanner_enabled", True)
+    monkeypatch.setattr(health.settings, "event_file_scanner_enabled", True)
 
     async def _failing_health_check() -> None:
         raise RuntimeError("scanner offline")
 
-    monkeypatch.setattr(main, "check_file_scanner_health", _failing_health_check)
+    monkeypatch.setattr(health, "check_file_scanner_health", _failing_health_check)
 
     response = await async_client.get("http://testserver/healthz")
     data = response.json()
@@ -282,7 +287,7 @@ async def test_healthcheck_file_scanner_failure(async_client, monkeypatch):
 async def test_healthcheck_file_scanner_uses_lightweight_probe(
     async_client, monkeypatch
 ):
-    monkeypatch.setattr(main.settings, "event_file_scanner_enabled", True)
+    monkeypatch.setattr(health.settings, "event_file_scanner_enabled", True)
 
     async def _fake_health_check() -> None:
         return None
@@ -292,8 +297,8 @@ async def test_healthcheck_file_scanner_uses_lightweight_probe(
     ) -> None:  # pragma: no cover
         raise AssertionError("health check should not trigger file scanning")
 
-    monkeypatch.setattr(main, "check_file_scanner_health", _fake_health_check)
-    monkeypatch.setattr(main, "scan_for_malware", _forbidden_scan)
+    monkeypatch.setattr(health, "check_file_scanner_health", _fake_health_check)
+    monkeypatch.setattr(health, "scan_for_malware", _forbidden_scan)
 
     response = await async_client.get("http://testserver/healthz")
     data = response.json()

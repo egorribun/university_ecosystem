@@ -416,7 +416,8 @@ async def async_client(
     async def _mock_migrations_current(conn=None) -> tuple[bool, set[str], set[str]]:
         return True, set(), set()
 
-    monkeypatch.setattr(main, "_migrations_are_current", _mock_migrations_current)
+    monkeypatch.setattr("app.api.health.migrations_are_current", _mock_migrations_current)
+    monkeypatch.setattr("app.utils.migrations.migrations_are_current", _mock_migrations_current)
 
     transport = httpx.ASGITransport(app=main.app)
     async with LifespanManager(main.app):
@@ -503,7 +504,8 @@ async def root_client(
     async def _mock_migrations_current(conn=None) -> tuple[bool, set[str], set[str]]:
         return True, set(), set()
 
-    monkeypatch.setattr(main, "_migrations_are_current", _mock_migrations_current)
+    monkeypatch.setattr("app.api.health.migrations_are_current", _mock_migrations_current)
+    monkeypatch.setattr("app.utils.migrations.migrations_are_current", _mock_migrations_current)
 
     transport = httpx.ASGITransport(app=main.app)
     async with LifespanManager(main.app):

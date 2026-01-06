@@ -22,6 +22,9 @@ class Group(Base):
 
     students = relationship("User", back_populates="group", passive_deletes=True)
 
+    def __repr__(self) -> str:
+        return f"<Group(id={self.id}, name='{self.name}')>"
+
 
 class Schedule(Base):
     __tablename__ = "schedule"
@@ -43,3 +46,6 @@ class Schedule(Base):
         CheckConstraint("end_time > start_time", name="ck_schedule_time_order"),
         Index("ix_schedule_group_start_time", "group_id", "start_time"),
     )
+
+    def __repr__(self) -> str:
+        return f"<Schedule(id={self.id}, group_id={self.group_id}, subject='{self.subject[:20]}...', starts={self.start_time})>"

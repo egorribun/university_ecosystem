@@ -205,6 +205,9 @@ class User(Base):
     def spotify_connected(self) -> bool:
         return bool(self.spotify and self.spotify.is_connected)
 
+    def __repr__(self) -> str:
+        return f"<User(id={self.id}, email='{self.email}', role='{self.role}')>"
+
 
 class UserPreferences(Base):
     __tablename__ = "user_preferences"
@@ -220,6 +223,9 @@ class UserPreferences(Base):
     timezone = Column(String(64))
 
     user = relationship("User", back_populates="preferences")
+
+    def __repr__(self) -> str:
+        return f"<UserPreferences(user_id={self.user_id}, dnd={self.dnd_enabled})>"
 
 
 class InviteCode(Base):
@@ -238,3 +244,6 @@ class InviteCode(Base):
     is_used = Column(Boolean, default=False, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     used_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"))
+
+    def __repr__(self) -> str:
+        return f"<InviteCode(id={self.id}, code='{self.code}', used={self.is_used})>"

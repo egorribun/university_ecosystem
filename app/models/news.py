@@ -22,6 +22,9 @@ class News(Base):
         "NewsComment", back_populates="news", cascade="all, delete-orphan"
     )
 
+    def __repr__(self) -> str:
+        return f"<News(id={self.id}, title='{self.title[:30]}...')>"
+
 
 class NewsLike(Base):
     __tablename__ = "news_likes"
@@ -37,6 +40,9 @@ class NewsLike(Base):
 
     news = relationship("News", back_populates="likes")
     user = relationship("User")
+
+    def __repr__(self) -> str:
+        return f"<NewsLike(id={self.id}, news_id={self.news_id}, user_id={self.user_id})>"
 
 
 class NewsComment(Base):
@@ -54,3 +60,6 @@ class NewsComment(Base):
 
     news = relationship("News", back_populates="comments")
     user = relationship("User")
+
+    def __repr__(self) -> str:
+        return f"<NewsComment(id={self.id}, news_id={self.news_id}, content='{self.content[:30]}...')>"

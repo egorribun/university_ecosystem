@@ -59,6 +59,9 @@ class Notification(Base):
         passive_deletes=True,
     )
 
+    def __repr__(self) -> str:
+        return f"<Notification(id={self.id}, user_id={self.user_id}, title='{self.title[:30]}...')>"
+
 
 class NotificationQueueJob(Base):
     __tablename__ = "notification_queue_jobs"
@@ -97,6 +100,9 @@ class NotificationQueueJob(Base):
         ),
     )
 
+    def __repr__(self) -> str:
+        return f"<NotificationQueueJob(id={self.id}, kind='{self.kind}', record_id={self.record_id})>"
+
 
 class NotificationDelivery(Base):
     __tablename__ = "notification_deliveries"
@@ -129,6 +135,9 @@ class NotificationDelivery(Base):
         {"postgresql_partition_by": "RANGE (attempted_at)"},
     )
 
+    def __repr__(self) -> str:
+        return f"<NotificationDelivery(id={self.id}, notification_id={self.notification_id}, channel='{self.channel}', status='{self.status}')>"
+
 
 class PushSubscription(Base):
     __tablename__ = "push_subscriptions"
@@ -152,6 +161,9 @@ class PushSubscription(Base):
 
     user = relationship("User", back_populates="push_subscriptions")
 
+    def __repr__(self) -> str:
+        return f"<PushSubscription(id={self.id}, user_id={self.user_id}, endpoint='{self.endpoint[:30]}...')>"
+
 
 class UserPushTopic(Base):
     __tablename__ = "user_push_topics"
@@ -171,3 +183,6 @@ class UserPushTopic(Base):
     )
 
     user = relationship("User", back_populates="push_topic_preferences")
+
+    def __repr__(self) -> str:
+        return f"<UserPushTopic(user_id={self.user_id}, topics={self.topics})>"
