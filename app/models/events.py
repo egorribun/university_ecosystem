@@ -105,4 +105,7 @@ class EventFile(Base):
     description = Column(String)
 
     def __repr__(self) -> str:
-        return f"<EventFile(id={self.id}, event_id={self.event_id}, url='{self.file_url[:20]}...')>"
+        return (
+            f"<EventFile(id={self.id}, eid={self.event_id}, "
+            f"url='{self.file_url[:20]}...')>"
+        )
