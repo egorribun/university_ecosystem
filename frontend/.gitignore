@@ -8,5 +8,22 @@ playwright-report/
 test-results/
 blob-report/
 
+# Storybook
 *storybook.log
-storybook-static
+storybook-static/
+
+# Test logs and reports
+*.log
+test_run*.log
+debug-*.log
+test-results*.json
+vitest-report.xml
+
+# Debug and temp files
+*_log.txt
+*_utf8.txt
+*_fail.txt
+clean_log.txt
+bootstrap_log*.txt
+mfa_*.txt
+news_share_log.txt
