@@ -289,6 +289,21 @@ export async function useMockApi(page: Page) {
 
   await page.addInitScript(() => {
     try {
+      // Unregister all service workers
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.getRegistrations().then((registrations) => {
+          for (const registration of registrations) {
+            registration.unregister()
+          }
+        })
+      }
+      // Clear all caches
+      if ("caches" in window) {
+        caches.keys().then((keys) => {
+          keys.forEach((key) => caches.delete(key))
+        })
+      }
+
       if (window.name !== "__mock_api_initialized__") {
         window.name = "__mock_api_initialized__"
       }
@@ -309,14 +324,19 @@ export async function useMockApi(page: Page) {
 
   page.on("console", (msg) => {
     const location = msg.location()
-    if (msg.type() === "error" || msg.text().includes("[sw]") || msg.text().includes("[mock]")) {
+    if (
+      msg.type() === "error" ||
+      msg.text().includes("[sw]") ||
+      msg.text().includes("[mock]") ||
+      msg.text().includes("[usePushSync]")
+    ) {
       console.log(
         `[console:${msg.type()}] ${msg.text()}${location?.url ? ` (${location.url})` : ""}`
       )
     }
   })
 
-  await page.route("**/*", async (route) => {
+  await page.context().route("**/*", async (route) => {
     const request = route.request()
     const url = new URL(request.url())
     const method = request.method().toUpperCase()
@@ -593,6 +613,31 @@ export async function useMockApi(page: Page) {
       return
     }
 
+    // --- Stories ---
+    if (normPath.includes("api/stories")) {
+      await route.fulfill({
+        status: 200,
+        body: JSON.stringify({
+          items: [
+            {
+              id: 1,
+              user_id: 1,
+              type: "image",
+              url: "/fallbacks/news_placeholder.png",
+              thumbnail_url: "/fallbacks/news_placeholder.png",
+              duration: 5,
+              created_at: new Date().toISOString(),
+              expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+              is_viewed: false,
+              user: state.profile,
+            },
+          ],
+          total: 1,
+        }),
+      })
+      return
+    }
+
     // --- Notifications & Admin ---
     if (normPath.includes("api/notifications/admin/dead-letter")) {
       if (normPath.includes("retry")) {
@@ -622,7 +667,10 @@ export async function useMockApi(page: Page) {
       return
     }
 
-    if (normPath === "api/notifications" || normPath === "api/notifications/check-schedule") {
+    if (
+      normPath.startsWith("api/notifications") ||
+      normPath.startsWith("api/notifications/check-schedule")
+    ) {
       await route.fulfill({
         status: 200,
         contentType: "application/json",

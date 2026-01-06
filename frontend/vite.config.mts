@@ -97,7 +97,13 @@ const withStrictCspNonce = (): PluginOption => ({
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "")
-  const target = (env.VITE_BACKEND_ORIGIN || "http://127.0.0.1:8000").replace(/\/$/, "")
+  // Use null coalescing to properly detect explicitly empty string
+  // When VITE_BACKEND_ORIGIN is "", we disable proxy (used during E2E tests)
+  // Check both loadEnv result and process.env since Playwright sets via subprocess env
+  const rawBackendOrigin = env.VITE_BACKEND_ORIGIN ?? process.env.VITE_BACKEND_ORIGIN
+  const backendOrigin = rawBackendOrigin ?? "http://127.0.0.1:8000"
+  const target = backendOrigin ? backendOrigin.replace(/\/$/, "") : ""
+  const disableProxy = backendOrigin === ""
   const buildReport = process.env.BUILD_REPORT === "1"
   const analyze = mode === "analyze" || process.env.ANALYZE === "1" || buildReport
   const manifest = loadManifest()
@@ -112,17 +118,20 @@ export default defineConfig(({ mode }) => {
 
   // API v1 routes are proxied directly (no rewrite needed)
   // Backend now serves all endpoints under /api/v1
-  const proxy = {
-    "/api/v1": mk(false), // New versioned API - no rewrite
-    "/api": mk(false), // Legacy endpoints (healthz, static, etc.)
-    "/auth": mk(),
-    "/static/": mk(),
-    "/media/": mk(),
-    "/spotify": mk(),
-    "/notifications": mk(),
-    "/push": mk(),
-    "/ws": { ...mk(), ws: true }, // WebSocket support for future
-  }
+  // When disableProxy is true (E2E tests), don't configure proxy - Playwright handles mocking
+  const proxy = disableProxy
+    ? undefined
+    : {
+        "/api/v1": mk(false), // New versioned API - no rewrite
+        "/api": mk(false), // Legacy endpoints (healthz, static, etc.)
+        "/auth": mk(),
+        "/static/": mk(),
+        "/media/": mk(),
+        "/spotify": mk(),
+        "/notifications": mk(),
+        "/push": mk(),
+        "/ws": { ...mk(), ws: true }, // WebSocket support for future
+      }
 
   const plugins: PluginOption[] = [
     withGeneratedManifests(),
