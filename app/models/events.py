@@ -57,7 +57,10 @@ class Event(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<Event(id={self.id}, title='{self.title[:30]}...', starts_at={self.starts_at})>"
+        return (
+            f"<Event(id={self.id}, title='{self.title[:20]}...', "
+            f"starts_at={self.starts_at})>"
+        )
 
 
 class EventAttendance(Base):
@@ -85,7 +88,10 @@ class EventAttendance(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<EventAttendance(id={self.id}, user_id={self.user_id}, event_id={self.event_id})>"
+        return (
+            f"<EventAttendance(id={self.id}, user_id={self.user_id}, "
+            f"event_id={self.event_id})>"
+        )
 
 
 class EventFile(Base):
@@ -99,4 +105,4 @@ class EventFile(Base):
     description = Column(String)
 
     def __repr__(self) -> str:
-        return f"<EventFile(id={self.id}, event_id={self.event_id}, url='{self.file_url}')>"
+        return f"<EventFile(id={self.id}, event_id={self.event_id}, url='{self.file_url[:20]}...')>"

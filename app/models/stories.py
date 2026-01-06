@@ -66,7 +66,10 @@ class Story(Base):
     created_by_user = relationship("User")
 
     def __repr__(self) -> str:
-        return f"<Story(id={self.id}, title='{self.title[:30]}...', active={self.is_active})>"
+        return (
+            f"<Story(id={self.id}, title='{self.title[:20]}...', "
+            f"active={self.is_active})>"
+        )
 
 
 @event.listens_for(Story, "before_insert")

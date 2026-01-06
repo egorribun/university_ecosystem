@@ -60,7 +60,10 @@ class Notification(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<Notification(id={self.id}, user_id={self.user_id}, title='{self.title[:30]}...')>"
+        return (
+            f"<Notification(id={self.id}, user_id={self.user_id}, "
+            f"title='{self.title[:20]}...')>"
+        )
 
 
 class NotificationQueueJob(Base):
@@ -101,7 +104,10 @@ class NotificationQueueJob(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<NotificationQueueJob(id={self.id}, kind='{self.kind}', record_id={self.record_id})>"
+        return (
+            f"<NotificationQueueJob(id={self.id}, kind='{self.kind}', "
+            f"record_id={self.record_id})>"
+        )
 
 
 class NotificationDelivery(Base):
@@ -136,7 +142,10 @@ class NotificationDelivery(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<NotificationDelivery(id={self.id}, notification_id={self.notification_id}, channel='{self.channel}', status='{self.status}')>"
+        return (
+            f"<NotificationDelivery(id={self.id}, nid={self.notification_id}, "
+            f"channel='{self.channel}', status='{self.status}')>"
+        )
 
 
 class PushSubscription(Base):
@@ -162,7 +171,10 @@ class PushSubscription(Base):
     user = relationship("User", back_populates="push_subscriptions")
 
     def __repr__(self) -> str:
-        return f"<PushSubscription(id={self.id}, user_id={self.user_id}, endpoint='{self.endpoint[:30]}...')>"
+        return (
+            f"<PushSubscription(id={self.id}, user_id={self.user_id}, "
+            f"endpoint='{self.endpoint[:20]}...')>"
+        )
 
 
 class UserPushTopic(Base):

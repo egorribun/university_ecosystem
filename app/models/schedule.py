@@ -48,4 +48,7 @@ class Schedule(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<Schedule(id={self.id}, group_id={self.group_id}, subject='{self.subject[:20]}...', starts={self.start_time})>"
+        return (
+            f"<Schedule(id={self.id}, group_id={self.group_id}, "
+            f"subject='{self.subject[:20]}...', starts={self.start_time})>"
+        )

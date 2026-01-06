@@ -32,4 +32,7 @@ class SpotifyIntegration(Base):
     user = relationship("User", back_populates="spotify")
 
     def __repr__(self) -> str:
-        return f"<SpotifyIntegration(user_id={self.user_id}, connected={self.is_connected}, playing={self.is_playing})>"
+        return (
+            f"<SpotifyIntegration(user_id={self.user_id}, "
+            f"connected={self.is_connected}, playing={self.is_playing})>"
+        )

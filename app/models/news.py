@@ -64,4 +64,7 @@ class NewsComment(Base):
     user = relationship("User")
 
     def __repr__(self) -> str:
-        return f"<NewsComment(id={self.id}, news_id={self.news_id}, content='{self.content[:30]}...')>"
+        return (
+            f"<NewsComment(id={self.id}, news_id={self.news_id}, "
+            f"content='{self.content[:20]}...')>"
+        )
