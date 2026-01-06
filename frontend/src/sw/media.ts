@@ -30,26 +30,21 @@ export async function handleMediaRequest(input: RequestInfo | URL): Promise<Resp
   }
 
   // 3. Network fetch
-  try {
-    const response = await fetch(request)
-    if (!response.ok) return response
+  const response = await fetch(request)
+  if (!response.ok) return response
 
-    const isSigned = response.headers.get("x-media-signed-url") === "true"
-    const cacheControl = response.headers.get("Cache-Control") || ""
-    const isPublic = cacheControl.includes("public") || isSigned
+  const isSigned = response.headers.get("x-media-signed-url") === "true"
+  const cacheControl = response.headers.get("Cache-Control") || ""
+  const isPublic = cacheControl.includes("public") || isSigned
 
-    if (isPublic) {
-      await publicCache.put(request, response.clone())
-    } else if (sessionHash && cacheControl.includes("private")) {
-      const privateCache = await self.caches.open(`${MEDIA_PRIVATE_PREFIX}${sessionHash}`)
-      await privateCache.put(request, response.clone())
-    }
-
-    return response
-  } catch (err) {
-    // Basic offline fallback could go here
-    throw err
+  if (isPublic) {
+    await publicCache.put(request, response.clone())
+  } else if (sessionHash && cacheControl.includes("private")) {
+    const privateCache = await self.caches.open(`${MEDIA_PRIVATE_PREFIX}${sessionHash}`)
+    await privateCache.put(request, response.clone())
   }
+
+  return response
 }
 
 /**
