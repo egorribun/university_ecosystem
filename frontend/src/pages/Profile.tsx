@@ -352,8 +352,8 @@ export default function Profile() {
   const prevSpotifyConnectedRef = useRef(spotifyConnected)
   const showNowPlaying = Boolean(
     spotifyConnected &&
-      nowPlaying &&
-      (nowPlaying.track_id || nowPlaying.track_name || nowPlaying.artists.length > 0)
+    nowPlaying &&
+    (nowPlaying.track_id || nowPlaying.track_name || nowPlaying.artists.length > 0)
   )
   const location = useLocation()
   const navigate = useNavigate()
