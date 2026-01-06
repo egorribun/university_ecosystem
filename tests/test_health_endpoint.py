@@ -1,12 +1,8 @@
 import pytest
 from fastapi import status
 
-from app import main
 from app.api import health
 from app.utils import migrations
-from app.deps import cache as cache_deps
-from app.utils import files as file_utils
-from app.services import file_scanner as scanner_service
 
 
 class _SuccessfulCache:

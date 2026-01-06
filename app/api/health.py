@@ -5,7 +5,7 @@ import time
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
@@ -16,7 +16,6 @@ from app.core.metrics import record_health_probe
 from app.deps.cache import get_cache
 from app.services.file_scanner import (
     check_file_scanner_health,
-    scan_for_malware,
 )
 from app.services.storage import S3Storage, StaticFSStorage
 from app.utils.files import _get_storage_backend
