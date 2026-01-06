@@ -1,4 +1,6 @@
 /// <reference lib="webworker" />
+declare const self: ServiceWorkerGlobalScope
+
 import { buildNotificationDetails, parsePushEventData } from "@/push/notification-helpers"
 import { log } from "./logger"
 

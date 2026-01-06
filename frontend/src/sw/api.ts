@@ -1,4 +1,6 @@
 /// <reference lib="webworker" />
+declare const self: ServiceWorkerGlobalScope
+
 import { ExpirationPlugin } from "workbox-expiration"
 import { registerRoute } from "workbox-routing"
 import { CacheFirst, NetworkFirst } from "workbox-strategies"
@@ -8,6 +10,18 @@ import { log } from "./logger"
 
 const API_CACHE = "api-cache"
 const API_CACHE_SESSION_PREFIX = `${API_CACHE}:`
+const MEDIA_PRIVATE_PREFIX = "media-private:"
+const MEDIA_PUBLIC = "media-public"
+
+let currentSessionHash: string | null = null
+
+export function setSessionHash(hash: string | null) {
+  currentSessionHash = hash
+}
+
+export function getSessionHash() {
+  return currentSessionHash
+}
 
 /// <reference lib="webworker" />
 export function isOnline(): boolean {

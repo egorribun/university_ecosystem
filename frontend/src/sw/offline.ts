@@ -1,3 +1,6 @@
+/// <reference lib="webworker" />
+declare const self: ServiceWorkerGlobalScope
+
 import { openDB, type IDBPDatabase } from "idb"
 import { log, warn, error } from "./logger"
 
@@ -38,6 +41,44 @@ export async function addRecord<T extends object>(storeName: string, value: T) {
   return db.add(storeName, value)
 }
 
+export async function storePendingNavigation(record: { url: string; timestamp: number }) {
+  return addRecord(STORES.NAVIGATION, record)
+}
+
+export async function readPendingNavigations() {
+  const db = await openDB(CLICK_DB_NAME, DB_VERSION)
+  return db.getAll(STORES.NAVIGATION)
+}
+
+export async function storePendingReport(record: {
+  url: string
+  reportUrl: string
+  timestamp: number
+  payload?: any
+}) {
+  return addRecord(STORES.REPORT, record)
+}
+
+export async function readPendingReports() {
+  const db = await openDB(CLICK_DB_NAME, DB_VERSION)
+  return db.getAll(STORES.REPORT)
+}
+
+export function sanitizeReportPayload(payload: any): any {
+  if (!payload || typeof payload !== "object") return payload
+  const result: any = Array.isArray(payload) ? [] : {}
+  for (const key in payload) {
+    const val = payload[key]
+    if (typeof val === "function") continue
+    if (val && typeof val === "object") {
+      result[key] = sanitizeReportPayload(val)
+    } else {
+      result[key] = val
+    }
+  }
+  return result
+}
+
 export async function processOfflineQueues() {
   if (!isOnline()) return
 
@@ -45,22 +86,26 @@ export async function processOfflineQueues() {
   const db = await openDB(CLICK_DB_NAME, DB_VERSION)
 
   await Promise.all([
-    processNavigationQueue(db),
-    processReportQueue(db),
+    processPendingNavigations(),
+    processPendingReports(),
     processNewsInteractionQueue(db),
   ])
 }
 
-async function processNavigationQueue(db: IDBPDatabase) {
+export async function processPendingNavigations() {
+  if (!isOnline()) return
+  const db = await openDB(CLICK_DB_NAME, DB_VERSION)
   const records = await db.getAll(STORES.NAVIGATION)
   for (const record of records) {
-    // Original focusOrOpenClient logic goes here
     log("Processing navigation", record)
+    // In a real SW, this might involve clients.openWindow
     await db.delete(STORES.NAVIGATION, record.id)
   }
 }
 
-async function processReportQueue(db: IDBPDatabase) {
+export async function processPendingReports() {
+  if (!isOnline()) return
+  const db = await openDB(CLICK_DB_NAME, DB_VERSION)
   const records = await db.getAll(STORES.REPORT)
   for (const record of records) {
     try {
