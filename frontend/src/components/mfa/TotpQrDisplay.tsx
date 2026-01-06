@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState, lazy, Suspense } from "react"
 import { Copy, Check } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
-const QRCodeSVG = lazy(() => import("qrcode.react").then(m => ({ default: m.QRCodeSVG })))
+const QRCodeSVG = lazy(() => import("qrcode.react").then((m) => ({ default: m.QRCodeSVG })))
 
 type TotpQrDisplayProps = {
   otpauthUrl: string
@@ -40,7 +40,9 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
         <p className="text-sm text-page-text/70">{t("mfa.totp.accountLabel", { label })}</p>
       ) : null}
       <div className="p-4 rounded-lg border border-glass-border bg-white shadow-sm dark:bg-white min-h-[224px] flex items-center justify-center">
-        <Suspense fallback={<div className="w-[192px] h-[192px] animate-pulse bg-gray-100 rounded" />}>
+        <Suspense
+          fallback={<div className="w-[192px] h-[192px] animate-pulse bg-gray-100 rounded" />}
+        >
           <QRCodeSVG
             value={otpauthUrl}
             size={192}

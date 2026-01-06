@@ -1,14 +1,14 @@
 /// <reference lib="webworker" />
-declare const self: ServiceWorkerGlobalScope;
+declare const self: ServiceWorkerGlobalScope
 
-import { clientsClaim } from "workbox-core";
+import { clientsClaim } from "workbox-core"
 
-import { initApiCaching, clearSessionCaches } from "./sw/api";
-import { error } from "./sw/logger";
-import { initMediaCaching } from "./sw/media";
-import { initOfflineQueue, processOfflineQueues } from "./sw/offline";
-import { initPrecaching } from "./sw/precaching";
-import { initPushHandlers } from "./sw/push";
+import { initApiCaching, clearSessionCaches } from "./sw/api"
+import { error } from "./sw/logger"
+import { initMediaCaching } from "./sw/media"
+import { initOfflineQueue, processOfflineQueues } from "./sw/offline"
+import { initPrecaching } from "./sw/precaching"
+import { initPushHandlers } from "./sw/push"
 
 /**
  * World-Class Modular Service Worker Entry Point
@@ -16,41 +16,41 @@ import { initPushHandlers } from "./sw/push";
 async function bootstrap() {
   try {
     // 1. Core Workbox setup
-    clientsClaim();
-    self.skipWaiting();
+    clientsClaim()
+    self.skipWaiting()
 
     // 2. Initialize modules
-    initPrecaching();
-    initApiCaching();
-    initMediaCaching();
-    await initOfflineQueue();
-    initPushHandlers();
+    initPrecaching()
+    initApiCaching()
+    initMediaCaching()
+    await initOfflineQueue()
+    initPushHandlers()
 
     // 3. Initial sync
-    await processOfflineQueues();
+    await processOfflineQueues()
 
-    console.log("[SW] Bootstrap complete");
+    console.log("[SW] Bootstrap complete")
   } catch (err) {
-    error("SW bootstrap failed", err);
+    error("SW bootstrap failed", err)
   }
 }
 
 // Start bootstrap
-bootstrap();
+bootstrap()
 
 // Global Message Listener
 self.addEventListener("message", (event) => {
-  if (!event.data) return;
+  if (!event.data) return
 
   switch (event.data.type) {
     case "SKIP_WAITING":
-      self.skipWaiting();
-      break;
+      self.skipWaiting()
+      break
     case "CLEAR_SESSION_CACHES":
-      event.waitUntil(clearSessionCaches());
-      break;
+      event.waitUntil(clearSessionCaches())
+      break
     case "PROCESS_OFFLINE_QUEUES":
-      event.waitUntil(processOfflineQueues());
-      break;
+      event.waitUntil(processOfflineQueues())
+      break
   }
-});
+})

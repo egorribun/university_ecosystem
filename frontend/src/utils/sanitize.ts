@@ -44,7 +44,9 @@ const createPolicy = async (win: TrustedTypesWindow): Promise<TrustedPolicy | nu
   return win.__dompurifyNewsPolicy || null
 }
 
-export const sanitizeNewsHtml = async (dirty: string | null | undefined): Promise<string | TrustedHTML> => {
+export const sanitizeNewsHtml = async (
+  dirty: string | null | undefined
+): Promise<string | TrustedHTML> => {
   const source = dirty ?? ""
   const DOMPurify = await getDOMPurify()
 

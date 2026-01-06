@@ -1,15 +1,8 @@
-import { extendTheme, responsiveFontSizes } from "@mui/material/styles";
-import { colorSchemes } from "./theme/palette";
-import { typography } from "./theme/typography";
-import { components } from "./theme/components";
-import {
-  radiusScale,
-  spacingScale,
-  zIndexTokens,
-  focusRing,
-  shadows,
-  glass,
-} from "./theme/tokens";
+import { extendTheme, responsiveFontSizes } from "@mui/material/styles"
+import { colorSchemes } from "./theme/palette"
+import { typography } from "./theme/typography"
+import { components } from "./theme/components"
+import { radiusScale, spacingScale, zIndexTokens, focusRing, shadows, glass } from "./theme/tokens"
 
 const baseTheme = extendTheme({
   cssVarPrefix: "ue",
@@ -28,18 +21,18 @@ const baseTheme = extendTheme({
     tooltip: zIndexTokens.toast + 100,
   },
   components,
-});
+})
 
 // Inject custom tokens into the theme.vars system
-const vars = baseTheme.vars as any;
-vars.focusRing = focusRing;
-vars.radiusScale = radiusScale;
-vars.spacingScale = spacingScale;
-vars.zIndexTokens = zIndexTokens;
-vars.shadows = shadows;
-vars.glass = glass;
+const vars = baseTheme.vars as any
+vars.focusRing = focusRing
+vars.radiusScale = radiusScale
+vars.spacingScale = spacingScale
+vars.zIndexTokens = zIndexTokens
+vars.shadows = shadows
+vars.glass = glass
 
-const theme = responsiveFontSizes(baseTheme);
+const theme = responsiveFontSizes(baseTheme)
 
-export default theme;
-export type AppTheme = typeof theme;
+export default theme
+export type AppTheme = typeof theme

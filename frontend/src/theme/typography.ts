@@ -1,4 +1,4 @@
-import type { TypographyOptions } from "@mui/material/styles/createTypography";
+import type { TypographyOptions } from "@mui/material/styles/createTypography"
 
 export const typography: TypographyOptions = {
   fontFamily: "var(--font-ui)",
@@ -79,4 +79,4 @@ export const typography: TypographyOptions = {
     textTransform: "uppercase",
     lineHeight: 1.4,
   },
-};
+}

@@ -1,12 +1,12 @@
-import { useTranslation } from "react-i18next";
-import { AppProviders } from "./AppProviders";
-import { AppRoutes } from "./AppRoutes";
+import { useTranslation } from "react-i18next"
+import { AppProviders } from "./AppProviders"
+import { AppRoutes } from "./AppRoutes"
 
 /**
  * World-Class Modular App Registry
  */
 function AppShell() {
-  const { t } = useTranslation("common");
+  const { t } = useTranslation("common")
 
   // Check for forced bootstrap error (used in E2E tests)
   if (
@@ -14,7 +14,7 @@ function AppShell() {
     (window as typeof window & { __APP_BOOTSTRAP_FORCE_ERROR__?: boolean })
       .__APP_BOOTSTRAP_FORCE_ERROR__
   ) {
-    throw new Error("Bootstrap failed");
+    throw new Error("Bootstrap failed")
   }
 
   return (
@@ -24,7 +24,7 @@ function AppShell() {
       </a>
       <AppRoutes />
     </>
-  );
+  )
 }
 
 export default function App() {
@@ -32,5 +32,5 @@ export default function App() {
     <AppProviders>
       <AppShell />
     </AppProviders>
-  );
+  )
 }

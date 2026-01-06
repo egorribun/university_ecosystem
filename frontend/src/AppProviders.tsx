@@ -33,15 +33,9 @@ function ProvidersInner({ children }: AppProvidersProps) {
     <LiveRegionProvider>
       <AppShellProvider>
         <AuthProvider>
-          <LocalizationProvider
-            key={language}
-            dateAdapter={AdapterDayjs}
-            adapterLocale={language}
-          >
+          <LocalizationProvider key={language} dateAdapter={AdapterDayjs} adapterLocale={language}>
             <ErrorBoundary>
-              <Router future={routerFutureFlags}>
-                {children}
-              </Router>
+              <Router future={routerFutureFlags}>{children}</Router>
             </ErrorBoundary>
           </LocalizationProvider>
         </AuthProvider>

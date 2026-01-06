@@ -1,5 +1,5 @@
-import type { Components, Theme } from "@mui/material/styles";
-import { spacingScale, radiusScale, focusRing, zIndexTokens } from "./tokens";
+import type { Components, Theme } from "@mui/material/styles"
+import { spacingScale, radiusScale, focusRing, zIndexTokens } from "./tokens"
 
 export const components: Components<Theme> = {
   MuiCssBaseline: {
@@ -56,8 +56,8 @@ export const components: Components<Theme> = {
   MuiButtonBase: {
     styleOverrides: {
       root: ({ theme }) => {
-        const radiusVars = (theme.vars as any)?.radiusScale ?? radiusScale;
-        const focusVars = (theme.vars as any)?.focusRing ?? focusRing;
+        const radiusVars = (theme.vars as any)?.radiusScale ?? radiusScale
+        const focusVars = (theme.vars as any)?.focusRing ?? focusRing
 
         return {
           minHeight: "44px",
@@ -69,31 +69,31 @@ export const components: Components<Theme> = {
             outline: "none",
             boxShadow: `var(--ue-focus-ring, ${focusVars.light})`,
           },
-        };
+        }
       },
     },
   },
   MuiButton: {
     styleOverrides: {
       root: ({ theme }) => {
-        const radiusVars = (theme.vars as any)?.radiusScale ?? radiusScale;
-        const spacingVars = (theme.vars as any)?.spacingScale ?? spacingScale;
+        const radiusVars = (theme.vars as any)?.radiusScale ?? radiusScale
+        const spacingVars = (theme.vars as any)?.spacingScale ?? spacingScale
 
         return {
           borderRadius: radiusVars.lg,
           paddingInline: `max(${spacingVars.sm}, ${theme.spacing(2)})`,
           paddingBlock: `max(${spacingVars["2xs"]}, ${theme.spacing(1)})`,
           minHeight: "44px",
-        };
+        }
       },
     },
   },
   MuiIconButton: {
     styleOverrides: {
       root: ({ theme }) => {
-        const radiusVars = (theme.vars as any)?.radiusScale ?? radiusScale;
-        const spacingVars = (theme.vars as any)?.spacingScale ?? spacingScale;
-        const focusVars = (theme.vars as any)?.focusRing ?? focusRing;
+        const radiusVars = (theme.vars as any)?.radiusScale ?? radiusScale
+        const spacingVars = (theme.vars as any)?.spacingScale ?? spacingScale
+        const focusVars = (theme.vars as any)?.focusRing ?? focusRing
 
         return {
           minWidth: "44px",
@@ -103,16 +103,16 @@ export const components: Components<Theme> = {
           "&:focus-visible": {
             boxShadow: `var(--ue-focus-ring, ${focusVars.light})`,
           },
-        };
+        }
       },
     },
   },
   MuiToggleButton: {
     styleOverrides: {
       root: ({ theme }) => {
-        const radiusVars = (theme.vars as any)?.radiusScale ?? radiusScale;
-        const spacingVars = (theme.vars as any)?.spacingScale ?? spacingScale;
-        const focusVars = (theme.vars as any)?.focusRing ?? focusRing;
+        const radiusVars = (theme.vars as any)?.radiusScale ?? radiusScale
+        const spacingVars = (theme.vars as any)?.spacingScale ?? spacingScale
+        const focusVars = (theme.vars as any)?.focusRing ?? focusRing
 
         return {
           minHeight: "44px",
@@ -121,15 +121,15 @@ export const components: Components<Theme> = {
           "&:focus-visible": {
             boxShadow: `var(--ue-focus-ring, ${focusVars.light})`,
           },
-        };
+        }
       },
     },
   },
   MuiListItemButton: {
     styleOverrides: {
       root: ({ theme }) => {
-        const radiusVars = (theme.vars as any)?.radiusScale ?? radiusScale;
-        const focusVars = (theme.vars as any)?.focusRing ?? focusRing;
+        const radiusVars = (theme.vars as any)?.radiusScale ?? radiusScale
+        const focusVars = (theme.vars as any)?.focusRing ?? focusRing
 
         return {
           minHeight: "48px",
@@ -137,15 +137,15 @@ export const components: Components<Theme> = {
           "&:focus-visible": {
             boxShadow: `var(--ue-focus-ring, ${focusVars.light})`,
           },
-        };
+        }
       },
     },
   },
   MuiLink: {
     styleOverrides: {
       root: ({ theme }) => {
-        const radiusVars = (theme.vars as any)?.radiusScale ?? radiusScale;
-        const focusVars = (theme.vars as any)?.focusRing ?? focusRing;
+        const radiusVars = (theme.vars as any)?.radiusScale ?? radiusScale
+        const focusVars = (theme.vars as any)?.focusRing ?? focusRing
 
         return {
           borderRadius: radiusVars.sm,
@@ -154,7 +154,7 @@ export const components: Components<Theme> = {
             outline: "none",
             boxShadow: `var(--ue-focus-ring, ${focusVars.light})`,
           },
-        };
+        }
       },
     },
   },
@@ -172,4 +172,4 @@ export const components: Components<Theme> = {
       },
     },
   },
-};
+}

@@ -23,15 +23,12 @@ export default function SafeHtml({ html, className, fallback }: SafeHtmlProps) {
     }
 
     run()
-    return () => { active = false }
+    return () => {
+      active = false
+    }
   }, [html])
 
   if (!sanitized) return <>{fallback ?? null}</>
 
-  return (
-    <div
-      className={className}
-      dangerouslySetInnerHTML={{ __html: sanitized as any }}
-    />
-  )
+  return <div className={className} dangerouslySetInnerHTML={{ __html: sanitized as any }} />
 }

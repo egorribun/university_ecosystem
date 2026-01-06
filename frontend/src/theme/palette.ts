@@ -1,4 +1,4 @@
-import type { CssVarsThemeOptions } from "@mui/material/styles";
+import type { CssVarsThemeOptions } from "@mui/material/styles"
 
 export const colorSchemes: CssVarsThemeOptions["colorSchemes"] = {
   light: {
@@ -82,4 +82,4 @@ export const colorSchemes: CssVarsThemeOptions["colorSchemes"] = {
       },
     },
   },
-};
+}

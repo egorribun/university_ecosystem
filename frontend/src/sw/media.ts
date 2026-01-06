@@ -1,6 +1,6 @@
-import { ExpirationPlugin } from "workbox-expiration";
-import { registerRoute } from "workbox-routing";
-import { CacheFirst, StaleWhileRevalidate } from "workbox-strategies";
+import { ExpirationPlugin } from "workbox-expiration"
+import { registerRoute } from "workbox-routing"
+import { CacheFirst, StaleWhileRevalidate } from "workbox-strategies"
 
 /**
  * Initialize Media caching (images, avatars, static assets).
@@ -18,7 +18,7 @@ export function initMediaCaching() {
         }),
       ],
     })
-  );
+  )
 
   // App images and icons
   registerRoute(
@@ -32,5 +32,5 @@ export function initMediaCaching() {
         }),
       ],
     })
-  );
+  )
 }
