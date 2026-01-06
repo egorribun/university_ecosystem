@@ -77,8 +77,6 @@ bootstrap()
 
 import { SERVICE_WORKER_MESSAGE_TYPES } from "./constants/serviceWorkerMessages"
 
-
-
 // Global Message Listener
 self.addEventListener("message", (event) => {
   if (!event.data) return
