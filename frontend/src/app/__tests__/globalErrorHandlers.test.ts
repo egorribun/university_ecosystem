@@ -85,9 +85,8 @@ describe("initGlobalErrorHandlers", () => {
   })
 
   it("removes listeners when reset is invoked", async () => {
-    const { initGlobalErrorHandlers, resetGlobalErrorHandlersForTesting } = await import(
-      "../globalErrorHandlers"
-    )
+    const { initGlobalErrorHandlers, resetGlobalErrorHandlersForTesting } =
+      await import("../globalErrorHandlers")
     initGlobalErrorHandlers(target)
     expect(addEventListenerMock).toHaveBeenCalledTimes(2)
 
