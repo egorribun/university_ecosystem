@@ -31,7 +31,10 @@ const ensureServiceWorkerIsReady = async (page: Page) => {
 
 test.describe("PWA offline support", () => {
   // Skip: Service Worker caching doesn't work properly in mocked E2E environment
-  test.skip("shows offline fallback page when network is unavailable", async ({ page, context }) => {
+  test.skip("shows offline fallback page when network is unavailable", async ({
+    page,
+    context,
+  }) => {
     const mock = await useMockApi(page)
     await mock.login(page)
 
@@ -66,7 +69,10 @@ test.describe("PWA offline support", () => {
   })
 
   // Skip: Service Worker caching doesn't work properly in mocked E2E environment
-  test.skip("profile data stays available offline after it was cached", async ({ page, context }) => {
+  test.skip("profile data stays available offline after it was cached", async ({
+    page,
+    context,
+  }) => {
     const mock = await useMockApi(page)
     await mock.login(page)
 
