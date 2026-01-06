@@ -365,10 +365,10 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
             file.type === "image/svg+xml" || file.name.toLowerCase().endsWith(".svg") ? null : (
               <div key={index} className="relative flex-shrink-0 group">
                 {file.type.startsWith("image/") ? (
-                  <img
-                    src={
+                  <SmartImage
+                    srcRaw={
                       ["image/png", "image/jpeg", "image/gif", "image/webp"].includes(file.type)
-                        ? sanitizeUrl(URL.createObjectURL(file)) || undefined
+                        ? URL.createObjectURL(file)
                         : ""
                     }
                     alt={file.name}

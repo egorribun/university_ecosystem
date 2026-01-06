@@ -27,8 +27,9 @@ import {
   DialogActions,
 } from "@mui/material"
 import { Badge, Card, Skeleton } from "@/components/ui"
-import { QRCodeSVG } from "qrcode.react"
 import { motion, useReducedMotion } from "framer-motion"
+
+const QRCodeSVG = React.lazy(() => import("qrcode.react").then((m) => ({ default: m.QRCodeSVG })))
 import { nowPlayingQueryKey, useNowPlaying } from "@/hooks/useNowPlaying"
 import type { NowPlaying } from "@/types/spotify"
 import { addVersionParam, resolveMediaUrl } from "@/utils/media"
@@ -1421,20 +1422,26 @@ export default function Profile() {
         </DialogTitle>
         <DialogContent className="flex flex-col items-center justify-center gap-3 min-h-[320px] p-6">
           <div className="bg-white p-4 rounded-2xl border border-[#0f4faa]/15 shadow-[0_18px_40px_-28px_rgba(0,0,0,0.4)]">
-            <QRCodeSVG
-              value={buildVCard()}
-              size={300}
-              level="H"
-              includeMargin
-              bgColor="#ffffff"
-              fgColor="#1a4480"
-              imageSettings={{
-                src: typeof guuLogo === "string" ? guuLogo : String(guuLogo as any),
-                height: 56,
-                width: 56,
-                excavate: true,
-              }}
-            />
+            <React.Suspense
+              fallback={
+                <div className="w-[300px] h-[300px] animate-pulse bg-gray-100 rounded-xl" />
+              }
+            >
+              <QRCodeSVG
+                value={buildVCard()}
+                size={300}
+                level="H"
+                includeMargin
+                bgColor="#ffffff"
+                fgColor="#1a4480"
+                imageSettings={{
+                  src: typeof guuLogo === "string" ? guuLogo : String(guuLogo as any),
+                  height: 56,
+                  width: 56,
+                  excavate: true,
+                }}
+              />
+            </React.Suspense>
           </div>
           <p className="text-xs text-secondary text-center">{t("profile:dialog.qr.hint")}</p>
         </DialogContent>

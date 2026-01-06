@@ -1,7 +1,8 @@
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useMemo, useState, lazy, Suspense } from "react"
 import { Copy, Check } from "lucide-react"
-import { QRCodeSVG } from "qrcode.react"
 import { useTranslation } from "react-i18next"
+
+const QRCodeSVG = lazy(() => import("qrcode.react").then((m) => ({ default: m.QRCodeSVG })))
 
 type TotpQrDisplayProps = {
   otpauthUrl: string
@@ -38,14 +39,18 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
       {label ? (
         <p className="text-sm text-page-text/70">{t("mfa.totp.accountLabel", { label })}</p>
       ) : null}
-      <div className="p-4 rounded-lg border border-glass-border bg-white shadow-sm dark:bg-white">
-        <QRCodeSVG
-          value={otpauthUrl}
-          size={192}
-          includeMargin
-          bgColor="#ffffff"
-          fgColor="#111827"
-        />
+      <div className="p-4 rounded-lg border border-glass-border bg-white shadow-sm dark:bg-white min-h-[224px] flex items-center justify-center">
+        <Suspense
+          fallback={<div className="w-[192px] h-[192px] animate-pulse bg-gray-100 rounded" />}
+        >
+          <QRCodeSVG
+            value={otpauthUrl}
+            size={192}
+            includeMargin
+            bgColor="#ffffff"
+            fgColor="#111827"
+          />
+        </Suspense>
       </div>
       <div className="flex flex-row items-center gap-2 w-full max-w-[320px]">
         <div className="relative flex-1">
@@ -68,7 +73,7 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
             onClick={() => void handleCopy()}
             onMouseEnter={() => setShowTooltip(true)}
             onMouseLeave={() => setShowTooltip(false)}
-            aria-label={t("mfa.totp.copySecret")}
+            aria-label={t("mfa.totp.copySecret") ?? ""}
             className={`
               p-2 rounded-lg transition-colors
               ${copied ? "text-green-500 hover:bg-green-500/10" : "text-primary hover:bg-primary/10"}

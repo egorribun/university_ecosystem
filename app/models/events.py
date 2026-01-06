@@ -56,6 +56,12 @@ class Event(Base):
         "EventAttendance", cascade="all, delete-orphan", passive_deletes=True
     )
 
+    def __repr__(self) -> str:
+        return (
+            f"<Event(id={self.id}, title='{self.title[:20]}...', "
+            f"starts_at={self.starts_at})>"
+        )
+
 
 class EventAttendance(Base):
     __tablename__ = "event_attendance"
@@ -81,6 +87,12 @@ class EventAttendance(Base):
         Index("ix_event_attendance_event_user", "event_id", "user_id"),
     )
 
+    def __repr__(self) -> str:
+        return (
+            f"<EventAttendance(id={self.id}, user_id={self.user_id}, "
+            f"event_id={self.event_id})>"
+        )
+
 
 class EventFile(Base):
     __tablename__ = "event_files"
@@ -91,3 +103,9 @@ class EventFile(Base):
     )
     file_url = Column(String, nullable=False)
     description = Column(String)
+
+    def __repr__(self) -> str:
+        return (
+            f"<EventFile(id={self.id}, eid={self.event_id}, "
+            f"url='{self.file_url[:20]}...')>"
+        )

@@ -1,4 +1,3 @@
-import DOMPurify, { type Config } from "dompurify"
 import type {
   TrustedHTML,
   TrustedScriptURL,
@@ -9,7 +8,14 @@ import type {
 const SANITIZE_POLICY_NAME = "dompurify-news"
 const APP_POLICY_NAME = "app"
 
-const DEFAULT_SANITIZE_CONFIG: Config = Object.freeze({
+let dompurifyInstance: any = null
+async function getDOMPurify() {
+  if (dompurifyInstance) return dompurifyInstance
+  dompurifyInstance = (await import("dompurify")).default
+  return dompurifyInstance
+}
+
+const DEFAULT_SANITIZE_CONFIG = Object.freeze({
   RETURN_TRUSTED_TYPE: false,
 })
 
@@ -33,10 +39,13 @@ const getAllowedScriptOrigins = (base: Location): Set<string> => {
   return origins
 }
 
-const ensureSanitizePolicy = (win: TrustedTypesWindow): TrustedTypePolicy | null => {
+const ensureSanitizePolicy = async (win: TrustedTypesWindow): Promise<TrustedTypePolicy | null> => {
   if (!win.trustedTypes) return null
   if (win.__ttSanitizePolicy === false) return null
   if (win.__ttSanitizePolicy) return win.__ttSanitizePolicy
+
+  const DOMPurify = await getDOMPurify()
+
   try {
     const policy = win.trustedTypes.createPolicy(SANITIZE_POLICY_NAME, {
       createHTML: (input: string) => DOMPurify.sanitize(input, DEFAULT_SANITIZE_CONFIG),
@@ -71,18 +80,19 @@ const ensureAppPolicy = (win: TrustedTypesWindow): TrustedTypePolicy | null => {
   return win.__ttAppPolicy || null
 }
 
-export const ensureTrustedTypesPolicies = (): void => {
+export const ensureTrustedTypesPolicies = async (): Promise<void> => {
   if (typeof window === "undefined") return
   const win = window as TrustedTypesWindow
   if (!win.trustedTypes) return
-  ensureSanitizePolicy(win)
+  await ensureSanitizePolicy(win)
   ensureAppPolicy(win)
 }
 
-export const sanitizeHTML = (value: string): string | TrustedHTML => {
+export const sanitizeHTML = async (value: string): Promise<string | TrustedHTML> => {
+  const DOMPurify = await getDOMPurify()
   if (typeof window === "undefined") return DOMPurify.sanitize(value, DEFAULT_SANITIZE_CONFIG)
   const win = window as TrustedTypesWindow
-  const policy = ensureSanitizePolicy(win)
+  const policy = await ensureSanitizePolicy(win)
   if (policy) {
     try {
       return policy.createHTML(value)

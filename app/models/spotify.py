@@ -30,3 +30,9 @@ class SpotifyIntegration(Base):
     last_album_image_url = Column(String)
 
     user = relationship("User", back_populates="spotify")
+
+    def __repr__(self) -> str:
+        return (
+            f"<SpotifyIntegration(user_id={self.user_id}, "
+            f"connected={self.is_connected}, playing={self.is_playing})>"
+        )

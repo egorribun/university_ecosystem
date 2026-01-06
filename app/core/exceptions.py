@@ -1,5 +1,8 @@
 from typing import Any
 
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
 
 class AppException(Exception):
     def __init__(
@@ -41,3 +44,14 @@ class InvalidOperationException(AppException):
         super().__init__(
             message, status_code=400, code="invalid_operation", payload=payload
         )
+
+
+async def app_exception_handler(request: Request, exc: AppException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "detail": exc.message,
+            "code": exc.code,
+            "payload": exc.payload,
+        },
+    )
