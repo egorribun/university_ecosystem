@@ -15,7 +15,7 @@ from app.core.database import engine
 from app.core.exceptions import AppException, app_exception_handler
 from app.core.lifespan import lifespan
 from app.core.metrics import configure_metrics
-from app.core.middleware import configure_middleware
+from app.core.middleware import _ensure_vary_header, configure_middleware
 from app.core.observability import configure_observability
 from app.core.versioning import API_VERSION
 from app.routers.notifications import legacy_router as legacy_push_router
