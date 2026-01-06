@@ -6,6 +6,17 @@ yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Audit and coverage reports
+audit_output.json
+coverage_report*.txt
+pytest_failures.log
+
+# Test databases
+test.db
+test-migration.db
+cache/images/cache.db
+
 pids
 *.pid
 *.seed
