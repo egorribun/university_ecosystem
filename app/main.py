@@ -62,13 +62,6 @@ async def root():
     return {"status": "ok"}
 
 
-@app.get("/ready")
-async def ready():
-    """Readiness probe."""
-    await wait_db(max_attempts=1, delay=0.1)
-    return {"status": "ready"}
-
-
 # Routers
 app.include_router(health_router)
 app.include_router(public_api_router)
