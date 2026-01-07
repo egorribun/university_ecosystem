@@ -4,7 +4,9 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from app.core.exceptions.domain import DomainException as DomainException
-from app.core.exceptions.handlers import domain_exception_handler as domain_exception_handler
+from app.core.exceptions.handlers import (
+    domain_exception_handler as domain_exception_handler,
+)
 
 
 class AppException(Exception):
