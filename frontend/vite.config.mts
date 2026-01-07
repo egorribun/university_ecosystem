@@ -330,17 +330,17 @@ export default defineConfig(({ mode }) => {
                 return chunk.name
             }
             if (normalizedId.includes("node_modules")) {
-                if (normalizedId.includes("@mui/icons-material")) return "vendor-icons"
-                if (
-                    /[/\\]react(?:-dom)?[/\\]/.test(normalizedId) ||
-                    /[/\\]scheduler[/\\]/.test(normalizedId) ||
-                    /@emotion/.test(normalizedId) ||
-                    /@mui/.test(normalizedId) ||
-                    /dayjs/.test(normalizedId) ||
-                    normalizedId.includes("commonjs")
-                ) {
-                    return "vendor-ui"
-                }
+              if (normalizedId.includes("@mui/icons-material")) return "vendor-icons"
+              if (
+                /[/\\]react(?:-dom)?[/\\]/.test(normalizedId) ||
+                /[/\\]scheduler[/\\]/.test(normalizedId) ||
+                /@emotion/.test(normalizedId) ||
+                /@mui/.test(normalizedId) ||
+                /dayjs/.test(normalizedId) ||
+                normalizedId.includes("commonjs")
+              ) {
+                return "vendor-ui"
+              }
             }
             if (normalizedId.includes("@tanstack")) return "react-query"
             if (normalizedId.includes("framer-motion")) return "motion"
