@@ -880,7 +880,9 @@ async def get_users(
     limit: int | None = None,
     offset: int | None = None,
 ) -> list[models.User]:
-    stmt = select(models.User).options(*USER_MFA_LOAD_OPTIONS)
+    stmt = select(models.User).options(
+        *USER_MFA_LOAD_OPTIONS, selectinload(models.User.group)
+    )
     # Exclude deleted users from the list
     stmt = stmt.where(models.User.status != "deleted")
     if group_id:

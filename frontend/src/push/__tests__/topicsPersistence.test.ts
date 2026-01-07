@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest"
 
 import { getPersistedTopics, setPersistedTopics } from "../subscribe"
 
-const PROFILE_CACHE_KEY = "ecosystem.profile.cache.v1"
+const PROFILE_CACHE_KEY = "sub-profile-cache"
 const TOPICS_KEY = "push:last_topics"
 
 const setActiveUser = (id: string | number | null) => {

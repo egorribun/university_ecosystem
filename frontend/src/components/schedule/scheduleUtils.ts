@@ -5,6 +5,7 @@
  */
 
 import dayjs from "dayjs"
+import { StorageItem } from "@/utils/storage"
 
 // ============================================================================
 // TYPES
@@ -87,34 +88,35 @@ type StorageWriteOptions = {
 export const groupsStorageKey = "sched:groups"
 export const scheduleStorageKey = (groupId: number) => `sched:${groupId}`
 
+
+
 export const readFromStorage = <T>(
   key: string,
   { maxAgeMs = SCHEDULE_STORAGE_TTL_MS, version = STORAGE_SCHEMA_VERSION }: StorageReadOptions = {}
 ): StorageReadResult<T> | undefined => {
-  if (typeof window === "undefined") return undefined
-  try {
-    const raw = window.localStorage.getItem(key)
-    if (!raw) return undefined
-    const parsed = JSON.parse(raw) as Partial<StoredPayload<T>> | null
-    if (!parsed || typeof parsed !== "object") return undefined
-    if (parsed.version !== version) {
-      window.localStorage.removeItem(key)
-      return undefined
-    }
-    const ts = typeof parsed.timestamp === "number" ? parsed.timestamp : NaN
-    if (!Number.isFinite(ts)) {
-      window.localStorage.removeItem(key)
-      return undefined
-    }
-    if (Date.now() - ts > maxAgeMs) {
-      window.localStorage.removeItem(key)
-      return undefined
-    }
-    if (!("data" in parsed)) return undefined
-    return { value: parsed.data as T, timestamp: ts }
-  } catch {
+  const storage = new StorageItem<StoredPayload<T>>(key)
+  const parsed = storage.get()
+
+  if (!parsed || typeof parsed !== "object") return undefined
+
+  if (parsed.version !== version) {
+    storage.remove()
     return undefined
   }
+
+  const ts = typeof parsed.timestamp === "number" ? parsed.timestamp : NaN
+  if (!Number.isFinite(ts)) {
+    storage.remove()
+    return undefined
+  }
+
+  if (Date.now() - ts > maxAgeMs) {
+    storage.remove()
+    return undefined
+  }
+
+  if (!("data" in parsed)) return undefined
+  return { value: parsed.data, timestamp: ts }
 }
 
 export const writeToStorage = <T>(
@@ -122,17 +124,13 @@ export const writeToStorage = <T>(
   value: T,
   { version = STORAGE_SCHEMA_VERSION }: StorageWriteOptions = {}
 ) => {
-  if (typeof window === "undefined") return
-  try {
-    const payload: StoredPayload<T> = {
-      version,
-      timestamp: Date.now(),
-      data: value,
-    }
-    window.localStorage.setItem(key, JSON.stringify(payload))
-  } catch {
-    /* noop */
+  const storage = new StorageItem<StoredPayload<T>>(key)
+  const payload: StoredPayload<T> = {
+    version,
+    timestamp: Date.now(),
+    data: value,
   }
+  storage.set(payload)
 }
 
 // ============================================================================

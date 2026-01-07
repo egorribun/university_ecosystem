@@ -9,11 +9,14 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
   <a
     aria-current="page"
     aria-label="Home"
-    class="bottom-nav__item active"
+    class="bottom-nav__item relative active"
     href="/dashboard"
   >
+    <div
+      class="absolute inset-0 rounded-xl bg-[color:color-mix(in_srgb,var(--nav-link)_12%,transparent)] dark:bg-[color:color-mix(in_srgb,var(--nav-link)_20%,transparent)]"
+    />
     <span
-      class="bottom-nav__icon"
+      class="bottom-nav__icon z-10"
     >
       <svg
         aria-hidden="true"
@@ -28,18 +31,18 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
       </svg>
     </span>
     <span
-      class="bottom-nav__label"
+      class="bottom-nav__label z-10"
     >
       Home
     </span>
   </a>
   <a
     aria-label="News"
-    class="bottom-nav__item"
+    class="bottom-nav__item relative"
     href="/news"
   >
     <span
-      class="bottom-nav__icon"
+      class="bottom-nav__icon z-10"
     >
       <svg
         aria-hidden="true"
@@ -54,18 +57,18 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
       </svg>
     </span>
     <span
-      class="bottom-nav__label"
+      class="bottom-nav__label z-10"
     >
       News
     </span>
   </a>
   <a
     aria-label="Events"
-    class="bottom-nav__item"
+    class="bottom-nav__item relative"
     href="/events"
   >
     <span
-      class="bottom-nav__icon"
+      class="bottom-nav__icon z-10"
     >
       <svg
         aria-hidden="true"
@@ -80,18 +83,18 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
       </svg>
     </span>
     <span
-      class="bottom-nav__label"
+      class="bottom-nav__label z-10"
     >
       Events
     </span>
   </a>
   <a
     aria-label="Schedule"
-    class="bottom-nav__item"
+    class="bottom-nav__item relative"
     href="/schedule"
   >
     <span
-      class="bottom-nav__icon"
+      class="bottom-nav__icon z-10"
     >
       <svg
         aria-hidden="true"
@@ -106,18 +109,18 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
       </svg>
     </span>
     <span
-      class="bottom-nav__label"
+      class="bottom-nav__label z-10"
     >
       Schedule
     </span>
   </a>
   <a
     aria-label="Profile"
-    class="bottom-nav__item"
+    class="bottom-nav__item relative"
     href="/profile"
   >
     <span
-      class="bottom-nav__icon"
+      class="bottom-nav__icon z-10"
     >
       <svg
         aria-hidden="true"
@@ -132,7 +135,7 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
       </svg>
     </span>
     <span
-      class="bottom-nav__label"
+      class="bottom-nav__label z-10"
     >
       Profile
     </span>
@@ -150,11 +153,14 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
     <a
       aria-current="page"
       aria-label="Home"
-      class="bottom-nav__item active"
+      class="bottom-nav__item relative active"
       href="/dashboard"
     >
+      <div
+        class="absolute inset-0 rounded-xl bg-[color:color-mix(in_srgb,var(--nav-link)_12%,transparent)] dark:bg-[color:color-mix(in_srgb,var(--nav-link)_20%,transparent)]"
+      />
       <span
-        class="bottom-nav__icon"
+        class="bottom-nav__icon z-10"
       >
         <svg
           aria-hidden="true"
@@ -169,18 +175,18 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
         </svg>
       </span>
       <span
-        class="bottom-nav__label"
+        class="bottom-nav__label z-10"
       >
         Home
       </span>
     </a>
     <a
       aria-label="News"
-      class="bottom-nav__item"
+      class="bottom-nav__item relative"
       href="/news"
     >
       <span
-        class="bottom-nav__icon"
+        class="bottom-nav__icon z-10"
       >
         <svg
           aria-hidden="true"
@@ -195,18 +201,18 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
         </svg>
       </span>
       <span
-        class="bottom-nav__label"
+        class="bottom-nav__label z-10"
       >
         News
       </span>
     </a>
     <a
       aria-label="Events"
-      class="bottom-nav__item"
+      class="bottom-nav__item relative"
       href="/events"
     >
       <span
-        class="bottom-nav__icon"
+        class="bottom-nav__icon z-10"
       >
         <svg
           aria-hidden="true"
@@ -221,18 +227,18 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
         </svg>
       </span>
       <span
-        class="bottom-nav__label"
+        class="bottom-nav__label z-10"
       >
         Events
       </span>
     </a>
     <a
       aria-label="Schedule"
-      class="bottom-nav__item"
+      class="bottom-nav__item relative"
       href="/schedule"
     >
       <span
-        class="bottom-nav__icon"
+        class="bottom-nav__icon z-10"
       >
         <svg
           aria-hidden="true"
@@ -247,18 +253,18 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
         </svg>
       </span>
       <span
-        class="bottom-nav__label"
+        class="bottom-nav__label z-10"
       >
         Schedule
       </span>
     </a>
     <a
       aria-label="Profile"
-      class="bottom-nav__item"
+      class="bottom-nav__item relative"
       href="/profile"
     >
       <span
-        class="bottom-nav__icon"
+        class="bottom-nav__icon z-10"
       >
         <svg
           aria-hidden="true"
@@ -273,7 +279,7 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
         </svg>
       </span>
       <span
-        class="bottom-nav__label"
+        class="bottom-nav__label z-10"
       >
         Profile
       </span>

@@ -9,7 +9,20 @@ const PUSH_LAST_SYNC_STORAGE_KEY = "push:last_sync"
 const PUSH_SUB_STORAGE_KEY = "push:last_payload"
 const PUSH_TOPICS_STORAGE_KEY = "push:last_topics"
 const PUSH_TOPICS_STORAGE_VERSION = 2
-const PROFILE_CACHE_STORAGE_KEY = "ecosystem.profile.cache.v1"
+import { StorageItem, profileCacheStorage, pushConsentStorage } from "@/utils/storage"
+
+
+
+// Storage Items for Push
+const pushLastSyncStorage = new StorageItem<string>("push:last_sync")
+const pushSubStorage = new StorageItem<unknown>("push:last_payload")
+// Topics storage handles its own parsing logic for legacy reasons,
+// but we can treat it as storing a JSON string if we want raw access
+// OR we can trust the object. The existing code does complex raw string parsing.
+// To minimize risk, we can use StorageItem<unknown> and let it parse.
+const pushTopicsStorage = new StorageItem<unknown>("push:last_topics")
+
+
 
 // Global lock to prevent ANY concurrent ensurePushSubscription calls
 let globalEnsureLock: Promise<PushSubscription | null> | null = null
@@ -45,31 +58,27 @@ function normalizeTopics(input: unknown): string[] | undefined {
 }
 
 function readActiveUserId(): string | null {
-  if (typeof localStorage === "undefined") return null
-  try {
-    const rawProfile = localStorage.getItem(PROFILE_CACHE_STORAGE_KEY)
-    if (!rawProfile) return null
-    const parsed = JSON.parse(rawProfile)
-    const data =
-      parsed && typeof parsed === "object" && "data" in parsed
-        ? (parsed as { data?: unknown }).data
-        : parsed
-    if (!data || typeof data !== "object") return null
-    const id = (data as Record<string, unknown>).id as MaybeUserId
-    return normalizeUserId(id)
-  } catch {
-    return null
-  }
+  const parsed = profileCacheStorage.get()
+  // Ensure the shape matches what we expect
+  const data =
+    parsed && typeof parsed === "object" && "data" in parsed
+      ? (parsed as { data?: unknown }).data
+      : parsed
+  if (!data || typeof data !== "object") return null
+  const id = (data as Record<string, unknown>).id as MaybeUserId
+  return normalizeUserId(id)
 }
 
 function parseTopicsPayload(
-  raw: string | null,
+  raw: unknown,
   options?: { userId?: MaybeUserId }
 ): string[] | undefined {
   if (!raw) return undefined
   const userId = normalizeUserId(options?.userId) ?? readActiveUserId()
   try {
-    const parsed = JSON.parse(raw)
+    // If raw is string, parse it. If it's already object/array, use it.
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw
+
     if (Array.isArray(parsed)) {
       return normalizeTopics(parsed)
     }
@@ -108,14 +117,20 @@ function parseTopicsPayload(
 }
 
 export function parseStoredTopics(
-  raw: string | null,
+  raw: unknown,
   options?: { userId?: MaybeUserId }
 ): NormalizedTopics {
   return parseTopicsPayload(raw, options)
 }
 
 export function getPersistedTopics(options?: { userId?: MaybeUserId }): string[] | undefined {
-  return parseTopicsPayload(getStoredValue(PUSH_TOPICS_STORAGE_KEY), options) ?? undefined
+  const raw = pushTopicsStorage.get()
+  // emulate raw string behavior by stringifying if needed, or adapting parseTopicsPayload to accept object
+  // Since parseTopicsPayload expects string, let's keep it simple:
+  // We can pass the object directly if we update parseTopicsPayload signature,
+  // but for minimal churn, let's use JSON.stringify if it's not null.
+  // Actually, let's update parseTopicsPayload to accept unknown object/string.
+  return parseTopicsPayload(raw, options) ?? undefined
 }
 
 function buildTopicsPayload(
@@ -307,38 +322,29 @@ export function setPersistedTopics(
 ): void {
   const normalizedUserId = normalizeUserId(options?.userId)
   const userId = normalizedUserId ?? readActiveUserId()
-  const currentRaw = getStoredValue(PUSH_TOPICS_STORAGE_KEY)
-  const payload = buildTopicsPayload(topics, currentRaw, userId)
-  if (payload === null) {
-    removeStoredValue(PUSH_TOPICS_STORAGE_KEY)
+  // Retrieve current value as raw string to satisfy legacy buildTopicsPayload
+  const currentVal = pushTopicsStorage.get()
+  const currentRaw = currentVal ? JSON.stringify(currentVal) : null
+
+  const payloadStr = buildTopicsPayload(topics, currentRaw, userId)
+
+  if (payloadStr === null) {
+    pushTopicsStorage.remove()
     return
   }
-  setStoredValue(PUSH_TOPICS_STORAGE_KEY, payload)
+
+  try {
+    // StorageItem handles serialization, so we need to pass the object, not the JSON string
+    pushTopicsStorage.set(JSON.parse(payloadStr))
+  } catch {
+    // fallback if payloadStr is somehow invalid
+  }
 }
 
 function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms))
 }
 
-function getStoredValue(key: string): string | null {
-  try {
-    return localStorage.getItem(key)
-  } catch {
-    return null
-  }
-}
-
-function setStoredValue(key: string, value: string) {
-  try {
-    localStorage.setItem(key, value)
-  } catch {}
-}
-
-function removeStoredValue(key: string) {
-  try {
-    localStorage.removeItem(key)
-  } catch {}
-}
 
 let syncInProgress = false
 let globalSyncLock: Promise<PushSubscription | null> | null = null
@@ -362,8 +368,8 @@ async function persistSubscriptionWithBackoff(
       try {
         const response = await saveSubscription(payload, topics)
         const normalizedTopics = response?.topics ?? (topics ? [...topics].sort() : [])
-        setStoredValue(PUSH_SUB_STORAGE_KEY, JSON.stringify(payload))
-        setStoredValue(PUSH_LAST_SYNC_STORAGE_KEY, Date.now().toString())
+        pushSubStorage.set(payload)
+        pushLastSyncStorage.set(Date.now().toString())
         setPersistedTopics(normalizedTopics)
         return response
       } catch (error) {
@@ -378,8 +384,8 @@ async function persistSubscriptionWithBackoff(
         if (isConflict) {
           // 409 means the subscription already exists on the server - treat as success
           logWarning("Subscription already exists (409), treating as success")
-          setStoredValue(PUSH_SUB_STORAGE_KEY, JSON.stringify(payload))
-          setStoredValue(PUSH_LAST_SYNC_STORAGE_KEY, Date.now().toString())
+          pushSubStorage.set(payload)
+          pushLastSyncStorage.set(Date.now().toString())
           if (topics) {
             setPersistedTopics(topics)
           }
@@ -413,24 +419,19 @@ async function persistSubscriptionWithBackoff(
   }
 }
 
-export const PUSH_CONSENT_STORAGE_KEY = "push:consent"
+// Re-exported for compatibility if needed, but preferable to use storage directly
+export const PUSH_CONSENT_STORAGE_KEY = "push-notification-consent"
 
 export function hasPushConsent(): boolean {
-  try {
-    return localStorage.getItem(PUSH_CONSENT_STORAGE_KEY) === "granted"
-  } catch {
-    return false
-  }
+  return pushConsentStorage.get() === "granted"
 }
 
 export function setPushConsent(consented: boolean): void {
-  try {
-    if (consented) {
-      localStorage.setItem(PUSH_CONSENT_STORAGE_KEY, "granted")
-    } else {
-      localStorage.removeItem(PUSH_CONSENT_STORAGE_KEY)
-    }
-  } catch {}
+  if (consented) {
+    pushConsentStorage.set("granted")
+  } else {
+    pushConsentStorage.remove()
+  }
 }
 
 /**
@@ -653,9 +654,15 @@ export async function ensurePushSubscription(
     type Payload = Parameters<typeof saveSubscription>[0]
     const payload = sub.toJSON() as Payload
     const serialized = JSON.stringify(payload)
-    const previous = getStoredValue(PUSH_SUB_STORAGE_KEY)
+
+    // pushSubStorage.get() returns object (or null), so we stringify to compare
+    const previousVal = pushSubStorage.get()
+    const previous = previousVal ? JSON.stringify(previousVal) : null
+
     const currentTopics = JSON.stringify(topics ? [...topics].sort() : [])
-    const storedTopics = getStoredValue(PUSH_TOPICS_STORAGE_KEY)
+    const storedTopicsVal = pushTopicsStorage.get()
+    const storedTopics = storedTopicsVal ? JSON.stringify(storedTopicsVal) : null
+
     const shouldPersist = !previous || previous !== serialized || currentTopics !== storedTopics
 
     if (shouldPersist) {
@@ -665,7 +672,7 @@ export async function ensurePushSubscription(
         logError("Failed to persist push subscription", error)
       }
     } else {
-      setStoredValue(PUSH_LAST_SYNC_STORAGE_KEY, Date.now().toString())
+      pushLastSyncStorage.set(Date.now().toString())
     }
 
     return sub
@@ -690,14 +697,12 @@ function clearPushLocals(
   options?: Pick<UnsubscribePushOptions, "preserveConsent" | "preserveTopics">
 ) {
   if (!options?.preserveConsent) {
-    try {
-      localStorage.removeItem(PUSH_CONSENT_STORAGE_KEY)
-    } catch {}
+    pushConsentStorage.remove()
   }
-  removeStoredValue(PUSH_LAST_SYNC_STORAGE_KEY)
-  removeStoredValue(PUSH_SUB_STORAGE_KEY)
+  pushLastSyncStorage.remove()
+  pushSubStorage.remove()
   if (!options?.preserveTopics) {
-    removeStoredValue(PUSH_TOPICS_STORAGE_KEY)
+    pushTopicsStorage.remove()
   }
 }
 
@@ -780,7 +785,16 @@ export async function softSyncPushSubscription(
     return globalSyncLock
   }
 
-  const storedTopics = options?.topics ?? parseStoredTopics(getStoredValue(PUSH_TOPICS_STORAGE_KEY))
+  // pushTopicsStorage.get() returns unknown, assume it matches expectation or let buildTopicsPayload handle it?
+  // softSyncPushSubscription uses stored topics for ensurePushSubscription.
+  // parseStoredTopics expects string. `pushTopicsStorage` returns object.
+  // Oh, wait. `parseStoredTopics` logic?
+  // Line 815 original: const storedTopics = options?.topics ?? parseStoredTopics(getStoredValue(PUSH_TOPICS_STORAGE_KEY))
+
+  // `getStoredValue` returned string. `parseStoredTopics` takes string/unknown (since I updated it).
+  // `pushTopicsStorage.get()` returns unknown.
+  // So:
+  const storedTopics = options?.topics ?? parseStoredTopics(pushTopicsStorage.get())
 
   globalSyncLock = (async () => {
     try {

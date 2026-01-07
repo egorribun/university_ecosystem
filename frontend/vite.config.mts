@@ -331,9 +331,11 @@ export default defineConfig(({ mode }) => {
                 return chunk.name
             }
             if (!normalizedId.includes("node_modules")) return
+            if (normalizedId.includes("@mui/icons-material")) return "vendor-icons"
+            if (/[/\\]react(?:-dom)?[/\\]/.test(normalizedId)) return "vendor-react"
+            if (/[/\\]scheduler[/\\]/.test(normalizedId)) return "vendor-react"
+
             const uiMatchers = [
-              /[/\\]react(?:-dom)?[/\\]/,
-              /[/\\]scheduler[/\\]/,
               /@emotion/,
               /@mui/,
             ] as const

@@ -51,7 +51,7 @@ class User(Base):
 
     full_name = Column(String)
     role = Column(String, nullable=False, default=UserRole.STUDENT.value, index=True)
-    group_id = Column(Integer, ForeignKey("groups.id", ondelete="SET NULL"))
+    group_id = Column(Integer, ForeignKey("groups.id", ondelete="SET NULL"), index=True)
     is_active = Column(Boolean, default=True, index=True)
     mfa_required = Column(Boolean, default=False, nullable=False, index=True)
     mfa_default_method = Column(String(64))

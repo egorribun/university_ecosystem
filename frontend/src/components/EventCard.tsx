@@ -28,6 +28,7 @@ import { cn } from "@/utils/cn"
 import { useTranslation } from "react-i18next"
 import { Button, Badge, Tooltip } from "@/components/ui"
 import Dialog from "@/components/Dialog"
+import { useSpotlight, SpotlightOverlay } from "@/components/ui/Spotlight"
 import useMediaQuery from "@/hooks/useMediaQuery"
 
 import dayjs from "dayjs"
@@ -217,6 +218,7 @@ const EventCardComponent: FC<EventCardProps> = ({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 
   const [snack, setSnack] = useState<string>("")
+  const spotlight = useSpotlight()
 
   useEffect(() => {
     if (!menuAnchor) return
@@ -589,6 +591,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       }}
       whileHover={{ y: -4, transition: { duration: 0.2 } }}
       className="w-full"
+      onMouseMove={spotlight.onMouseMove}
     >
       <div
         className={cn(
@@ -608,6 +611,11 @@ const EventCardComponent: FC<EventCardProps> = ({
           }
         }}
       >
+        <SpotlightOverlay
+          mouseX={spotlight.mouseX}
+          mouseY={spotlight.mouseY}
+          className="z-0 rounded-[24px]"
+        />
         {/* Admin menu */}
         {user && (user.role === "admin" || user.role === "teacher") && (
           <>
