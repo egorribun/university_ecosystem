@@ -42,7 +42,7 @@ class UserService:
     ) -> models.User:
         db_user = await db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
         update_fields = data.model_dump(exclude_unset=True)
-        locale = resolve_locale(request=request, user=user)
+
 
         if "email" in update_fields and update_fields["email"] is not None:
             raw_email = str(update_fields["email"]).strip().lower()
