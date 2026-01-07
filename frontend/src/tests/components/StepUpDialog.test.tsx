@@ -18,15 +18,10 @@ vi.mock("@/contexts/AuthContext", async () => {
   }
 })
 
-const createChallenge = (remaining: number): PendingMfaState => ({
-  status: "mfa_required",
-  reason: "step-up",
-  user_id: 1,
-  session_id: 42,
-  default_method: "totp",
-  methods: [
+const createChallenge = (remaining: number): PendingMfaState => {
+  const methods = [
     {
-      method: "totp",
+      method: "totp" as const,
       challenge_token: `totp-${remaining}`,
       challenge_expires_at: new Date(Date.now() + 60_000).toISOString(),
       options: null,
@@ -34,8 +29,17 @@ const createChallenge = (remaining: number): PendingMfaState => ({
       attempt_count: Math.max(0, 5 - remaining),
       remaining_attempts: remaining,
     },
-  ],
-})
+  ]
+  return {
+    status: "mfa_required",
+    reason: "step-up",
+    user_id: 1,
+    session_id: 42,
+    default_method: "totp",
+    methods,
+    challenges: methods,
+  }
+}
 
 beforeEach(() => {
   mockUseAuth.mockReset()

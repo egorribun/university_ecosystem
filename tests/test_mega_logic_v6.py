@@ -2,9 +2,15 @@ import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import HTTPException, UploadFile
+from fastapi import UploadFile
 
 import app.crud as crud
+from app.core.exceptions.domain import (
+    BusinessRuleViolation,
+    EntityAlreadyExists,
+    EntityNotFound,
+    PermissionDenied,
+)
 from app.models import models
 from app.schemas import schemas
 from app.services.user_service import UserService
@@ -25,9 +31,8 @@ async def test_user_service_mega():
     # 1. update_user_profile - invalid email
     data = schemas.UserProfileUpdate.model_construct(email="invalid")
     with patch("app.services.user_service.resolve_locale", return_value="en"):
-        with pytest.raises(HTTPException) as exc:
+        with pytest.raises(BusinessRuleViolation):
             await service.update_user_profile(db, student_user, data, request)
-        assert exc.value.status_code == 400
 
     # 2. update_user_profile - duplicate email
     data = schemas.UserProfileUpdate(email="taken@e.com")
@@ -36,9 +41,8 @@ async def test_user_service_mega():
     db.execute.return_value = mock_res_dup
     db.get.return_value = student_user
     with patch("app.services.user_service.resolve_locale", return_value="en"):
-        with pytest.raises(HTTPException) as exc:
+        with pytest.raises(EntityAlreadyExists):
             await service.update_user_profile(db, student_user, data, request)
-        assert exc.value.status_code == 400
 
     # 3. upload_avatar/cover - rollback/error paths
     file = MagicMock(spec=UploadFile)
@@ -71,24 +75,21 @@ async def test_user_service_mega():
     )
     with patch("app.services.user_service.resolve_locale", return_value="en"):
         # Forbidden
-        with pytest.raises(HTTPException) as exc:
+        with pytest.raises(PermissionDenied):
             await service.create_user(db, data_user, request, student_user)
-        assert exc.value.status_code == 403
 
         # Missing invite code
         data_user.invite_code = None
-        with pytest.raises(HTTPException) as exc:
+        with pytest.raises(BusinessRuleViolation):
             await service.create_user(db, data_user, request, admin_user)
-        assert exc.value.status_code == 400
 
         # Invalid invite code
         data_user.invite_code = "inv"
         mock_invite_res = MagicMock()
         mock_invite_res.scalar_one_or_none.return_value = None
         db.execute.return_value = mock_invite_res
-        with pytest.raises(HTTPException) as exc:
+        with pytest.raises(BusinessRuleViolation):
             await service.create_user(db, data_user, request, admin_user)
-        assert exc.value.status_code == 400
 
     # 5. admin_update_user - MFA reset
     data_update = schemas.UserAdminUpdate(mfa_reset=True)
@@ -112,20 +113,17 @@ async def test_user_service_mega():
         # self deletion check
         db.get.side_effect = None
         db.get.return_value = admin_user
-        with pytest.raises(HTTPException) as exc:
+        with pytest.raises(BusinessRuleViolation):
             await service.admin_delete_user(db, 1, request, admin_user)
-        assert exc.value.status_code == 400
 
         # not found check
         db.get.return_value = None
-        with pytest.raises(HTTPException) as exc:
+        with pytest.raises(EntityNotFound):
             await service.admin_delete_user(db, 999, request, admin_user)
-        assert exc.value.status_code == 404
 
         # forbidden check
-        with pytest.raises(HTTPException) as exc:
+        with pytest.raises(PermissionDenied):
             await service.admin_delete_user(db, 3, request, student_user)
-        assert exc.value.status_code == 403
 
     # 7. data_export - full
     db.get.return_value = student_user

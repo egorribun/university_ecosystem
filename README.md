@@ -1,6 +1,6 @@
 # University Ecosystem Platform
 
-Unified platform for university life that delivers schedules, news, stories, events, campus map links, user profiles, push notifications, and Spotify integration. The stack pairs a FastAPI backend with a Vite/React frontend, backed by PostgreSQL and optional Redis for caching and rate limiting.
+Unified platform for university life that delivers schedules, news, stories, events, campus map links, user profiles, push notifications, and Spotify integration. The stack pairs a FastAPI backend with a Vite/React frontend (enhanced with **Framer Motion** for animations), backed by PostgreSQL and optional Redis for caching and rate limiting.
 
 ## Prerequisites
 
@@ -162,7 +162,12 @@ Set `NOTIFICATIONS_SCHEDULER_INLINE_ENABLED=false` when the API and worker run s
 - Vite dev server proxies API calls to the configured backend origin
 - Localization assets are generated from `public/manifest.source.json` via `npm run generate:manifests`
 - Client-side logging is centralized in `src/app/logger.ts`; global handlers capture unhandled Promise and Axios errors
-- Authentication state synchronizes across tabs through `localStorage` updates and `BroadcastChannel` messages
+- Authenticated state synchronizes across tabs through `localStorage` updates and `BroadcastChannel` messages
+- **World-Class Polish**:
+  - **Fluid Navigation**: "Active Pill" animations on mobile bottom navigation.
+  - **Premium Interactions**: "Spotlight" hover effects on cards and tactile spring animations on interaction.
+  - **Optimized Loading**: Responsive skeletons (`ScheduleSkeleton`) replace generic spinners for a smoother perceived performance.
+  - **PWA Ready**: Offline support with service worker caching for news and schedule data.
 
 ## Image uploads
 

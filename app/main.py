@@ -13,6 +13,8 @@ from app.api.websocket import router as websocket_router
 from app.core.config import settings
 from app.core.database import engine
 from app.core.exceptions import AppException, app_exception_handler
+from app.core.exceptions.domain import DomainException
+from app.core.exceptions.handlers import domain_exception_handler
 from app.core.lifespan import lifespan
 from app.core.metrics import configure_metrics
 from app.core.middleware import (
@@ -44,6 +46,7 @@ app = FastAPI(
 
 # Exception handlers
 app.add_exception_handler(AppException, app_exception_handler)
+app.add_exception_handler(DomainException, domain_exception_handler)
 
 # Observability & Metrics
 configure_observability(app, engine=engine)

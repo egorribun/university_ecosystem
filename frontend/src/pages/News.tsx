@@ -19,6 +19,7 @@ import { useTranslation } from "react-i18next"
 import { useQueryClient } from "@tanstack/react-query"
 import { useNewsListQuery } from "@/api/hooks/news"
 import { resetEtagCache } from "@/api/client"
+import { StorageItem } from "@/utils/storage"
 
 const inputClass =
   "w-full rounded-ue-lg border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] px-4 py-2.5 text-[0.98rem] text-[color:var(--page-text)] shadow-[inset_0_1px_0_rgba(15,23,42,0.08)] transition focus:border-[color:var(--nav-link)] focus:outline-none focus:shadow-focus placeholder:text-[color:var(--placeholder-fg)]"
@@ -99,14 +100,11 @@ const News = () => {
     void queryClient.invalidateQueries({ queryKey: ["news", "list"] })
   }, [queryClient])
 
-  // Persist to localStorage for E2E tests expectations
+  // Persist to localStorage for E2E tests expectations and offline fallback
   useEffect(() => {
-    console.log(`[news] useEffect: newsList.length=${newsList.length}, language=${language}`)
     if (newsList.length > 0) {
-      console.log(
-        `[news] Saving ${newsList.length} items to localStorage key: news:list:${language}`
-      )
-      localStorage.setItem(`news:list:${language}`, JSON.stringify(newsList))
+      const storage = new StorageItem<typeof newsList>(`news:list:${language}`)
+      storage.set(newsList)
     }
   }, [newsList, language])
 

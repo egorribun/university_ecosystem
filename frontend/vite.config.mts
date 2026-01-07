@@ -198,7 +198,7 @@ export default defineConfig(({ mode }) => {
         type: "module",
       },
     }),
-    withStrictCspNonce(),
+    process.env.VITE_LHCI !== "true" ? withStrictCspNonce() : null,
   ]
 
   if (analyze) {
@@ -300,8 +300,6 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         "@": srcDir,
-        "@mui/material/styles/CssVarsProvider": resolve(srcDir, "shims/muiCssVarsProvider.ts"),
-        "@mui/material/styles/useColorScheme": resolve(srcDir, "shims/muiUseColorScheme.ts"),
       },
     },
     server: {
@@ -320,6 +318,7 @@ export default defineConfig(({ mode }) => {
     },
     modulepreload: { polyfill: false },
     build: {
+      minify: true,
       sourcemap: true,
       chunkSizeWarningLimit: 768,
       rollupOptions: {
@@ -330,14 +329,19 @@ export default defineConfig(({ mode }) => {
               if (chunk.patterns.some((pattern) => normalizedId.startsWith(pattern)))
                 return chunk.name
             }
-            if (!normalizedId.includes("node_modules")) return
-            const uiMatchers = [
-              /[/\\]react(?:-dom)?[/\\]/,
-              /[/\\]scheduler[/\\]/,
-              /@emotion/,
-              /@mui/,
-            ] as const
-            if (uiMatchers.some((pattern) => pattern.test(normalizedId))) return "ui"
+            if (normalizedId.includes("node_modules")) {
+              if (normalizedId.includes("@mui/icons-material")) return "vendor-icons"
+              if (
+                /[/\\]react(?:-dom)?[/\\]/.test(normalizedId) ||
+                /[/\\]scheduler[/\\]/.test(normalizedId) ||
+                /@emotion/.test(normalizedId) ||
+                /@mui/.test(normalizedId) ||
+                /dayjs/.test(normalizedId) ||
+                normalizedId.includes("commonjs")
+              ) {
+                return "vendor-ui"
+              }
+            }
             if (normalizedId.includes("@tanstack")) return "react-query"
             if (normalizedId.includes("framer-motion")) return "motion"
             if (normalizedId.includes("react-router")) return "router"

@@ -3,6 +3,11 @@ from typing import Any
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
+from app.core.exceptions.domain import DomainException as DomainException
+from app.core.exceptions.handlers import (
+    domain_exception_handler as domain_exception_handler,
+)
+
 
 class AppException(Exception):
     def __init__(
@@ -46,7 +51,11 @@ class InvalidOperationException(AppException):
         )
 
 
-async def app_exception_handler(request: Request, exc: AppException):
+async def app_exception_handler(request: Request, exc: Exception):
+    if not isinstance(exc, AppException):
+        return JSONResponse(
+            status_code=500, content={"detail": "Internal Server Error"}
+        )
     return JSONResponse(
         status_code=exc.status_code,
         content={

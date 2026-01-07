@@ -12,6 +12,7 @@ import { useMemo } from "react"
 import { apiClient, type TypedRequestOptions } from "../client"
 import type { NewsItem } from "@/api/news"
 import type { PaginatedResponse } from "@/types/Pagination"
+import { StorageItem } from "@/utils/storage"
 
 export const NEWS_PAGE_SIZE = 12
 
@@ -171,9 +172,8 @@ export const useNewsListQuery = (
   const placeholderData = useMemo(() => {
     if (typeof window === "undefined") return undefined
     try {
-      const cached = localStorage.getItem(`news:list:${normalized.language}`)
-      if (!cached) return undefined
-      const items: NewsItem[] = JSON.parse(cached)
+      const storage = new StorageItem<NewsItem[]>(`news:list:${normalized.language}`)
+      const items = storage.get()
       if (!Array.isArray(items) || items.length === 0) return undefined
       // Wrap in the expected InfiniteData structure
       return {

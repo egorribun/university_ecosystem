@@ -83,8 +83,9 @@ async def test_update_profile_email_duplicate(async_client, user_factory, db_ses
         headers=headers_ru,
     )
 
-    assert response.status_code == 400
-    assert response.json() == {"detail": "Указанный email уже используется"}
+    assert response.status_code == 409
+    assert "Запись уже существует" in response.json()["detail"]
+    assert "existing@example.com" in response.json()["detail"]
 
     await db_session.refresh(user)
     assert user.email == "first-user@example.com"

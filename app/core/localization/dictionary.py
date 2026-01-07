@@ -34,6 +34,10 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Ссылка для сброса пароля: {link}\nОна действует {minutes} минут.",
         "en": "Password reset link: {link}\nIt is valid for {minutes} minutes.",
     },
+    "errors.already_exists": {
+        "ru": "Запись уже существует: {identifier}",
+        "en": "Record already exists: {identifier}",
+    },
     "notifications.schedule.room_label": {
         "ru": "ауд. {room}",
         "en": "room {room}",

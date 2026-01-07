@@ -250,6 +250,7 @@ const createMfaChallenge = ({
     session_id: sessionId,
     default_method: defaultMethod,
     methods,
+    challenges: methods,
   }
 }
 

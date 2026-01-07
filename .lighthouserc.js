@@ -3,7 +3,7 @@ const path = require('node:path');
 
 const frontendDir = path.join(__dirname, 'frontend');
 const chromePath = path.join(frontendDir, 'node_modules', '.bin', 'google-chrome-stable');
-const buildEnv = {...process.env, FORCE_COLOR: '0', CI: '1'};
+const buildEnv = {...process.env, FORCE_COLOR: '0', CI: '1', VITE_LHCI: 'true'};
 
 if (!process.env.LHCI_SKIP_PREPARE) {
   execSync('npx playwright install-deps chromium', {cwd: frontendDir, stdio: 'inherit', env: buildEnv});

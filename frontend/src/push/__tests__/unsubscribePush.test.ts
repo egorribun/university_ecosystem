@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { unsubscribePush } from "@/push/subscribe"
 
-const CONSENT_KEY = "push:consent"
+const CONSENT_KEY = "push-notification-consent"
 const LAST_SYNC_KEY = "push:last_sync"
 const SUB_KEY = "push:last_payload"
 const TOPICS_KEY = "push:last_topics"

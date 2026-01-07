@@ -1,12 +1,18 @@
 import logging
 
-from fastapi import HTTPException, Request, UploadFile, status
+from fastapi import Request, UploadFile
 from pydantic import EmailStr, TypeAdapter
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import crud
 from app.api.utils import save_upload
+from app.core.exceptions.domain import (
+    BusinessRuleViolation,
+    EntityAlreadyExists,
+    EntityNotFound,
+    PermissionDenied,
+)
 from app.core.localization import resolve_locale, translate
 from app.models import models
 from app.models.user_loaders import (
@@ -36,7 +42,6 @@ class UserService:
     ) -> models.User:
         db_user = await db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
         update_fields = data.model_dump(exclude_unset=True)
-        locale = resolve_locale(request=request, user=user)
 
         if "email" in update_fields and update_fields["email"] is not None:
             raw_email = str(update_fields["email"]).strip().lower()
@@ -44,10 +49,7 @@ class UserService:
             try:
                 validated_email = adapter.validate_python(raw_email)
             except ValueError as exc:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=translate("errors.users.invalid_email", locale=locale),
-                ) from exc
+                raise BusinessRuleViolation("errors.users.invalid_email") from exc
 
             existing = await db.execute(
                 select(models.User.id).where(
@@ -56,10 +58,7 @@ class UserService:
                 )
             )
             if existing.scalar_one_or_none() is not None:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=translate("errors.users.email_in_use", locale=locale),
-                )
+                raise EntityAlreadyExists("User", validated_email)
 
             update_fields["email"] = validated_email
 
@@ -143,18 +142,13 @@ class UserService:
         request: Request,
         current_user: models.User,
     ) -> models.User:
-        locale = resolve_locale(request=request, user=current_user)
         if current_user.role != "admin":
-            raise HTTPException(
-                status_code=403,
-                detail=translate("errors.forbidden", locale=locale),
-            )
+            raise PermissionDenied()
+
         if data.role in ["teacher", "admin"]:
             if not data.invite_code:
-                raise HTTPException(
-                    status_code=400,
-                    detail=translate("errors.users.invite_required", locale=locale),
-                )
+                raise BusinessRuleViolation("errors.users.invite_required")
+
             q = select(models.InviteCode).where(
                 models.InviteCode.code == data.invite_code,
                 models.InviteCode.role == data.role,
@@ -162,10 +156,8 @@ class UserService:
             )
             code_obj = (await db.execute(q)).scalar_one_or_none()
             if not code_obj:
-                raise HTTPException(
-                    status_code=400,
-                    detail=translate("errors.users.invalid_invite", locale=locale),
-                )
+                raise BusinessRuleViolation("errors.users.invalid_invite")
+
         user = await crud.create_user(db, data)
         return user
 
@@ -181,13 +173,9 @@ class UserService:
         limit: int | None = None,
         offset: int | None = None,
     ) -> list[models.User]:
-        locale = resolve_locale(request=request, user=current_user)
         # Allow admins to list all users, or any authenticated user to search
         if current_user.role != "admin" and not search and not full_name:
-            raise HTTPException(
-                status_code=403,
-                detail=translate("errors.forbidden", locale=locale),
-            )
+            raise PermissionDenied()
 
         # Use search param as full_name if provided
         name_query = search if search else full_name
@@ -209,12 +197,9 @@ class UserService:
         request: Request,
         current_user: models.User,
     ) -> models.User:
-        locale = resolve_locale(request=request, user=current_user)
         if current_user.role != "admin":
-            raise HTTPException(
-                status_code=403,
-                detail=translate("errors.forbidden", locale=locale),
-            )
+            raise PermissionDenied()
+
         updated_user, reset_stats = await crud.admin_update_user(db, user_id, data)
         self.audit.log(
             "users.admin_update",
@@ -251,26 +236,17 @@ class UserService:
         current_user: models.User,
     ) -> dict:
         """Delete a user by admin (anonymize user data)."""
-        locale = resolve_locale(request=request, user=current_user)
+
         if current_user.role != "admin":
-            raise HTTPException(
-                status_code=403,
-                detail=translate("errors.forbidden", locale=locale),
-            )
+            raise PermissionDenied()
 
         db_user = await db.get(models.User, user_id, options=USER_MFA_LOAD_OPTIONS)
         if db_user is None:
-            raise HTTPException(
-                status_code=404,
-                detail=translate("errors.users.not_found", locale=locale),
-            )
+            raise EntityNotFound("User", user_id)
 
         # Prevent admin from deleting themselves
         if db_user.id == current_user.id:
-            raise HTTPException(
-                status_code=400,
-                detail=translate("errors.users.cannot_delete_self", locale=locale),
-            )
+            raise BusinessRuleViolation("errors.users.cannot_delete_self")
 
         anonymized_email = f"deleted+{db_user.id}@deleted.example.com"
 
@@ -465,15 +441,11 @@ class UserService:
         confirm: bool,
     ) -> schemas.DataDeletionOut:
         if not confirm:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=translate(
-                    "errors.users.confirmation_required",
-                    locale=resolve_locale(request=request, user=user),
-                ),
-            )
+            raise BusinessRuleViolation("errors.users.confirmation_required")
 
         db_user = await db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
+        if not db_user:
+            raise EntityNotFound("User", user.id)
         anonymized_email = f"deleted+{user.id}@deleted.example.com"
 
         await delete_static_file(db_user.avatar_url) if db_user.avatar_url else None

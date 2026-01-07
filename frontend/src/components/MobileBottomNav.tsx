@@ -6,6 +6,7 @@ import EventNoteIcon from "@mui/icons-material/EventNote"
 import TodayIcon from "@mui/icons-material/Today"
 import PersonIcon from "@mui/icons-material/Person"
 import { useTranslation } from "react-i18next"
+import { motion } from "framer-motion"
 
 function getScrollRoot(): HTMLElement {
   const cands: (Element | null | Document | HTMLElement)[] = [
@@ -93,32 +94,50 @@ export default function MobileBottomNav() {
         role="navigation"
         aria-label={t("navigation:aria.mainNavigation")}
       >
-        {items.map((it) => (
-          <NavLink
-            key={it.to}
-            to={it.to}
-            onPointerDown={markIfFromBottom}
-            onClick={(e) => {
-              if (samePath(pathname, it.to)) {
-                e.preventDefault()
-                const el = getScrollRoot()
-                requestAnimationFrame(() => smoothToTop(el))
+        {items.map((it) => {
+          const isActive = pathname.startsWith(it.to) && (it.to !== "/" || pathname === "/")
+          // Special case for dashboard/news exact vs prefix matching if needed,
+          // but specifically for bottom nav usually "startsWith" is good for sections,
+          // except maybe dashboard if it's root.
+          // However, the original code relied on NavLink's fuzzy matching or expected exact paths.
+          // Let's rely on useLocation pathname comparison for the active pill to be totally controlled.
+
+          return (
+            <NavLink
+              key={it.to}
+              to={it.to}
+              onPointerDown={markIfFromBottom}
+              onClick={(e) => {
+                if (samePath(pathname, it.to)) {
+                  e.preventDefault()
+                  const el = getScrollRoot()
+                  requestAnimationFrame(() => smoothToTop(el))
+                }
+              }}
+              onKeyDown={(e) => {
+                if ((e.key === "Enter" || e.key === " ") && samePath(pathname, it.to)) {
+                  e.preventDefault()
+                  const el = getScrollRoot()
+                  requestAnimationFrame(() => smoothToTop(el))
+                }
+              }}
+              className={({ isActive }) =>
+                "bottom-nav__item relative" + (isActive ? " active" : "")
               }
-            }}
-            onKeyDown={(e) => {
-              if ((e.key === "Enter" || e.key === " ") && samePath(pathname, it.to)) {
-                e.preventDefault()
-                const el = getScrollRoot()
-                requestAnimationFrame(() => smoothToTop(el))
-              }
-            }}
-            className={({ isActive }) => "bottom-nav__item" + (isActive ? " active" : "")}
-            aria-label={it.label}
-          >
-            <span className="bottom-nav__icon">{it.icon}</span>
-            <span className="bottom-nav__label">{it.label}</span>
-          </NavLink>
-        ))}
+              aria-label={it.label}
+            >
+              {isActive && (
+                <motion.div
+                  layoutId="bottom-nav-active-pill"
+                  className="absolute inset-0 rounded-xl bg-[color:color-mix(in_srgb,var(--nav-link)_12%,transparent)] dark:bg-[color:color-mix(in_srgb,var(--nav-link)_20%,transparent)]"
+                  transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                />
+              )}
+              <span className="bottom-nav__icon z-10">{it.icon}</span>
+              <span className="bottom-nav__label z-10">{it.label}</span>
+            </NavLink>
+          )
+        })}
       </nav>
       {!pathname.startsWith("/messenger") && (
         <div className="bottom-nav-spacer" aria-hidden="true" />

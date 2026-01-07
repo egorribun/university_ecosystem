@@ -25,6 +25,7 @@ import { sanitizeNewsText } from "@/utils/sanitize"
 import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui"
 import Dialog from "@/components/Dialog"
+import { useSpotlight, SpotlightOverlay } from "@/components/ui/Spotlight"
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
@@ -126,6 +127,8 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   const likesCount = interactions?.likes_count ?? 0
   const isLiked = interactions?.is_liked ?? false
   const commentsCount = interactions?.comments?.length ?? 0
+
+  const spotlight = useSpotlight()
 
   const menuId = `news-card-menu-${id}`
   const menuButtonId = `${menuId}-button`
@@ -307,7 +310,10 @@ const NewsCardComponent: FC<NewsCardProps> = ({
           : "cursor-pointer hover:shadow-glass-strong active:scale-[0.985]"
       )}
       style={{ width: "100%" }}
+      onMouseMove={spotlight.onMouseMove}
     >
+      <SpotlightOverlay mouseX={spotlight.mouseX} mouseY={spotlight.mouseY} className="z-0" />
+
       {user?.role === "admin" && (
         <div className="absolute right-3 top-3 z-10">
           <button
@@ -439,8 +445,9 @@ const NewsCardComponent: FC<NewsCardProps> = ({
           </p>
 
           <div className="flex items-center gap-4 mt-1 border-t border-white/5 pt-3">
-            <button
+            <motion.button
               type="button"
+              whileTap={{ scale: 0.85 }}
               onClick={(e) => {
                 e.stopPropagation()
                 toggleLike()
@@ -450,13 +457,21 @@ const NewsCardComponent: FC<NewsCardProps> = ({
                 isLiked ? "text-rose-500" : "text-[color:var(--secondary-text)] hover:text-rose-400"
               )}
             >
-              {isLiked ? (
-                <FavoriteIcon fontSize="small" />
-              ) : (
-                <FavoriteBorderIcon fontSize="small" />
-              )}
+              <div className="relative">
+                {isLiked ? (
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 15 }}
+                  >
+                    <FavoriteIcon fontSize="small" />
+                  </motion.div>
+                ) : (
+                  <FavoriteBorderIcon fontSize="small" />
+                )}
+              </div>
               <span className="text-xs font-bold tabular-nums">{likesCount}</span>
-            </button>
+            </motion.button>
 
             <div className="flex items-center gap-1.5 text-[color:var(--secondary-text)]">
               <ChatBubbleOutlineIcon fontSize="small" />
