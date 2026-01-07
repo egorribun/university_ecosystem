@@ -59,7 +59,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Setup Python
@@ -293,7 +293,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies
@@ -323,7 +323,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Setup Python
@@ -361,7 +361,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies
@@ -389,7 +389,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies
@@ -423,7 +423,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Download built dist
@@ -649,7 +649,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies
