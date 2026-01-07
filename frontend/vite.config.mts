@@ -198,7 +198,7 @@ export default defineConfig(({ mode }) => {
         type: "module",
       },
     }),
-    withStrictCspNonce(),
+    process.env.VITE_LHCI !== "true" ? withStrictCspNonce() : null,
   ]
 
   if (analyze) {
