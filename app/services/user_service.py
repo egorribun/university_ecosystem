@@ -142,7 +142,7 @@ class UserService:
         request: Request,
         current_user: models.User,
     ) -> models.User:
-        locale = resolve_locale(request=request, user=current_user)
+
         if current_user.role != "admin":
             raise PermissionDenied()
 
@@ -174,7 +174,7 @@ class UserService:
         limit: int | None = None,
         offset: int | None = None,
     ) -> list[models.User]:
-        locale = resolve_locale(request=request, user=current_user)
+
         # Allow admins to list all users, or any authenticated user to search
         if current_user.role != "admin" and not search and not full_name:
             raise PermissionDenied()
@@ -199,7 +199,7 @@ class UserService:
         request: Request,
         current_user: models.User,
     ) -> models.User:
-        locale = resolve_locale(request=request, user=current_user)
+
         if current_user.role != "admin":
             raise PermissionDenied()
 
@@ -239,7 +239,7 @@ class UserService:
         current_user: models.User,
     ) -> dict:
         """Delete a user by admin (anonymize user data)."""
-        locale = resolve_locale(request=request, user=current_user)
+
         if current_user.role != "admin":
             raise PermissionDenied()
 
