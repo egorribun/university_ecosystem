@@ -1,13 +1,14 @@
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
+
 from app.core.exceptions.domain import (
-    DomainException,
-    EntityNotFound,
-    EntityAlreadyExists,
-    PermissionDenied,
     BusinessRuleViolation,
+    EntityAlreadyExists,
+    EntityNotFound,
+    PermissionDenied,
 )
-from app.core.localization import translate, resolve_locale
+from app.core.localization import resolve_locale, translate
+
 
 async def domain_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """
@@ -19,13 +20,21 @@ async def domain_exception_handler(request: Request, exc: Exception) -> JSONResp
     if isinstance(exc, EntityNotFound):
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,
-            content={"detail": translate("errors.not_found", locale=locale, params=exc.details)},
+            content={
+                "detail": translate(
+                    "errors.not_found", locale=locale, params=exc.details
+                )
+            },
         )
 
     if isinstance(exc, EntityAlreadyExists):
         return JSONResponse(
             status_code=status.HTTP_409_CONFLICT,
-            content={"detail": translate("errors.already_exists", locale=locale, params=exc.details)},
+            content={
+                "detail": translate(
+                    "errors.already_exists", locale=locale, params=exc.details
+                )
+            },
         )
 
     if isinstance(exc, PermissionDenied):
@@ -37,7 +46,9 @@ async def domain_exception_handler(request: Request, exc: Exception) -> JSONResp
     if isinstance(exc, BusinessRuleViolation):
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            content={"detail": exc.message}, # Logic might need specific translation keys in the future
+            content={
+                "detail": exc.message
+            },  # Logic might need specific translation keys in the future
         )
 
     # Fallback for generic DomainException

@@ -5,7 +5,6 @@ from pydantic import EmailStr, TypeAdapter
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-
 from app import crud
 from app.api.utils import save_upload
 from app.core.exceptions.domain import (
@@ -51,9 +50,7 @@ class UserService:
             try:
                 validated_email = adapter.validate_python(raw_email)
             except ValueError as exc:
-                raise BusinessRuleViolation(
-                    "errors.users.invalid_email"
-                ) from exc
+                raise BusinessRuleViolation("errors.users.invalid_email") from exc
 
             existing = await db.execute(
                 select(models.User.id).where(
@@ -183,7 +180,6 @@ class UserService:
         if current_user.role != "admin" and not search and not full_name:
             raise PermissionDenied()
 
-
         # Use search param as full_name if provided
         name_query = search if search else full_name
 
@@ -248,16 +244,13 @@ class UserService:
         if current_user.role != "admin":
             raise PermissionDenied()
 
-
         db_user = await db.get(models.User, user_id, options=USER_MFA_LOAD_OPTIONS)
         if db_user is None:
             raise EntityNotFound("User", user_id)
 
-
         # Prevent admin from deleting themselves
         if db_user.id == current_user.id:
             raise BusinessRuleViolation("errors.users.cannot_delete_self")
-
 
         anonymized_email = f"deleted+{db_user.id}@deleted.example.com"
 
@@ -453,7 +446,6 @@ class UserService:
     ) -> schemas.DataDeletionOut:
         if not confirm:
             raise BusinessRuleViolation("errors.users.confirmation_required")
-
 
         db_user = await db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
         if not db_user:

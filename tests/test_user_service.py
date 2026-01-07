@@ -15,9 +15,6 @@ Coverage targets:
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import UploadFile
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions.domain import (
     BusinessRuleViolation,
@@ -25,8 +22,6 @@ from app.core.exceptions.domain import (
     EntityNotFound,
     PermissionDenied,
 )
-from app.models import models
-
 from app.services.user_service import UserService
 
 

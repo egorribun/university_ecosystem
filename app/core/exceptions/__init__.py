@@ -51,7 +51,9 @@ class InvalidOperationException(AppException):
 
 async def app_exception_handler(request: Request, exc: Exception):
     if not isinstance(exc, AppException):
-        return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
+        return JSONResponse(
+            status_code=500, content={"detail": "Internal Server Error"}
+        )
     return JSONResponse(
         status_code=exc.status_code,
         content={
