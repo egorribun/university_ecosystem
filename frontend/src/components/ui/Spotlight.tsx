@@ -55,21 +55,13 @@ type SpotlightProps = PropsWithChildren<{
   spotlightColor?: string
 }>
 
-export function Spotlight({
-  children,
-  className = "",
-  spotlightColor,
-}: SpotlightProps) {
+export function Spotlight({ children, className = "", spotlightColor }: SpotlightProps) {
   const { mouseX, mouseY, onMouseMove } = useSpotlight()
 
   return (
-    <div
-      className={cn("group relative overflow-hidden", className)}
-      onMouseMove={onMouseMove}
-    >
+    <div className={cn("group relative overflow-hidden", className)} onMouseMove={onMouseMove}>
       <SpotlightOverlay mouseX={mouseX} mouseY={mouseY} color={spotlightColor} />
       {children}
     </div>
   )
 }
-

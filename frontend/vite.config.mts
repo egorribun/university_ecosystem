@@ -335,10 +335,7 @@ export default defineConfig(({ mode }) => {
             if (/[/\\]react(?:-dom)?[/\\]/.test(normalizedId)) return "vendor-react"
             if (/[/\\]scheduler[/\\]/.test(normalizedId)) return "vendor-react"
 
-            const uiMatchers = [
-              /@emotion/,
-              /@mui/,
-            ] as const
+            const uiMatchers = [/@emotion/, /@mui/] as const
             if (uiMatchers.some((pattern) => pattern.test(normalizedId))) return "ui"
             if (normalizedId.includes("@tanstack")) return "react-query"
             if (normalizedId.includes("framer-motion")) return "motion"

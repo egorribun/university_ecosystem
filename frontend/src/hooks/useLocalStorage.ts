@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect, useRef } from "react"
 
 export interface UseLocalStorageOptions<T> {
@@ -62,8 +61,7 @@ export function useLocalStorage<T>(
     (value: T | ((val: T) => T)) => {
       try {
         // Allow value to be a function so we have same API as useState
-        const valueToStore =
-          value instanceof Function ? value(storedValue) : value
+        const valueToStore = value instanceof Function ? value(storedValue) : value
 
         setStoredValue(valueToStore)
 
@@ -112,14 +110,14 @@ export function useLocalStorage<T>(
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === key) {
         if (e.newValue === null) {
-             // If local storage is cleared, we set it to initial value
-             setStoredValue(initialValue instanceof Function ? initialValue() : initialValue)
+          // If local storage is cleared, we set it to initial value
+          setStoredValue(initialValue instanceof Function ? initialValue() : initialValue)
         } else {
-             try {
-                setStoredValue(deserializer.current(e.newValue))
-             } catch(err) {
-                 console.warn("[useLocalStorage] Sync error", err)
-             }
+          try {
+            setStoredValue(deserializer.current(e.newValue))
+          } catch (err) {
+            console.warn("[useLocalStorage] Sync error", err)
+          }
         }
       }
     }

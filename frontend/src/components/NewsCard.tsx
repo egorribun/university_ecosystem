@@ -312,11 +312,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       style={{ width: "100%" }}
       onMouseMove={spotlight.onMouseMove}
     >
-      <SpotlightOverlay
-        mouseX={spotlight.mouseX}
-        mouseY={spotlight.mouseY}
-        className="z-0"
-      />
+      <SpotlightOverlay mouseX={spotlight.mouseX} mouseY={spotlight.mouseY} className="z-0" />
 
       {user?.role === "admin" && (
         <div className="absolute right-3 top-3 z-10">

@@ -117,7 +117,9 @@ const Login = () => {
   const [savedEmail, setSavedEmail] = useLocalStorage<string>("auth:lastEmail", "")
   // Keep savedEmail ref for internal logic consistency with minimum changes
   const savedEmailRef = useRef(savedEmail)
-  useEffect(() => { savedEmailRef.current = savedEmail }, [savedEmail])
+  useEffect(() => {
+    savedEmailRef.current = savedEmail
+  }, [savedEmail])
 
   const [trustDeviceStored, setTrustDeviceStored] = useLocalStorage<string>("auth:trustDevice", "0")
   const [trustDevice, setTrustDevice] = useState<boolean>(trustDeviceStored === "1")
@@ -141,9 +143,7 @@ const Login = () => {
     [currentEmail]
   )
 
-  const [pendingEmail, setPendingEmail] = useState<string | null>(
-    savedEmail ? savedEmail : null
-  )
+  const [pendingEmail, setPendingEmail] = useState<string | null>(savedEmail ? savedEmail : null)
   const [mfaBusy, setMfaBusy] = useState(false)
   const [mfaError, setMfaError] = useState<string | null>(null)
   const [mfaErrorSource, setMfaErrorSource] = useState<"totp" | "general" | null>(null)
@@ -181,7 +181,7 @@ const Login = () => {
     () => loginChallenge?.challenges?.find((c) => c.method === "webauthn"),
     [loginChallenge]
   )
-// ... (skip unchanged lines)
+  // ... (skip unchanged lines)
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const formData = new FormData(event.currentTarget)
@@ -212,7 +212,6 @@ const Login = () => {
       // trustDevice is already synced via effect
 
       if (challenge) {
-
         setMfaError(null)
         setMfaErrorSource(null)
         return

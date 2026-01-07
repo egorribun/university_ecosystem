@@ -11,8 +11,6 @@ const PUSH_TOPICS_STORAGE_KEY = "push:last_topics"
 const PUSH_TOPICS_STORAGE_VERSION = 2
 import { StorageItem, profileCacheStorage, pushConsentStorage } from "@/utils/storage"
 
-
-
 // Storage Items for Push
 const pushLastSyncStorage = new StorageItem<string>("push:last_sync")
 const pushSubStorage = new StorageItem<unknown>("push:last_payload")
@@ -21,8 +19,6 @@ const pushSubStorage = new StorageItem<unknown>("push:last_payload")
 // OR we can trust the object. The existing code does complex raw string parsing.
 // To minimize risk, we can use StorageItem<unknown> and let it parse.
 const pushTopicsStorage = new StorageItem<unknown>("push:last_topics")
-
-
 
 // Global lock to prevent ANY concurrent ensurePushSubscription calls
 let globalEnsureLock: Promise<PushSubscription | null> | null = null
@@ -344,7 +340,6 @@ export function setPersistedTopics(
 function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms))
 }
-
 
 let syncInProgress = false
 let globalSyncLock: Promise<PushSubscription | null> | null = null

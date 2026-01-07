@@ -88,8 +88,6 @@ type StorageWriteOptions = {
 export const groupsStorageKey = "sched:groups"
 export const scheduleStorageKey = (groupId: number) => `sched:${groupId}`
 
-
-
 export const readFromStorage = <T>(
   key: string,
   { maxAgeMs = SCHEDULE_STORAGE_TTL_MS, version = STORAGE_SCHEMA_VERSION }: StorageReadOptions = {}

@@ -1,4 +1,3 @@
-
 import React, { forwardRef } from "react"
 import { useTranslation } from "react-i18next"
 import AddIcon from "@mui/icons-material/Add"
@@ -6,11 +5,7 @@ import { cn } from "@/utils/cn"
 import { Badge } from "@/components/ui"
 import OfflineFallback from "@/components/OfflineFallback"
 
-import {
-  type Lesson,
-  minutesDiff,
-  getTimeStr,
-} from "./scheduleUtils"
+import { type Lesson, minutesDiff, getTimeStr } from "./scheduleUtils"
 import { LessonCard } from "./LessonCard"
 
 interface DayColumnProps {

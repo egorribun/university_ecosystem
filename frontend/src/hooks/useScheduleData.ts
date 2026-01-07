@@ -1,11 +1,4 @@
-
-import {
-  useState,
-  useEffect,
-  useMemo,
-  useCallback,
-  useTransition,
-} from "react"
+import { useState, useEffect, useMemo, useCallback, useTransition } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import dayjs from "dayjs"
@@ -537,7 +530,7 @@ export function useScheduleData() {
 
   const refresh = useCallback(() => {
     if (scheduleKey) {
-        queryClient.invalidateQueries({ queryKey: scheduleKey })
+      queryClient.invalidateQueries({ queryKey: scheduleKey })
     }
   }, [queryClient, scheduleKey])
 

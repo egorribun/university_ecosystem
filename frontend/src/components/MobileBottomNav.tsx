@@ -103,38 +103,41 @@ export default function MobileBottomNav() {
           // Let's rely on useLocation pathname comparison for the active pill to be totally controlled.
 
           return (
-          <NavLink
-            key={it.to}
-            to={it.to}
-            onPointerDown={markIfFromBottom}
-            onClick={(e) => {
-              if (samePath(pathname, it.to)) {
-                e.preventDefault()
-                const el = getScrollRoot()
-                requestAnimationFrame(() => smoothToTop(el))
+            <NavLink
+              key={it.to}
+              to={it.to}
+              onPointerDown={markIfFromBottom}
+              onClick={(e) => {
+                if (samePath(pathname, it.to)) {
+                  e.preventDefault()
+                  const el = getScrollRoot()
+                  requestAnimationFrame(() => smoothToTop(el))
+                }
+              }}
+              onKeyDown={(e) => {
+                if ((e.key === "Enter" || e.key === " ") && samePath(pathname, it.to)) {
+                  e.preventDefault()
+                  const el = getScrollRoot()
+                  requestAnimationFrame(() => smoothToTop(el))
+                }
+              }}
+              className={({ isActive }) =>
+                "bottom-nav__item relative" + (isActive ? " active" : "")
               }
-            }}
-            onKeyDown={(e) => {
-              if ((e.key === "Enter" || e.key === " ") && samePath(pathname, it.to)) {
-                e.preventDefault()
-                const el = getScrollRoot()
-                requestAnimationFrame(() => smoothToTop(el))
-              }
-            }}
-            className={({ isActive }) => "bottom-nav__item relative" + (isActive ? " active" : "")}
-            aria-label={it.label}
-          >
-            {isActive && (
-              <motion.div
-                layoutId="bottom-nav-active-pill"
-                className="absolute inset-0 rounded-xl bg-[color:color-mix(in_srgb,var(--nav-link)_12%,transparent)] dark:bg-[color:color-mix(in_srgb,var(--nav-link)_20%,transparent)]"
-                transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              />
-            )}
-            <span className="bottom-nav__icon z-10">{it.icon}</span>
-            <span className="bottom-nav__label z-10">{it.label}</span>
-          </NavLink>
-        )})}
+              aria-label={it.label}
+            >
+              {isActive && (
+                <motion.div
+                  layoutId="bottom-nav-active-pill"
+                  className="absolute inset-0 rounded-xl bg-[color:color-mix(in_srgb,var(--nav-link)_12%,transparent)] dark:bg-[color:color-mix(in_srgb,var(--nav-link)_20%,transparent)]"
+                  transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                />
+              )}
+              <span className="bottom-nav__icon z-10">{it.icon}</span>
+              <span className="bottom-nav__label z-10">{it.label}</span>
+            </NavLink>
+          )
+        })}
       </nav>
       {!pathname.startsWith("/messenger") && (
         <div className="bottom-nav-spacer" aria-hidden="true" />
