@@ -142,7 +142,6 @@ class UserService:
         request: Request,
         current_user: models.User,
     ) -> models.User:
-
         if current_user.role != "admin":
             raise PermissionDenied()
 
@@ -174,7 +173,6 @@ class UserService:
         limit: int | None = None,
         offset: int | None = None,
     ) -> list[models.User]:
-
         # Allow admins to list all users, or any authenticated user to search
         if current_user.role != "admin" and not search and not full_name:
             raise PermissionDenied()
@@ -199,7 +197,6 @@ class UserService:
         request: Request,
         current_user: models.User,
     ) -> models.User:
-
         if current_user.role != "admin":
             raise PermissionDenied()
 
