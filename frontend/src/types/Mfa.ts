@@ -2,7 +2,9 @@ import type { components, paths } from "@/api/generated/schema"
 
 export type MfaMethod = components["schemas"]["MfaMethodChallengeOut"]["method"]
 export type MfaMethodChallenge = components["schemas"]["MfaMethodChallengeOut"]
-export type PendingMfaResponse = components["schemas"]["PendingMfaResponse"]
+export type PendingMfaResponse = components["schemas"]["PendingMfaResponse"] & {
+  challenges: MfaMethodChallenge[]
+}
 export type MfaTotpEnrollment = components["schemas"]["MfaTotpEnrollmentOut"]
 export type MfaChallenge = components["schemas"]["MfaChallengeOut"]
 export type TotpEnrollmentStartResponse = components["schemas"]["TotpEnrollmentStartOut"]
