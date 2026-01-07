@@ -19,7 +19,7 @@ RUN --mount=type=cache,id=apt-lists-builder,target=/var/lib/apt/lists \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-COPY root/requirements.txt ./requirements.txt
+COPY requirements.txt ./requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --upgrade pip \
     && pip install -r requirements.txt
@@ -43,10 +43,10 @@ RUN --mount=type=cache,id=apt-lists-runtime,target=/var/lib/apt/lists \
     && useradd --system --gid app --home /home/app --shell /bin/bash app
 
 COPY --from=builder /opt/venv /opt/venv
-COPY --chown=app:app root/app ./app
-COPY --chown=app:app root/alembic ./alembic
-COPY --chown=app:app root/alembic.ini ./alembic.ini
-COPY --chown=app:app root/create_invite_code.py ./create_invite_code.py
+COPY --chown=app:app app ./app
+COPY --chown=app:app alembic ./alembic
+COPY --chown=app:app alembic.ini ./alembic.ini
+COPY --chown=app:app create_invite_code.py ./create_invite_code.py
 
 RUN mkdir -p /app/cache && chown app:app /app/cache
 
