@@ -22,7 +22,7 @@ async def domain_exception_handler(request: Request, exc: Exception) -> JSONResp
             status_code=status.HTTP_404_NOT_FOUND,
             content={
                 "detail": translate(
-                    "errors.not_found", locale=locale, params=exc.details
+                    "errors.not_found", locale=locale, **exc.details
                 )
             },
         )
@@ -32,7 +32,7 @@ async def domain_exception_handler(request: Request, exc: Exception) -> JSONResp
             status_code=status.HTTP_409_CONFLICT,
             content={
                 "detail": translate(
-                    "errors.already_exists", locale=locale, params=exc.details
+                    "errors.already_exists", locale=locale, **exc.details
                 )
             },
         )
