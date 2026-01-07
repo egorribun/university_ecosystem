@@ -21,9 +21,7 @@ async def domain_exception_handler(request: Request, exc: Exception) -> JSONResp
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,
             content={
-                "detail": translate(
-                    "errors.not_found", locale=locale, **exc.details
-                )
+                "detail": translate("errors.not_found", locale=locale, **exc.details)
             },
         )
 

@@ -2,15 +2,19 @@ import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import HTTPException, UploadFile
+from fastapi import UploadFile
 
 import app.crud as crud
+from app.core.exceptions.domain import (
+    BusinessRuleViolation,
+    EntityAlreadyExists,
+    EntityNotFound,
+    PermissionDenied,
+)
 from app.models import models
 from app.schemas import schemas
 from app.services.user_service import UserService
 
-
-from app.core.exceptions.domain import BusinessRuleViolation, EntityAlreadyExists, PermissionDenied, EntityNotFound
 
 @pytest.mark.asyncio
 async def test_user_service_mega():
