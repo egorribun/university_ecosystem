@@ -137,9 +137,7 @@ def verify_totp(secret: str, code: str, *, window: int | None = None) -> bool:
     )
     if not result:
         logger.warning(
-            "TOTP verify failed. Secret len: %s, Code: %s, Window: %s. Server time: %s",
-            len(secret),
-            normalized,
+            "TOTP verify failed. Window: %s. Server time: %s",
             valid_window,
             _utcnow(),
         )
