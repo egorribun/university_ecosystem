@@ -122,8 +122,7 @@ def verify_totp(secret: str, code: str, *, window: int | None = None) -> bool:
     normalized = "".join(ch for ch in code if ch.isdigit())
     if len(normalized) != _TOTP_DIGITS:
         logger.warning(
-            "TOTP verify failed: length mismatch. Got %s, expected %s",
-            len(normalized),
+            "TOTP verify failed: length mismatch (expected %s digits)",
             _TOTP_DIGITS,
         )
         return False
