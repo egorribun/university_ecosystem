@@ -307,6 +307,8 @@ def _reset_security_env(monkeypatch):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("FRONTEND_ORIGIN", "")
     monkeypatch.setenv("APP_BASE_URL", "")
+    # Force production environment to avoid localhost fallback
+    monkeypatch.setenv("ENVIRONMENT", "production")
 
 
 def test_cors_hardening_filters_insecure_origins(monkeypatch):

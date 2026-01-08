@@ -67,5 +67,5 @@ def test_extract_jti_uses_cookie_when_header_missing(monkeypatch):
 
     monkeypatch.setattr(sessions, "decode_token", _decode)
 
-    request = _make_request(headers=[(b"cookie", b"access_token=cookie-token")])
+    request = _make_request(headers=[(b"cookie", b"access_token_v2=cookie-token")])
     assert sessions._extract_jti(request) == "cookie-jti"  # noqa: SLF001

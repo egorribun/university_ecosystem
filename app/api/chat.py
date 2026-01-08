@@ -278,30 +278,32 @@ async def create_chat(
     # using a single efficient query instead of pulling all chats into memory.
     from sqlalchemy import func
 
+    from app.models.chat import chat_participants
+
     # We want a chat where both current_user and participant are present
     # and the chat has exactly 2 participants (direct message).
+    # Build properly correlated subqueries to avoid cartesian products.
+    cp = chat_participants
+
     existing_chat_stmt = (
         select(Chat)
         .where(
             Chat.id.in_(
-                select(Chat.id)
-                .join(Chat.participants)
-                .where(User.id == current_user.id)
+                select(cp.c.chat_id)
+                .where(cp.c.user_id == current_user.id)
             )
         )
         .where(
             Chat.id.in_(
-                select(Chat.id)
-                .join(Chat.participants)
-                .where(User.id == chat_in.participant_id)
+                select(cp.c.chat_id)
+                .where(cp.c.user_id == chat_in.participant_id)
             )
         )
-        # This clause ensures it's a DM (exactly 2 participants)
-        # to avoid matching group chats that happen to have these two users
+        # Ensure it's a DM (exactly 2 participants)
         .where(
-            select(func.count(User.id))
-            .select_from(Chat.participants.property.secondary)
-            .where(Chat.participants.property.secondary.c.chat_id == Chat.id)
+            select(func.count())
+            .where(cp.c.chat_id == Chat.id)
+            .correlate(Chat)
             .scalar_subquery()
             == 2
         )
