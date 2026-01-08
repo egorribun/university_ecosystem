@@ -10,32 +10,32 @@
     "order": ["mon", "tue", "wed", "thu", "fri", "sat"],
     "items": {
       "mon": {
-        "backend": ["Понедельник", "Monday"],
+        "backend": ["monday", "Понедельник", "Monday"],
         "long": "Понедельник",
         "short": "Пн"
       },
       "tue": {
-        "backend": ["Вторник", "Tuesday"],
+        "backend": ["tuesday", "Вторник", "Tuesday"],
         "long": "Вторник",
         "short": "Вт"
       },
       "wed": {
-        "backend": ["Среда", "Wednesday"],
+        "backend": ["wednesday", "Среда", "Wednesday"],
         "long": "Среда",
         "short": "Ср"
       },
       "thu": {
-        "backend": ["Четверг", "Thursday"],
+        "backend": ["thursday", "Четверг", "Thursday"],
         "long": "Четверг",
         "short": "Чт"
       },
       "fri": {
-        "backend": ["Пятница", "Friday"],
+        "backend": ["friday", "Пятница", "Friday"],
         "long": "Пятница",
         "short": "Пт"
       },
       "sat": {
-        "backend": ["Суббота", "Saturday"],
+        "backend": ["saturday", "Суббота", "Saturday"],
         "long": "Суббота",
         "short": "Сб"
       }
@@ -45,22 +45,22 @@
     "order": ["lecture", "practice", "lab", "project"],
     "items": {
       "lecture": {
-        "backend": ["Лекция", "Lecture"],
+        "backend": ["lecture", "Лекция", "Lecture"],
         "label": "Лекция",
         "color": "var(--badge-lec)"
       },
       "practice": {
-        "backend": ["ПЗ", "Практика", "Practical class", "Practice", "Seminar"],
+        "backend": ["practice", "ПЗ", "Практика", "Practical class", "Practice", "Seminar"],
         "label": "Практика",
         "color": "var(--badge-prac)"
       },
       "lab": {
-        "backend": ["ЛЗ", "Лабораторная", "Lab work", "Lab"],
+        "backend": ["lab", "ЛЗ", "Лабораторная", "Lab work", "Lab"],
         "label": "Лабораторная",
         "color": "var(--badge-lab)"
       },
       "project": {
-        "backend": ["Проектная деятельность", "Project work", "Project"],
+        "backend": ["project", "Проектная деятельность", "Project work", "Project"],
         "label": "Проектная работа",
         "color": "#607d8b"
       }

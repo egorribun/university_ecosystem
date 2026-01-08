@@ -20,6 +20,10 @@ from webauthn.helpers.structs import (
     ResidentKeyRequirement,
     UserVerificationRequirement,
 )
+from webauthn.helpers.structs import (
+    PublicKeyCredentialDescriptor,
+    PublicKeyCredentialType,
+)
 
 from app.core.config import settings
 from app.models.models import User, WebAuthnCredential
@@ -89,7 +93,7 @@ class WebAuthnService:
         verification = verify_registration_response(
             credential=response,
             expected_challenge=base64.urlsafe_b64decode(challenge + "=="),
-            expected_origin=self._get_origin(),
+            expected_origin=settings.frontend_origins_list,
             expected_rp_id=self._get_rp_id(),
             require_user_verification=False,  # We use PREFERRED in options
         )
@@ -106,7 +110,7 @@ class WebAuthnService:
             transports=response.get("response", {}).get("transports"),
             label=label or "WebAuthn Device",
             backing_up=verification.credential_device_type == "multi_device",
-            backup_state=verification.backup_state,
+            backup_state=verification.credential_backed_up,
         )
 
         self.db.add(credential)
@@ -121,7 +125,10 @@ class WebAuthnService:
             )
         )
         allow_credentials = [
-            {"id": base64.urlsafe_b64decode(row[0] + "=="), "type": "public-key"}
+            PublicKeyCredentialDescriptor(
+                id=base64.urlsafe_b64decode(row[0] + "=="),
+                type=PublicKeyCredentialType.PUBLIC_KEY,
+            )
             for row in result.all()
         ]
 
@@ -151,7 +158,7 @@ class WebAuthnService:
         verification = verify_authentication_response(
             credential=response,
             expected_challenge=base64.urlsafe_b64decode(challenge + "=="),
-            expected_origin=self._get_origin(),
+            expected_origin=settings.frontend_origins_list,
             expected_rp_id=self._get_rp_id(),
             credential_public_key=base64.urlsafe_b64decode(
                 db_credential.public_key + "=="

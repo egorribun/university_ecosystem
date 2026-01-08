@@ -91,10 +91,19 @@ class NewsCommentOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class NewsCommentCreate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=1000)
+
+
+class NewsCommentUpdate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=1000)
+
+
 class NewsInteractionsOut(BaseModel):
     likes_count: int
     is_liked: bool
     comments: list[NewsCommentOut]
+    comments_count: int
 
 
 class MfaTotpEnrollmentOut(OrmModel):
@@ -128,6 +137,7 @@ class MfaFactorStatusOut(BaseModel):
 
 class WebAuthnRegistrationOptionsOut(BaseModel):
     publicKey: dict[str, Any]
+    challenge_token: str
 
 
 class WebAuthnRegistrationVerifyIn(BaseModel):
@@ -332,6 +342,9 @@ class NewsUpdate(BaseModel):
 class NewsOut(OrmModel, NewsCreate):
     id: int
     created_at: datetime
+    likes_count: int = 0
+    comments_count: int = 0
+    is_liked: bool = False
 
     @computed_field  # type: ignore[prop-decorator]
     @property

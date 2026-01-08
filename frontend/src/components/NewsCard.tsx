@@ -51,6 +51,9 @@ type NewsCardProps = {
   content_en?: string | null
   created_at: string
   image_url?: string
+  likes_count?: number
+  comments_count?: number
+  is_liked?: boolean
   onChange?: () => void
 }
 
@@ -92,6 +95,9 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   content_en,
   created_at,
   image_url,
+  likes_count: initialLikes = 0,
+  comments_count: initialComments = 0,
+  is_liked: initialIsLiked = false,
   onChange,
 }) => {
   const { user } = useAuth()
@@ -123,10 +129,16 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   const imageInputRef = useRef<HTMLInputElement>(null)
   const [cardImageReady, setCardImageReady] = useState(!image_url)
 
-  const { interactions, toggleLike } = useNewsInteraction(id)
-  const likesCount = interactions?.likes_count ?? 0
-  const isLiked = interactions?.is_liked ?? false
-  const commentsCount = interactions?.comments?.length ?? 0
+  const { interactions, toggleLike } = useNewsInteraction(id, {
+    initialData: {
+      likes_count: initialLikes,
+      comments_count: initialComments,
+      is_liked: initialIsLiked,
+    },
+  })
+  const likesCount = interactions?.likes_count ?? initialLikes
+  const isLiked = interactions?.is_liked ?? initialIsLiked
+  const commentsCount = interactions?.comments_count ?? initialComments
 
   const spotlight = useSpotlight()
 

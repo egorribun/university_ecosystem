@@ -1,14 +1,9 @@
 import { useAuth, currentUserQueryKey } from "../contexts/AuthContext"
 import React, { useEffect, useMemo, useState, useRef, useCallback, memo } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
-import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query"
+import { useQueryClient } from "@tanstack/react-query"
 import api from "../api/client"
 import type { User } from "@/types/User"
-import type {
-  WebAuthnCredential,
-  WebAuthnRegistrationOptionsOut,
-  WebAuthnRegistrationVerifyIn,
-} from "@/types/Mfa"
 import profileBg from "../assets/background.png"
 import guuLogo from "../assets/guu_logo.png"
 import spotifyLogo from "../assets/spotify_icon.png"
@@ -40,9 +35,7 @@ import ContentCopyIcon from "@mui/icons-material/ContentCopy"
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore"
 import QrCodeIcon from "@mui/icons-material/QrCode"
 import OpenInNewIcon from "@mui/icons-material/OpenInNew"
-import FingerprintIcon from "@mui/icons-material/Fingerprint"
-import AddIcon from "@mui/icons-material/Add"
-import DeleteIcon from "@mui/icons-material/Delete"
+
 import { sanitizeEmailAddress, sanitizeTelegramUrl } from "@/utils/sanitize"
 import {
   type SnackKey,
@@ -374,63 +367,6 @@ export default function Profile() {
   const [department, setDepartment] = useState(user?.department || "")
   const [position, setPosition] = useState(user?.position || "")
   const [saving, setSaving] = useState(false)
-  const [passkeyLabel, setPasskeyLabel] = useState("")
-  const [isAddingPasskey, setIsAddingPasskey] = useState(false)
-
-  const { data: passkeys = [], refetch: refetchPasskeys } = useQuery<WebAuthnCredential[]>({
-    queryKey: ["webauthn-credentials"],
-    queryFn: async () => {
-      const res = await api.get<WebAuthnCredential[]>("/auth/mfa/webauthn")
-      return res.data
-    },
-    enabled: !!user,
-  })
-
-  const registerPasskeyMutation = useMutation({
-    mutationFn: async (label: string) => {
-      const { startRegistration } = await import("@simplewebauthn/browser")
-
-      // 1. Get registration options
-      const optionsRes = await api.post<WebAuthnRegistrationOptionsOut>(
-        "/auth/mfa/webauthn/register/start"
-      )
-
-      // 2. Start browser registration
-      const regResponse = await startRegistration(optionsRes.data.publicKey)
-
-      // 3. Confirm registration
-      await api.post("/auth/mfa/webauthn/register/confirm", {
-        challenge: optionsRes.data.publicKey.challenge,
-        response: regResponse,
-        label: label.trim() || "Passkey",
-      } as WebAuthnRegistrationVerifyIn)
-    },
-    onSuccess: () => {
-      void refetchPasskeys()
-      setSnack({ key: "copied", sev: "success" }) // Reusing snack for generic success for now
-      setIsAddingPasskey(false)
-      setPasskeyLabel("")
-    },
-    onError: (err: any) => {
-      console.error("Passkey registration failed", err)
-      setSnack({ key: "common:errors.unknown", sev: "error" } as any)
-    },
-  })
-
-  const deletePasskeyMutation = useMutation({
-    mutationFn: async (id: number) => {
-      await api.delete(`/auth/mfa/webauthn/${id}`)
-    },
-    onSuccess: () => {
-      void refetchPasskeys()
-      setSnack({ key: "copied", sev: "success" })
-    },
-  })
-
-  const handleAddPasskey = () => {
-    if (!passkeyLabel.trim()) return
-    registerPasskeyMutation.mutate(passkeyLabel)
-  }
 
   const initEditFields = useCallback(() => {
     setFullName(user?.full_name || "")
@@ -1338,61 +1274,6 @@ export default function Profile() {
                                   </div>
                                 </div>
                               )}
-
-                              {/* Passkeys Section */}
-                              <div className="pt-4 border-t border-glass-border">
-                                <div className="flex items-center justify-between mb-4">
-                                  <div className="flex items-center gap-2">
-                                    <FingerprintIcon className="text-nav-link dark:text-nav-link" />
-                                    <h3 className="font-extrabold text-lg sm:text-xl text-page-foreground">
-                                      {t("profile:sections.passkeys")}
-                                    </h3>
-                                  </div>
-                                  <button
-                                    onClick={() => setIsAddingPasskey(true)}
-                                    className="flex items-center gap-1.5 py-1.5 px-3 rounded-lg bg-nav-link/10 hover:bg-nav-link/20 text-nav-link dark:text-nav-link font-bold text-xs sm:text-sm transition-all duration-200"
-                                  >
-                                    <AddIcon className="w-4 h-4" />
-                                    {t("profile:buttons.addPasskey")}
-                                  </button>
-                                </div>
-
-                                {passkeys.length > 0 ? (
-                                  <div className="flex flex-col gap-2.5">
-                                    {passkeys.map((pk) => (
-                                      <div
-                                        key={pk.id}
-                                        className="flex items-center justify-between p-3 sm:p-4 rounded-xl border border-glass-border bg-surface-accent/30 group hover:border-nav-link/30 transition-all duration-200"
-                                      >
-                                        <div className="flex flex-col gap-0.5">
-                                          <span className="font-bold text-page-foreground text-sm sm:text-base">
-                                            {pk.label}
-                                          </span>
-                                          <span className="text-secondary text-[10px] sm:text-xs">
-                                            {t("profile:passkeys.added", {
-                                              date: new Date(pk.created_at).toLocaleDateString(),
-                                            })}
-                                          </span>
-                                        </div>
-                                        <button
-                                          onClick={() => deletePasskeyMutation.mutate(pk.id)}
-                                          disabled={deletePasskeyMutation.isPending}
-                                          className="p-2 rounded-lg text-secondary hover:text-red-500 hover:bg-red-500/10 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all duration-200"
-                                          aria-label={t("profile:buttons.removePasskey")}
-                                        >
-                                          <DeleteIcon className="w-5 h-5" />
-                                        </button>
-                                      </div>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <div className="text-center py-6 px-4 rounded-xl border-2 border-dashed border-glass-border">
-                                    <p className="text-secondary text-sm italic">
-                                      {t("profile:passkeys.empty")}
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
                             </div>
                           </motion.div>
                         </div>
@@ -1516,54 +1397,7 @@ export default function Profile() {
         </Alert>
       </Snackbar>
 
-      {/* Add Passkey Dialog */}
-      <Dialog
-        open={isAddingPasskey}
-        onClose={() => !registerPasskeyMutation.isPending && setIsAddingPasskey(false)}
-        maxWidth="xs"
-        fullWidth
-        PaperProps={{
-          className:
-            "!rounded-xl sm:!rounded-2xl border border-glass-border bg-surface dark:bg-card-bg shadow-surface dark:shadow-surface-strong",
-        }}
-      >
-        <DialogTitle className="font-black text-page-foreground">
-          {t("profile:dialog.addPasskey.title")}
-        </DialogTitle>
-        <DialogContent className="flex flex-col gap-4 p-6">
-          <p className="text-secondary text-sm">{t("profile:dialog.addPasskey.description")}</p>
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-bold text-page-foreground">
-              {t("profile:dialog.addPasskey.labelField")}
-            </label>
-            <input
-              type="text"
-              value={passkeyLabel}
-              onChange={(e) => setPasskeyLabel(e.target.value)}
-              placeholder={t("profile:dialog.addPasskey.labelPlaceholder")}
-              onKeyDown={(e) => e.key === "Enter" && handleAddPasskey()}
-              autoFocus
-              className="w-full px-4 py-2.5 rounded-xl border border-glass-border bg-surface text-page-foreground focus:outline-none focus:ring-2 focus:ring-nav-link/50 transition-all duration-200"
-            />
-          </div>
-        </DialogContent>
-        <DialogActions className="p-4 gap-2">
-          <button
-            onClick={() => setIsAddingPasskey(false)}
-            disabled={registerPasskeyMutation.isPending}
-            className="flex-1 py-2.5 px-4 rounded-xl border border-glass-border font-bold text-sm text-page-foreground hover:bg-surface-accent transition-all duration-200"
-          >
-            {t("profile:form.cancel")}
-          </button>
-          <button
-            onClick={handleAddPasskey}
-            disabled={registerPasskeyMutation.isPending || !passkeyLabel.trim()}
-            className="flex-1 py-2.5 px-4 rounded-xl bg-nav-link text-white font-black text-sm shadow-lg hover:shadow-nav-link/25 disabled:opacity-50 transition-all duration-200"
-          >
-            {registerPasskeyMutation.isPending ? t("profile:form.saving") : t("common:buttons.add")}
-          </button>
-        </DialogActions>
-      </Dialog>
+
     </Layout>
   )
 }

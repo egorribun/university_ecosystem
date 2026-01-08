@@ -1,6 +1,6 @@
 import { QueryClient } from "@tanstack/react-query"
 
-const DEFAULT_STALE_MS = 60_000
+const DEFAULT_STALE_MS = 10_000 // 10 seconds - keep data fresh
 const DEFAULT_CACHE_MS = 10 * 60_000
 
 const parseDuration = (value: string | number | undefined, fallback: number) => {
@@ -24,7 +24,7 @@ const defaultOptions = {
     staleTime,
     gcTime,
     retry: 1,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true, // Refresh when user returns to tab
     refetchOnReconnect: "always",
   },
   mutations: { retry: 0 },

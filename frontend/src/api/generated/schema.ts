@@ -1226,6 +1226,24 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  "/api/v1/news/comments/{comment_id}": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** Delete Comment */
+    delete: operations["delete_comment_api_v1_news_comments__comment_id__delete"]
+    options?: never
+    head?: never
+    /** Update Comment */
+    patch: operations["update_comment_api_v1_news_comments__comment_id__patch"]
+    trace?: never
+  }
   "/api/v1/news/upload_image": {
     parameters: {
       query?: never
@@ -2514,6 +2532,11 @@ export interface components {
        */
       created_at: string
     }
+    /** NewsCommentUpdate */
+    NewsCommentUpdate: {
+      /** Content */
+      content: string
+    }
     /** NewsCreate */
     NewsCreate: {
       /** Title */
@@ -2555,6 +2578,21 @@ export interface components {
        * Format: date-time
        */
       created_at: string
+      /**
+       * Likes Count
+       * @default 0
+       */
+      likes_count: number
+      /**
+       * Comments Count
+       * @default 0
+       */
+      comments_count: number
+      /**
+       * Is Liked
+       * @default false
+       */
+      is_liked: boolean
       /** Image Url Optimized */
       readonly image_url_optimized: string | null
     }
@@ -5868,7 +5906,10 @@ export interface operations {
   }
   get_news_interact_api_v1_news__id__interactions_get: {
     parameters: {
-      query?: never
+      query?: {
+        limit?: number
+        offset?: number
+      }
       header?: never
       path: {
         id: number
@@ -5884,6 +5925,72 @@ export interface operations {
         }
         content: {
           "application/json": components["schemas"]["NewsInteractionsOut"]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  delete_comment_api_v1_news_comments__comment_id__delete: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        comment_id: number
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": unknown
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  update_comment_api_v1_news_comments__comment_id__patch: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        comment_id: number
+      }
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["NewsCommentUpdate"]
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["NewsCommentOut"]
         }
       }
       /** @description Validation Error */

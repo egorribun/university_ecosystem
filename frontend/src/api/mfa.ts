@@ -30,7 +30,7 @@ export const verifyMfaChallenge = (payload: MfaVerifyPayload) =>
 export const requestStepUpChallenge = () => api.post<StepUpResponse>("/auth/mfa/step-up")
 
 export const startWebAuthnRegistration = () =>
-  api.post<{ publicKey: any }>("/auth/mfa/webauthn/register/start")
+  api.post<{ publicKey: any; challenge_token: string }>("/auth/mfa/webauthn/register/start")
 
 export const confirmWebAuthnRegistration = (payload: {
   challenge: string

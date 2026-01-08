@@ -32,7 +32,7 @@ async def get_current_user(
         detail=translate("errors.auth.credentials_invalid", locale=locale),
         headers={"WWW-Authenticate": "Bearer"},
     )
-    raw_token = token or request.cookies.get("access_token")
+    raw_token = token or request.cookies.get("access_token_v2")
     if not raw_token:
         raise credentials_exception
     payload = decode_token(raw_token)
@@ -52,7 +52,8 @@ async def get_current_user(
 
     # Fast-path check in Redis session backend if enabled
     session_backend = await get_session_backend()
-    if not await session_backend.is_session_valid(jti):
+    is_valid_redis = await session_backend.is_session_valid(jti)
+    if not is_valid_redis:
         # Even if not in Redis, we might want to check DB as a fallback
         # but for performance we can assume if it's supposed to be in Redis,
         # it should be there.
@@ -124,13 +125,26 @@ async def get_current_user(
     else:
         if last_seen_at.tzinfo is None:
             last_seen_at = last_seen_at.replace(tzinfo=UTC)
-        if now - last_seen_at >= timedelta(seconds=30):
+        # Optimized: Throttle updates to once per 5 minutes (300s) to reduce write load
+        if now - last_seen_at >= timedelta(seconds=300):
             update_last_seen = True
     request.state.active_session = session
     if update_last_seen:
         session.last_seen_at = now
         await db.commit()
     return user
+
+
+async def get_current_user_optional(
+    request: Request,
+    token: Annotated[str | None, Depends(oauth2_scheme)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> User | None:
+    """Optional version of get_current_user that returns None instead of raising 401."""
+    try:
+        return await get_current_user(request, token, db)
+    except HTTPException:
+        return None
 
 
 async def get_current_admin_user(

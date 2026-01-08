@@ -28,7 +28,7 @@ def _extract_token(request: Request) -> str | None:
             token = value.strip()
             if token:
                 return token
-    cookie_token = request.cookies.get("access_token")
+    cookie_token = request.cookies.get("access_token_v2")
     if cookie_token:
         return cookie_token
     return None

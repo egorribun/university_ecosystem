@@ -17,7 +17,7 @@ import type { PendingMfaState } from "@/types/Auth"
 import { isAxiosError } from "axios"
 import OtpEntry from "@/components/mfa/OtpEntry"
 import ParticleAuthBackground from "@/components/ui/ParticleAuthBackground"
-import { startAuthentication } from "@simplewebauthn/browser"
+import { startAuthentication, browserSupportsWebAuthn } from "@simplewebauthn/browser"
 import { Fingerprint } from "lucide-react"
 import { useLocalStorage } from "@/hooks/useLocalStorage"
 
@@ -181,6 +181,9 @@ const Login = () => {
     () => loginChallenge?.challenges?.find((c) => c.method === "webauthn"),
     [loginChallenge]
   )
+
+  // Check if browser supports WebAuthn (requires secure context: HTTPS or localhost)
+  const webauthnSupported = useMemo(() => browserSupportsWebAuthn(), [])
   // ... (skip unchanged lines)
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -311,7 +314,9 @@ const Login = () => {
     setMfaErrorSource(null)
 
     try {
-      const response = await startAuthentication(webauthnChallenge.options as any)
+      const response = await startAuthentication({
+        optionsJSON: webauthnChallenge.options as any,
+      })
 
       await submitMfaChallenge({
         method: "webauthn",
@@ -406,17 +411,27 @@ const Login = () => {
               ) : null}
 
               {webauthnChallenge && (
-                <button
-                  type="button"
-                  onClick={handleWebAuthnVerify}
-                  disabled={mfaBusy}
-                  className="inline-flex w-full items-center justify-center gap-3 rounded-[1.2rem] bg-[color:color-mix(in_srgb,var(--nav-link)_15%,transparent)] px-6 py-4 text-lg font-bold text-[color:var(--nav-link)] transition hover:bg-[color:color-mix(in_srgb,var(--nav-link)_25%,transparent)] disabled:opacity-50"
-                >
-                  <Fingerprint className="h-6 w-6" />
-                  {t("auth:mfa.webauthn.useSecurityKey", {
-                    defaultValue: "Использовать ключ безопасности",
-                  })}
-                </button>
+                <>
+                  {webauthnSupported ? (
+                    <button
+                      type="button"
+                      onClick={handleWebAuthnVerify}
+                      disabled={mfaBusy}
+                      className="inline-flex w-full items-center justify-center gap-3 rounded-[1.2rem] bg-[color:color-mix(in_srgb,var(--nav-link)_15%,transparent)] px-6 py-4 text-lg font-bold text-[color:var(--nav-link)] transition hover:bg-[color:color-mix(in_srgb,var(--nav-link)_25%,transparent)] disabled:opacity-50"
+                    >
+                      <Fingerprint className="h-6 w-6" />
+                      {t("auth:mfa.webauthn.useSecurityKey", {
+                        defaultValue: "Использовать ключ безопасности",
+                      })}
+                    </button>
+                  ) : (
+                    <div className="w-full rounded-2xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-sm font-semibold text-amber-200 text-center">
+                      {t("auth:mfa.webauthn.notSupported", {
+                        defaultValue: "WebAuthn недоступен в этом браузере. Используйте HTTPS или код аутентификатора ниже.",
+                      })}
+                    </div>
+                  )}
+                </>
               )}
 
               {otpChallenge && (
@@ -674,15 +689,17 @@ const Login = () => {
                 )}
               </button>
 
-              <button
-                type="button"
-                onClick={handlePasskeyLogin}
-                disabled={submitting}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-[1.6rem] border border-[color:color-mix(in_srgb,var(--nav-link)_40%,transparent)] bg-[color:color-mix(in_srgb,var(--nav-link)_8%,transparent)] px-6 py-4 text-lg font-extrabold text-[color:var(--nav-link)] shadow-[0_10px_30px_rgba(15,23,42,0.05)] transition hover:translate-y-[-2px] hover:bg-[color:color-mix(in_srgb,var(--nav-link)_12%,transparent)] disabled:opacity-60"
-              >
-                <Fingerprint className="h-6 w-6" />
-                {t("auth:login.signInWithPasskey", { defaultValue: "Войти с помощью Passkey" })}
-              </button>
+              {webauthnSupported && (
+                <button
+                  type="button"
+                  onClick={handlePasskeyLogin}
+                  disabled={submitting}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-[1.6rem] border border-[color:color-mix(in_srgb,var(--nav-link)_40%,transparent)] bg-[color:color-mix(in_srgb,var(--nav-link)_8%,transparent)] px-6 py-4 text-lg font-extrabold text-[color:var(--nav-link)] shadow-[0_10px_30px_rgba(15,23,42,0.05)] transition hover:translate-y-[-2px] hover:bg-[color:color-mix(in_srgb,var(--nav-link)_12%,transparent)] disabled:opacity-60"
+                >
+                  <Fingerprint className="h-6 w-6" />
+                  {t("auth:login.signInWithPasskey", { defaultValue: "Войти с помощью Passkey" })}
+                </button>
+              )}
             </div>
 
             <div className="space-y-2 text-center text-sm">

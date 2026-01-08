@@ -29,7 +29,7 @@ const applyParsedData = <T>(response: { data: unknown }, schema: z.ZodType<T>, c
   ;(response as { data: T }).data = parsed
 }
 
-const newsItemSchema: z.ZodType<NewsItem> = z.object({
+const newsItemSchema = z.object({
   id: z.number(),
   title: z.string(),
   content: z.string(),
@@ -38,6 +38,9 @@ const newsItemSchema: z.ZodType<NewsItem> = z.object({
   content_en: z.string().nullable().optional(),
   image_url: z.string().nullable().optional(),
   image_url_optimized: z.string().nullable(),
+  likes_count: z.number().default(0),
+  comments_count: z.number().default(0),
+  is_liked: z.boolean().default(false),
 })
 
 const newsListSchema = z.array(newsItemSchema)

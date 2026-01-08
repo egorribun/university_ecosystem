@@ -18,10 +18,15 @@ from fastapi import (
 )
 from fastapi.encoders import jsonable_encoder
 from redis.exceptions import RedisError
+from sqlalchemy import exists, func, literal, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import crud
-from app.api.deps import get_current_user
+from app.api.deps import (
+    get_current_admin_user,
+    get_current_user,
+    get_current_user_optional,
+)
 from app.api.utils import save_upload
 from app.core.database import get_db
 from app.core.localization import (
@@ -157,6 +162,10 @@ def _serialize_news(
     data["content"] = _localized_text(
         locale, data.get("content"), data.get("content_en")
     )
+    # Include interaction data if present on the record
+    data["likes_count"] = getattr(record, "likes_count", 0)
+    data["comments_count"] = getattr(record, "comments_count", 0)
+    data["is_liked"] = getattr(record, "is_liked", False)
     return data
 
 
@@ -212,6 +221,7 @@ async def news_list(
     cursor: str | None = Query(None, description="Pagination cursor"),
     if_none_match: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db),
+    user: models.User | None = Depends(get_current_user_optional),
 ):
     """
     Get paginated list of news articles.
@@ -246,7 +256,9 @@ async def news_list(
             return cached.payload
 
     # Get news with pagination
-    rows = await crud.get_news_list(db, limit=limit + 1, cursor=cursor)
+    rows = await crud.get_news_list(
+        db, limit=limit + 1, cursor=cursor, current_user_id=user.id if user else None
+    )
 
     # Check if there are more items
     has_more = len(rows) > limit
@@ -293,6 +305,7 @@ async def get_news(
     response: Response,
     if_none_match: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db),
+    user: models.User | None = Depends(get_current_user_optional),
 ):
     """
     Get a specific news article by ID.
@@ -322,13 +335,58 @@ async def get_news(
             response.headers["ETag"] = etag_header
             _set_language_headers(response, normalized_locale)
             return cached.payload
-    q = await db.get(models.News, id)
-    if not q:
+    # Subqueries for counts
+    likes_sub = (
+        select(func.count(models.NewsLike.id))
+        .where(models.NewsLike.news_id == id)
+        .scalar_subquery()
+        .label("likes_count")
+    )
+    comments_sub = (
+        select(func.count(models.NewsComment.id))
+        .where(models.NewsComment.news_id == id)
+        .scalar_subquery()
+        .label("comments_count")
+    )
+
+    # Subquery for user like status
+    current_user_id = user.id if user else None
+    is_liked_sub = literal(False).label("is_liked")
+    if current_user_id:
+        is_liked_sub = (
+            select(
+                exists().where(
+                    models.NewsLike.news_id == models.News.id,
+                    models.NewsLike.user_id == current_user_id,
+                )
+            )
+            .scalar_subquery()
+            .label("is_liked")
+        )
+
+    stmt = select(
+        models.News,
+        likes_sub,
+        comments_sub,
+        is_liked_sub,
+    ).where(models.News.id == id)
+
+    result = await db.execute(stmt)
+    row = result.first()
+
+    if not row:
         raise HTTPException(
             status_code=404,
             detail=translate("errors.news.not_found", locale=locale),
         )
-    serialized = _serialize_news(q, locale)
+
+    news_obj, l_count, c_count, liked = row
+    # Map database row to model object with extra attributes
+    setattr(news_obj, "likes_count", l_count or 0)
+    setattr(news_obj, "comments_count", c_count or 0)
+    setattr(news_obj, "is_liked", bool(liked))
+
+    serialized = _serialize_news(news_obj, locale)
     encoded = jsonable_encoder(serialized)
     if cache.enabled:
         entry = await cache.set(cache_key, encoded)
@@ -463,8 +521,10 @@ async def comment_on_news(
 async def get_news_interact(
     id: int,
     request: Request,
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
-    user: models.User | None = Depends(get_current_user),
+    user: models.User | None = Depends(get_current_user_optional),
 ):
     locale = resolve_locale(request=request)
     news = await db.get(models.News, id)
@@ -473,8 +533,61 @@ async def get_news_interact(
             status_code=404,
             detail=translate("errors.news.not_found", locale=locale),
         )
-    data = await crud.get_news_interactions(db, id, user.id if user else None)
+    data = await crud.get_news_interactions(
+        db, id, user.id if user else None, limit=limit, offset=offset
+    )
     return data
+
+
+@router.patch("/comments/{comment_id}", response_model=schemas.NewsCommentOut)
+async def update_comment(
+    comment_id: int,
+    request: Request,
+    data: schemas.NewsCommentUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    locale = resolve_locale(request=request, user=user)
+    try:
+        comment = await crud.update_news_comment(db, comment_id, user.id, data.content)
+        return {
+            "id": comment.id,
+            "content": comment.content,
+            "user_id": comment.user_id,
+            "user_name": user.full_name,
+            "created_at": comment.created_at,
+        }
+    except LookupError:
+        raise HTTPException(
+            status_code=404, detail=translate("errors.not_found", locale=locale)
+        )
+    except PermissionError:
+        raise HTTPException(
+            status_code=403, detail=translate("errors.forbidden", locale=locale)
+        )
+
+
+@router.delete("/comments/{comment_id}")
+async def delete_comment(
+    comment_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    locale = resolve_locale(request=request, user=user)
+    try:
+        await crud.delete_news_comment(
+            db, comment_id, user.id, is_admin=(user.role == "admin")
+        )
+        return {"ok": True}
+    except LookupError:
+        raise HTTPException(
+            status_code=404, detail=translate("errors.not_found", locale=locale)
+        )
+    except PermissionError:
+        raise HTTPException(
+            status_code=403, detail=translate("errors.forbidden", locale=locale)
+        )
 
 
 @router.post("/upload_image")

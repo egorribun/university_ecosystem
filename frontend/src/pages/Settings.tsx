@@ -42,7 +42,7 @@ import type {
 import { useTranslation } from "react-i18next"
 import dayjs from "dayjs"
 import { Settings as SettingsIcon, Moon, Sun, Monitor, Fingerprint } from "lucide-react"
-import { startRegistration } from "@simplewebauthn/browser"
+import { startRegistration, browserSupportsWebAuthn } from "@simplewebauthn/browser"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 const DEFAULT_AVATAR = AVATAR_PLACEHOLDER_URL
 import spotifyLogo from "@/assets/spotify_icon.png"
@@ -1002,24 +1002,37 @@ export default function Settings() {
   const webauthnCredentials = Array.isArray(webauthnCredentialsData) ? webauthnCredentialsData : []
 
   const [webauthnBusy, setWebauthnBusy] = useState(false)
+  const [webauthnLabel, setWebauthnLabel] = useState("")
+  const [isAddingWebAuthn, setIsAddingWebAuthn] = useState(false)
+
+  // Check if browser supports WebAuthn (requires secure context: HTTPS or localhost)
+  const webauthnSupported = useMemo(() => browserSupportsWebAuthn(), [])
 
   const handleRegisterWebAuthn = useCallback(
-    async (options?: { skipStepUp?: boolean }) => {
+    async (options?: { skipStepUp?: boolean; label?: string }) => {
       if (webauthnBusy) return
       setWebauthnBusy(true)
       try {
         const { data: startData } = await startWebAuthnRegistration()
-        const attestationResponse = await startRegistration(startData.publicKey)
+        const attestationResponse = await startRegistration({
+          optionsJSON: startData.publicKey,
+        })
         await confirmWebAuthnRegistration({
-          challenge: startData.publicKey.challenge,
+          challenge: startData.challenge_token,
           response: attestationResponse,
+          label: options?.label?.trim() || webauthnLabel.trim() || undefined,
         })
         await Promise.all([refetchWebAuthn(), refreshMe()])
         setSnack({ text: t("settings:security.snackbar.webauthnEnabled"), sev: "success" })
+        setIsAddingWebAuthn(false)
+        setWebauthnLabel("")
       } catch (error) {
         if (!options?.skipStepUp && isStepUpError(error)) {
           openStepUpFor(async () => {
-            await handleRegisterWebAuthn({ skipStepUp: true })
+            await handleRegisterWebAuthn({
+              skipStepUp: true,
+              label: options?.label || webauthnLabel,
+            })
           })
           return
         }
@@ -1041,6 +1054,7 @@ export default function Settings() {
       setSnack,
       t,
       webauthnBusy,
+      webauthnLabel,
     ]
   )
 
@@ -1958,13 +1972,8 @@ export default function Settings() {
                       </AccordionSection>
 
                       <AccordionSection
-                        title={t("settings:security.method.webauthn", {
-                          defaultValue: "Ключи безопасности (WebAuthn)",
-                        })}
-                        subtitle={t("settings:security.webauthn.description", {
-                          defaultValue:
-                            "Используйте отпечаток пальца, лицо или USB-ключ для входа без кодов",
-                        })}
+                        title={t("settings:security.method.webauthn")}
+                        subtitle={t("settings:security.webauthn.description")}
                       >
                         <div className="flex flex-col gap-3">
                           {webauthnCredentials.length ? (
@@ -1986,16 +1995,14 @@ export default function Settings() {
                                     </div>
                                     <div className="flex min-w-0 flex-col gap-0.5">
                                       <p className="font-semibold text-[color:color-mix(in_srgb,var(--page-text)_90%,var(--nav-link)_10%)]">
-                                        {cred.label || "Security Key"}
+                                        {cred.label || t("settings:security.webauthn.defaultLabel")}
                                       </p>
                                       <SectionSubtitle className="text-[10.5px] whitespace-nowrap overflow-hidden text-ellipsis">
                                         {t("settings:security.webauthn.added", {
-                                          defaultValue: "Добавлен {{value}}",
                                           value: formatDateTime(cred.created_at) ?? "—",
                                         })}
                                         {cred.last_used_at &&
                                           ` • ${t("settings:security.webauthn.lastUsed", {
-                                            defaultValue: "Использован {{value}}",
                                             value: formatDateTime(cred.last_used_at),
                                           })}`}
                                       </SectionSubtitle>
@@ -2014,15 +2021,13 @@ export default function Settings() {
                             </div>
                           ) : (
                             <SectionSubtitle className="text-sm">
-                              {t("settings:security.webauthn.empty", {
-                                defaultValue: "У вас пока нет зарегистрированных ключей",
-                              })}
+                              {t("settings:security.webauthn.empty")}
                             </SectionSubtitle>
                           )}
 
                           <Button
                             variant="contained"
-                            onClick={() => void handleRegisterWebAuthn()}
+                            onClick={() => setIsAddingWebAuthn(true)}
                             disabled={webauthnBusy}
                             startIcon={
                               webauthnBusy ? (
@@ -2032,10 +2037,69 @@ export default function Settings() {
                               )
                             }
                           >
-                            {t("settings:security.webauthn.add", {
-                              defaultValue: "Добавить ключ безопасности",
-                            })}
+                            {t("settings:security.webauthn.add")}
                           </Button>
+
+                          <Dialog
+                             open={isAddingWebAuthn}
+                             onClose={() => setIsAddingWebAuthn(false)}
+                             maxWidth="xs"
+                             fullWidth
+                           >
+                             <DialogTitle>{t("settings:security.webauthn.dialog.title")}</DialogTitle>
+                             <DialogContent>
+                               <div className="flex flex-col gap-4 py-2">
+                                 {!webauthnSupported ? (
+                                   <Alert severity="warning" variant="outlined">
+                                     {t("settings:security.webauthn.notSupported", {
+                                       defaultValue: "WebAuthn недоступен. Для регистрации отпечатка пальца требуется HTTPS или localhost."
+                                     })}
+                                   </Alert>
+                                 ) : (
+                                   <>
+                                     <p className="text-sm">
+                                       {t("settings:security.webauthn.dialog.description")}
+                                     </p>
+                                     <TextField
+                                       fullWidth
+                                       label={t("settings:security.webauthn.labelField")}
+                                       placeholder={t("settings:security.webauthn.labelPlaceholder")}
+                                       value={webauthnLabel}
+                                       onChange={(e: ChangeEvent<HTMLInputElement>) => setWebauthnLabel(e.target.value)}
+                                       disabled={webauthnBusy}
+                                       autoFocus
+                                     />
+                                   </>
+                                 )}
+                               </div>
+                             </DialogContent>
+                             <DialogActions>
+                               <Button
+                                 variant="text"
+                                 color="inherit"
+                                 onClick={() => setIsAddingWebAuthn(false)}
+                                 disabled={webauthnBusy}
+                                 className="!px-5 !py-2.5"
+                               >
+                                 {t("common:buttons.cancel")}
+                               </Button>
+                               {webauthnSupported && (
+                                 <Button
+                                   variant="contained"
+                                   onClick={() => void handleRegisterWebAuthn()}
+                                   disabled={webauthnBusy || !webauthnLabel.trim()}
+                                   className="!px-5 !py-2.5"
+                                   startIcon={
+                                     webauthnBusy ? (
+                                       <CircularProgress size={18} color="inherit" />
+                                     ) : undefined
+                                   }
+                                 >
+                                   {t("common:buttons.add")}
+                                 </Button>
+                               )}
+                             </DialogActions>
+                           </Dialog>
                         </div>
                       </AccordionSection>
                     </div>

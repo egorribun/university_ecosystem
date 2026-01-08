@@ -10,18 +10,41 @@ import { signSnapshot } from "./useSessionCrypto"
 import type { PendingMfaState, SetUserArg, UserState } from "@/types/Auth"
 
 const PROFILE_CACHE_BASE_KEY = "ecosystem.profile.cache"
-const PROFILE_CACHE_SCHEMA_VERSION = 4
+const PROFILE_CACHE_SCHEMA_VERSION = 6
 export const PROFILE_CACHE_STORAGE_KEY = `${PROFILE_CACHE_BASE_KEY}.v${PROFILE_CACHE_SCHEMA_VERSION}`
 const PROFILE_CACHE_VERSION_KEY = `${PROFILE_CACHE_BASE_KEY}.version`
-const LEGACY_PROFILE_CACHE_KEYS = ["ecosystem.profile.cache.v1"]
+const LEGACY_PROFILE_CACHE_KEYS = ["ecosystem.profile.cache.v1", "ecosystem.profile.cache.v4", "ecosystem.profile.cache.v5"]
 const PROFILE_CACHE_TTL_MS = 5 * 60 * 1000
 const PROFILE_BROADCAST_CHANNEL = "ecosystem.profile.sync"
 const PROFILE_CACHE_HEADER = "X-Profile-Cache-Envelope"
 
 export const currentUserQueryKey = ["users", "me"] as const
 
-type CachedUserSnapshot = Pick<User, "id" | "full_name" | "avatar_url"> &
-  Partial<Pick<User, "mfa_required" | "mfa_default_method" | "mfa_last_verified_at">>
+type CachedUserSnapshot = Pick<
+  User,
+  | "id"
+  | "email"
+  | "full_name"
+  | "role"
+  | "group_id"
+  | "avatar_url"
+  | "cover_url"
+  | "about"
+  | "record_book_number"
+  | "status"
+  | "institute"
+  | "course"
+  | "education_level"
+  | "track"
+  | "program"
+  | "telegram"
+  | "achievements"
+  | "department"
+  | "position"
+  | "spotify_connected"
+  | "dnd_enabled"
+> &
+  Partial<Pick<User, "mfa_required" | "mfa_default_method" | "mfa_last_verified_at" | "totp_enrollments">>
 
 type CachedProfileEnvelope = {
   version: number
@@ -67,35 +90,35 @@ const areDeepEqual = (a: unknown, b: unknown): boolean => {
 
 const createOptimisticUser = (snapshot: CachedUserSnapshot): User => ({
   id: snapshot.id,
-  email: "",
+  email: snapshot.email,
   full_name: snapshot.full_name,
-  role: "student",
-  group_id: null,
+  role: snapshot.role,
+  group_id: snapshot.group_id,
   avatar_url: snapshot.avatar_url,
-  cover_url: null,
-  about: null,
-  record_book_number: null,
-  status: null,
-  institute: null,
-  course: null,
-  education_level: null,
-  track: null,
-  program: null,
-  telegram: null,
-  achievements: null,
-  department: null,
-  position: null,
-  spotify_connected: false,
+  cover_url: snapshot.cover_url,
+  about: snapshot.about,
+  record_book_number: snapshot.record_book_number,
+  status: snapshot.status,
+  institute: snapshot.institute,
+  course: snapshot.course,
+  education_level: snapshot.education_level,
+  track: snapshot.track,
+  program: snapshot.program,
+  telegram: snapshot.telegram,
+  achievements: snapshot.achievements,
+  department: snapshot.department,
+  position: snapshot.position,
+  spotify_connected: snapshot.spotify_connected,
   spotify_display_name: null,
   spotify_is_connected: null,
-  dnd_enabled: false,
+  dnd_enabled: snapshot.dnd_enabled,
   dnd_start: null,
   dnd_end: null,
   is_active: false,
   mfa_required: Boolean(snapshot.mfa_required),
   mfa_default_method: snapshot.mfa_default_method ?? null,
   mfa_last_verified_at: snapshot.mfa_last_verified_at ?? null,
-  totp_enrollments: [],
+  totp_enrollments: snapshot.totp_enrollments ?? [],
   mfa_challenges: [],
   avatar_url_optimized: null,
   cover_url_optimized: null,
@@ -321,11 +344,30 @@ const persistUserToCacheAsync = async (value: User | null, signingKey: string | 
     if (value != null && signingKey) {
       const snapshot: CachedUserSnapshot = {
         id: value.id,
+        email: value.email,
         full_name: value.full_name,
+        role: value.role,
+        group_id: value.group_id,
         avatar_url: value.avatar_url,
+        cover_url: value.cover_url,
+        about: value.about,
+        record_book_number: value.record_book_number,
+        status: value.status,
+        institute: value.institute,
+        course: value.course,
+        education_level: value.education_level,
+        track: value.track,
+        program: value.program,
+        telegram: value.telegram,
+        achievements: value.achievements,
+        department: value.department,
+        position: value.position,
+        spotify_connected: value.spotify_connected,
+        dnd_enabled: value.dnd_enabled,
         mfa_required: value.mfa_required,
         mfa_default_method: value.mfa_default_method,
         mfa_last_verified_at: value.mfa_last_verified_at,
+        totp_enrollments: value.totp_enrollments ?? [],
       }
 
       const encryptedData = await encryptData(snapshot, signingKey)
@@ -450,8 +492,48 @@ export const useProfileSync = (
 
     if (verifySignatureSync(payload, candidate.signature, signingKey)) {
       if (typeof candidate.data !== "string") {
+        // Legacy v3 format with unencrypted object data
         return createOptimisticUser(candidate.data)
       }
+      // v4 format: data is encrypted string, cannot decrypt synchronously
+      // Return a minimal placeholder user to prevent null state during async decryption
+      // The async init useEffect will replace this with the fully decrypted user
+      // We set a marker ID of -1 to indicate this is a placeholder pending async restore
+      return {
+        id: -1, // Placeholder ID, will be replaced by async init
+        email: "",
+        full_name: "",
+        role: "student",
+        group_id: null,
+        avatar_url: null,
+        cover_url: null,
+        about: null,
+        record_book_number: null,
+        status: null,
+        institute: null,
+        course: null,
+        education_level: null,
+        track: null,
+        program: null,
+        telegram: null,
+        achievements: null,
+        department: null,
+        position: null,
+        spotify_connected: false,
+        spotify_display_name: null,
+        spotify_is_connected: null,
+        dnd_enabled: false,
+        dnd_start: null,
+        dnd_end: null,
+        is_active: false,
+        mfa_required: false,
+        mfa_default_method: null,
+        mfa_last_verified_at: null,
+        totp_enrollments: [],
+        mfa_challenges: [],
+        avatar_url_optimized: null,
+        cover_url_optimized: null,
+      } as User
     }
     return null
   })
@@ -462,7 +544,10 @@ export const useProfileSync = (
   const [initializing, setInitializing] = useState<boolean>(() => {
     if (typeof window === "undefined") return true
     if (userState !== null) return false
-    return !readCachedEnvelope() || !sessionStorage.getItem(`${PROFILE_CACHE_BASE_KEY}.sessionKey`)
+    const hasKey = !!sessionStorage.getItem(`${PROFILE_CACHE_BASE_KEY}.sessionKey`)
+    const hasCache = !!readCachedEnvelope()
+    // If we have a potential session or cache, we must wait for verification
+    return hasKey || hasCache
   })
   const [authOperation, setAuthOperation] = useState(false)
   const activeRequestRef = useRef<AbortController | null>(null)
@@ -625,6 +710,7 @@ export const useProfileSync = (
             mfa_required: cached.mfa_required,
             mfa_default_method: cached.mfa_default_method,
             mfa_last_verified_at: cached.mfa_last_verified_at,
+            totp_enrollments: cached.totp_enrollments ?? prev.totp_enrollments,
           }
         },
         { persist: false }

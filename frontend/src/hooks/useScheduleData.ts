@@ -384,14 +384,21 @@ export function useScheduleData() {
   // Select group based on user role
   useEffect(() => {
     if (!user) return
-    if (user.role === "student" && user.group_id) {
-      setSelectedGroup((prev) => prev ?? user.group_id ?? null)
-    }
-  }, [user])
+    if (groups.length === 0) return
 
-  useEffect(() => {
-    if (!user) return
-    if ((user.role === "teacher" || user.role === "admin") && groups.length > 0) {
+    if (user.role === "student" && user.group_id) {
+      // Check if user's group exists in available groups
+      const userGroupExists = groups.some((g) => g.id === user.group_id)
+      if (userGroupExists) {
+        setSelectedGroup((prev) => prev ?? user.group_id ?? null)
+      } else {
+        // Fallback to first available group if user's group doesn't exist
+        setSelectedGroup((prev) => prev ?? groups[0]?.id ?? null)
+      }
+    } else if (user.role === "teacher" || user.role === "admin") {
+      setSelectedGroup((prev) => prev ?? groups[0]?.id ?? null)
+    } else {
+      // Fallback for any other case (e.g., student without group_id)
       setSelectedGroup((prev) => prev ?? groups[0]?.id ?? null)
     }
   }, [user, groups])
