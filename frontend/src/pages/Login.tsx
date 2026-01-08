@@ -427,7 +427,8 @@ const Login = () => {
                   ) : (
                     <div className="w-full rounded-2xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-sm font-semibold text-amber-200 text-center">
                       {t("auth:mfa.webauthn.notSupported", {
-                        defaultValue: "WebAuthn недоступен в этом браузере. Используйте HTTPS или код аутентификатора ниже.",
+                        defaultValue:
+                          "WebAuthn недоступен в этом браузере. Используйте HTTPS или код аутентификатора ниже.",
                       })}
                     </div>
                   )}

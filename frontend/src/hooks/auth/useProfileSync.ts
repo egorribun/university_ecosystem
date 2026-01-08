@@ -13,7 +13,11 @@ const PROFILE_CACHE_BASE_KEY = "ecosystem.profile.cache"
 const PROFILE_CACHE_SCHEMA_VERSION = 6
 export const PROFILE_CACHE_STORAGE_KEY = `${PROFILE_CACHE_BASE_KEY}.v${PROFILE_CACHE_SCHEMA_VERSION}`
 const PROFILE_CACHE_VERSION_KEY = `${PROFILE_CACHE_BASE_KEY}.version`
-const LEGACY_PROFILE_CACHE_KEYS = ["ecosystem.profile.cache.v1", "ecosystem.profile.cache.v4", "ecosystem.profile.cache.v5"]
+const LEGACY_PROFILE_CACHE_KEYS = [
+  "ecosystem.profile.cache.v1",
+  "ecosystem.profile.cache.v4",
+  "ecosystem.profile.cache.v5",
+]
 const PROFILE_CACHE_TTL_MS = 5 * 60 * 1000
 const PROFILE_BROADCAST_CHANNEL = "ecosystem.profile.sync"
 const PROFILE_CACHE_HEADER = "X-Profile-Cache-Envelope"
@@ -44,7 +48,9 @@ type CachedUserSnapshot = Pick<
   | "spotify_connected"
   | "dnd_enabled"
 > &
-  Partial<Pick<User, "mfa_required" | "mfa_default_method" | "mfa_last_verified_at" | "totp_enrollments">>
+  Partial<
+    Pick<User, "mfa_required" | "mfa_default_method" | "mfa_last_verified_at" | "totp_enrollments">
+  >
 
 type CachedProfileEnvelope = {
   version: number

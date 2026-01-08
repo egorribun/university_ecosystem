@@ -104,7 +104,10 @@ self.addEventListener("message", (event) => {
 // Background Sync Listener
 self.addEventListener("sync", (event) => {
   const syncEvent = event as ExtendableEvent & { tag: string }
-  if (syncEvent.tag === queueSyncTags.newsInteraction || syncEvent.tag === queueSyncTags.navigation) {
+  if (
+    syncEvent.tag === queueSyncTags.newsInteraction ||
+    syncEvent.tag === queueSyncTags.navigation
+  ) {
     syncEvent.waitUntil(processOfflineQueues())
   }
 })

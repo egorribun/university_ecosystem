@@ -245,7 +245,10 @@ export function useNewsInteraction(newsId: number, options: NewsInteractionOptio
     interactions,
     isLoading,
     toggleLike: useCallback(() => likeMutation.mutate(), [likeMutation]),
-    addComment: useCallback((content: string) => commentMutation.mutate(content), [commentMutation]),
+    addComment: useCallback(
+      (content: string) => commentMutation.mutate(content),
+      [commentMutation]
+    ),
     updateComment: useCallback(
       (commentId: number, content: string) => updateCommentMutation.mutate({ commentId, content }),
       [updateCommentMutation]

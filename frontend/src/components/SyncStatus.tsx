@@ -29,13 +29,19 @@ export function SyncStatus() {
           request.onupgradeneeded = () => {
             const database = request.result
             if (!database.objectStoreNames.contains("pending-navigations")) {
-              database.createObjectStore("pending-navigations", { keyPath: "id", autoIncrement: true })
+              database.createObjectStore("pending-navigations", {
+                keyPath: "id",
+                autoIncrement: true,
+              })
             }
             if (!database.objectStoreNames.contains("pending-reports")) {
               database.createObjectStore("pending-reports", { keyPath: "id", autoIncrement: true })
             }
             if (!database.objectStoreNames.contains(NEWS_INTERACTION_STORE)) {
-              database.createObjectStore(NEWS_INTERACTION_STORE, { keyPath: "id", autoIncrement: true })
+              database.createObjectStore(NEWS_INTERACTION_STORE, {
+                keyPath: "id",
+                autoIncrement: true,
+              })
             }
           }
           request.onsuccess = () => resolve(request.result)

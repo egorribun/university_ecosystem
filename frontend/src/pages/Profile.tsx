@@ -1396,8 +1396,6 @@ export default function Profile() {
           {snackMessage}
         </Alert>
       </Snackbar>
-
-
     </Layout>
   )
 }

@@ -2041,65 +2041,70 @@ export default function Settings() {
                           </Button>
 
                           <Dialog
-                             open={isAddingWebAuthn}
-                             onClose={() => setIsAddingWebAuthn(false)}
-                             maxWidth="xs"
-                             fullWidth
-                           >
-                             <DialogTitle>{t("settings:security.webauthn.dialog.title")}</DialogTitle>
-                             <DialogContent>
-                               <div className="flex flex-col gap-4 py-2">
-                                 {!webauthnSupported ? (
-                                   <Alert severity="warning" variant="outlined">
-                                     {t("settings:security.webauthn.notSupported", {
-                                       defaultValue: "WebAuthn недоступен. Для регистрации отпечатка пальца требуется HTTPS или localhost."
-                                     })}
-                                   </Alert>
-                                 ) : (
-                                   <>
-                                     <p className="text-sm">
-                                       {t("settings:security.webauthn.dialog.description")}
-                                     </p>
-                                     <TextField
-                                       fullWidth
-                                       label={t("settings:security.webauthn.labelField")}
-                                       placeholder={t("settings:security.webauthn.labelPlaceholder")}
-                                       value={webauthnLabel}
-                                       onChange={(e: ChangeEvent<HTMLInputElement>) => setWebauthnLabel(e.target.value)}
-                                       disabled={webauthnBusy}
-                                       autoFocus
-                                     />
-                                   </>
-                                 )}
-                               </div>
-                             </DialogContent>
-                             <DialogActions>
-                               <Button
-                                 variant="text"
-                                 color="inherit"
-                                 onClick={() => setIsAddingWebAuthn(false)}
-                                 disabled={webauthnBusy}
-                                 className="!px-5 !py-2.5"
-                               >
-                                 {t("common:buttons.cancel")}
-                               </Button>
-                               {webauthnSupported && (
-                                 <Button
-                                   variant="contained"
-                                   onClick={() => void handleRegisterWebAuthn()}
-                                   disabled={webauthnBusy || !webauthnLabel.trim()}
-                                   className="!px-5 !py-2.5"
-                                   startIcon={
-                                     webauthnBusy ? (
-                                       <CircularProgress size={18} color="inherit" />
-                                     ) : undefined
-                                   }
-                                 >
-                                   {t("common:buttons.add")}
-                                 </Button>
-                               )}
-                             </DialogActions>
-                           </Dialog>
+                            open={isAddingWebAuthn}
+                            onClose={() => setIsAddingWebAuthn(false)}
+                            maxWidth="xs"
+                            fullWidth
+                          >
+                            <DialogTitle>
+                              {t("settings:security.webauthn.dialog.title")}
+                            </DialogTitle>
+                            <DialogContent>
+                              <div className="flex flex-col gap-4 py-2">
+                                {!webauthnSupported ? (
+                                  <Alert severity="warning" variant="outlined">
+                                    {t("settings:security.webauthn.notSupported", {
+                                      defaultValue:
+                                        "WebAuthn недоступен. Для регистрации отпечатка пальца требуется HTTPS или localhost.",
+                                    })}
+                                  </Alert>
+                                ) : (
+                                  <>
+                                    <p className="text-sm">
+                                      {t("settings:security.webauthn.dialog.description")}
+                                    </p>
+                                    <TextField
+                                      fullWidth
+                                      label={t("settings:security.webauthn.labelField")}
+                                      placeholder={t("settings:security.webauthn.labelPlaceholder")}
+                                      value={webauthnLabel}
+                                      onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                                        setWebauthnLabel(e.target.value)
+                                      }
+                                      disabled={webauthnBusy}
+                                      autoFocus
+                                    />
+                                  </>
+                                )}
+                              </div>
+                            </DialogContent>
+                            <DialogActions>
+                              <Button
+                                variant="text"
+                                color="inherit"
+                                onClick={() => setIsAddingWebAuthn(false)}
+                                disabled={webauthnBusy}
+                                className="!px-5 !py-2.5"
+                              >
+                                {t("common:buttons.cancel")}
+                              </Button>
+                              {webauthnSupported && (
+                                <Button
+                                  variant="contained"
+                                  onClick={() => void handleRegisterWebAuthn()}
+                                  disabled={webauthnBusy || !webauthnLabel.trim()}
+                                  className="!px-5 !py-2.5"
+                                  startIcon={
+                                    webauthnBusy ? (
+                                      <CircularProgress size={18} color="inherit" />
+                                    ) : undefined
+                                  }
+                                >
+                                  {t("common:buttons.add")}
+                                </Button>
+                              )}
+                            </DialogActions>
+                          </Dialog>
                         </div>
                       </AccordionSection>
                     </div>
