@@ -332,7 +332,13 @@ def test_cors_hardening_filters_insecure_origins(monkeypatch):
     monkeypatch.setattr(
         type(settings),
         "is_development",
-        property(lambda self: False if getattr(self, "_force_production", False) else original_is_dev.fget(self)),
+        property(
+            lambda self: (
+                False
+                if getattr(self, "_force_production", False)
+                else original_is_dev.fget(self)
+            )
+        ),
     )
     assert settings.cors_allow_origins_list == ["https://app.example.com"]
     assert settings.cors_allow_credentials_effective is True
@@ -356,7 +362,13 @@ def test_cors_credentials_disabled_for_insecure_hosts(monkeypatch):
     monkeypatch.setattr(
         type(settings),
         "is_development",
-        property(lambda self: False if getattr(self, "_force_production", False) else original_is_dev.fget(self)),
+        property(
+            lambda self: (
+                False
+                if getattr(self, "_force_production", False)
+                else original_is_dev.fget(self)
+            )
+        ),
     )
     assert settings.cors_allow_origins_list == []
     assert settings.cors_allow_credentials_effective is False
