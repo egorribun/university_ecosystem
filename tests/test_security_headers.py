@@ -320,6 +320,8 @@ def test_cors_hardening_filters_insecure_origins(monkeypatch):
         "https://app.example.com, http://example.com, *",
     )
     monkeypatch.setenv("CORS_ALLOW_CREDENTIALS", "true")
+    # Force is_development to False to ensure localhost fallback doesn't apply
+    monkeypatch.setattr(Settings, "is_development", property(lambda self: False))
     settings = Settings()
     assert settings.cors_allow_origins_list == ["https://app.example.com"]
     assert settings.cors_allow_credentials_effective is True
@@ -331,6 +333,8 @@ def test_cors_credentials_disabled_for_insecure_hosts(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("FRONTEND_ORIGINS", "http://example.com")
     monkeypatch.setenv("CORS_ALLOW_CREDENTIALS", "true")
+    # Force is_development to False to ensure localhost fallback doesn't apply
+    monkeypatch.setattr(Settings, "is_development", property(lambda self: False))
     settings = Settings()
     assert settings.cors_allow_origins_list == []
     assert settings.cors_allow_credentials_effective is False
