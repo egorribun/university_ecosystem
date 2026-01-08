@@ -52,6 +52,7 @@ MFA_METHOD_TOTP = "totp"
 MFA_METHOD_WEBAUTHN = "webauthn"
 
 
+logger = logging.getLogger(__name__)
 audit_logger = logging.getLogger("app.users.audit")
 
 
@@ -121,7 +122,9 @@ def verify_totp(secret: str, code: str, *, window: int | None = None) -> bool:
     normalized = "".join(ch for ch in code if ch.isdigit())
     if len(normalized) != _TOTP_DIGITS:
         logger.warning(
-            f"TOTP verify failed: length mismatch. Got {len(normalized)}, expected {_TOTP_DIGITS}"
+            "TOTP verify failed: length mismatch. Got %s, expected %s",
+            len(normalized),
+            _TOTP_DIGITS,
         )
         return False
     totp = pyotp.TOTP(secret, digits=_TOTP_DIGITS)
@@ -134,7 +137,11 @@ def verify_totp(secret: str, code: str, *, window: int | None = None) -> bool:
     )
     if not result:
         logger.warning(
-            f"TOTP verify failed. Secret len: {len(secret)}, Code: {normalized}, Window: {valid_window}. Server time: {_utcnow()}"
+            "TOTP verify failed. Secret len: %s, Code: %s, Window: %s. Server time: %s",
+            len(secret),
+            normalized,
+            valid_window,
+            _utcnow(),
         )
     return bool(result)
 
