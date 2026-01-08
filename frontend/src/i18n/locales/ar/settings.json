@@ -219,7 +219,8 @@
       },
       "errors": {
         "cancelled": "Registration cancelled by user"
-      }
+      },
+      "notSupported": "WebAuthn غير متاح. HTTPS مطلوب لتسجيل بصمة الإصبع أو مفتاح الأمان."
     },
     "snackbar": {
       "totpStartFailed": "Couldn't start authenticator setup",
