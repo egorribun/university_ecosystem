@@ -60,9 +60,13 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
           >
             {t("mfa.totp.manualHeading")}
           </label>
-          <div className="w-full px-3 py-1.5 text-sm rounded-lg border border-page-text/25 bg-card text-page-text font-mono tracking-wider break-all text-center select-all">
-            {normalizedSecret}
-          </div>
+          <input
+            id="totp-manual-code"
+            type="text"
+            readOnly
+            value={normalizedSecret}
+            className="w-full px-3 py-1.5 text-sm rounded-lg border border-page-text/25 bg-card text-page-text font-mono tracking-wider text-center select-all cursor-text"
+          />
         </div>
         <div className="relative mt-5">
           <button

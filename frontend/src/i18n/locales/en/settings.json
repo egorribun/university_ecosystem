@@ -219,7 +219,8 @@
       },
       "errors": {
         "cancelled": "Registration cancelled by user"
-      }
+      },
+      "notSupported": "WebAuthn is not available. HTTPS is required to register a fingerprint or security key."
     },
     "snackbar": {
       "totpStartFailed": "Couldn't start authenticator setup",
