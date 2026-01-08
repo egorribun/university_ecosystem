@@ -287,16 +287,10 @@ async def create_chat(
 
     existing_chat_stmt = (
         select(Chat)
+        .where(Chat.id.in_(select(cp.c.chat_id).where(cp.c.user_id == current_user.id)))
         .where(
             Chat.id.in_(
-                select(cp.c.chat_id)
-                .where(cp.c.user_id == current_user.id)
-            )
-        )
-        .where(
-            Chat.id.in_(
-                select(cp.c.chat_id)
-                .where(cp.c.user_id == chat_in.participant_id)
+                select(cp.c.chat_id).where(cp.c.user_id == chat_in.participant_id)
             )
         )
         # Ensure it's a DM (exactly 2 participants)
