@@ -120,7 +120,9 @@ def build_totp_uri(secret: str, *, account_name: str, issuer: str | None = None)
 def verify_totp(secret: str, code: str, *, window: int | None = None) -> bool:
     normalized = "".join(ch for ch in code if ch.isdigit())
     if len(normalized) != _TOTP_DIGITS:
-        logger.warning(f"TOTP verify failed: length mismatch. Got {len(normalized)}, expected {_TOTP_DIGITS}")
+        logger.warning(
+            f"TOTP verify failed: length mismatch. Got {len(normalized)}, expected {_TOTP_DIGITS}"
+        )
         return False
     totp = pyotp.TOTP(secret, digits=_TOTP_DIGITS)
     valid_window = _TOTP_VALID_WINDOW if window is None else window
@@ -131,7 +133,9 @@ def verify_totp(secret: str, code: str, *, window: int | None = None) -> bool:
         for_time=None,
     )
     if not result:
-        logger.warning(f"TOTP verify failed. Secret len: {len(secret)}, Code: {normalized}, Window: {valid_window}. Server time: {_utcnow()}")
+        logger.warning(
+            f"TOTP verify failed. Secret len: {len(secret)}, Code: {normalized}, Window: {valid_window}. Server time: {_utcnow()}"
+        )
     return bool(result)
 
 

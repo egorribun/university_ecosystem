@@ -17,12 +17,10 @@ from webauthn import (
 from webauthn.helpers import generate_user_handle, options_to_json
 from webauthn.helpers.structs import (
     AuthenticatorSelectionCriteria,
-    ResidentKeyRequirement,
-    UserVerificationRequirement,
-)
-from webauthn.helpers.structs import (
     PublicKeyCredentialDescriptor,
     PublicKeyCredentialType,
+    ResidentKeyRequirement,
+    UserVerificationRequirement,
 )
 
 from app.core.config import settings

@@ -253,6 +253,7 @@ async def _mint_access_token(
 
     # Register session in Redis if enabled
     from app.auth.redis_session import get_session_backend
+
     session_backend = await get_session_backend()
     await session_backend.register_session(
         user_id=session.user_id,

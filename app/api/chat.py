@@ -276,7 +276,7 @@ async def create_chat(
 
     # Optimized lookup: Check if a chat with these two participants already exists
     # using a single efficient query instead of pulling all chats into memory.
-    from sqlalchemy import exists, func
+    from sqlalchemy import func
 
     # We want a chat where both current_user and participant are present
     # and the chat has exactly 2 participants (direct message).
