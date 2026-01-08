@@ -2558,6 +2558,8 @@ export interface components {
       is_liked: boolean
       /** Comments */
       comments: components["schemas"]["NewsCommentOut"][]
+      /** Comments Count */
+      comments_count: number
     }
     /** NewsOut */
     NewsOut: {
@@ -3422,6 +3424,8 @@ export interface components {
       publicKey: {
         [key: string]: unknown
       }
+      /** Challenge Token */
+      challenge_token: string
     }
     /** WebAuthnRegistrationVerifyIn */
     WebAuthnRegistrationVerifyIn: {
