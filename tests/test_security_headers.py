@@ -320,9 +320,20 @@ def test_cors_hardening_filters_insecure_origins(monkeypatch):
         "https://app.example.com, http://example.com, *",
     )
     monkeypatch.setenv("CORS_ALLOW_CREDENTIALS", "true")
-    # Force is_development to False to ensure localhost fallback doesn't apply
-    monkeypatch.setattr(Settings, "is_development", property(lambda self: False))
     settings = Settings()
+    # Clear cached properties that may have been evaluated with wrong is_development
+    settings.__dict__.pop("is_development", None)
+    settings.__dict__.pop("frontend_origins_list", None)
+    settings.__dict__.pop("cors_allow_origins_list", None)
+    settings.__dict__.pop("cors_allow_credentials_effective", None)
+    # Patch is_development to return False after clearing cache
+    object.__setattr__(settings, "_force_production", True)
+    original_is_dev = type(settings).is_development
+    monkeypatch.setattr(
+        type(settings),
+        "is_development",
+        property(lambda self: False if getattr(self, "_force_production", False) else original_is_dev.fget(self)),
+    )
     assert settings.cors_allow_origins_list == ["https://app.example.com"]
     assert settings.cors_allow_credentials_effective is True
 
@@ -333,9 +344,20 @@ def test_cors_credentials_disabled_for_insecure_hosts(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("FRONTEND_ORIGINS", "http://example.com")
     monkeypatch.setenv("CORS_ALLOW_CREDENTIALS", "true")
-    # Force is_development to False to ensure localhost fallback doesn't apply
-    monkeypatch.setattr(Settings, "is_development", property(lambda self: False))
     settings = Settings()
+    # Clear cached properties that may have been evaluated with wrong is_development
+    settings.__dict__.pop("is_development", None)
+    settings.__dict__.pop("frontend_origins_list", None)
+    settings.__dict__.pop("cors_allow_origins_list", None)
+    settings.__dict__.pop("cors_allow_credentials_effective", None)
+    # Patch is_development to return False after clearing cache
+    object.__setattr__(settings, "_force_production", True)
+    original_is_dev = type(settings).is_development
+    monkeypatch.setattr(
+        type(settings),
+        "is_development",
+        property(lambda self: False if getattr(self, "_force_production", False) else original_is_dev.fget(self)),
+    )
     assert settings.cors_allow_origins_list == []
     assert settings.cors_allow_credentials_effective is False
 
