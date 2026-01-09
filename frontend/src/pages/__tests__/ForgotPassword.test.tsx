@@ -4,7 +4,6 @@ import userEvent from "@testing-library/user-event"
 import { describe, expect, it } from "vitest"
 import { axe } from "jest-axe"
 import ForgotPassword from "../ForgotPassword"
-import { routerFutureFlags } from "../../App"
 import i18n from "../../i18n/config"
 
 const tAuth = (key: string, options?: Record<string, unknown>) => i18n.t(`auth:${key}`, options)
@@ -13,7 +12,7 @@ const startsWithText = (text: string) => (content: string) => content.startsWith
 
 const renderForgot = () =>
   render(
-    <MemoryRouter future={routerFutureFlags}>
+    <MemoryRouter>
       <ForgotPassword />
     </MemoryRouter>
   )

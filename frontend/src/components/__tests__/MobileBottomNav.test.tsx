@@ -2,7 +2,6 @@ import { MemoryRouter } from "react-router-dom"
 import { render, screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 import MobileBottomNav from "../MobileBottomNav"
-import { routerFutureFlags } from "../../App"
 import i18n from "../../i18n/config"
 
 const mainNavLabel = () => i18n.t("navigation:aria.mainNavigation")
@@ -10,7 +9,7 @@ const mainNavLabel = () => i18n.t("navigation:aria.mainNavigation")
 describe("MobileBottomNav", () => {
   it("does not render on auth pages", () => {
     render(
-      <MemoryRouter future={routerFutureFlags} initialEntries={["/login"]}>
+      <MemoryRouter initialEntries={["/login"]}>
         <MobileBottomNav />
       </MemoryRouter>
     )
@@ -20,7 +19,7 @@ describe("MobileBottomNav", () => {
 
   it("renders links for main sections", () => {
     const { container } = render(
-      <MemoryRouter future={routerFutureFlags} initialEntries={["/dashboard"]}>
+      <MemoryRouter initialEntries={["/dashboard"]}>
         <MobileBottomNav />
       </MemoryRouter>
     )

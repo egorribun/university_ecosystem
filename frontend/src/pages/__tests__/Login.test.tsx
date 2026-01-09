@@ -7,7 +7,6 @@ import { axe } from "jest-axe"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import Login from "../Login"
 import { server } from "@/tests/mocks/server"
-import { routerFutureFlags } from "../../App"
 import { AuthProvider } from "@/contexts/AuthContext"
 import { LanguageProvider } from "@/contexts/LanguageContext"
 import { testUser } from "@/tests/mocks/handlers"
@@ -33,7 +32,7 @@ const renderLogin = () => {
     <QueryClientProvider client={client}>
       <LanguageProvider>
         <AuthProvider>
-          <MemoryRouter future={routerFutureFlags} initialEntries={["/login"]}>
+          <MemoryRouter initialEntries={["/login"]}>
             <Routes>
               <Route path="/login" element={<Login />} />
               <Route path="/dashboard" element={<div>Welcome!</div>} />

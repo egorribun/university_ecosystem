@@ -6,7 +6,6 @@ import { describe, expect, it } from "vitest"
 import { axe } from "jest-axe"
 import Register from "../Register"
 import { server } from "@/tests/mocks/server"
-import { routerFutureFlags } from "../../App"
 import i18n from "../../i18n/config"
 
 const tAuth = (key: string, options?: Record<string, unknown>) => i18n.t(`auth:${key}`, options)
@@ -14,7 +13,7 @@ const matchText = (text: string) => (content: string) => content.startsWith(text
 
 const renderRegister = () =>
   render(
-    <MemoryRouter future={routerFutureFlags} initialEntries={["/register"]}>
+    <MemoryRouter initialEntries={["/register"]}>
       <Routes>
         <Route path="/register" element={<Register />} />
         <Route path="/login" element={<div>Sign in page</div>} />
