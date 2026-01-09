@@ -324,7 +324,8 @@ def test_cors_hardening_filters_insecure_origins(monkeypatch):
     # Filter out localhost origins which are intentionally allowed through
     # even in strict mode (see cors_allow_origins_list implementation)
     non_localhost_origins = [
-        o for o in settings.cors_allow_origins_list
+        o
+        for o in settings.cors_allow_origins_list
         if "localhost" not in o and "127.0.0.1" not in o
     ]
     assert non_localhost_origins == ["https://app.example.com"]
@@ -341,7 +342,8 @@ def test_cors_credentials_disabled_for_insecure_hosts(monkeypatch):
     # Filter out localhost origins which are intentionally allowed through
     # even in strict mode (see cors_allow_origins_list implementation)
     non_localhost_origins = [
-        o for o in settings.cors_allow_origins_list
+        o
+        for o in settings.cors_allow_origins_list
         if "localhost" not in o and "127.0.0.1" not in o
     ]
     assert non_localhost_origins == []
