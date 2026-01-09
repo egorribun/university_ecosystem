@@ -56,8 +56,8 @@ export const components: Components<Theme> = {
   MuiButtonBase: {
     styleOverrides: {
       root: ({ theme }) => {
-        const radiusVars = (theme.vars as any)?.radiusScale ?? radiusScale
-        const focusVars = (theme.vars as any)?.focusRing ?? focusRing
+        const radiusVars = (theme as any).vars?.radiusScale ?? radiusScale
+        const focusVars = (theme as any).vars?.focusRing ?? focusRing
 
         return {
           minHeight: "44px",
@@ -76,8 +76,8 @@ export const components: Components<Theme> = {
   MuiButton: {
     styleOverrides: {
       root: ({ theme }) => {
-        const radiusVars = (theme.vars as any)?.radiusScale ?? radiusScale
-        const spacingVars = (theme.vars as any)?.spacingScale ?? spacingScale
+        const radiusVars = (theme as any).vars?.radiusScale ?? radiusScale
+        const spacingVars = (theme as any).vars?.spacingScale ?? spacingScale
 
         return {
           borderRadius: radiusVars.lg,
@@ -91,9 +91,9 @@ export const components: Components<Theme> = {
   MuiIconButton: {
     styleOverrides: {
       root: ({ theme }) => {
-        const radiusVars = (theme.vars as any)?.radiusScale ?? radiusScale
-        const spacingVars = (theme.vars as any)?.spacingScale ?? spacingScale
-        const focusVars = (theme.vars as any)?.focusRing ?? focusRing
+        const radiusVars = (theme as any).vars?.radiusScale ?? radiusScale
+        const spacingVars = (theme as any).vars?.spacingScale ?? spacingScale
+        const focusVars = (theme as any).vars?.focusRing ?? focusRing
 
         return {
           minWidth: "44px",
@@ -110,9 +110,9 @@ export const components: Components<Theme> = {
   MuiToggleButton: {
     styleOverrides: {
       root: ({ theme }) => {
-        const radiusVars = (theme.vars as any)?.radiusScale ?? radiusScale
-        const spacingVars = (theme.vars as any)?.spacingScale ?? spacingScale
-        const focusVars = (theme.vars as any)?.focusRing ?? focusRing
+        const radiusVars = (theme as any).vars?.radiusScale ?? radiusScale
+        const spacingVars = (theme as any).vars?.spacingScale ?? spacingScale
+        const focusVars = (theme as any).vars?.focusRing ?? focusRing
 
         return {
           minHeight: "44px",
@@ -128,8 +128,8 @@ export const components: Components<Theme> = {
   MuiListItemButton: {
     styleOverrides: {
       root: ({ theme }) => {
-        const radiusVars = (theme.vars as any)?.radiusScale ?? radiusScale
-        const focusVars = (theme.vars as any)?.focusRing ?? focusRing
+        const radiusVars = (theme as any).vars?.radiusScale ?? radiusScale
+        const focusVars = (theme as any).vars?.focusRing ?? focusRing
 
         return {
           minHeight: "48px",
@@ -144,8 +144,8 @@ export const components: Components<Theme> = {
   MuiLink: {
     styleOverrides: {
       root: ({ theme }) => {
-        const radiusVars = (theme.vars as any)?.radiusScale ?? radiusScale
-        const focusVars = (theme.vars as any)?.focusRing ?? focusRing
+        const radiusVars = (theme as any).vars?.radiusScale ?? radiusScale
+        const focusVars = (theme as any).vars?.focusRing ?? focusRing
 
         return {
           borderRadius: radiusVars.sm,

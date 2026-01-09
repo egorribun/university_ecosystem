@@ -3,7 +3,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, case, func, literal, or_, select, true
+from sqlalchemy import and_, case, exists, func, literal, or_, select, true
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
@@ -210,15 +210,48 @@ async def get_news_list(
     db: AsyncSession,
     limit: int = 20,
     cursor: str | None = None,
+    current_user_id: int | None = None,
 ):
-    """Get paginated news list with cursor-based pagination."""
+    """Get paginated news list with counts and like status."""
     cursor_values = _decode_news_cursor(cursor)
 
-    stmt = select(models.News)
+    # Subqueries for counts
+    likes_sub = (
+        select(func.count(models.NewsLike.id))
+        .where(models.NewsLike.news_id == models.News.id)
+        .scalar_subquery()
+        .label("likes_count")
+    )
+    comments_sub = (
+        select(func.count(models.NewsComment.id))
+        .where(models.NewsComment.news_id == models.News.id)
+        .scalar_subquery()
+        .label("comments_count")
+    )
+
+    # Subquery for user like status
+    is_liked_sub = literal(False).label("is_liked")
+    if current_user_id:
+        is_liked_sub = (
+            select(
+                exists().where(
+                    models.NewsLike.news_id == models.News.id,
+                    models.NewsLike.user_id == current_user_id,
+                )
+            )
+            .scalar_subquery()
+            .label("is_liked")
+        )
+
+    stmt = select(
+        models.News,
+        likes_sub,
+        comments_sub,
+        is_liked_sub,
+    )
 
     if cursor_values:
         last_created_at, last_id = cursor_values
-        # For desc order: get items that are older (smaller) than cursor
         stmt = stmt.where(
             or_(
                 models.News.created_at < last_created_at,
@@ -234,7 +267,18 @@ async def get_news_list(
     )
 
     result = await db.execute(stmt)
-    return result.scalars().all()
+    rows = result.all()
+
+    # Map database rows to model objects with extra attributes
+    items = []
+    for news_obj, l_count, c_count, liked in rows:
+        # We attach these to the object so _serialize_news can find them
+        setattr(news_obj, "likes_count", l_count or 0)
+        setattr(news_obj, "comments_count", c_count or 0)
+        setattr(news_obj, "is_liked", bool(liked))
+        items.append(news_obj)
+
+    return items
 
 
 async def create_story(
@@ -1398,12 +1442,48 @@ async def create_news_comment(
     comment = models.NewsComment(news_id=news_id, user_id=user_id, content=content)
     db.add(comment)
     await db.commit()
-    await db.refresh(comment)
+    await db.refresh(comment, ["user"])
     return comment
 
 
+async def update_news_comment(
+    db: AsyncSession, comment_id: int, user_id: int, content: str
+) -> models.NewsComment:
+    """Update an existing comment if the user is the owner."""
+    comment = await db.get(models.NewsComment, comment_id)
+    if not comment:
+        raise LookupError("comment_not_found")
+    if comment.user_id != user_id:
+        raise PermissionError("forbidden")
+
+    comment.content = content
+    db.add(comment)
+    await db.commit()
+    await db.refresh(comment, ["user"])
+    return comment
+
+
+async def delete_news_comment(
+    db: AsyncSession, comment_id: int, user_id: int, is_admin: bool = False
+) -> None:
+    """Delete a comment if requested by the owner or an admin."""
+    comment = await db.get(models.NewsComment, comment_id)
+    if not comment:
+        raise LookupError("comment_not_found")
+    if comment.user_id != user_id and not is_admin:
+        raise PermissionError("forbidden")
+
+    await db.delete(comment)
+    await db.commit()
+
+
 async def get_news_interactions(
-    db: AsyncSession, news_id: int, current_user_id: int | None = None
+    db: AsyncSession,
+    news_id: int,
+    current_user_id: int | None = None,
+    *,
+    limit: int = 50,
+    offset: int = 0,
 ) -> dict[str, Any]:
     """Get likes count, current user's like status, and comments for a news item."""
     # Count likes
@@ -1422,7 +1502,7 @@ async def get_news_interactions(
         )
         is_liked = (await db.execute(liked_stmt)).scalar() is not None
 
-    # Get comments with user names
+    # Get comments with user names (paginated)
     comments_stmt = (
         select(
             models.NewsComment.id,
@@ -1434,6 +1514,8 @@ async def get_news_interactions(
         .join(models.User, models.NewsComment.user_id == models.User.id)
         .where(models.NewsComment.news_id == news_id)
         .order_by(models.NewsComment.created_at.asc())
+        .limit(limit)
+        .offset(offset)
     )
     comments_result = await db.execute(comments_stmt)
     comments = [
@@ -1447,8 +1529,15 @@ async def get_news_interactions(
         for row in comments_result.all()
     ]
 
+    # Total comments count for pagination info
+    total_comments_stmt = select(func.count(models.NewsComment.id)).where(
+        models.NewsComment.news_id == news_id
+    )
+    total_comments = (await db.execute(total_comments_stmt)).scalar() or 0
+
     return {
         "likes_count": likes_count,
         "is_liked": is_liked,
         "comments": comments,
+        "comments_count": total_comments,
     }

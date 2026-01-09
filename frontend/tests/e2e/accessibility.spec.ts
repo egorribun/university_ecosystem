@@ -25,13 +25,17 @@ test.describe("Accessibility smoke", () => {
     await page.goto("/dashboard", { waitUntil: "networkidle" })
 
     // Find a button and focus it. We use the menu button which is always present on dashboard.
-    const button = page.getByRole("button", { name: /menu|меню/i }).first()
+    // Find the brand link which is always visible.
+    const button = page.locator(".brand").first()
 
-    // We must focus it specifically to trigger focus-visible rings used for accessibility
+    // Simplified focus-visible check: focus the brand and check styles
+    // In many modern browsers, even programmatic focus on a button/link triggers :focus-visible if it's the only way
     await button.focus()
     await expect(button).toBeFocused()
 
-    // Check that focus is visible (box-shadow or outline applied)
+    // Give it a moment to apply styles
+    await page.waitForTimeout(100)
+
     const focusStyles = await button.evaluate((el) => {
       const style = window.getComputedStyle(el)
       return {
@@ -40,10 +44,13 @@ test.describe("Accessibility smoke", () => {
       }
     })
 
-    // Focus indicator should have non-none box-shadow OR a visible outline
     const hasVisibleFocus =
-      (focusStyles.boxShadow && focusStyles.boxShadow !== "none") ||
-      (focusStyles.outlineStyle && focusStyles.outlineStyle !== "none")
+      (focusStyles.boxShadow &&
+        focusStyles.boxShadow !== "none" &&
+        focusStyles.boxShadow !== "transparent") ||
+      (focusStyles.outlineStyle &&
+        focusStyles.outlineStyle !== "none" &&
+        focusStyles.outlineStyle !== "transparent")
 
     expect(hasVisibleFocus).toBe(true)
   })

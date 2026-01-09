@@ -148,7 +148,7 @@ def _token_cookie_expiration() -> tuple[int | None, datetime | None]:
 def _set_access_token_cookie(response: Response, token: str) -> None:
     max_age, expires = _token_cookie_expiration()
     response.set_cookie(
-        "access_token",
+        "access_token_v2",
         token,
         httponly=True,
         secure=settings.cookie_secure,
@@ -161,7 +161,7 @@ def _set_access_token_cookie(response: Response, token: str) -> None:
 
 def _clear_access_token_cookie(response: Response) -> None:
     response.delete_cookie(
-        "access_token",
+        "access_token_v2",
         path="/",
         httponly=True,
         secure=settings.cookie_secure,
@@ -250,6 +250,21 @@ async def _mint_access_token(
         headers={"kid": kid},
     )
     await db.commit()
+
+    # Register session in Redis if enabled
+    from app.auth.redis_session import get_session_backend
+
+    session_backend = await get_session_backend()
+    await session_backend.register_session(
+        user_id=session.user_id,
+        jti=session.jti,
+        expires_at=expires_at,
+        metadata={
+            "ip_address": session.ip_address,
+            "user_agent": session.user_agent,
+        },
+    )
+
     return token
 
 
@@ -737,9 +752,8 @@ async def _perform_login(
         )
         message = translate("errors.auth.mfa_totp_missing", locale=locale)
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=message)
-    if require_mfa and not capabilities.get(mfa.MFA_METHOD_TOTP):
-        message = translate("errors.auth.mfa_totp_missing", locale=locale)
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=message)
+    # If MFA is required but no methods are available, we error out (handled above).
+    # We should NOT error if TOTP is missing but other methods (WebAuthn) are present.
     if require_mfa:
         # Check for trusted device cookie
         trusted_device_token = request.cookies.get(settings.trusted_device_cookie_name)
@@ -889,7 +903,7 @@ async def login_passkey_start(
     )
 
     return WebAuthnAuthenticationOptionsOut(
-        publicKey=webauthn_options["publicKey"],
+        publicKey=webauthn_options,
         challenge_token=challenge.token,
     )
 
@@ -1236,7 +1250,10 @@ async def start_webauthn_registration(
         extra={"challenge_id": challenge.id},
     )
 
-    return WebAuthnRegistrationOptionsOut(publicKey=options["publicKey"])
+    return WebAuthnRegistrationOptionsOut(
+        publicKey=options,
+        challenge_token=challenge.token,
+    )
 
 
 @router.post(
@@ -1465,9 +1482,9 @@ async def verify_mfa_challenge(
                 )
                 await mfa.consume_challenge(db, challenge)
             except Exception as exc:
-                logger.error(f"WebAuthn authentication failed: {exc}")
+                logger.exception("WebAuthn authentication failed")
                 raise HTTPException(
-                    status.HTTP_400_BAD_REQUEST, "WebAuthn verification failed"
+                    status.HTTP_400_BAD_REQUEST, f"WebAuthn verification failed: {exc}"
                 )
 
         else:

@@ -33,6 +33,7 @@ export const queueSanitizers = {
 
 export const queueSyncTags = {
   navigation: "navigation-sync",
+  newsInteraction: "news-interaction:sync",
 }
 
 /**
@@ -97,5 +98,16 @@ self.addEventListener("message", (event) => {
     case "PROCESS_OFFLINE_QUEUES":
       event.waitUntil(processOfflineQueues())
       break
+  }
+})
+
+// Background Sync Listener
+self.addEventListener("sync", (event) => {
+  const syncEvent = event as ExtendableEvent & { tag: string }
+  if (
+    syncEvent.tag === queueSyncTags.newsInteraction ||
+    syncEvent.tag === queueSyncTags.navigation
+  ) {
+    syncEvent.waitUntil(processOfflineQueues())
   }
 })

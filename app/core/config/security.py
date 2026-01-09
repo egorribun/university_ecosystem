@@ -254,6 +254,7 @@ class SecuritySettings(BaseAppSettings):
         _extend(self.frontend_origins)
         _extend(self.frontend_origin)
         _extend(self.app_base_url)
+        _extend(self.webauthn_origin)
 
         # We can't use self.is_development here directly if we want this as a mixin,
         # but BaseAppSettings has it.
@@ -393,7 +394,13 @@ class SecuritySettings(BaseAppSettings):
             return []
         overrides: list[str] = []
         seen: set[str] = {value.lower() for value in self.security_connect_src_values}
-        for host in ("127.0.0.1:8000", "localhost:5173", "127.0.0.1:5173"):
+        for host in (
+            "127.0.0.1:8000",
+            "localhost:5173",
+            "127.0.0.1:5173",
+            "localhost:8081",
+            "127.0.0.1:8081",
+        ):
             http_origin = f"http://{host}"
             key = http_origin.lower()
             if key not in seen:

@@ -860,7 +860,7 @@ export function Dialog({
   const dialogContent = (
     <div
       role="presentation"
-      className="fixed inset-0 z-[var(--ue-z-index-overlay)] flex items-center justify-center bg-[color:rgba(12,21,34,0.38)]/90 backdrop-blur-[14px] p-4"
+      className="fixed inset-0 z-[var(--ue-z-index-overlay)] flex items-center justify-center bg-[#0c1522]/85 backdrop-blur-[12px] p-4"
       style={{ position: "fixed" }}
       onClick={onClose}
     >
@@ -868,11 +868,11 @@ export function Dialog({
         role="dialog"
         aria-modal="true"
         className={cn(
-          "glass glass--panel relative overflow-hidden rounded-[24px]",
-          "border border-[color:var(--glass-border)]",
-          "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(255,255,255,0.92)_4%)] text-[var(--page-text)]",
-          "shadow-[0_34px_88px_rgba(15,40,85,0.18)]",
-          "dark:bg-[color:color-mix(in_srgb,var(--card-bg)_92%,rgba(10,18,32,0.94)_8%)] dark:border-[rgba(148,163,184,0.24)] dark:shadow-[0_40px_96px_rgba(5,9,17,0.7)]",
+          "relative overflow-hidden rounded-[24px] border",
+          "bg-[color:var(--card-bg,#fff)] text-[var(--page-text)]",
+          "border-[color:rgba(255,255,255,0.12)]",
+          "shadow-[0_24px_64px_rgba(0,0,0,0.2)]",
+          "dark:bg-[#101a2a] dark:border-[rgba(255,255,255,0.08)] dark:shadow-[0_32px_80px_rgba(0,0,0,0.5)]",
           fullWidth ? "w-full" : "",
           maxWidthClasses
         )}

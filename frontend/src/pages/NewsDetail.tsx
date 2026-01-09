@@ -113,10 +113,24 @@ export default function NewsDetail() {
   const copyTimeoutRef = useRef<number | null>(null)
   const [commentText, setCommentText] = useState("")
 
-  const { interactions, toggleLike, addComment, isCommenting } = useNewsInteraction(Number(id))
+  const { data: newsItem } = useQuery<NewsItem>({ queryKey: ["news", id, language] })
+
+  const { interactions, toggleLike, addComment, isCommenting, updateComment, deleteComment } =
+    useNewsInteraction(Number(id), {
+      initialData: newsItem
+        ? {
+            likes_count: newsItem.likes_count,
+            comments_count: newsItem.comments_count,
+            is_liked: newsItem.is_liked,
+          }
+        : undefined,
+    })
   const isLiked = interactions?.is_liked ?? false
   const likesCount = interactions?.likes_count ?? 0
   const comments = interactions?.comments ?? []
+
+  const [editingCommentId, setEditingCommentId] = useState<number | null>(null)
+  const [editingCommentText, setEditingCommentText] = useState("")
 
   const handleHeroLoad = useCallback<React.ReactEventHandler<HTMLImageElement>>((event) => {
     const img = event.currentTarget
@@ -627,11 +641,80 @@ export default function NewsDetail() {
                       <span className="font-bold text-sm text-[color:var(--page-text)]">
                         {comment.user_name}
                       </span>
-                      <time className="text-[0.7rem] text-[color:var(--secondary-text)] uppercase font-semibold">
-                        {getMoscowDate(comment.created_at)}
-                      </time>
+                      <div className="flex items-center gap-3">
+                        <time className="text-[0.7rem] text-[color:var(--secondary-text)] uppercase font-semibold">
+                          {getMoscowDate(comment.created_at)}
+                        </time>
+                        {(user?.id === comment.user_id || user?.role === "admin") && (
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => {
+                                setEditingCommentId(comment.id)
+                                setEditingCommentText(comment.content)
+                              }}
+                              className="p-1.5 rounded-full hover:bg-white/10 text-[color:var(--secondary-text)] transition-colors"
+                              title={t("news:actions.editComment", { defaultValue: "Edit" }) ?? ""}
+                            >
+                              <EditIcon sx={{ fontSize: "0.9rem" }} />
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (
+                                  confirm(
+                                    t("news:dialogs.deleteComment.confirm", {
+                                      defaultValue: "Delete this comment?",
+                                    }) ?? "Delete this comment?"
+                                  )
+                                ) {
+                                  void deleteComment(comment.id)
+                                }
+                              }}
+                              className="p-1.5 rounded-full hover:bg-rose-500/20 text-rose-500 transition-colors"
+                              title={
+                                t("news:actions.deleteComment", { defaultValue: "Delete" }) ?? ""
+                              }
+                            >
+                              <DeleteIcon sx={{ fontSize: "0.9rem" }} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <p className="text-[0.95rem] leading-relaxed">{comment.content}</p>
+                    {editingCommentId === comment.id ? (
+                      <div className="space-y-3 mt-1">
+                        <textarea
+                          value={editingCommentText}
+                          onChange={(e) => setEditingCommentText(e.target.value)}
+                          className={cn(textareaClass, "min-h-[80px] text-sm")}
+                          autoFocus
+                        />
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setEditingCommentId(null)}
+                          >
+                            {t("common:buttons.cancel")}
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              if (editingCommentText.trim()) {
+                                void updateComment(comment.id, editingCommentText)
+                                setEditingCommentId(null)
+                              }
+                            }}
+                            disabled={!editingCommentText.trim()}
+                          >
+                            {t("common:buttons.save")}
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-[0.95rem] leading-relaxed whitespace-pre-wrap">
+                        {comment.content}
+                      </p>
+                    )}
                   </div>
                 ))
               )}

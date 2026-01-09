@@ -145,8 +145,14 @@ export const useAuthApi = (
         )
 
         if (response.status === 202) {
-          const mfaResponse = response.data as PendingMfaResponse
-          const pendingState: PendingMfaState = { ...mfaResponse, reason: "login" }
+          const mfaResponse = response.data as any
+          // Backend returns 'methods', frontend expects 'challenges'
+          const challenges = mfaResponse.challenges || mfaResponse.methods || []
+          const pendingState: PendingMfaState = {
+            ...mfaResponse,
+            challenges,
+            reason: "login",
+          }
           updatePendingMfa(pendingState)
           return pendingState
         }
@@ -368,7 +374,9 @@ export const useAuthApi = (
         )
 
         // 2. Start biometric authentication
-        const authResponse = await startAuthentication(optionsResponse.data.publicKey)
+        const authResponse = await startAuthentication({
+          optionsJSON: optionsResponse.data.publicKey as any,
+        })
 
         // 3. Verify authentication response
         const response = await api.post<TokenWithProfileResponse>(

@@ -42,9 +42,9 @@
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
-    "@mui/icons-material": "^7.3.0",
-    "@mui/material": "^7.3.0",
-    "@mui/x-date-pickers": "^8.5.0",
+    "@mui/icons-material": "^6.4.0",
+    "@mui/material": "^6.4.0",
+    "@mui/x-date-pickers": "^6.19.0",
     "@noble/hashes": "^1.4.0",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/exporter-trace-otlp-http": "^0.55.0",
@@ -74,7 +74,7 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-i18next": "^16.0.1",
-    "react-router-dom": "^6.30.0",
+    "react-router-dom": "^7.12.0",
     "scrypt-js": "^3.0.1",
     "web-vitals": "^4.2.4",
     "zod": "^3.24.1"

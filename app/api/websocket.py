@@ -334,7 +334,7 @@ async def websocket_chat(websocket: WebSocket):
 
     # Fallback to cookie-based auth
     if not user:
-        access_token = websocket.cookies.get("access_token")
+        access_token = websocket.cookies.get("access_token_v2")
         logger.info(
             f"Attempting cookie auth, access_token present: {bool(access_token)}"
         )

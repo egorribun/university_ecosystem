@@ -39,7 +39,8 @@
   textarea:focus-visible,
   select:focus-visible {
     @apply outline-none;
-    box-shadow: var(--ue-focus-ring, 0 0 0 3px rgba(51, 144, 236, 0.4));
+    /* Increased opacity for better visibility and accessibility compliance */
+    box-shadow: var(--ue-focus-ring, 0 0 0 3px rgba(51, 144, 236, 0.7));
   }
 
   /* Alternative focus style for elements where box-shadow may conflict */
@@ -57,7 +58,7 @@
   .dark input:focus-visible,
   .dark textarea:focus-visible,
   .dark select:focus-visible {
-    box-shadow: var(--ue-focus-ring, 0 0 0 3px rgba(135, 116, 225, 0.45));
+    box-shadow: var(--ue-focus-ring, 0 0 0 3px rgba(135, 116, 225, 0.7));
   }
 }
 

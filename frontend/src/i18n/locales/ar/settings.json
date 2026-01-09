@@ -179,7 +179,8 @@
       }
     },
     "method": {
-      "totp": "Authenticator app"
+      "totp": "Authenticator app",
+      "webauthn": "Security Keys (Passkeys)"
     },
     "status": {
       "defaultTotp": "Default method: authenticator app",
@@ -203,6 +204,24 @@
       "unnamed": "Authenticator {{index}}",
       "limitReached": "Only one authenticator app can be connected at a time. Remove the existing app to start over."
     },
+    "webauthn": {
+      "description": "Use your fingerprint, Face ID, or a USB key to sign in without passwords.",
+      "empty": "You don't have any registered security keys yet.",
+      "add": "Add security key",
+      "added": "Added on {{value}}",
+      "lastUsed": "Last used {{value}}",
+      "labelField": "Key name",
+      "labelPlaceholder": "e.g., MacBook Touch ID",
+      "defaultLabel": "Security key",
+      "dialog": {
+        "title": "Add security key",
+        "description": "Enter a name for your new security key to help you recognize it."
+      },
+      "errors": {
+        "cancelled": "Registration cancelled by user"
+      },
+      "notSupported": "WebAuthn غير متاح. HTTPS مطلوب لتسجيل بصمة الإصبع أو مفتاح الأمان."
+    },
     "snackbar": {
       "totpStartFailed": "Couldn't start authenticator setup",
       "totpEnabled": "Authenticator app connected",
@@ -210,7 +229,11 @@
       "totpCancelFailed": "Couldn't cancel authenticator setup",
       "totpDisabled": "Authenticator app removed",
       "totpDisableFailed": "Couldn't remove authenticator app",
-      "challengeReset": "Verification challenge refreshed. Try again."
+      "challengeReset": "Verification challenge refreshed. Try again.",
+      "webauthnEnabled": "Security key added",
+      "webauthnFailed": "Couldn't add security key",
+      "webauthnDeleted": "Security key removed",
+      "webauthnDeleteFailed": "Couldn't remove security key"
     },
     "stepUp": {
       "description": "Complete multi-factor authentication to continue."

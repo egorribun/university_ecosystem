@@ -290,25 +290,38 @@ export async function useMockApi(page: Page) {
 
   await page.addInitScript(() => {
     try {
-      // Unregister all service workers
-      if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.getRegistrations().then((registrations) => {
-          for (const registration of registrations) {
-            registration.unregister()
-          }
+      // Completely neuter serviceWorker to prevent interference with mock routing
+      Object.defineProperty(navigator, "serviceWorker", {
+        get: () => ({
+          register: () => Promise.resolve({ unregister: () => Promise.resolve(true) }),
+          getRegistrations: () => Promise.resolve([]),
+          addEventListener: () => {},
+          removeEventListener: () => {},
+          ready: new Promise(() => {}), // never ready
+        }),
+      })
+      // Clear all caches to ensure clean start for ETag tests
+      if ("caches" in window) {
+        caches.keys().then((keys) => {
+          keys.forEach((key) => caches.delete(key))
         })
       }
+      /*
       // Clear all caches
       if ("caches" in window) {
         caches.keys().then((keys) => {
           keys.forEach((key) => caches.delete(key))
         })
       }
+      */
 
       if (window.name !== "__mock_api_initialized__") {
         window.name = "__mock_api_initialized__"
       }
+      // Force Russian language and mock authentication for every page visit
       window.localStorage.setItem("ue:language", "ru")
+      window.localStorage.setItem("access_token", "mock-token")
+      window.localStorage.setItem("refresh_token", "mock-refresh")
 
       window.addEventListener("unhandledrejection", (event) => {
         const error = event.reason
@@ -329,6 +342,8 @@ export async function useMockApi(page: Page) {
       msg.type() === "error" ||
       msg.text().includes("[sw]") ||
       msg.text().includes("[mock]") ||
+      msg.text().includes("[test]") ||
+      msg.text().includes("LivePushToasts") ||
       msg.text().includes("[usePushSync]")
     ) {
       console.log(
@@ -446,6 +461,9 @@ export async function useMockApi(page: Page) {
 
       const ifNoneMatch = request.headers()["if-none-match"] || request.headers()["If-None-Match"]
       const is304 = ifNoneMatch === state.newsVersion
+      console.log(
+        `[mock] News request: If-None-Match="${ifNoneMatch}", state.newsVersion="${state.newsVersion}", is304=${is304}`
+      )
 
       state.newsLog.push({
         header: ifNoneMatch,
@@ -458,6 +476,7 @@ export async function useMockApi(page: Page) {
           headers: {
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Expose-Headers": "ETag",
             ETag: state.newsVersion,
             "Cache-Control": "no-cache",
           },
@@ -475,7 +494,10 @@ export async function useMockApi(page: Page) {
 
       await route.fulfill({
         status: 200,
-        headers: { ETag: state.newsVersion },
+        headers: {
+          "Access-Control-Expose-Headers": "ETag",
+          ETag: state.newsVersion,
+        },
         body: JSON.stringify({
           items: localized,
           total: localized.length,
@@ -609,6 +631,17 @@ export async function useMockApi(page: Page) {
       return
     }
 
+    if (normPath.includes("auth/session/signing-key")) {
+      await route.fulfill({
+        status: 200,
+        body: JSON.stringify({
+          key: "mock-key-123",
+          expires_at: new Date(Date.now() + 3600000).toISOString(),
+        }),
+      })
+      return
+    }
+
     if (normPath.includes("auth/mfa/challenge")) {
       await route.fulfill({ status: 200, body: JSON.stringify(state.mfa.stepUpChallenge) })
       return
@@ -704,6 +737,12 @@ export async function useMockApi(page: Page) {
       await p.fill('input[name="password"]', "Password123")
       await p.click('button[type="submit"]')
       await expect(p).toHaveURL(/\/dashboard$|\/$/)
+      // Ensure tokens are persisted in localStorage for subsequent reloads/navigations
+      await p.evaluate(() => {
+        localStorage.setItem("access_token", "mock-token")
+        localStorage.setItem("refresh_token", "mock-refresh")
+        localStorage.setItem("ue:language", "ru")
+      })
       state.loggedIn = true
     },
     async setOffline(p: Page, offline: boolean) {

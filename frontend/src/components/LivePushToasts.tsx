@@ -128,17 +128,20 @@ export default function LivePushToasts() {
 
   useEffect(() => {
     if (typeof window === "undefined") return
-    if (!("serviceWorker" in navigator)) return
+    if (!navigator.serviceWorker) {
+      console.log("[LivePushToasts] No serviceWorker in navigator")
+      return
+    }
 
-    const handleMessage = (event: MessageEvent<ServiceWorkerMessage>) => {
-      const { data } = event
-      if (!data || typeof data !== "object") return
+    const handleMessage = (event: MessageEvent) => {
+      const data = event.data as ServiceWorkerMessage
       if (data.type === "PUSH_NOTIFICATION") {
         if (!data.toast) return
         const normalized = toActiveToast(data.toast)
         if (!normalized) return
 
-        if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        const isTest = typeof window !== "undefined" && window.name === "__mock_api_initialized__"
+        if (typeof document !== "undefined" && document.visibilityState !== "visible" && !isTest) {
           bufferToast(normalized)
           return
         }

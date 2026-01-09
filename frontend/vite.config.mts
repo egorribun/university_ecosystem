@@ -337,14 +337,14 @@ export default defineConfig(({ mode }) => {
                 /@emotion/.test(normalizedId) ||
                 /@mui/.test(normalizedId) ||
                 /dayjs/.test(normalizedId) ||
-                normalizedId.includes("commonjs")
+                normalizedId.includes("commonjs") ||
+                normalizedId.includes("react-router")
               ) {
                 return "vendor-ui"
               }
             }
             if (normalizedId.includes("@tanstack")) return "react-query"
             if (normalizedId.includes("framer-motion")) return "motion"
-            if (normalizedId.includes("react-router")) return "router"
             if (normalizedId.includes("dayjs")) return "dayjs"
             if (normalizedId.includes("zxcvbn")) return "zxcvbn"
           },

@@ -2,11 +2,6 @@ import { useTranslation } from "react-i18next"
 import { AppProviders } from "./AppProviders"
 import { AppRoutes } from "./AppRoutes"
 
-export const routerFutureFlags = {
-  v7_startTransition: true,
-  v7_relativeSplatPath: true,
-}
-
 /**
  * World-Class Modular App Registry
  */

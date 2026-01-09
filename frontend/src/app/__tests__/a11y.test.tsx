@@ -8,7 +8,6 @@ import Navbar from "@/components/Navbar"
 import Dashboard from "@/pages/Dashboard"
 import Profile from "@/pages/Profile"
 import { AuthContext } from "@/contexts/AuthContext"
-import { routerFutureFlags } from "@/App"
 import { checkA11y } from "@/tests/axeTest"
 import { createQueryClient } from "@/app/queryClient"
 import api, { apiClient } from "@/api/client"
@@ -115,7 +114,7 @@ const createWrapper = (route = "/dashboard") => {
   }
 
   const Wrapper = ({ children }: PropsWithChildren) => (
-    <MemoryRouter future={routerFutureFlags} initialEntries={[route]}>
+    <MemoryRouter initialEntries={[route]}>
       <QueryClientProvider client={queryClient}>
         <CssVarsProvider theme={theme}>
           <LanguageProvider>

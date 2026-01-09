@@ -5,7 +5,6 @@ import { http, HttpResponse } from "msw"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import ResetPassword from "../ResetPassword"
 import { server } from "@/tests/mocks/server"
-import { routerFutureFlags } from "../../App"
 import i18n from "../../i18n/config"
 
 const tAuth = (key: string, options?: Record<string, unknown>) => i18n.t(`auth:${key}`, options)
@@ -17,7 +16,7 @@ vi.mock("zxcvbn", () => ({
 
 const renderWithToken = () =>
   render(
-    <MemoryRouter future={routerFutureFlags} initialEntries={["/reset/token123"]}>
+    <MemoryRouter initialEntries={["/reset/token123"]}>
       <Routes>
         <Route path="/reset/:token" element={<ResetPassword />} />
       </Routes>

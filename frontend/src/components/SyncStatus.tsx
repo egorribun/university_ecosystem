@@ -7,7 +7,7 @@ import { Tooltip } from "@mui/material"
 import { useTranslation } from "react-i18next"
 
 const CLICK_DB_NAME = "notification-interactions"
-const CLICK_DB_VERSION = 1
+const CLICK_DB_VERSION = 3
 const NEWS_INTERACTION_STORE = "pending-news-interactions"
 
 export function SyncStatus() {
@@ -26,6 +26,24 @@ export function SyncStatus() {
       try {
         const db = await new Promise<IDBDatabase>((resolve, reject) => {
           const request = indexedDB.open(CLICK_DB_NAME, CLICK_DB_VERSION)
+          request.onupgradeneeded = () => {
+            const database = request.result
+            if (!database.objectStoreNames.contains("pending-navigations")) {
+              database.createObjectStore("pending-navigations", {
+                keyPath: "id",
+                autoIncrement: true,
+              })
+            }
+            if (!database.objectStoreNames.contains("pending-reports")) {
+              database.createObjectStore("pending-reports", { keyPath: "id", autoIncrement: true })
+            }
+            if (!database.objectStoreNames.contains(NEWS_INTERACTION_STORE)) {
+              database.createObjectStore(NEWS_INTERACTION_STORE, {
+                keyPath: "id",
+                autoIncrement: true,
+              })
+            }
+          }
           request.onsuccess = () => resolve(request.result)
           request.onerror = () => reject(request.error)
         })

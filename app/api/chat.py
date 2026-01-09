@@ -274,29 +274,46 @@ async def create_chat(
             detail="User not found",
         )
 
-    # Check if chat already exists
-    # Simpler to fetch user's chats and check in python for now.
+    # Optimized lookup: Check if a chat with these two participants already exists
+    # using a single efficient query instead of pulling all chats into memory.
+    from sqlalchemy import func
 
-    # Find chats where both users are participants
-    query = (
+    from app.models.chat import chat_participants
+
+    # We want a chat where both current_user and participant are present
+    # and the chat has exactly 2 participants (direct message).
+    # Build properly correlated subqueries to avoid cartesian products.
+    cp = chat_participants
+
+    existing_chat_stmt = (
         select(Chat)
-        .join(Chat.participants)
-        .where(User.id == current_user.id)
+        .where(Chat.id.in_(select(cp.c.chat_id).where(cp.c.user_id == current_user.id)))
+        .where(
+            Chat.id.in_(
+                select(cp.c.chat_id).where(cp.c.user_id == chat_in.participant_id)
+            )
+        )
+        # Ensure it's a DM (exactly 2 participants)
+        .where(
+            select(func.count())
+            .where(cp.c.chat_id == Chat.id)
+            .correlate(Chat)
+            .scalar_subquery()
+            == 2
+        )
         .options(selectinload(Chat.participants))
     )
-    result = await session.execute(query)
-    user_chats = result.scalars().all()
 
-    for chat in user_chats:
-        participant_ids = [p.id for p in chat.participants]
-        if len(participant_ids) == 2 and chat_in.participant_id in participant_ids:
-            # Chat exists
-            return ChatResponse(
-                id=chat.id,
-                participants=chat.participants,
-                created_at=chat.created_at,
-                updated_at=chat.updated_at,
-            )
+    result = await session.execute(existing_chat_stmt)
+    existing_chat = result.scalar_one_or_none()
+
+    if existing_chat:
+        return ChatResponse(
+            id=existing_chat.id,
+            participants=existing_chat.participants,
+            created_at=existing_chat.created_at,
+            updated_at=existing_chat.updated_at,
+        )
 
     # Create new chat
     new_chat = Chat()
@@ -644,21 +661,22 @@ async def mark_read(
     if current_user not in chat.participants:
         raise HTTPException(status_code=403, detail="Not a participant")
 
-    # Update unread messages sent by others
-    query = select(Message).where(
-        and_(
-            Message.chat_id == chat_id,
-            Message.sender_id != current_user.id,
-            Message.read_status.is_(False),
+    # Optimized bulk update: Mark messages as read in a single SQL statement
+    from sqlalchemy import update
+
+    stmt = (
+        update(Message)
+        .where(
+            and_(
+                Message.chat_id == chat_id,
+                Message.sender_id != current_user.id,
+                Message.read_status.is_(False),
+            )
         )
+        .values(read_status=True)
     )
-    result = await session.execute(query)
-    unread_messages = result.scalars().all()
 
-    for msg in unread_messages:
-        msg.read_status = True
-        session.add(msg)
-
+    await session.execute(stmt)
     await session.commit()
     return {"status": "ok"}
 

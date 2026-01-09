@@ -302,6 +302,9 @@ const createTestNews = (): NewsItem[] => {
       image_url: null,
       image_url_optimized: null,
       created_at: new Date(now.getTime() - index * 24 * 60 * 60 * 1000).toISOString(),
+      likes_count: 0,
+      comments_count: 0,
+      is_liked: false,
     }
   })
 }
