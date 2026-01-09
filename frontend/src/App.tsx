@@ -2,8 +2,6 @@ import { useTranslation } from "react-i18next"
 import { AppProviders } from "./AppProviders"
 import { AppRoutes } from "./AppRoutes"
 
-
-
 /**
  * World-Class Modular App Registry
  */
