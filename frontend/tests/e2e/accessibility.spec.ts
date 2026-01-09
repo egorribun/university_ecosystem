@@ -25,7 +25,8 @@ test.describe("Accessibility smoke", () => {
     await page.goto("/dashboard", { waitUntil: "networkidle" })
 
     // Find a button and focus it. We use the menu button which is always present on dashboard.
-    const button = page.getByRole("button", { name: /menu|меню/i }).first()
+    // Find the brand link which is always visible.
+    const button = page.locator(".brand").first()
 
     // We must focus it specifically to trigger focus-visible rings used for accessibility
     await button.focus()

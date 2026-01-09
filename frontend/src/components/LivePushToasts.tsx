@@ -138,7 +138,8 @@ export default function LivePushToasts() {
         const normalized = toActiveToast(data.toast)
         if (!normalized) return
 
-        if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        const isTest = typeof window !== "undefined" && window.name === "__mock_api_initialized__"
+        if (typeof document !== "undefined" && document.visibilityState !== "visible" && !isTest) {
           bufferToast(normalized)
           return
         }

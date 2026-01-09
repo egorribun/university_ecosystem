@@ -39,7 +39,8 @@
   textarea:focus-visible,
   select:focus-visible {
     @apply outline-none;
-    box-shadow: var(--ue-focus-ring, 0 0 0 3px rgba(51, 144, 236, 0.4));
+    /* Increased opacity for better visibility and accessibility compliance */
+    box-shadow: var(--ue-focus-ring, 0 0 0 3px rgba(51, 144, 236, 0.7));
   }
 
   /* Alternative focus style for elements where box-shadow may conflict */
@@ -57,12 +58,13 @@
   .dark input:focus-visible,
   .dark textarea:focus-visible,
   .dark select:focus-visible {
-    box-shadow: var(--ue-focus-ring, 0 0 0 3px rgba(135, 116, 225, 0.45));
+    box-shadow: var(--ue-focus-ring, 0 0 0 3px rgba(135, 116, 225, 0.7));
   }
 }
 
 @layer utilities {
   @keyframes dash-colon-blink {
+
     0%,
     49.9% {
       opacity: 1;
@@ -86,6 +88,7 @@
 }
 
 @layer components {
+
   /* Component tokens
      .card-glass   → Frosted surface using the glass palette + blur.
      .btn-gradient → Primary CTA gradient button with hover lift.
@@ -110,25 +113,21 @@
     inset: 0;
     pointer-events: none;
     z-index: 10;
-    background: linear-gradient(
-      125deg,
-      rgba(255, 255, 255, 0.08) 0%,
-      rgba(255, 255, 255, 0.02) 40%,
-      rgba(255, 255, 255, 0) 50%,
-      rgba(255, 255, 255, 0) 100%
-    );
+    background: linear-gradient(125deg,
+        rgba(255, 255, 255, 0.08) 0%,
+        rgba(255, 255, 255, 0.02) 40%,
+        rgba(255, 255, 255, 0) 50%,
+        rgba(255, 255, 255, 0) 100%);
     border-radius: inherit;
     border: 1px solid rgba(255, 255, 255, 0.12);
   }
 
   .dark .card-glass::after {
     border-color: rgba(255, 255, 255, 0.06);
-    background: linear-gradient(
-      125deg,
-      rgba(255, 255, 255, 0.05) 0%,
-      rgba(255, 255, 255, 0.01) 40%,
-      transparent 50%
-    );
+    background: linear-gradient(125deg,
+        rgba(255, 255, 255, 0.05) 0%,
+        rgba(255, 255, 255, 0.01) 40%,
+        transparent 50%);
   }
 
   .btn-gradient {
@@ -196,47 +195,36 @@
 
   .dash-panel-schedule::before {
     background:
-      radial-gradient(
-        circle at 18% -8%,
+      radial-gradient(circle at 18% -8%,
         color-mix(in srgb, var(--dash-card-schedule-orb) 55%, transparent) 0%,
-        transparent 65%
-      ),
-      radial-gradient(
-        circle at 85% 120%,
+        transparent 65%),
+      radial-gradient(circle at 85% 120%,
         color-mix(in srgb, var(--dash-card-schedule-radial) 45%, transparent) 0%,
-        transparent 78%
-      );
+        transparent 78%);
   }
 
   .dash-panel-news::before {
     background:
-      radial-gradient(
-        circle at 82% 4%,
+      radial-gradient(circle at 82% 4%,
         color-mix(in srgb, var(--dash-card-news-orb) 52%, transparent) 0%,
-        transparent 68%
-      ),
-      radial-gradient(
-        circle at 10% 110%,
+        transparent 68%),
+      radial-gradient(circle at 10% 110%,
         color-mix(in srgb, var(--dash-card-news-radial) 46%, transparent) 0%,
-        transparent 80%
-      );
+        transparent 80%);
   }
 
   .dash-panel-events::before {
     background:
-      radial-gradient(
-        circle at 12% 6%,
+      radial-gradient(circle at 12% 6%,
         color-mix(in srgb, var(--dash-card-events-orb) 50%, transparent) 0%,
-        transparent 68%
-      ),
-      radial-gradient(
-        circle at 90% 115%,
+        transparent 68%),
+      radial-gradient(circle at 90% 115%,
         color-mix(in srgb, var(--dash-card-events-radial) 42%, transparent) 0%,
-        transparent 82%
-      );
+        transparent 82%);
   }
 
   @media (prefers-reduced-motion: reduce) {
+
     .dash-panel-schedule::before,
     .dash-panel-news::before,
     .dash-panel-events::before {
@@ -253,12 +241,10 @@
     content: "";
     position: absolute;
     inset: 0;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      rgba(255, 255, 255, 0.25) 45%,
-      transparent 100%
-    );
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.25) 45%,
+        transparent 100%);
     animation:
       fade-in var(--anim-med, 0.3s ease) forwards,
       skeleton-wave 1.6s ease-in-out infinite;
@@ -310,8 +296,7 @@
   }
 
   [data-page-fade][data-ready="true"] {
-    animation: ue-page-fade-shell var(--page-fade-duration) var(--page-fade-easing)
-      var(--page-fade-delay) both;
+    animation: ue-page-fade-shell var(--page-fade-duration) var(--page-fade-easing) var(--page-fade-delay) both;
   }
 
   [data-page-fade] [data-fade] {
@@ -326,8 +311,7 @@
   }
 
   [data-page-fade][data-ready="true"] [data-fade] {
-    animation: ue-page-fade-item var(--page-fade-duration) var(--page-fade-easing)
-      calc(var(--fade-delay, 120ms) + var(--page-fade-delay)) both;
+    animation: ue-page-fade-item var(--page-fade-duration) var(--page-fade-easing) calc(var(--fade-delay, 120ms) + var(--page-fade-delay)) both;
   }
 
   [data-page-fade][data-effect="soft-blur"] {
@@ -391,6 +375,7 @@
 
   /* Messenger — Telegram Style Components */
   @keyframes msg-online-pulse {
+
     0%,
     100% {
       box-shadow: 0 0 0 0 var(--msg-online-pulse);
@@ -402,6 +387,7 @@
   }
 
   @keyframes msg-typing {
+
     0%,
     60%,
     100% {
@@ -549,6 +535,7 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
+
     .msg-online-indicator,
     .msg-typing-dot,
     .msg-bubble-sent,

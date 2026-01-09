@@ -116,11 +116,8 @@ test.describe("University ecosystem app", () => {
       { timeout: 20000 }
     )
 
-    // Use evaluate to click directly in DOM context
-    await page.evaluate(() => {
-      const btn = document.querySelector('[data-testid="session-revoke-2"]') as HTMLButtonElement
-      if (btn) btn.click()
-    })
+    // Use standard click which handles scrolling and visibility checks
+    await revokeButton.click()
 
     const response = await responsePromise
     expect(response.ok()).toBeTruthy()

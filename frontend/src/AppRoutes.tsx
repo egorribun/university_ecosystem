@@ -139,6 +139,9 @@ export function AppRoutes() {
 
   const routedContent = (
     <div
+      id="main"
+      role="main"
+      tabIndex={-1}
       style={{
         minHeight: isMessenger ? undefined : "100dvh",
         position: isMessenger ? "fixed" : undefined,
