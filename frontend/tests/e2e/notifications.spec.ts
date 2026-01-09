@@ -183,8 +183,6 @@ async function setupMockServiceWorker(page: Page) {
           console.error("Dispatch failed", e)
         }
         return
-      } else if (data.type === "in-app") {
-        console.log("[test] Skipping in-app dispatch because visibility is:", document.visibilityState)
       }
 
       type NotificationOptionsWithActions = NotificationOptions & {
