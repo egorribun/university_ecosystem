@@ -41,7 +41,9 @@ test.describe("University ecosystem app", () => {
       .getByRole("link", { name: /Посмотреть все|See all/i })
       .first()
       .click()
-    await expect(page.getByText(/\u041d\u043e\u0432\u043e\u0441\u0442\u044c \u0434\u043d\u044f/)).toBeVisible()
+    await expect(
+      page.getByText(/\u041d\u043e\u0432\u043e\u0441\u0442\u044c \u0434\u043d\u044f/)
+    ).toBeVisible()
 
     // Wait for the cache effect to run and verify it's saved
     console.log("[test] Waiting for news:list:ru in localStorage...")
@@ -57,7 +59,9 @@ test.describe("University ecosystem app", () => {
 
     console.log("[test] Reloading page to verify ETag caching...")
     await page.reload()
-    await expect(page.getByText(/\u041d\u043e\u0432\u043e\u0441\u0442\u044c \u0434\u043d\u044f/)).toBeVisible()
+    await expect(
+      page.getByText(/\u041d\u043e\u0432\u043e\u0441\u0442\u044c \u0434\u043d\u044f/)
+    ).toBeVisible()
 
     expect(mock.state.newsLog.some((entry) => entry.status === 304)).toBeTruthy()
     expect(mock.state.newsLog.filter((entry) => entry.status === 200).length).toBeGreaterThan(0)
@@ -73,7 +77,9 @@ test.describe("University ecosystem app", () => {
       .getByRole("link", { name: /Посмотреть все|See all/i })
       .first()
       .click()
-    await expect(page.getByText(/\u041d\u043e\u0432\u043e\u0441\u0442\u044c \u0434\u043d\u044f/)).toBeVisible()
+    await expect(
+      page.getByText(/\u041d\u043e\u0432\u043e\u0441\u0442\u044c \u0434\u043d\u044f/)
+    ).toBeVisible()
 
     // 2. Wait for localStorage to be populated
     await expect(async () => {

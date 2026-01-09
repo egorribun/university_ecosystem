@@ -45,8 +45,12 @@ test.describe("Accessibility smoke", () => {
     })
 
     const hasVisibleFocus =
-      (focusStyles.boxShadow && focusStyles.boxShadow !== "none" && focusStyles.boxShadow !== "transparent") ||
-      (focusStyles.outlineStyle && focusStyles.outlineStyle !== "none" && focusStyles.outlineStyle !== "transparent")
+      (focusStyles.boxShadow &&
+        focusStyles.boxShadow !== "none" &&
+        focusStyles.boxShadow !== "transparent") ||
+      (focusStyles.outlineStyle &&
+        focusStyles.outlineStyle !== "none" &&
+        focusStyles.outlineStyle !== "transparent")
 
     expect(hasVisibleFocus).toBe(true)
   })

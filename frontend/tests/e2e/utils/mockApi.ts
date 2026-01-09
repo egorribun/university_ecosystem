@@ -461,7 +461,9 @@ export async function useMockApi(page: Page) {
 
       const ifNoneMatch = request.headers()["if-none-match"] || request.headers()["If-None-Match"]
       const is304 = ifNoneMatch === state.newsVersion
-      console.log(`[mock] News request: If-None-Match="${ifNoneMatch}", state.newsVersion="${state.newsVersion}", is304=${is304}`)
+      console.log(
+        `[mock] News request: If-None-Match="${ifNoneMatch}", state.newsVersion="${state.newsVersion}", is304=${is304}`
+      )
 
       state.newsLog.push({
         header: ifNoneMatch,
@@ -494,7 +496,7 @@ export async function useMockApi(page: Page) {
         status: 200,
         headers: {
           "Access-Control-Expose-Headers": "ETag",
-          ETag: state.newsVersion
+          ETag: state.newsVersion,
         },
         body: JSON.stringify({
           items: localized,
@@ -630,7 +632,13 @@ export async function useMockApi(page: Page) {
     }
 
     if (normPath.includes("auth/session/signing-key")) {
-      await route.fulfill({ status: 200, body: JSON.stringify({ key: "mock-key-123", expires_at: new Date(Date.now() + 3600000).toISOString() }) })
+      await route.fulfill({
+        status: 200,
+        body: JSON.stringify({
+          key: "mock-key-123",
+          expires_at: new Date(Date.now() + 3600000).toISOString(),
+        }),
+      })
       return
     }
 
