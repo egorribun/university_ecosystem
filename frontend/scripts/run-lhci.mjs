@@ -12,6 +12,8 @@ const __dirname = path.dirname(__filename)
 const frontendRoot = path.resolve(__dirname, "..")
 
 const LOCAL_PREVIEW_PORT = 4174
+process.env.VITE_LHCI = "true"
+
 const base = process.env.PREVIEW_URL ?? process.env.LHCI_URL ?? ""
 const useRemotePreview = Boolean(base)
 let dependenciesEnsured = false
