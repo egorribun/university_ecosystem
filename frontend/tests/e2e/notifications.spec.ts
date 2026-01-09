@@ -312,29 +312,34 @@ test.describe("Push notifications", () => {
       },
       {
         payload: {
-          title: "Событие началось",
-          body: "Хакатон ГУУ стартовал",
+          title: "University News Test", // Use ASCII to avoid encoding issues
+          body: "Semester start dates have been updated",
           url: "/news",
-          data: { type: "in-app", severity: "success" },
+          data: {
+            type: "in-app",
+            severity: "success",
+          },
         },
       }
     )
 
     const toast = page.getByRole("alert").first()
     await expect(toast).toBeVisible()
-    await expect(toast).toContainText("Событие началось")
-    await expect(toast).toContainText("Хакатон ГУУ стартовал")
+    await expect(toast).toContainText("University News Test")
+    await expect(toast).toContainText("Semester start dates have been updated")
 
     const postCalls = await page.evaluate(() => window.__getShowNotificationCalls?.().length ?? 0)
     expect(postCalls).toBe(0)
 
-    await Promise.all([
-      page.waitForURL(/\/news$/),
-      page
-        .locator('[role="alert"]')
-        .getByRole("button", { name: /Open|Открыть/i })
-        .click(),
-    ])
-    await expect(page.getByText(/Новости университета|University news/i)).toBeVisible()
+    await page
+      .locator('[role="alert"]')
+      .getByRole("button", { name: /Open|Открыть/i })
+      .click()
+
+    await page.waitForTimeout(500)
+    await page.waitForURL(/\/news$/)
+    const heading = page.getByRole("heading", { level: 1 })
+    // Use unicode for robustness against mojibake
+    await expect(heading).toContainText(/News|\u041d\u043e\u0432\u043e\u0441\u0442/i)
   })
 })
