@@ -87,6 +87,8 @@ export async function registerServiceWorker(path = "/sw.js") {
     let reloaded = false
     navigator.serviceWorker.addEventListener("controllerchange", () => {
       if (reloaded) return
+      // Prevent infinite reload loop in E2E tests where SW is unregistered on every load
+      if (window.name === "__mock_api_initialized__") return
       reloaded = true
       window.location.reload()
     })

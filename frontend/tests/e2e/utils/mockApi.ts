@@ -609,6 +609,11 @@ export async function useMockApi(page: Page) {
       return
     }
 
+    if (normPath.includes("auth/session/signing-key")) {
+      await route.fulfill({ status: 200, body: JSON.stringify({}) })
+      return
+    }
+
     if (normPath.includes("auth/mfa/challenge")) {
       await route.fulfill({ status: 200, body: JSON.stringify(state.mfa.stepUpChallenge) })
       return
