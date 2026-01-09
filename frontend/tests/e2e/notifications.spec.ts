@@ -12,7 +12,13 @@ async function setupMockServiceWorker(page: Page) {
         showNotificationCalls.push({ title, options })
         return Promise.resolve()
       },
-    } as ServiceWorkerRegistration
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      unregister: () => Promise.resolve(true),
+      active: null,
+      waiting: null,
+      installing: null,
+    } as unknown as ServiceWorkerRegistration
 
     const wrapListener = (listener: EventListenerOrEventListenerObject | null | undefined) => {
       if (!listener) return undefined

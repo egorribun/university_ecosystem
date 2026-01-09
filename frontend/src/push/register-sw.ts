@@ -68,19 +68,21 @@ export async function registerServiceWorker(path = "/sw.js") {
       notifyUpdateAvailable(registration)
     }
 
-    registration.addEventListener("updatefound", () => {
-      const sw = registration.installing
-      if (!sw) return
+    if (registration && typeof registration.addEventListener === "function") {
+      registration.addEventListener("updatefound", () => {
+        const sw = registration.installing
+        if (!sw) return
 
-      const onStateChange = () => {
-        if (sw.state === "installed" && navigator.serviceWorker.controller) {
-          notifyUpdateAvailable(registration)
-          sw.removeEventListener("statechange", onStateChange)
+        const onStateChange = () => {
+          if (sw.state === "installed" && navigator.serviceWorker.controller) {
+            notifyUpdateAvailable(registration)
+            sw.removeEventListener("statechange", onStateChange)
+          }
         }
-      }
 
-      sw.addEventListener("statechange", onStateChange)
-    })
+        sw.addEventListener("statechange", onStateChange)
+      })
+    }
 
     let reloaded = false
     navigator.serviceWorker.addEventListener("controllerchange", () => {

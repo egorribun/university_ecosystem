@@ -27,7 +27,7 @@ export function usePushSync(isAuthenticated: boolean) {
 
     const syncPush = async () => {
       try {
-        console.log("[usePushSync] Starting push sync...")
+        // console.log("[usePushSync] Starting push sync...")
 
         // Dynamically import to avoid loading push code when not needed
         const {
@@ -49,17 +49,17 @@ export function usePushSync(isAuthenticated: boolean) {
           return
         }
 
-        console.log("[usePushSync] Notification.permission:", Notification.permission)
-        console.log("[usePushSync] hasPushConsent before recover:", hasPushConsent())
+        // console.log("[usePushSync] Notification.permission:", Notification.permission)
+        // console.log("[usePushSync] hasPushConsent before recover:", hasPushConsent())
 
         // Try to recover consent if localStorage was cleared
         const recovered = await recoverPushConsentFromBrowser()
-        console.log("[usePushSync] Recovered consent:", recovered)
+        // console.log("[usePushSync] Recovered consent:", recovered)
 
         if (cancelled) return
 
         const hasConsent = hasPushConsent()
-        console.log("[usePushSync] hasPushConsent after recover:", hasConsent)
+        // console.log("[usePushSync] hasPushConsent after recover:", hasConsent)
 
         // If we have consent (either existing or recovered), sync the subscription
         if (recovered || hasConsent) {
