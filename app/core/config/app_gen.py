@@ -35,6 +35,9 @@ class AppGeneralSettings(BaseAppSettings):
     metrics_allowlist: str | list[str] = ""
     monitoring_heavy_probe_enabled: bool = False
     health_storage_probe_enabled: bool = True
+    presence_ping_min_interval_seconds: int = 5
+    presence_pubsub_enabled: bool = False
+    presence_pubsub_channel: str = "presence_updates"
 
     api_v2_prefix: str = "/api/v2"
     audit_log_secret: str = "development-audit-secret"

@@ -10,20 +10,25 @@ This module provides WebSocket connections for:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import uuid
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from redis.asyncio import Redis
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.config import settings
 from app.core.database import async_session
 from app.core.feature_flags import feature_flags
-from app.models.chat import Chat, Message
+from app.core.metrics import record_presence_event, record_presence_throttled
+from app.models.chat import Chat, Message, chat_participants
 from app.models.models import ActiveSession, User
 from app.schemas.chat import ChatParticipant, PresenceStatus
 from app.utils.logging import redact_sensitive_mapping
@@ -31,6 +36,95 @@ from app.utils.logging import redact_sensitive_mapping
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ws", tags=["websocket"])
+
+
+PRESENCE_SOURCE_CONNECT = "connect"
+PRESENCE_SOURCE_DISCONNECT = "disconnect"
+PRESENCE_SOURCE_PING = "ping"
+PRESENCE_SOURCE_PUBSUB = "pubsub"
+
+_PRESENCE_INSTANCE_ID = uuid.uuid4().hex
+
+
+async def _get_presence_audience(user_id: int) -> set[int]:
+    """Resolve user IDs that should receive presence updates for user_id."""
+    async with async_session() as session:
+        chat_ids = select(chat_participants.c.chat_id).where(
+            chat_participants.c.user_id == user_id
+        )
+        result = await session.execute(
+            select(chat_participants.c.user_id)
+            .distinct()
+            .where(chat_participants.c.chat_id.in_(chat_ids))
+        )
+        audience = {row[0] for row in result.all()}
+    audience.discard(user_id)
+    return audience
+
+
+class PresencePubSub:
+    """Optional Redis pub/sub bridge for presence events."""
+
+    def __init__(self) -> None:
+        self._redis: Redis | None = None
+        self._pubsub_task: asyncio.Task | None = None
+
+    async def initialize(self, redis: Redis | None = None) -> None:
+        if self._redis or not settings.presence_pubsub_enabled:
+            return
+        if redis is not None:
+            self._redis = redis
+        elif settings.cache_redis_url:
+            self._redis = Redis.from_url(
+                settings.cache_redis_url, decode_responses=True
+            )
+        if self._redis:
+            self._pubsub_task = asyncio.create_task(self._listen_for_updates())
+
+    async def shutdown(self) -> None:
+        if self._pubsub_task:
+            self._pubsub_task.cancel()
+            try:
+                await self._pubsub_task
+            except asyncio.CancelledError:
+                pass
+        self._pubsub_task = None
+
+    async def publish(self, payload: dict[str, Any]) -> None:
+        if not self._redis or not settings.presence_pubsub_enabled:
+            return
+        envelope = dict(payload)
+        envelope["instance_id"] = _PRESENCE_INSTANCE_ID
+        await self._redis.publish(
+            settings.presence_pubsub_channel, json.dumps(envelope)
+        )
+
+    async def _listen_for_updates(self) -> None:
+        if not self._redis:
+            return
+        ps = self._redis.pubsub()
+        await ps.subscribe(settings.presence_pubsub_channel)
+        try:
+            async for message in ps.listen():
+                if message.get("type") != "message":
+                    continue
+                raw = message.get("data")
+                try:
+                    payload = json.loads(raw) if raw else {}
+                except json.JSONDecodeError:
+                    logger.warning("Invalid presence payload received from pubsub")
+                    continue
+                if payload.get("instance_id") == _PRESENCE_INSTANCE_ID:
+                    continue
+                await _handle_presence_pubsub(payload)
+        except asyncio.CancelledError:
+            await ps.unsubscribe(settings.presence_pubsub_channel)
+            await ps.close()
+        except Exception as exc:
+            logger.error("Presence Pub/Sub listener error: %s", exc)
+
+
+presence_pubsub = PresencePubSub()
 
 
 class ConnectionManager:
@@ -41,6 +135,7 @@ class ConnectionManager:
         self.active_connections: dict[int, set[WebSocket]] = {}
         # websocket -> user_id (for reverse lookup on disconnect)
         self.connection_users: dict[WebSocket, int] = {}
+        self._last_presence_sent_at: dict[int, datetime] = {}
 
     async def connect(
         self, websocket: WebSocket, user_id: int, *, subprotocol: str | None = None
@@ -114,10 +209,36 @@ class ConnectionManager:
                     total_sent += await self.send_to_user(participant.id, message)
         return total_sent
 
+    def _should_broadcast_presence(
+        self, user_id: int, now: datetime, *, force: bool
+    ) -> bool:
+        min_interval = max(settings.presence_ping_min_interval_seconds, 0)
+        if force or min_interval <= 0:
+            return True
+        last_sent = self._last_presence_sent_at.get(user_id)
+        if last_sent is None:
+            return True
+        elapsed = (now - last_sent).total_seconds()
+        return elapsed >= min_interval
+
     async def broadcast_presence(
-        self, user_id: int, active: bool, last_seen: datetime | None
+        self,
+        user_id: int,
+        active: bool,
+        last_seen: datetime | None,
+        *,
+        source: str,
+        force: bool = False,
+        publish: bool = True,
     ) -> int:
-        """Broadcast presence status to all connected users."""
+        """Broadcast presence status to relevant chat participants."""
+        now = datetime.now(UTC)
+        state = "active" if active else "inactive"
+        if not self._should_broadcast_presence(user_id, now, force=force):
+            record_presence_throttled(state, source)
+            return 0
+        self._last_presence_sent_at[user_id] = now
+        record_presence_event(state, source)
 
         payload = {
             "type": "presence",
@@ -126,8 +247,12 @@ class ConnectionManager:
             "last_seen": last_seen.isoformat() if last_seen else None,
         }
 
+        if publish:
+            await presence_pubsub.publish(payload)
+
+        audience = await _get_presence_audience(user_id)
         total_sent = 0
-        for target_user in list(self.active_connections.keys()):
+        for target_user in audience:
             total_sent += await self.send_to_user(target_user, payload)
         return total_sent
 
@@ -138,6 +263,36 @@ class ConnectionManager:
 
 # Global connection manager instance
 manager = ConnectionManager()
+
+
+async def _handle_presence_pubsub(payload: dict[str, Any]) -> None:
+    user_id = payload.get("user_id")
+    if user_id is None:
+        return
+    active = bool(payload.get("active"))
+    last_seen_raw = payload.get("last_seen")
+    last_seen = None
+    if last_seen_raw:
+        try:
+            last_seen = datetime.fromisoformat(str(last_seen_raw))
+        except ValueError:
+            logger.warning("Invalid last_seen value in presence payload")
+    await manager.broadcast_presence(
+        int(user_id),
+        active,
+        last_seen,
+        source=PRESENCE_SOURCE_PUBSUB,
+        force=True,
+        publish=False,
+    )
+
+
+async def start_presence_pubsub() -> None:
+    await presence_pubsub.initialize()
+
+
+async def stop_presence_pubsub() -> None:
+    await presence_pubsub.shutdown()
 
 
 async def get_user_from_token(token: str) -> tuple[User | None, str | None]:
@@ -422,7 +577,13 @@ async def websocket_chat(websocket: WebSocket):
     # Connect and register
     await manager.connect(websocket, user.id, subprotocol=selected_subprotocol)
     last_seen = await _update_last_seen(session_jti)
-    await manager.broadcast_presence(user.id, True, last_seen)
+    await manager.broadcast_presence(
+        user.id,
+        True,
+        last_seen,
+        source=PRESENCE_SOURCE_CONNECT,
+        force=True,
+    )
 
     try:
         # Send initial online status to user's contacts
@@ -440,7 +601,12 @@ async def websocket_chat(websocket: WebSocket):
             if msg_type == "ping":
                 last_seen = await _update_last_seen(session_jti)
                 await websocket.send_json({"type": "pong"})
-                await manager.broadcast_presence(user.id, True, last_seen)
+                await manager.broadcast_presence(
+                    user.id,
+                    True,
+                    last_seen,
+                    source=PRESENCE_SOURCE_PING,
+                )
 
             elif msg_type == "typing":
                 chat_id = data.get("chat_id")
@@ -492,13 +658,25 @@ async def websocket_chat(websocket: WebSocket):
     except WebSocketDisconnect:
         manager.disconnect(websocket)
         last_seen = await _update_last_seen(session_jti)
-        await manager.broadcast_presence(user.id, False, last_seen)
+        await manager.broadcast_presence(
+            user.id,
+            False,
+            last_seen,
+            source=PRESENCE_SOURCE_DISCONNECT,
+            force=True,
+        )
         logger.info(f"WebSocket disconnected for user {user.id}")
     except Exception as e:
         logger.error(f"WebSocket error for user {user.id}: {e}")
         manager.disconnect(websocket)
         last_seen = await _update_last_seen(session_jti)
-        await manager.broadcast_presence(user.id, False, last_seen)
+        await manager.broadcast_presence(
+            user.id,
+            False,
+            last_seen,
+            source=PRESENCE_SOURCE_DISCONNECT,
+            force=True,
+        )
 
 
 async def notify_new_message(

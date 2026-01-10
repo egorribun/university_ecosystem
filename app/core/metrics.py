@@ -302,6 +302,28 @@ _MFA_ADOPTION = (
     else None
 )
 
+_PRESENCE_EVENTS = (
+    Counter(
+        "websocket_presence_events_total",
+        "Total presence events broadcast over websockets",
+        ("state", "source"),
+        registry=REGISTRY,
+    )
+    if Counter is not None
+    else None
+)
+
+_PRESENCE_THROTTLED = (
+    Counter(
+        "websocket_presence_throttled_total",
+        "Total presence events throttled before broadcast",
+        ("state", "source"),
+        registry=REGISTRY,
+    )
+    if Counter is not None
+    else None
+)
+
 
 def record_login_success() -> None:
     """Record a successful login."""
@@ -343,6 +365,18 @@ def set_mfa_adoption(count: int) -> None:
     """Set the MFA adoption count."""
     if _MFA_ADOPTION is not None:
         _MFA_ADOPTION.set(float(count))
+
+
+def record_presence_event(state: str, source: str) -> None:
+    """Record a presence broadcast event."""
+    if _PRESENCE_EVENTS is not None:
+        _PRESENCE_EVENTS.labels(state=state, source=source).inc()
+
+
+def record_presence_throttled(state: str, source: str) -> None:
+    """Record a throttled presence event."""
+    if _PRESENCE_THROTTLED is not None:
+        _PRESENCE_THROTTLED.labels(state=state, source=source).inc()
 
 
 _CONFIGURED_ATTR = "_metrics_configured"
