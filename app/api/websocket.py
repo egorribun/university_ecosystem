@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.database import async_session
+from app.core.feature_flags import feature_flags
 from app.models.chat import Chat, Message
 from app.models.models import ActiveSession, User
 from app.schemas.chat import ChatParticipant, PresenceStatus
@@ -41,9 +42,14 @@ class ConnectionManager:
         # websocket -> user_id (for reverse lookup on disconnect)
         self.connection_users: dict[WebSocket, int] = {}
 
-    async def connect(self, websocket: WebSocket, user_id: int) -> None:
+    async def connect(
+        self, websocket: WebSocket, user_id: int, *, subprotocol: str | None = None
+    ) -> None:
         """Accept a WebSocket connection and register it for the user."""
-        await websocket.accept()
+        if subprotocol:
+            await websocket.accept(subprotocol=subprotocol)
+        else:
+            await websocket.accept()
         if user_id not in self.active_connections:
             self.active_connections[user_id] = set()
         self.active_connections[user_id].add(websocket)
@@ -193,6 +199,38 @@ async def get_user_from_cookie(cookie_value: str) -> tuple[User | None, str | No
         return None, None
 
 
+def _extract_bearer_token(header_value: str | None) -> str | None:
+    if not header_value:
+        return None
+    parts = header_value.strip().split()
+    if len(parts) == 2 and parts[0].lower() == "bearer":
+        return parts[1]
+    if len(parts) == 1:
+        return parts[0]
+    return None
+
+
+def _extract_token_from_subprotocol(header_value: str | None) -> str | None:
+    if not header_value:
+        return None
+    protocols = [protocol.strip() for protocol in header_value.split(",") if protocol.strip()]
+    for index, protocol in enumerate(protocols):
+        if protocol.lower() in {"access_token", "bearer", "authorization"}:
+            if index + 1 < len(protocols):
+                return protocols[index + 1]
+    return None
+
+
+def _select_subprotocol(header_value: str | None) -> str | None:
+    if not header_value:
+        return None
+    protocols = [protocol.strip() for protocol in header_value.split(",") if protocol.strip()]
+    for candidate in protocols:
+        if candidate.lower() in {"access_token", "bearer"}:
+            return candidate
+    return None
+
+
 async def _update_last_seen(session_jti: str | None) -> datetime:
     """Persist last_seen_at for a session and return the timestamp used."""
 
@@ -294,8 +332,11 @@ async def websocket_chat(websocket: WebSocket):
     WebSocket endpoint for real-time chat.
 
     Authentication:
-    - Pass JWT token as query parameter `token`, OR
+    - Send JWT in `Sec-WebSocket-Protocol` (e.g. `access_token, <JWT>`), OR
+    - Send `Authorization: Bearer <JWT>` header, OR
     - Use cookie-based auth (access_token cookie)
+    - Query param `token` can be enabled temporarily via
+      feature flag `websocket_query_param_compat`
 
     Message types (from client):
     - {"type": "ping"} - Keep-alive ping
@@ -327,10 +368,19 @@ async def websocket_chat(websocket: WebSocket):
         ),
     )
 
-    # Try token from query params first
-    token = websocket.query_params.get("token")
-    if token:
-        logger.info("Attempting token auth from query params")
+    auth_header = websocket.headers.get("authorization")
+    protocol_header = websocket.headers.get("sec-websocket-protocol")
+    header_token = _extract_bearer_token(auth_header)
+    protocol_token = _extract_token_from_subprotocol(protocol_header)
+    selected_subprotocol = _select_subprotocol(protocol_header)
+
+    if header_token or protocol_token:
+        logger.info(
+            "Attempting WebSocket token auth from headers (auth=%s, protocol=%s)",
+            bool(header_token),
+            bool(protocol_token),
+        )
+        token = header_token or protocol_token
         user, session_jti = await get_user_from_token(token)
         if user:
             logger.info(f"Token auth successful: user_id={user.id}")
@@ -338,6 +388,16 @@ async def websocket_chat(websocket: WebSocket):
             logger.warning("Token auth failed: invalid token")
 
     # Fallback to cookie-based auth
+    if not user and feature_flags.is_enabled("websocket_query_param_compat"):
+        token = websocket.query_params.get("token")
+        if token:
+            logger.info("Attempting token auth from query params (compat mode)")
+            user, session_jti = await get_user_from_token(token)
+            if user:
+                logger.info(f"Token auth successful: user_id={user.id}")
+            else:
+                logger.warning("Token auth failed: invalid token")
+
     if not user:
         access_token = websocket.cookies.get("access_token_v2")
         logger.info(
@@ -356,7 +416,7 @@ async def websocket_chat(websocket: WebSocket):
         return
 
     # Connect and register
-    await manager.connect(websocket, user.id)
+    await manager.connect(websocket, user.id, subprotocol=selected_subprotocol)
     last_seen = await _update_last_seen(session_jti)
     await manager.broadcast_presence(user.id, True, last_seen)
 

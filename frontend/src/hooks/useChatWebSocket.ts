@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import type { Message, MessagesListResponse } from "../api/chat"
+import { readAccessToken } from "./auth/tokenStorage"
 
 // Reconnection configuration
 const RECONNECT_BASE_DELAY_MS = 1000 // 1 second
@@ -119,7 +120,8 @@ export function useChatWebSocket({
     const wsUrl = `${wsProtocol}//${window.location.host}/ws/chat`
 
     try {
-      const ws = new WebSocket(wsUrl)
+      const token = readAccessToken()
+      const ws = token ? new WebSocket(wsUrl, ["access_token", token]) : new WebSocket(wsUrl)
       wsRef.current = ws
 
       ws.onopen = () => {

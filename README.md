@@ -149,6 +149,7 @@ Set `NOTIFICATIONS_SCHEDULER_INLINE_ENABLED=false` when the API and worker run s
 ## Platform capabilities
 
 - REST APIs for chat, events, news, schedules, sessions, Spotify, stats, stories, users, and push notifications
+- WebSocket chat updates at `/ws/chat` with cookie auth or `Sec-WebSocket-Protocol`/`Authorization` tokens (query-param tokens only when `websocket_query_param_compat` is enabled)
 - Push notifications with VAPID keys and a dedicated delivery worker; dead-letter queues and retention cleanup are built in
 - Optional Redis cache and rate limiting middleware; `/stats/*` responses and schedule payloads use Redis-backed caching when enabled
 - Configurable CORS, security headers (including COOP/COEP/CORP toggles), gzip compression, and proxy header support

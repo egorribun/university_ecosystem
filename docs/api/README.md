@@ -178,7 +178,15 @@ Rate limit headers are included in responses:
 
 Real-time updates are available via WebSocket:
 
-**Endpoint**: `wss://{host}/ws`
+**Endpoint**: `wss://{host}/ws/chat`
+
+**Authentication**:
+- `Sec-WebSocket-Protocol: access_token, <JWT>`
+- `Authorization: Bearer <JWT>`
+- Cookie-based auth (`access_token_v2`)
+
+Query-param tokens are supported only when the `websocket_query_param_compat`
+feature flag is enabled.
 
 **Events**:
 - `chat.message` - New message in chat

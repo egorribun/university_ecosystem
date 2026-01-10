@@ -300,6 +300,14 @@ feature_flags.register(
 
 feature_flags.register(
     FeatureFlag(
+        name="websocket_query_param_compat",
+        status=FlagStatus.DISABLED,
+        description="Temporary support for WebSocket token in query param",
+    )
+)
+
+feature_flags.register(
+    FeatureFlag(
         name="push_batching",
         status=FlagStatus.ENABLED,
         description="Batch push notification delivery",
