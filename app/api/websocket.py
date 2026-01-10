@@ -213,7 +213,9 @@ def _extract_bearer_token(header_value: str | None) -> str | None:
 def _extract_token_from_subprotocol(header_value: str | None) -> str | None:
     if not header_value:
         return None
-    protocols = [protocol.strip() for protocol in header_value.split(",") if protocol.strip()]
+    protocols = [
+        protocol.strip() for protocol in header_value.split(",") if protocol.strip()
+    ]
     for index, protocol in enumerate(protocols):
         if protocol.lower() in {"access_token", "bearer", "authorization"}:
             if index + 1 < len(protocols):
@@ -224,7 +226,9 @@ def _extract_token_from_subprotocol(header_value: str | None) -> str | None:
 def _select_subprotocol(header_value: str | None) -> str | None:
     if not header_value:
         return None
-    protocols = [protocol.strip() for protocol in header_value.split(",") if protocol.strip()]
+    protocols = [
+        protocol.strip() for protocol in header_value.split(",") if protocol.strip()
+    ]
     for candidate in protocols:
         if candidate.lower() in {"access_token", "bearer"}:
             return candidate
