@@ -25,6 +25,7 @@ from app.core.database import async_session
 from app.models.chat import Chat, Message
 from app.models.models import ActiveSession, User
 from app.schemas.chat import ChatParticipant, PresenceStatus
+from app.utils.logging import redact_sensitive_mapping
 
 logger = logging.getLogger(__name__)
 
@@ -316,10 +317,14 @@ async def websocket_chat(websocket: WebSocket):
 
     # Debug: log incoming connection info
     logger.info(
-        f"WebSocket connection attempt - cookies: {list(websocket.cookies.keys())}"
+        "WebSocket connection attempt - cookies: %s",
+        redact_sensitive_mapping(websocket.cookies, allowlist=("session", "csrftoken")),
     )
     logger.info(
-        f"WebSocket connection attempt - query params: {dict(websocket.query_params)}"
+        "WebSocket connection attempt - query params: %s",
+        redact_sensitive_mapping(
+            dict(websocket.query_params), allowlist=("client", "version")
+        ),
     )
 
     # Try token from query params first
