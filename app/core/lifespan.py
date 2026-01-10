@@ -59,8 +59,8 @@ from app.services.story_cleanup import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from app.core.feature_flags import feature_flags
     from app.api.websocket import start_presence_pubsub, stop_presence_pubsub
+    from app.core.feature_flags import feature_flags
 
     await broker.startup()
     await feature_flags.initialize()

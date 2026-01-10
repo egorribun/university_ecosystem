@@ -75,7 +75,9 @@ class PresencePubSub:
         if redis is not None:
             self._redis = redis
         elif settings.cache_redis_url:
-            self._redis = Redis.from_url(settings.cache_redis_url, decode_responses=True)
+            self._redis = Redis.from_url(
+                settings.cache_redis_url, decode_responses=True
+            )
         if self._redis:
             self._pubsub_task = asyncio.create_task(self._listen_for_updates())
 
@@ -93,7 +95,9 @@ class PresencePubSub:
             return
         envelope = dict(payload)
         envelope["instance_id"] = _PRESENCE_INSTANCE_ID
-        await self._redis.publish(settings.presence_pubsub_channel, json.dumps(envelope))
+        await self._redis.publish(
+            settings.presence_pubsub_channel, json.dumps(envelope)
+        )
 
     async def _listen_for_updates(self) -> None:
         if not self._redis:
