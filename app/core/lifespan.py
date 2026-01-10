@@ -60,9 +60,11 @@ from app.services.story_cleanup import (
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.core.feature_flags import feature_flags
+    from app.api.websocket import start_presence_pubsub, stop_presence_pubsub
 
     await broker.startup()
     await feature_flags.initialize()
+    await start_presence_pubsub()
     await wait_db(max_attempts=10, delay=0.5)
 
     # Configure domain event handlers
@@ -189,6 +191,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        await stop_presence_pubsub()
         if stop_scheduler is not None:
             await stop_scheduler()
         if stop_notifications_retention is not None:

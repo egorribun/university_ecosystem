@@ -9,6 +9,7 @@ from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from app.api.websocket import ConnectionManager
 from app.auth.security import create_access_token
+from app.core.config import settings
 from app.models.chat import Chat, Message
 
 
@@ -152,6 +153,74 @@ class TestConnectionManager:
         online = connection_manager.get_online_users()
 
         assert set(online) == {1, 2}
+
+    @pytest.mark.asyncio
+    async def test_broadcast_presence_targets_chat_participants_only(
+        self, connection_manager: ConnectionManager, db_session, user_factory
+    ):
+        """Presence updates should only go to users sharing a chat."""
+        user_a = await user_factory()
+        user_b = await user_factory()
+        user_c = await user_factory()
+
+        chat = Chat()
+        chat.participants = [user_a, user_b]
+        db_session.add(chat)
+        await db_session.commit()
+
+        ws_b = AsyncMock(spec=WebSocket)
+        ws_c = AsyncMock(spec=WebSocket)
+        connection_manager.active_connections[user_b.id] = {ws_b}
+        connection_manager.connection_users[ws_b] = user_b.id
+        connection_manager.active_connections[user_c.id] = {ws_c}
+        connection_manager.connection_users[ws_c] = user_c.id
+
+        last_seen = datetime.now(UTC)
+        await connection_manager.broadcast_presence(
+            user_a.id,
+            True,
+            last_seen,
+            source="ping",
+            force=True,
+            publish=False,
+        )
+
+        ws_b.send_json.assert_called_once()
+        ws_c.send_json.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_broadcast_presence_throttles_pings(
+        self, connection_manager: ConnectionManager, monkeypatch
+    ):
+        """Presence broadcasts should be throttled when configured."""
+        send_mock = AsyncMock(return_value=1)
+        connection_manager.send_to_user = send_mock
+
+        async def _audience(_user_id: int) -> set[int]:
+            return {2}
+
+        monkeypatch.setattr("app.api.websocket._get_presence_audience", _audience)
+        monkeypatch.setattr(
+            settings, "presence_ping_min_interval_seconds", 60, raising=False
+        )
+
+        last_seen = datetime.now(UTC)
+        await connection_manager.broadcast_presence(
+            1,
+            True,
+            last_seen,
+            source="ping",
+            publish=False,
+        )
+        await connection_manager.broadcast_presence(
+            1,
+            True,
+            last_seen,
+            source="ping",
+            publish=False,
+        )
+
+        assert send_mock.call_count == 1
 
 
 class TestWebSocketAuth:
