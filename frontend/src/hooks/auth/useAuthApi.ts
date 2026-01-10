@@ -16,6 +16,7 @@ import {
 import { fetchCurrentUser } from "./useProfileSync"
 import i18n from "@/i18n/config"
 import type { WebAuthnAuthenticationOptionsOut } from "@/types/Auth"
+import { clearAccessToken, persistAccessToken } from "./tokenStorage"
 
 type TokenWithProfileResponse = {
   access_token: string
@@ -162,6 +163,7 @@ export const useAuthApi = (
           updateSessionSigningKey(extractSigningKey(data))
           setUser(data.user)
           updatePendingMfa(null)
+          persistAccessToken(data.access_token)
           if (data.user.spotify_connected) {
             window.dispatchEvent(new Event(SPOTIFY_REAUTH_EVENT))
           }
@@ -225,6 +227,7 @@ export const useAuthApi = (
     } catch (error) {
       console.error("Logout failed", error)
     } finally {
+      clearAccessToken()
       handleUnauthorized()
     }
   }, [handleUnauthorized, user])
@@ -261,6 +264,7 @@ export const useAuthApi = (
           updateSessionSigningKey(extractSigningKey(data))
           setUser(data.user)
           updatePendingMfa(null)
+          persistAccessToken(data.access_token)
           if (data.user.spotify_connected) {
             window.dispatchEvent(new Event(SPOTIFY_REAUTH_EVENT))
           }
@@ -394,6 +398,7 @@ export const useAuthApi = (
           updateSessionSigningKey(extractSigningKey(data))
           setUser(data.user)
           updatePendingMfa(null)
+          persistAccessToken(data.access_token)
           if (data.user.spotify_connected) {
             window.dispatchEvent(new Event(SPOTIFY_REAUTH_EVENT))
           }

@@ -8,6 +8,7 @@ import api, { resetEtagCache } from "@/api/client"
 import type { User } from "@/types/User"
 import { signSnapshot } from "./useSessionCrypto"
 import type { PendingMfaState, SetUserArg, UserState } from "@/types/Auth"
+import { clearAccessToken } from "./tokenStorage"
 
 const PROFILE_CACHE_BASE_KEY = "ecosystem.profile.cache"
 const PROFILE_CACHE_SCHEMA_VERSION = 6
@@ -653,6 +654,7 @@ export const useProfileSync = (
   const handleUnauthorized = useCallback(
     ({ broadcast = true, persist = true }: HandleUnauthorizedOptions = {}) => {
       resetEtagCache()
+      clearAccessToken()
       // We need to clear session signing key too.
       // We need to call updateSessionSigningKey(null)
       // But we also need to clear the promise ref.
