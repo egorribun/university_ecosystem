@@ -25,7 +25,7 @@ class SecuritySettings(BaseAppSettings):
     access_token_expire_minutes: int = 60
     api_v2_prefix: str = "/api/v2"
     monitoring_heavy_probe_enabled: bool = False
-    audit_log_secret: str = "development-audit-secret"
+    audit_log_secret: str = "development-audit-secret-change-me"
 
     max_sessions_per_user: int = 5
     frontend_origin: str = "http://localhost:5173"
@@ -177,6 +177,21 @@ class SecuritySettings(BaseAppSettings):
     @classmethod
     def _validate_mfa_totp_issuer(cls, value: str) -> str:
         return _validate_non_empty(value, label="MFA_TOTP_ISSUER")
+
+    @field_validator("audit_log_secret")
+    @classmethod
+    def _validate_audit_log_secret(cls, value: str) -> str:
+        normalized = _validate_non_empty(value, label="AUDIT_LOG_SECRET")
+        secrets = _coerce_str_list(normalized)
+        if not secrets:
+            raise ValueError("AUDIT_LOG_SECRET must not be empty")
+        min_length = 32
+        for secret in secrets:
+            if len(secret) < min_length:
+                raise ValueError(
+                    "AUDIT_LOG_SECRET entries must be at least 32 characters long"
+                )
+        return ",".join(secrets)
 
     @field_validator(
         "mfa_challenge_ttl_seconds",

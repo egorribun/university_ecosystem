@@ -217,12 +217,29 @@ class SecureAuditService:
     Uses HMAC-SHA256 to sign audit log entries, providing tamper detection.
     """
 
-    def __init__(self, signing_key: bytes | None = None):
-        if signing_key is None:
-            signing_key = settings.secret_key.encode("utf-8")
-        self._signing_key = signing_key
+    def __init__(
+        self, signing_key: bytes | None = None, signing_keys: list[bytes] | None = None
+    ):
+        if signing_keys is None:
+            if signing_key is not None:
+                signing_keys = [signing_key]
+            else:
+                signing_keys = self._parse_signing_keys(settings.audit_log_secret)
+        if not signing_keys:
+            raise ValueError("AUDIT_LOG_SECRET must provide at least one signing key")
+        self._signing_keys = signing_keys
+        self._primary_key = signing_keys[0]
 
-    def _compute_signature(self, log: DataAccessLog) -> str:
+    @staticmethod
+    def _parse_signing_keys(value: str) -> list[bytes]:
+        keys = [part.strip() for part in value.split(",") if part.strip()]
+        if not keys:
+            raise ValueError("AUDIT_LOG_SECRET must not be empty")
+        return [key.encode("utf-8") for key in keys]
+
+    def _compute_signature(
+        self, log: DataAccessLog, *, key: bytes | None = None
+    ) -> str:
         """Compute HMAC signature for an audit log entry."""
         data_parts = [
             str(log.id or ""),
@@ -239,7 +256,18 @@ class SecureAuditService:
             ),
         ]
         data = "|".join(data_parts)
-        return hmac.new(self._signing_key, data.encode("utf-8"), sha256).hexdigest()
+        signing_key = key or self._primary_key
+        return hmac.new(signing_key, data.encode("utf-8"), sha256).hexdigest()
+
+    def _find_valid_key(self, log: DataAccessLog) -> bytes | None:
+        """Return the signing key that matches the stored signature, if any."""
+        if not log.signature:
+            return None
+        for signing_key in self._signing_keys:
+            expected = self._compute_signature(log, key=signing_key)
+            if hmac.compare_digest(log.signature, expected):
+                return signing_key
+        return None
 
     async def create_log(
         self,
@@ -273,10 +301,22 @@ class SecureAuditService:
 
     def verify_integrity(self, log: DataAccessLog) -> bool:
         """Verify the integrity of an audit log entry."""
-        if not log.signature:
+        return self._find_valid_key(log) is not None
+
+    def resign_log(self, log: DataAccessLog) -> bool:
+        """
+        Re-sign an audit log entry with the primary key if needed.
+
+        Returns True when the signature was updated.
+        """
+        valid_key = self._find_valid_key(log)
+        if valid_key is None:
             return False
-        expected = self._compute_signature(log)
-        return hmac.compare_digest(log.signature, expected)
+        primary_signature = self._compute_signature(log, key=self._primary_key)
+        if log.signature == primary_signature:
+            return False
+        log.signature = primary_signature
+        return True
 
     async def verify_batch(
         self, db: AsyncSession, *, limit: int = 1000

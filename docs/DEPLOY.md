@@ -147,6 +147,41 @@ asyncio.run(main())
 PY
 ```
 
+### Подпись аудит-логов
+
+- `AUDIT_LOG_SECRET` используется для подписи записей журнала аудита (HMAC-SHA256) и должен отличаться от `SECRET_KEY`.
+- Для ротации укажите несколько ключей через запятую: новый первым, старый вторым (`AUDIT_LOG_SECRET="new_key,old_key"`). После деплоя переподпишите существующие записи, затем удалите старый ключ и перезапустите сервисы.
+
+```bash
+python - <<'PY'
+import asyncio
+
+from sqlalchemy import select
+
+from app.core.database import async_session
+from app.models.logs import DataAccessLog
+from app.services.audit_service import SecureAuditService
+
+
+async def main() -> None:
+    service = SecureAuditService()
+    async with async_session() as session:
+        result = await session.execute(
+            select(DataAccessLog).where(DataAccessLog.signature.isnot(None))
+        )
+        updated = 0
+        for log in result.scalars().all():
+            if service.resign_log(log):
+                updated += 1
+        if updated:
+            await session.commit()
+        print(f"Resigned {updated} audit logs.")
+
+
+asyncio.run(main())
+PY
+```
+
 ## Docker image
 
 - `root/frontend.Dockerfile` собран в два этапа: на этапе `builder` запускается `npm ci && npm run build`, а финальный образ основан на `nginx:alpine` и содержит только содержимое `dist/`.

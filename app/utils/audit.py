@@ -41,11 +41,12 @@ def calculate_log_signature(
         ]
     )
 
-    # Fallback to secret_key if audit_log_secret is not set
-    secret = settings.audit_log_secret or settings.secret_key
+    primary_secret = settings.audit_log_secret.split(",")[0].strip()
+    if not primary_secret:
+        raise ValueError("AUDIT_LOG_SECRET must not be empty")
 
     signature = hmac.new(
-        secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256
+        primary_secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256
     ).hexdigest()
 
     return signature
