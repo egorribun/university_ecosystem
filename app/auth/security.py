@@ -68,9 +68,7 @@ pwd_context = CryptContext(
 )
 
 
-def _format_password_class_labels(
-    class_names: list[str], *, locale: str | None
-) -> str:
+def _format_password_class_labels(class_names: list[str], *, locale: str | None) -> str:
     translated = [
         translate(f"password.class.{class_name}", locale=locale)
         for class_name in class_names
@@ -99,9 +97,7 @@ def _validate_password_hibp(password: str, *, locale: str | None = None) -> None
         ) from exc
 
     if response.status_code != httpx.codes.OK:
-        _logger.warning(
-            "HIBP password check returned status %s", response.status_code
-        )
+        _logger.warning("HIBP password check returned status %s", response.status_code)
         raise ValueError(
             translate("errors.auth.password_policy_hibp_unavailable", locale=locale)
         )
@@ -152,9 +148,7 @@ def _validate_password_policy(password: str, *, locale: str | None = None) -> No
             translate(
                 "errors.auth.password_policy_required_classes",
                 locale=locale,
-                classes=_format_password_class_labels(
-                    missing_required, locale=locale
-                ),
+                classes=_format_password_class_labels(missing_required, locale=locale),
             )
         )
 
