@@ -64,6 +64,17 @@ class SecuritySettings(BaseAppSettings):
 
     auth_lockout_thresholds: str | list[str] = "5:30,8:300,10:3600"
     auth_lockout_history_minutes: int = 1_440
+    password_min_length: int = 8
+    password_max_length: int = 200
+    password_min_character_classes: int = 3
+    password_require_uppercase: bool = True
+    password_require_lowercase: bool = True
+    password_require_digit: bool = True
+    password_require_special: bool = True
+    password_zxcvbn_min_score: int = 1
+    password_hibp_check_enabled: bool = False
+    password_hibp_api_url: str = "https://api.pwnedpasswords.com/range"
+    password_hibp_timeout_seconds: int = 5
     mfa_enabled: bool = False
     mfa_default_method: str | None = None
     mfa_totp_issuer: str = "University Ecosystem"
@@ -173,6 +184,38 @@ class SecuritySettings(BaseAppSettings):
     def _validate_positive_mfa_values(cls, value: int, info: ValidationInfo) -> int:
         field_name = getattr(info, "field_name", None) or "mfa_value"
         return _validate_positive_int(value, label=field_name.upper())
+
+    @field_validator("password_min_length", "password_max_length")
+    @classmethod
+    def _validate_password_length_bounds(
+        cls, value: int, info: ValidationInfo
+    ) -> int:
+        field_name = getattr(info, "field_name", None) or "password_length"
+        validated = _validate_positive_int(value, label=field_name.upper())
+        if field_name == "password_max_length":
+            min_length = info.data.get("password_min_length", 1)
+            if validated < int(min_length):
+                raise ValueError("PASSWORD_MAX_LENGTH must be >= PASSWORD_MIN_LENGTH")
+        return validated
+
+    @field_validator("password_min_character_classes")
+    @classmethod
+    def _validate_password_character_classes(cls, value: int) -> int:
+        if value < 0 or value > 4:
+            raise ValueError("PASSWORD_MIN_CHARACTER_CLASSES must be between 0 and 4")
+        return value
+
+    @field_validator("password_zxcvbn_min_score")
+    @classmethod
+    def _validate_password_zxcvbn_score(cls, value: int) -> int:
+        if value < 0 or value > 4:
+            raise ValueError("PASSWORD_ZXCVBN_MIN_SCORE must be between 0 and 4")
+        return value
+
+    @field_validator("password_hibp_timeout_seconds")
+    @classmethod
+    def _validate_password_hibp_timeout(cls, value: int) -> int:
+        return _validate_positive_int(value, label="PASSWORD_HIBP_TIMEOUT_SECONDS")
 
     @field_validator("mfa_totp_initial_skew_windows")
     @classmethod
