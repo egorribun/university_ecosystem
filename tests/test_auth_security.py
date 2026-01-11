@@ -46,7 +46,7 @@ def test_get_password_hash_enforces_length_bounds():
 
 def test_password_policy_allows_limits():
     minimal = "Abcd123!"
-    maximal = "A" * 196 + "1234"
+    maximal = "A" * 194 + "a!1234"
 
     assert len(minimal) == 8
     assert len(maximal) == 200

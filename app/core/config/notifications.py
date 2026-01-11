@@ -3,9 +3,14 @@ from __future__ import annotations
 import logging
 from functools import cached_property
 
-from pydantic import Field, field_validator
+from pydantic import Field, ValidationInfo, field_validator
 
-from .base import BaseAppSettings, _coerce_str_list, _validate_positive_int
+from .base import (
+    _DEVELOPMENT_ENVIRONMENTS,
+    BaseAppSettings,
+    _coerce_str_list,
+    _validate_positive_int,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -71,6 +76,33 @@ class NotificationSettings(BaseAppSettings):
         default_factory=lambda: ["news", "schedule", "events", "system"]
     )
     notifications_queue_max_attempts: int = 5
+
+    @field_validator("smtp_security", mode="before")
+    @classmethod
+    def _normalize_smtp_security(cls, value: str | None) -> str:
+        normalized = (value or "none").strip().lower()
+        if normalized not in {"none", "ssl", "starttls"}:
+            raise ValueError("SMTP_SECURITY must be one of: none, ssl, starttls")
+        return normalized
+
+    @field_validator("smtp_user")
+    @classmethod
+    def _validate_smtp_user_security(cls, value: str, info: ValidationInfo) -> str:
+        if not value:
+            return value
+        security = str(info.data.get("smtp_security") or "none").lower()
+        environment = str(info.data.get("environment") or "production").lower()
+        if security == "none" and environment not in _DEVELOPMENT_ENVIRONMENTS:
+            _logger.warning(
+                "SMTP_USER is configured while SMTP_SECURITY=none for ENVIRONMENT=%s. "
+                "Use SMTP_SECURITY=starttls or SMTP_SECURITY=ssl for production.",
+                environment or "production",
+            )
+            raise ValueError(
+                "SMTP_USER cannot be used with SMTP_SECURITY=none outside "
+                "development environments"
+            )
+        return value
 
     @field_validator("notifications_allowed_push_topics", mode="before")
     @classmethod

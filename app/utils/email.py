@@ -111,6 +111,17 @@ def send_reset_email(
     msg.add_alternative(html, subtype="html")
 
     try:
+        if user and security == "none" and not settings.is_development:
+            _log_event(
+                logging.ERROR,
+                "password.reset_email.insecure_smtp",
+                extra={
+                    "email": to_email,
+                    "smtp_security": security,
+                    "environment": settings.environment,
+                },
+            )
+            return
         if not host or not port:
             safe_link = _redact_sensitive_query(link)
             _log_event(
