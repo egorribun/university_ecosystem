@@ -1,19 +1,21 @@
+import hashlib
+import logging
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
+import httpx
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession
+from zxcvbn import zxcvbn
 
 from app.auth.redis_session import get_session_backend
 from app.core.config import settings
 from app.core.localization import translate
 from app.models.models import ActiveSession
 
-PASSWORD_MIN_LENGTH = 8
-PASSWORD_MAX_LENGTH = 200
 LEGACY_BCRYPT_MAX_BYTES = 72
 ARGON2_MEMORY_COST_KIB = 65536
 ARGON2_TIME_COST = 3
@@ -22,6 +24,7 @@ ARGON2_PARALLELISM = 4
 DEFAULT_SCHEME = "argon2"
 LEGACY_SCHEME = "bcrypt"
 
+_logger = logging.getLogger(__name__)
 
 # NOTE: the upstream ``bcrypt`` package started raising ``ValueError`` for
 # inputs longer than 72 bytes during backend feature detection when running
@@ -65,10 +68,115 @@ pwd_context = CryptContext(
 )
 
 
+def _format_password_class_labels(class_names: list[str], *, locale: str | None) -> str:
+    translated = [
+        translate(f"password.class.{class_name}", locale=locale)
+        for class_name in class_names
+    ]
+    return ", ".join(translated)
+
+
+def _validate_password_hibp(password: str, *, locale: str | None = None) -> None:
+    sha1 = hashlib.sha1(password.encode("utf-8")).hexdigest().upper()
+    prefix = sha1[:5]
+    suffix = sha1[5:]
+    url = f"{settings.password_hibp_api_url.rstrip('/')}/{prefix}"
+    try:
+        with httpx.Client(timeout=settings.password_hibp_timeout_seconds) as client:
+            response = client.get(
+                url,
+                headers={
+                    "User-Agent": "UniversityEcosystem/1.0",
+                    "Add-Padding": "true",
+                },
+            )
+    except httpx.RequestError as exc:
+        _logger.warning("HIBP password check failed: %s", exc)
+        raise ValueError(
+            translate("errors.auth.password_policy_hibp_unavailable", locale=locale)
+        ) from exc
+
+    if response.status_code != httpx.codes.OK:
+        _logger.warning("HIBP password check returned status %s", response.status_code)
+        raise ValueError(
+            translate("errors.auth.password_policy_hibp_unavailable", locale=locale)
+        )
+
+    for line in response.text.splitlines():
+        hashed_suffix, _, count = line.partition(":")
+        if hashed_suffix.upper() == suffix:
+            if int(count.strip() or 0) > 0:
+                raise ValueError(
+                    translate("errors.auth.password_policy_compromised", locale=locale)
+                )
+            break
+
+
 def _validate_password_policy(password: str, *, locale: str | None = None) -> None:
     length = len(password)
-    if length < PASSWORD_MIN_LENGTH or length > PASSWORD_MAX_LENGTH:
-        raise ValueError(translate("errors.auth.password_policy", locale=locale))
+    min_length = settings.password_min_length
+    max_length = settings.password_max_length
+    if length < min_length or length > max_length:
+        raise ValueError(
+            translate(
+                "errors.auth.password_policy_length",
+                locale=locale,
+                min_length=min_length,
+                max_length=max_length,
+            )
+        )
+
+    class_checks = {
+        "uppercase": any(char.isupper() for char in password),
+        "lowercase": any(char.islower() for char in password),
+        "digit": any(char.isdigit() for char in password),
+        "symbol": any(not char.isalnum() for char in password),
+    }
+    required_classes = {
+        "uppercase": settings.password_require_uppercase,
+        "lowercase": settings.password_require_lowercase,
+        "digit": settings.password_require_digit,
+        "symbol": settings.password_require_special,
+    }
+    missing_required = [
+        class_name
+        for class_name, required in required_classes.items()
+        if required and not class_checks[class_name]
+    ]
+    if missing_required:
+        raise ValueError(
+            translate(
+                "errors.auth.password_policy_required_classes",
+                locale=locale,
+                classes=_format_password_class_labels(missing_required, locale=locale),
+            )
+        )
+
+    min_classes = settings.password_min_character_classes
+    if min_classes > 0:
+        present_classes = sum(1 for present in class_checks.values() if present)
+        if present_classes < min_classes:
+            raise ValueError(
+                translate(
+                    "errors.auth.password_policy_min_classes",
+                    locale=locale,
+                    min_classes=min_classes,
+                    classes=_format_password_class_labels(
+                        list(class_checks.keys()), locale=locale
+                    ),
+                )
+            )
+
+    min_score = settings.password_zxcvbn_min_score
+    if min_score > 0:
+        score = zxcvbn(password).get("score", 0)
+        if score < min_score:
+            raise ValueError(
+                translate("errors.auth.password_policy_strength", locale=locale)
+            )
+
+    if settings.password_hibp_check_enabled:
+        _validate_password_hibp(password, locale=locale)
 
 
 def _truncate_for_bcrypt(password: str) -> str:
