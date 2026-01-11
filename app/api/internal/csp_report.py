@@ -10,13 +10,49 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Request, Response, status
+from fastapi.params import Depends
+
+from app.core.metrics import record_csp_report
+from app.utils.ratelimit import sensitive_route_limit
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/csp-report", tags=["security"])
 
+MAX_CSP_REPORT_BYTES = 16 * 1024
+MAX_LOG_VALUE_LENGTH = 200
+MAX_SCRIPT_SAMPLE_LENGTH = 100
 
-@router.post("", status_code=status.HTTP_204_NO_CONTENT)
+
+def _truncate(value: Any, limit: int = MAX_LOG_VALUE_LENGTH) -> str | None:
+    if value is None:
+        return None
+    return str(value)[:limit]
+
+
+async def _read_body_with_limit(request: Request, limit: int) -> bytes | None:
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > limit:
+                return None
+        except ValueError:
+            logger.debug("Invalid content-length header for CSP report")
+    body = bytearray()
+    async for chunk in request.stream():
+        if not chunk:
+            continue
+        body.extend(chunk)
+        if len(body) > limit:
+            return None
+    return bytes(body)
+
+
+@router.post(
+    "",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(sensitive_route_limit(limit=30, window_sec=60))],
+)
 async def receive_csp_report(request: Request) -> Response:
     """
     Receive CSP violation reports from browsers.
@@ -25,8 +61,16 @@ async def receive_csp_report(request: Request) -> Response:
     when a CSP policy is violated.
     """
     try:
-        body = await request.body()
+        body = await _read_body_with_limit(request, MAX_CSP_REPORT_BYTES)
+        if body is None:
+            record_csp_report("too_large")
+            logger.warning(
+                "CSP report payload too large",
+                extra={"event": "csp_report", "status": "payload_too_large"},
+            )
+            return Response(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
         if not body:
+            record_csp_report("empty")
             return Response(status_code=status.HTTP_204_NO_CONTENT)
 
         # Parse the violation report
@@ -35,6 +79,7 @@ async def receive_csp_report(request: Request) -> Response:
         try:
             report_data: dict[str, Any] = json.loads(body)
         except json.JSONDecodeError:
+            record_csp_report("invalid_json")
             logger.warning(
                 "Invalid CSP report format",
                 extra={"event": "csp_report", "status": "invalid_json"},
@@ -45,24 +90,34 @@ async def receive_csp_report(request: Request) -> Response:
         csp_report = report_data.get("csp-report", report_data)
 
         # Log the violation in structured format
+        record_csp_report("accepted")
         logger.warning(
             "CSP violation detected",
             extra={
                 "event": "csp_violation",
-                "document_uri": csp_report.get("document-uri"),
-                "violated_directive": csp_report.get("violated-directive"),
-                "effective_directive": csp_report.get("effective-directive"),
-                "blocked_uri": csp_report.get("blocked-uri"),
-                "source_file": csp_report.get("source-file"),
+                "document_uri": _truncate(csp_report.get("document-uri")),
+                "violated_directive": _truncate(csp_report.get("violated-directive")),
+                "effective_directive": _truncate(
+                    csp_report.get("effective-directive")
+                ),
+                "blocked_uri": _truncate(csp_report.get("blocked-uri")),
+                "source_file": _truncate(csp_report.get("source-file")),
                 "line_number": csp_report.get("line-number"),
                 "column_number": csp_report.get("column-number"),
                 "status_code": csp_report.get("status-code"),
-                "script_sample": csp_report.get("script-sample", "")[:100],  # Truncate
-                "user_agent": request.headers.get("user-agent", "")[:200],
+                "script_sample": _truncate(
+                    csp_report.get("script-sample", ""),
+                    limit=MAX_SCRIPT_SAMPLE_LENGTH,
+                ),
+                "user_agent": _truncate(
+                    request.headers.get("user-agent", ""),
+                    limit=MAX_LOG_VALUE_LENGTH,
+                ),
             },
         )
 
     except Exception:
+        record_csp_report("error")
         # Silently ignore errors - don't disrupt user experience
         logger.debug("Failed to process CSP report", exc_info=True)
 
