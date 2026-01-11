@@ -274,9 +274,9 @@ jobs:
             go.sum
       - name: Install dependencies
         run: |
-          cd services/gateway && go mod download
-          cd services/file-processor && go mod download
-          cd services/ws-hub && go mod download
+          (cd services/gateway && go mod download)
+          (cd services/file-processor && go mod download)
+          (cd services/ws-hub && go mod download)
       - name: Run Gateway tests
         working-directory: services/gateway
         run: go test -v -coverprofile=coverage.out ./...
