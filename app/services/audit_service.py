@@ -237,7 +237,9 @@ class SecureAuditService:
             raise ValueError("AUDIT_LOG_SECRET must not be empty")
         return [key.encode("utf-8") for key in keys]
 
-    def _compute_signature(self, log: DataAccessLog, *, key: bytes | None = None) -> str:
+    def _compute_signature(
+        self, log: DataAccessLog, *, key: bytes | None = None
+    ) -> str:
         """Compute HMAC signature for an audit log entry."""
         data_parts = [
             str(log.id or ""),
