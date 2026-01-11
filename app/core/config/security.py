@@ -187,9 +187,7 @@ class SecuritySettings(BaseAppSettings):
 
     @field_validator("password_min_length", "password_max_length")
     @classmethod
-    def _validate_password_length_bounds(
-        cls, value: int, info: ValidationInfo
-    ) -> int:
+    def _validate_password_length_bounds(cls, value: int, info: ValidationInfo) -> int:
         field_name = getattr(info, "field_name", None) or "password_length"
         validated = _validate_positive_int(value, label=field_name.upper())
         if field_name == "password_max_length":
