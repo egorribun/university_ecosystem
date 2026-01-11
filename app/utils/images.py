@@ -15,9 +15,10 @@ from defusedxml.ElementTree import fromstring as parse_svg_string
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 # Try to use pyvips for 10x faster processing
+# Catch ImportError (not installed) and OSError (libvips missing at runtime)
 try:
     from app.utils.images_vips import VIPS_AVAILABLE, optimize_image_vips
-except ImportError:
+except (ImportError, OSError):
     VIPS_AVAILABLE = False
     optimize_image_vips = None  # type: ignore[assignment]
 

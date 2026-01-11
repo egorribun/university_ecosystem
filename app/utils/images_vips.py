@@ -21,15 +21,18 @@ from typing import TYPE_CHECKING
 logger = logging.getLogger(__name__)
 
 # Try to import pyvips, but don't fail if unavailable
+# Catch both ImportError (pyvips not installed) and OSError (libvips not found)
 try:
     import pyvips
 
     VIPS_AVAILABLE = True
     logger.debug("pyvips available, using high-performance image processing")
-except ImportError:
+except (ImportError, OSError) as exc:
     VIPS_AVAILABLE = False
     pyvips = None  # type: ignore[assignment]
-    logger.debug("pyvips not available, will use Pillow fallback")
+    logger.debug(
+        "pyvips not available (%s), will use Pillow fallback", type(exc).__name__
+    )
 
 if TYPE_CHECKING:
     import pyvips  # noqa: F811
