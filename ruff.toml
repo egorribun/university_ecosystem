@@ -1,6 +1,7 @@
 line-length = 88
 target-version = "py312"
 src = ["."]
+exclude = ["gen"]
 
 [lint]
 select = ["E", "F", "I", "DTZ", "UP"]
@@ -8,4 +9,4 @@ fixable = ["ALL"]
 
 [lint.per-file-ignores]
 "tests/conftest.py" = ["E402"]
-"app/main.py" = ["E402"]  # uvloop must be configured before other imports
+"app/main.py" = ["E402"]       # uvloop must be configured before other imports

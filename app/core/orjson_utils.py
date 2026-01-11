@@ -77,7 +77,7 @@ def default_serializer(obj: Any) -> Any:
     Raises:
         TypeError: If object cannot be serialized
     """
-    if isinstance(obj, (datetime, date, time)):
+    if isinstance(obj, datetime | date | time):
         return obj.isoformat()
     raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
