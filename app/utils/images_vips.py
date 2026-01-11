@@ -29,7 +29,7 @@ try:
     logger.debug("pyvips available, using high-performance image processing")
 except (ImportError, OSError) as exc:
     VIPS_AVAILABLE = False
-    pyvips = None  # type: ignore[assignment]
+    pyvips = None
     logger.debug(
         "pyvips not available (%s), will use Pillow fallback", type(exc).__name__
     )
