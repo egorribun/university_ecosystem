@@ -97,9 +97,7 @@ async def receive_csp_report(request: Request) -> Response:
                 "event": "csp_violation",
                 "document_uri": _truncate(csp_report.get("document-uri")),
                 "violated_directive": _truncate(csp_report.get("violated-directive")),
-                "effective_directive": _truncate(
-                    csp_report.get("effective-directive")
-                ),
+                "effective_directive": _truncate(csp_report.get("effective-directive")),
                 "blocked_uri": _truncate(csp_report.get("blocked-uri")),
                 "source_file": _truncate(csp_report.get("source-file")),
                 "line_number": csp_report.get("line-number"),
