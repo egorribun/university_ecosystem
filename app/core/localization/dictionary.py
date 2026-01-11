@@ -165,8 +165,48 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "en": "User account is deactivated",
     },
     "errors.auth.password_policy": {
-        "ru": "Пароль должен содержать от 8 до 200 символов.",
-        "en": "Password must be between 8 and 200 characters long.",
+        "ru": "Пароль не соответствует требованиям безопасности.",
+        "en": "Password does not meet the security requirements.",
+    },
+    "errors.auth.password_policy_length": {
+        "ru": "Пароль должен содержать от {min_length} до {max_length} символов.",
+        "en": "Password must be between {min_length} and {max_length} characters long.",
+    },
+    "errors.auth.password_policy_required_classes": {
+        "ru": "Пароль должен содержать: {classes}.",
+        "en": "Password must include: {classes}.",
+    },
+    "errors.auth.password_policy_min_classes": {
+        "ru": "Пароль должен содержать минимум {min_classes} из следующих категорий: {classes}.",
+        "en": "Password must include at least {min_classes} of the following categories: {classes}.",
+    },
+    "errors.auth.password_policy_strength": {
+        "ru": "Пароль слишком простой. Используйте более сложный пароль.",
+        "en": "Password is too weak. Use a stronger password.",
+    },
+    "errors.auth.password_policy_compromised": {
+        "ru": "Пароль был обнаружен в утечках данных. Выберите другой пароль.",
+        "en": "This password has appeared in data breaches. Choose a different password.",
+    },
+    "errors.auth.password_policy_hibp_unavailable": {
+        "ru": "Не удалось проверить пароль по базе утечек. Попробуйте позже.",
+        "en": "Unable to check the password against the breach database. Try again later.",
+    },
+    "password.class.uppercase": {
+        "ru": "заглавные буквы",
+        "en": "uppercase letters",
+    },
+    "password.class.lowercase": {
+        "ru": "строчные буквы",
+        "en": "lowercase letters",
+    },
+    "password.class.digit": {
+        "ru": "цифры",
+        "en": "digits",
+    },
+    "password.class.symbol": {
+        "ru": "специальные символы",
+        "en": "symbols",
     },
     "errors.forbidden": {
         "ru": "Доступ запрещён",
