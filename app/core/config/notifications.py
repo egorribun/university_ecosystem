@@ -87,9 +87,7 @@ class NotificationSettings(BaseAppSettings):
 
     @field_validator("smtp_user")
     @classmethod
-    def _validate_smtp_user_security(
-        cls, value: str, info: ValidationInfo
-    ) -> str:
+    def _validate_smtp_user_security(cls, value: str, info: ValidationInfo) -> str:
         if not value:
             return value
         security = str(info.data.get("smtp_security") or "none").lower()
