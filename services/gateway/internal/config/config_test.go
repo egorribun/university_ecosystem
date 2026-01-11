@@ -114,8 +114,8 @@ func TestLoad_ReturnsConfigWithValidEnv(t *testing.T) {
 	os.Setenv("RATE_LIMIT_RPS", "50")
 	os.Setenv("RATE_LIMIT_BURST", "100")
 
-	cfg := Load()
-
+	cfg, err := Load()
+	assert.NoError(t, err)
 	assert.NotNil(t, cfg)
 	assert.Equal(t, "9090", cfg.Port)
 	assert.Equal(t, "http://test-backend:8000", cfg.BackendURL)
@@ -141,12 +141,23 @@ func TestLoad_UsesDefaultValuesWithJWTSet(t *testing.T) {
 	os.Unsetenv("GATEWAY_PORT")
 	os.Unsetenv("BACKEND_URL")
 
-	cfg := Load()
-
+	cfg, err := Load()
+	assert.NoError(t, err)
 	assert.Equal(t, "8080", cfg.Port)
 	assert.Equal(t, "http://backend:8000", cfg.BackendURL)
 	assert.Equal(t, 100, cfg.RateLimitRPS)
 	assert.Equal(t, 200, cfg.RateLimitBurst)
+}
+
+func TestLoad_ReturnsErrorWhenJWTSecretMissing(t *testing.T) {
+	originalJWT := os.Getenv("JWT_SECRET")
+	os.Unsetenv("JWT_SECRET")
+	defer restoreEnv("JWT_SECRET", originalJWT)
+
+	cfg, err := Load()
+	assert.Error(t, err)
+	assert.Nil(t, cfg)
+	assert.Contains(t, err.Error(), "JWT_SECRET")
 }
 
 func TestConfig_StructFields(t *testing.T) {

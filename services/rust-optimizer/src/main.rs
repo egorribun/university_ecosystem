@@ -1,11 +1,15 @@
 use axum::{
     extract::Json,
+    http::StatusCode,
     routing::{get, post},
     Router,
 };
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
+use tokio::signal;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+const MAX_ITERATIONS: u64 = 500_000_000;
 
 #[tokio::main]
 async fn main() {
@@ -24,8 +28,37 @@ async fn main() {
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
     tracing::info!("listening on {}", addr);
+
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await
+        .unwrap();
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
 }
 
 async fn health() -> &'static str {
@@ -43,7 +76,11 @@ struct OptimizeResponse {
     duration_ms: u128,
 }
 
-async fn optimize(Json(payload): Json<OptimizeRequest>) -> Json<OptimizeResponse> {
+async fn optimize(Json(payload): Json<OptimizeRequest>) -> Result<Json<OptimizeResponse>, StatusCode> {
+    if payload.iterations > MAX_ITERATIONS {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
     let start = std::time::Instant::now();
 
     // Offload CPU-intensive work to a blocking thread pool
@@ -52,17 +89,17 @@ async fn optimize(Json(payload): Json<OptimizeRequest>) -> Json<OptimizeResponse
         heavy_computation(payload.iterations)
     })
     .await
-    .unwrap_or_else(|e| {
+    .map_err(|e| {
         tracing::error!("Computation task failed: {}", e);
-        0
-    });
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     let duration = start.elapsed().as_millis();
 
-    Json(OptimizeResponse {
+    Ok(Json(OptimizeResponse {
         result,
         duration_ms: duration,
-    })
+    }))
 }
 
 // Simulate heavy compute (e.g., recursive fibonacci or similar)

@@ -1,7 +1,7 @@
 FRONTEND_DIR := $(CURDIR)/frontend
 ENV_FILE ?= $(CURDIR)/.env
 
-.PHONY: install backend-install frontend-install lint lint-backend lint-frontend backend-test frontend-test test backend-typecheck frontend-typecheck frontend-build frontend-dev backend-serve generate-api alembic-check compose-lint docker-build docker-up docker-down coverage test-quick clean
+.PHONY: install backend-install frontend-install lint lint-backend lint-frontend backend-test frontend-test test backend-typecheck frontend-typecheck frontend-build frontend-dev backend-serve generate-api alembic-check compose-lint docker-build docker-up docker-down coverage test-quick clean go-test go-coverage
 
 install: backend-install frontend-install
 
@@ -44,7 +44,16 @@ frontend-dev:
 backend-serve:
 	uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --env-file $(ENV_FILE)
 
-test: backend-test frontend-test
+test: backend-test frontend-test go-test
+
+go-test:
+	@echo "Running all Go tests..."
+	cd services/gateway && go test ./...
+	cd services/file-processor && go test ./...
+	cd services/ws-hub && go test ./...
+
+go-coverage:
+	powershell -ExecutionPolicy Bypass -File $(CURDIR)/scripts/go-coverage.ps1
 
 # Quick test without coverage (faster)
 test-quick:

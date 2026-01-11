@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from brotli_asgi import BrotliMiddleware
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api.internal import INTERNAL_ROUTE_PREFIXES
 from app.core.internal_access import InternalAccessMiddleware
@@ -117,6 +118,16 @@ def configure_middleware(app: FastAPI, settings: AppSettings) -> None:
         trusted_hosts = settings.trusted_hosts_list
         if trusted_hosts:
             app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=trusted_hosts)
+
+    # TrustedHostMiddleware protects against Host Header injection attacks
+    # by validating that incoming requests have an allowed Host header.
+    allowed_hosts = getattr(settings, "allowed_hosts_list", None)
+    if allowed_hosts:
+        app.add_middleware(
+            TrustedHostMiddleware,
+            allowed_hosts=allowed_hosts,
+        )
+        _logger.debug("TrustedHostMiddleware configured with hosts: %s", allowed_hosts)
 
     _logger.debug("CORS Origins configured: %s", settings.cors_allow_origins_list)
 

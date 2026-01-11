@@ -12,6 +12,22 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+type closeNotifyingRecorder struct {
+	*httptest.ResponseRecorder
+	closed chan bool
+}
+
+func (c *closeNotifyingRecorder) CloseNotify() <-chan bool {
+	return c.closed
+}
+
+func newCloseNotifyingRecorder() *closeNotifyingRecorder {
+	return &closeNotifyingRecorder{
+		ResponseRecorder: httptest.NewRecorder(),
+		closed:           make(chan bool, 1),
+	}
+}
+
 func init() {
 	gin.SetMode(gin.TestMode)
 }
@@ -101,7 +117,7 @@ func TestProxyHandler_SetsRequestIDHeader(t *testing.T) {
 	router.GET("/api/*path", ProxyHandler(proxy))
 
 	request := httptest.NewRequest(http.MethodGet, "/api/test", nil)
-	recorder := httptest.NewRecorder()
+	recorder := newCloseNotifyingRecorder()
 
 	router.ServeHTTP(recorder, request)
 
@@ -124,7 +140,7 @@ func TestProxyHandler_PreservesExistingRequestID(t *testing.T) {
 
 	request := httptest.NewRequest(http.MethodGet, "/api/test", nil)
 	request.Header.Set("X-Request-ID", existingID)
-	recorder := httptest.NewRecorder()
+	recorder := newCloseNotifyingRecorder()
 
 	router.ServeHTTP(recorder, request)
 
@@ -148,7 +164,7 @@ func TestProxyHandler_AddsUserIDHeader(t *testing.T) {
 	}, ProxyHandler(proxy))
 
 	request := httptest.NewRequest(http.MethodGet, "/api/test", nil)
-	recorder := httptest.NewRecorder()
+	recorder := newCloseNotifyingRecorder()
 
 	router.ServeHTTP(recorder, request)
 

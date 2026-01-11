@@ -5,7 +5,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,8 +19,8 @@ import (
 
 // Config holds the hub configuration
 type Config struct {
-	Port     string
-	NatsURL  string
+	Port      string
+	NatsURL   string
 	JWTSecret string
 }
 
@@ -67,8 +66,8 @@ var upgrader = websocket.Upgrader{
 
 func loadConfig() *Config {
 	return &Config{
-		Port:     getEnv("WS_HUB_PORT", "8081"),
-		NatsURL:  getEnv("NATS_URL", "nats://nats:4222"),
+		Port:      getEnv("WS_HUB_PORT", "8081"),
+		NatsURL:   getEnv("NATS_URL", "nats://nats:4222"),
 		JWTSecret: getEnv("JWT_SECRET", ""),
 	}
 }
@@ -93,7 +92,7 @@ func main() {
 		nats.ReconnectWait(2*time.Second),
 	)
 	if err != nil {
-		log.Fatalf("Failed to connect to NATS: %v", err)
+		logger.Fatal("Failed to connect to NATS", zap.Error(err))
 	}
 	defer nc.Close()
 
@@ -144,7 +143,7 @@ func main() {
 	go func() {
 		logger.Info("Starting WebSocket Hub", zap.String("port", config.Port))
 		if err := server.ListenAndServe(); err != http.ErrServerClosed {
-			log.Fatalf("Server error: %v", err)
+			logger.Fatal("Server error", zap.Error(err))
 		}
 	}()
 

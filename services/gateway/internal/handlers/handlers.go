@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"net/http"
 	"net/http/httputil"
 	"time"
@@ -34,21 +36,15 @@ func GenerateRequestID() string {
 }
 
 func randomString(n int) string {
-	const letters = "abcdefghijklmnopqrstuvwxyz0123456789"
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = letters[time.Now().UnixNano()%int64(len(letters))]
+	b := make([]byte, n/2+1)
+	if _, err := rand.Read(b); err != nil {
+		return "fallback-" + time.Now().Format("150405")
 	}
-	return string(b)
+	return hex.EncodeToString(b)[:n]
 }
 
 func HealthHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "healthy", "service": "gateway"})
-}
-
-func MetricsHandler(c *gin.Context) {
-	// TODO: Prometheus metrics
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
 func FileProcessSyncHandler(grpcConn *grpc.ClientConn, fileClient pb.FileProcessingServiceClient, logger *zap.Logger) gin.HandlerFunc {
