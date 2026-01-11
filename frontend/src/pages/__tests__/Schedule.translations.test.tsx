@@ -72,9 +72,66 @@ const authState: AuthState = {
   setUser: vi.fn(),
 }
 
+const { scheduleDataMock } = vi.hoisted(() => {
+  const lesson = {
+    id: 42,
+    weekday: "Monday",
+    parity: "odd",
+    start_time: "08:00",
+    end_time: "09:30",
+    subject: "Linear Algebra",
+    teacher: "Ada Lovelace",
+    room: "101",
+    lesson_type: "lecture",
+    group_id: 1,
+  }
+
+  const scheduleDataMock = {
+    user: { role: "student" },
+    groups: [{ id: 1, name: "CS-101" }],
+    selectedGroup: 1,
+    setSelectedGroup: () => {},
+    currentParity: "odd",
+    setCurrentParity: () => {},
+    schedule: [lesson],
+    rawSchedule: [lesson],
+    isLoading: false,
+    refresh: () => {},
+    applyScheduleUpdate: () => {},
+    weekdayConfigs: [{ id: "mon", backend: ["Monday"], long: "Monday", short: "Mon" }],
+    weekdayBackend: ["Monday"],
+    weekdayLabels: ["Monday"],
+    weekdayShort: ["Mon"],
+    getDayLabel: (value: string) => value,
+    lessonTypeConfigs: [
+      { id: "lecture", backend: ["lecture"], label: "Lecture", color: "#3366ff" },
+    ],
+    lessonTypeOptions: [{ value: "lecture", label: "Lecture" }],
+    lessonTypeLabels: new Map([["lecture", "Lecture"]]),
+    defaultLessonType: "lecture",
+    getLessonTypeColor: () => "#3366ff",
+    toBackendLessonType: (value?: string | null) => value ?? "lecture",
+    todayIdx: 0,
+    hasToday: false,
+    nowTick: new Date(),
+    todayLessons: [],
+    currentLesson: null,
+    nextLesson: null,
+    conflictedIds: new Set<number>(),
+    timeLeftText: "",
+    currentProgress: 0,
+  }
+
+  return { scheduleDataMock }
+})
+
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => authState,
   currentUserQueryKey: ["users", "me"] as const,
+}))
+
+vi.mock("@/hooks/useScheduleData", () => ({
+  useScheduleData: () => scheduleDataMock,
 }))
 
 vi.mock("@/api/client", () => ({
@@ -137,8 +194,7 @@ describe("Schedule translations", () => {
     cleanup()
   })
 
-  // TODO: Requires mocking useScheduleData return values; skip for now to unblock CI.
-  it.skip("renders English weekday headers and lesson labels", async () => {
+  it("renders English weekday headers and lesson labels", async () => {
     apiGetMock.mockImplementation(async (url: string) => {
       if (url === "/groups") {
         return { data: [{ id: 1, name: "CS-101" }] }
