@@ -108,6 +108,24 @@ This document describes all environment variables used by the University Ecosyst
 
 ---
 
+## Email (SMTP)
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SMTP_HOST` | SMTP server hostname | Empty |
+| `SMTP_PORT` | SMTP server port | `0` |
+| `SMTP_USER` | SMTP username | Empty |
+| `SMTP_PASSWORD` | SMTP password | Empty |
+| `SMTP_SECURITY` | `none`, `ssl`, or `starttls` | `none` |
+| `SMTP_STARTTLS` | Legacy flag to enable STARTTLS | `false` |
+| `MAIL_FROM` | From address for outgoing email | `no-reply@example.com` |
+
+> **Security**: When `SMTP_USER` is set in non-development environments, you must use
+> `SMTP_SECURITY=starttls` or `SMTP_SECURITY=ssl`. Using `SMTP_SECURITY=none` is
+> only allowed for development and testing.
+
+---
+
 ## Push Notifications
 
 | Variable | Description | Default |
