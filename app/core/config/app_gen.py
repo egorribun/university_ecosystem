@@ -40,7 +40,7 @@ class AppGeneralSettings(BaseAppSettings):
     presence_pubsub_channel: str = "presence_updates"
 
     api_v2_prefix: str = "/api/v2"
-    audit_log_secret: str = "development-audit-secret"
+    audit_log_secret: str = "development-audit-secret-change-me"
 
     health_storage_probe_min_interval_seconds: int = 3600
 
