@@ -385,5 +385,7 @@ wrapt==1.17.3
     #   opentelemetry-instrumentation-sqlalchemy
 yarl==1.22.0
     # via aiohttp
+zxcvbn==4.4.2
+    # via -r requirements.in
 zipp==3.23.0
     # via importlib-metadata
