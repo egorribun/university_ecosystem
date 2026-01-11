@@ -177,8 +177,14 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "en": "Password must include: {classes}.",
     },
     "errors.auth.password_policy_min_classes": {
-        "ru": "Пароль должен содержать минимум {min_classes} из следующих категорий: {classes}.",
-        "en": "Password must include at least {min_classes} of the following categories: {classes}.",
+        "ru": (
+            "Пароль должен содержать минимум {min_classes} из следующих категорий: "
+            "{classes}."
+        ),
+        "en": (
+            "Password must include at least {min_classes} of the following "
+            "categories: {classes}."
+        ),
     },
     "errors.auth.password_policy_strength": {
         "ru": "Пароль слишком простой. Используйте более сложный пароль.",
@@ -186,11 +192,15 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
     },
     "errors.auth.password_policy_compromised": {
         "ru": "Пароль был обнаружен в утечках данных. Выберите другой пароль.",
-        "en": "This password has appeared in data breaches. Choose a different password.",
+        "en": (
+            "This password has appeared in data breaches. Choose a different password."
+        ),
     },
     "errors.auth.password_policy_hibp_unavailable": {
         "ru": "Не удалось проверить пароль по базе утечек. Попробуйте позже.",
-        "en": "Unable to check the password against the breach database. Try again later.",
+        "en": (
+            "Unable to check the password against the breach database. Try again later."
+        ),
     },
     "password.class.uppercase": {
         "ru": "заглавные буквы",
