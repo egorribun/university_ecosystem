@@ -9,6 +9,7 @@ require (
 	github.com/nats-io/nats.go v1.37.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/spf13/viper v1.21.0
+	github.com/stretchr/testify v1.11.1
 	github.com/university-ecosystem/core/gen/go v0.0.0-00010101000000-000000000000
 	go.temporal.io/sdk v1.39.0
 	go.uber.org/zap v1.27.0
@@ -51,7 +52,6 @@ require (
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	go.temporal.io/api v1.59.0 // indirect
 	go.uber.org/multierr v1.10.0 // indirect

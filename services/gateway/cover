@@ -1,0 +1,14 @@
+mode: set
+github.com/university-ecosystem/gateway/internal/config/config.go:23.21,34.25 2 0
+github.com/university-ecosystem/gateway/internal/config/config.go:34.25,39.3 1 0
+github.com/university-ecosystem/gateway/internal/config/config.go:42.2,42.26 1 0
+github.com/university-ecosystem/gateway/internal/config/config.go:42.26,44.3 1 0
+github.com/university-ecosystem/gateway/internal/config/config.go:46.2,46.12 1 0
+github.com/university-ecosystem/gateway/internal/config/config.go:49.46,50.42 1 1
+github.com/university-ecosystem/gateway/internal/config/config.go:50.42,52.3 1 1
+github.com/university-ecosystem/gateway/internal/config/config.go:53.2,53.21 1 1
+github.com/university-ecosystem/gateway/internal/config/config.go:56.50,58.18 2 1
+github.com/university-ecosystem/gateway/internal/config/config.go:58.18,60.3 1 1
+github.com/university-ecosystem/gateway/internal/config/config.go:61.2,62.16 2 1
+github.com/university-ecosystem/gateway/internal/config/config.go:62.16,65.3 2 1
+github.com/university-ecosystem/gateway/internal/config/config.go:66.2,66.12 1 1
