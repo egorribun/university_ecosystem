@@ -66,6 +66,11 @@ This document describes all environment variables used by the University Ecosyst
 | `RATE_LIMIT_DEFAULT` | Default rate | `100/minute` |
 | `RATE_LIMIT_SENSITIVE` | Sensitive endpoints rate | `5/minute` |
 | `RATE_LIMIT_STORAGE_BACKEND` | `memory` or `redis` | `memory` |
+| `TRUSTED_PROXIES` | Comma-separated proxy IPs allowed to supply `X-Forwarded-For` | Empty |
+
+When `TRUSTED_PROXIES` is empty (default), rate limiting uses the direct client IP.
+If the request originates from a trusted proxy, rate limiting uses the first IP from
+`X-Forwarded-For` (or the `Forwarded` header as a fallback).
 
 ---
 

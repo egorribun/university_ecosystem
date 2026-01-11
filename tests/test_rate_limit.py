@@ -217,8 +217,10 @@ async def test_sensitive_dependency_memory_backend():
 async def test_sensitive_dependency_memory_backend_resolves_proxy_headers():
     original_backend = settings.rate_limit_storage_backend
     original_uri = settings.rate_limit_storage_uri
+    original_trusted = settings.trusted_proxies
     settings.rate_limit_storage_backend = "memory"
     settings.rate_limit_storage_uri = "memory://"
+    settings.trusted_proxies = "127.0.0.1"
     ratelimit_module.limiter.reset()
 
     dependency = ratelimit_module.sensitive_route_limit(
@@ -252,6 +254,55 @@ async def test_sensitive_dependency_memory_backend_resolves_proxy_headers():
     finally:
         settings.rate_limit_storage_backend = original_backend
         settings.rate_limit_storage_uri = original_uri
+        settings.trusted_proxies = original_trusted
+
+    assert first.status_code == status.HTTP_200_OK
+    assert second.status_code == status.HTTP_200_OK
+    assert third.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+
+
+@pytest.mark.anyio
+async def test_sensitive_dependency_memory_backend_ignores_untrusted_proxy_headers():
+    original_backend = settings.rate_limit_storage_backend
+    original_uri = settings.rate_limit_storage_uri
+    original_trusted = settings.trusted_proxies
+    settings.rate_limit_storage_backend = "memory"
+    settings.rate_limit_storage_uri = "memory://"
+    settings.trusted_proxies = ""
+    ratelimit_module.limiter.reset()
+
+    dependency = ratelimit_module.sensitive_route_limit(
+        limit=2, window_sec=60, key_prefix="memory-untrusted-proxy"
+    )
+
+    app = FastAPI()
+
+    @app.get("/limited", dependencies=[Depends(dependency)])
+    async def _limited():  # pragma: no cover - minimal endpoint
+        return {"ok": True}
+
+    transport = httpx.ASGITransport(app=app)
+
+    try:
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver"
+        ) as client:
+            first = await client.get(
+                "/limited",
+                headers={"X-Forwarded-For": "203.0.113.10"},
+            )
+            second = await client.get(
+                "/limited",
+                headers={"X-Forwarded-For": "198.51.100.12"},
+            )
+            third = await client.get(
+                "/limited",
+                headers={"X-Forwarded-For": "198.51.100.13"},
+            )
+    finally:
+        settings.rate_limit_storage_backend = original_backend
+        settings.rate_limit_storage_uri = original_uri
+        settings.trusted_proxies = original_trusted
 
     assert first.status_code == status.HTTP_200_OK
     assert second.status_code == status.HTTP_200_OK
@@ -309,8 +360,10 @@ async def test_sensitive_dependency_redis_backend_forwarded_header(
 ):
     original_backend = settings.rate_limit_storage_backend
     original_uri = settings.rate_limit_storage_uri
+    original_trusted = settings.trusted_proxies
     settings.rate_limit_storage_backend = "redis"
     settings.rate_limit_storage_uri = "redis://test"
+    settings.trusted_proxies = "127.0.0.1"
 
     dependency = ratelimit_module.sensitive_route_limit(
         limit=2, window_sec=60, key_prefix="redis-proxy"
@@ -356,6 +409,7 @@ async def test_sensitive_dependency_redis_backend_forwarded_header(
     finally:
         settings.rate_limit_storage_backend = original_backend
         settings.rate_limit_storage_uri = original_uri
+        settings.trusted_proxies = original_trusted
 
     assert first.status_code == status.HTTP_200_OK
     assert second.status_code == status.HTTP_200_OK
