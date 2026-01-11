@@ -45,13 +45,16 @@ else:  # pragma: no cover - executed during import
         def _norm_digest_args_with_legacy_truncation(
             cls, secret, ident, new=False, _orig=_original_norm_digest
         ):
-            secret, ident = _orig(cls, secret, ident, new=new)
+            if secret and isinstance(secret, str):
+                secret = secret.encode("utf-8")
+
             if (
                 isinstance(secret, bytes | bytearray)
                 and len(secret) > LEGACY_BCRYPT_MAX_BYTES
             ):
                 secret = secret[:LEGACY_BCRYPT_MAX_BYTES]
-            return secret, ident
+
+            return _orig(cls, secret, ident, new=new)
 
         _backend_common._norm_digest_args = classmethod(
             _norm_digest_args_with_legacy_truncation
@@ -113,6 +116,7 @@ def _validate_password_hibp(password: str, *, locale: str | None = None) -> None
 
 
 def _validate_password_policy(password: str, *, locale: str | None = None) -> None:
+    print(f"DEBUG: Validating policy for length {len(password)}")
     length = len(password)
     min_length = settings.password_min_length
     max_length = settings.password_max_length
@@ -169,7 +173,12 @@ def _validate_password_policy(password: str, *, locale: str | None = None) -> No
 
     min_score = settings.password_zxcvbn_min_score
     if min_score > 0:
-        score = zxcvbn(password).get("score", 0)
+        # zxcvbn enforces a 72 character limit
+        if len(password) > 72:
+            score = 4  # Assume maximum strength for very long passwords
+        else:
+            score = zxcvbn(password).get("score", 0)
+
         if score < min_score:
             raise ValueError(
                 translate("errors.auth.password_policy_strength", locale=locale)
