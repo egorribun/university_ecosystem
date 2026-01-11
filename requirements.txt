@@ -389,3 +389,15 @@ zxcvbn==4.5.0
     # via -r requirements.in
 zipp==3.23.0
     # via importlib-metadata
+
+# Manually added missing core dependencies (from requirements.in)
+orjson==3.10.15
+minio==7.2.14
+nats-py==2.9.0
+strawberry-graphql[fastapi]==0.250.0
+structlog==24.4.0
+polars==1.21.0
+elasticsearch[async]==8.17.0
+uvloop==0.21.0; sys_platform != 'win32'
+pyvips==2.2.1; sys_platform != 'win32'
+
