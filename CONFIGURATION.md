@@ -8,6 +8,7 @@ This document describes all environment variables used by the University Ecosyst
 |----------|-------------|---------|
 | `DATABASE_URL` | PostgreSQL connection string | - |
 | `SECRET_KEY` | JWT signing secret (min 32 chars) | - |
+| `AUDIT_LOG_SECRET` | Audit log signing secret (min 32 chars) | - |
 
 ---
 
@@ -29,6 +30,7 @@ This document describes all environment variables used by the University Ecosyst
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `SECRET_KEY` | JWT signing secret | Required |
+| `AUDIT_LOG_SECRET` | HMAC key for audit log signatures (min 32 chars; comma-separated for rotation) | Required |
 | `ALGORITHM` | JWT algorithm | `HS256` |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Token TTL | `60` |
 | `MAX_SESSIONS_PER_USER` | Concurrent sessions (0=unlimited) | `5` |

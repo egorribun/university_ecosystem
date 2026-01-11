@@ -42,7 +42,7 @@ class Settings(
     health_storage_probe_enabled: bool = True
     health_storage_probe_min_interval_seconds: int = 3600
     monitoring_heavy_probe_enabled: bool = False
-    audit_log_secret: str = "development-audit-secret"
+    audit_log_secret: str = "development-audit-secret-change-me"
     api_v2_prefix: str = "/api/v2"
 
     @field_validator("auto_create_schema")

@@ -148,6 +148,41 @@ asyncio.run(main())
 PY
 ```
 
+### Audit log signing
+
+- `AUDIT_LOG_SECRET` signs audit log entries (HMAC-SHA256) and should be distinct from `SECRET_KEY`.
+- For rotation, provide multiple comma-separated values: list the new key first and keep the old key second (`AUDIT_LOG_SECRET="new_key,old_key"`). After deploying, re-sign existing entries, then remove the old key and restart services.
+
+```bash
+python - <<'PY'
+import asyncio
+
+from sqlalchemy import select
+
+from app.core.database import async_session
+from app.models.logs import DataAccessLog
+from app.services.audit_service import SecureAuditService
+
+
+async def main() -> None:
+    service = SecureAuditService()
+    async with async_session() as session:
+        result = await session.execute(
+            select(DataAccessLog).where(DataAccessLog.signature.isnot(None))
+        )
+        updated = 0
+        for log in result.scalars().all():
+            if service.resign_log(log):
+                updated += 1
+        if updated:
+            await session.commit()
+        print(f"Resigned {updated} audit logs.")
+
+
+asyncio.run(main())
+PY
+```
+
 ## Docker image
 
 - `root/frontend.Dockerfile` is built in two stages: the `builder` stage runs `npm ci && npm run build`, and the final image is based on `nginx:alpine` and contains only the `dist/` contents.
