@@ -61,6 +61,7 @@ class SecuritySettings(BaseAppSettings):
     rate_limit_storage_backend: str = "memory"
     rate_limit_storage_uri: str = "memory://"
     rate_limit_headers_enabled: bool = True
+    trusted_proxies: str | list[str] = ""
 
     auth_lockout_thresholds: str | list[str] = "5:30,8:300,10:3600"
     auth_lockout_history_minutes: int = 1_440
@@ -407,6 +408,10 @@ class SecuritySettings(BaseAppSettings):
     def rate_limit_sensitive_value(self) -> str | None:
         value = str(self.rate_limit_sensitive).strip()
         return value or None
+
+    @cached_property
+    def trusted_proxies_list(self) -> list[str]:
+        return [proxy for proxy in _coerce_str_list(self.trusted_proxies) if proxy]
 
     @cached_property
     def strict_security_headers_enabled(self) -> bool:

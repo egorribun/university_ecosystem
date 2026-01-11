@@ -106,32 +106,42 @@ def _extract_ip_from_forwarded(forwarded_header: str) -> str | None:
     return None
 
 
+def _normalize_ip(value: str | None) -> str | None:
+    if not value:
+        return None
+    normalized = value.strip().lower()
+    if not normalized:
+        return None
+    if normalized.startswith("[") and "]" in normalized:
+        normalized = normalized[1 : normalized.index("]")]
+    elif normalized.count(":") == 1 and "]" not in normalized:
+        normalized = normalized.split(":", 1)[0]
+    return normalized or None
+
+
 def _resolve_client_ip(request: Request) -> str:
-    x_forwarded_for = request.headers.get("X-Forwarded-For")
-    if x_forwarded_for:
-        for part in x_forwarded_for.split(","):
-            candidate = part.strip()
-            if candidate:
-                ip = candidate
-                break
-        else:
-            ip = None
-    else:
-        ip = None
+    client_host = request.client.host if request.client else "unknown"
+    normalized_client = _normalize_ip(client_host) or "unknown"
+    trusted = {_normalize_ip(proxy) for proxy in settings.trusted_proxies_list}
+    trusted.discard(None)
+
+    ip: str | None = None
+    if normalized_client in trusted:
+        x_forwarded_for = request.headers.get("X-Forwarded-For")
+        if x_forwarded_for:
+            for part in x_forwarded_for.split(","):
+                candidate = _normalize_ip(part)
+                if candidate:
+                    ip = candidate
+                    break
+
+        if not ip:
+            forwarded_header = request.headers.get("Forwarded")
+            if forwarded_header:
+                ip = _normalize_ip(_extract_ip_from_forwarded(forwarded_header))
 
     if not ip:
-        forwarded_header = request.headers.get("Forwarded")
-        if forwarded_header:
-            ip = _extract_ip_from_forwarded(forwarded_header)
-
-    if not ip:
-        ip = request.client.host if request.client else "unknown"
-
-    ip = ip.strip().lower()
-    if ip.startswith("[") and "]" in ip:
-        ip = ip[1 : ip.index("]")]
-    elif ip.count(":") == 1 and "]" not in ip:
-        ip = ip.split(":", 1)[0]
+        ip = normalized_client
 
     return ip or "unknown"
 
