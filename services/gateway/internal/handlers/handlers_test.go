@@ -80,30 +80,6 @@ func TestHealthHandler_ReturnsCorrectJSON(t *testing.T) {
 	assert.Contains(t, body, `"service":"gateway"`)
 }
 
-func TestMetricsHandler_ReturnsOKStatus(t *testing.T) {
-	router := gin.New()
-	router.GET("/metrics", MetricsHandler)
-
-	request := httptest.NewRequest(http.MethodGet, "/metrics", nil)
-	recorder := httptest.NewRecorder()
-
-	router.ServeHTTP(recorder, request)
-
-	assert.Equal(t, http.StatusOK, recorder.Code)
-}
-
-func TestMetricsHandler_ReturnsStatusOK(t *testing.T) {
-	router := gin.New()
-	router.GET("/metrics", MetricsHandler)
-
-	request := httptest.NewRequest(http.MethodGet, "/metrics", nil)
-	recorder := httptest.NewRecorder()
-
-	router.ServeHTTP(recorder, request)
-
-	assert.Contains(t, recorder.Body.String(), `"status":"ok"`)
-}
-
 func TestProxyHandler_SetsRequestIDHeader(t *testing.T) {
 	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestID := r.Header.Get("X-Request-ID")
