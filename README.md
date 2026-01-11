@@ -172,7 +172,7 @@ Set `NOTIFICATIONS_SCHEDULER_INLINE_ENABLED=false` when the API and worker run s
 
 ## Image uploads
 
-Uploaded profile photos and news images are limited to **5 MB**. The backend automatically resizes images within the `IMAGE_MAX_WIDTH` × `IMAGE_MAX_HEIGHT` bounds (default 1920×1920), strips EXIF metadata, and stores them as WebP (PNG when transparency is required).
+Uploaded profile photos and news images are limited to **5 MB**. Supported formats are JPEG, PNG, and WebP (SVG is not accepted). The backend automatically resizes images within the `IMAGE_MAX_WIDTH` × `IMAGE_MAX_HEIGHT` bounds (default 1920×1920), strips EXIF metadata, and stores them as WebP (PNG when transparency is required).
 
 ## Running tests and linters
 

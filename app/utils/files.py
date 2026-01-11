@@ -73,7 +73,6 @@ ALLOWED_IMAGE_TYPES: Final[set[str]] = {
     "image/jpeg",
     "image/png",
     "image/webp",
-    "image/svg+xml",
 }
 MAX_IMAGE_SIZE: Final[int] = 5 * 1024 * 1024
 
@@ -82,7 +81,6 @@ _PREFERRED_EXTENSIONS: Final[dict[str, str]] = {
     "image/jpeg": ".jpg",
     "image/png": ".png",
     "image/webp": ".webp",
-    "image/svg+xml": ".svg",
 }
 
 try:  # pragma: no cover - exercised indirectly via detect_mime_type
