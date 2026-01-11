@@ -6,17 +6,13 @@ included in the FastAPI application.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import strawberry
+from fastapi import Request
 from strawberry.fastapi import GraphQLRouter
 
 from app.graphql.context import GraphQLContext
 from app.graphql.dataloaders import DataLoaderRegistry
 from app.graphql.queries import Query
-
-if TYPE_CHECKING:
-    from fastapi import Request
 
 
 async def get_context(
