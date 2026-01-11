@@ -8,3 +8,4 @@ fixable = ["ALL"]
 
 [lint.per-file-ignores]
 "tests/conftest.py" = ["E402"]
+"app/main.py" = ["E402"]  # uvloop must be configured before other imports

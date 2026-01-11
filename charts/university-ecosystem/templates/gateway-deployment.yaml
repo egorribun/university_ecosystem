@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-gateway
+  labels:
+    app: gateway
+    release: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.gateway.replicaCount }}
+  selector:
+    matchLabels:
+      app: gateway
+      release: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app: gateway
+        release: {{ .Release.Name }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/gateway/metrics"
+    spec:
+      containers:
+        - name: gateway
+          image: "{{ .Values.global.imageRegistry }}/{{ .Values.gateway.image.repository }}:{{ .Values.gateway.image.tag }}"
+          imagePullPolicy: {{ .Values.gateway.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: GATEWAY_PORT
+              value: "8080"
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-secrets
+                  key: jwt-secret
+            - name: BACKEND_URL
+              value: "http://{{ .Release.Name }}-backend:8000"
+            - name: FILE_PROCESSOR_ADDR
+              value: "{{ .Release.Name }}-file-processor:50051"
+            - name: REDIS_URL
+              value: "redis://{{ .Release.Name }}-redis:6379/3"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http

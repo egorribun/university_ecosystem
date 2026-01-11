@@ -1,0 +1,71 @@
+# Go Microservices
+# Run with: docker compose -f docker-compose.yml -f docker-compose.go.yml up -d
+
+services:
+  # API Gateway - Rate limiting, JWT validation, reverse proxy
+  gateway:
+    build:
+      context: ./services/gateway
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      GATEWAY_PORT: "8080"
+      BACKEND_URL: http://backend:8000
+      REDIS_URL: redis://redis:6379/3
+      JWT_SECRET: ${JWT_SECRET:-${SECRET_KEY:-}}
+    depends_on:
+      - backend
+      - redis
+    networks:
+      - public
+      - internal
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # WebSocket Hub - Real-time messaging
+  ws-hub:
+    build:
+      context: ./services/ws-hub
+      dockerfile: Dockerfile
+    ports:
+      - "8083:8081"
+    environment:
+      WS_HUB_PORT: "8081"
+      NATS_URL: nats://nats:4222
+      JWT_SECRET: ${JWT_SECRET:-${SECRET_KEY:-}}
+    depends_on:
+      - nats
+    networks:
+      - internal
+      - public
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # File Processor - Image processing worker
+  file-processor:
+    build:
+      context: ./services/file-processor
+      dockerfile: Dockerfile
+    environment:
+      NATS_URL: nats://nats:4222
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_BUCKET: uploads
+    depends_on:
+      - nats
+      - minio
+    networks:
+      - internal
+    restart: unless-stopped
+    deploy:
+      replicas: 2  # Scale for parallel processing

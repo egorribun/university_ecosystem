@@ -1,0 +1,19 @@
+FROM golang:1.23-bookworm
+
+# Install Protobuf compiler and Python
+# We need curl to download buf
+RUN apt-get update && apt-get install -y protobuf-compiler python3 python3-pip curl
+
+# Install Buf Binary (Avoid strict compilation of large project)
+# Using a fixed version to ensure stability
+RUN curl -L -o /usr/local/bin/buf "https://github.com/bufbuild/buf/releases/download/v1.30.0/buf-$(uname -s)-$(uname -m)" && \
+    chmod +x /usr/local/bin/buf
+
+# Install Go Plugins (Lightweight, should pass)
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+
+# Add Go bin to PATH
+ENV PATH="/go/bin:${PATH}"
+
+WORKDIR /workspace

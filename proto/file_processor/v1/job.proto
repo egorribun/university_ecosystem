@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package file_processor.v1;
+
+option go_package = "github.com/university-ecosystem/core/gen/go/file_processor/v1;fileprocessorv1";
+
+// FileProcessingService defines the contract for processing files.
+// Using a service definition allows us to easily generate gRPC servers/clients later.
+service FileProcessingService {
+  // ProcessFile submits a file for processing (async or sync).
+  rpc ProcessFile(ProcessFileRequest) returns (ProcessFileResponse);
+}
+
+message ProcessFileRequest {
+  string id = 1;
+  string type = 2; // e.g. "resize", "thumbnail", "optimize"
+  string source_key = 3;
+  string dest_key = 4;
+  map<string, string> options = 5; // simplified to string map for proto
+  string callback_url = 6;
+}
+
+message ProcessFileResponse {
+  string job_id = 1;
+  bool success = 2;
+  string dest_key = 3;
+  string error = 4;
+  int64 duration_ms = 5;
+}

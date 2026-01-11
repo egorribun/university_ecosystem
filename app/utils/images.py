@@ -1,13 +1,27 @@
-"""Image processing helpers for uploaded files."""
+"""Image processing helpers for uploaded files.
+
+This module uses pyvips when available (10x faster than Pillow) with
+automatic fallback to Pillow for Windows or when pyvips is not installed.
+"""
 
 from __future__ import annotations
 
+import logging
 from io import BytesIO
 from typing import cast
 
 from defusedxml.common import DefusedXmlException
 from defusedxml.ElementTree import fromstring as parse_svg_string
 from PIL import Image, ImageOps, UnidentifiedImageError
+
+# Try to use pyvips for 10x faster processing
+try:
+    from app.utils.images_vips import VIPS_AVAILABLE, optimize_image_vips
+except ImportError:
+    VIPS_AVAILABLE = False
+    optimize_image_vips = None  # type: ignore[assignment]
+
+logger = logging.getLogger(__name__)
 
 try:  # Pillow >= 9.1 exposes the resampling enum in PIL.Image
     from PIL.Image import Resampling
@@ -17,7 +31,6 @@ except ImportError:  # pragma: no cover - Pillow < 9.1 compatibility
 
 def _resolve_resample_filter() -> Resampling:
     """Return the best available high-quality resampling filter."""
-
     resampling = getattr(Image, "Resampling", None)
     if resampling is not None:
         return cast(Resampling, resampling.LANCZOS)
@@ -37,6 +50,27 @@ def sanitize_svg(data: bytes) -> bytes:
         raise ValueError("Invalid or malicious SVG data") from exc
 
 
+def _optimize_image_pillow(
+    data: bytes,
+    *,
+    max_width: int,
+    max_height: int,
+) -> tuple[bytes, str]:
+    """Process image using Pillow (fallback when pyvips unavailable)."""
+    with Image.open(BytesIO(data)) as img:
+        img = ImageOps.exif_transpose(img)
+        width, height = img.size
+
+        if width > max_width or height > max_height:
+            resample = _resolve_resample_filter()
+            img.thumbnail((max_width, max_height), resample=resample)
+
+        buffer = BytesIO()
+        img.save(buffer, format="WEBP", method=6, quality=85, lossless=False)
+
+    return buffer.getvalue(), "image/webp"
+
+
 def optimize_image(
     data: bytes,
     *,
@@ -44,44 +78,38 @@ def optimize_image(
     max_height: int | None = None,
     content_type: str | None = None,
 ) -> tuple[bytes, str]:
-    """Resize and re-encode an image to an optimized WebP or PNG payload.
+    """Resize and re-encode an image to an optimized WebP payload.
 
-    The helper ensures the image fits within the configured bounding box, strips
-    EXIF metadata, and converts the image to an efficient format.
+    Uses pyvips when available (10x faster), falls back to Pillow.
+    The helper ensures the image fits within the configured bounding box,
+    strips EXIF metadata, and converts to WebP format.
     """
-
-    # Handle SVG separately
+    # Handle SVG separately (no raster processing needed)
     if content_type == "image/svg+xml" or data.lstrip().startswith(b"<svg"):
         return sanitize_svg(data), "image/svg+xml"
 
+    # Resolve dimensions with sensible defaults
+    max_w = int(max_width or 1920)
+    max_h = int(max_height or 1920)
+    if max_w <= 0:
+        max_w = 1920
+    if max_h <= 0:
+        max_h = 1920
+
+    # Try pyvips first (10x faster when available)
+    if VIPS_AVAILABLE and optimize_image_vips is not None:
+        try:
+            return optimize_image_vips(
+                data,
+                max_width=max_w,
+                max_height=max_h,
+                quality=85,
+            )
+        except Exception as exc:
+            logger.warning("pyvips failed, falling back to Pillow: %s", exc)
+
+    # Pillow fallback
     try:
-        with Image.open(BytesIO(data)) as img:
-            img = ImageOps.exif_transpose(img)
-            width, height = img.size
-
-            max_w = int(max_width or 0)
-            max_h = int(max_height or 0)
-            if max_w <= 0:
-                max_w = width
-            if max_h <= 0:
-                max_h = height
-
-            if width > max_w or height > max_h:
-                resample = _resolve_resample_filter()
-                img.thumbnail((max_w, max_h), resample=resample)
-
-            buffer = BytesIO()
-            # Prefer WebP for all images if possible, otherwise use PNG
-            # for alpha transparency if WebP is not desired.
-            # But WebP supports alpha, so we can use it for everything.
-            img.save(buffer, format="WEBP", method=6, quality=85, lossless=False)
-            mime = "image/webp"
-
-    except (
-        UnidentifiedImageError,
-        OSError,
-        ValueError,
-    ) as exc:  # pragma: no cover - runtime guard
+        return _optimize_image_pillow(data, max_width=max_w, max_height=max_h)
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
         raise ValueError("Invalid image data") from exc
-
-    return buffer.getvalue(), mime
