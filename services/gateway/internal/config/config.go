@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"strconv"
 )
@@ -20,7 +19,7 @@ type Config struct {
 
 // Load loads the configuration from environment variables
 // It ensures critical secrets are present, enforcing a "Fail Secure" policy.
-func Load() *Config {
+func Load() (*Config, error) {
 	cfg := &Config{
 		Port:              getEnv("GATEWAY_PORT", "8080"),
 		BackendURL:        getEnv("BACKEND_URL", "http://backend:8000"),
@@ -33,17 +32,14 @@ func Load() *Config {
 
 	if cfg.JWTSecret == "" {
 		// CRITICAL: Fail to start if no secret is provided.
-		// Previous behavior of warning and disabling auth is insecure for production.
-		// If testing without auth is strictly required, use a dummy secret explicitly.
-		log.Fatal("FATAL: JWT_SECRET environment variable is not set. Refusing to start in insecure mode.")
+		return nil, fmt.Errorf("JWT_SECRET environment variable is not set")
 	}
 
-	// Validate other critical paths?
 	if cfg.BackendURL == "" {
-		log.Fatal("FATAL: BACKEND_URL must be set")
+		return nil, fmt.Errorf("BACKEND_URL must be set")
 	}
 
-	return cfg
+	return cfg, nil
 }
 
 func getEnv(key, defaultValue string) string {

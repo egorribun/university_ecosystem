@@ -123,7 +123,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Validate docker compose configuration
-        run: docker compose -f docker-compose.yml config
+        run: |
+          cp .env.example .env
+          docker compose -f docker-compose.yml config
 
   pip-audit:
     name: Pip audit
@@ -255,6 +257,46 @@ jobs:
           name: backend-pytest-report
           path: pytest-report.xml
           if-no-files-found: warn
+
+  go-tests:
+    name: Go tests
+    runs-on: ubuntu-latest
+    needs: run-hooks
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+          cache: true
+          cache-dependency-path: |
+            services/gateway/go.sum
+            services/file-processor/go.sum
+            services/ws-hub/go.sum
+            go.sum
+      - name: Install dependencies
+        run: |
+          (cd services/gateway && go mod download)
+          (cd services/file-processor && go mod download)
+          (cd services/ws-hub && go mod download)
+      - name: Run Gateway tests
+        working-directory: services/gateway
+        run: go test -v -coverprofile=coverage.out ./...
+      - name: Run File Processor tests
+        working-directory: services/file-processor
+        run: go test -v -coverprofile=coverage.out ./...
+      - name: Run WS Hub tests
+        working-directory: services/ws-hub
+        run: go test -v -coverprofile=coverage.out ./...
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: go-coverage
+          path: |
+            services/gateway/coverage.out
+            services/file-processor/coverage.out
+            services/ws-hub/coverage.out
 
   alembic-migrations:
     name: Alembic migrations

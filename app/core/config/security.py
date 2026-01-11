@@ -32,6 +32,9 @@ class SecuritySettings(BaseAppSettings):
     frontend_origins: str | list[str] = ""
     app_base_url: str = "http://localhost:5173"
     trusted_hosts: str | list[str] = "localhost,127.0.0.1"
+    # Allowed hosts for TrustedHostMiddleware - validates Host headers.
+    # Set to empty string to disable. Use "*" to allow all (not for production).
+    allowed_hosts: str | list[str] = ""
 
     request_id_header: str = "x-request-id"
     trace_header: str = "x-trace-id"
@@ -392,6 +395,20 @@ class SecuritySettings(BaseAppSettings):
         else:
             items = [p.strip() for p in str(self.trusted_hosts).split(",")]
         return [host for host in items if host]
+
+    @cached_property
+    def allowed_hosts_list(self) -> list[str]:
+        """Hosts allowed by TrustedHostMiddleware for Host header validation."""
+        if isinstance(self.allowed_hosts, list | tuple | set):
+            items = [str(v).strip() for v in self.allowed_hosts]
+        else:
+            items = [p.strip() for p in str(self.allowed_hosts).split(",")]
+        # Filter out empty strings but keep "*" if specified
+        result = [host for host in items if host]
+        # In development, auto-add localhost variants if list is empty
+        if not result and getattr(self, "is_development", False):
+            result = ["localhost", "127.0.0.1", "testserver"]
+        return result
 
     @cached_property
     def internal_allowed_ips_list(self) -> list[str]:

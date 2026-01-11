@@ -344,13 +344,10 @@ def app():
 
 
 @pytest.fixture
-async def async_client(
-    monkeypatch: pytest.MonkeyPatch,
-    prepare_database: None,
-) -> AsyncIterator[httpx.AsyncClient]:
-    async def _start_notifications_scheduler(
-        *args, **kwargs
-    ) -> Callable[[], Awaitable[None]]:
+def mock_background_tasks(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Mock out all background schedulers and migration checks."""
+
+    async def _noop(*args, **kwargs) -> Callable[[], Awaitable[None]]:
         async def _stop() -> None:
             return None
 
@@ -358,59 +355,23 @@ async def async_client(
 
     monkeypatch.setattr(
         "app.core.lifespan.start_notifications_scheduler",
-        _start_notifications_scheduler,
+        _noop,
     )
-
-    async def _start_notifications_retention_scheduler(
-        *args, **kwargs
-    ) -> Callable[[], Awaitable[None]]:
-        async def _stop() -> None:
-            return None
-
-        return _stop
-
     monkeypatch.setattr(
         "app.core.lifespan.start_notifications_retention_scheduler",
-        _start_notifications_retention_scheduler,
+        _noop,
     )
-
-    async def _start_session_cleanup_scheduler(
-        *args, **kwargs
-    ) -> Callable[[], Awaitable[None]]:
-        async def _stop() -> None:
-            return None
-
-        return _stop
-
     monkeypatch.setattr(
         "app.core.lifespan.start_session_cleanup_scheduler",
-        _start_session_cleanup_scheduler,
+        _noop,
     )
-
-    async def _start_story_cleanup_scheduler(
-        *args, **kwargs
-    ) -> Callable[[], Awaitable[None]]:
-        async def _stop() -> None:
-            return None
-
-        return _stop
-
     monkeypatch.setattr(
         "app.core.lifespan.start_story_cleanup_scheduler",
-        _start_story_cleanup_scheduler,
+        _noop,
     )
-
-    async def _start_password_reset_cleanup_scheduler(
-        *args, **kwargs
-    ) -> Callable[[], Awaitable[None]]:
-        async def _stop() -> None:
-            return None
-
-        return _stop
-
     monkeypatch.setattr(
         "app.core.lifespan.start_password_reset_cleanup_scheduler",
-        _start_password_reset_cleanup_scheduler,
+        _noop,
     )
 
     async def _mock_migrations_current(conn=None) -> tuple[bool, set[str], set[str]]:
@@ -423,6 +384,13 @@ async def async_client(
         "app.utils.migrations.migrations_are_current", _mock_migrations_current
     )
 
+
+@pytest.fixture
+async def async_client(
+    mock_background_tasks: None,
+    prepare_database: None,
+) -> AsyncIterator[httpx.AsyncClient]:
+    """Client for testing API endpoints (with /api/v1 prefix)."""
     transport = httpx.ASGITransport(app=main.app)
     async with LifespanManager(main.app):
         async with httpx.AsyncClient(
@@ -435,90 +403,16 @@ async def async_client(
 
 @pytest.fixture
 async def root_client(
-    monkeypatch: pytest.MonkeyPatch,
+    mock_background_tasks: None,
     prepare_database: None,
 ) -> AsyncIterator[httpx.AsyncClient]:
     """Client for testing root-level endpoints (no /api/v1 prefix)."""
-
-    async def _start_notifications_scheduler(
-        *args, **kwargs
-    ) -> Callable[[], Awaitable[None]]:
-        async def _stop() -> None:
-            return None
-
-        return _stop
-
-    monkeypatch.setattr(
-        "app.core.lifespan.start_notifications_scheduler",
-        _start_notifications_scheduler,
-    )
-
-    async def _start_notifications_retention_scheduler(
-        *args, **kwargs
-    ) -> Callable[[], Awaitable[None]]:
-        async def _stop() -> None:
-            return None
-
-        return _stop
-
-    monkeypatch.setattr(
-        "app.core.lifespan.start_notifications_retention_scheduler",
-        _start_notifications_retention_scheduler,
-    )
-
-    async def _start_session_cleanup_scheduler(
-        *args, **kwargs
-    ) -> Callable[[], Awaitable[None]]:
-        async def _stop() -> None:
-            return None
-
-        return _stop
-
-    monkeypatch.setattr(
-        "app.core.lifespan.start_session_cleanup_scheduler",
-        _start_session_cleanup_scheduler,
-    )
-
-    async def _start_story_cleanup_scheduler(
-        *args, **kwargs
-    ) -> Callable[[], Awaitable[None]]:
-        async def _stop() -> None:
-            return None
-
-        return _stop
-
-    monkeypatch.setattr(
-        "app.core.lifespan.start_story_cleanup_scheduler",
-        _start_story_cleanup_scheduler,
-    )
-
-    async def _start_password_reset_cleanup_scheduler(
-        *args, **kwargs
-    ) -> Callable[[], Awaitable[None]]:
-        async def _stop() -> None:
-            return None
-
-        return _stop
-
-    monkeypatch.setattr(
-        "app.core.lifespan.start_password_reset_cleanup_scheduler",
-        _start_password_reset_cleanup_scheduler,
-    )
-
-    async def _mock_migrations_current(conn=None) -> tuple[bool, set[str], set[str]]:
-        return True, set(), set()
-
-    monkeypatch.setattr(
-        "app.api.health.migrations_are_current", _mock_migrations_current
-    )
-    monkeypatch.setattr(
-        "app.utils.migrations.migrations_are_current", _mock_migrations_current
-    )
-
     transport = httpx.ASGITransport(app=main.app)
     async with LifespanManager(main.app):
         async with httpx.AsyncClient(
-            transport=transport, base_url="http://testserver", follow_redirects=True
+            transport=transport,
+            base_url="http://testserver",
+            follow_redirects=True,
         ) as client:
             yield client
 

@@ -1,7 +1,7 @@
 package config
 
 import (
-	"log"
+	"fmt"
 
 	"github.com/spf13/viper"
 )
@@ -20,7 +20,7 @@ type Config struct {
 }
 
 // Load loads the configuration from environment variables using Viper
-func Load() *Config {
+func Load() (*Config, error) {
 	viper.SetEnvPrefix("") // No prefix, or use "FP" if strictnamespacing needed, but existing envs are loose
 	viper.AutomaticEnv()
 
@@ -35,16 +35,6 @@ func Load() *Config {
 	viper.SetDefault("minio_secret_key", "minioadmin")
 	viper.SetDefault("minio_secure", false)
 
-	// Explicit bindings for legacy names if needed, but AutomaticEnv handles UPPER_CASE matching usually
-	// providing we map struct tags or use mapstructure.
-	// However, viper AutomaticEnv matches "GRPC_PORT" to "grpc_port" usually if not strict?
-	// Actually, best to bind explicitly if keys mismatch.
-	// Our struct fields: GRPCPort -> env GRPC_PORT.
-
-	// Viper default match: GRPCPort (field) -> g_r_p_c_port (env)? No, it's complex.
-	// Best to use explicit BindEnv or manual setup if we want distinct mapping.
-	// But let's assume standard ENV_VAR names.
-
 	_ = viper.BindEnv("grpc_port", "GRPC_PORT")
 	_ = viper.BindEnv("nats_url", "NATS_URL")
 	_ = viper.BindEnv("temporal_host", "TEMPORAL_HOST")
@@ -56,8 +46,12 @@ func Load() *Config {
 
 	var cfg Config
 	if err := viper.Unmarshal(&cfg); err != nil {
-		log.Fatalf("Unable to decode into struct: %v", err)
+		return nil, err
 	}
 
-	return &cfg
+	if cfg.MinioAccessKey == "" || cfg.MinioSecretKey == "" {
+		return nil, fmt.Errorf("MINIO_ACCESS_KEY and MINIO_SECRET_KEY are required")
+	}
+
+	return &cfg, nil
 }

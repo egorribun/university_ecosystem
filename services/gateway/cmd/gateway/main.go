@@ -3,15 +3,20 @@
 package main
 
 import (
-	"log"
+	"context"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/gin-contrib/cors"
 	ginzap "github.com/gin-contrib/zap"
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/redis/go-redis/extra/redisprometheus/v9"
 	ginprometheus "github.com/zsais/go-gin-prometheus"
 	"go.uber.org/zap"
 
@@ -29,13 +34,16 @@ func main() {
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
 
-	// Load configuration (will exit if invalid)
-	cfg := config.Load()
+	// Load configuration
+	cfg, err := config.Load()
+	if err != nil {
+		logger.Fatal("Failed to load configuration", zap.Error(err))
+	}
 
 	// Parse backend URL
 	backendURL, err := url.Parse(cfg.BackendURL)
 	if err != nil {
-		log.Fatalf("Invalid backend URL: %v", err)
+		logger.Fatal("Invalid backend URL", zap.Error(err), zap.String("url", cfg.BackendURL))
 	}
 
 	// Create reverse proxy
@@ -86,6 +94,14 @@ func main() {
 	} else {
 		router.Use(rateLimiter.Middleware())
 		logger.Info("Rate limiter enabled", zap.Int("rps", cfg.RateLimitRPS))
+
+		// Register Redis metrics collector
+		collector := redisprometheus.NewCollector("gateway", "redis", rateLimiter.GetClient())
+		if err := prometheus.Register(collector); err != nil {
+			logger.Warn("Failed to register Redis metrics collector", zap.Error(err))
+		} else {
+			logger.Info("Redis metrics collector registered")
+		}
 	}
 
 	// Initialize Prometheus
@@ -124,11 +140,31 @@ func main() {
 		logger.Warn("JWT validation disabled - no secret configured")
 	}
 
-	// Start server
+	// Start server with graceful shutdown
 	addr := ":" + cfg.Port
-	logger.Info("Starting API Gateway", zap.String("addr", addr), zap.String("backend", cfg.BackendURL))
-
-	if err := router.Run(addr); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: router,
 	}
+
+	go func() {
+		logger.Info("Starting API Gateway", zap.String("addr", addr), zap.String("backend", cfg.BackendURL))
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Fatal("Failed to start server", zap.Error(err))
+		}
+	}()
+
+	// Wait for interrupt signal to gracefully shutdown the server with a timeout
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	logger.Info("Shutting down server...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		logger.Fatal("Server forced to shutdown", zap.Error(err))
+	}
+
+	logger.Info("Server exiting")
 }

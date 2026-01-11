@@ -14,6 +14,7 @@ import (
 
 // RateLimiter provides Redis-backed rate limiting
 type RateLimiter struct {
+	client  *redis.Client
 	limiter *redis_rate.Limiter
 	rps     int
 	burst   int
@@ -39,10 +40,16 @@ func NewRateLimiter(redisURL string, rps, burst int) (*RateLimiter, error) {
 	limiter := redis_rate.NewLimiter(client)
 
 	return &RateLimiter{
+		client:  client,
 		limiter: limiter,
 		rps:     rps,
 		burst:   burst,
 	}, nil
+}
+
+// GetClient returns the underlying redis client
+func (rl *RateLimiter) GetClient() *redis.Client {
+	return rl.client
 }
 
 // Middleware returns a Gin middleware for rate limiting

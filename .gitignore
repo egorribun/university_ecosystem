@@ -225,3 +225,16 @@ root/frontend/test-results/
 root/frontend/blob-report/
 **/.lighthouseci/
 **/vitest-report.xml
+
+# Go coverage and temp files
+coverage.out
+coverage_report
+ctemp
+coverage_ws
+coverage_gw
+coverage_fp
+coverage_all
+coverage-all.out
+test_output.txt
+$profile
+$tempProfile
