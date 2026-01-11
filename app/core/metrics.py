@@ -324,6 +324,17 @@ _PRESENCE_THROTTLED = (
     else None
 )
 
+_CSP_REPORTS = (
+    Counter(
+        "csp_reports_total",
+        "Total CSP violation reports received",
+        ("outcome",),
+        registry=REGISTRY,
+    )
+    if Counter is not None
+    else None
+)
+
 
 def record_login_success() -> None:
     """Record a successful login."""
@@ -377,6 +388,12 @@ def record_presence_throttled(state: str, source: str) -> None:
     """Record a throttled presence event."""
     if _PRESENCE_THROTTLED is not None:
         _PRESENCE_THROTTLED.labels(state=state, source=source).inc()
+
+
+def record_csp_report(outcome: str) -> None:
+    """Record a CSP report processing outcome."""
+    if _CSP_REPORTS is not None:
+        _CSP_REPORTS.labels(outcome=outcome).inc()
 
 
 _CONFIGURED_ATTR = "_metrics_configured"

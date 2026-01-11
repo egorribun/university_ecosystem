@@ -40,6 +40,16 @@
             "summary": "Spike in 5xx responses",
             "description": "Router {{ $labels.router }} reported more than 5 errors in 5 minutes"
           }
+        },
+        {
+          "alert": "CSPReportSpike",
+          "expr": "sum(rate(csp_reports_total{outcome=\"accepted\"}[5m])) > 20",
+          "for": "5m",
+          "labels": {"severity": "warning"},
+          "annotations": {
+            "summary": "Spike in CSP violation reports",
+            "description": "CSP reports exceeded 20 per minute over 5 minutes"
+          }
         }
       ]
     }
