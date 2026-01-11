@@ -78,17 +78,34 @@ class SecuritySettings(BaseAppSettings):
     trusted_device_expire_days: int = 30
     trusted_device_cookie_name: str = "trusted_device"
 
-    security_csp: str = (
-        "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com; "
+    security_csp: str = ""
+    security_csp_dev: str = (
+        "default-src 'self' http://localhost:5173; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' "
+        "http://localhost:5173 https://accounts.google.com 'report-sample'; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
         "img-src 'self' data: https: blob:; "
-        "connect-src 'self' https://api.spotify.com https://fcm.googleapis.com "
-        "https://fcmregistrations.googleapis.com "
-        "https://*.push.services.mozilla.com https://*.push.apple.com; "
+        "connect-src {connect_src}; "
         "font-src 'self' data: https://fonts.gstatic.com; "
         "object-src 'none'; "
-        "base-uri 'self';"
+        "base-uri 'self'; "
+        "frame-ancestors 'self'; "
+        "trusted-types app dompurify-news goog#html 'allow-duplicates'; "
+        "{require_trusted_types}"
+    )
+    security_csp_prod: str = (
+        "default-src 'self'; "
+        "script-src 'self' 'nonce-{nonce}' 'strict-dynamic' "
+        "https://accounts.google.com 'report-sample'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "img-src 'self' data: https: blob:; "
+        "connect-src {connect_src}; "
+        "font-src 'self' data: https://fonts.gstatic.com; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "frame-ancestors 'self'; "
+        "trusted-types app dompurify-news goog#html 'allow-duplicates'; "
+        "{require_trusted_types}"
     )
     security_connect_src_extra: str | list[str] = (
         "https://api.spotify.com,"
@@ -475,72 +492,37 @@ class SecuritySettings(BaseAppSettings):
     def build_csp_policy(self, *, nonce: str | None, report_only: bool) -> str:
         if "security_csp" in self.model_fields_set and self.security_csp.strip():
             template = self.security_csp.strip()
-            require_trusted_types = (
-                "require-trusted-types-for 'script'"
-                if self.strict_security_headers_enabled and not report_only
-                else ""
-            )
-            policy = template.replace("{require_trusted_types}", require_trusted_types)
-            connect_sources = (
-                self.security_connect_src_values + self._development_connect_overrides()
-            )
-            connect_value = " ".join(connect_sources).strip()
-            policy = policy.replace("{connect_src}", connect_value or "'self'")
-            if nonce:
-                policy = policy.replace("{nonce}", nonce)
-            else:
-                policy = (
-                    policy.replace("'nonce-{nonce}'", "")
-                    .replace("{nonce}", "")
-                    .replace("  ", " ")
-                )
-            directives = [part.strip() for part in policy.split(";") if part.strip()]
-            policy = "; ".join(directives)
         else:
-            connect_sources = (
-                self.security_connect_src_values + self._development_connect_overrides()
+            template = (
+                self.security_csp_dev
+                if getattr(self, "is_development", False)
+                else self.security_csp_prod
             )
-            connect_value = " ".join(
-                dict.fromkeys([value for value in connect_sources if value])
+        require_trusted_types = (
+            "require-trusted-types-for 'script'"
+            if self.strict_security_headers_enabled and not report_only
+            else ""
+        )
+        policy = template.replace("{require_trusted_types}", require_trusted_types)
+        connect_sources = self.security_connect_src_values + (
+            self._development_connect_overrides()
+            if getattr(self, "is_development", False)
+            else []
+        )
+        connect_value = " ".join(
+            dict.fromkeys([value for value in connect_sources if value])
+        ).strip()
+        policy = policy.replace("{connect_src}", connect_value or "'self'")
+        if nonce:
+            policy = policy.replace("{nonce}", nonce)
+        else:
+            policy = (
+                policy.replace("'nonce-{nonce}'", "")
+                .replace("{nonce}", "")
+                .replace("  ", " ")
             )
-            if not connect_value:
-                connect_value = "'self'"
-            if self.strict_security_headers_enabled and not report_only:
-                directives = [
-                    "default-src 'self'",
-                    (
-                        "script-src 'self' 'nonce-{nonce}' "
-                        "'strict-dynamic' 'report-sample'"
-                    ),
-                    "style-src 'self' 'unsafe-inline'",
-                    "img-src 'self' data: blob:",
-                    f"connect-src {connect_value}",
-                    "object-src 'none'",
-                    "base-uri 'self'",
-                    "frame-ancestors 'self'",
-                    "trusted-types app dompurify-news goog#html 'allow-duplicates'",
-                    "require-trusted-types-for 'script'",
-                ]
-            else:
-                directives = [
-                    "default-src 'self' http://localhost:5173",
-                    (
-                        "script-src 'self' 'unsafe-inline' 'unsafe-eval' "
-                        "http://localhost:5173 'report-sample'"
-                    ),
-                    "style-src 'self' 'unsafe-inline'",
-                    "img-src 'self' data: blob:",
-                    f"connect-src {connect_value}",
-                    "object-src 'none'",
-                    "base-uri 'self'",
-                    "frame-ancestors 'self'",
-                    "trusted-types app dompurify-news goog#html 'allow-duplicates'",
-                ]
-            policy = "; ".join(directives)
-            if nonce:
-                policy = policy.replace("{nonce}", nonce)
-            else:
-                policy = policy.replace("'nonce-{nonce}'", "").replace("{nonce}", "")
+        directives = [part.strip() for part in policy.split(";") if part.strip()]
+        policy = "; ".join(directives)
         policy = "; ".join(
             part.strip() for part in policy.split(";") if part and part.strip()
         )

@@ -78,6 +78,8 @@ async def test_security_headers_production_mode(monkeypatch):
     assert "'report-sample'" in script_src
     # Check for nonce
     assert any(token.startswith("'nonce-") for token in script_src)
+    assert "'unsafe-inline'" not in script_src
+    assert "'unsafe-eval'" not in script_src
 
     style_src = directives.get("style-src", [])
     assert "'self'" in style_src
