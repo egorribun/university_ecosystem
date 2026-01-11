@@ -29,8 +29,10 @@ from app.core.database import async_session
 from app.core.feature_flags import feature_flags
 from app.core.metrics import record_presence_event, record_presence_throttled
 from app.models.chat import Chat, Message, chat_participants
+from app.models.enums import UserRole
 from app.models.models import ActiveSession, User
 from app.schemas.chat import ChatParticipant, PresenceStatus
+from app.services.audit_service import SecurityEvent, audit_service
 from app.utils.logging import redact_sensitive_mapping
 
 logger = logging.getLogger(__name__)
@@ -60,6 +62,20 @@ async def _get_presence_audience(user_id: int) -> set[int]:
         audience = {row[0] for row in result.all()}
     audience.discard(user_id)
     return audience
+
+
+async def _get_online_users_for_user(user_id: int) -> list[int]:
+    """Return online user IDs limited to the current user's chat participants."""
+    audience = await _get_presence_audience(user_id)
+    return [target_id for target_id in audience if manager.is_online(target_id)]
+
+
+def _get_websocket_audit_context(websocket: WebSocket) -> dict[str, Any]:
+    client = websocket.client
+    return {
+        "ws_path": websocket.url.path,
+        "ws_client": client.host if client else None,
+    }
 
 
 class PresencePubSub:
@@ -646,8 +662,28 @@ async def websocket_chat(websocket: WebSocket):
                             )
 
             elif msg_type == "get_online":
-                # Return list of online users (for debugging/admin)
-                online = manager.get_online_users()
+                if user.role != UserRole.ADMIN.value:
+                    audit_service.log(
+                        SecurityEvent.ACCESS_DENIED,
+                        user_id=user.id,
+                        reason="admin_required",
+                        action="presence.get_online",
+                        **_get_websocket_audit_context(websocket),
+                    )
+                    await websocket.send_json(
+                        {"type": "error", "message": "Access denied"}
+                    )
+                    continue
+
+                online = await _get_online_users_for_user(user.id)
+                audit_service.log(
+                    "presence.online_list",
+                    user_id=user.id,
+                    action="presence.get_online",
+                    result_count=len(online),
+                    scope="chat_participants",
+                    **_get_websocket_audit_context(websocket),
+                )
                 await websocket.send_json({"type": "online_list", "users": online})
 
             else:
