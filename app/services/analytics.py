@@ -226,7 +226,8 @@ class AnalyticsService:
         from sqlalchemy import text
 
         # Get user's activity in one query
-        query = text("""
+        query = text(
+            """
             SELECT
                 'news_created' as type, COUNT(*) as count
             FROM news WHERE author_id = :user_id
@@ -238,7 +239,8 @@ class AnalyticsService:
             SELECT
                 'messages_sent' as type, COUNT(*) as count
             FROM messages WHERE sender_id = :user_id
-        """)
+        """
+        )
 
         result = await session.execute(query, {"user_id": user_id})
         rows = result.fetchall()
