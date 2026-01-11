@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+# Configure uvloop before any other asyncio usage for optimal async performance
+from app.core.uvloop_setup import configure_uvloop
+
+configure_uvloop()
+
 import logging
 
 from fastapi import FastAPI
+from fastapi.responses import ORJSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.admin import router as admin_api_router
@@ -38,6 +44,7 @@ app = FastAPI(
         "schedules, news, events, notifications, and more."
     ),
     version=API_VERSION,
+    default_response_class=ORJSONResponse,
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
@@ -75,3 +82,8 @@ app.include_router(admin_api_router, include_in_schema=True)
 app.include_router(internal_api_router, include_in_schema=False)
 app.include_router(legacy_push_router)
 app.include_router(websocket_router)
+
+# GraphQL API
+from app.graphql.schema import graphql_router
+
+app.include_router(graphql_router, prefix="/graphql", tags=["graphql"])

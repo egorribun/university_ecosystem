@@ -1,112 +1,68 @@
+# Global settings
 global:
-  imagePullSecrets: []
-  domain: university.local
+  environment: "development"
+  imageRegistry: "docker.io/library"
 
-# Backend configuration
+# Backend Service (Python/FastAPI)
 backend:
-  enabled: true
+  replicaCount: 1
   image:
-    repository: backend
-    tag: latest
+    repository: university-backend
     pullPolicy: IfNotPresent
-  
-  replicaCount: 2
-  
+    tag: "latest"
   service:
     type: ClusterIP
     port: 8000
-  
-  resources:
-    limits:
-      cpu: 500m
-      memory: 512Mi
-    requests:
-      cpu: 100m
-      memory: 256Mi
-
-  autoscaling:
-    enabled: true
-    minReplicas: 2
-    maxReplicas: 10
-    targetCPUUtilizationPercentage: 80
-    # targetMemoryUtilizationPercentage: 80
-
   env:
-    - name: DATABASE_URL
-      valueFrom:
-        secretKeyRef:
-          name: university-ecosystem-db
-          key: url
-    - name: REDIS_URL
-      value: redis://university-ecosystem-redis-master:6379/0
-    - name: AUDIT_LOG_SECRET
-      valueFrom:
-        secretKeyRef:
-          name: university-ecosystem-secrets
-          key: audit-log-secret
+    DATABASE_URL: "postgresql+asyncpg://postgres:DevSecurePass2024!@postgres:5432/university"
+    # Using internal redis service
+    CACHE_REDIS_URL: "redis://redis:6379/0"
 
-# Frontend configuration
-frontend:
-  enabled: true
+# Gateway Service (Go)
+gateway:
+  replicaCount: 1
   image:
-    repository: frontend
-    tag: latest
+    repository: university-gateway
     pullPolicy: IfNotPresent
-  
+    tag: "latest"
+  service:
+    type: NodePort
+    port: 8080
+    nodePort: 30080
+  config:
+    jwtSecret: "change-me-in-production"
+    rateLimitRps: 100
+
+# File Processor (Go)
+fileProcessor:
   replicaCount: 2
-  
+  image:
+    repository: university-file-processor
+    pullPolicy: IfNotPresent
+    tag: "latest"
   service:
     type: ClusterIP
-    port: 80
+    port: 50051
 
-  resources:
-    limits:
-      cpu: 200m
-      memory: 256Mi
-    requests:
-      cpu: 50m
-      memory: 128Mi
+# Rust Optimizer
+rustOptimizer:
+  replicaCount: 1
+  image:
+    repository: university-rust-optimizer
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  service:
+    type: ClusterIP
+    port: 8080
 
-# Ingress configuration
-ingress:
+# Infrastructure (Dependencies)
+# In a real chart, these would be subcharts (bitnami/redis, etc.)
+# For now, we define simple deployment values or assume external
+postgres:
   enabled: true
-  className: nginx
-  annotations:
-    kubernetes.io/ingress.class: nginx
-    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
-  hosts:
-    - host: university.local
-      paths:
-        - path: /
-          pathType: Prefix
-          service: frontend
-        - path: /api
-          pathType: Prefix
-          service: backend
-        - path: /img
-          pathType: Prefix
-          service: backend
-        - path: /static
-          pathType: Prefix
-          service: backend
-
-# External Dependencies (via Subcharts)
-postgresql:
-  enabled: true
-  auth:
-    username: university
-    database: university
-    existingSecret: university-ecosystem-db-pass
-  primary:
-    persistence:
-      enabled: true
-      size: 8Gi
-
 redis:
   enabled: true
-  auth:
-    enabled: false
-  master:
-    persistence:
-      enabled: true
-      size: 2Gi
+minio:
+  enabled: true
+temporal:
+  enabled: true

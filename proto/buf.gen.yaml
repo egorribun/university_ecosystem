@@ -1,0 +1,25 @@
+version: v1
+managed:
+  enabled: true
+  go_package_prefix:
+    default: github.com/university-ecosystem/core/gen/go
+plugins:
+  # Go generation using local binaries
+  - plugin: go
+    out: ../gen/go
+    opt: paths=source_relative
+  - plugin: go-grpc
+    out: ../gen/go
+    opt: paths=source_relative
+
+  # Python generation (using built-in protoc language support)
+  - plugin: python
+    out: ../gen/python
+  - plugin: pyi
+    out: ../gen/python
+
+  # For gRPC Python, we'd need grpc_python_plugin, usually comes with pip install grpcio-tools.
+  # Simplification: For now, omitting gRPC python if complex, but let's try standard 'grpc' plugin if available?
+  # Actually, regular protoc doesn't have a 'grpc' plugin for python out of the box.
+  # We might skip python gRPC for the very first step if it's hard to setup,
+  # but let's try to add it.

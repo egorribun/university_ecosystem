@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import fnmatch
 import hashlib
-import json
 import logging
 import time as time_module
 from collections.abc import Callable
@@ -12,6 +11,7 @@ from datetime import date, datetime, time, timedelta
 from functools import wraps
 from typing import Any, ParamSpec, TypeVar
 
+import orjson
 from fastapi.encoders import jsonable_encoder
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
@@ -163,7 +163,7 @@ class RedisCache(BaseCache):
             raw = await client.get(key)
             if raw is None:
                 return None
-            parsed = json.loads(raw)
+            parsed = orjson.loads(raw)
             etag = str(parsed.get("etag", ""))
             payload = parsed.get("payload")
             stored_at = float(parsed.get("stored_at") or 0.0)
@@ -173,7 +173,7 @@ class RedisCache(BaseCache):
                 return None
             success = True
             return CacheEntry(etag=etag, payload=payload, stored_at=stored_at)
-        except json.JSONDecodeError:
+        except orjson.JSONDecodeError:
             logger.debug("Invalid cache payload for key %s, dropping", key)
             await self.invalidate(key)
             return None
@@ -188,14 +188,13 @@ class RedisCache(BaseCache):
     async def set(self, key: str, payload: Any, ttl: int | None = None) -> CacheEntry:
         normalized_payload, serialized = _normalize_payload(payload)
         etag = hashlib.sha256(serialized).hexdigest()
-        envelope = json.dumps(
+        envelope = orjson.dumps(
             {
                 "etag": etag,
                 "payload": normalized_payload,
                 "stored_at": time_module.time(),
-            },
-            ensure_ascii=False,
-        )
+            }
+        ).decode("utf-8")
         start = time_module.perf_counter()
         success = False
         try:
@@ -380,21 +379,20 @@ _cache_backend: BaseCache | None = None
 
 
 def _normalize_payload(payload: Any) -> tuple[Any, bytes]:
+    """Normalize payload for caching using orjson for speed."""
     # Use jsonable_encoder to handle Pydantic models, SQLAlchemy models
-    # (partially), etc.
     jsonable = jsonable_encoder(payload)
-    serialized = json.dumps(
+    # orjson is 10-15x faster than stdlib json
+    serialized = orjson.dumps(
         jsonable,
-        ensure_ascii=False,
-        separators=(",", ":"),
-        sort_keys=True,
-        default=_json_default,
+        option=orjson.OPT_SORT_KEYS | orjson.OPT_UTC_Z,
     )
-    normalized = json.loads(serialized) if serialized else jsonable
-    return normalized, serialized.encode("utf-8")
+    normalized = orjson.loads(serialized) if serialized else jsonable
+    return normalized, serialized
 
 
 def _json_default(value: Any) -> Any:
+    """Fallback serializer for types not natively supported."""
     if isinstance(value, datetime | date | time):
         return value.isoformat()
     return str(value)

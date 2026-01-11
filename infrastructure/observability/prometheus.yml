@@ -1,0 +1,60 @@
+# Prometheus Configuration
+# https://prometheus.io/docs/prometheus/latest/configuration/configuration/
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # University Ecosystem API
+  - job_name: 'backend'
+    static_configs:
+      - targets: ['backend:8000']
+    metrics_path: /metrics
+    scrape_interval: 10s
+
+  # Notifications Worker
+  - job_name: 'notifications-worker'
+    static_configs:
+      - targets: ['notifications-worker:9101']
+    scrape_interval: 30s
+
+  # Redis
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:6379']
+
+  # MinIO
+  - job_name: 'minio'
+    static_configs:
+      - targets: ['minio:9000']
+    metrics_path: /minio/v2/metrics/cluster
+
+  # NATS
+  - job_name: 'nats'
+    static_configs:
+      - targets: ['nats:8222']
+    metrics_path: /metrics
+
+  # Tempo
+  - job_name: 'tempo'
+    static_configs:
+      - targets: ['tempo:3200']
+    metrics_path: /metrics
+
+  # Loki
+  - job_name: 'loki'
+    static_configs:
+      - targets: ['loki:3100']
+    metrics_path: /metrics
+
+  # Pyroscope
+  - job_name: 'pyroscope'
+    static_configs:
+      - targets: ['pyroscope:4040']
+    metrics_path: /metrics

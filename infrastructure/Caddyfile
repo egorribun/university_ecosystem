@@ -1,0 +1,88 @@
+# University Ecosystem - Caddy Configuration
+# Automatic HTTPS reverse proxy with compression and security headers
+
+{
+    # Global options
+    email admin@example.com
+
+    # Development mode - disable HTTPS for local testing
+    # Remove this block in production
+    auto_https off
+}
+
+# Development: localhost
+:80 {
+    # Health check endpoint for Docker
+    handle /health {
+        respond "OK" 200
+    }
+
+    # Compression
+    encode zstd gzip
+
+    # Security headers
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy strict-origin-when-cross-origin
+        -Server
+    }
+
+    # API Gateway (Go)
+    handle /api/* {
+        reverse_proxy gateway:8080
+    }
+
+    # GraphQL endpoint (via Gateway)
+    handle /graphql* {
+        reverse_proxy gateway:8080
+    }
+
+    # WebSocket Hub (Go)
+    handle /ws/* {
+        reverse_proxy ws-hub:8081
+    }
+
+    # Static files from backend
+    handle /static/* {
+        reverse_proxy backend:8000
+    }
+
+    # MinIO presigned URLs (optional direct access)
+    handle /storage/* {
+        uri strip_prefix /storage
+        reverse_proxy minio:9000
+    }
+
+    # Frontend (default)
+    handle {
+        reverse_proxy frontend:80
+    }
+}
+
+# Production configuration (uncomment and customize)
+# your-domain.com {
+#     encode zstd gzip
+#
+#     header {
+#         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+#         X-Content-Type-Options nosniff
+#         X-Frame-Options DENY
+#         X-XSS-Protection "1; mode=block"
+#         Referrer-Policy strict-origin-when-cross-origin
+#         -Server
+#     }
+#
+#     handle /api/* {
+#         reverse_proxy backend:8000
+#     }
+#
+#     handle /graphql* {
+#         reverse_proxy backend:8000
+#     }
+#
+#     handle {
+#         reverse_proxy frontend:80
+#     }
+# }

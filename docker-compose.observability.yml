@@ -1,0 +1,102 @@
+# Observability Stack
+# Run with: docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d
+
+services:
+  # Grafana Tempo - Distributed tracing backend
+  tempo:
+    image: grafana/tempo:latest
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    ports:
+      - "3200:3200"   # Tempo API
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+    volumes:
+      - ./infrastructure/observability/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # Grafana Loki - Log aggregation
+  loki:
+    image: grafana/loki:latest
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./infrastructure/observability/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki-data:/loki
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # Promtail - Log collector for Loki
+  promtail:
+    image: grafana/promtail:latest
+    command: ["-config.file=/etc/promtail/promtail.yaml"]
+    volumes:
+      - ./infrastructure/observability/promtail.yaml:/etc/promtail/promtail.yaml:ro
+      - /var/log:/var/log:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - internal
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+  # Pyroscope - Continuous profiling
+  pyroscope:
+    image: grafana/pyroscope:latest
+    ports:
+      - "4040:4040"
+    volumes:
+      - pyroscope-data:/data
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # Grafana - Unified dashboards
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_FEATURE_TOGGLES_ENABLE: "traceqlEditor tempoSearch tempoBackendSearch"
+    volumes:
+      - ./infrastructure/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    networks:
+      - internal
+      - public
+    depends_on:
+      - tempo
+      - loki
+      - prometheus
+      - pyroscope
+    restart: unless-stopped
+
+  # Prometheus - Metrics (extend existing if present)
+  prometheus:
+    image: prom/prometheus:latest
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-remote-write-receiver"
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infrastructure/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - internal
+    restart: unless-stopped
+
+volumes:
+  tempo-data:
+  loki-data:
+  pyroscope-data:
+  grafana-data:
+  prometheus-data:
