@@ -18,8 +18,9 @@ import { usePushSync } from "./hooks/usePushSync"
 import { nowPlayingQueryKey } from "./hooks/useNowPlaying"
 import { prefetchRouteModules } from "./utils/prefetchRoutes"
 
+import PageTransition from "./components/PageTransition"
+
 const routeModules = {
-  PageTransition: () => import("./components/PageTransition"),
   Dashboard: () => import("./pages/Dashboard"),
   News: () => import("./pages/News"),
   NewsDetail: () => import("./pages/NewsDetail"),
@@ -42,7 +43,6 @@ const routeModules = {
   AdminAudit: () => import("./pages/AdminAudit"),
 } as const
 
-const PageTransition = lazy(routeModules.PageTransition)
 const Dashboard = lazy(routeModules.Dashboard)
 const News = lazy(routeModules.News)
 const NewsDetail = lazy(routeModules.NewsDetail)
@@ -109,7 +109,7 @@ export function AppRoutes() {
       routeModules.UserActivity,
       routeModules.Events,
     ]
-    const sharedLoaders = [routeModules.PageTransition, routeModules.Messenger]
+    const sharedLoaders = [routeModules.Messenger]
 
     if (isAuth) {
       prefetchRouteModules([...privateLoaders, ...sharedLoaders], { timeoutMs: 800 })
@@ -126,13 +126,18 @@ export function AppRoutes() {
 
   const fallbackShell = (
     <div
-      aria-hidden="true"
+      aria-hidden="false"
       style={{
         minHeight: "100dvh",
         background: "var(--page-bg, var(--initial-bg, #060B14))",
         color: "var(--page-text)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
       }}
-    />
+    >
+      &nbsp;
+    </div>
   )
 
   const isMessenger = location.pathname.startsWith("/messenger")
