@@ -37,6 +37,7 @@ async function runCommand(command, args, description) {
       cwd: frontendRoot,
       env: process.env,
       stdio: "inherit",
+      shell: true,
     })
 
     child.on("exit", (code, signal) => {
