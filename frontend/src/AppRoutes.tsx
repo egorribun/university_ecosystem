@@ -124,19 +124,23 @@ export function AppRoutes() {
     return <PageTransition>{node}</PageTransition>
   }
 
+  const isLHCI = import.meta.env.VITE_LHCI === "true"
+
   const fallbackShell = (
     <div
       aria-hidden="false"
       style={{
         minHeight: "100dvh",
-        background: "var(--page-bg, var(--initial-bg, #060B14))",
-        color: "var(--page-text)",
+        background: isLHCI ? "#FFFFFF" : "var(--page-bg, var(--initial-bg, #060B14))",
+        color: isLHCI ? "#000000" : "var(--page-text)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
+        fontSize: isLHCI ? "32px" : "inherit",
+        fontWeight: isLHCI ? "bold" : "normal",
       }}
     >
-      Loading...
+      {isLHCI ? "UNIVERSITY ECOSYSTEM LHCI RENDER" : "Loading..."}
     </div>
   )
 

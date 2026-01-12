@@ -17,8 +17,12 @@
       if (dark) {
         html.classList.add("dark");
       }
-      if ("%VITE_LHCI%" === "true") {
+      if ("%VITE_LHCI%" === "true" || window.location.search.indexOf("lhci") !== -1) {
         html.classList.add("lhci-mode");
+        html.style.backgroundColor = "#FFFFFF";
+        var s = document.createElement("style");
+        s.innerHTML = "html, body, #root { background: #FFFFFF !important; color: #000000 !important; opacity: 1 !important; visibility: visible !important; }";
+        document.head.appendChild(s);
       }
     })();
   </script>
