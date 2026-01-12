@@ -20,7 +20,25 @@ type ErrorBoundaryState = {
 }
 
 function DefaultFallback({ onRetry }: { onRetry: () => void }) {
-  const { t } = useTranslation(["system"])
+  const { t, ready } = useTranslation(["system"])
+
+  if (!ready) {
+    return (
+      <div
+        style={{
+          minHeight: "100dvh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: "var(--page-bg, #0b0d11)",
+          color: "var(--page-text, #f5f7fa)",
+        }}
+      >
+        ...
+      </div>
+    )
+  }
+
   return (
     <div
       role="alert"
