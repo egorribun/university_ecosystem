@@ -14,7 +14,7 @@ if (!process.env.LHCI_SKIP_PREPARE) {
 module.exports = {
   ci: {
     collect: {
-      url: ['http://localhost:SERVER_PORT/'],
+      url: ['/?lhci'],
       numberOfRuns: 3,
       staticDistDir: path.join(__dirname, 'frontend/dist'),
       isSinglePageApplication: true,
