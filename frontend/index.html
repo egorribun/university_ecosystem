@@ -17,6 +17,9 @@
       if (dark) {
         html.classList.add("dark");
       }
+      if ("%VITE_LHCI%" === "true") {
+        html.classList.add("lhci-mode");
+      }
     })();
   </script>
   <script>
@@ -91,7 +94,8 @@
       transition: opacity 0.15s ease-in;
     }
 
-    #root.ready {
+    #root.ready,
+    .lhci-mode #root {
       opacity: 1;
     }
 

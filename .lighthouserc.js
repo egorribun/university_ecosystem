@@ -16,6 +16,7 @@ module.exports = {
     collect: {
       numberOfRuns: 3,
       staticDistDir: path.join(__dirname, 'frontend/dist'),
+      isSinglePageApplication: true,
       chromePath,
       settings: {
         budgetsPath: path.join(__dirname, 'budget.json'),

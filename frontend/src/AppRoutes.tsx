@@ -136,7 +136,7 @@ export function AppRoutes() {
         justifyContent: "center",
       }}
     >
-      &nbsp;
+      Loading...
     </div>
   )
 
