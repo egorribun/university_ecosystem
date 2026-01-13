@@ -81,15 +81,16 @@ async function createConfig() {
   process.env.CHROME_PATH = chromePath
 
   const collect = {
-    numberOfRuns: 1,
-    url: useRemotePreview ? [base, `${base}/login`] : ["/", "/login"],
+    numberOfRuns: 3,
+    url: useRemotePreview ? [base, `${base}/login`] : ["/?lhci", "/login?lhci"],
     chromePath,
     settings: {
       chromeFlags:
-        "--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type " +
-        "--unsafely-treat-insecure-origin-as-secure=http://127.0.0.1:4174",
+        "--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type --disable-gpu --headless=new",
       throttlingMethod: "devtools",
       emulatedFormFactor: "desktop",
+      maxWaitForFcp: 45000,
+      maxWaitForLoad: 60000,
     },
     budgetsPath: path.resolve(frontendRoot, "../../budget.json"),
   }
