@@ -164,6 +164,14 @@
 </head>
 
 <body>
+  <div id="lhci-marker"
+    style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; background: white; color: black; align-items: center; justify-content: center; font-size: 24px; z-index: 100000;">
+    LHCI RENDER START</div>
+  <script>
+    if (window.location.search.indexOf("lhci") !== -1) {
+      document.getElementById("lhci-marker").style.display = "flex";
+    }
+  </script>
   <div id="root"></div>
   <noscript>
     <style>
