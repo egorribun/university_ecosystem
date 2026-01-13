@@ -106,6 +106,11 @@ const isLHCI = import.meta.env.VITE_LHCI === "true"
 
 if (isLHCI) {
   rootElement.classList.add("ready")
+  // Hide the LHCI marker after React renders to allow the actual content to show
+  const lhciMarker = document.getElementById("lhci-marker")
+  if (lhciMarker) {
+    lhciMarker.style.display = "none"
+  }
 } else {
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
