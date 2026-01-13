@@ -41,7 +41,10 @@ async function main() {
     let html = readFileSync(distIndex, "utf8")
     if (isLHCI) {
       // Force visibility CSS that works regardless of scripts
-      const lhciStyles = "html, body, #root { background: #FFFFFF !important; color: #000000 !important; opacity: 1 !important; visibility: visible !important; } #lhci-marker { display: flex !important; }"
+      const lhciStyles =
+        "html, body, #root { background: #FFFFFF !important; color: #000000 !important; " +
+        "opacity: 1 !important; visibility: visible !important; } " +
+        "#lhci-marker { display: flex !important; }"
       html = html.replace("/* LHCI_CSS_PLACEHOLDER */", lhciStyles)
       html = html.replace(/%VITE_LHCI%/g, "true")
     } else {
