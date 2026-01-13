@@ -6,7 +6,7 @@ import type { ReactNode } from "react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
 import { LanguageProvider, useLanguage } from "@/contexts/LanguageContext"
-import Activity from "@/pages/Activity"
+import UserActivity from "@/pages/Activity"
 import Schedule from "@/pages/Schedule"
 import Settings from "@/pages/Settings"
 import Profile from "@/pages/Profile"
@@ -525,7 +525,7 @@ afterAll(() => {
 
 describe("page translations", () => {
   it("switches activity page translations", async () => {
-    const { user } = renderWithProviders(<Activity />)
+    const { user } = renderWithProviders(<UserActivity />)
 
     expect(await screen.findByText("Activity")).toBeInTheDocument()
 

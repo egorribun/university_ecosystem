@@ -102,14 +102,22 @@ root.render(
   </StrictMode>
 )
 
-requestAnimationFrame(() => {
+const isLHCI = import.meta.env.VITE_LHCI === "true"
+
+if (isLHCI) {
+  rootElement.classList.add("ready")
+} else {
   requestAnimationFrame(() => {
-    rootElement.classList.add("ready")
+    requestAnimationFrame(() => {
+      rootElement.classList.add("ready")
+    })
   })
-})
+}
 
 if (typeof window !== "undefined") {
-  if (document.readyState === "complete") {
+  if (isLHCI) {
+    // Skip Service Worker setup in LHCI to avoid conflicts/delays
+  } else if (document.readyState === "complete") {
     void setupServiceWorker()
   } else {
     window.addEventListener(

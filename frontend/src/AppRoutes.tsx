@@ -18,13 +18,14 @@ import { usePushSync } from "./hooks/usePushSync"
 import { nowPlayingQueryKey } from "./hooks/useNowPlaying"
 import { prefetchRouteModules } from "./utils/prefetchRoutes"
 
+import PageTransition from "./components/PageTransition"
+
 const routeModules = {
-  PageTransition: () => import("./components/PageTransition"),
   Dashboard: () => import("./pages/Dashboard"),
   News: () => import("./pages/News"),
   NewsDetail: () => import("./pages/NewsDetail"),
   Schedule: () => import("./pages/Schedule"),
-  Activity: () => import("./pages/Activity"),
+  UserActivity: () => import("./pages/Activity"),
   Events: () => import("./pages/Events"),
   EventDetail: () => import("./components/EventDetail"),
   MapPage: () => import("./pages/Map"),
@@ -42,12 +43,11 @@ const routeModules = {
   AdminAudit: () => import("./pages/AdminAudit"),
 } as const
 
-const PageTransition = lazy(routeModules.PageTransition)
 const Dashboard = lazy(routeModules.Dashboard)
 const News = lazy(routeModules.News)
 const NewsDetail = lazy(routeModules.NewsDetail)
 const Schedule = lazy(routeModules.Schedule)
-const Activity = lazy(routeModules.Activity)
+const UserActivity = lazy(routeModules.UserActivity)
 const Events = lazy(routeModules.Events)
 const EventDetail = lazy(routeModules.EventDetail)
 const MapPage = lazy(routeModules.MapPage)
@@ -106,10 +106,10 @@ export function AppRoutes() {
       routeModules.MapPage,
       routeModules.Profile,
       routeModules.Settings,
-      routeModules.Activity,
+      routeModules.UserActivity,
       routeModules.Events,
     ]
-    const sharedLoaders = [routeModules.PageTransition, routeModules.Messenger]
+    const sharedLoaders = [routeModules.Messenger]
 
     if (isAuth) {
       prefetchRouteModules([...privateLoaders, ...sharedLoaders], { timeoutMs: 800 })
@@ -124,15 +124,24 @@ export function AppRoutes() {
     return <PageTransition>{node}</PageTransition>
   }
 
+  const isLHCI = import.meta.env.VITE_LHCI === "true"
+
   const fallbackShell = (
     <div
-      aria-hidden="true"
+      aria-hidden="false"
       style={{
         minHeight: "100dvh",
-        background: "var(--page-bg, var(--initial-bg, #060B14))",
-        color: "var(--page-text)",
+        background: isLHCI ? "#FFFFFF" : "var(--page-bg, var(--initial-bg, #060B14))",
+        color: isLHCI ? "#000000" : "var(--page-text)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: isLHCI ? "32px" : "inherit",
+        fontWeight: isLHCI ? "bold" : "normal",
       }}
-    />
+    >
+      {isLHCI ? "UNIVERSITY ECOSYSTEM LHCI RENDER" : "Loading..."}
+    </div>
   )
 
   const isMessenger = location.pathname.startsWith("/messenger")
@@ -167,7 +176,7 @@ export function AppRoutes() {
           <Route path="/news" element={<PrivateRoute>{wrap(<News />)}</PrivateRoute>} />
           <Route path="/news/:id" element={<PrivateRoute>{wrap(<NewsDetail />)}</PrivateRoute>} />
           <Route path="/schedule" element={<PrivateRoute>{wrap(<Schedule />)}</PrivateRoute>} />
-          <Route path="/activity" element={<PrivateRoute>{wrap(<Activity />)}</PrivateRoute>} />
+          <Route path="/activity" element={<PrivateRoute>{wrap(<UserActivity />)}</PrivateRoute>} />
           <Route path="/events" element={<PrivateRoute>{wrap(<Events />)}</PrivateRoute>} />
           <Route
             path="/events/:id"

@@ -14,14 +14,18 @@ if (!process.env.LHCI_SKIP_PREPARE) {
 module.exports = {
   ci: {
     collect: {
+      url: ['/'],
       numberOfRuns: 3,
       staticDistDir: path.join(__dirname, 'frontend/dist'),
+      isSinglePageApplication: true,
       chromePath,
       settings: {
         budgetsPath: path.join(__dirname, 'budget.json'),
         chromeFlags:
-          '--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type',
+          '--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type --disable-gpu --headless=new',
         chromePath,
+        maxWaitForFcp: 45000,
+        maxWaitForLoad: 60000,
       },
     },
     upload: {

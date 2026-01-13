@@ -334,13 +334,15 @@ export default defineConfig(({ mode }) => {
               if (
                 /[/\\]react(?:-dom)?[/\\]/.test(normalizedId) ||
                 /[/\\]scheduler[/\\]/.test(normalizedId) ||
-                /@emotion/.test(normalizedId) ||
-                /@mui/.test(normalizedId) ||
-                /dayjs/.test(normalizedId) ||
-                normalizedId.includes("commonjs") ||
                 normalizedId.includes("react-router")
               ) {
-                return "vendor-ui"
+                return "vendor-react"
+              }
+              if (/@mui/.test(normalizedId) || /@emotion/.test(normalizedId)) {
+                return "vendor-mui"
+              }
+              if (/dayjs/.test(normalizedId) || normalizedId.includes("commonjs")) {
+                return "vendor-utils"
               }
             }
             if (normalizedId.includes("@tanstack")) return "react-query"

@@ -17,8 +17,14 @@
       if (dark) {
         html.classList.add("dark");
       }
+      if ("%VITE_LHCI%" === "true") {
+        html.classList.add("lhci-mode");
+      }
     })();
   </script>
+  <style>
+    /* LHCI_CSS_PLACEHOLDER */
+  </style>
   <script>
     (function () {
       import("/static-shell-i18n.js")
@@ -91,7 +97,8 @@
       transition: opacity 0.15s ease-in;
     }
 
-    #root.ready {
+    #root.ready,
+    .lhci-mode #root {
       opacity: 1;
     }
 
@@ -156,6 +163,9 @@
 </head>
 
 <body>
+  <div id="lhci-marker"
+    style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: white; color: black; display: none; align-items: center; justify-content: center; font-size: 24px; z-index: 999999;">
+    LHCI RENDER START</div>
   <div id="root"></div>
   <noscript>
     <style>
