@@ -96,7 +96,6 @@ async function createConfig() {
   }
 
   if (!useRemotePreview) {
-    collect.beforeAllScript = "npm run build && node scripts/prepare-lhci-routes.mjs"
     collect.staticDistDir = path.resolve(frontendRoot, "dist")
     collect.isSinglePageApplication = true
   } else {
@@ -126,6 +125,15 @@ async function run() {
   const tempConfigPath = path.join(tempDir, "lighthouserc.json")
 
   const config = await createConfig()
+
+  // Build and prepare dist for LHCI mode if not using remote preview
+  const useRemotePreview = Boolean(process.env.PREVIEW_URL ?? process.env.LHCI_URL ?? "")
+  if (!useRemotePreview) {
+    console.log("Building for LHCI...")
+    await runCommand("npm", ["run", "build"], "npm run build")
+    console.log("Preparing LHCI routes...")
+    await runCommand("node", ["scripts/prepare-lhci-routes.mjs"], "prepare-lhci-routes")
+  }
 
   await writeFile(tempConfigPath, JSON.stringify(config), "utf8")
 
