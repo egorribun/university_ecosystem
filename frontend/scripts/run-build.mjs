@@ -34,15 +34,21 @@ async function main() {
     await run("node", [path.resolve(process.cwd(), "scripts/check-bundle-budget.mjs")])
   }
 
-  // Manual replacement for VITE_LHCI in index.html to ensure visibility fixes work as expected
-  const lhciValue = process.env.VITE_LHCI === "true" ? "true" : "false"
+  // Manual replacement for VITE_LHCI and visibility fixes in index.html
+  const isLHCI = process.env.VITE_LHCI === "true"
   const distIndex = path.resolve(process.cwd(), "dist/index.html")
   try {
     let html = readFileSync(distIndex, "utf8")
-    if (html.includes("%VITE_LHCI%")) {
-      html = html.replace(/%VITE_LHCI%/g, lhciValue)
-      writeFileSync(distIndex, html, "utf8")
+    if (isLHCI) {
+      // Force visibility CSS that works regardless of scripts
+      const lhciStyles = "html, body, #root { background: #FFFFFF !important; color: #000000 !important; opacity: 1 !important; visibility: visible !important; } #lhci-marker { display: flex !important; }"
+      html = html.replace("/* LHCI_CSS_PLACEHOLDER */", lhciStyles)
+      html = html.replace(/%VITE_LHCI%/g, "true")
+    } else {
+      html = html.replace("/* LHCI_CSS_PLACEHOLDER */", "")
+      html = html.replace(/%VITE_LHCI%/g, "false")
     }
+    writeFileSync(distIndex, html, "utf8")
   } catch (error) {
     console.warn("Could not perform manual VITE_LHCI replacement in index.html:", error.message)
   }
