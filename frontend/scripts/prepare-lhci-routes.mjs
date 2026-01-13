@@ -24,16 +24,10 @@ async function injectLhciMode(htmlPath) {
   )
 
   // Make the lhci-marker visible by changing display: none to display: flex
-  html = html.replace(
-    /id="lhci-marker"([^>]*?)display:\s*none/,
-    'id="lhci-marker"$1display: flex'
-  )
+  html = html.replace(/id="lhci-marker"([^>]*?)display:\s*none/, 'id="lhci-marker"$1display: flex')
 
   // Inject CSS to make root immediately visible in LHCI mode (marker hidden by JS after React loads)
-  html = html.replace(
-    "/* LHCI_CSS_PLACEHOLDER */",
-    ".lhci-mode #root { opacity: 1 !important; }"
-  )
+  html = html.replace("/* LHCI_CSS_PLACEHOLDER */", ".lhci-mode #root { opacity: 1 !important; }")
 
   await writeFile(htmlPath, html, "utf-8")
 }
