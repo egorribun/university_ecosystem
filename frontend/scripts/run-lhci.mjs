@@ -82,7 +82,7 @@ async function createConfig() {
 
   const collect = {
     numberOfRuns: 3,
-    url: useRemotePreview ? [base, `${base}/login`] : ["/?lhci", "/login?lhci"],
+    url: useRemotePreview ? [base, `${base}/login`] : ["/", "/login"],
     chromePath,
     settings: {
       chromeFlags:

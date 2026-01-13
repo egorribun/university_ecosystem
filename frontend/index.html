@@ -17,12 +17,12 @@
       if (dark) {
         html.classList.add("dark");
       }
-      if ("%VITE_LHCI%" === "true" || window.location.search.indexOf("lhci") !== -1) {
+      if ("%VITE_LHCI%" === "true") {
         html.classList.add("lhci-mode");
         html.style.backgroundColor = "#FFFFFF";
-        var s = document.createElement("style");
-        s.innerHTML = "html, body, #root { background: #FFFFFF !important; color: #000000 !important; opacity: 1 !important; visibility: visible !important; }";
-        document.head.appendChild(s);
+        var style = document.createElement("style");
+        style.innerHTML = "html, body, #root { background: #FFFFFF !important; color: #000000 !important; opacity: 1 !important; visibility: visible !important; }";
+        document.head.appendChild(style);
       }
     })();
   </script>
@@ -167,8 +167,8 @@
   <div id="lhci-marker"
     style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; background: white; color: black; align-items: center; justify-content: center; font-size: 24px; z-index: 100000;">
     LHCI RENDER START</div>
-  <script>
-    if (window.location.search.indexOf("lhci") !== -1) {
+  <script nonce="__CSP_NONCE__">
+    if ("%VITE_LHCI%" === "true") {
       document.getElementById("lhci-marker").style.display = "flex";
     }
   </script>

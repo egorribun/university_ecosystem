@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process"
+import { readFileSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import process from "node:process"
 
@@ -31,6 +32,19 @@ async function main() {
   })
   if (wantsReport) {
     await run("node", [path.resolve(process.cwd(), "scripts/check-bundle-budget.mjs")])
+  }
+
+  // Manual replacement for VITE_LHCI in index.html to ensure visibility fixes work as expected
+  const lhciValue = process.env.VITE_LHCI === "true" ? "true" : "false"
+  const distIndex = path.resolve(process.cwd(), "dist/index.html")
+  try {
+    let html = readFileSync(distIndex, "utf8")
+    if (html.includes("%VITE_LHCI%")) {
+      html = html.replace(/%VITE_LHCI%/g, lhciValue)
+      writeFileSync(distIndex, html, "utf8")
+    }
+  } catch (error) {
+    console.warn("Could not perform manual VITE_LHCI replacement in index.html:", error.message)
   }
 }
 
