@@ -152,20 +152,19 @@ def upgrade() -> None:
         _create_index_safe(op.f("ix_users_id"), "users", ["id"], unique=False)
 
     if _table_exists("event_attendance"):
-        if _column_exists("event_attendance", "user_id"):
-            op.alter_column(
-                "event_attendance",
-                "user_id",
-                existing_type=sa.INTEGER(),
-                nullable=False,
-            )
-        if _column_exists("event_attendance", "event_id"):
-            op.alter_column(
-                "event_attendance",
-                "event_id",
-                existing_type=sa.INTEGER(),
-                nullable=False,
-            )
+        with op.batch_alter_table("event_attendance") as batch_op:
+            if _column_exists("event_attendance", "user_id"):
+                batch_op.alter_column(
+                    "user_id",
+                    existing_type=sa.INTEGER(),
+                    nullable=False,
+                )
+            if _column_exists("event_attendance", "event_id"):
+                batch_op.alter_column(
+                    "event_id",
+                    existing_type=sa.INTEGER(),
+                    nullable=False,
+                )
         _create_index_safe(
             op.f("ix_event_attendance_event_id"),
             "event_attendance",
@@ -192,13 +191,14 @@ def upgrade() -> None:
             ["user_id", "event_id"],
         )
 
-    if _table_exists("event_files") and _column_exists("event_files", "event_id"):
-        op.alter_column(
-            "event_files",
-            "event_id",
-            existing_type=sa.INTEGER(),
-            nullable=False,
-        )
+    if _table_exists("event_files"):
+        with op.batch_alter_table("event_files") as batch_op:
+            if _column_exists("event_files", "event_id"):
+                batch_op.alter_column(
+                    "event_id",
+                    existing_type=sa.INTEGER(),
+                    nullable=False,
+                )
         _create_index_safe(
             op.f("ix_event_files_event_id"),
             "event_files",
@@ -287,41 +287,37 @@ def upgrade() -> None:
         )
 
     if _table_exists("schedule"):
-        if _column_exists("schedule", "group_id"):
-            op.alter_column(
-                "schedule",
-                "group_id",
-                existing_type=sa.INTEGER(),
-                nullable=False,
-            )
-        if _column_exists("schedule", "subject"):
-            op.alter_column(
-                "schedule",
-                "subject",
-                existing_type=sa.VARCHAR(),
-                nullable=False,
-            )
-        if _column_exists("schedule", "weekday"):
-            op.alter_column(
-                "schedule",
-                "weekday",
-                existing_type=sa.VARCHAR(),
-                nullable=False,
-            )
-        if _column_exists("schedule", "start_time"):
-            op.alter_column(
-                "schedule",
-                "start_time",
-                existing_type=postgresql.TIMESTAMP(),
-                nullable=False,
-            )
-        if _column_exists("schedule", "end_time"):
-            op.alter_column(
-                "schedule",
-                "end_time",
-                existing_type=postgresql.TIMESTAMP(),
-                nullable=False,
-            )
+        with op.batch_alter_table("schedule") as batch_op:
+            if _column_exists("schedule", "group_id"):
+                batch_op.alter_column(
+                    "group_id",
+                    existing_type=sa.INTEGER(),
+                    nullable=False,
+                )
+            if _column_exists("schedule", "subject"):
+                batch_op.alter_column(
+                    "subject",
+                    existing_type=sa.VARCHAR(),
+                    nullable=False,
+                )
+            if _column_exists("schedule", "weekday"):
+                batch_op.alter_column(
+                    "weekday",
+                    existing_type=sa.VARCHAR(),
+                    nullable=False,
+                )
+            if _column_exists("schedule", "start_time"):
+                batch_op.alter_column(
+                    "start_time",
+                    existing_type=postgresql.TIMESTAMP(),
+                    nullable=False,
+                )
+            if _column_exists("schedule", "end_time"):
+                batch_op.alter_column(
+                    "end_time",
+                    existing_type=postgresql.TIMESTAMP(),
+                    nullable=False,
+                )
         _create_index_safe(op.f("ix_schedule_end_time"), "schedule", ["end_time"])
         _create_index_safe(op.f("ix_schedule_group_id"), "schedule", ["group_id"])
         _create_index_safe(
@@ -344,62 +340,56 @@ def upgrade() -> None:
             )
 
     if _table_exists("users"):
-        if _column_exists("users", "spotify_access_token"):
-            op.alter_column(
-                "users",
-                "spotify_access_token",
-                existing_type=sa.TEXT(),
-                type_=sa.String(),
-                existing_nullable=True,
-            )
-        if _column_exists("users", "spotify_refresh_token"):
-            op.alter_column(
-                "users",
-                "spotify_refresh_token",
-                existing_type=sa.TEXT(),
-                type_=sa.String(),
-                existing_nullable=True,
-            )
-        if _column_exists("users", "spotify_token_expires_at"):
-            op.alter_column(
-                "users",
-                "spotify_token_expires_at",
-                existing_type=postgresql.TIMESTAMP(timezone=True),
-                type_=sa.DateTime(),
-                existing_nullable=True,
-            )
-        if _column_exists("users", "spotify_scope"):
-            op.alter_column(
-                "users",
-                "spotify_scope",
-                existing_type=sa.TEXT(),
-                type_=sa.String(),
-                existing_nullable=True,
-            )
-        if _column_exists("users", "spotify_last_checked_at"):
-            op.alter_column(
-                "users",
-                "spotify_last_checked_at",
-                existing_type=postgresql.TIMESTAMP(timezone=True),
-                type_=sa.DateTime(),
-                existing_nullable=True,
-            )
-        if _column_exists("users", "spotify_last_track_url"):
-            op.alter_column(
-                "users",
-                "spotify_last_track_url",
-                existing_type=sa.TEXT(),
-                type_=sa.String(),
-                existing_nullable=True,
-            )
-        if _column_exists("users", "spotify_last_album_image_url"):
-            op.alter_column(
-                "users",
-                "spotify_last_album_image_url",
-                existing_type=sa.TEXT(),
-                type_=sa.String(),
-                existing_nullable=True,
-            )
+        with op.batch_alter_table("users") as batch_op:
+            if _column_exists("users", "spotify_access_token"):
+                batch_op.alter_column(
+                    "spotify_access_token",
+                    existing_type=sa.TEXT(),
+                    type_=sa.String(),
+                    existing_nullable=True,
+                )
+            if _column_exists("users", "spotify_refresh_token"):
+                batch_op.alter_column(
+                    "spotify_refresh_token",
+                    existing_type=sa.TEXT(),
+                    type_=sa.String(),
+                    existing_nullable=True,
+                )
+            if _column_exists("users", "spotify_token_expires_at"):
+                batch_op.alter_column(
+                    "spotify_token_expires_at",
+                    existing_type=postgresql.TIMESTAMP(timezone=True),
+                    type_=sa.DateTime(),
+                    existing_nullable=True,
+                )
+            if _column_exists("users", "spotify_scope"):
+                batch_op.alter_column(
+                    "spotify_scope",
+                    existing_type=sa.TEXT(),
+                    type_=sa.String(),
+                    existing_nullable=True,
+                )
+            if _column_exists("users", "spotify_last_checked_at"):
+                batch_op.alter_column(
+                    "spotify_last_checked_at",
+                    existing_type=postgresql.TIMESTAMP(timezone=True),
+                    type_=sa.DateTime(),
+                    existing_nullable=True,
+                )
+            if _column_exists("users", "spotify_last_track_url"):
+                batch_op.alter_column(
+                    "spotify_last_track_url",
+                    existing_type=sa.TEXT(),
+                    type_=sa.String(),
+                    existing_nullable=True,
+                )
+            if _column_exists("users", "spotify_last_album_image_url"):
+                batch_op.alter_column(
+                    "spotify_last_album_image_url",
+                    existing_type=sa.TEXT(),
+                    type_=sa.String(),
+                    existing_nullable=True,
+                )
         _drop_unique_safe(op.f("uq_users_spotify_user_id"), "users")
         _drop_index_safe(op.f("uq_users_spotify_user_id"), "users")
         _create_index_safe(op.f("ix_users_is_active"), "users", ["is_active"])
@@ -438,62 +428,56 @@ def downgrade() -> None:
             ["spotify_user_id"],
             unique=True,
         )
-        if _column_exists("users", "spotify_last_album_image_url"):
-            op.alter_column(
-                "users",
-                "spotify_last_album_image_url",
-                existing_type=sa.String(),
-                type_=sa.TEXT(),
-                existing_nullable=True,
-            )
-        if _column_exists("users", "spotify_last_track_url"):
-            op.alter_column(
-                "users",
-                "spotify_last_track_url",
-                existing_type=sa.String(),
-                type_=sa.TEXT(),
-                existing_nullable=True,
-            )
-        if _column_exists("users", "spotify_last_checked_at"):
-            op.alter_column(
-                "users",
-                "spotify_last_checked_at",
-                existing_type=sa.DateTime(),
-                type_=postgresql.TIMESTAMP(timezone=True),
-                existing_nullable=True,
-            )
-        if _column_exists("users", "spotify_scope"):
-            op.alter_column(
-                "users",
-                "spotify_scope",
-                existing_type=sa.String(),
-                type_=sa.TEXT(),
-                existing_nullable=True,
-            )
-        if _column_exists("users", "spotify_token_expires_at"):
-            op.alter_column(
-                "users",
-                "spotify_token_expires_at",
-                existing_type=sa.DateTime(),
-                type_=postgresql.TIMESTAMP(timezone=True),
-                existing_nullable=True,
-            )
-        if _column_exists("users", "spotify_refresh_token"):
-            op.alter_column(
-                "users",
-                "spotify_refresh_token",
-                existing_type=sa.String(),
-                type_=sa.TEXT(),
-                existing_nullable=True,
-            )
-        if _column_exists("users", "spotify_access_token"):
-            op.alter_column(
-                "users",
-                "spotify_access_token",
-                existing_type=sa.String(),
-                type_=sa.TEXT(),
-                existing_nullable=True,
-            )
+        with op.batch_alter_table("users") as batch_op:
+            if _column_exists("users", "spotify_last_album_image_url"):
+                batch_op.alter_column(
+                    "spotify_last_album_image_url",
+                    existing_type=sa.String(),
+                    type_=sa.TEXT(),
+                    existing_nullable=True,
+                )
+            if _column_exists("users", "spotify_last_track_url"):
+                batch_op.alter_column(
+                    "spotify_last_track_url",
+                    existing_type=sa.String(),
+                    type_=sa.TEXT(),
+                    existing_nullable=True,
+                )
+            if _column_exists("users", "spotify_last_checked_at"):
+                batch_op.alter_column(
+                    "spotify_last_checked_at",
+                    existing_type=sa.DateTime(),
+                    type_=postgresql.TIMESTAMP(timezone=True),
+                    existing_nullable=True,
+                )
+            if _column_exists("users", "spotify_scope"):
+                batch_op.alter_column(
+                    "spotify_scope",
+                    existing_type=sa.String(),
+                    type_=sa.TEXT(),
+                    existing_nullable=True,
+                )
+            if _column_exists("users", "spotify_token_expires_at"):
+                batch_op.alter_column(
+                    "spotify_token_expires_at",
+                    existing_type=sa.DateTime(),
+                    type_=postgresql.TIMESTAMP(timezone=True),
+                    existing_nullable=True,
+                )
+            if _column_exists("users", "spotify_refresh_token"):
+                batch_op.alter_column(
+                    "spotify_refresh_token",
+                    existing_type=sa.String(),
+                    type_=sa.TEXT(),
+                    existing_nullable=True,
+                )
+            if _column_exists("users", "spotify_access_token"):
+                batch_op.alter_column(
+                    "spotify_access_token",
+                    existing_type=sa.String(),
+                    type_=sa.TEXT(),
+                    existing_nullable=True,
+                )
 
     if _table_exists("schedule"):
         if _column_exists("schedule", "group_id") and _table_exists("groups"):
@@ -511,41 +495,37 @@ def downgrade() -> None:
         _drop_index_safe("ix_schedule_group_start_time", "schedule")
         _drop_index_safe(op.f("ix_schedule_group_id"), "schedule")
         _drop_index_safe(op.f("ix_schedule_end_time"), "schedule")
-        if _column_exists("schedule", "end_time"):
-            op.alter_column(
-                "schedule",
-                "end_time",
-                existing_type=postgresql.TIMESTAMP(),
-                nullable=True,
-            )
-        if _column_exists("schedule", "start_time"):
-            op.alter_column(
-                "schedule",
-                "start_time",
-                existing_type=postgresql.TIMESTAMP(),
-                nullable=True,
-            )
-        if _column_exists("schedule", "weekday"):
-            op.alter_column(
-                "schedule",
-                "weekday",
-                existing_type=sa.VARCHAR(),
-                nullable=True,
-            )
-        if _column_exists("schedule", "subject"):
-            op.alter_column(
-                "schedule",
-                "subject",
-                existing_type=sa.VARCHAR(),
-                nullable=True,
-            )
-        if _column_exists("schedule", "group_id"):
-            op.alter_column(
-                "schedule",
-                "group_id",
-                existing_type=sa.INTEGER(),
-                nullable=True,
-            )
+        with op.batch_alter_table("schedule") as batch_op:
+            if _column_exists("schedule", "end_time"):
+                batch_op.alter_column(
+                    "end_time",
+                    existing_type=postgresql.TIMESTAMP(),
+                    nullable=True,
+                )
+            if _column_exists("schedule", "start_time"):
+                batch_op.alter_column(
+                    "start_time",
+                    existing_type=postgresql.TIMESTAMP(),
+                    nullable=True,
+                )
+            if _column_exists("schedule", "weekday"):
+                batch_op.alter_column(
+                    "weekday",
+                    existing_type=sa.VARCHAR(),
+                    nullable=True,
+                )
+            if _column_exists("schedule", "subject"):
+                batch_op.alter_column(
+                    "subject",
+                    existing_type=sa.VARCHAR(),
+                    nullable=True,
+                )
+            if _column_exists("schedule", "group_id"):
+                batch_op.alter_column(
+                    "group_id",
+                    existing_type=sa.INTEGER(),
+                    nullable=True,
+                )
 
     if _table_exists("password_reset_tokens"):
         _drop_index_safe(
@@ -600,13 +580,13 @@ def downgrade() -> None:
 
     if _table_exists("event_files"):
         _drop_index_safe(op.f("ix_event_files_event_id"), "event_files")
-        if _column_exists("event_files", "event_id"):
-            op.alter_column(
-                "event_files",
-                "event_id",
-                existing_type=sa.INTEGER(),
-                nullable=True,
-            )
+        with op.batch_alter_table("event_files") as batch_op:
+            if _column_exists("event_files", "event_id"):
+                batch_op.alter_column(
+                    "event_id",
+                    existing_type=sa.INTEGER(),
+                    nullable=True,
+                )
 
     if _table_exists("event_attendance"):
         _drop_unique_safe("uq_event_attendance_user_event", "event_attendance")
@@ -620,17 +600,16 @@ def downgrade() -> None:
             "event_attendance",
         )
         _drop_index_safe(op.f("ix_event_attendance_event_id"), "event_attendance")
-        if _column_exists("event_attendance", "event_id"):
-            op.alter_column(
-                "event_attendance",
-                "event_id",
-                existing_type=sa.INTEGER(),
-                nullable=True,
-            )
-        if _column_exists("event_attendance", "user_id"):
-            op.alter_column(
-                "event_attendance",
-                "user_id",
-                existing_type=sa.INTEGER(),
-                nullable=True,
-            )
+        with op.batch_alter_table("event_attendance") as batch_op:
+            if _column_exists("event_attendance", "event_id"):
+                batch_op.alter_column(
+                    "event_id",
+                    existing_type=sa.INTEGER(),
+                    nullable=True,
+                )
+            if _column_exists("event_attendance", "user_id"):
+                batch_op.alter_column(
+                    "user_id",
+                    existing_type=sa.INTEGER(),
+                    nullable=True,
+                )
