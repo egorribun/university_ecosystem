@@ -125,13 +125,15 @@ def upgrade() -> None:
             sa.Column("full_name", sa.String(), nullable=True),
             sa.Column("hashed_password", sa.String(), nullable=False),
             sa.Column("is_active", sa.Boolean(), nullable=True),
-            # Use Native Enum for Postgres, String for SQLite (handled by SQLAlchemy usually)
+            # Use Native Enum for Postgres, String for SQLite
+            # (handled by SQLAlchemy usually)
             sa.Column(
                 "role",
                 sa.Enum("STUDENT", "TEACHER", "ADMIN", "SUPERUSER", name="userrole"),
                 nullable=False,
             ),
-            # Fields added in 2bc18c38157c (which runs before this but might have skipped)
+            # Fields added in 2bc18c38157c
+            # (which runs before this but might have skipped)
             sa.Column("department", sa.String(), nullable=True),
             sa.Column("position", sa.String(), nullable=True),
             # Spotify fields referenced in this migration (if any) or existing by then
