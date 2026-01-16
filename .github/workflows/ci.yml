@@ -332,6 +332,7 @@ jobs:
       DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
       REDIS_URL: redis://localhost:6379
       OTEL_SDK_DISABLED: "true"
+      SECRET_KEY: "dummy_secret_key_for_ci_tests_at_least_32_chars"
     steps:
       - uses: actions/checkout@v5
       - name: Setup Python
@@ -385,6 +386,7 @@ jobs:
       - name: Run Alembic upgrade and downgrade
         env:
           DATABASE_URL: sqlite+aiosqlite:///./ci-migrations.db
+          SECRET_KEY: "dummy_secret_key_for_ci_migrations_at_least_32_chars"
         run: |
           alembic -c alembic.ini upgrade head
           alembic -c alembic.ini downgrade base
