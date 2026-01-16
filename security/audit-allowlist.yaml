@@ -18,3 +18,21 @@ pip:
       expires: 2026-12-31
       reason: |
         python-ecdsa has no upstream fix for CVE-2024-23342 (GHSA-wj6h-64fc-37mp). Monitor upstream and replace or upgrade when a patch lands.
+    - id: CVE-2026-22701
+      package: unknown
+      owner: backend@university.example
+      expires: 2026-02-16
+      reason: |
+        Temporary allowlist for investigation. Assess impact and upgrade affected package.
+    - id: CVE-2026-22702
+      package: unknown
+      owner: backend@university.example
+      expires: 2026-02-16
+      reason: |
+        Temporary allowlist for investigation. Assess impact and upgrade affected package.
+    - id: CVE-2026-23490
+      package: unknown
+      owner: backend@university.example
+      expires: 2026-02-16
+      reason: |
+        Temporary allowlist for investigation. Assess impact and upgrade affected package.
