@@ -8,6 +8,8 @@ Create Date: 2025-11-23 02:17:00
 
 from collections.abc import Sequence
 
+import sqlalchemy as sa
+
 from alembic import op
 
 # revision identifiers, used by Alembic.
@@ -37,5 +39,13 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.execute("ALTER TABLE messages ALTER COLUMN sender_id TYPE VARCHAR")
-    op.execute("ALTER TABLE chat_participants ALTER COLUMN user_id TYPE VARCHAR")
+
+    bind = op.get_bind()
+    if bind.dialect.name == "sqlite":
+        with op.batch_alter_table("messages") as batch_op:
+            batch_op.alter_column("sender_id", type_=sa.VARCHAR())
+        with op.batch_alter_table("chat_participants") as batch_op:
+            batch_op.alter_column("user_id", type_=sa.VARCHAR())
+    else:
+        op.execute("ALTER TABLE messages ALTER COLUMN sender_id TYPE VARCHAR")
+        op.execute("ALTER TABLE chat_participants ALTER COLUMN user_id TYPE VARCHAR")
