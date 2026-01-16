@@ -78,20 +78,6 @@ def upgrade() -> None:
                 unique=False,
             )
 
-    # Notification Queue Jobs: Index for pending job retrieval
-    if "notification_queue_jobs" in existing_tables:
-        existing_indexes = {
-            idx["name"] for idx in inspector.get_indexes("notification_queue_jobs")
-        }
-
-        if "ix_notification_queue_jobs_status_next_attempt" not in existing_indexes:
-            op.create_index(
-                "ix_notification_queue_jobs_status_next_attempt",
-                "notification_queue_jobs",
-                ["status", "next_attempt_at"],
-                unique=False,
-            )
-
     # Push Subscriptions: Index for topic-based notifications
     if "push_subscriptions" in existing_tables:
         existing_indexes = {
@@ -122,16 +108,6 @@ def downgrade() -> None:
         if "ix_push_subscriptions_user_active" in existing_indexes:
             op.drop_index(
                 "ix_push_subscriptions_user_active", table_name="push_subscriptions"
-            )
-
-    if "notification_queue_jobs" in existing_tables:
-        existing_indexes = {
-            idx["name"] for idx in inspector.get_indexes("notification_queue_jobs")
-        }
-        if "ix_notification_queue_jobs_status_next_attempt" in existing_indexes:
-            op.drop_index(
-                "ix_notification_queue_jobs_status_next_attempt",
-                table_name="notification_queue_jobs",
             )
 
     if "active_sessions" in existing_tables:
