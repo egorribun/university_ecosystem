@@ -195,9 +195,27 @@ class BaseAppSettings(BaseSettings):
 
 
 def _should_allow_development_defaults(missing: Iterable[str] | None = None) -> bool:
-    if _ENV_FILE is not None:
+    """Determine if development fallback values are permitted.
+
+    Fallbacks are only allowed if ENVIRONMENT is set to a development-like
+    value (dev, test, etc.) and if no concrete .env file has been loaded
+    (which would imply a more production-ready configuration attempt).
+    """
+    # Prefer explicit ENVIRONMENT setting if available
+    env_name = (os.environ.get("ENVIRONMENT") or "").lower()
+    if env_name:
+        if env_name not in _DEVELOPMENT_ENVIRONMENTS:
+            return False
+    elif _ENV_FILE is not None:
+        # If no ENVIRONMENT set but .env exists, assume production-like intent
         return False
+
     if missing is None:
+        # Generic check: only allow if we don't have main secrets in env
         return not any(os.environ.get(name) for name in ("DATABASE_URL", "SECRET_KEY"))
+
+    # Check if all missing fields have valid fallbacks
     allowed = {name.upper() for name in _DEVELOPMENT_FALLBACKS}
+    allowed.add("SECRET_KEY")
+
     return all(name in allowed for name in missing)
