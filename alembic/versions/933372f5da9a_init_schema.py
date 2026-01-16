@@ -102,8 +102,52 @@ def _drop_fk_by_columns(table: str, constrained_columns: list[str]) -> None:
 
 
 def upgrade() -> None:
-    if _is_sqlite():
-        return
+    # Create groups table if it doesn't exist (referenced by schedule)
+    if not _table_exists("groups"):
+        op.create_table(
+            "groups",
+            sa.Column("id", sa.VARCHAR(length=20), nullable=False),
+            sa.Column("name", sa.String(), nullable=True),
+            sa.PrimaryKeyConstraint("id"),
+        )
+        _create_index_safe(op.f("ix_groups_id"), "groups", ["id"], unique=False)
+        _create_index_safe(op.f("ix_groups_name"), "groups", ["name"], unique=False)
+
+    # Create users table if it doesn't exist
+    if not _table_exists("users"):
+        # Note: Enums are handled by helpers or we map to String/Enum.
+        # UserRole enum: STUDENT, TEACHER, ADMIN, SUPERUSER
+
+        op.create_table(
+            "users",
+            sa.Column("id", sa.Integer(), nullable=False),
+            sa.Column("email", sa.String(), nullable=False),
+            sa.Column("full_name", sa.String(), nullable=True),
+            sa.Column("hashed_password", sa.String(), nullable=False),
+            sa.Column("is_active", sa.Boolean(), nullable=True),
+            # Use Native Enum for Postgres, String for SQLite (handled by SQLAlchemy usually)
+            sa.Column(
+                "role",
+                sa.Enum("STUDENT", "TEACHER", "ADMIN", "SUPERUSER", name="userrole"),
+                nullable=False,
+            ),
+            # Fields added in 2bc18c38157c (which runs before this but might have skipped)
+            sa.Column("department", sa.String(), nullable=True),
+            sa.Column("position", sa.String(), nullable=True),
+            # Spotify fields referenced in this migration (if any) or existing by then
+            sa.Column("spotify_access_token", sa.String(), nullable=True),
+            sa.Column("spotify_refresh_token", sa.String(), nullable=True),
+            sa.Column("spotify_token_expires_at", sa.Integer(), nullable=True),
+            sa.Column("spotify_scope", sa.String(), nullable=True),
+            sa.Column("spotify_last_checked_at", sa.Integer(), nullable=True),
+            sa.Column("spotify_last_track_url", sa.String(), nullable=True),
+            sa.Column("spotify_last_album_image_url", sa.String(), nullable=True),
+            sa.Column("spotify_user_id", sa.String(), nullable=True),
+            sa.Column("spotify_last_track_id", sa.String(), nullable=True),
+            sa.PrimaryKeyConstraint("id"),
+        )
+        _create_index_safe(op.f("ix_users_email"), "users", ["email"], unique=True)
+        _create_index_safe(op.f("ix_users_id"), "users", ["id"], unique=False)
 
     if _table_exists("event_attendance"):
         if _column_exists("event_attendance", "user_id"):
