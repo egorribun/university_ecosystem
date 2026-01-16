@@ -357,7 +357,6 @@ jobs:
           done
       - name: Run Alembic migrations
         run: |
-          printenv | grep -E "SECRET_KEY|ENVIRONMENT|DATABASE_URL" || true
           alembic upgrade head
       - name: Run pytest with PostgreSQL
         run: pytest tests/ -v --tb=short -x --ignore=tests/performance
@@ -391,7 +390,6 @@ jobs:
         env:
           DATABASE_URL: "sqlite+aiosqlite:///./ci-migrations.db"
         run: |
-          printenv | grep -E "SECRET_KEY|ENVIRONMENT|DATABASE_URL" || true
           alembic -c alembic.ini upgrade head
           alembic -c alembic.ini downgrade base
 

@@ -50,20 +50,32 @@ def _create_index_safe(
     if not _table_exists(table) or _has_index(table, name):
         return
     try:
-        ops.create_index(name, table, columns, unique=unique, if_not_exists=True)
+        if ops is op:
+            ops.create_index(name, table, columns, unique=unique, if_not_exists=True)
+        else:
+            ops.create_index(name, columns, unique=unique, if_not_exists=True)
     except TypeError:
         if not _has_index(table, name):
-            ops.create_index(name, table, columns, unique=unique)
+            if ops is op:
+                ops.create_index(name, table, columns, unique=unique)
+            else:
+                ops.create_index(name, columns, unique=unique)
 
 
 def _drop_index_safe(name: str, table: str, ops=op) -> None:
     if not _table_exists(table):
         return
     try:
-        ops.drop_index(name, table_name=table, if_exists=True)
+        if ops is op:
+            ops.drop_index(name, table_name=table, if_exists=True)
+        else:
+            ops.drop_index(name, if_exists=True)
     except TypeError:
         if _has_index(table, name):
-            ops.drop_index(name, table_name=table)
+            if ops is op:
+                ops.drop_index(name, table_name=table)
+            else:
+                ops.drop_index(name)
 
 
 def _has_unique(table: str, name: str) -> bool:
@@ -77,10 +89,16 @@ def _drop_unique_safe(name: str, table: str, ops=op) -> None:
     if not _table_exists(table):
         return
     try:
-        ops.drop_constraint(name, table, type_="unique", if_exists=True)
+        if ops is op:
+            ops.drop_constraint(name, table, type_="unique", if_exists=True)
+        else:
+            ops.drop_constraint(name, type_="unique", if_exists=True)
     except TypeError:
         if _has_unique(table, name):
-            ops.drop_constraint(name, table, type_="unique")
+            if ops is op:
+                ops.drop_constraint(name, table, type_="unique")
+            else:
+                ops.drop_constraint(name, type_="unique")
 
 
 def _create_unique_constraint_safe(
@@ -88,7 +106,10 @@ def _create_unique_constraint_safe(
 ) -> None:
     if not _table_exists(table) or _has_unique(table, name):
         return
-    ops.create_unique_constraint(name, table, columns)
+    if ops is op:
+        ops.create_unique_constraint(name, table, columns)
+    else:
+        ops.create_unique_constraint(name, columns)
 
 
 def _drop_fk_by_columns(table: str, constrained_columns: list[str], ops=op) -> None:
@@ -100,7 +121,10 @@ def _drop_fk_by_columns(table: str, constrained_columns: list[str], ops=op) -> N
         cols = set(fk.get("constrained_columns") or [])
         name = fk.get("name")
         if cols == target and name:
-            ops.drop_constraint(name, table, type_="foreignkey")
+            if ops is op:
+                ops.drop_constraint(name, table, type_="foreignkey")
+            else:
+                ops.drop_constraint(name, type_="foreignkey")
 
 
 def upgrade() -> None:
