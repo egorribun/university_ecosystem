@@ -259,7 +259,7 @@ export default defineConfig(({ mode }) => {
               "@emotion/react",
               "@emotion/styled",
             ],
-            "vendor-utils": ["dayjs", "zxcvbn"],
+            "vendor-utils": ["dayjs", "@zxcvbn-ts/core", "@zxcvbn-ts/language-common"],
           },
         },
       },
