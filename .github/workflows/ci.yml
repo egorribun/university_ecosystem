@@ -78,6 +78,9 @@ jobs:
         working-directory: frontend
         run: npm ci
       - name: Generate OpenAPI schema
+        env:
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+          SECRET_KEY: "dummy_secret_key_for_ci_schema_generation_at_least_32_chars"
         run: |
           python3 - <<'PY'
           import json
