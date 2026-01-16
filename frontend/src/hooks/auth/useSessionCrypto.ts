@@ -75,19 +75,16 @@ const bytesToHex = (bytes: Uint8Array): string =>
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("")
 
-import CryptoJS from "crypto-js"
-import { scrypt } from "scrypt-js"
+import { cryptoWorker } from "@/utils/cryptoWorker"
 
-export const hashSessionIdentifier = (value: string): string => {
+export const hashSessionIdentifier = async (value: string): Promise<string> => {
   // Use a static salt for session ID hashing
-  const salt = CryptoJS.enc.Utf8.parse("ecosystem.session.id.salt.v1")
-  // Use PBKDF2 with 100,000 iterations and SHA256
-  const hash = CryptoJS.PBKDF2(value, salt, {
-    keySize: 256 / 32,
+  return cryptoWorker.pbkdf2({
+    value,
+    salt: "ecosystem.session.id.salt.v1",
+    keySize: 256,
     iterations: 100000,
-    hasher: CryptoJS.algo.SHA256,
   })
-  return hash.toString(CryptoJS.enc.Hex)
 }
 
 // Helper to hash sensitive fields for signature input using scrypt and per-user salt
@@ -105,10 +102,16 @@ async function hashSensitiveFields(obj: unknown, userSalt: string): Promise<unkn
   for (const key in obj) {
     if (Object.prototype.hasOwnProperty.call(obj, key)) {
       if (sensitiveFields.includes(key) && typeof (obj as any)[key] === "string") {
-        // Use scrypt-js for password-based key derivation (memory hard)
         const passwordBytes = new TextEncoder().encode((obj as any)[key])
-        // N = 2^14, r = 8, p = 1 (recommended browser settings)
-        const hashed = await scrypt(passwordBytes, compositeSalt, 16384, 8, 1, 32)
+        // Offload scrypt effort to worker
+        const hashed = await cryptoWorker.scrypt({
+          password: passwordBytes,
+          salt: compositeSalt,
+          N: 16384,
+          r: 8,
+          p: 1,
+          dkLen: 32,
+        })
         result[key] = Array.from(hashed)
           .map((b) => b.toString(16).padStart(2, "0"))
           .join("")
@@ -129,8 +132,8 @@ export const signSnapshot = async (
   // Deep-clone and hash sensitive fields before stringification (await/async)
   const safePayload = await hashSensitiveFields(payload, userSalt)
   const json = JSON.stringify(safePayload)
-  const signature = CryptoJS.HmacSHA256(json, key)
-  return signature.toString(CryptoJS.enc.Base64)
+  // Offload HMAC to worker
+  return cryptoWorker.hmacSha256({ json, key })
 }
 
 export const readStoredSessionSigningKey = (): string | null => {
@@ -203,11 +206,11 @@ export const useSessionCrypto = () => {
   }, [])
 
   const sendSessionCacheUpdate = useCallback(
-    (
+    async (
       signingKey: string | null,
       { purge = false, force = false }: { purge?: boolean; force?: boolean } = {}
     ) => {
-      const nextHash = signingKey ? hashSessionIdentifier(signingKey) : null
+      const nextHash = signingKey ? await hashSessionIdentifier(signingKey) : null
       if (!force && sessionCacheHashRef.current === nextHash) {
         return
       }
@@ -227,11 +230,11 @@ export const useSessionCrypto = () => {
   )
 
   const updateSessionSigningKey = useCallback(
-    (value: string | null) => {
+    async (value: string | null) => {
       sessionSigningKeyRef.current = value
       setSessionSigningKeyState(value)
       persistSessionSigningKey(value)
-      sendSessionCacheUpdate(value, { purge: true })
+      await sendSessionCacheUpdate(value, { purge: true })
     },
     [sendSessionCacheUpdate]
   )
@@ -267,7 +270,7 @@ export const useSessionCrypto = () => {
 
   useEffect(() => {
     if (typeof window === "undefined") return
-    sendSessionCacheUpdate(sessionSigningKeyRef.current, { force: true })
+    void sendSessionCacheUpdate(sessionSigningKeyRef.current, { force: true })
   }, [sendSessionCacheUpdate])
 
   return {

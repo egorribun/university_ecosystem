@@ -133,21 +133,28 @@ interface ChatWindowProps {
 
 const ChatWindow: React.FC<ChatWindowProps> = memo(({ messages }) => {
   const containerRef = useRef<HTMLDivElement>(null)
-  const bottomRef = useRef<HTMLDivElement>(null)
+
+  const virtualizer = useVirtualizer({
+    count: messages.length,
+    getScrollElement: () => containerRef.current,
+    estimateSize: () => 80,
+    overscan: 5,
+  })
+
   const prevMessagesLengthRef = useRef(0)
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    if (messages.length > prevMessagesLengthRef.current && bottomRef.current) {
-      bottomRef.current.scrollIntoView({ behavior: "smooth" })
+    if (messages.length > prevMessagesLengthRef.current) {
+      virtualizer.scrollToIndex(messages.length - 1, { align: "end", behavior: "auto" })
     }
     prevMessagesLengthRef.current = messages.length
-  }, [messages.length])
+  }, [messages.length, virtualizer])
 
-  // Scroll to bottom on initial mount
+  // Initial scroll to bottom
   useEffect(() => {
-    if (bottomRef.current) {
-      bottomRef.current.scrollIntoView()
+    if (messages.length > 0) {
+      virtualizer.scrollToIndex(messages.length - 1, { align: "end", behavior: "auto" })
     }
   }, [])
 
@@ -156,113 +163,142 @@ const ChatWindow: React.FC<ChatWindowProps> = memo(({ messages }) => {
       ref={containerRef}
       className="msg-chat-area flex-1 min-h-0 overflow-y-auto p-4 custom-scrollbar"
     >
-      {messages.map((msg) => (
-        <div
-          key={msg.id}
-          className={`flex py-0.5 ${msg.isMe ? "justify-end md:justify-start" : "justify-start"}`}
-        >
-          <div
-            className={`max-w-[75%] md:max-w-[60%] px-3.5 py-2 text-[15px] relative ${
-              msg.isMe
-                ? "msg-bubble-sent text-white rounded-2xl rounded-br-md"
-                : "msg-bubble-received text-gray-900 dark:text-gray-100 rounded-2xl rounded-bl-md"
-            }`}
-          >
-            {msg.attachments && msg.attachments.length > 0 && (
-              <div className="mb-2 space-y-2">
-                {msg.attachments.map((att) => (
-                  <div key={att.id}>
-                    {att.type === "image" ? (
-                      sanitizeUrl(att.url) ? (
-                        <SmartImage
-                          srcRaw={att.url}
-                          alt={att.name}
-                          className="rounded-xl max-w-full h-auto max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                          onClick={() => {
-                            const safe = sanitizeUrl(att.url)
-                            if (safe) window.open(safe, "_blank", "noopener,noreferrer")
-                          }}
-                        />
-                      ) : null
-                    ) : sanitizeUrl(att.url) ? (
-                      <a
-                        href={sanitizeUrl(att.url)!}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={`flex items-center gap-2 p-2.5 rounded-xl ${
-                          msg.isMe
-                            ? "bg-white/20 hover:bg-white/30"
-                            : "bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
-                        } transition-colors`}
-                      >
+      <div
+        style={{
+          height: `${virtualizer.getTotalSize()}px`,
+          width: "100%",
+          position: "relative",
+        }}
+      >
+        {virtualizer.getVirtualItems().map((virtualRow) => {
+          const msg = messages[virtualRow.index]
+          if (!msg) return null
+
+          return (
+            <div
+              key={virtualRow.key}
+              ref={virtualizer.measureElement}
+              data-index={virtualRow.index}
+              className={`flex py-0.5 w-full absolute top-0 left-0 ${
+                msg.isMe ? "justify-end md:justify-start" : "justify-start"
+              }`}
+              style={{
+                transform: `translateY(${virtualRow.start}px)`,
+              }}
+            >
+              <div
+                className={`max-w-[75%] md:max-w-[60%] px-3.5 py-2 text-[15px] relative ${
+                  msg.isMe
+                    ? "msg-bubble-sent text-white rounded-2xl rounded-br-md"
+                    : "msg-bubble-received text-gray-900 dark:text-gray-100 rounded-2xl rounded-bl-md"
+                }`}
+              >
+                {msg.attachments && msg.attachments.length > 0 && (
+                  <div className="mb-2 space-y-2">
+                    {msg.attachments.map((att) => (
+                      <div key={att.id}>
+                        {att.type === "image" ? (
+                          sanitizeUrl(att.url) ? (
+                            <SmartImage
+                              srcRaw={att.url}
+                              alt={att.name}
+                              className="rounded-xl max-w-full h-auto max-h-64 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                              onClick={() => {
+                                const safe = sanitizeUrl(att.url)
+                                if (safe) window.open(safe, "_blank", "noopener,noreferrer")
+                              }}
+                            />
+                          ) : null
+                        ) : sanitizeUrl(att.url) ? (
+                          <a
+                            href={sanitizeUrl(att.url)!}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`flex items-center gap-2 p-2.5 rounded-xl ${
+                              msg.isMe
+                                ? "bg-white/20 hover:bg-white/30"
+                                : "bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
+                            } transition-colors`}
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              strokeWidth={1.5}
+                              stroke="currentColor"
+                              className="w-5 h-5"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+                              />
+                            </svg>
+                            <span className="truncate max-w-[150px] text-sm">{att.name}</span>
+                          </a>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="break-words leading-snug">{msg.text}</p>
+                <div className="flex items-center justify-end gap-1 mt-1">
+                  <span
+                    className="text-[11px]"
+                    style={{
+                      color: msg.isMe
+                        ? "var(--msg-timestamp-sent)"
+                        : "var(--msg-timestamp-received)",
+                    }}
+                  >
+                    {msg.timestamp}
+                  </span>
+                  {msg.isMe && (
+                    <span style={{ color: "var(--msg-timestamp-sent)" }}>
+                      {msg.status === "read" ? (
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 16 16"
                           fill="none"
-                          viewBox="0 0 24 24"
-                          strokeWidth={1.5}
                           stroke="currentColor"
-                          className="w-5 h-5"
+                          strokeWidth={2}
+                          className="w-4 h-4"
+                        >
+                          <polyline
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            points="1,8 4,11 11,4"
+                          />
+                          <polyline
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            points="7,11 14,4"
+                          />
+                        </svg>
+                      ) : (
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth={2.5}
+                          className="w-4 h-4"
                         >
                           <path
                             strokeLinecap="round"
                             strokeLinejoin="round"
-                            d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
+                            d="M4.5 12.5l5 5L19 8"
                           />
                         </svg>
-                        <span className="truncate max-w-[150px] text-sm">{att.name}</span>
-                      </a>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            )}
-            <p className="break-words leading-snug">{msg.text}</p>
-            <div className="flex items-center justify-end gap-1 mt-1">
-              <span
-                className="text-[11px]"
-                style={{
-                  color: msg.isMe ? "var(--msg-timestamp-sent)" : "var(--msg-timestamp-received)",
-                }}
-              >
-                {msg.timestamp}
-              </span>
-              {msg.isMe && (
-                <span style={{ color: "var(--msg-timestamp-sent)" }}>
-                  {msg.status === "read" ? (
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 16 16"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                      className="w-4 h-4"
-                    >
-                      <polyline
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        points="1,8 4,11 11,4"
-                      />
-                      <polyline strokeLinecap="round" strokeLinejoin="round" points="7,11 14,4" />
-                    </svg>
-                  ) : (
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth={2.5}
-                      className="w-4 h-4"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.5l5 5L19 8" />
-                    </svg>
+                      )}
+                    </span>
                   )}
-                </span>
-              )}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-      ))}
-      <div ref={bottomRef} />
+          )
+        })}
+      </div>
     </div>
   )
 })

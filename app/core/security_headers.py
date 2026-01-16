@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app: ASGIApp, *, settings: Settings):
+    def __init__(self, app: ASGIApp, *, settings: Settings) -> None:
         super().__init__(app)
         self._settings = settings
 

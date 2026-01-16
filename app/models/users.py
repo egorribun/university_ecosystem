@@ -15,6 +15,7 @@ from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
+from app.core.events import EventEmitterMixin
 from app.models.enums import UserRole
 
 if TYPE_CHECKING:
@@ -36,7 +37,7 @@ def _create_spotify_display_name(value):
 ROLE_VALUES_SQL = ", ".join(f"'{role.value}'" for role in UserRole)
 
 
-class User(Base):
+class User(Base, EventEmitterMixin):
     __tablename__ = "users"
     __table_args__ = (
         CheckConstraint(
@@ -177,8 +178,21 @@ class User(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    recovery_codes = relationship(
+        "RecoveryCode",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    login_history = relationship(
+        "LoginHistory",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="desc(LoginHistory.created_at)",
+    )
 
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs) -> None:
         preferences_fields = {"dnd_enabled", "dnd_start", "dnd_end", "timezone"}
         spotify_fields = {"spotify_is_connected", "spotify_display_name"}
 

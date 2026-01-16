@@ -217,3 +217,42 @@ class WebAuthnCredential(Base):
     backup_state = Column(Boolean, default=False)
 
     user = relationship("User", back_populates="webauthn_credentials")
+
+
+class RecoveryCode(Base):
+    __tablename__ = "recovery_codes"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    code_hash = Column(String(255), nullable=False)  # Argon2 hash of the code
+    is_used = Column(Boolean, default=False, nullable=False, index=True)
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    used_at = Column(DateTime(timezone=True), nullable=True)
+
+    user = relationship("User", back_populates="recovery_codes")
+
+
+class LoginHistory(Base):
+    __tablename__ = "login_history"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    ip_address = Column(String(45), nullable=False)
+    user_agent = Column(String(512), nullable=True)
+    country = Column(String(2))  # ISO 3166-1 alpha-2
+    city = Column(String(128))
+    latitude = Column(String(20))
+    longitude = Column(String(20))
+    status = Column(String(20), nullable=False)  # success, failed, locked
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+    is_suspicious = Column(Boolean, default=False, nullable=False)
+
+    user = relationship("User", back_populates="login_history")

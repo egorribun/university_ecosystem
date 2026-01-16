@@ -156,6 +156,15 @@ class WebAuthnAuthenticationVerifyIn(BaseModel):
     response: dict[str, Any]
 
 
+class RecoveryCodesGenerateOut(BaseModel):
+    codes: list[str]
+    created_at: datetime
+
+
+class RecoveryCodeVerifyIn(BaseModel):
+    code: str
+
+
 class UserOut(OrmModel, UserBase):
     id: int
     is_active: bool
@@ -166,6 +175,7 @@ class UserOut(OrmModel, UserBase):
     mfa_last_verified_at: datetime | None = None
     totp_enrollments: list[MfaTotpEnrollmentOut] = Field(default_factory=list)
     mfa_challenges: list[MfaChallengeOut] = Field(default_factory=list)
+    recovery_codes_left: int = 0
 
     @computed_field  # type: ignore[prop-decorator]
     @property

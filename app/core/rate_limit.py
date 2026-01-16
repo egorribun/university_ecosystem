@@ -141,6 +141,14 @@ _shared_client_locks: dict[str, asyncio.Lock] = {}
 _memory_buckets: dict[str, list[float]] = {}
 _memory_lock = asyncio.Lock()
 
+# Memory cleanup configuration
+MEMORY_CLEANUP_INTERVAL_SECONDS: int = 300  # 5 minutes
+MEMORY_BUCKETS_MAX_ENTRIES: int = 10000  # Maximum entries before forced cleanup
+MEMORY_PROGRESSIVE_DELAY_MAX_ENTRIES: int = 5000
+
+_cleanup_task: asyncio.Task[None] | None = None
+_cleanup_running: bool = False
+
 
 def set_rate_limit_client_factory(factory: _RedisFactory | None) -> None:
     global _redis_factory
@@ -525,6 +533,163 @@ class ProgressiveDelayInfo:
 # In-memory storage for progressive delays (fallback)
 _progressive_delay_memory: dict[str, tuple[int, float]] = {}
 _progressive_delay_memory_lock = asyncio.Lock()
+
+
+async def _cleanup_expired_memory_buckets() -> int:
+    """
+    Remove expired entries from in-memory rate limit buckets.
+
+    Returns:
+        Number of buckets cleaned up.
+    """
+    now = time.time()
+    cleaned = 0
+    async with _memory_lock:
+        expired_keys = []
+        for key, bucket in _memory_buckets.items():
+            # Remove entries older than the maximum window (1 day)
+            max_window = 86400
+            bucket[:] = [ts for ts in bucket if now - ts < max_window]
+            if not bucket:
+                expired_keys.append(key)
+        for key in expired_keys:
+            del _memory_buckets[key]
+            cleaned += 1
+    return cleaned
+
+
+async def _cleanup_expired_progressive_delays(ttl: int = PROGRESSIVE_DELAY_TTL) -> int:
+    """
+    Remove expired entries from in-memory progressive delay tracker.
+
+    Args:
+        ttl: Time-to-live in seconds for entries.
+
+    Returns:
+        Number of entries cleaned up.
+    """
+    now = time.time()
+    cleaned = 0
+    async with _progressive_delay_memory_lock:
+        expired_keys = [
+            key
+            for key, (_, last_time) in _progressive_delay_memory.items()
+            if now - last_time > ttl
+        ]
+        for key in expired_keys:
+            del _progressive_delay_memory[key]
+            cleaned += 1
+    return cleaned
+
+
+async def cleanup_all_memory_stores() -> dict[str, int]:
+    """
+    Cleanup all in-memory stores. Safe to call periodically.
+
+    Returns:
+        Dictionary with cleanup statistics.
+    """
+    buckets_cleaned = await _cleanup_expired_memory_buckets()
+    delays_cleaned = await _cleanup_expired_progressive_delays()
+    return {
+        "rate_limit_buckets_cleaned": buckets_cleaned,
+        "progressive_delays_cleaned": delays_cleaned,
+        "rate_limit_buckets_remaining": len(_memory_buckets),
+        "progressive_delays_remaining": len(_progressive_delay_memory),
+    }
+
+
+async def _periodic_memory_cleanup() -> None:
+    """
+    Background task that periodically cleans up expired memory entries.
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    while _cleanup_running:
+        try:
+            await asyncio.sleep(MEMORY_CLEANUP_INTERVAL_SECONDS)
+            if not _cleanup_running:
+                break
+
+            stats = await cleanup_all_memory_stores()
+
+            # Force cleanup if we exceed max entries
+            if len(_memory_buckets) > MEMORY_BUCKETS_MAX_ENTRIES:
+                async with _memory_lock:
+                    # Keep only the most recent half
+                    sorted_keys = sorted(
+                        _memory_buckets.keys(),
+                        key=lambda k: (
+                            max(_memory_buckets[k]) if _memory_buckets[k] else 0
+                        ),
+                        reverse=True,
+                    )
+                    keep_count = MEMORY_BUCKETS_MAX_ENTRIES // 2
+                    for key in sorted_keys[keep_count:]:
+                        del _memory_buckets[key]
+                    stats["force_evicted_buckets"] = len(sorted_keys) - keep_count
+
+            if len(_progressive_delay_memory) > MEMORY_PROGRESSIVE_DELAY_MAX_ENTRIES:
+                async with _progressive_delay_memory_lock:
+                    sorted_keys = sorted(
+                        _progressive_delay_memory.keys(),
+                        key=lambda k: _progressive_delay_memory[k][1],
+                        reverse=True,
+                    )
+                    keep_count = MEMORY_PROGRESSIVE_DELAY_MAX_ENTRIES // 2
+                    for key in sorted_keys[keep_count:]:
+                        del _progressive_delay_memory[key]
+                    stats["force_evicted_delays"] = len(sorted_keys) - keep_count
+
+            total_cleaned = stats.get("rate_limit_buckets_cleaned", 0) + stats.get(
+                "progressive_delays_cleaned", 0
+            )
+            if total_cleaned > 0:
+                logger.debug(
+                    "Memory cleanup completed: %s",
+                    stats,
+                    extra=stats,
+                )
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            logger.warning("Memory cleanup error: %s", exc)
+            await asyncio.sleep(60)  # Backoff on error
+
+
+def start_memory_cleanup_task() -> asyncio.Task[None] | None:
+    """
+    Start the background memory cleanup task.
+
+    Returns:
+        The cleanup task, or None if already running.
+    """
+    global _cleanup_task, _cleanup_running
+
+    if _cleanup_task is not None and not _cleanup_task.done():
+        return None
+
+    _cleanup_running = True
+    _cleanup_task = asyncio.create_task(_periodic_memory_cleanup())
+    return _cleanup_task
+
+
+async def stop_memory_cleanup_task() -> None:
+    """
+    Stop the background memory cleanup task gracefully.
+    """
+    global _cleanup_task, _cleanup_running
+
+    _cleanup_running = False
+    if _cleanup_task is not None:
+        _cleanup_task.cancel()
+        try:
+            await _cleanup_task
+        except asyncio.CancelledError:
+            pass
+        _cleanup_task = None
 
 
 def _calculate_delay(failures: int) -> float:

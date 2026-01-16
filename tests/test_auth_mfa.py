@@ -118,7 +118,9 @@ async def test_totp_start_requires_reuse(async_client, user_factory):
 
     second_start = await async_client.post("/auth/mfa/totp/start", headers=headers)
     assert second_start.status_code == status.HTTP_400_BAD_REQUEST
-    assert second_start.json()["detail"] == mfa.TOTP_ENROLLMENT_PENDING_ERROR
+    assert second_start.json()["detail"] == translate(
+        "errors.mfa.totp_enrollment_pending", locale="en"
+    )
 
 
 @pytest.mark.anyio
@@ -243,7 +245,9 @@ async def test_totp_start_rejects_when_active_factor_exists(
 
     second_start = await async_client.post("/auth/mfa/totp/start", headers=headers)
     assert second_start.status_code == status.HTTP_400_BAD_REQUEST
-    assert second_start.json()["detail"] == mfa.TOTP_ENROLLMENT_LIMIT_ERROR
+    assert second_start.json()["detail"] == translate(
+        "errors.mfa.totp_limit_reached", locale="en"
+    )
 
 
 def _find_audit_event(caplog, logger_name: str, event: str) -> dict:
@@ -302,7 +306,7 @@ async def test_totp_enrollment_and_verification_flow(
         },
     )
     assert failure.status_code == status.HTTP_400_BAD_REQUEST
-    assert failure.json()["detail"] == "Invalid verification code"
+    assert failure.json()["detail"] == translate("errors.mfa.invalid_code", locale="en")
 
     success = await async_client.post(
         "/auth/mfa/verify",
@@ -441,7 +445,9 @@ async def test_totp_challenge_expiry_blocks_verification(
         },
     )
     assert verify.status_code == status.HTTP_400_BAD_REQUEST
-    assert verify.json()["detail"] == "Invalid or expired challenge"
+    assert verify.json()["detail"] == translate(
+        "errors.common.bad_request", locale="en"
+    )
 
 
 @pytest.mark.anyio

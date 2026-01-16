@@ -16,9 +16,10 @@ from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
+from app.core.events import EventEmitterMixin
 
 
-class Event(Base):
+class Event(Base, EventEmitterMixin):
     __tablename__ = "events"
 
     id = Column(Integer, primary_key=True)
@@ -63,7 +64,7 @@ class Event(Base):
         )
 
 
-class EventAttendance(Base):
+class EventAttendance(Base, EventEmitterMixin):
     __tablename__ = "event_attendance"
 
     id = Column(Integer, primary_key=True)

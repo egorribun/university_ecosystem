@@ -7,6 +7,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
+from app.core import metrics
 from app.tasks.notifications import (
     enqueue_event_notification_task,
     enqueue_news_notification_task,
@@ -95,6 +96,9 @@ async def record_enqueue_failure(
         error,
     )
     _testing_failed_records.append(EnqueueFailure(job, str(error), source))
+    metrics.record_notification_failed(
+        notification_type=job.kind, reason="enqueue_failure"
+    )
     if _queue_metrics:
         try:
             _queue_metrics.enqueue_failures_total.labels(kind=job.kind).inc()

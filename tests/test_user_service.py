@@ -79,9 +79,9 @@ def mock_admin_user():
 
 
 @pytest.fixture
-def service(mock_audit):
+def service(mock_db, mock_audit):
     """Create UserService instance."""
-    return UserService(mock_audit)
+    return UserService(mock_db, mock_audit)
 
 
 # ============================================================
@@ -100,7 +100,7 @@ async def test_update_user_profile_success(service, mock_db, mock_user, mock_req
         with patch("app.services.user_service.ensure_mfa_relationships_loaded"):
             with patch("app.services.user_service.attach_pending_email"):
                 result = await service.update_user_profile(
-                    mock_db, mock_user, data, mock_request
+                    mock_user, data, mock_request
                 )
 
     assert result == mock_user
@@ -118,7 +118,7 @@ async def test_update_user_profile_invalid_email(
 
     with patch("app.services.user_service.resolve_locale", return_value="en"):
         with pytest.raises(BusinessRuleViolation):
-            await service.update_user_profile(mock_db, mock_user, data, mock_request)
+            await service.update_user_profile(mock_user, data, mock_request)
 
 
 @pytest.mark.anyio
@@ -136,7 +136,7 @@ async def test_update_user_profile_email_in_use(
 
     with patch("app.services.user_service.resolve_locale", return_value="en"):
         with pytest.raises(EntityAlreadyExists):
-            await service.update_user_profile(mock_db, mock_user, data, mock_request)
+            await service.update_user_profile(mock_user, data, mock_request)
 
 
 @pytest.mark.anyio
@@ -151,9 +151,7 @@ async def test_update_user_profile_preferences(
     with patch("app.services.user_service.resolve_locale", return_value="en"):
         with patch("app.services.user_service.ensure_mfa_relationships_loaded"):
             with patch("app.services.user_service.attach_pending_email"):
-                await service.update_user_profile(
-                    mock_db, mock_user, data, mock_request
-                )
+                await service.update_user_profile(mock_user, data, mock_request)
 
     mock_db.commit.assert_called_once()
 
@@ -172,7 +170,7 @@ async def test_create_user_forbidden_non_admin(
 
     with patch("app.services.user_service.resolve_locale", return_value="en"):
         with pytest.raises(PermissionDenied):
-            await service.create_user(mock_db, data, mock_request, mock_user)
+            await service.create_user(data, mock_request, mock_user)
 
 
 @pytest.mark.anyio
@@ -186,7 +184,7 @@ async def test_create_user_teacher_requires_invite(
 
     with patch("app.services.user_service.resolve_locale", return_value="en"):
         with pytest.raises(BusinessRuleViolation):
-            await service.create_user(mock_db, data, mock_request, mock_admin_user)
+            await service.create_user(data, mock_request, mock_admin_user)
 
 
 @pytest.mark.anyio
@@ -204,7 +202,7 @@ async def test_create_user_invalid_invite(
 
     with patch("app.services.user_service.resolve_locale", return_value="en"):
         with pytest.raises(BusinessRuleViolation):
-            await service.create_user(mock_db, data, mock_request, mock_admin_user)
+            await service.create_user(data, mock_request, mock_admin_user)
 
 
 @pytest.mark.anyio
@@ -221,9 +219,7 @@ async def test_create_user_success(service, mock_db, mock_admin_user, mock_reque
         with patch(
             "app.services.user_service.crud.create_user", return_value=mock_new_user
         ):
-            result = await service.create_user(
-                mock_db, data, mock_request, mock_admin_user
-            )
+            result = await service.create_user(data, mock_request, mock_admin_user)
 
     assert result.id == 100
 
@@ -238,7 +234,7 @@ async def test_get_users_non_admin_no_search(service, mock_db, mock_user, mock_r
     """Test get_users fails for non-admin without search."""
     with patch("app.services.user_service.resolve_locale", return_value="en"):
         with pytest.raises(PermissionDenied):
-            await service.get_users(mock_db, mock_request, mock_user)
+            await service.get_users(mock_request, mock_user)
 
 
 @pytest.mark.anyio
@@ -250,9 +246,7 @@ async def test_get_users_non_admin_with_search(
         with patch(
             "app.services.user_service.crud.get_users", return_value=[]
         ) as mock_get:
-            result = await service.get_users(
-                mock_db, mock_request, mock_user, search="test"
-            )
+            result = await service.get_users(mock_request, mock_user, search="test")
 
     assert result == []
     mock_get.assert_called_once()
@@ -265,7 +259,7 @@ async def test_get_users_admin(service, mock_db, mock_admin_user, mock_request):
 
     with patch("app.services.user_service.resolve_locale", return_value="en"):
         with patch("app.services.user_service.crud.get_users", return_value=mock_users):
-            result = await service.get_users(mock_db, mock_request, mock_admin_user)
+            result = await service.get_users(mock_request, mock_admin_user)
 
     assert len(result) == 2
 
@@ -282,7 +276,7 @@ async def test_admin_update_user_forbidden(service, mock_db, mock_user, mock_req
 
     with patch("app.services.user_service.resolve_locale", return_value="en"):
         with pytest.raises(PermissionDenied):
-            await service.admin_update_user(mock_db, 2, data, mock_request, mock_user)
+            await service.admin_update_user(2, data, mock_request, mock_user)
 
 
 @pytest.mark.anyio
@@ -300,7 +294,7 @@ async def test_admin_update_user_success(
             return_value=(updated_user, None),
         ):
             result = await service.admin_update_user(
-                mock_db, 2, data, mock_request, mock_admin_user
+                2, data, mock_request, mock_admin_user
             )
 
     assert result.id == 2
@@ -326,9 +320,7 @@ async def test_admin_update_user_mfa_reset(
             with patch(
                 "app.services.user_service.create_notifications_for_users"
             ) as mock_notify:
-                await service.admin_update_user(
-                    mock_db, 2, data, mock_request, mock_admin_user
-                )
+                await service.admin_update_user(2, data, mock_request, mock_admin_user)
 
     mock_notify.assert_called_once()
 
@@ -343,7 +335,7 @@ async def test_admin_delete_user_forbidden(service, mock_db, mock_user, mock_req
     """Test admin_delete_user fails for non-admin."""
     with patch("app.services.user_service.resolve_locale", return_value="en"):
         with pytest.raises(PermissionDenied):
-            await service.admin_delete_user(mock_db, 2, mock_request, mock_user)
+            await service.admin_delete_user(2, mock_request, mock_user)
 
 
 @pytest.mark.anyio
@@ -355,7 +347,7 @@ async def test_admin_delete_user_not_found(
 
     with patch("app.services.user_service.resolve_locale", return_value="en"):
         with pytest.raises(EntityNotFound):
-            await service.admin_delete_user(mock_db, 999, mock_request, mock_admin_user)
+            await service.admin_delete_user(999, mock_request, mock_admin_user)
 
 
 @pytest.mark.anyio
@@ -366,7 +358,7 @@ async def test_admin_delete_user_self(service, mock_db, mock_admin_user, mock_re
     with patch("app.services.user_service.resolve_locale", return_value="en"):
         with pytest.raises(BusinessRuleViolation):
             await service.admin_delete_user(
-                mock_db, mock_admin_user.id, mock_request, mock_admin_user
+                mock_admin_user.id, mock_request, mock_admin_user
             )
 
 
@@ -380,7 +372,7 @@ async def test_admin_delete_user_success(
     with patch("app.services.user_service.resolve_locale", return_value="en"):
         with patch("app.services.user_service.delete_static_file"):
             result = await service.admin_delete_user(
-                mock_db, mock_user.id, mock_request, mock_admin_user
+                mock_user.id, mock_request, mock_admin_user
             )
 
     assert result["deleted"] is True
@@ -401,7 +393,7 @@ async def test_delete_avatar_with_existing(service, mock_db, mock_user):
 
     with patch("app.services.user_service.delete_static_file") as mock_delete:
         with patch("app.services.user_service.ensure_mfa_relationships_loaded"):
-            await service.delete_avatar(mock_db, mock_user)
+            await service.delete_avatar(mock_user)
 
     mock_delete.assert_called_once_with("/static/avatars/test.jpg")
     mock_db.commit.assert_called_once()
@@ -415,7 +407,7 @@ async def test_delete_avatar_without_existing(service, mock_db, mock_user):
 
     with patch("app.services.user_service.delete_static_file") as mock_delete:
         with patch("app.services.user_service.ensure_mfa_relationships_loaded"):
-            await service.delete_avatar(mock_db, mock_user)
+            await service.delete_avatar(mock_user)
 
     mock_delete.assert_not_called()
 
@@ -428,7 +420,7 @@ async def test_delete_cover_with_existing(service, mock_db, mock_user):
 
     with patch("app.services.user_service.delete_static_file") as mock_delete:
         with patch("app.services.user_service.ensure_mfa_relationships_loaded"):
-            await service.delete_cover(mock_db, mock_user)
+            await service.delete_cover(mock_user)
 
     mock_delete.assert_called_once()
 
@@ -443,9 +435,7 @@ async def test_delete_user_data_no_confirm(service, mock_db, mock_user, mock_req
     """Test delete_user_data requires confirmation."""
     with patch("app.services.user_service.resolve_locale", return_value="en"):
         with pytest.raises(BusinessRuleViolation):
-            await service.delete_user_data(
-                mock_db, mock_user, mock_request, confirm=False
-            )
+            await service.delete_user_data(mock_user, mock_request, confirm=False)
 
 
 @pytest.mark.anyio
@@ -459,7 +449,7 @@ async def test_delete_user_data_success(
         with patch("app.services.user_service.delete_static_file"):
             with patch("app.services.user_service.log_data_access"):
                 result = await service.delete_user_data(
-                    mock_db, mock_user, mock_request, confirm=True
+                    mock_user, mock_request, confirm=True
                 )
 
     assert result.deleted is True
@@ -484,7 +474,7 @@ async def test_upload_avatar_success(service, mock_db, mock_user, mock_request):
             return_value="/static/avatars/new.jpg",
         ):
             with patch("app.services.user_service.ensure_mfa_relationships_loaded"):
-                await service.upload_avatar(mock_db, mock_user, mock_file, mock_request)
+                await service.upload_avatar(mock_user, mock_file, mock_request)
 
     assert mock_user.avatar_url == "/static/avatars/new.jpg"
     mock_db.commit.assert_called_once()
@@ -504,9 +494,7 @@ async def test_upload_avatar_commit_failure(service, mock_db, mock_user, mock_re
         ):
             with patch("app.services.user_service.delete_static_file") as mock_delete:
                 with pytest.raises(Exception, match="Commit failed"):
-                    await service.upload_avatar(
-                        mock_db, mock_user, mock_file, mock_request
-                    )
+                    await service.upload_avatar(mock_user, mock_file, mock_request)
 
     mock_db.rollback.assert_called_once()
     mock_delete.assert_called_once()

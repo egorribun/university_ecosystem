@@ -11,7 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
 from app.core.config import settings
-from app.core.database import engine, wait_db
+from app.core.database import engine, get_pool_health_metrics, wait_db
 from app.core.metrics import record_health_probe
 from app.deps.cache import get_cache
 from app.services.file_scanner import (
@@ -224,7 +224,16 @@ async def healthz():
     http_status = (
         status.HTTP_200_OK if overall_ok else status.HTTP_503_SERVICE_UNAVAILABLE
     )
-    payload = {"status": "ok" if overall_ok else "error", **statuses, **latencies}
+
+    # Add pool health metrics
+    pool_metrics = get_pool_health_metrics()
+
+    payload = {
+        "status": "ok" if overall_ok else "error",
+        **statuses,
+        **latencies,
+        "pool": pool_metrics,
+    }
 
     _health_cache.update(
         {

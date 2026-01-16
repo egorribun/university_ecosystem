@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useOptimistic } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate, useParams } from "react-router-dom"
 import {
   ContactList,
   ChatWindow,
+  type Message as UiMessage,
   MessageInput,
   NewChatModal,
 } from "../components/messenger/MessengerComponents"
@@ -226,6 +227,12 @@ export default function Messenger() {
     }))
   }, [messages, user?.id])
 
+  // React 19 useOptimistic for instant message feedback
+  const [optimisticMessages, addOptimisticMessage] = useOptimistic(
+    transformedMessages,
+    (state: UiMessage[], newMessage: UiMessage) => [...state, newMessage]
+  )
+
   // Send Message Mutation
   const sendMessageMutation = useMutation({
     mutationFn: ({ chatId, content, files }: { chatId: string; content: string; files?: File[] }) =>
@@ -235,6 +242,9 @@ export default function Messenger() {
         ["messages", selectedChatId],
         (old) => {
           const items = old?.items ?? []
+          // Check if message already exists (from optimistic to real update ideally, but here simplicity)
+          if (items.some((m) => m.id === newMessage.id)) return old
+
           return {
             has_more: old?.has_more ?? false,
             next_cursor: old?.next_cursor ?? null,
@@ -366,6 +376,26 @@ export default function Messenger() {
 
   const handleSendMessage = (text: string, files: File[]) => {
     if (!selectedChatId) return
+
+    // Optimistic update
+    const tempId = crypto.randomUUID()
+    const now = new Date()
+    addOptimisticMessage({
+      id: tempId,
+      senderId: String(user?.id),
+      text,
+      timestamp: formatMessageTime(now.toISOString()),
+      isMe: true,
+      status: "sent",
+      attachments: files.map((f, i) => ({
+        id: `${tempId}-${i}`,
+        url: URL.createObjectURL(f), // Temporary preview URL
+        type: f.type.startsWith("image/") ? "image" : "file",
+        name: f.name,
+        size: f.size,
+      })),
+    } as any) // Type cast as our optimistic message shape matches UI needs
+
     sendMessageMutation.mutate({ chatId: selectedChatId, content: text, files })
   }
 
@@ -720,7 +750,7 @@ export default function Messenger() {
               </div>
             )}
 
-            <ChatWindow messages={transformedMessages} />
+            <ChatWindow messages={optimisticMessages} />
             <MessageInput onSend={handleSendMessage} />
           </>
         ) : (

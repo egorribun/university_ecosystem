@@ -1,5 +1,5 @@
 import asyncio
-import uuid
+import secrets
 from datetime import UTC, datetime
 
 from app.core.database import async_session
@@ -7,7 +7,7 @@ from app.models.models import InviteCode
 
 
 async def create_invite_code(role: str):
-    code = str(uuid.uuid4()).replace("-", "")[:10].upper()
+    code = secrets.token_hex(5).upper()  # 10 hex chars
     async with async_session() as session:
         invite = InviteCode(
             code=code, role=role, is_active=True, created_at=datetime.now(UTC)

@@ -102,12 +102,23 @@ _DEVELOPMENT_ENVIRONMENTS = {
 
 _DEVELOPMENT_FALLBACKS: dict[str, str] = {
     "database_url": "sqlite+aiosqlite:///./dev.db",
-    "secret_key": "development-secret-key",  # pragma: allowlist secret
 }
 
 
+def _generate_development_secret_key() -> str:
+    """Generate a secure random key for local development only.
+
+    This key is regenerated on every application restart, ensuring that
+    sessions are invalidated. For production, always provide a stable
+    SECRET_KEY via environment variables.
+    """
+    import secrets
+
+    return secrets.token_urlsafe(32)
+
+
 class BaseAppSettings(BaseSettings):
-    def __init__(self, **values):
+    def __init__(self, **values) -> None:
         allow_missing = values.pop("_allow_missing", False)
         try:
             super().__init__(**values)
@@ -137,11 +148,13 @@ class BaseAppSettings(BaseSettings):
                 unresolved: list[str] = []
                 for missing in missing_required:
                     field_name = missing.lower()
-                    fallback = _DEVELOPMENT_FALLBACKS.get(field_name)
-                    if fallback is None:
-                        unresolved.append(missing)
+                    if field_name == "secret_key":
+                        # Generate a secure random key for development
+                        fallback_values[field_name] = _generate_development_secret_key()
+                    elif field_name in _DEVELOPMENT_FALLBACKS:
+                        fallback_values[field_name] = _DEVELOPMENT_FALLBACKS[field_name]
                     else:
-                        fallback_values[field_name] = fallback
+                        unresolved.append(missing)
                 if not unresolved:
                     combined_values = {**values, **fallback_values}
                     super().__init__(**combined_values)

@@ -11,3 +11,15 @@ def send_auth_email(
 ) -> None:
     """Distributed task for sending authentication-related emails."""
     send_reset_email(to_email, link, full_name, locale=locale)
+
+
+@broker.task
+def send_lockout_alert(
+    to_email: str,
+    full_name: str = "",
+    locale: str | None = None,
+) -> None:
+    """Distributed task for sending lockout alert emails."""
+    from app.utils.email import send_lockout_email
+
+    send_lockout_email(to_email, full_name, locale=locale)

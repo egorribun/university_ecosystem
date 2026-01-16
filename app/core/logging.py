@@ -18,8 +18,9 @@ import logging
 import sys
 from typing import TYPE_CHECKING
 
-import orjson
 import structlog
+
+from app.core.orjson_utils import orjson
 
 if TYPE_CHECKING:
     from collections.abc import Callable

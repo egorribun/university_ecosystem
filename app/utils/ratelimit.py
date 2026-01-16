@@ -3,8 +3,9 @@ from __future__ import annotations
 import time
 from collections.abc import Awaitable, Callable
 
-from fastapi import HTTPException, Request, status
+from fastapi import Request, status
 
+from app.api.validation import raise_http_error
 from app.core.config import settings
 from app.core.localization import resolve_locale, translate
 from app.core.rate_limit import (
@@ -49,9 +50,14 @@ class MemoryLimiter:
             timestamp for timestamp in self.bucket.get(key, []) if timestamp > cutoff
         ]
         if len(arr) >= limit:
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=message,
+            # Note: MemoryLimiter doesn't support locale resolution easily without request context,
+            # so we use a hardcoded fallback or would need to refactor significantly.
+            # Assuming 'en' for internal limiter fallback for now.
+            raise_http_error(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                "errors.rate_limit.generic",
+                "en",
+                headers=None,
             )
         arr.append(now)
         self.bucket[key] = arr
@@ -173,11 +179,12 @@ def sensitive_route_limit(
             except RateLimitExceeded as exc:
                 retry_after = max(0, exc.info.retry_after)
                 headers = {"Retry-After": str(retry_after)} if retry_after else None
-                raise HTTPException(
-                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail=message,
+                raise_http_error(
+                    status.HTTP_429_TOO_MANY_REQUESTS,
+                    "errors.rate_limit.generic",
+                    locale,
                     headers=headers,
-                ) from exc
+                )
         else:
             limiter.check(key, resolved_limit, resolved_window, message=message)
 

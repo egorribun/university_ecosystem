@@ -10,12 +10,12 @@ from __future__ import annotations
 from datetime import UTC
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi import status as http_status
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_admin_user
+from app.api.validation import raise_not_found, raise_validation_error
 from app.core.database import get_db
 from app.models import models
 from app.workers.dead_letter_queue import DeadLetterQueue, JobStatus
@@ -116,9 +116,12 @@ async def list_dlq_jobs(
         # Validate status
         valid_statuses = [s.value for s in JobStatus]
         if status not in valid_statuses:
-            raise HTTPException(
-                status_code=http_status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid status. Must be one of: {', '.join(valid_statuses)}",
+            raise_validation_error(
+                "errors.common.bad_request",
+                "en",
+                status_details=(
+                    f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
+                ),
             )
         query = query.where(DeadLetterJob.status == status)
 
@@ -183,10 +186,7 @@ async def retry_dlq_job(
     job = result.scalar_one_or_none()
 
     if not job:
-        raise HTTPException(
-            status_code=http_status.HTTP_404_NOT_FOUND,
-            detail=f"Job with ID {job_id} not found",
-        )
+        raise_not_found("Job", job_id, "en")
 
     # Reset for retry
     job.status = JobStatus.PENDING.value

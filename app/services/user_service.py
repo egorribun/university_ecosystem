@@ -30,17 +30,17 @@ logger = logging.getLogger(__name__)
 
 
 class UserService:
-    def __init__(self, audit: AuditService):
+    def __init__(self, db: AsyncSession, audit: AuditService) -> None:
+        self.db = db
         self.audit = audit
 
     async def update_user_profile(
         self,
-        db: AsyncSession,
         user: models.User,
         data: schemas.UserProfileUpdate,
         request: Request,
     ) -> models.User:
-        db_user = await db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
+        db_user = await self.db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
         update_fields = data.model_dump(exclude_unset=True)
 
         if "email" in update_fields and update_fields["email"] is not None:
@@ -51,7 +51,7 @@ class UserService:
             except ValueError as exc:
                 raise BusinessRuleViolation("errors.users.invalid_email") from exc
 
-            existing = await db.execute(
+            existing = await self.db.execute(
                 select(models.User.id).where(
                     func.lower(models.User.email) == validated_email,
                     models.User.id != user.id,
@@ -71,15 +71,14 @@ class UserService:
                 setattr(db_user.preferences, field, value)
             else:
                 setattr(db_user, field, value)
-        await db.commit()
-        await db.refresh(db_user)
-        await ensure_mfa_relationships_loaded(db, db_user)
-        await attach_pending_email(db, db_user)
+        await self.db.commit()
+        await self.db.refresh(db_user)
+        await ensure_mfa_relationships_loaded(self.db, db_user)
+        await attach_pending_email(self.db, db_user)
         return db_user
 
     async def upload_avatar(
         self,
-        db: AsyncSession,
         user: models.User,
         file: UploadFile,
         request: Request,
@@ -88,19 +87,19 @@ class UserService:
         url = await save_upload(
             file, "avatars", f"user_{user.id}_avatar", locale=locale
         )
-        db_user = await db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
+        db_user = await self.db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
         previous_url = db_user.avatar_url
         db_user.avatar_url = url
         try:
-            await db.commit()
+            await self.db.commit()
         except Exception:
-            await db.rollback()
+            await self.db.rollback()
             db_user.avatar_url = previous_url
             await delete_static_file(url)
             raise
         try:
-            await db.refresh(db_user)
-            await ensure_mfa_relationships_loaded(db, db_user)
+            await self.db.refresh(db_user)
+            await ensure_mfa_relationships_loaded(self.db, db_user)
         except Exception:
             db_user.avatar_url = previous_url
             await delete_static_file(url)
@@ -109,26 +108,25 @@ class UserService:
 
     async def upload_cover(
         self,
-        db: AsyncSession,
         user: models.User,
         file: UploadFile,
         request: Request,
     ) -> models.User:
         locale = resolve_locale(request=request, user=user)
         url = await save_upload(file, "covers", f"user_{user.id}_cover", locale=locale)
-        db_user = await db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
+        db_user = await self.db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
         previous_url = db_user.cover_url
         db_user.cover_url = url
         try:
-            await db.commit()
+            await self.db.commit()
         except Exception:
-            await db.rollback()
+            await self.db.rollback()
             db_user.cover_url = previous_url
             await delete_static_file(url)
             raise
         try:
-            await db.refresh(db_user)
-            await ensure_mfa_relationships_loaded(db, db_user)
+            await self.db.refresh(db_user)
+            await ensure_mfa_relationships_loaded(self.db, db_user)
         except Exception:
             db_user.cover_url = previous_url
             await delete_static_file(url)
@@ -137,7 +135,6 @@ class UserService:
 
     async def create_user(
         self,
-        db: AsyncSession,
         data: schemas.UserCreate,
         request: Request,
         current_user: models.User,
@@ -154,16 +151,15 @@ class UserService:
                 models.InviteCode.role == data.role,
                 models.InviteCode.is_active.is_(True),
             )
-            code_obj = (await db.execute(q)).scalar_one_or_none()
+            code_obj = (await self.db.execute(q)).scalar_one_or_none()
             if not code_obj:
                 raise BusinessRuleViolation("errors.users.invalid_invite")
 
-        user = await crud.create_user(db, data)
+        user = await crud.create_user(self.db, data)
         return user
 
     async def get_users(
         self,
-        db: AsyncSession,
         request: Request,
         current_user: models.User,
         full_name: str | None = None,
@@ -181,7 +177,7 @@ class UserService:
         name_query = search if search else full_name
 
         return await crud.get_users(
-            db,
+            self.db,
             full_name=name_query,
             group_id=group_id,
             role=role,
@@ -191,7 +187,6 @@ class UserService:
 
     async def admin_update_user(
         self,
-        db: AsyncSession,
         user_id: int,
         data: schemas.UserAdminUpdate,
         request: Request,
@@ -200,7 +195,7 @@ class UserService:
         if current_user.role != "admin":
             raise PermissionDenied()
 
-        updated_user, reset_stats = await crud.admin_update_user(db, user_id, data)
+        updated_user, reset_stats = await crud.admin_update_user(self.db, user_id, data)
         self.audit.log(
             "users.admin_update",
             request,
@@ -220,7 +215,7 @@ class UserService:
                 title = translate("notifications.mfa.reset.title", locale=target_locale)
                 body = translate("notifications.mfa.reset.body", locale=target_locale)
                 await create_notifications_for_users(
-                    db,
+                    self.db,
                     title=title,
                     body=body,
                     type="security",
@@ -230,7 +225,6 @@ class UserService:
 
     async def admin_delete_user(
         self,
-        db: AsyncSession,
         user_id: int,
         request: Request,
         current_user: models.User,
@@ -240,7 +234,7 @@ class UserService:
         if current_user.role != "admin":
             raise PermissionDenied()
 
-        db_user = await db.get(models.User, user_id, options=USER_MFA_LOAD_OPTIONS)
+        db_user = await self.db.get(models.User, user_id, options=USER_MFA_LOAD_OPTIONS)
         if db_user is None:
             raise EntityNotFound("User", user_id)
 
@@ -268,21 +262,21 @@ class UserService:
         db_user.mfa_default_method = None
         db_user.mfa_last_verified_at = None
 
-        await db.execute(
+        await self.db.execute(
             delete(models.ActiveSession).where(models.ActiveSession.user_id == user_id)
         )
-        await db.execute(
+        await self.db.execute(
             delete(models.MfaChallenge).where(models.MfaChallenge.user_id == user_id)
         )
-        await db.execute(
+        await self.db.execute(
             delete(models.MfaTotpEnrollment).where(
                 models.MfaTotpEnrollment.user_id == user_id
             )
         )
-        await db.execute(
+        await self.db.execute(
             delete(models.Notification).where(models.Notification.user_id == user_id)
         )
-        await db.execute(
+        await self.db.execute(
             delete(models.DataAccessLog).where(
                 or_(
                     models.DataAccessLog.actor_user_id == user_id,
@@ -298,47 +292,45 @@ class UserService:
             "users.admin_delete", request, user_id=user_id, reason="admin_delete"
         )
 
-        await db.commit()
+        await self.db.commit()
         return {"deleted": True, "user_id": user_id}
 
     async def delete_avatar(
         self,
-        db: AsyncSession,
         user: models.User,
     ) -> models.User:
-        db_user = await db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
+        db_user = await self.db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
         if db_user.avatar_url:
             await delete_static_file(db_user.avatar_url)
         db_user.avatar_url = None
-        await db.commit()
-        await db.refresh(db_user)
-        await ensure_mfa_relationships_loaded(db, db_user)
+        await self.db.commit()
+        await self.db.refresh(db_user)
+        await ensure_mfa_relationships_loaded(self.db, db_user)
         return db_user
 
     async def delete_cover(
         self,
-        db: AsyncSession,
         user: models.User,
     ) -> models.User:
-        db_user = await db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
+        db_user = await self.db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
         if db_user.cover_url:
             await delete_static_file(db_user.cover_url)
         db_user.cover_url = None
-        await db.commit()
-        await db.refresh(db_user)
-        await ensure_mfa_relationships_loaded(db, db_user)
+        await self.db.commit()
+        await self.db.refresh(db_user)
+        await ensure_mfa_relationships_loaded(self.db, db_user)
         return db_user
 
     async def export_user_data(
-        self, db: AsyncSession, user: models.User, request: Request
+        self, user: models.User, request: Request
     ) -> schemas.DataExportOut:
-        db_user = await db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
-        await ensure_mfa_relationships_loaded(db, db_user)
-        await attach_pending_email(db, db_user)
+        db_user = await self.db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
+        await ensure_mfa_relationships_loaded(self.db, db_user)
+        await attach_pending_email(self.db, db_user)
 
         profile = schemas.UserOut.from_orm(db_user).model_dump()
 
-        sessions_result = await db.execute(
+        sessions_result = await self.db.execute(
             select(models.ActiveSession).where(models.ActiveSession.user_id == user.id)
         )
         sessions = [
@@ -355,7 +347,7 @@ class UserService:
             for session in sessions_result.scalars()
         ]
 
-        notifications_result = await db.execute(
+        notifications_result = await self.db.execute(
             select(models.Notification).where(models.Notification.user_id == user.id)
         )
         notifications = [
@@ -394,7 +386,7 @@ class UserService:
         ]
 
         access_logs = await export_access_logs(
-            db,
+            self.db,
             actor_user_id=user.id,
             subject_user_id=user.id,
             limit=2000,
@@ -414,7 +406,7 @@ class UserService:
 
         self.audit.log("users.data_export", request, user_id=user.id)
         await log_data_access(
-            db,
+            self.db,
             actor_user_id=user.id,
             subject_user_id=user.id,
             resource_type="profile",
@@ -434,7 +426,6 @@ class UserService:
 
     async def delete_user_data(
         self,
-        db: AsyncSession,
         user: models.User,
         request: Request,
         *,
@@ -443,7 +434,7 @@ class UserService:
         if not confirm:
             raise BusinessRuleViolation("errors.users.confirmation_required")
 
-        db_user = await db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
+        db_user = await self.db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
         if not db_user:
             raise EntityNotFound("User", user.id)
         anonymized_email = f"deleted+{user.id}@deleted.example.com"
@@ -466,21 +457,21 @@ class UserService:
         db_user.mfa_default_method = None
         db_user.mfa_last_verified_at = None
 
-        await db.execute(
+        await self.db.execute(
             delete(models.ActiveSession).where(models.ActiveSession.user_id == user.id)
         )
-        await db.execute(
+        await self.db.execute(
             delete(models.MfaChallenge).where(models.MfaChallenge.user_id == user.id)
         )
-        await db.execute(
+        await self.db.execute(
             delete(models.MfaTotpEnrollment).where(
                 models.MfaTotpEnrollment.user_id == user.id
             )
         )
-        await db.execute(
+        await self.db.execute(
             delete(models.Notification).where(models.Notification.user_id == user.id)
         )
-        await db.execute(
+        await self.db.execute(
             delete(models.DataAccessLog).where(
                 or_(
                     models.DataAccessLog.actor_user_id == user.id,
@@ -494,7 +485,7 @@ class UserService:
 
         self.audit.log("users.data_delete", request, user_id=user.id)
         await log_data_access(
-            db,
+            self.db,
             actor_user_id=user.id,
             subject_user_id=user.id,
             resource_type="profile",
@@ -503,6 +494,6 @@ class UserService:
             request=request,
         )
 
-        await db.commit()
-        await db.refresh(db_user)
+        await self.db.commit()
+        await self.db.refresh(db_user)
         return schemas.DataDeletionOut(deleted=True, anonymized_email=anonymized_email)

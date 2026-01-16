@@ -162,6 +162,15 @@ async def notification_queue_shutdown() -> AsyncIterator[None]:
 
 @pytest.fixture(scope="session", autouse=True)
 async def prepare_database() -> AsyncIterator[None]:
+    database_url = os.environ.get("DATABASE_URL", "")
+    is_postgresql = database_url.startswith("postgresql")
+
+    # For PostgreSQL, tables are created via Alembic migrations in CI
+    if is_postgresql:
+        yield
+        return
+
+    # SQLite-specific cleanup and setup
     if os.path.exists("test.db"):
         try:
             os.remove("test.db")
@@ -353,26 +362,27 @@ def mock_background_tasks(monkeypatch: pytest.MonkeyPatch) -> None:
 
         return _stop
 
-    monkeypatch.setattr(
-        "app.core.lifespan.start_notifications_scheduler",
-        _noop,
-    )
-    monkeypatch.setattr(
-        "app.core.lifespan.start_notifications_retention_scheduler",
-        _noop,
-    )
-    monkeypatch.setattr(
-        "app.core.lifespan.start_session_cleanup_scheduler",
-        _noop,
-    )
-    monkeypatch.setattr(
-        "app.core.lifespan.start_story_cleanup_scheduler",
-        _noop,
-    )
-    monkeypatch.setattr(
-        "app.core.lifespan.start_password_reset_cleanup_scheduler",
-        _noop,
-    )
+    # Obsolete patches - functions moved or removed
+    # monkeypatch.setattr(
+    #     "app.core.lifespan.start_notifications_scheduler",
+    #     _noop,
+    # )
+    # monkeypatch.setattr(
+    #     "app.core.lifespan.start_notifications_retention_scheduler",
+    #     _noop,
+    # )
+    # monkeypatch.setattr(
+    #     "app.core.lifespan.start_session_cleanup_scheduler",
+    #     _noop,
+    # )
+    # monkeypatch.setattr(
+    #     "app.core.lifespan.start_story_cleanup_scheduler",
+    #     _noop,
+    # )
+    # monkeypatch.setattr(
+    #     "app.core.lifespan.start_password_reset_cleanup_scheduler",
+    #     _noop,
+    # )
 
     async def _mock_migrations_current(conn=None) -> tuple[bool, set[str], set[str]]:
         return True, set(), set()

@@ -17,6 +17,8 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
     from app.core.event_dlq import DeadLetterQueue
 
 logger = logging.getLogger(__name__)
@@ -154,6 +156,76 @@ class NotificationSent(DomainEvent):
     @property
     def event_type(self) -> str:
         return "notification.sent"
+
+
+class EventEmitterMixin:
+    """Mixin for models that emit domain events to be persisted."""
+
+    def record_event(self, event: DomainEvent) -> None:
+        """Queue a domain event for persistence."""
+        if not hasattr(self, "_pending_domain_events"):
+            self._pending_domain_events: list[DomainEvent] = []
+        self._pending_domain_events.append(event)
+
+    def clear_events(self) -> None:
+        """Clear all pending events."""
+        self._pending_domain_events = []
+
+
+def capture_domain_events(
+    session: Session, flush_context: Any, instances: Any = None
+) -> None:
+    """SQLAlchemy listener to capture and persist domain events to the database."""
+    from app.models.domain_events import StoredEvent
+
+    events_to_store = []
+
+    # Check all objects in session for pending events
+    # We use session.new | session.dirty | session.deleted to catch all changes
+    for obj in session.new | session.dirty | session.deleted:
+        if isinstance(obj, EventEmitterMixin) and hasattr(
+            obj, "_pending_domain_events"
+        ):
+            for event_data in obj._pending_domain_events:
+                # payload = asdict(event_data) # But event_data might have metadata we don't want in payload
+                # We'll use a simpler approach: serialize the entire event if possible,
+                # or just use its __dict__ without the base DomainEvent fields.
+
+                payload = {
+                    k: v
+                    for k, v in event_data.__dict__.items()
+                    if k not in ("event_id", "occurred_at", "metadata")
+                }
+
+                stored_event = StoredEvent(
+                    event_type=event_data.event_type,
+                    aggregate_type=obj.__class__.__name__,
+                    aggregate_id=str(getattr(obj, "id", "unknown")),
+                    payload=payload,
+                    metadata_={
+                        "event_id": event_data.event_id,
+                        "occurred_at": event_data.occurred_at.isoformat(),
+                        "correlation_id": event_data.metadata.correlation_id,
+                        "user_id": event_data.metadata.user_id,
+                    },
+                )
+                events_to_store.append(stored_event)
+
+            # Clear pending events after capturing
+            obj.clear_events()
+
+    if events_to_store:
+        for event_to_add in events_to_store:
+            session.add(event_to_add)
+
+
+def register_event_listeners():
+    """Register domain event capturing listeners for all sessions."""
+    from sqlalchemy import event as sa_event
+    from sqlalchemy.orm import Session
+
+    sa_event.listen(Session, "after_flush", capture_domain_events)
+    logger.info("Domain event persistence listeners registered.")
 
 
 class EventBus:
@@ -302,4 +374,7 @@ __all__ = [
     "EventRegistration",
     # Notification events
     "NotificationSent",
+    # Persistence
+    "EventEmitterMixin",
+    "register_event_listeners",
 ]

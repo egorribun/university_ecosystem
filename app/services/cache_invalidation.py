@@ -191,7 +191,7 @@ class CacheInvalidator:
             # Keys are invalidated when exiting the context
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._keys: list[str] = []
 
     def schedule(self, group_id: int) -> None:

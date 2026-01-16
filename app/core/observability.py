@@ -373,15 +373,17 @@ def _configure_otel(engine: AsyncEngine) -> TracerProvider | None:
                 meter_provider=meter_provider if settings.enable_otel_metrics else None,
             )
             _sqlalchemy_instrumented = True
-        except Exception:
-            pass
+        except RuntimeError:
+            # Already instrumented or engine incompatible
+            _sqlalchemy_instrumented = True
 
     # Instrument Redis if not already instrumented
     try:
         RedisInstrumentor().instrument(
             tracer_provider=tracer_provider,
         )
-    except Exception:
+    except RuntimeError:
+        # Already instrumented
         pass
 
     # Instrument HTTPX if not already instrumented
@@ -389,7 +391,8 @@ def _configure_otel(engine: AsyncEngine) -> TracerProvider | None:
         HTTPXClientInstrumentor().instrument(
             tracer_provider=tracer_provider,
         )
-    except Exception:
+    except RuntimeError:
+        # Already instrumented
         pass
 
     _otel_configured = True
@@ -416,7 +419,8 @@ def configure_observability(app: FastAPI, *, engine: AsyncEngine) -> None:
                     tracer_provider=trace.get_tracer_provider(),
                     meter_provider=metrics.get_meter_provider(),
                 )
-            except Exception:
+            except RuntimeError:
+                # Already instrumented
                 pass
             app.state.otel_instrumented = True
 

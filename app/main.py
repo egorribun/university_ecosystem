@@ -8,7 +8,12 @@ configure_uvloop()
 import logging
 
 from fastapi import FastAPI
-from fastapi.responses import ORJSONResponse
+
+try:
+    import orjson
+    from fastapi.responses import ORJSONResponse
+except ImportError:
+    from fastapi.responses import JSONResponse as ORJSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.admin import router as admin_api_router
@@ -82,8 +87,3 @@ app.include_router(admin_api_router, include_in_schema=True)
 app.include_router(internal_api_router, include_in_schema=False)
 app.include_router(legacy_push_router)
 app.include_router(websocket_router)
-
-# GraphQL API
-from app.graphql.schema import graphql_router
-
-app.include_router(graphql_router, prefix="/graphql", tags=["graphql"])

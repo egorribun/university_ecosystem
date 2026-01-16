@@ -17,10 +17,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import crud
 from app.api.deps import (
-    get_audit_service,
     get_current_user,
     require_fresh_mfa,
     require_fresh_mfa_for_enrollment,
+)
+from app.api.validation import (
+    raise_http_error,
+    raise_unauthorized,
 )
 from app.auth import mfa
 from app.auth.security import (
@@ -28,12 +31,15 @@ from app.auth.security import (
     decode_token,
     verify_and_update_password,
 )
+from app.core import metrics
 from app.core.config import settings
+from app.core.container import get_audit_service
 from app.core.database import get_db
 from app.core.localization import resolve_locale, translate
 from app.models.models import (
     ActiveSession,
     FailedLoginAttempt,
+    LoginHistory,
     MfaTotpEnrollment,
     User,
 )
@@ -41,6 +47,7 @@ from app.models.user_loaders import ensure_mfa_relationships_loaded
 from app.schemas.schemas import (
     MfaFactorStatusOut,
     MfaTotpEnrollmentOut,
+    RecoveryCodesGenerateOut,
     SessionSigningKeyOut,
     TokenWithProfile,
     UserCreate,
@@ -50,6 +57,7 @@ from app.schemas.schemas import (
     WebAuthnRegistrationVerifyIn,
 )
 from app.services.audit_service import AuditService
+from app.tasks.email import send_lockout_alert
 from app.utils.encryption import encrypt_string
 from app.utils.ratelimit import sensitive_route_limit
 
@@ -127,7 +135,9 @@ class TotpEnrollmentConfirmIn(BaseModel):
 
 
 class MfaVerifyIn(BaseModel):
-    method: Literal[mfa.MFA_METHOD_TOTP, mfa.MFA_METHOD_WEBAUTHN]
+    method: Literal[
+        mfa.MFA_METHOD_TOTP, mfa.MFA_METHOD_WEBAUTHN, mfa.MFA_METHOD_RECOVERY_CODE
+    ]
     challenge_token: str
     code: str | None = None
     webauthn_response: dict[str, Any] | None = None
@@ -600,6 +610,34 @@ def _lockout_message(locale: str, lock_until: datetime) -> tuple[str, int]:
     return detail, retry_after
 
 
+async def _record_login_history(
+    db: AsyncSession,
+    user_id: int | None,
+    ip_address: str | None,
+    user_agent: str | None,
+    status_value: str,
+    is_suspicious: bool = False,
+) -> None:
+    """Record a login attempt in the login_history table with geolocation."""
+    from app.services.geolocation import GeolocationService
+
+    location = GeolocationService().resolve(ip_address or "")
+
+    entry = LoginHistory(
+        user_id=user_id,
+        ip_address=ip_address or "unknown",
+        user_agent=user_agent[:512] if user_agent else None,
+        country=location.country,
+        city=location.city,
+        latitude=location.latitude,
+        longitude=location.longitude,
+        status=status_value,
+        is_suspicious=is_suspicious,
+    )
+    db.add(entry)
+    await db.flush()
+
+
 async def _perform_login(
     email: str,
     password: str,
@@ -629,10 +667,16 @@ async def _perform_login(
             reason="locked",
             extra={"lock_until": lock_until.isoformat()},
         )
-        raise HTTPException(
-            status_code=status.HTTP_423_LOCKED,
-            detail=detail,
+        metrics.record_login_failure(reason="locked")
+        duration_text = detail.replace(
+            translate("errors.auth.account_locked", locale=locale), ""
+        ).strip()
+        raise_http_error(
+            status.HTTP_423_LOCKED,
+            "errors.auth.account_locked",
+            locale,
             headers={"Retry-After": str(retry_after)},
+            duration=duration_text,
         )
 
     if not user:
@@ -657,15 +701,22 @@ async def _perform_login(
                     "attempts": attempts,
                 },
             )
+            await send_lockout_alert.kiq(
+                normalized_email,
+                "",  # Full name not known/verified at this stage
+                base_locale,
+            )
+            metrics.record_login_failure(reason="locked")
             raise HTTPException(
                 status_code=status.HTTP_423_LOCKED,
                 detail=detail,
                 headers={"Retry-After": str(retry_after)},
             )
+        metrics.record_login_failure(reason="invalid_credentials")
         message = translate("errors.auth.credentials_invalid", locale=base_locale)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=message,
+        raise_unauthorized(
+            base_locale,
+            "errors.auth.credentials_invalid",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -694,15 +745,26 @@ async def _perform_login(
                     "attempts": attempts,
                 },
             )
-            raise HTTPException(
-                status_code=status.HTTP_423_LOCKED,
-                detail=detail,
-                headers={"Retry-After": str(retry_after)},
+            await send_lockout_alert.kiq(
+                normalized_email,
+                user.full_name or "",
+                locale,
             )
+            metrics.record_login_failure(reason="locked")
+            raise_http_error(
+                status.HTTP_423_LOCKED,
+                "errors.auth.account_locked",
+                locale,
+                headers={"Retry-After": str(retry_after)},
+                duration=detail.replace(
+                    translate("errors.auth.account_locked", locale=locale), ""
+                ).strip(),
+            )
+        metrics.record_login_failure(reason="invalid_credentials")
         message = translate("errors.auth.credentials_invalid", locale=locale)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=message,
+        raise_unauthorized(
+            locale,
+            "errors.auth.credentials_invalid",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -714,10 +776,11 @@ async def _perform_login(
             user_id=user.id,
             reason="inactive_user",
         )
+        metrics.record_login_failure(reason="inactive_user")
         message = translate("errors.auth.user_deactivated", locale=locale)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=message,
+        raise_unauthorized(
+            locale,
+            "errors.auth.user_deactivated",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
@@ -846,6 +909,8 @@ async def _perform_login(
         user_id=user.id,
         reason="authenticated",
     )
+    metrics.record_login_success(method="password")
+    await _record_login_history(db, user.id, client_ip, user_agent, "success")
     return await _build_token_response(db, user, token, session)
 
 
@@ -1006,6 +1071,7 @@ async def login_passkey_verify(
         reason="passkey_authenticated",
         extra={"session_id": session.id},
     )
+    metrics.record_login_success(method="passkey")
 
     return await _build_token_response(db, user, token, session)
 
@@ -1342,6 +1408,28 @@ async def list_webauthn_credentials(
     ]
 
 
+@router.post(
+    "/mfa/recovery-codes",
+    response_model=RecoveryCodesGenerateOut,
+    dependencies=[Depends(require_fresh_mfa_for_enrollment)],
+)
+async def generate_recovery_codes_endpoint(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    codes = await mfa.generate_recovery_codes(db, user=user)
+    await db.commit()
+
+    _audit_log(
+        "auth.mfa.recovery_codes.generated",
+        request,
+        user_id=user.id,
+        reason="user_request",
+    )
+    return RecoveryCodesGenerateOut(codes=codes, created_at=datetime.now(UTC))
+
+
 @router.delete("/mfa/webauthn/{credential_id}", response_model=MfaFactorStatusOut)
 async def delete_webauthn_credential(
     credential_id: int,
@@ -1387,26 +1475,54 @@ async def verify_mfa_challenge(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
+    expected_type = mfa.CHALLENGE_TYPE_TOTP_VERIFY
     if payload.method == mfa.MFA_METHOD_WEBAUTHN:
         expected_type = mfa.CHALLENGE_TYPE_WEBAUTHN_AUTH
-    else:
-        expected_type = mfa.CHALLENGE_TYPE_TOTP_VERIFY
 
-    try:
-        challenge = await mfa.get_challenge(
-            db,
-            token=payload.challenge_token,
-            challenge_type=expected_type,
-            consume=False,
-        )
-    except HTTPException as exc:
-        _audit_log(
-            "auth.mfa.verify.failure",
-            request,
-            reason="challenge_lookup",
-            extra={"method": payload.method, "status_code": exc.status_code},
-        )
-        raise
+    challenge: mfa.MfaChallenge | None = None
+    if payload.method == mfa.MFA_METHOD_RECOVERY_CODE:
+        # Try finding any valid challenge for verification context
+        for c_type in [
+            mfa.CHALLENGE_TYPE_TOTP_VERIFY,
+            mfa.CHALLENGE_TYPE_WEBAUTHN_AUTH,
+        ]:
+            try:
+                challenge = await mfa.get_challenge(
+                    db,
+                    token=payload.challenge_token,
+                    challenge_type=c_type,
+                    consume=False,
+                )
+                break
+            except HTTPException:
+                continue
+        if not challenge:
+            _audit_log(
+                "auth.mfa.verify.failure",
+                request,
+                reason="challenge_lookup",
+                extra={"method": payload.method},
+            )
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "Invalid or expired challenge"
+            )
+    else:
+        try:
+            challenge = await mfa.get_challenge(
+                db,
+                token=payload.challenge_token,
+                challenge_type=expected_type,
+                consume=False,
+            )
+        except HTTPException as exc:
+            _audit_log(
+                "auth.mfa.verify.failure",
+                request,
+                reason="challenge_lookup",
+                extra={"method": payload.method, "status_code": exc.status_code},
+            )
+            raise
+
     user = await db.get(User, challenge.user_id)
     if not user or not user.is_active:
         _audit_log(
@@ -1486,6 +1602,19 @@ async def verify_mfa_challenge(
                 raise HTTPException(
                     status.HTTP_400_BAD_REQUEST, f"WebAuthn verification failed: {exc}"
                 )
+
+        elif payload.method == mfa.MFA_METHOD_RECOVERY_CODE:
+            if not payload.code:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST, "Recovery code required"
+                )
+            verified = await mfa.verify_recovery_code(db, user=user, code=payload.code)
+            if not verified:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST, "Invalid recovery code"
+                )
+            # Consume challenge since verification succeeded
+            await mfa.consume_challenge(db, challenge)
 
         else:
             if not payload.code:

@@ -39,7 +39,7 @@ class LRUCache(Generic[T]):
     Uses OrderedDict for O(1) access and eviction.
     """
 
-    def __init__(self, max_size: int = 1000, default_ttl: float = 30.0):
+    def __init__(self, max_size: int = 1000, default_ttl: float = 30.0) -> None:
         """
         Initialize LRU cache.
 

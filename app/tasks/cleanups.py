@@ -1,0 +1,116 @@
+from app.core.config import settings
+from app.core.tkq import broker, scheduler
+from app.services import notification_queue
+from app.services.email_change_cleanup import cleanup_stale_email_change_tokens
+from app.services.mfa_challenge_cleanup import cleanup_stale_mfa_challenges
+from app.services.notifications import cleanup_stale_notifications
+from app.services.partition_manager import ensure_partitions_exist
+from app.services.password_reset_cleanup import cleanup_stale_password_reset_tokens
+from app.services.privacy_cleanup import PrivacyCleanupConfig, cleanup_privacy_artifacts
+from app.services.session_cleanup import cleanup_expired_sessions
+from app.services.story_cleanup import cleanup_expired_stories
+
+
+@broker.task
+async def cleanup_notifications_task() -> None:
+    """Task for cleaning up stale notifications."""
+    if settings.notifications_retention_days > 0:
+        await cleanup_stale_notifications(
+            retention_days=settings.notifications_retention_days
+        )
+
+
+@broker.task
+async def cleanup_dead_letter_jobs_task() -> None:
+    """Task for cleaning up dead lettered jobs."""
+    if settings.notification_queue_dead_letter_retention_days > 0:
+        await notification_queue.cleanup_dead_lettered_jobs(
+            retention_days=settings.notification_queue_dead_letter_retention_days
+        )
+
+
+@broker.task
+async def cleanup_sessions_task() -> None:
+    """Task for cleaning up expired sessions."""
+    await cleanup_expired_sessions()
+
+
+@broker.task
+async def cleanup_stories_task() -> None:
+    """Task for cleaning up expired stories."""
+    if settings.stories_cleanup_enabled:
+        await cleanup_expired_stories()
+
+
+@broker.task
+async def cleanup_password_reset_tokens_task() -> None:
+    """Task for cleaning up stale password reset tokens."""
+    await cleanup_stale_password_reset_tokens(
+        retention_minutes=settings.password_reset_cleanup_retention_minutes
+    )
+
+
+@broker.task
+async def cleanup_email_change_tokens_task() -> None:
+    """Task for cleaning up stale email change tokens."""
+    await cleanup_stale_email_change_tokens(
+        retention_minutes=settings.email_change_cleanup_retention_minutes
+    )
+
+
+@broker.task
+async def cleanup_mfa_challenges_task() -> None:
+    """Task for cleaning up stale MFA challenges."""
+    await cleanup_stale_mfa_challenges()
+
+
+@broker.task
+async def cleanup_privacy_artifacts_task() -> None:
+    """Task for cleaning up privacy artifacts."""
+    config = PrivacyCleanupConfig(
+        session_retention_days=settings.session_retention_days,
+        mfa_retention_days=settings.mfa_retention_days,
+        failed_login_retention_days=settings.failed_login_retention_days,
+        audit_log_retention_days=settings.access_log_retention_days,
+        interval_seconds=settings.privacy_cleanup_interval_seconds,
+    )
+    await cleanup_privacy_artifacts(config=config)
+
+
+@broker.task
+async def manage_partitions_task() -> None:
+    """Task for managing database partitions."""
+    if settings.partition_management_enabled:
+        await ensure_partitions_exist()
+
+
+# Register labels for scheduling if needed, or use the decorative approach
+if settings.environment.lower() not in ("test", "testing"):
+    # Schedule every hour for most cleanups, or based on settings
+
+    # Notifications cleanup every 24 hours
+    cleanup_notifications_task.schedule_by_cron(scheduler, "0 2 * * *")
+
+    # Dead letter cleanup every 24 hours
+    cleanup_dead_letter_jobs_task.schedule_by_cron(scheduler, "0 3 * * *")
+
+    # Sessions cleanup every 6 hours
+    cleanup_sessions_task.schedule_by_cron(scheduler, "0 */6 * * *")
+
+    # Stories cleanup every 1 hour
+    cleanup_stories_task.schedule_by_cron(scheduler, "0 * * * *")
+
+    # Password reset tokens every 1 hour
+    cleanup_password_reset_tokens_task.schedule_by_cron(scheduler, "0 * * * *")
+
+    # Email change tokens every 1 hour
+    cleanup_email_change_tokens_task.schedule_by_cron(scheduler, "0 * * * *")
+
+    # MFA challenges every 1 hour
+    cleanup_mfa_challenges_task.schedule_by_cron(scheduler, "0 * * * *")
+
+    # Privacy artifacts cleanup every 24 hours
+    cleanup_privacy_artifacts_task.schedule_by_cron(scheduler, "0 4 * * *")
+
+    # Partition management every 24 hours
+    manage_partitions_task.schedule_by_cron(scheduler, "0 1 * * *")

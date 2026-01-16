@@ -23,7 +23,7 @@ UpdateSchemaT = TypeVar("UpdateSchemaT")
 class BaseRepository(ABC, Generic[ModelT, CreateSchemaT, UpdateSchemaT]):
     """Abstract base repository for CRUD operations."""
 
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
     @property
@@ -117,7 +117,7 @@ class BaseRepository(ABC, Generic[ModelT, CreateSchemaT, UpdateSchemaT]):
 class ReadOnlyRepository(ABC, Generic[ModelT]):
     """Read-only repository for query operations."""
 
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
     @property

@@ -1,0 +1,207 @@
+/**
+ * ActionMenu - Reusable dropdown menu for card actions
+ *
+ * Handles click-outside dismissal and keyboard navigation.
+ *
+ * @example
+ * ```tsx
+ * <ActionMenu
+ *   items={[
+ *     { label: 'Edit', icon: <EditIcon />, onClick: handleEdit },
+ *     { label: 'Delete', icon: <DeleteIcon />, onClick: handleDelete, variant: 'danger' },
+ *   ]}
+ * />
+ * ```
+ */
+
+import {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  type ReactNode,
+  type MouseEvent,
+  type KeyboardEvent,
+} from "react"
+
+import MoreVertIcon from "@mui/icons-material/MoreVert"
+import { cn } from "@/utils/cn"
+
+export interface ActionMenuItem {
+  /** Menu item label */
+  label: string
+  /** Optional icon */
+  icon?: ReactNode
+  /** Click handler */
+  onClick: () => void
+  /** Variant for styling */
+  variant?: "default" | "danger"
+  /** Whether item is disabled */
+  disabled?: boolean
+  /** Optional aria-label override */
+  ariaLabel?: string
+}
+
+export interface ActionMenuProps {
+  /** Menu items to display */
+  items: ActionMenuItem[]
+  /** Optional trigger button content */
+  trigger?: ReactNode
+  /** Custom class for trigger button */
+  triggerClassName?: string
+  /** Custom class for menu container */
+  menuClassName?: string
+  /** Placement of menu */
+  placement?: "bottom-end" | "bottom-start"
+  /** Aria label for trigger button */
+  ariaLabel?: string
+}
+
+export const ActionMenu = ({
+  items,
+  trigger,
+  triggerClassName,
+  menuClassName,
+  placement = "bottom-end",
+  ariaLabel = "Open menu",
+}: ActionMenuProps) => {
+  const [isOpen, setIsOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+
+  const handleToggle = useCallback((event: MouseEvent) => {
+    event.stopPropagation()
+    setIsOpen((prev) => !prev)
+  }, [])
+
+  const handleClose = useCallback(() => {
+    setIsOpen(false)
+    triggerRef.current?.focus()
+  }, [])
+
+  const handleItemClick = useCallback(
+    (item: ActionMenuItem) => (event: MouseEvent) => {
+      event.stopPropagation()
+      if (!item.disabled) {
+        item.onClick()
+        handleClose()
+      }
+    },
+    [handleClose]
+  )
+
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLButtonElement | HTMLDivElement>) => {
+      if (event.key === "Escape") {
+        handleClose()
+      } else if (event.key === "ArrowDown" && isOpen) {
+        event.preventDefault()
+        const firstItem = menuRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")
+        firstItem?.focus()
+      }
+    },
+    [handleClose, isOpen]
+  )
+
+  const handleItemKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+      const menuItems =
+        menuRef.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")
+      if (!menuItems) return
+
+      if (event.key === "ArrowDown") {
+        event.preventDefault()
+        const nextIndex = (index + 1) % menuItems.length
+        menuItems[nextIndex]?.focus()
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault()
+        const prevIndex = (index - 1 + menuItems.length) % menuItems.length
+        menuItems[prevIndex]?.focus()
+      } else if (event.key === "Escape") {
+        handleClose()
+      }
+    },
+    [handleClose]
+  )
+
+  // Click outside handler
+  useEffect(() => {
+    if (!isOpen) return
+
+    const handleClickOutside = (event: globalThis.MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        handleClose()
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [isOpen, handleClose])
+
+  const placementStyles = {
+    "bottom-end": "right-0",
+    "bottom-start": "left-0",
+  }
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={handleToggle}
+        onKeyDown={handleKeyDown}
+        aria-label={ariaLabel}
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+        className={cn(
+          "flex h-8 w-8 items-center justify-center rounded-full text-[color:var(--page-text)]/70 transition-colors hover:bg-[color:var(--glass-bg)] hover:text-[color:var(--page-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]",
+          triggerClassName
+        )}
+      >
+        {trigger ?? <MoreVertIcon fontSize="small" />}
+      </button>
+
+      {isOpen && (
+        <div
+          ref={menuRef}
+          role="menu"
+          tabIndex={-1}
+          onKeyDown={handleKeyDown}
+          className={cn(
+            "absolute top-full z-50 mt-1 min-w-[160px] overflow-hidden rounded-lg border border-[color:var(--page-text)]/10 bg-surface shadow-lg",
+            placementStyles[placement],
+            menuClassName
+          )}
+        >
+          {items.map((item, index) => (
+            <button
+              key={item.label}
+              type="button"
+              role="menuitem"
+              disabled={item.disabled}
+              onClick={handleItemClick(item)}
+              onKeyDown={(e) => handleItemKeyDown(e, index)}
+              aria-label={item.ariaLabel}
+              className={cn(
+                "flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium transition-colors",
+                "hover:bg-[color:var(--glass-bg)] focus-visible:bg-[color:var(--glass-bg)] focus-visible:outline-none",
+                item.variant === "danger"
+                  ? "text-red-400 hover:text-red-300"
+                  : "text-[color:var(--page-text)]",
+                item.disabled && "cursor-not-allowed opacity-50"
+              )}
+            >
+              {item.icon && (
+                <span className="flex-shrink-0 [&>svg]:h-4 [&>svg]:w-4">{item.icon}</span>
+              )}
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+ActionMenu.displayName = "ActionMenu"

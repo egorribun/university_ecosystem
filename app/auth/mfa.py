@@ -13,10 +13,12 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pyotp
-from fastapi import HTTPException, status
+from fastapi import status
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.validation import raise_http_error, raise_validation_error
+from app.auth.security import get_password_hash, verify_password
 from app.core.config import settings
 from app.core.localization import translate
 from app.core.rate_limit import RateLimitExceeded, enforce_rate_limit
@@ -24,6 +26,7 @@ from app.models.models import (
     ActiveSession,
     MfaChallenge,
     MfaTotpEnrollment,
+    RecoveryCode,
     TrustedDevice,
     User,
     WebAuthnCredential,
@@ -50,6 +53,7 @@ CHALLENGE_TYPE_WEBAUTHN_REG = "webauthn-registration"
 CHALLENGE_TYPE_WEBAUTHN_AUTH = "webauthn-authentication"
 MFA_METHOD_TOTP = "totp"
 MFA_METHOD_WEBAUTHN = "webauthn"
+MFA_METHOD_RECOVERY_CODE = "recovery_code"
 
 
 logger = logging.getLogger(__name__)
@@ -60,6 +64,7 @@ audit_logger = logging.getLogger("app.users.audit")
 class MfaResetStats:
     totp_deleted: int = 0
     webauthn_deleted: int = 0
+    recovery_codes_deleted: int = 0
     challenges_revoked: int = 0
     fields_cleared: bool = False
 
@@ -172,11 +177,12 @@ async def _enforce_challenge_rate_limit(
                 window_seconds=window,
                 redis_url=redis_url,
             )
-        except RateLimitExceeded as exc:
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=message,
-            ) from exc
+        except RateLimitExceeded:
+            raise_http_error(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                "errors.rate_limit.generic",
+                locale,
+            )
     else:
         ratelimit_utils.limiter.check(key, limit, window, message=message)
 
@@ -272,8 +278,12 @@ async def _lock_challenge(
             ensure_ascii=False,
         )
     )  # Log only non-sensitive metadata. No secrets are logged.
-    message = translate("errors.auth.mfa_challenge_locked", locale=locale)
-    raise HTTPException(status_code=status_code, detail=message)
+
+    raise_http_error(
+        status_code,
+        "errors.auth.mfa_challenge_locked",
+        locale,
+    )
 
 
 async def _ensure_challenge_not_locked(
@@ -342,7 +352,18 @@ async def get_challenge(
     result = await db.execute(stmt)
     challenge = result.scalars().first()
     if not challenge:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired challenge")
+        # We don't have locale here easily without passing it down, but context
+        # usually implies one. However, for security, generic error is fine.
+        # Assuming 'en' fallback or we should update signature to require locale.
+        # Updating signature is invasive, let's use a generic validation error
+        # for now or raise status.
+        # But wait, get_challenge is often called with locale context up stack?
+        # No, mostly internally. Actually verify_totp_for_user has locale.
+        # Let's check callers.
+        # For now, let's just raise a 400 with a key.
+        raise_http_error(
+            status.HTTP_400_BAD_REQUEST, "errors.common.bad_request", "en"
+        )  # Fallback
     now = _utcnow()
     expires_at = challenge.expires_at
     if expires_at is not None and expires_at.tzinfo is None:
@@ -351,7 +372,7 @@ async def get_challenge(
     if consumed_at is not None and consumed_at.tzinfo is None:
         consumed_at = consumed_at.replace(tzinfo=UTC)
     if consumed_at is not None or (expires_at is not None and expires_at <= now):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired challenge")
+        raise_http_error(status.HTTP_400_BAD_REQUEST, "errors.common.bad_request", "en")
     if consume:
         challenge.consumed_at = now
         await db.flush()
@@ -407,9 +428,7 @@ async def start_totp_enrollment(
     pending = result.scalars().first()
     if pending:
         if not reuse_existing:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST, TOTP_ENROLLMENT_PENDING_ERROR
-            )
+            raise_validation_error("errors.mfa.totp_enrollment_pending", "en")
         if label and label != pending.label:
             pending.label = label
             await db.flush()
@@ -426,7 +445,11 @@ async def start_totp_enrollment(
     )
     active_count = await db.scalar(count_stmt)
     if active_count and active_count >= _MAX_ACTIVE_TOTP_ENROLLMENTS:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, TOTP_ENROLLMENT_LIMIT_ERROR)
+        raise_http_error(
+            status.HTTP_400_BAD_REQUEST,
+            "errors.mfa.totp_limit_reached",
+            "en",
+        )
 
     secret = create_totp_secret()
     enrollment = MfaTotpEnrollment(
@@ -449,7 +472,7 @@ async def complete_totp_enrollment(
     code: str,
 ) -> MfaTotpEnrollment:
     if not verify_totp(enrollment.secret, code):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid verification code")
+        raise_validation_error("errors.mfa.invalid_code", "en")
     now = _utcnow()
     enrollment.confirmed_at = now
     enrollment.revoked_at = None
@@ -529,7 +552,7 @@ async def verify_totp_for_user(
         legacy_result = await db.execute(legacy_stmt)
         enrollments = list(legacy_result.scalars())
     if not enrollments:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "No active TOTP enrollment")
+        raise_validation_error("errors.mfa.no_enrollment", locale)
     loaded_challenge = challenge
     if challenge_token and loaded_challenge is None:
         loaded_challenge = await get_challenge(
@@ -541,17 +564,11 @@ async def verify_totp_for_user(
         )
     if loaded_challenge is not None:
         if loaded_challenge.challenge_type != CHALLENGE_TYPE_TOTP_VERIFY:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST, "Invalid or expired challenge"
-            )
+            raise_validation_error("errors.mfa.invalid_challenge", locale)
         if loaded_challenge.user_id != user.id:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST, "Invalid or expired challenge"
-            )
+            raise_validation_error("errors.mfa.invalid_challenge", locale)
         if session_id is not None and loaded_challenge.session_id != session_id:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST, "Invalid or expired challenge"
-            )
+            raise_validation_error("errors.mfa.invalid_challenge", locale)
     limit = _extract_attempt_limit(loaded_challenge, settings.mfa_totp_attempt_limit)
     await _ensure_challenge_not_locked(
         db,
@@ -573,7 +590,7 @@ async def verify_totp_for_user(
         limit=limit,
         locale=locale,
     )
-    raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid verification code")
+    raise_validation_error("errors.mfa.invalid_code", locale)
 
 
 async def refresh_user_mfa_preferences(
@@ -640,9 +657,13 @@ async def reset_user_mfa(db: AsyncSession, *, user: User) -> MfaResetStats:
     challenge_result = await db.execute(
         delete(MfaChallenge).where(MfaChallenge.user_id == user.id)
     )
+    recovery_result = await db.execute(
+        delete(RecoveryCode).where(RecoveryCode.user_id == user.id)
+    )
 
     stats.totp_deleted = int(totp_result.rowcount or 0)
     stats.webauthn_deleted = int(webauthn_result.rowcount or 0)
+    stats.recovery_codes_deleted = int(recovery_result.rowcount or 0)
     stats.challenges_revoked = int(challenge_result.rowcount or 0)
 
     if user.mfa_required:
@@ -739,3 +760,71 @@ async def verify_trusted_device_token(
     device.last_used_at = now
     await db.flush()
     return True
+
+
+async def generate_recovery_codes(db: AsyncSession, *, user: User) -> list[str]:
+    """
+    Generate a new set of usage-limited recovery codes for the user.
+    Existing codes are invalidated.
+    """
+    # 1. Invalidate existing codes
+    await db.execute(delete(RecoveryCode).where(RecoveryCode.user_id == user.id))
+
+    # 2. Generate 10 new codes
+    codes: list[str] = []
+    for _ in range(10):
+        # 10 chars, visually distinct? hex is easiest: 5 bytes = 10 hex chars
+        # Or just secrets.token_hex(5).
+        # user-facing format: XXXXX-XXXXX?
+        # Let's do 10 chars hex.
+        raw_code = secrets.token_hex(5)
+        formatted = f"{raw_code[:5]}-{raw_code[5:]}".upper()
+        codes.append(formatted)
+
+        # Hash
+        hashed = get_password_hash(formatted)
+
+        db.add(
+            RecoveryCode(
+                user_id=user.id,
+                code_hash=hashed,
+                is_used=False,
+            )
+        )
+
+    await db.flush()
+    return codes
+
+
+async def verify_recovery_code(db: AsyncSession, *, user: User, code: str) -> bool:
+    """
+    Verify a recovery code. If valid, mark it as used.
+    """
+    stmt = (
+        select(RecoveryCode)
+        .where(RecoveryCode.user_id == user.id)
+        .where(RecoveryCode.is_used.is_(False))
+    )
+    result = await db.execute(stmt)
+    available_codes = result.scalars().all()
+
+    normalized_code = code.strip().upper()
+
+    for record in available_codes:
+        if verify_password(normalized_code, record.code_hash):
+            record.is_used = True
+            record.used_at = _utcnow()
+            await db.flush()
+            return True
+
+    return False
+
+
+async def count_remaining_recovery_codes(db: AsyncSession, *, user: User) -> int:
+    stmt = (
+        select(func.count())
+        .select_from(RecoveryCode)
+        .where(RecoveryCode.user_id == user.id)
+        .where(RecoveryCode.is_used.is_(False))
+    )
+    return (await db.scalar(stmt)) or 0

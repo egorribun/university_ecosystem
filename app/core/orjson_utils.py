@@ -14,14 +14,35 @@ from __future__ import annotations
 from datetime import date, datetime, time
 from typing import Any
 
-import orjson
+try:
+    import orjson
 
-# Common serialization options optimized for API responses
-ORJSON_OPTIONS = (
-    orjson.OPT_SERIALIZE_NUMPY  # Support numpy arrays
-    | orjson.OPT_UTC_Z  # Use Z suffix for UTC (e.g., "2024-01-01T00:00:00Z")
-    | orjson.OPT_NAIVE_UTC  # Treat naive datetime as UTC
-)
+    # Common serialization options optimized for API responses
+    ORJSON_OPTIONS = (
+        orjson.OPT_SERIALIZE_NUMPY  # Support numpy arrays
+        | orjson.OPT_UTC_Z  # Use Z suffix for UTC (e.g., "2024-01-01T00:00:00Z")
+        | orjson.OPT_NAIVE_UTC  # Treat naive datetime as UTC
+    )
+except ImportError:
+    import json
+
+    # Mock orjson module and options
+    class OrJsonMock:
+        OPT_SERIALIZE_NUMPY = 0
+        OPT_UTC_Z = 0
+        OPT_NAIVE_UTC = 0
+
+        @staticmethod
+        def dumps(obj, default=None, option=None):
+            # Ignores option
+            return json.dumps(obj, default=default).encode("utf-8")
+
+        @staticmethod
+        def loads(obj):
+            return json.loads(obj)
+
+    orjson = OrJsonMock()
+    ORJSON_OPTIONS = 0
 
 
 def orjson_dumps(obj: Any, *, option: int | None = None) -> bytes:

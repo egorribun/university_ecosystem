@@ -10,24 +10,25 @@ from fastapi import (
     BackgroundTasks,
     Depends,
     File,
-    HTTPException,
     Query,
     Request,
     UploadFile,
-    status,
 )
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
-    get_audit_service,
-    get_auth_service,
     get_current_user,
-    get_user_service,
     require_fresh_mfa,
 )
+from app.api.validation import raise_validation_error, require_admin
+from app.core.container import (
+    get_audit_service,
+    get_auth_service,
+    get_user_service,
+)
 from app.core.database import get_db
-from app.core.localization import resolve_locale, translate
+from app.core.localization import resolve_locale
 from app.models import models
 from app.schemas import schemas
 from app.services.audit_service import AuditService
@@ -63,31 +64,19 @@ def _enforce_profile_cache_integrity(request: Request) -> None:
     locale = resolve_locale(request=request)
     session = getattr(request.state, "active_session", None)
     if session is None or not getattr(session, "signing_key", None):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=translate("errors.sessions.signing_key_missing", locale=locale),
-        )
+        raise_validation_error("errors.sessions.signing_key_missing", locale)
 
     try:
         candidate = json.loads(raw_envelope)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=translate("errors.profile_cache.invalid_envelope", locale=locale),
-        ) from exc
+    except json.JSONDecodeError:
+        raise_validation_error("errors.profile_cache.invalid_envelope", locale)
 
     if not isinstance(candidate, dict):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=translate("errors.profile_cache.invalid_envelope", locale=locale),
-        )
+        raise_validation_error("errors.profile_cache.invalid_envelope", locale)
 
     signature = candidate.get("signature")
     if not isinstance(signature, str) or not signature:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=translate("errors.profile_cache.invalid_signature", locale=locale),
-        )
+        raise_validation_error("errors.profile_cache.invalid_signature", locale)
 
     payload = {
         "version": candidate.get("version"),
@@ -100,10 +89,7 @@ def _enforce_profile_cache_integrity(request: Request) -> None:
         or payload["expiresAt"] is None
         or payload["data"] is None
     ):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=translate("errors.profile_cache.invalid_envelope", locale=locale),
-        )
+        raise_validation_error("errors.profile_cache.invalid_envelope", locale)
 
     payload_json = json.dumps(payload, separators=(",", ":"))
     digest = hmac.new(
@@ -114,10 +100,7 @@ def _enforce_profile_cache_integrity(request: Request) -> None:
     expected_signature = base64.b64encode(digest).decode("ascii")
 
     if not hmac.compare_digest(signature, expected_signature):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=translate("errors.profile_cache.invalid_signature", locale=locale),
-        )
+        raise_validation_error("errors.profile_cache.invalid_signature", locale)
 
 
 @password_router.post(
@@ -128,10 +111,9 @@ async def forgot_password(
     payload: schemas.ForgotPasswordIn,
     request: Request,
     bg: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
     auth_service: AuthService = Depends(get_auth_service),
 ):
-    await auth_service.initiate_password_reset(db, payload.email, request, bg)
+    await auth_service.initiate_password_reset(payload.email, request, bg)
     return {"ok": True}
 
 
@@ -142,12 +124,9 @@ async def forgot_password(
 async def reset_password(
     payload: schemas.ResetPasswordIn,
     request: Request,
-    db: AsyncSession = Depends(get_db),
     auth_service: AuthService = Depends(get_auth_service),
 ):
-    await auth_service.perform_password_reset(
-        db, payload.token, payload.password, request
-    )
+    await auth_service.perform_password_reset(payload.token, payload.password, request)
     return {"ok": True}
 
 
@@ -175,11 +154,10 @@ async def me(
 async def update_me(
     data: schemas.UserProfileUpdate,
     request: Request,
-    db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
     service: UserService = Depends(get_user_service),
 ):
-    return await service.update_user_profile(db, user, data, request)
+    return await service.update_user_profile(user, data, request)
 
 
 @users_router.post(
@@ -192,11 +170,10 @@ async def change_email(
     request: Request,
     bg: BackgroundTasks,
     _: None = Depends(require_fresh_mfa),
-    db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
     auth_service: AuthService = Depends(get_auth_service),
 ):
-    return await auth_service.initiate_email_change(db, user, payload, request, bg)
+    return await auth_service.initiate_email_change(user, payload, request, bg)
 
 
 @users_router.post(
@@ -207,11 +184,10 @@ async def change_email(
 async def confirm_email_change(
     payload: schemas.UserEmailConfirmIn,
     request: Request,
-    db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
     auth_service: AuthService = Depends(get_auth_service),
 ):
-    return await auth_service.confirm_email_change(db, user, payload.token, request)
+    return await auth_service.confirm_email_change(user, payload.token, request)
 
 
 @users_router.post(
@@ -223,11 +199,10 @@ async def change_password(
     payload: schemas.UserPasswordChangeIn,
     request: Request,
     _: None = Depends(require_fresh_mfa),
-    db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
     auth_service: AuthService = Depends(get_auth_service),
 ):
-    ok, revoked = await auth_service.change_password(db, user, payload, request)
+    ok, revoked = await auth_service.change_password(user, payload, request)
     return schemas.PasswordChangeOut(ok=ok, revoked_sessions=revoked)
 
 
@@ -239,11 +214,10 @@ async def change_password(
 async def export_me(
     request: Request,
     _: None = Depends(require_fresh_mfa),
-    db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
     service: UserService = Depends(get_user_service),
 ):
-    return await service.export_user_data(db, user, request)
+    return await service.export_user_data(user, request)
 
 
 @users_router.post(
@@ -255,11 +229,10 @@ async def delete_me(
     payload: schemas.DataDeletionRequest,
     request: Request,
     _: None = Depends(require_fresh_mfa),
-    db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
     service: UserService = Depends(get_user_service),
 ):
-    return await service.delete_user_data(db, user, request, confirm=payload.confirm)
+    return await service.delete_user_data(user, request, confirm=payload.confirm)
 
 
 @users_router.post("/me/avatar", response_model=schemas.UserOut)
@@ -267,11 +240,10 @@ async def upload_avatar(
     file: UploadFile = File(...),
     *,
     request: Request,
-    db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
     service: UserService = Depends(get_user_service),
 ):
-    return await service.upload_avatar(db, user, file, request)
+    return await service.upload_avatar(user, file, request)
 
 
 @users_router.post("/me/cover", response_model=schemas.UserOut)
@@ -279,48 +251,43 @@ async def upload_cover(
     file: UploadFile = File(...),
     *,
     request: Request,
-    db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
     service: UserService = Depends(get_user_service),
 ):
-    return await service.upload_cover(db, user, file, request)
+    return await service.upload_cover(user, file, request)
 
 
 @users_router.delete("/me/avatar", response_model=schemas.UserOut)
 async def delete_avatar(
     request: Request,
-    db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
     service: UserService = Depends(get_user_service),
 ):
-    return await service.delete_avatar(db, user)
+    return await service.delete_avatar(user)
 
 
 @users_router.delete("/me/cover", response_model=schemas.UserOut)
 async def delete_cover(
     request: Request,
-    db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
     service: UserService = Depends(get_user_service),
 ):
-    return await service.delete_cover(db, user)
+    return await service.delete_cover(user)
 
 
 @users_router.post("", response_model=schemas.UserOut)
 async def create_user(
     data: schemas.UserCreate,
     request: Request,
-    db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
     service: UserService = Depends(get_user_service),
 ):
-    return await service.create_user(db, data, request, user)
+    return await service.create_user(data, request, user)
 
 
 @users_router.get("", response_model=list[schemas.UserOut])
 async def get_users(
     request: Request,
-    db: AsyncSession = Depends(get_db),
     full_name: str | None = Query(None),
     search: str | None = Query(None),
     group_id: int | None = Query(None),
@@ -331,7 +298,6 @@ async def get_users(
     service: UserService = Depends(get_user_service),
 ):
     users = await service.get_users(
-        db,
         request,
         user,
         full_name=full_name,
@@ -351,7 +317,7 @@ async def get_users(
         }
         for item in users
     ]
-    await batch_log_data_access(db, entries=log_entries, request=request)
+    await batch_log_data_access(service.db, entries=log_entries, request=request)
     return users
 
 
@@ -365,11 +331,7 @@ async def export_access_audit(
     audit: AuditService = Depends(get_audit_service),
 ):
     locale = resolve_locale(request=request, user=user)
-    if user.role != "admin":
-        raise HTTPException(
-            status_code=403,
-            detail=translate("errors.forbidden", locale=locale),
-        )
+    require_admin(user, locale)
     logs = await export_access_logs(db, start_at=start_at, end_at=end_at, limit=20_000)
     audit.log("users.audit.export", request, user_id=user.id)
     csv_payload = serialize_access_logs_csv(logs)
@@ -385,22 +347,20 @@ async def update_user_admin(
     user_id: int,
     data: schemas.UserAdminUpdate,
     request: Request,
-    db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
     service: UserService = Depends(get_user_service),
 ):
-    return await service.admin_update_user(db, user_id, data, request, user)
+    return await service.admin_update_user(user_id, data, request, user)
 
 
 @users_router.delete("/{user_id}", response_model=dict)
 async def delete_user_admin(
     user_id: int,
     request: Request,
-    db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
     service: UserService = Depends(get_user_service),
 ):
-    return await service.admin_delete_user(db, user_id, request, user)
+    return await service.admin_delete_user(user_id, request, user)
 
 
 @groups_router.get("", response_model=list[schemas.GroupOut])

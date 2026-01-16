@@ -11,7 +11,26 @@ from datetime import date, datetime, time, timedelta
 from functools import wraps
 from typing import Any, ParamSpec, TypeVar
 
-import orjson
+try:
+    import orjson
+except ImportError:
+    import json
+    from typing import Any
+
+    class OrJsonCompat:
+        OPT_SORT_KEYS = 0
+        OPT_UTC_Z = 0
+        JSONDecodeError = json.JSONDecodeError
+
+        @staticmethod
+        def loads(s: str | bytes) -> Any:
+            return json.loads(s)
+
+        @staticmethod
+        def dumps(v: Any, default: Any = None, option: int | None = None) -> bytes:
+            return json.dumps(v, default=default, sort_keys=True).encode("utf-8")
+
+    orjson = OrJsonCompat()  # type: ignore
 from fastapi.encoders import jsonable_encoder
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
@@ -27,6 +46,45 @@ class CacheEntry:
     etag: str
     payload: Any
     stored_at: float
+    ttl_seconds: float = 0.0  # TTL for probabilistic refresh calculation
+
+    def should_refresh_probabilistic(
+        self,
+        beta: float = 1.0,
+    ) -> bool:
+        """
+        XFetch algorithm for probabilistic early expiration.
+
+        Prevents cache stampede by having some requests refresh
+        the cache slightly before expiration.
+
+        Args:
+            beta: Scaling factor (higher = earlier refresh probability)
+
+        Returns:
+            True if this request should trigger a cache refresh
+        """
+        import math
+        import random
+
+        if self.ttl_seconds <= 0:
+            return False
+
+        now = time_module.time()
+        age = now - self.stored_at
+        remaining = self.ttl_seconds - age
+
+        if remaining <= 0:
+            return True  # Already expired
+
+        # XFetch formula: refresh if now - (ttl * beta * log(random)) > expiry
+        # Simplified: remaining < -beta * ttl * log(random)
+        random_factor = random.random()
+        if random_factor == 0:
+            random_factor = 1e-10
+
+        threshold = -beta * self.ttl_seconds * math.log(random_factor)
+        return remaining < threshold
 
 
 class BaseCache:
@@ -70,7 +128,7 @@ class NullCache(BaseCache):
 class MemoryCache(BaseCache):
     enabled = True
 
-    def __init__(self, default_ttl: int = 0):
+    def __init__(self, default_ttl: int = 0) -> None:
         self._default_ttl = max(int(default_ttl or 0), 0)
         self._entries: dict[str, tuple[CacheEntry, float]] = {}
 
@@ -90,7 +148,12 @@ class MemoryCache(BaseCache):
         stored_at = time_module.time()
         effective_ttl = self._resolve_ttl(ttl)
         expires_at = stored_at + effective_ttl if effective_ttl else 0.0
-        entry = CacheEntry(etag=etag, payload=normalized_payload, stored_at=stored_at)
+        entry = CacheEntry(
+            etag=etag,
+            payload=normalized_payload,
+            stored_at=stored_at,
+            ttl_seconds=float(effective_ttl),
+        )
         self._entries[key] = (entry, expires_at)
         return entry
 
@@ -167,12 +230,18 @@ class RedisCache(BaseCache):
             etag = str(parsed.get("etag", ""))
             payload = parsed.get("payload")
             stored_at = float(parsed.get("stored_at") or 0.0)
+            ttl_seconds = float(parsed.get("ttl_seconds") or 0.0)
             if not stored_at:
                 stored_at = time_module.time()
             if not etag:
                 return None
             success = True
-            return CacheEntry(etag=etag, payload=payload, stored_at=stored_at)
+            return CacheEntry(
+                etag=etag,
+                payload=payload,
+                stored_at=stored_at,
+                ttl_seconds=ttl_seconds,
+            )
         except orjson.JSONDecodeError:
             logger.debug("Invalid cache payload for key %s, dropping", key)
             await self.invalidate(key)
@@ -188,20 +257,22 @@ class RedisCache(BaseCache):
     async def set(self, key: str, payload: Any, ttl: int | None = None) -> CacheEntry:
         normalized_payload, serialized = _normalize_payload(payload)
         etag = hashlib.sha256(serialized).hexdigest()
+        effective_ttl = self._resolve_ttl(ttl)
+        stored_at = time_module.time()
         envelope = orjson.dumps(
             {
                 "etag": etag,
                 "payload": normalized_payload,
-                "stored_at": time_module.time(),
+                "stored_at": stored_at,
+                "ttl_seconds": float(effective_ttl),
             }
         ).decode("utf-8")
         start = time_module.perf_counter()
         success = False
         try:
             client = await self._get_client()
-            expire = self._resolve_ttl(ttl)
-            if expire:
-                await client.set(key, envelope, ex=expire)
+            if effective_ttl:
+                await client.set(key, envelope, ex=effective_ttl)
             else:
                 await client.set(key, envelope)
             success = True
@@ -212,7 +283,10 @@ class RedisCache(BaseCache):
                 "set", time_module.perf_counter() - start, success=success
             )
         return CacheEntry(
-            etag=etag, payload=normalized_payload, stored_at=time_module.time()
+            etag=etag,
+            payload=normalized_payload,
+            stored_at=stored_at,
+            ttl_seconds=float(effective_ttl),
         )
 
     async def invalidate(self, *keys: str) -> None:
@@ -265,6 +339,132 @@ class RedisCache(BaseCache):
             ttl = self._default_ttl
         ttl = int(ttl or 0)
         return ttl if ttl > 0 else 0
+
+
+class RedisClusterCache(BaseCache):
+    """Redis Cluster cache backend for horizontal scaling."""
+
+    enabled = True
+
+    def __init__(self, url: str, default_ttl: int) -> None:
+        self._url = url
+        self._default_ttl = max(int(default_ttl or 0), 0)
+        self._client = None
+        self._client_lock = asyncio.Lock()
+
+    async def _get_client(self):
+        if self._client is not None:
+            return self._client
+        async with self._client_lock:
+            if self._client is None:
+                try:
+                    from redis.asyncio.cluster import RedisCluster
+
+                    self._client = RedisCluster.from_url(
+                        self._url,
+                        decode_responses=True,
+                    )
+                except ImportError:
+                    logger.warning("redis cluster not available, fallback to single")
+                    self._client = Redis.from_url(
+                        self._url,
+                        decode_responses=True,
+                    )
+        return self._client
+
+    async def close(self) -> None:
+        if self._client is None:
+            return
+        client, self._client = self._client, None
+        try:
+            await client.aclose()
+        except (RedisError, OSError):
+            logger.debug("Failed to close Redis cluster client", exc_info=True)
+
+    async def get(self, key: str) -> CacheEntry | None:
+        try:
+            client = await self._get_client()
+            raw = await client.get(key)
+            if raw is None:
+                return None
+            parsed = orjson.loads(raw)
+            return CacheEntry(
+                etag=str(parsed.get("etag", "")),
+                payload=parsed.get("payload"),
+                stored_at=float(parsed.get("stored_at") or time_module.time()),
+                ttl_seconds=float(parsed.get("ttl_seconds") or 0.0),
+            )
+        except orjson.JSONDecodeError:
+            logger.debug("Invalid cache payload in cluster for key %s", key)
+            return None
+        except (RedisError, OSError):
+            logger.warning("Redis cluster get failed for key %s", key, exc_info=True)
+            return None
+
+    async def set(self, key: str, payload: Any, ttl: int | None = None) -> CacheEntry:
+        normalized, serialized = _normalize_payload(payload)
+        etag = hashlib.sha256(serialized).hexdigest()
+        effective_ttl = self._resolve_ttl(ttl)
+        stored_at = time_module.time()
+        envelope = orjson.dumps(
+            {
+                "etag": etag,
+                "payload": normalized,
+                "stored_at": stored_at,
+                "ttl_seconds": float(effective_ttl),
+            }
+        ).decode("utf-8")
+        try:
+            client = await self._get_client()
+            if effective_ttl:
+                await client.set(key, envelope, ex=effective_ttl)
+            else:
+                await client.set(key, envelope)
+        except (RedisError, OSError):
+            logger.warning("Redis cluster set failed for key %s", key, exc_info=True)
+        return CacheEntry(
+            etag=etag,
+            payload=normalized,
+            stored_at=stored_at,
+            ttl_seconds=float(effective_ttl),
+        )
+
+    async def invalidate(self, *keys: str) -> None:
+        filtered = [str(k) for k in keys if k and "*" not in k]
+        if not filtered:
+            return
+        try:
+            client = await self._get_client()
+            await client.delete(*filtered)
+        except (RedisError, OSError):
+            logger.warning(
+                "Redis cluster invalidate failed for keys %s", filtered, exc_info=True
+            )
+
+    def _resolve_ttl(self, ttl: int | None) -> int:
+        if ttl is None:
+            ttl = self._default_ttl
+        return max(int(ttl or 0), 0)
+
+
+# Cache key versioning for safe invalidation
+_cache_key_version: int = 1
+
+
+def set_cache_key_version(version: int) -> None:
+    """Set global cache key version for safe invalidation."""
+    global _cache_key_version
+    _cache_key_version = version
+
+
+def get_cache_key_version() -> int:
+    """Get current cache key version."""
+    return _cache_key_version
+
+
+def versioned_key(key: str) -> str:
+    """Create a versioned cache key for safe invalidation."""
+    return f"v{_cache_key_version}:{key}"
 
 
 class TieredCache(BaseCache):
@@ -368,6 +568,83 @@ def cached(
             # but sticking to standard for now.
 
             await cache.set(full_key, result, ttl=seconds)
+            return result
+
+        return wrapper  # type: ignore[return-value]
+
+    return decorator
+
+
+def stale_while_revalidate(
+    prefix: str | None = None,
+    ttl: int | timedelta | None = None,
+    stale_ttl: int | timedelta | None = None,
+    key_builder: Callable[..., str] | None = None,
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    """
+    Decorator implementing stale-while-revalidate pattern.
+
+    Returns stale data immediately while revalidating in background.
+    Useful for schedule data and other frequently accessed content.
+
+    Args:
+        prefix: Cache key prefix
+        ttl: Fresh TTL - how long data is considered fresh
+        stale_ttl: Total TTL including stale period (must be > ttl)
+        key_builder: Custom key builder function
+    """
+    fresh_seconds = (
+        int(ttl.total_seconds()) if isinstance(ttl, timedelta) else (ttl or 60)
+    )
+    total_seconds = (
+        int(stale_ttl.total_seconds())
+        if isinstance(stale_ttl, timedelta)
+        else (stale_ttl or fresh_seconds * 2)
+    )
+
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
+        _prefix = prefix or func.__name__
+        _revalidation_lock: dict[str, bool] = {}
+
+        @wraps(func)
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+            cache = get_cache()
+            if not cache.enabled:
+                return await func(*args, **kwargs)
+
+            if key_builder:
+                key = key_builder(*args, **kwargs)
+            else:
+                key_parts = [str(arg) for arg in args]
+                key_parts.extend(f"{k}:{v}" for k, v in sorted(kwargs.items()))
+                key = ":".join(key_parts)
+
+            full_key = f"{_prefix}:{key}"
+            entry = await cache.get(full_key)
+
+            if entry is not None:
+                age = time_module.time() - entry.stored_at
+                is_stale = age > fresh_seconds
+
+                if is_stale and full_key not in _revalidation_lock:
+                    # Mark as revalidating and refresh in background
+                    _revalidation_lock[full_key] = True
+
+                    async def revalidate() -> None:
+                        try:
+                            result = await func(*args, **kwargs)
+                            await cache.set(full_key, result, ttl=total_seconds)
+                        finally:
+                            _revalidation_lock.pop(full_key, None)
+
+                    asyncio.create_task(revalidate())
+
+                # Return stale data immediately
+                return entry.payload
+
+            # Cache miss - compute and store
+            result = await func(*args, **kwargs)
+            await cache.set(full_key, result, ttl=total_seconds)
             return result
 
         return wrapper  # type: ignore[return-value]

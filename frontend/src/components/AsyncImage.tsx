@@ -11,6 +11,7 @@ import InsertPhotoOutlinedIcon from "@mui/icons-material/InsertPhotoOutlined"
 import { Box, Fade, Skeleton, type BoxProps } from "@mui/material"
 
 import { addVersionParam, resolveProxyImageUrl } from "@/utils/media"
+import { useIntersectionObserver } from "@/hooks/useIntersectionObserver"
 
 type Status = "idle" | "loading" | "loaded" | "error"
 
@@ -64,6 +65,13 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
     },
     ref
   ) => {
+    const containerRef = useMemo(() => ({ current: null as HTMLDivElement | null }), [])
+    const observer = useIntersectionObserver(containerRef, {
+      rootMargin: "200px",
+      freezeOnceVisible: true,
+    })
+    const isVisible = !!observer?.isIntersecting
+
     const [status, setStatus] = useState<Status>(src ? "loading" : "idle")
 
     const resolvedSrc = useMemo(() => {
@@ -92,6 +100,7 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
 
     return (
       <Box
+        ref={containerRef}
         position="relative"
         sx={{
           overflow: "hidden",
@@ -124,7 +133,7 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
           />
         )}
 
-        {hasImage && (
+        {hasImage && isVisible && (
           <Fade
             in={status === "loaded" || status === "loading"}
             timeout={{ enter: 300, exit: 200 }}

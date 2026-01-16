@@ -7,7 +7,6 @@ from fastapi import (
     Depends,
     File,
     Header,
-    HTTPException,
     Request,
     Response,
     UploadFile,
@@ -19,12 +18,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app import crud
 from app.api.deps import get_current_user
 from app.api.utils import save_upload
+from app.api.validation import ensure_exists, require_admin
 from app.core.database import get_db
 from app.core.localization import (
     DEFAULT_LOCALE,
     SUPPORTED_LOCALES,
     resolve_locale,
-    translate,
 )
 from app.deps.cache import etag_matches, format_etag, get_cache
 from app.models import models
@@ -123,11 +122,7 @@ async def create_story(
     user: models.User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
-    if user.role != "admin":
-        raise HTTPException(
-            status_code=403,
-            detail=translate("errors.forbidden", locale=locale),
-        )
+    require_admin(user, locale)
     record = await crud.create_story(db, data, created_by=user.id)
     cache = get_cache()
     await cache.invalidate(*_stories_cache_keys())
@@ -145,16 +140,8 @@ async def update_story(
 ):
     locale = resolve_locale(request=request, user=user)
     story = await db.get(models.Story, story_id)
-    if not story:
-        raise HTTPException(
-            status_code=404,
-            detail=translate("errors.stories.not_found", locale=locale),
-        )
-    if user.role != "admin":
-        raise HTTPException(
-            status_code=403,
-            detail=translate("errors.forbidden", locale=locale),
-        )
+    ensure_exists(story, "stories", locale)
+    require_admin(user, locale)
     old_cover = story.cover_url
     updated = await crud.update_story(db, story, data)
     if old_cover and updated.cover_url != old_cover:
@@ -180,16 +167,8 @@ async def delete_story(
 ):
     locale = resolve_locale(request=request, user=user)
     story = await db.get(models.Story, story_id)
-    if not story:
-        raise HTTPException(
-            status_code=404,
-            detail=translate("errors.stories.not_found", locale=locale),
-        )
-    if user.role != "admin":
-        raise HTTPException(
-            status_code=403,
-            detail=translate("errors.forbidden", locale=locale),
-        )
+    ensure_exists(story, "stories", locale)
+    require_admin(user, locale)
     cover_url = story.cover_url
     await crud.delete_story(db, story)
     if cover_url:
@@ -214,11 +193,7 @@ async def upload_story_cover(
     user: models.User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
-    if user.role != "admin":
-        raise HTTPException(
-            status_code=403,
-            detail=translate("errors.forbidden", locale=locale),
-        )
+    require_admin(user, locale)
     url = await save_upload(file, "story_covers", "stories", locale=locale)
     return {"url": url}
 

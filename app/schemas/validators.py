@@ -15,6 +15,7 @@ from app.utils.sanitization import (
     sanitize_email,
     sanitize_filename,
     sanitize_html,
+    sanitize_rich_text,
     sanitize_url,
     strip_control_chars,
     truncate,
@@ -33,6 +34,13 @@ def _sanitize_html_with_basic_tags(value: Any) -> str:
     if not isinstance(value, str):
         return str(value) if value is not None else ""
     return sanitize_html(value, allow_basic_tags=True)
+
+
+def _sanitize_rich_text_validator(value: Any) -> str:
+    """Sanitize rich text HTML with whitelist approach."""
+    if not isinstance(value, str):
+        return str(value) if value is not None else ""
+    return sanitize_rich_text(value)
 
 
 def _sanitize_email_validator(value: Any) -> str:
@@ -120,10 +128,14 @@ LongSanitizedStr = Annotated[
     AfterValidator(_truncate_5000),
 ]
 
+# Rich text content - whitelist-based sanitization for user content
+SafeRichText = Annotated[str, AfterValidator(_sanitize_rich_text_validator)]
+
 
 __all__ = [
     "SanitizedStr",
     "RichTextStr",
+    "SafeRichText",
     "SanitizedEmail",
     "SafeFilename",
     "CleanStr",

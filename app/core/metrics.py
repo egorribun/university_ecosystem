@@ -170,6 +170,28 @@ _REDIS_HEALTH = (
     else None
 )
 
+_CACHE_HITS = (
+    Counter(
+        "cache_hits_total",
+        "Total cache hits",
+        ("backend",),
+        registry=REGISTRY,
+    )
+    if Counter is not None
+    else None
+)
+
+_CACHE_MISSES = (
+    Counter(
+        "cache_misses_total",
+        "Total cache misses",
+        ("backend",),
+        registry=REGISTRY,
+    )
+    if Counter is not None
+    else None
+)
+
 _DB_HEALTH = (
     Gauge("db_health", "Database availability", registry=REGISTRY)
     if Gauge is not None
@@ -232,6 +254,7 @@ _LOGIN_SUCCESS = (
     Counter(
         "auth_login_success_total",
         "Total successful login attempts",
+        ("method",),
         registry=REGISTRY,
     )
     if Counter is not None
@@ -335,11 +358,56 @@ _CSP_REPORTS = (
     else None
 )
 
+_CHAT_MESSAGES_TOTAL = (
+    Counter(
+        "chat_messages_total",
+        "Total chat messages processed",
+        ("channel",),
+        registry=REGISTRY,
+    )
+    if Counter is not None
+    else None
+)
 
-def record_login_success() -> None:
+_WS_CONNECTIONS_ACTIVE = (
+    Gauge(
+        "websocket_connections_active",
+        "Number of currently active websocket connections",
+        ("path",),
+        registry=REGISTRY,
+    )
+    if Gauge is not None
+    else None
+)
+
+# Circuit breaker metrics
+_CIRCUIT_BREAKER_STATE = (
+    Gauge(
+        "circuit_breaker_state",
+        "Current circuit breaker state (0=closed, 1=open, 2=half_open)",
+        ("service",),
+        registry=REGISTRY,
+    )
+    if Gauge is not None
+    else None
+)
+
+_CIRCUIT_BREAKER_TRIPS = (
+    Counter(
+        "circuit_breaker_trips_total",
+        "Total circuit breaker trips (transitions to open state)",
+        ("service",),
+        registry=REGISTRY,
+    )
+    if Counter is not None
+    else None
+)
+
+
+def record_login_success(method: str = "password") -> None:
     """Record a successful login."""
     if _LOGIN_SUCCESS is not None:
-        _LOGIN_SUCCESS.inc()
+        _LOGIN_SUCCESS.labels(method=method).inc()
 
 
 def record_login_failure(reason: str = "invalid_credentials") -> None:
@@ -394,6 +462,60 @@ def record_csp_report(outcome: str) -> None:
     """Record a CSP report processing outcome."""
     if _CSP_REPORTS is not None:
         _CSP_REPORTS.labels(outcome=outcome).inc()
+
+
+def record_chat_message(channel: str) -> None:
+    """Record a chat message event."""
+    if _CHAT_MESSAGES_TOTAL is not None:
+        _CHAT_MESSAGES_TOTAL.labels(channel=channel).inc()
+
+
+def set_ws_connections_active(path: str, count: int) -> None:
+    """Set the active websocket connections count for a path."""
+    if _WS_CONNECTIONS_ACTIVE is not None:
+        _WS_CONNECTIONS_ACTIVE.labels(path=path).set(float(count))
+
+
+def inc_ws_connections(path: str) -> None:
+    """Increment the active websocket connections count for a path."""
+    if _WS_CONNECTIONS_ACTIVE is not None:
+        _WS_CONNECTIONS_ACTIVE.labels(path=path).inc()
+
+
+def dec_ws_connections(path: str) -> None:
+    """Decrement the active websocket connections count for a path."""
+    if _WS_CONNECTIONS_ACTIVE is not None:
+        _WS_CONNECTIONS_ACTIVE.labels(path=path).dec()
+
+
+def record_cache_hit(backend: str = "redis") -> None:
+    """Record a cache hit."""
+    if _CACHE_HITS is not None:
+        _CACHE_HITS.labels(backend=backend).inc()
+
+
+def record_cache_miss(backend: str = "redis") -> None:
+    """Record a cache miss."""
+    if _CACHE_MISSES is not None:
+        _CACHE_MISSES.labels(backend=backend).inc()
+
+
+def record_circuit_breaker_state(service: str, state: str) -> None:
+    """Record circuit breaker state change.
+
+    Args:
+        service: Name of the protected service.
+        state: Current state (closed, open, half_open).
+    """
+    if _CIRCUIT_BREAKER_STATE is not None:
+        state_value = {"closed": 0, "open": 1, "half_open": 2}.get(state, -1)
+        _CIRCUIT_BREAKER_STATE.labels(service=service).set(float(state_value))
+
+
+def record_circuit_breaker_trip(service: str) -> None:
+    """Record a circuit breaker trip (transition to open state)."""
+    if _CIRCUIT_BREAKER_TRIPS is not None:
+        _CIRCUIT_BREAKER_TRIPS.labels(service=service).inc()
 
 
 _CONFIGURED_ATTR = "_metrics_configured"
