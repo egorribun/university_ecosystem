@@ -10,7 +10,8 @@ from app.core.database import Base
 class StoredEvent(Base):
     """
     Persistent store for domain events.
-    Captures state changes for auditability and asynchronous processing (CQRS/Projections).
+    Captures state changes for auditability and asynchronous processing
+    (CQRS/Projections).
     """
 
     __tablename__ = "stored_events"
@@ -27,4 +28,7 @@ class StoredEvent(Base):
     )
 
     def __repr__(self) -> str:
-        return f"<StoredEvent(type={self.event_type}, aggregate={self.aggregate_type}:{self.aggregate_id})>"
+        return (
+            f"<StoredEvent(type={self.event_type}, "
+            f"aggregate={self.aggregate_type}:{self.aggregate_id})>"
+        )

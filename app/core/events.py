@@ -187,7 +187,8 @@ def capture_domain_events(
             obj, "_pending_domain_events"
         ):
             for event_data in obj._pending_domain_events:
-                # payload = asdict(event_data) # But event_data might have metadata we don't want in payload
+                # payload = asdict(event_data)
+                # But event_data might have metadata we don't want in payload
                 # We'll use a simpler approach: serialize the entire event if possible,
                 # or just use its __dict__ without the base DomainEvent fields.
 

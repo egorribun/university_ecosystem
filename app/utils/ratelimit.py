@@ -50,7 +50,8 @@ class MemoryLimiter:
             timestamp for timestamp in self.bucket.get(key, []) if timestamp > cutoff
         ]
         if len(arr) >= limit:
-            # Note: MemoryLimiter doesn't support locale resolution easily without request context,
+            # Note: MemoryLimiter doesn't support locale resolution easily without
+            # request context,
             # so we use a hardcoded fallback or would need to refactor significantly.
             # Assuming 'en' for internal limiter fallback for now.
             raise_http_error(

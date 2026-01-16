@@ -130,7 +130,7 @@ class TestProgressiveDelayTrackerMemory:
         tracker = ProgressiveDelayTracker()
         await tracker.record_failure("test:delay")
 
-        start = time.time()
+        # start = time.time()
         with patch.object(tracker, "get_delay") as mock_get:
             mock_get.return_value = ProgressiveDelayInfo(
                 failures=1, delay_seconds=0.01, should_delay=True

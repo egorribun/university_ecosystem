@@ -10,7 +10,6 @@ import logging
 from fastapi import FastAPI
 
 try:
-    import orjson
     from fastapi.responses import ORJSONResponse
 except ImportError:
     from fastapi.responses import JSONResponse as ORJSONResponse

@@ -654,7 +654,8 @@ async def delete_event_file(
     if not ef:
         raise_not_found("events", locale, exact_key="errors.events.file_not_found")
     event = await db.get(models.Event, ef.event_id)
-    # Event is checked implicitly by permissions, but we might want to ensure it still exists?
+    # Event is checked implicitly by permissions, but we might want to ensure it
+    # still exists?
     # Assuming standard behavior, we just check permission.
     require_owner_or_admin(user, locale, owner_id=event.created_by, allow_teacher=True)
     file_url = ef.file_url

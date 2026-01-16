@@ -132,7 +132,8 @@ class GetStatsHandler(QueryHandler[GetStatsQuery, QueryResult]):
         if not compute_fn:
             raise ValueError(f"Unknown stats kind: {query.kind}")
 
-        # The crud functions have different signatures (some take period_days, some just days?)
+        # The crud functions have different signatures (some take period_days,
+        # some just days?)
         # Let's check crud.py if possible, but based on stats.py:
         # attendance: db, user_id, period_days, period_key, cache, skip_cache
         # grades: db, user_id, period_days, cache, period_key, skip_cache

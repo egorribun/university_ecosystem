@@ -40,7 +40,8 @@ async def unit_user_mfa(db: AsyncSession) -> User:
     return user
 
 
-# TODO: These tests are currently failing in the agent environment due to potential asyncio loop scoping issues with the db fixture.
+# TODO: These tests are currently failing in the agent environment due to potential
+# asyncio loop scoping issues with the db fixture.
 # They should be enabled and verified in a proper CI environment.
 
 # async def test_generate_recovery_codes_unit(db: AsyncSession, unit_user_mfa: User):
@@ -53,7 +54,9 @@ async def unit_user_mfa(db: AsyncSession) -> User:
 #     user_codes = (
 #         (
 #             await db.execute(
-#                 mfa.select(RecoveryCode).where(RecoveryCode.user_id == unit_user_mfa.id)
+#                 mfa.select(RecoveryCode).where(
+#                     RecoveryCode.user_id == unit_user_mfa.id
+#                 )
 #             )
 #         )
 #         .scalars()
@@ -84,7 +87,9 @@ async def unit_user_mfa(db: AsyncSession) -> User:
 #     user_codes = (
 #         (
 #             await db.execute(
-#                 mfa.select(RecoveryCode).where(RecoveryCode.user_id == unit_user_mfa.id)
+#                 mfa.select(RecoveryCode).where(
+#                     RecoveryCode.user_id == unit_user_mfa.id
+#                 )
 #             )
 #         )
 #         .scalars()

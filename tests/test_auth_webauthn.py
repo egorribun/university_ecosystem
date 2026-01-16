@@ -23,8 +23,10 @@ def mock_webauthn(monkeypatch):
     # Mock registration options
     mock_reg_options = MagicMock()
     mock_reg_options.challenge = b"mock_challenge_bytes"
-    # options_to_json is called on the result, so we mock the return of generate_registration_options
-    # to be an object that options_to_json can handle, OR we assume options_to_json is also part of webauthn package
+    # options_to_json is called on the result, so we mock the return of
+    # generate_registration_options
+    # to be an object that options_to_json can handle, OR we assume options_to_json
+    # is also part of webauthn package
     # Actually app/services/webauthn.py calls options_to_json(options)
 
     # Simpler approach: Mock the Service methods or the library functions
@@ -130,7 +132,8 @@ async def test_webauthn_registration_flow(
     challenge_token = start_data["challenge_token"]
 
     # 2. Confirm Registration
-    # We send a fake response. Since we mocked verify_registration_response, the content doesn't matter much
+    # We send a fake response. Since we mocked verify_registration_response, the
+    # content doesn't matter much
     # as long as it matches the schema.
     fake_response = {
         "id": "mock_cred_id_base64",
@@ -220,11 +223,14 @@ async def test_webauthn_authentication_flow(
     assert "options" in webauthn_method
 
     # Verify Authentication
-    # We need to manually inject the credential ID into the payload because verify_authentication calls
+    # We need to manually inject the credential ID into the payload because
+    # verify_authentication calls
     # db.execute(where(credential_id == response.id))
     # In our mock above, registration saved 'mock_credential_id_bytes' base64 encoded.
-    # verify_registration_response mock returns credential_id = b"mock_credential_id_bytes"
-    # base64.urlsafe_b64encode(b"mock_credential_id_bytes").decode("utf-8").rstrip("=")
+    # verify_registration_response mock returns credential_id =
+    # b"mock_credential_id_bytes"
+    # base64.urlsafe_b64encode(b"mock_credential_id_bytes")
+    # .decode("utf-8").rstrip("=")
     # = 'bW9ja19jcmVkZW50aWFsX2lkX2J5dGVz'
 
     expected_cred_id_b64 = (

@@ -202,9 +202,11 @@ class ChatService:
 
         existing_chat = await self.repository.find_existing_dm(user.id, participant_id)
         if existing_chat:
-            # We don't have presence/unread count readily available for existing chat return here
-            # in the original code, but we should probably try to be consistent?
-            # Original code just returned basic ChatResponse. We'll stick to that for now.
+            # We don't have presence/unread count readily available for existing chat
+            # return here in the original code, but we should probably try to be
+            # consistent?
+            # Original code just returned basic ChatResponse. We'll stick to that for
+            # now.
             return ChatResponse(
                 id=existing_chat.id,
                 participants=existing_chat.participants,
@@ -266,8 +268,10 @@ class ChatService:
 
         # Need to convert last_message to response if we want presence on it?
         # The schema definition allows Message model, but `sender_presence` is extra.
-        # Original code didn't seem to enrich last_message in get_chat, only in get_chats list?
-        # Correction: The original get_chat returned ChatResponse which has last_message.
+        # Original code didn't seem to enrich last_message in get_chat, only in
+        # get_chats list?
+        # Correction: The original get_chat returned ChatResponse which has
+        # last_message.
         # Original code for get_chat just returned last_message (ORM object).
 
         return ChatResponse(
@@ -373,7 +377,8 @@ class ChatService:
             sender_id=user.id,
             content=content,
         )
-        # We need message ID for attachments, so we create it via repo or just add to session
+        # We need message ID for attachments, so we create it via repo or just add
+        # to session
         # Repo.create_message calls flush which gives ID.
         await self.repository.create_message(message)
 
@@ -484,7 +489,8 @@ class ChatService:
         attachment_count = len(attachment_urls)
 
         try:
-            # We can't easily iterate and delete in pure repo without passing the list or logic
+            # We can't easily iterate and delete in pure repo without passing the list
+            # or logic
             # Repo has delete_messages(list).
             # chat.messages is available.
             await self.repository.delete_messages(list(chat.messages))

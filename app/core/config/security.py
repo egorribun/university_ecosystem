@@ -281,7 +281,8 @@ class SecuritySettings(BaseAppSettings):
                     _, secret = entry.split(":", 1)
                     if len(secret.strip()) < 32:
                         raise ValueError(
-                            "JWT_SIGNING_KEYS entries must be at least 32 characters long in production"
+                            "JWT_SIGNING_KEYS entries must be at least 32 characters "
+                            "long in production"
                         )
         return v
 
