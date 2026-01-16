@@ -354,7 +354,12 @@ jobs:
             sleep 1
           done
       - name: Run Alembic migrations
-        run: alembic upgrade head
+        env:
+          SECRET_KEY: "dummy_secret_key_for_ci_tests_at_least_32_chars"
+          DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
+        run: |
+          printenv SECRET_KEY
+          alembic upgrade head
       - name: Run pytest with PostgreSQL
         run: pytest tests/ -v --tb=short -x --ignore=tests/performance
       - name: Upload test results
