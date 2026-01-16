@@ -13,6 +13,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  SECRET_KEY: "dummy_secret_key_for_ci_tests_at_least_32_chars"
+
 jobs:
   run-hooks:
     name: Run hooks
@@ -80,7 +83,6 @@ jobs:
       - name: Generate OpenAPI schema
         env:
           DATABASE_URL: "sqlite+aiosqlite:///:memory:"
-          SECRET_KEY: "dummy_secret_key_for_ci_schema_generation_at_least_32_chars"
         run: |
           python3 - <<'PY'
           import json
@@ -332,7 +334,6 @@ jobs:
       DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
       REDIS_URL: redis://localhost:6379
       OTEL_SDK_DISABLED: "true"
-      SECRET_KEY: "dummy_secret_key_for_ci_tests_at_least_32_chars"
     steps:
       - uses: actions/checkout@v5
       - name: Setup Python
@@ -353,16 +354,8 @@ jobs:
           until pg_isready -h localhost -p 5432 -U test; do
             sleep 1
           done
-      - name: Create .env file
-        run: |
-          echo "SECRET_KEY=dummy_secret_key_for_ci_tests_at_least_32_chars" > .env
-          echo "DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test" >> .env
       - name: Run Alembic migrations
-        env:
-          SECRET_KEY: "dummy_secret_key_for_ci_tests_at_least_32_chars"
-          DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
         run: |
-          printenv SECRET_KEY
           alembic upgrade head
       - name: Run pytest with PostgreSQL
         run: pytest tests/ -v --tb=short -x --ignore=tests/performance
@@ -393,9 +386,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
       - name: Run Alembic upgrade and downgrade
+        env:
+          DATABASE_URL: "sqlite+aiosqlite:///./ci-migrations.db"
         run: |
-          echo "DATABASE_URL=sqlite+aiosqlite:///./ci-migrations.db" > .env
-          echo "SECRET_KEY=dummy_secret_key_for_ci_migrations_at_least_32_chars" >> .env
           alembic -c alembic.ini upgrade head
           alembic -c alembic.ini downgrade base
 
