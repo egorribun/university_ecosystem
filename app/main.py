@@ -10,9 +10,11 @@ import logging
 from fastapi import FastAPI
 
 try:
-    from fastapi.responses import ORJSONResponse
+    from fastapi.responses import JSONResponse, ORJSONResponse
 except ImportError:
-    from fastapi.responses import JSONResponse as ORJSONResponse
+    from fastapi.responses import JSONResponse
+
+    ORJSONResponse = JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.admin import router as admin_api_router
@@ -74,9 +76,9 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 _logger = logging.getLogger(__name__)
 
 
-@app.get("/")
+@app.get("/", response_class=JSONResponse)
 async def root():
-    return {"status": "ok"}
+    return JSONResponse(status_code=200, content={"status": "ok"})
 
 
 # Routers

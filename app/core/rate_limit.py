@@ -341,6 +341,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if method in {"OPTIONS", "HEAD"}:
             return True
 
+        if path in {"/", "/healthz", "/ready", "/metrics"}:
+            return True
+
         if self._is_static_like_path(path) and method == "GET":
             return True
 
