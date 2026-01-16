@@ -139,9 +139,9 @@ def upgrade() -> None:
             # Spotify fields referenced in this migration (if any) or existing by then
             sa.Column("spotify_access_token", sa.String(), nullable=True),
             sa.Column("spotify_refresh_token", sa.String(), nullable=True),
-            sa.Column("spotify_token_expires_at", sa.Integer(), nullable=True),
+            sa.Column("spotify_token_expires_at", sa.DateTime(), nullable=True),
             sa.Column("spotify_scope", sa.String(), nullable=True),
-            sa.Column("spotify_last_checked_at", sa.Integer(), nullable=True),
+            sa.Column("spotify_last_checked_at", sa.DateTime(), nullable=True),
             sa.Column("spotify_last_track_url", sa.String(), nullable=True),
             sa.Column("spotify_last_album_image_url", sa.String(), nullable=True),
             sa.Column("spotify_user_id", sa.String(), nullable=True),
