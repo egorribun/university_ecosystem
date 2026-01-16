@@ -127,6 +127,7 @@ const createOptimisticUser = (snapshot: CachedUserSnapshot): User => ({
   mfa_last_verified_at: snapshot.mfa_last_verified_at ?? null,
   totp_enrollments: snapshot.totp_enrollments ?? [],
   mfa_challenges: [],
+  recovery_codes_left: 0,
   avatar_url_optimized: null,
   cover_url_optimized: null,
 })
@@ -538,6 +539,7 @@ export const useProfileSync = (
         mfa_last_verified_at: null,
         totp_enrollments: [],
         mfa_challenges: [],
+        recovery_codes_left: 0,
         avatar_url_optimized: null,
         cover_url_optimized: null,
       } as User

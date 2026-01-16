@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite"
 import { OfflineFallback } from "./OfflineFallback"
 import { MemoryRouter } from "react-router-dom"
-import { fn } from "@storybook/test"
+import { fn } from "storybook/test"
 
 const meta: Meta<typeof OfflineFallback> = {
   title: "Components/OfflineFallback",

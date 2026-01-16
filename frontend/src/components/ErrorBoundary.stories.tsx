@@ -1,9 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react-vite"
 import { ErrorBoundary } from "./ErrorBoundary"
-import { fn } from "@storybook/test"
+import { fn } from "storybook/test"
 
 // Component that throws an error for testing
-function ErrorThrowingComponent() {
+function ErrorThrowingComponent(): React.ReactNode {
   throw new Error("Test error for Storybook demonstration")
 }
 
