@@ -45,25 +45,25 @@ def _has_index(table: str, name: str) -> bool:
 
 
 def _create_index_safe(
-    name: str, table: str, columns: list[str], *, unique: bool = False
+    name: str, table: str, columns: list[str], *, unique: bool = False, ops=op
 ) -> None:
     if not _table_exists(table) or _has_index(table, name):
         return
     try:
-        op.create_index(name, table, columns, unique=unique, if_not_exists=True)
+        ops.create_index(name, table, columns, unique=unique, if_not_exists=True)
     except TypeError:
         if not _has_index(table, name):
-            op.create_index(name, table, columns, unique=unique)
+            ops.create_index(name, table, columns, unique=unique)
 
 
-def _drop_index_safe(name: str, table: str) -> None:
+def _drop_index_safe(name: str, table: str, ops=op) -> None:
     if not _table_exists(table):
         return
     try:
-        op.drop_index(name, table_name=table, if_exists=True)
+        ops.drop_index(name, table_name=table, if_exists=True)
     except TypeError:
         if _has_index(table, name):
-            op.drop_index(name, table_name=table)
+            ops.drop_index(name, table_name=table)
 
 
 def _has_unique(table: str, name: str) -> bool:
@@ -73,23 +73,25 @@ def _has_unique(table: str, name: str) -> bool:
     return any(uc.get("name") == name for uc in inspector.get_unique_constraints(table))
 
 
-def _drop_unique_safe(name: str, table: str) -> None:
+def _drop_unique_safe(name: str, table: str, ops=op) -> None:
     if not _table_exists(table):
         return
     try:
-        op.drop_constraint(name, table, type_="unique", if_exists=True)
+        ops.drop_constraint(name, table, type_="unique", if_exists=True)
     except TypeError:
         if _has_unique(table, name):
-            op.drop_constraint(name, table, type_="unique")
+            ops.drop_constraint(name, table, type_="unique")
 
 
-def _create_unique_constraint_safe(name: str, table: str, columns: list[str]) -> None:
+def _create_unique_constraint_safe(
+    name: str, table: str, columns: list[str], ops=op
+) -> None:
     if not _table_exists(table) or _has_unique(table, name):
         return
-    op.create_unique_constraint(name, table, columns)
+    ops.create_unique_constraint(name, table, columns)
 
 
-def _drop_fk_by_columns(table: str, constrained_columns: list[str]) -> None:
+def _drop_fk_by_columns(table: str, constrained_columns: list[str], ops=op) -> None:
     if not _table_exists(table):
         return
     inspector = _insp()
@@ -98,7 +100,7 @@ def _drop_fk_by_columns(table: str, constrained_columns: list[str]) -> None:
         cols = set(fk.get("constrained_columns") or [])
         name = fk.get("name")
         if cols == target and name:
-            op.drop_constraint(name, table, type_="foreignkey")
+            ops.drop_constraint(name, table, type_="foreignkey")
 
 
 def upgrade() -> None:
@@ -212,27 +214,31 @@ def upgrade() -> None:
         _create_index_safe(op.f("ix_events_is_active"), "events", ["is_active"])
         _create_index_safe(op.f("ix_events_starts_at"), "events", ["starts_at"])
         if _column_exists("events", "created_by") and _table_exists("users"):
-            _drop_fk_by_columns("events", ["created_by"])
-            op.create_foreign_key(
-                op.f("events_created_by_fkey"),
-                "events",
-                "users",
-                ["created_by"],
-                ["id"],
-                ondelete="CASCADE",
-            )
+            with op.batch_alter_table("events") as batch_op:
+                _drop_fk_by_columns("events", ["created_by"], ops=batch_op)
+                batch_op.create_foreign_key(
+                    op.f("events_created_by_fkey"),
+                    "users",
+                    ["created_by"],
+                    ["id"],
+                    ondelete="CASCADE",
+                )
 
     if _table_exists("groups"):
         _create_index_safe(op.f("ix_groups_name"), "groups", ["name"])
 
     if _table_exists("invite_codes"):
-        _drop_unique_safe(op.f("invite_codes_code_key"), "invite_codes")
-        _create_index_safe(
-            op.f("ix_invite_codes_code"),
-            "invite_codes",
-            ["code"],
-            unique=True,
-        )
+        with op.batch_alter_table("invite_codes") as batch_op:
+            _drop_unique_safe(
+                op.f("invite_codes_code_key"), "invite_codes", ops=batch_op
+            )
+            _create_index_safe(
+                op.f("ix_invite_codes_code"),
+                "invite_codes",
+                ["code"],
+                unique=True,
+                ops=batch_op,
+            )
         _create_index_safe(
             op.f("ix_invite_codes_created_at"),
             "invite_codes",
@@ -329,15 +335,15 @@ def upgrade() -> None:
         _create_index_safe(op.f("ix_schedule_start_time"), "schedule", ["start_time"])
         _create_index_safe(op.f("ix_schedule_weekday"), "schedule", ["weekday"])
         if _column_exists("schedule", "group_id") and _table_exists("groups"):
-            _drop_fk_by_columns("schedule", ["group_id"])
-            op.create_foreign_key(
-                op.f("schedule_group_id_fkey"),
-                "schedule",
-                "groups",
-                ["group_id"],
-                ["id"],
-                ondelete="CASCADE",
-            )
+            with op.batch_alter_table("schedule") as batch_op:
+                _drop_fk_by_columns("schedule", ["group_id"], ops=batch_op)
+                batch_op.create_foreign_key(
+                    op.f("schedule_group_id_fkey"),
+                    "groups",
+                    ["group_id"],
+                    ["id"],
+                    ondelete="CASCADE",
+                )
 
     if _table_exists("users"):
         with op.batch_alter_table("users") as batch_op:
@@ -390,45 +396,52 @@ def upgrade() -> None:
                     type_=sa.String(),
                     existing_nullable=True,
                 )
-        _drop_unique_safe(op.f("uq_users_spotify_user_id"), "users")
-        _drop_index_safe(op.f("uq_users_spotify_user_id"), "users")
-        _create_index_safe(op.f("ix_users_is_active"), "users", ["is_active"])
-        _create_index_safe(op.f("ix_users_role"), "users", ["role"])
-        _create_index_safe(
-            op.f("ix_users_spotify_last_track_id"),
-            "users",
-            ["spotify_last_track_id"],
-        )
-        _create_index_safe(
-            op.f("ix_users_spotify_token_expires_at"),
-            "users",
-            ["spotify_token_expires_at"],
-        )
-        _create_index_safe(
-            op.f("ix_users_spotify_user_id"),
-            "users",
-            ["spotify_user_id"],
-            unique=True,
-        )
+            _drop_unique_safe(op.f("uq_users_spotify_user_id"), "users", ops=batch_op)
+            _drop_index_safe(op.f("uq_users_spotify_user_id"), "users", ops=batch_op)
+            _create_index_safe(
+                op.f("ix_users_is_active"), "users", ["is_active"], ops=batch_op
+            )
+            _create_index_safe(op.f("ix_users_role"), "users", ["role"], ops=batch_op)
+            _create_index_safe(
+                op.f("ix_users_spotify_last_track_id"),
+                "users",
+                ["spotify_last_track_id"],
+                ops=batch_op,
+            )
+            _create_index_safe(
+                op.f("ix_users_spotify_token_expires_at"),
+                "users",
+                ["spotify_token_expires_at"],
+                ops=batch_op,
+            )
+            _create_index_safe(
+                op.f("ix_users_spotify_user_id"),
+                "users",
+                ["spotify_user_id"],
+                unique=True,
+                ops=batch_op,
+            )
 
 
 def downgrade() -> None:
-    if _is_sqlite():
-        return
-
     if _table_exists("users"):
-        _drop_index_safe(op.f("ix_users_spotify_user_id"), "users")
-        _drop_index_safe(op.f("ix_users_spotify_token_expires_at"), "users")
-        _drop_index_safe(op.f("ix_users_spotify_last_track_id"), "users")
-        _drop_index_safe(op.f("ix_users_role"), "users")
-        _drop_index_safe(op.f("ix_users_is_active"), "users")
-        _create_index_safe(
-            op.f("uq_users_spotify_user_id"),
-            "users",
-            ["spotify_user_id"],
-            unique=True,
-        )
         with op.batch_alter_table("users") as batch_op:
+            _drop_index_safe(op.f("ix_users_spotify_user_id"), "users", ops=batch_op)
+            _drop_index_safe(
+                op.f("ix_users_spotify_token_expires_at"), "users", ops=batch_op
+            )
+            _drop_index_safe(
+                op.f("ix_users_spotify_last_track_id"), "users", ops=batch_op
+            )
+            _drop_index_safe(op.f("ix_users_role"), "users", ops=batch_op)
+            _drop_index_safe(op.f("ix_users_is_active"), "users", ops=batch_op)
+            _create_index_safe(
+                op.f("uq_users_spotify_user_id"),
+                "users",
+                ["spotify_user_id"],
+                unique=True,
+                ops=batch_op,
+            )
             if _column_exists("users", "spotify_last_album_image_url"):
                 batch_op.alter_column(
                     "spotify_last_album_image_url",
@@ -480,22 +493,21 @@ def downgrade() -> None:
                 )
 
     if _table_exists("schedule"):
-        if _column_exists("schedule", "group_id") and _table_exists("groups"):
-            _drop_fk_by_columns("schedule", ["group_id"])
-            op.create_foreign_key(
-                op.f("schedule_group_id_fkey"),
-                "schedule",
-                "groups",
-                ["group_id"],
-                ["id"],
-            )
-        _drop_index_safe(op.f("ix_schedule_weekday"), "schedule")
-        _drop_index_safe(op.f("ix_schedule_start_time"), "schedule")
-        _drop_index_safe(op.f("ix_schedule_parity"), "schedule")
-        _drop_index_safe("ix_schedule_group_start_time", "schedule")
-        _drop_index_safe(op.f("ix_schedule_group_id"), "schedule")
-        _drop_index_safe(op.f("ix_schedule_end_time"), "schedule")
         with op.batch_alter_table("schedule") as batch_op:
+            if _column_exists("schedule", "group_id") and _table_exists("groups"):
+                _drop_fk_by_columns("schedule", ["group_id"], ops=batch_op)
+                batch_op.create_foreign_key(
+                    op.f("schedule_group_id_fkey"),
+                    "groups",
+                    ["group_id"],
+                    ["id"],
+                )
+            _drop_index_safe(op.f("ix_schedule_weekday"), "schedule", ops=batch_op)
+            _drop_index_safe(op.f("ix_schedule_start_time"), "schedule", ops=batch_op)
+            _drop_index_safe(op.f("ix_schedule_parity"), "schedule", ops=batch_op)
+            _drop_index_safe("ix_schedule_group_start_time", "schedule", ops=batch_op)
+            _drop_index_safe(op.f("ix_schedule_group_id"), "schedule", ops=batch_op)
+            _drop_index_safe(op.f("ix_schedule_end_time"), "schedule", ops=batch_op)
             if _column_exists("schedule", "end_time"):
                 batch_op.alter_column(
                     "end_time",
@@ -527,60 +539,82 @@ def downgrade() -> None:
                     nullable=True,
                 )
 
-    if _table_exists("password_reset_tokens"):
-        _drop_index_safe(
-            op.f("ix_password_reset_tokens_used"),
-            "password_reset_tokens",
-        )
-        _drop_index_safe(
-            op.f("ix_password_reset_tokens_created_at"),
-            "password_reset_tokens",
-        )
-
-    if _table_exists("notifications"):
-        _drop_index_safe("ix_notifications_user_created", "notifications")
-        _drop_index_safe(op.f("ix_notifications_read_at"), "notifications")
-        _drop_index_safe("ix_notifications_dupe_check", "notifications")
-        if _column_exists("notifications", "read_at"):
-            op.drop_column("notifications", "read_at")
-
-    if _table_exists("news"):
-        _drop_index_safe(op.f("ix_news_created_at"), "news")
-
     if _table_exists("invite_codes"):
-        _drop_index_safe(op.f("ix_invite_codes_is_used"), "invite_codes")
-        _drop_index_safe(op.f("ix_invite_codes_is_active"), "invite_codes")
-        _drop_index_safe(op.f("ix_invite_codes_created_at"), "invite_codes")
-        _drop_index_safe(op.f("ix_invite_codes_code"), "invite_codes")
-        _create_unique_constraint_safe(
-            op.f("invite_codes_code_key"),
-            "invite_codes",
-            ["code"],
-        )
-
-    if _table_exists("groups"):
-        _drop_index_safe(op.f("ix_groups_name"), "groups")
+        with op.batch_alter_table("invite_codes") as batch_op:
+            _drop_index_safe(
+                op.f("ix_invite_codes_is_used"), "invite_codes", ops=batch_op
+            )
+            _drop_index_safe(
+                op.f("ix_invite_codes_is_active"), "invite_codes", ops=batch_op
+            )
+            _drop_index_safe(
+                op.f("ix_invite_codes_created_at"), "invite_codes", ops=batch_op
+            )
+            _drop_index_safe(op.f("ix_invite_codes_code"), "invite_codes", ops=batch_op)
+            _create_unique_constraint_safe(
+                op.f("invite_codes_code_key"),
+                "invite_codes",
+                ["code"],
+                ops=batch_op,
+            )
 
     if _table_exists("events"):
-        if _column_exists("events", "created_by") and _table_exists("users"):
-            _drop_fk_by_columns("events", ["created_by"])
-            op.create_foreign_key(
-                op.f("events_created_by_fkey"),
-                "events",
-                "users",
-                ["created_by"],
-                ["id"],
-                ondelete="SET NULL",
+        with op.batch_alter_table("events") as batch_op:
+            if _column_exists("events", "created_by") and _table_exists("users"):
+                _drop_fk_by_columns("events", ["created_by"], ops=batch_op)
+                batch_op.create_foreign_key(
+                    op.f("events_created_by_fkey"),
+                    "users",
+                    ["created_by"],
+                    ["id"],
+                    ondelete="SET NULL",
+                )
+            _drop_index_safe(op.f("ix_events_starts_at"), "events", ops=batch_op)
+            _drop_index_safe(op.f("ix_events_is_active"), "events", ops=batch_op)
+            _drop_index_safe(op.f("ix_events_event_type"), "events", ops=batch_op)
+            _drop_index_safe(op.f("ix_events_ends_at"), "events", ops=batch_op)
+            _drop_index_safe(op.f("ix_events_created_at"), "events", ops=batch_op)
+
+    if _table_exists("password_reset_tokens"):
+        with op.batch_alter_table("password_reset_tokens") as batch_op:
+            _drop_index_safe(
+                op.f("ix_password_reset_tokens_used"),
+                "password_reset_tokens",
+                ops=batch_op,
             )
-        _drop_index_safe(op.f("ix_events_starts_at"), "events")
-        _drop_index_safe(op.f("ix_events_is_active"), "events")
-        _drop_index_safe(op.f("ix_events_event_type"), "events")
-        _drop_index_safe(op.f("ix_events_ends_at"), "events")
-        _drop_index_safe(op.f("ix_events_created_at"), "events")
+            _drop_index_safe(
+                op.f("ix_password_reset_tokens_created_at"),
+                "password_reset_tokens",
+                ops=batch_op,
+            )
+
+    if _table_exists("notifications"):
+        with op.batch_alter_table("notifications") as batch_op:
+            _drop_index_safe(
+                "ix_notifications_user_created", "notifications", ops=batch_op
+            )
+            _drop_index_safe(
+                op.f("ix_notifications_read_at"), "notifications", ops=batch_op
+            )
+            _drop_index_safe(
+                "ix_notifications_dupe_check", "notifications", ops=batch_op
+            )
+            if _column_exists("notifications", "read_at"):
+                batch_op.drop_column("read_at")
+
+    if _table_exists("news"):
+        with op.batch_alter_table("news") as batch_op:
+            _drop_index_safe(op.f("ix_news_created_at"), "news", ops=batch_op)
+
+    if _table_exists("groups"):
+        with op.batch_alter_table("groups") as batch_op:
+            _drop_index_safe(op.f("ix_groups_name"), "groups", ops=batch_op)
 
     if _table_exists("event_files"):
-        _drop_index_safe(op.f("ix_event_files_event_id"), "event_files")
         with op.batch_alter_table("event_files") as batch_op:
+            _drop_index_safe(
+                op.f("ix_event_files_event_id"), "event_files", ops=batch_op
+            )
             if _column_exists("event_files", "event_id"):
                 batch_op.alter_column(
                     "event_id",
@@ -589,18 +623,26 @@ def downgrade() -> None:
                 )
 
     if _table_exists("event_attendance"):
-        _drop_unique_safe("uq_event_attendance_user_event", "event_attendance")
-        _drop_index_safe(op.f("ix_event_attendance_user_id"), "event_attendance")
-        _drop_index_safe(
-            op.f("ix_event_attendance_registered_at"),
-            "event_attendance",
-        )
-        _drop_index_safe(
-            "ix_event_attendance_event_user",
-            "event_attendance",
-        )
-        _drop_index_safe(op.f("ix_event_attendance_event_id"), "event_attendance")
         with op.batch_alter_table("event_attendance") as batch_op:
+            _drop_unique_safe(
+                "uq_event_attendance_user_event", "event_attendance", ops=batch_op
+            )
+            _drop_index_safe(
+                op.f("ix_event_attendance_user_id"), "event_attendance", ops=batch_op
+            )
+            _drop_index_safe(
+                op.f("ix_event_attendance_registered_at"),
+                "event_attendance",
+                ops=batch_op,
+            )
+            _drop_index_safe(
+                "ix_event_attendance_event_user",
+                "event_attendance",
+                ops=batch_op,
+            )
+            _drop_index_safe(
+                op.f("ix_event_attendance_event_id"), "event_attendance", ops=batch_op
+            )
             if _column_exists("event_attendance", "event_id"):
                 batch_op.alter_column(
                     "event_id",
