@@ -353,6 +353,10 @@ jobs:
           until pg_isready -h localhost -p 5432 -U test; do
             sleep 1
           done
+      - name: Create .env file
+        run: |
+          echo "SECRET_KEY=dummy_secret_key_for_ci_tests_at_least_32_chars" > .env
+          echo "DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test" >> .env
       - name: Run Alembic migrations
         env:
           SECRET_KEY: "dummy_secret_key_for_ci_tests_at_least_32_chars"
