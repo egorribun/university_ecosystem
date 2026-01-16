@@ -53,7 +53,7 @@ def _create_index_safe(
         if ops is op:
             ops.create_index(name, table, columns, unique=unique, if_not_exists=True)
         else:
-            ops.create_index(name, columns, unique=unique, if_not_exists=True)
+            ops.create_index(name, columns, unique=unique)
     except TypeError:
         if not _has_index(table, name):
             if ops is op:
@@ -69,7 +69,8 @@ def _drop_index_safe(name: str, table: str, ops=op) -> None:
         if ops is op:
             ops.drop_index(name, table_name=table, if_exists=True)
         else:
-            ops.drop_index(name, if_exists=True)
+            if _has_index(table, name):
+                ops.drop_index(name)
     except TypeError:
         if _has_index(table, name):
             if ops is op:
@@ -92,7 +93,8 @@ def _drop_unique_safe(name: str, table: str, ops=op) -> None:
         if ops is op:
             ops.drop_constraint(name, table, type_="unique", if_exists=True)
         else:
-            ops.drop_constraint(name, type_="unique", if_exists=True)
+            if _has_unique(table, name):
+                ops.drop_constraint(name, type_="unique")
     except TypeError:
         if _has_unique(table, name):
             if ops is op:
