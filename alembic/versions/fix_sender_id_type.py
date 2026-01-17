@@ -39,13 +39,21 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Downgrade schema."""
-
     bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    existing_tables = set(inspector.get_table_names())
+
     if bind.dialect.name == "sqlite":
-        with op.batch_alter_table("messages") as batch_op:
-            batch_op.alter_column("sender_id", type_=sa.VARCHAR())
-        with op.batch_alter_table("chat_participants") as batch_op:
-            batch_op.alter_column("user_id", type_=sa.VARCHAR())
+        if "messages" in existing_tables:
+            with op.batch_alter_table("messages") as batch_op:
+                batch_op.alter_column("sender_id", type_=sa.VARCHAR())
+        if "chat_participants" in existing_tables:
+            with op.batch_alter_table("chat_participants") as batch_op:
+                batch_op.alter_column("user_id", type_=sa.VARCHAR())
     else:
-        op.execute("ALTER TABLE messages ALTER COLUMN sender_id TYPE VARCHAR")
-        op.execute("ALTER TABLE chat_participants ALTER COLUMN user_id TYPE VARCHAR")
+        if "messages" in existing_tables:
+            op.execute("ALTER TABLE messages ALTER COLUMN sender_id TYPE VARCHAR")
+        if "chat_participants" in existing_tables:
+            op.execute(
+                "ALTER TABLE chat_participants ALTER COLUMN user_id TYPE VARCHAR"
+            )
