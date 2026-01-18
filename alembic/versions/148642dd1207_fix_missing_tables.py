@@ -727,72 +727,147 @@ def upgrade() -> None:
                 batch_op.f("uq_active_sessions_jti"), type_="unique"
             )
 
-    with safe_batch_alter_table("failed_login_attempts", schema=None) as batch_op:
-        batch_op.create_index(
-            batch_op.f("ix_failed_login_attempts_user_id"), ["user_id"], unique=False
-        )
+    if inspector.has_table("failed_login_attempts"):
+        existing_failed_login_indexes = {
+            i["name"] for i in inspector.get_indexes("failed_login_attempts")
+        }
 
-    with safe_batch_alter_table("mfa_challenges", schema=None) as batch_op:
-        batch_op.drop_index(batch_op.f("ix_mfa_challenges_session_id"))
+        with safe_batch_alter_table("failed_login_attempts", schema=None) as batch_op:
+            if "ix_failed_login_attempts_user_id" not in existing_failed_login_indexes:
+                batch_op.create_index(
+                    batch_op.f("ix_failed_login_attempts_user_id"),
+                    ["user_id"],
+                    unique=False,
+                )
 
-    with safe_batch_alter_table("notification_queue_jobs", schema=None) as batch_op:
-        batch_op.create_index(
-            batch_op.f("ix_notification_queue_jobs_kind"), ["kind"], unique=False
-        )
+    if inspector.has_table("mfa_challenges"):
+        existing_mfa_indexes = {
+            i["name"] for i in inspector.get_indexes("mfa_challenges")
+        }
+        with safe_batch_alter_table("mfa_challenges", schema=None) as batch_op:
+            if "ix_mfa_challenges_session_id" in existing_mfa_indexes:
+                batch_op.drop_index(batch_op.f("ix_mfa_challenges_session_id"))
 
-    with safe_batch_alter_table("user_push_topics", schema=None) as batch_op:
-        batch_op.drop_index(batch_op.f("ix_user_push_topics_updated_at"))
-        batch_op.create_index(
-            batch_op.f("ix_user_push_topics_user_id"), ["user_id"], unique=False
-        )
+    if inspector.has_table("notification_queue_jobs"):
+        existing_jobs_indexes = {
+            i["name"] for i in inspector.get_indexes("notification_queue_jobs")
+        }
+        with safe_batch_alter_table("notification_queue_jobs", schema=None) as batch_op:
+            if "ix_notification_queue_jobs_kind" not in existing_jobs_indexes:
+                batch_op.create_index(
+                    batch_op.f("ix_notification_queue_jobs_kind"),
+                    ["kind"],
+                    unique=False,
+                )
 
-    with safe_batch_alter_table("users", schema=None) as batch_op:
-        batch_op.add_column(sa.Column("group_id", sa.Integer(), nullable=True))
-        batch_op.add_column(
-            sa.Column("webauthn_id", sa.String(length=128), nullable=True)
-        )
-        batch_op.add_column(sa.Column("avatar_url", sa.String(), nullable=True))
-        batch_op.add_column(sa.Column("cover_url", sa.String(), nullable=True))
-        batch_op.add_column(sa.Column("about", sa.String(), nullable=True))
-        batch_op.add_column(sa.Column("record_book_number", sa.String(), nullable=True))
-        batch_op.add_column(sa.Column("status", sa.String(), nullable=True))
-        batch_op.add_column(sa.Column("institute", sa.String(), nullable=True))
-        batch_op.add_column(sa.Column("course", sa.String(), nullable=True))
-        batch_op.add_column(sa.Column("education_level", sa.String(), nullable=True))
-        batch_op.add_column(sa.Column("track", sa.String(), nullable=True))
-        batch_op.add_column(sa.Column("program", sa.String(), nullable=True))
-        batch_op.add_column(sa.Column("telegram", sa.String(), nullable=True))
-        batch_op.add_column(sa.Column("achievements", sa.String(), nullable=True))
-        batch_op.drop_index(batch_op.f("ix_users_id"))
-        batch_op.drop_index(batch_op.f("ix_users_spotify_last_track_id"))
-        batch_op.drop_index(batch_op.f("ix_users_spotify_token_expires_at"))
-        batch_op.drop_index(batch_op.f("ix_users_spotify_user_id"))
-        batch_op.create_index(
-            batch_op.f("ix_users_group_id"), ["group_id"], unique=False
-        )
-        batch_op.create_index(
-            batch_op.f("ix_users_webauthn_id"), ["webauthn_id"], unique=True
-        )
-        batch_op.create_foreign_key(
-            "fk_users_group_id_groups",
-            "groups",
-            ["group_id"],
-            ["id"],
-            ondelete="SET NULL",
-        )
-        batch_op.drop_column("spotify_access_token")
-        batch_op.drop_column("spotify_last_track_url")
-        batch_op.drop_column("spotify_refresh_token")
-        batch_op.drop_column("spotify_last_album_image_url")
-        batch_op.drop_column("dnd_end")
-        batch_op.drop_column("spotify_scope")
-        batch_op.drop_column("spotify_last_track_id")
-        batch_op.drop_column("spotify_last_checked_at")
-        batch_op.drop_column("dnd_start")
-        batch_op.drop_column("dnd_enabled")
-        batch_op.drop_column("spotify_token_expires_at")
-        batch_op.drop_column("timezone")
-        batch_op.drop_column("spotify_user_id")
+    if inspector.has_table("user_push_topics"):
+        existing_push_topics_indexes = {
+            i["name"] for i in inspector.get_indexes("user_push_topics")
+        }
+        with safe_batch_alter_table("user_push_topics", schema=None) as batch_op:
+            if "ix_user_push_topics_updated_at" in existing_push_topics_indexes:
+                batch_op.drop_index(batch_op.f("ix_user_push_topics_updated_at"))
+            if "ix_user_push_topics_user_id" not in existing_push_topics_indexes:
+                batch_op.create_index(
+                    batch_op.f("ix_user_push_topics_user_id"), ["user_id"], unique=False
+                )
+
+    if inspector.has_table("users"):
+        existing_users_indexes = {i["name"] for i in inspector.get_indexes("users")}
+        existing_users_columns = {c["name"] for c in inspector.get_columns("users")}
+        existing_users_fks = {fk["name"] for fk in inspector.get_foreign_keys("users")}
+
+        with safe_batch_alter_table("users", schema=None) as batch_op:
+            if "group_id" not in existing_users_columns:
+                batch_op.add_column(sa.Column("group_id", sa.Integer(), nullable=True))
+            if "webauthn_id" not in existing_users_columns:
+                batch_op.add_column(
+                    sa.Column("webauthn_id", sa.String(length=128), nullable=True)
+                )
+            if "avatar_url" not in existing_users_columns:
+                batch_op.add_column(sa.Column("avatar_url", sa.String(), nullable=True))
+            if "cover_url" not in existing_users_columns:
+                batch_op.add_column(sa.Column("cover_url", sa.String(), nullable=True))
+            if "about" not in existing_users_columns:
+                batch_op.add_column(sa.Column("about", sa.String(), nullable=True))
+            if "record_book_number" not in existing_users_columns:
+                batch_op.add_column(
+                    sa.Column("record_book_number", sa.String(), nullable=True)
+                )
+            if "status" not in existing_users_columns:
+                batch_op.add_column(sa.Column("status", sa.String(), nullable=True))
+            if "institute" not in existing_users_columns:
+                batch_op.add_column(sa.Column("institute", sa.String(), nullable=True))
+            if "course" not in existing_users_columns:
+                batch_op.add_column(sa.Column("course", sa.String(), nullable=True))
+            if "education_level" not in existing_users_columns:
+                batch_op.add_column(
+                    sa.Column("education_level", sa.String(), nullable=True)
+                )
+            if "track" not in existing_users_columns:
+                batch_op.add_column(sa.Column("track", sa.String(), nullable=True))
+            if "program" not in existing_users_columns:
+                batch_op.add_column(sa.Column("program", sa.String(), nullable=True))
+            if "telegram" not in existing_users_columns:
+                batch_op.add_column(sa.Column("telegram", sa.String(), nullable=True))
+            if "achievements" not in existing_users_columns:
+                batch_op.add_column(
+                    sa.Column("achievements", sa.String(), nullable=True)
+                )
+
+            if "ix_users_id" in existing_users_indexes:
+                batch_op.drop_index(batch_op.f("ix_users_id"))
+            if "ix_users_spotify_last_track_id" in existing_users_indexes:
+                batch_op.drop_index(batch_op.f("ix_users_spotify_last_track_id"))
+            if "ix_users_spotify_token_expires_at" in existing_users_indexes:
+                batch_op.drop_index(batch_op.f("ix_users_spotify_token_expires_at"))
+            if "ix_users_spotify_user_id" in existing_users_indexes:
+                batch_op.drop_index(batch_op.f("ix_users_spotify_user_id"))
+
+            if "ix_users_group_id" not in existing_users_indexes:
+                batch_op.create_index(
+                    batch_op.f("ix_users_group_id"), ["group_id"], unique=False
+                )
+            if "ix_users_webauthn_id" not in existing_users_indexes:
+                batch_op.create_index(
+                    batch_op.f("ix_users_webauthn_id"), ["webauthn_id"], unique=True
+                )
+
+            if "fk_users_group_id_groups" not in existing_users_fks:
+                batch_op.create_foreign_key(
+                    "fk_users_group_id_groups",
+                    "groups",
+                    ["group_id"],
+                    ["id"],
+                    ondelete="SET NULL",
+                )
+
+            if "spotify_access_token" in existing_users_columns:
+                batch_op.drop_column("spotify_access_token")
+            if "spotify_last_track_url" in existing_users_columns:
+                batch_op.drop_column("spotify_last_track_url")
+            if "spotify_refresh_token" in existing_users_columns:
+                batch_op.drop_column("spotify_refresh_token")
+            if "spotify_last_album_image_url" in existing_users_columns:
+                batch_op.drop_column("spotify_last_album_image_url")
+            if "dnd_end" in existing_users_columns:
+                batch_op.drop_column("dnd_end")
+            if "spotify_scope" in existing_users_columns:
+                batch_op.drop_column("spotify_scope")
+            if "spotify_last_track_id" in existing_users_columns:
+                batch_op.drop_column("spotify_last_track_id")
+            if "spotify_last_checked_at" in existing_users_columns:
+                batch_op.drop_column("spotify_last_checked_at")
+            if "dnd_start" in existing_users_columns:
+                batch_op.drop_column("dnd_start")
+            if "dnd_enabled" in existing_users_columns:
+                batch_op.drop_column("dnd_enabled")
+            if "spotify_token_expires_at" in existing_users_columns:
+                batch_op.drop_column("spotify_token_expires_at")
+            if "timezone" in existing_users_columns:
+                batch_op.drop_column("timezone")
+            if "spotify_user_id" in existing_users_columns:
+                batch_op.drop_column("spotify_user_id")
 
     # ### end Alembic commands ###
 
@@ -900,8 +975,14 @@ def downgrade() -> None:
         if "course" in existing_columns:
             batch_op.drop_column("course")
 
-    with safe_batch_alter_table("failed_login_attempts", schema=None) as batch_op:
-        batch_op.drop_index(batch_op.f("ix_failed_login_attempts_user_id"))
+    if inspector.has_table("failed_login_attempts"):
+        existing_failed_login_indexes = {
+            i["name"] for i in inspector.get_indexes("failed_login_attempts")
+        }
+
+        with safe_batch_alter_table("failed_login_attempts", schema=None) as batch_op:
+            if "ix_failed_login_attempts_user_id" in existing_failed_login_indexes:
+                batch_op.drop_index(batch_op.f("ix_failed_login_attempts_user_id"))
 
     existing_active_sessions_constraints = {
         c["name"] for c in inspector.get_unique_constraints("active_sessions")
