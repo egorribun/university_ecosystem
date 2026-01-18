@@ -715,10 +715,17 @@ def upgrade() -> None:
             batch_op.f("ix_notification_deliveries_status"), ["status"], unique=False
         )
 
+    existing_constraints = {
+        c["name"] for c in inspector.get_unique_constraints("active_sessions")
+    }
+
     with safe_batch_alter_table("active_sessions", schema=None) as batch_op:
         batch_op.alter_column("signing_key", existing_type=sa.VARCHAR(), nullable=False)
         batch_op.drop_index(batch_op.f("ix_active_sessions_user_last_seen"))
-        batch_op.drop_constraint(batch_op.f("uq_active_sessions_jti"), type_="unique")
+        if "uq_active_sessions_jti" in existing_constraints:
+            batch_op.drop_constraint(
+                batch_op.f("uq_active_sessions_jti"), type_="unique"
+            )
 
     with safe_batch_alter_table("failed_login_attempts", schema=None) as batch_op:
         batch_op.create_index(
@@ -896,8 +903,15 @@ def downgrade() -> None:
     with safe_batch_alter_table("failed_login_attempts", schema=None) as batch_op:
         batch_op.drop_index(batch_op.f("ix_failed_login_attempts_user_id"))
 
+    existing_active_sessions_constraints = {
+        c["name"] for c in inspector.get_unique_constraints("active_sessions")
+    }
+
     with safe_batch_alter_table("active_sessions", schema=None) as batch_op:
-        batch_op.create_unique_constraint(batch_op.f("uq_active_sessions_jti"), ["jti"])
+        if "uq_active_sessions_jti" not in existing_active_sessions_constraints:
+            batch_op.create_unique_constraint(
+                batch_op.f("uq_active_sessions_jti"), ["jti"]
+            )
         batch_op.create_index(
             batch_op.f("ix_active_sessions_user_last_seen"),
             ["user_id", "last_seen_at"],
