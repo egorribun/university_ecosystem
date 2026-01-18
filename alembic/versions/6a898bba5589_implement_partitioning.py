@@ -163,6 +163,15 @@ def downgrade() -> None:
     if conn.dialect.name != "postgresql":
         return
 
+    import sqlalchemy as sa
+
+    inspector = sa.inspect(conn)
+    existing_tables = set(inspector.get_table_names())
+
+    # Skip if notifications table doesn't exist - fresh database
+    if "notifications" not in existing_tables:
+        return
+
     # Basic downgrade logic would involve recreating non-partitioned tables
     # For a high-impact migration like this, often downgrade is a restore from backup.
     # However, to be nice:

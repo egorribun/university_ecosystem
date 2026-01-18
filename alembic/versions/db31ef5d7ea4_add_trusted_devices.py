@@ -210,6 +210,13 @@ def downgrade() -> None:
     if bind.dialect.name == "sqlite":
         return
 
+    # Check if this is a fresh database - skip if users table doesn't exist
+    # or doesn't have the columns we expect to modify
+    inspector = sa.inspect(bind)
+    existing_tables = set(inspector.get_table_names())
+    if "users" not in existing_tables:
+        return
+
     op.create_index(
         op.f("ux_users_lower_email"),
         "users",
