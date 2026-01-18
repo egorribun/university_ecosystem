@@ -220,103 +220,136 @@ def downgrade() -> None:
                 "spotify_display_name", sa.VARCHAR(), autoincrement=False, nullable=True
             ),
         )
-    op.add_column(
-        "users",
-        sa.Column("spotify_scope", sa.VARCHAR(), autoincrement=False, nullable=True),
-    )
-    op.add_column(
-        "users",
-        sa.Column(
-            "spotify_last_artist_name", sa.VARCHAR(), autoincrement=False, nullable=True
-        ),
-    )
-    op.add_column(
-        "users",
-        sa.Column(
-            "spotify_last_album_image_url",
-            sa.VARCHAR(),
-            autoincrement=False,
-            nullable=True,
-        ),
-    )
-    op.add_column(
-        "users",
-        sa.Column(
-            "spotify_last_checked_at",
-            postgresql.TIMESTAMP(timezone=True),
-            autoincrement=False,
-            nullable=True,
-        ),
-    )
-    op.add_column(
-        "users",
-        sa.Column(
-            "spotify_is_playing",
-            sa.BOOLEAN(),
-            server_default=sa.text("false"),
-            autoincrement=False,
-            nullable=True,
-        ),
-    )
-    op.add_column(
-        "users",
-        sa.Column(
-            "spotify_last_track_url", sa.VARCHAR(), autoincrement=False, nullable=True
-        ),
-    )
-    op.add_column(
-        "users",
-        sa.Column("spotify_user_id", sa.VARCHAR(), autoincrement=False, nullable=True),
-    )
-    op.add_column(
-        "users",
-        sa.Column(
-            "spotify_last_track_name", sa.VARCHAR(), autoincrement=False, nullable=True
-        ),
-    )
-    op.add_column(
-        "users",
-        sa.Column(
-            "spotify_last_track_id", sa.VARCHAR(), autoincrement=False, nullable=True
-        ),
-    )
-    op.add_column(
-        "users",
-        sa.Column(
-            "spotify_refresh_token", sa.TEXT(), autoincrement=False, nullable=True
-        ),
-    )
-    op.add_column(
-        "users",
-        sa.Column(
-            "spotify_is_connected",
-            sa.BOOLEAN(),
-            server_default=sa.text("false"),
-            autoincrement=False,
-            nullable=True,
-        ),
-    )
-    op.add_column(
-        "users",
-        sa.Column(
-            "spotify_access_token", sa.TEXT(), autoincrement=False, nullable=True
-        ),
-    )
-    op.add_column(
-        "users",
-        sa.Column(
-            "spotify_last_album_name", sa.VARCHAR(), autoincrement=False, nullable=True
-        ),
-    )
-    op.add_column(
-        "users",
-        sa.Column(
-            "spotify_token_expires_at",
-            postgresql.TIMESTAMP(timezone=True),
-            autoincrement=False,
-            nullable=True,
-        ),
-    )
+    if "spotify_scope" not in columns:
+        op.add_column(
+            "users",
+            sa.Column(
+                "spotify_scope", sa.VARCHAR(), autoincrement=False, nullable=True
+            ),
+        )
+    if "spotify_last_artist_name" not in columns:
+        op.add_column(
+            "users",
+            sa.Column(
+                "spotify_last_artist_name",
+                sa.VARCHAR(),
+                autoincrement=False,
+                nullable=True,
+            ),
+        )
+    if "spotify_last_album_image_url" not in columns:
+        op.add_column(
+            "users",
+            sa.Column(
+                "spotify_last_album_image_url",
+                sa.VARCHAR(),
+                autoincrement=False,
+                nullable=True,
+            ),
+        )
+    if "spotify_last_checked_at" not in columns:
+        op.add_column(
+            "users",
+            sa.Column(
+                "spotify_last_checked_at",
+                postgresql.TIMESTAMP(timezone=True),
+                autoincrement=False,
+                nullable=True,
+            ),
+        )
+    if "spotify_is_playing" not in columns:
+        op.add_column(
+            "users",
+            sa.Column(
+                "spotify_is_playing",
+                sa.BOOLEAN(),
+                server_default=sa.text("false"),
+                autoincrement=False,
+                nullable=True,
+            ),
+        )
+    if "spotify_last_track_url" not in columns:
+        op.add_column(
+            "users",
+            sa.Column(
+                "spotify_last_track_url",
+                sa.VARCHAR(),
+                autoincrement=False,
+                nullable=True,
+            ),
+        )
+    if "spotify_user_id" not in columns:
+        op.add_column(
+            "users",
+            sa.Column(
+                "spotify_user_id", sa.VARCHAR(), autoincrement=False, nullable=True
+            ),
+        )
+    if "spotify_last_track_name" not in columns:
+        op.add_column(
+            "users",
+            sa.Column(
+                "spotify_last_track_name",
+                sa.VARCHAR(),
+                autoincrement=False,
+                nullable=True,
+            ),
+        )
+    if "spotify_last_track_id" not in columns:
+        op.add_column(
+            "users",
+            sa.Column(
+                "spotify_last_track_id",
+                sa.VARCHAR(),
+                autoincrement=False,
+                nullable=True,
+            ),
+        )
+    if "spotify_refresh_token" not in columns:
+        op.add_column(
+            "users",
+            sa.Column(
+                "spotify_refresh_token", sa.TEXT(), autoincrement=False, nullable=True
+            ),
+        )
+    if "spotify_is_connected" not in columns:
+        op.add_column(
+            "users",
+            sa.Column(
+                "spotify_is_connected",
+                sa.BOOLEAN(),
+                server_default=sa.text("false"),
+                autoincrement=False,
+                nullable=True,
+            ),
+        )
+    if "spotify_access_token" not in columns:
+        op.add_column(
+            "users",
+            sa.Column(
+                "spotify_access_token", sa.TEXT(), autoincrement=False, nullable=True
+            ),
+        )
+    if "spotify_last_album_name" not in columns:
+        op.add_column(
+            "users",
+            sa.Column(
+                "spotify_last_album_name",
+                sa.VARCHAR(),
+                autoincrement=False,
+                nullable=True,
+            ),
+        )
+    if "spotify_token_expires_at" not in columns:
+        op.add_column(
+            "users",
+            sa.Column(
+                "spotify_token_expires_at",
+                postgresql.TIMESTAMP(timezone=True),
+                autoincrement=False,
+                nullable=True,
+            ),
+        )
     if "ix_users_webauthn_id" in users_indexes:
         op.drop_index(op.f("ix_users_webauthn_id"), table_name="users")
     if "ix_users_spotify_user_id" not in users_indexes:
@@ -358,7 +391,8 @@ def downgrade() -> None:
             ["spotify_is_connected"],
             unique=False,
         )
-    op.drop_column("users", "webauthn_id")
+    if "webauthn_id" in columns:
+        op.drop_column("users", "webauthn_id")
     if "ix_data_access_logs_subject_user_id" in dal_indexes:
         op.drop_index(
             op.f("ix_data_access_logs_subject_user_id"), table_name="data_access_logs"

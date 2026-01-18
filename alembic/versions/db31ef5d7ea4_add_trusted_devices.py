@@ -34,12 +34,19 @@ def upgrade() -> None:
     if "event_attendance" not in inspector.get_table_names():
         return
 
-    op.drop_constraint(
-        op.f("uq_active_sessions_jti"), "active_sessions", type_="unique"
-    )
-
-    # Pre-fetch indexes for safety, checking table existence first
     existing_tables = set(inspector.get_table_names())
+
+    # Check if constraint exists before dropping
+    if "active_sessions" in existing_tables:
+        active_session_constraints = {
+            c["name"] for c in inspector.get_unique_constraints("active_sessions")
+        }
+        if "uq_active_sessions_jti" in active_session_constraints:
+            op.drop_constraint(
+                op.f("uq_active_sessions_jti"), "active_sessions", type_="unique"
+            )
+
+    # Pre-fetch indexes for safety
 
     users_indexes = (
         {ix["name"] for ix in inspector.get_indexes("users")}
@@ -219,8 +226,16 @@ def upgrade() -> None:
         ["id"],
         ondelete="CASCADE",
     )
-    op.drop_column("push_subscriptions", "updated_at")
-    op.drop_column("push_subscriptions", "active")
+    # Check column existence before dropping
+    push_sub_columns = (
+        {c["name"] for c in inspector.get_columns("push_subscriptions")}
+        if "push_subscriptions" in existing_tables
+        else set()
+    )
+    if "updated_at" in push_sub_columns:
+        op.drop_column("push_subscriptions", "updated_at")
+    if "active" in push_sub_columns:
+        op.drop_column("push_subscriptions", "active")
     op.alter_column(
         "schedule",
         "start_time",
@@ -392,16 +407,24 @@ def downgrade() -> None:
             existing_nullable=False,
         )
     if "push_subscriptions" in existing_tables:
-        op.add_column(
-            "push_subscriptions",
-            sa.Column("active", sa.BOOLEAN(), autoincrement=False, nullable=True),
-        )
-        op.add_column(
-            "push_subscriptions",
-            sa.Column(
-                "updated_at", postgresql.TIMESTAMP(), autoincrement=False, nullable=True
-            ),
-        )
+        push_sub_columns = {
+            c["name"] for c in inspector.get_columns("push_subscriptions")
+        }
+        if "active" not in push_sub_columns:
+            op.add_column(
+                "push_subscriptions",
+                sa.Column("active", sa.BOOLEAN(), autoincrement=False, nullable=True),
+            )
+        if "updated_at" not in push_sub_columns:
+            op.add_column(
+                "push_subscriptions",
+                sa.Column(
+                    "updated_at",
+                    postgresql.TIMESTAMP(),
+                    autoincrement=False,
+                    nullable=True,
+                ),
+            )
         op.drop_constraint(
             op.f("push_subscriptions_user_id_fkey"),
             "push_subscriptions",
@@ -496,8 +519,14 @@ def downgrade() -> None:
             type_=postgresql.TIMESTAMP(),
             existing_nullable=True,
         )
-        op.drop_column("notification_deliveries", "detail")
-        op.drop_column("notification_deliveries", "status_code")
+        # Check column existence before dropping
+        nd_columns = {
+            c["name"] for c in inspector.get_columns("notification_deliveries")
+        }
+        if "detail" in nd_columns:
+            op.drop_column("notification_deliveries", "detail")
+        if "status_code" in nd_columns:
+            op.drop_column("notification_deliveries", "status_code")
     if "ix_news_published_at_desc" not in news_indexes and "news" in existing_tables:
         op.create_index(
             op.f("ix_news_published_at_desc"),
@@ -572,10 +601,15 @@ def downgrade() -> None:
             existing_nullable=True,
         )
     if "active_sessions" in existing_tables:
-        op.create_unique_constraint(
-            op.f("uq_active_sessions_jti"),
-            "active_sessions",
-            ["jti"],
-            postgresql_nulls_not_distinct=False,
-        )
+        # Check if constraint already exists to prevent DuplicateTableError
+        active_session_constraints = {
+            c["name"] for c in inspector.get_unique_constraints("active_sessions")
+        }
+        if "uq_active_sessions_jti" not in active_session_constraints:
+            op.create_unique_constraint(
+                op.f("uq_active_sessions_jti"),
+                "active_sessions",
+                ["jti"],
+                postgresql_nulls_not_distinct=False,
+            )
     # ### end Alembic commands ###
