@@ -37,6 +37,18 @@ def upgrade() -> None:
     op.drop_constraint(
         op.f("uq_active_sessions_jti"), "active_sessions", type_="unique"
     )
+
+    # Pre-fetch indexes for safety
+    users_indexes = {ix["name"] for ix in inspector.get_indexes("users")}
+    events_indexes = {ix["name"] for ix in inspector.get_indexes("events")}
+    mfa_indexes = {ix["name"] for ix in inspector.get_indexes("mfa_challenges")}
+    news_indexes = {ix["name"] for ix in inspector.get_indexes("news")}
+    notif_indexes = {ix["name"] for ix in inspector.get_indexes("notifications")}
+    push_sub_indexes = {
+        ix["name"] for ix in inspector.get_indexes("push_subscriptions")
+    }
+    scheduler_indexes = {ix["name"] for ix in inspector.get_indexes("schedule")}
+    user_push_indexes = {ix["name"] for ix in inspector.get_indexes("user_push_topics")}
     op.alter_column(
         "event_attendance",
         "registered_at",
@@ -66,9 +78,10 @@ def upgrade() -> None:
         existing_nullable=True,
         existing_server_default=sa.text("now()"),
     )
-    op.drop_index(
-        op.f("ix_events_search_vector"), table_name="events", postgresql_using="gin"
-    )
+    if "ix_events_search_vector" in events_indexes:
+        op.drop_index(
+            op.f("ix_events_search_vector"), table_name="events", postgresql_using="gin"
+        )
     op.alter_column(
         "invite_codes",
         "created_at",
@@ -76,7 +89,8 @@ def upgrade() -> None:
         type_=sa.DateTime(timezone=True),
         existing_nullable=True,
     )
-    op.drop_index(op.f("ix_mfa_challenges_session_id"), table_name="mfa_challenges")
+    if "ix_mfa_challenges_session_id" in mfa_indexes:
+        op.drop_index(op.f("ix_mfa_challenges_session_id"), table_name="mfa_challenges")
     op.alter_column(
         "news",
         "created_at",
@@ -85,7 +99,8 @@ def upgrade() -> None:
         existing_nullable=True,
         existing_server_default=sa.text("now()"),
     )
-    op.drop_index(op.f("ix_news_published_at_desc"), table_name="news")
+    if "ix_news_published_at_desc" in news_indexes:
+        op.drop_index(op.f("ix_news_published_at_desc"), table_name="news")
     op.add_column(
         "notification_deliveries", sa.Column("status_code", sa.Integer(), nullable=True)
     )
@@ -113,12 +128,13 @@ def upgrade() -> None:
         type_=sa.DateTime(timezone=True),
         existing_nullable=True,
     )
-    op.create_index(
-        op.f("ix_notifications_dedupe_key"),
-        "notifications",
-        ["dedupe_key"],
-        unique=False,
-    )
+    if "ix_notifications_dedupe_key" not in notif_indexes:
+        op.create_index(
+            op.f("ix_notifications_dedupe_key"),
+            "notifications",
+            ["dedupe_key"],
+            unique=False,
+        )
     op.alter_column(
         "password_reset_tokens",
         "expires_at",
@@ -143,16 +159,21 @@ def upgrade() -> None:
         type_=sa.DateTime(timezone=True),
         nullable=False,
     )
-    op.drop_index(op.f("ix_push_subscriptions_active"), table_name="push_subscriptions")
-    op.drop_index(
-        op.f("ix_push_subscriptions_updated_at"), table_name="push_subscriptions"
-    )
-    op.create_index(
-        op.f("ix_push_subscriptions_last_seen_at"),
-        "push_subscriptions",
-        ["last_seen_at"],
-        unique=False,
-    )
+    if "ix_push_subscriptions_active" in push_sub_indexes:
+        op.drop_index(
+            op.f("ix_push_subscriptions_active"), table_name="push_subscriptions"
+        )
+    if "ix_push_subscriptions_updated_at" in push_sub_indexes:
+        op.drop_index(
+            op.f("ix_push_subscriptions_updated_at"), table_name="push_subscriptions"
+        )
+    if "ix_push_subscriptions_last_seen_at" not in push_sub_indexes:
+        op.create_index(
+            op.f("ix_push_subscriptions_last_seen_at"),
+            "push_subscriptions",
+            ["last_seen_at"],
+            unique=False,
+        )
     op.drop_constraint(
         op.f("push_subscriptions_user_id_fkey"),
         "push_subscriptions",
@@ -177,14 +198,19 @@ def upgrade() -> None:
         type_=sa.DateTime(timezone=True),
         existing_nullable=False,
     )
-    op.drop_index(op.f("ix_schedule_group_week_parity_date"), table_name="schedule")
-    op.drop_index(op.f("ix_user_push_topics_updated_at"), table_name="user_push_topics")
-    op.create_index(
-        op.f("ix_user_push_topics_user_id"),
-        "user_push_topics",
-        ["user_id"],
-        unique=False,
-    )
+    if "ix_schedule_group_week_parity_date" in scheduler_indexes:
+        op.drop_index(op.f("ix_schedule_group_week_parity_date"), table_name="schedule")
+    if "ix_user_push_topics_updated_at" in user_push_indexes:
+        op.drop_index(
+            op.f("ix_user_push_topics_updated_at"), table_name="user_push_topics"
+        )
+    if "ix_user_push_topics_user_id" not in user_push_indexes:
+        op.create_index(
+            op.f("ix_user_push_topics_user_id"),
+            "user_push_topics",
+            ["user_id"],
+            unique=False,
+        )
     op.alter_column(
         "users",
         "spotify_token_expires_at",
@@ -199,7 +225,8 @@ def upgrade() -> None:
         type_=sa.DateTime(timezone=True),
         existing_nullable=True,
     )
-    op.drop_index(op.f("ux_users_lower_email"), table_name="users")
+    if "ux_users_lower_email" in users_indexes:
+        op.drop_index(op.f("ux_users_lower_email"), table_name="users")
     # ### end Alembic commands ###
 
 
@@ -218,8 +245,19 @@ def downgrade() -> None:
         return
 
     # Check if index already exists to avoid DuplicateTableError
-    indexes = {ix["name"] for ix in inspector.get_indexes("users")}
-    if "ux_users_lower_email" not in indexes:
+    # Pre-fetch indexes for safety
+    users_indexes = {ix["name"] for ix in inspector.get_indexes("users")}
+    events_indexes = {ix["name"] for ix in inspector.get_indexes("events")}
+    mfa_indexes = {ix["name"] for ix in inspector.get_indexes("mfa_challenges")}
+    news_indexes = {ix["name"] for ix in inspector.get_indexes("news")}
+    notif_indexes = {ix["name"] for ix in inspector.get_indexes("notifications")}
+    push_sub_indexes = {
+        ix["name"] for ix in inspector.get_indexes("push_subscriptions")
+    }
+    scheduler_indexes = {ix["name"] for ix in inspector.get_indexes("schedule")}
+    user_push_indexes = {ix["name"] for ix in inspector.get_indexes("user_push_topics")}
+
+    if "ux_users_lower_email" not in users_indexes:
         op.create_index(
             op.f("ux_users_lower_email"),
             "users",
@@ -240,19 +278,24 @@ def downgrade() -> None:
         type_=postgresql.TIMESTAMP(),
         existing_nullable=True,
     )
-    op.drop_index(op.f("ix_user_push_topics_user_id"), table_name="user_push_topics")
-    op.create_index(
-        op.f("ix_user_push_topics_updated_at"),
-        "user_push_topics",
-        ["updated_at"],
-        unique=False,
-    )
-    op.create_index(
-        op.f("ix_schedule_group_week_parity_date"),
-        "schedule",
-        ["group_id", "parity", "start_time"],
-        unique=False,
-    )
+    if "ix_user_push_topics_user_id" in user_push_indexes:
+        op.drop_index(
+            op.f("ix_user_push_topics_user_id"), table_name="user_push_topics"
+        )
+    if "ix_user_push_topics_updated_at" not in user_push_indexes:
+        op.create_index(
+            op.f("ix_user_push_topics_updated_at"),
+            "user_push_topics",
+            ["updated_at"],
+            unique=False,
+        )
+    if "ix_schedule_group_week_parity_date" not in scheduler_indexes:
+        op.create_index(
+            op.f("ix_schedule_group_week_parity_date"),
+            "schedule",
+            ["group_id", "parity", "start_time"],
+            unique=False,
+        )
     op.alter_column(
         "schedule",
         "end_time",
@@ -286,21 +329,24 @@ def downgrade() -> None:
         ["id"],
         ondelete="SET NULL",
     )
-    op.drop_index(
-        op.f("ix_push_subscriptions_last_seen_at"), table_name="push_subscriptions"
-    )
-    op.create_index(
-        op.f("ix_push_subscriptions_updated_at"),
-        "push_subscriptions",
-        ["updated_at"],
-        unique=False,
-    )
-    op.create_index(
-        op.f("ix_push_subscriptions_active"),
-        "push_subscriptions",
-        ["active"],
-        unique=False,
-    )
+    if "ix_push_subscriptions_last_seen_at" in push_sub_indexes:
+        op.drop_index(
+            op.f("ix_push_subscriptions_last_seen_at"), table_name="push_subscriptions"
+        )
+    if "ix_push_subscriptions_updated_at" not in push_sub_indexes:
+        op.create_index(
+            op.f("ix_push_subscriptions_updated_at"),
+            "push_subscriptions",
+            ["updated_at"],
+            unique=False,
+        )
+    if "ix_push_subscriptions_active" not in push_sub_indexes:
+        op.create_index(
+            op.f("ix_push_subscriptions_active"),
+            "push_subscriptions",
+            ["active"],
+            unique=False,
+        )
     op.alter_column(
         "push_subscriptions",
         "created_at",
@@ -325,7 +371,8 @@ def downgrade() -> None:
         type_=postgresql.TIMESTAMP(),
         existing_nullable=False,
     )
-    op.drop_index(op.f("ix_notifications_dedupe_key"), table_name="notifications")
+    if "ix_notifications_dedupe_key" in notif_indexes:
+        op.drop_index(op.f("ix_notifications_dedupe_key"), table_name="notifications")
     op.alter_column(
         "notifications",
         "read_at",
@@ -349,12 +396,13 @@ def downgrade() -> None:
     )
     op.drop_column("notification_deliveries", "detail")
     op.drop_column("notification_deliveries", "status_code")
-    op.create_index(
-        op.f("ix_news_published_at_desc"),
-        "news",
-        [sa.literal_column("created_at DESC")],
-        unique=False,
-    )
+    if "ix_news_published_at_desc" not in news_indexes:
+        op.create_index(
+            op.f("ix_news_published_at_desc"),
+            "news",
+            [sa.literal_column("created_at DESC")],
+            unique=False,
+        )
     op.alter_column(
         "news",
         "created_at",
@@ -363,12 +411,13 @@ def downgrade() -> None:
         existing_nullable=True,
         existing_server_default=sa.text("now()"),
     )
-    op.create_index(
-        op.f("ix_mfa_challenges_session_id"),
-        "mfa_challenges",
-        ["session_id"],
-        unique=False,
-    )
+    if "ix_mfa_challenges_session_id" not in mfa_indexes:
+        op.create_index(
+            op.f("ix_mfa_challenges_session_id"),
+            "mfa_challenges",
+            ["session_id"],
+            unique=False,
+        )
     op.alter_column(
         "invite_codes",
         "created_at",
@@ -376,13 +425,14 @@ def downgrade() -> None:
         type_=postgresql.TIMESTAMP(),
         existing_nullable=True,
     )
-    op.create_index(
-        op.f("ix_events_search_vector"),
-        "events",
-        ["search_vector"],
-        unique=False,
-        postgresql_using="gin",
-    )
+    if "ix_events_search_vector" not in events_indexes:
+        op.create_index(
+            op.f("ix_events_search_vector"),
+            "events",
+            ["search_vector"],
+            unique=False,
+            postgresql_using="gin",
+        )
     op.alter_column(
         "events",
         "created_at",
