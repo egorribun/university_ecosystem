@@ -424,29 +424,36 @@ def upgrade() -> None:
                 )
             _drop_unique_safe(op.f("uq_users_spotify_user_id"), "users", ops=batch_op)
             _drop_index_safe(op.f("uq_users_spotify_user_id"), "users", ops=batch_op)
-            _create_index_safe(
-                op.f("ix_users_is_active"), "users", ["is_active"], ops=batch_op
-            )
-            _create_index_safe(op.f("ix_users_role"), "users", ["role"], ops=batch_op)
-            _create_index_safe(
-                op.f("ix_users_spotify_last_track_id"),
-                "users",
-                ["spotify_last_track_id"],
-                ops=batch_op,
-            )
-            _create_index_safe(
-                op.f("ix_users_spotify_token_expires_at"),
-                "users",
-                ["spotify_token_expires_at"],
-                ops=batch_op,
-            )
-            _create_index_safe(
-                op.f("ix_users_spotify_user_id"),
-                "users",
-                ["spotify_user_id"],
-                unique=True,
-                ops=batch_op,
-            )
+            if _column_exists("users", "is_active"):
+                _create_index_safe(
+                    op.f("ix_users_is_active"), "users", ["is_active"], ops=batch_op
+                )
+            if _column_exists("users", "role"):
+                _create_index_safe(
+                    op.f("ix_users_role"), "users", ["role"], ops=batch_op
+                )
+            if _column_exists("users", "spotify_last_track_id"):
+                _create_index_safe(
+                    op.f("ix_users_spotify_last_track_id"),
+                    "users",
+                    ["spotify_last_track_id"],
+                    ops=batch_op,
+                )
+            if _column_exists("users", "spotify_token_expires_at"):
+                _create_index_safe(
+                    op.f("ix_users_spotify_token_expires_at"),
+                    "users",
+                    ["spotify_token_expires_at"],
+                    ops=batch_op,
+                )
+            if _column_exists("users", "spotify_user_id"):
+                _create_index_safe(
+                    op.f("ix_users_spotify_user_id"),
+                    "users",
+                    ["spotify_user_id"],
+                    unique=True,
+                    ops=batch_op,
+                )
 
 
 def downgrade() -> None:
