@@ -217,12 +217,15 @@ def downgrade() -> None:
     if "users" not in existing_tables:
         return
 
-    op.create_index(
-        op.f("ux_users_lower_email"),
-        "users",
-        [sa.literal_column("lower(email::text)")],
-        unique=True,
-    )
+    # Check if index already exists to avoid DuplicateTableError
+    indexes = {ix["name"] for ix in inspector.get_indexes("users")}
+    if "ux_users_lower_email" not in indexes:
+        op.create_index(
+            op.f("ux_users_lower_email"),
+            "users",
+            [sa.literal_column("lower(email::text)")],
+            unique=True,
+        )
     op.alter_column(
         "users",
         "spotify_last_checked_at",
