@@ -27,6 +27,13 @@ def upgrade() -> None:
     if bind.dialect.name == "sqlite":
         return
 
+    # Check if this is a fresh database with tables created via
+    # Base.metadata.create_all. If so, skip these alterations as the
+    # tables already have the correct schema.
+    inspector = sa.inspect(bind)
+    if "event_attendance" not in inspector.get_table_names():
+        return
+
     op.drop_constraint(
         op.f("uq_active_sessions_jti"), "active_sessions", type_="unique"
     )
