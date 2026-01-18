@@ -38,17 +38,49 @@ def upgrade() -> None:
         op.f("uq_active_sessions_jti"), "active_sessions", type_="unique"
     )
 
-    # Pre-fetch indexes for safety
-    users_indexes = {ix["name"] for ix in inspector.get_indexes("users")}
-    events_indexes = {ix["name"] for ix in inspector.get_indexes("events")}
-    mfa_indexes = {ix["name"] for ix in inspector.get_indexes("mfa_challenges")}
-    news_indexes = {ix["name"] for ix in inspector.get_indexes("news")}
-    notif_indexes = {ix["name"] for ix in inspector.get_indexes("notifications")}
-    push_sub_indexes = {
-        ix["name"] for ix in inspector.get_indexes("push_subscriptions")
-    }
-    scheduler_indexes = {ix["name"] for ix in inspector.get_indexes("schedule")}
-    user_push_indexes = {ix["name"] for ix in inspector.get_indexes("user_push_topics")}
+    # Pre-fetch indexes for safety, checking table existence first
+    existing_tables = set(inspector.get_table_names())
+
+    users_indexes = (
+        {ix["name"] for ix in inspector.get_indexes("users")}
+        if "users" in existing_tables
+        else set()
+    )
+    events_indexes = (
+        {ix["name"] for ix in inspector.get_indexes("events")}
+        if "events" in existing_tables
+        else set()
+    )
+    mfa_indexes = (
+        {ix["name"] for ix in inspector.get_indexes("mfa_challenges")}
+        if "mfa_challenges" in existing_tables
+        else set()
+    )
+    news_indexes = (
+        {ix["name"] for ix in inspector.get_indexes("news")}
+        if "news" in existing_tables
+        else set()
+    )
+    notif_indexes = (
+        {ix["name"] for ix in inspector.get_indexes("notifications")}
+        if "notifications" in existing_tables
+        else set()
+    )
+    push_sub_indexes = (
+        {ix["name"] for ix in inspector.get_indexes("push_subscriptions")}
+        if "push_subscriptions" in existing_tables
+        else set()
+    )
+    scheduler_indexes = (
+        {ix["name"] for ix in inspector.get_indexes("schedule")}
+        if "schedule" in existing_tables
+        else set()
+    )
+    user_push_indexes = (
+        {ix["name"] for ix in inspector.get_indexes("user_push_topics")}
+        if "user_push_topics" in existing_tables
+        else set()
+    )
     op.alter_column(
         "event_attendance",
         "registered_at",
@@ -245,17 +277,48 @@ def downgrade() -> None:
         return
 
     # Check if index already exists to avoid DuplicateTableError
-    # Pre-fetch indexes for safety
-    users_indexes = {ix["name"] for ix in inspector.get_indexes("users")}
-    events_indexes = {ix["name"] for ix in inspector.get_indexes("events")}
-    mfa_indexes = {ix["name"] for ix in inspector.get_indexes("mfa_challenges")}
-    news_indexes = {ix["name"] for ix in inspector.get_indexes("news")}
-    notif_indexes = {ix["name"] for ix in inspector.get_indexes("notifications")}
-    push_sub_indexes = {
-        ix["name"] for ix in inspector.get_indexes("push_subscriptions")
-    }
-    scheduler_indexes = {ix["name"] for ix in inspector.get_indexes("schedule")}
-    user_push_indexes = {ix["name"] for ix in inspector.get_indexes("user_push_topics")}
+    # Pre-fetch indexes for safety, checking table existence first
+    # existing_tables is already fetched above
+    users_indexes = (
+        {ix["name"] for ix in inspector.get_indexes("users")}
+        if "users" in existing_tables
+        else set()
+    )
+    events_indexes = (
+        {ix["name"] for ix in inspector.get_indexes("events")}
+        if "events" in existing_tables
+        else set()
+    )
+    mfa_indexes = (
+        {ix["name"] for ix in inspector.get_indexes("mfa_challenges")}
+        if "mfa_challenges" in existing_tables
+        else set()
+    )
+    news_indexes = (
+        {ix["name"] for ix in inspector.get_indexes("news")}
+        if "news" in existing_tables
+        else set()
+    )
+    notif_indexes = (
+        {ix["name"] for ix in inspector.get_indexes("notifications")}
+        if "notifications" in existing_tables
+        else set()
+    )
+    push_sub_indexes = (
+        {ix["name"] for ix in inspector.get_indexes("push_subscriptions")}
+        if "push_subscriptions" in existing_tables
+        else set()
+    )
+    scheduler_indexes = (
+        {ix["name"] for ix in inspector.get_indexes("schedule")}
+        if "schedule" in existing_tables
+        else set()
+    )
+    user_push_indexes = (
+        {ix["name"] for ix in inspector.get_indexes("user_push_topics")}
+        if "user_push_topics" in existing_tables
+        else set()
+    )
 
     if "ux_users_lower_email" not in users_indexes:
         op.create_index(
