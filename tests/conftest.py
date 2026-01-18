@@ -155,8 +155,21 @@ async def prepare_database() -> AsyncIterator[None]:
     database_url = os.environ.get("DATABASE_URL", "")
     is_postgresql = database_url.startswith("postgresql")
 
-    # For PostgreSQL, tables are created via Alembic migrations in CI
     if is_postgresql:
+        # For PostgreSQL, verify tables exist (created via Alembic migrations in CI)
+        # If tables are missing, fall back to creating them with SQLAlchemy
+        async with engine.begin() as conn:
+            result = await conn.exec_driver_sql(
+                "SELECT EXISTS (SELECT FROM information_schema.tables "
+                "WHERE table_name = 'users')"
+            )
+            tables_exist = result.scalar()
+
+            if not tables_exist:
+                logging.warning(
+                    "PostgreSQL tables not found, creating via SQLAlchemy metadata"
+                )
+                await conn.run_sync(Base.metadata.create_all)
         yield
         return
 
