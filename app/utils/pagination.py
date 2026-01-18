@@ -88,9 +88,7 @@ def decode_datetime_cursor(cursor: str | None) -> tuple[datetime, str] | None:
         return None
 
 
-async def paginate_cursor[
-    T
-](
+async def paginate_cursor[T](
     session: AsyncSession,
     stmt: Select,
     cursor_column,
