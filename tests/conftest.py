@@ -329,6 +329,17 @@ async def clean_database(prepare_database: None) -> AsyncIterator[None]:
             )
             await asyncio.sleep(delay)
             delay *= 2
+        except RuntimeError as exc:
+            # Event loop closed before teardown finalizer completed
+            # This happens with uvloop + asyncpg when the transport closes early
+            error_message = str(exc).lower()
+            if (
+                "event loop is closed" in error_message
+                or "handler is closed" in error_message
+            ):
+                logging.debug("Skipping database cleanup: event loop already closed")
+                break
+            raise
 
 
 @pytest.fixture(scope="session")
