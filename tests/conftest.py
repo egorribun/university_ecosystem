@@ -156,11 +156,7 @@ async def prepare_database() -> AsyncIterator[None]:
     is_postgresql = database_url.startswith("postgresql")
 
     if is_postgresql:
-        # For PostgreSQL, ensure all tables exist using SQLAlchemy metadata
-        # create_all uses checkfirst=True by default (CREATE TABLE IF NOT EXISTS)
-        # This handles both cases: fresh DB and partial migrations
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+        # For PostgreSQL, tables are created via Alembic migrations in CI
         yield
         return
 
