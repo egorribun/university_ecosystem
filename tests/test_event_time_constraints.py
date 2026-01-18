@@ -131,18 +131,24 @@ async def test_get_all_events_respects_locale(db_session, user_factory):
     ru_events = await crud.get_all_events(db_session, user_id=student.id, locale="ru")
     en_events = await crud.get_all_events(db_session, user_id=student.id, locale="en")
 
-    assert ru_events.items[0].title == "Русское название"
-    assert ru_events.items[0].title_en == "English title"
-    assert en_events.items[0].title == "English title"
-    assert en_events.items[0].title_en == "English title"
-    assert ru_events.items[0].description == "Описание"
-    assert en_events.items[0].description == "English description"
-    assert ru_events.items[0].location == "Москва"
-    assert en_events.items[0].location == "Moscow"
-    assert ru_events.items[0].event_type == "лекция"
-    assert en_events.items[0].event_type == "Lecture"
-    assert ru_events.items[0].about == "Русский текст"
-    assert en_events.items[0].about == "English text"
+    # Find the specific event by ID to avoid test isolation issues
+    ru_event = next((e for e in ru_events.items if e.id == event.id), None)
+    en_event = next((e for e in en_events.items if e.id == event.id), None)
+    assert ru_event is not None, f"Event {event.id} not found in ru_events"
+    assert en_event is not None, f"Event {event.id} not found in en_events"
+
+    assert ru_event.title == "Русское название"
+    assert ru_event.title_en == "English title"
+    assert en_event.title == "English title"
+    assert en_event.title_en == "English title"
+    assert ru_event.description == "Описание"
+    assert en_event.description == "English description"
+    assert ru_event.location == "Москва"
+    assert en_event.location == "Moscow"
+    assert ru_event.event_type == "лекция"
+    assert en_event.event_type == "Lecture"
+    assert ru_event.about == "Русский текст"
+    assert en_event.about == "English text"
 
 
 async def test_get_all_events_cursor_respects_ordering_and_gaps(
