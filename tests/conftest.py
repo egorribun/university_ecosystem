@@ -287,18 +287,32 @@ async def prepare_database() -> AsyncIterator[None]:
 async def clean_database(prepare_database: None) -> AsyncIterator[None]:
     yield
 
+    database_url = os.environ.get("DATABASE_URL", "")
+    is_postgresql = database_url.startswith("postgresql")
+
     attempts = 5
     delay = 0.1
     for attempt in range(1, attempts + 1):
         try:
             async with engine.begin() as conn:
-                await conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
-                for table in reversed(Base.metadata.sorted_tables):
-                    try:
-                        await conn.execute(table.delete())
-                    except Exception:
-                        pass
-                await conn.exec_driver_sql("PRAGMA foreign_keys=ON")
+                if is_postgresql:
+                    # PostgreSQL: use TRUNCATE with CASCADE
+                    for table in reversed(Base.metadata.sorted_tables):
+                        try:
+                            await conn.exec_driver_sql(
+                                f'TRUNCATE TABLE "{table.name}" CASCADE'
+                            )
+                        except Exception:
+                            pass
+                else:
+                    # SQLite: use PRAGMA and DELETE
+                    await conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
+                    for table in reversed(Base.metadata.sorted_tables):
+                        try:
+                            await conn.execute(table.delete())
+                        except Exception:
+                            pass
+                    await conn.exec_driver_sql("PRAGMA foreign_keys=ON")
             break
         except OperationalError as exc:
             if "database is locked" not in str(exc).lower() or attempt == attempts:
