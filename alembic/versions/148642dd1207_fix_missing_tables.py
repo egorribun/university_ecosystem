@@ -886,7 +886,7 @@ def downgrade() -> None:
         batch_op.add_column(sa.Column("spotify_user_id", sa.VARCHAR(), nullable=True))
         batch_op.add_column(sa.Column("timezone", sa.VARCHAR(length=64), nullable=True))
         batch_op.add_column(
-            sa.Column("spotify_token_expires_at", sa.DATETIME(), nullable=True)
+            sa.Column("spotify_token_expires_at", sa.DateTime(), nullable=True)
         )
         batch_op.add_column(
             sa.Column(
@@ -898,7 +898,7 @@ def downgrade() -> None:
         )
         batch_op.add_column(sa.Column("dnd_start", sa.TIME(), nullable=True))
         batch_op.add_column(
-            sa.Column("spotify_last_checked_at", sa.DATETIME(), nullable=True)
+            sa.Column("spotify_last_checked_at", sa.DateTime(), nullable=True)
         )
         batch_op.add_column(
             sa.Column("spotify_last_track_id", sa.VARCHAR(), nullable=True)
