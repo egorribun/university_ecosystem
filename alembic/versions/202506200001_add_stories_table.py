@@ -82,8 +82,20 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_stories_created_at", table_name="stories")
-    op.drop_index("ix_stories_created_by", table_name="stories")
-    op.drop_index("ix_stories_is_active", table_name="stories")
-    op.drop_index("ix_stories_expires_at_is_active", table_name="stories")
-    op.drop_table("stories")
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    table_name = "stories"
+
+    if _table_exists(inspector, table_name):
+        existing_indexes = {
+            index["name"] for index in inspector.get_indexes(table_name)
+        }
+        if "ix_stories_created_at" in existing_indexes:
+            op.drop_index("ix_stories_created_at", table_name=table_name)
+        if "ix_stories_created_by" in existing_indexes:
+            op.drop_index("ix_stories_created_by", table_name=table_name)
+        if "ix_stories_is_active" in existing_indexes:
+            op.drop_index("ix_stories_is_active", table_name=table_name)
+        if "ix_stories_expires_at_is_active" in existing_indexes:
+            op.drop_index("ix_stories_expires_at_is_active", table_name=table_name)
+        op.drop_table(table_name)
