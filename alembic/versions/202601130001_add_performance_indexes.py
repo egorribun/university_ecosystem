@@ -83,9 +83,16 @@ def upgrade() -> None:
         existing_indexes = {
             idx["name"] for idx in inspector.get_indexes("push_subscriptions")
         }
+        existing_columns = {
+            col["name"] for col in inspector.get_columns("push_subscriptions")
+        }
 
         # Partial index for active subscriptions by user
-        if "ix_push_subscriptions_user_active" not in existing_indexes:
+        # Only create if revoked_at column exists (legacy databases)
+        if (
+            "ix_push_subscriptions_user_active" not in existing_indexes
+            and "revoked_at" in existing_columns
+        ):
             op.create_index(
                 "ix_push_subscriptions_user_active",
                 "push_subscriptions",
