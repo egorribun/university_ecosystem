@@ -24,17 +24,24 @@ def upgrade() -> None:
     bind = op.get_bind()
     if bind.dialect.name == "sqlite":
         return
+
+    # Check if tables exist (may not exist on fresh databases)
+    inspector = sa.inspect(bind)
+    existing_tables = set(inspector.get_table_names())
+
     # Alter sender_id column type from VARCHAR to INTEGER
-    op.execute(
-        "ALTER TABLE messages ALTER COLUMN sender_id TYPE INTEGER "
-        "USING sender_id::INTEGER"
-    )
+    if "messages" in existing_tables:
+        op.execute(
+            "ALTER TABLE messages ALTER COLUMN sender_id TYPE INTEGER "
+            "USING sender_id::INTEGER"
+        )
 
     # Also need to fix the chat_participants user_id if it's wrong
-    op.execute(
-        "ALTER TABLE chat_participants ALTER COLUMN user_id TYPE INTEGER "
-        "USING user_id::INTEGER"
-    )
+    if "chat_participants" in existing_tables:
+        op.execute(
+            "ALTER TABLE chat_participants ALTER COLUMN user_id TYPE INTEGER "
+            "USING user_id::INTEGER"
+        )
 
 
 def downgrade() -> None:
