@@ -2,7 +2,6 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
-    CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
@@ -10,6 +9,9 @@ from sqlalchemy import (
     String,
     Time,
     func,
+)
+from sqlalchemy import (
+    Enum as SqlEnum,
 )
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.orm import relationship
@@ -39,19 +41,18 @@ ROLE_VALUES_SQL = ", ".join(f"'{role.value}'" for role in UserRole)
 
 class User(Base, EventEmitterMixin):
     __tablename__ = "users"
-    __table_args__ = (
-        CheckConstraint(
-            f"role IN ({ROLE_VALUES_SQL})",
-            name="ck_users_role_valid",
-        ),
-    )
 
     id = Column(Integer, primary_key=True)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
 
     full_name = Column(String)
-    role = Column(String, nullable=False, default=UserRole.STUDENT.value, index=True)
+    role = Column(
+        SqlEnum(UserRole, native_enum=True, name="userrole"),
+        nullable=False,
+        default=UserRole.STUDENT,
+        index=True,
+    )
     group_id = Column(Integer, ForeignKey("groups.id", ondelete="SET NULL"), index=True)
     is_active = Column(Boolean, default=True, index=True)
     mfa_required = Column(Boolean, default=False, nullable=False, index=True)
@@ -244,12 +245,6 @@ class UserPreferences(Base):
 
 class InviteCode(Base):
     __tablename__ = "invite_codes"
-    __table_args__ = (
-        CheckConstraint(
-            f"role IN ({ROLE_VALUES_SQL})",
-            name="ck_invite_codes_role_valid",
-        ),
-    )
 
     id = Column(Integer, primary_key=True)
     code = Column(String, unique=True, nullable=False, index=True)
