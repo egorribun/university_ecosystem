@@ -1,5 +1,5 @@
-import base64
 import json
+import uuid
 from unittest.mock import MagicMock
 
 import pytest
@@ -18,23 +18,15 @@ MOCK_PUBLIC_KEY = "mock_public_key"
 
 @pytest.fixture
 def mock_webauthn(monkeypatch):
-    """Mock the underlying webauthn library functions."""
+    """Mock the underlying webauthn library functions.
 
-    # Mock registration options
-    mock_reg_options = MagicMock()
-    mock_reg_options.challenge = b"mock_challenge_bytes"
-    # options_to_json is called on the result, so we mock the return of
-    # generate_registration_options
-    # to be an object that options_to_json can handle, OR we assume options_to_json
-    # is also part of webauthn package
-    # Actually app/services/webauthn.py calls options_to_json(options)
-
-    # Simpler approach: Mock the Service methods or the library functions
-    # Let's mock the library functions in app.services.webauthn
-
-    # 1. generate_registration_options
-    # It returns an object that options_to_json converts to JSON string.
-    # We can mock options_to_json too.
+    Each test invocation gets a unique credential ID to prevent
+    UniqueViolationError when tests run in shared database context.
+    """
+    # Generate unique credential ID for this test run
+    unique_suffix = uuid.uuid4().hex[:16]
+    unique_credential_id = f"mock_credential_id_{unique_suffix}".encode()
+    unique_public_key = f"mock_public_key_{unique_suffix}".encode()
 
     def fake_options_to_json(opts):
         return json.dumps(
@@ -54,10 +46,10 @@ def mock_webauthn(monkeypatch):
 
     monkeypatch.setattr("app.services.webauthn.options_to_json", fake_options_to_json)
 
-    # 2. verify_registration_response
+    # 2. verify_registration_response - uses unique credential ID
     mock_reg_verification = MagicMock()
-    mock_reg_verification.credential_id = b"mock_credential_id_bytes"
-    mock_reg_verification.credential_public_key = b"mock_public_key_bytes"
+    mock_reg_verification.credential_id = unique_credential_id
+    mock_reg_verification.credential_public_key = unique_public_key
     mock_reg_verification.sign_count = 0
     mock_reg_verification.credential_device_type = "single_device"
     mock_reg_verification.credential_backed_up = False
@@ -193,7 +185,7 @@ async def test_webauthn_authentication_flow(
     )
     challenge_token = start_resp.json()["challenge_token"]
 
-    await async_client.post(
+    confirm_resp = await async_client.post(
         "/auth/mfa/webauthn/register/confirm",
         headers=headers,
         json={
@@ -202,6 +194,18 @@ async def test_webauthn_authentication_flow(
             "label": "Key",
         },
     )
+    assert (
+        confirm_resp.status_code == status.HTTP_200_OK
+    ), f"Registration failed: {confirm_resp.json()}"
+
+    # Fetch the actual credential_id from the database
+    stmt = select(models.WebAuthnCredential).where(
+        models.WebAuthnCredential.user_id == user.id
+    )
+    result = await db_session.execute(stmt)
+    credential = result.scalars().first()
+    assert credential is not None, "WebAuthn credential not found in database"
+    expected_cred_id_b64 = credential.credential_id
 
     # Now try to login
     login_resp = await async_client.post(
@@ -222,23 +226,7 @@ async def test_webauthn_authentication_flow(
     assert webauthn_method is not None
     assert "options" in webauthn_method
 
-    # Verify Authentication
-    # We need to manually inject the credential ID into the payload because
-    # verify_authentication calls
-    # db.execute(where(credential_id == response.id))
-    # In our mock above, registration saved 'mock_credential_id_bytes' base64 encoded.
-    # verify_registration_response mock returns credential_id =
-    # b"mock_credential_id_bytes"
-    # base64.urlsafe_b64encode(b"mock_credential_id_bytes")
-    # .decode("utf-8").rstrip("=")
-    # = 'bW9ja19jcmVkZW50aWFsX2lkX2J5dGVz'
-
-    expected_cred_id_b64 = (
-        base64.urlsafe_b64encode(b"mock_credential_id_bytes")
-        .decode("utf-8")
-        .rstrip("=")
-    )
-
+    # Verify Authentication using the actual credential ID from database
     verify_resp = await async_client.post(
         "/auth/mfa/verify",
         json={
