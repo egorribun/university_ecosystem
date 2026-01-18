@@ -51,6 +51,7 @@ def safe_batch_alter_table(table_name: str, schema=None, **kwargs):
 def upgrade() -> None:
     """Upgrade schema."""
     bind = op.get_bind()
+    is_postgresql = bind.dialect.name == "postgresql"
     inspector = sa.inspect(bind)
     existing_columns = {c["name"] for c in inspector.get_columns("groups")}
     existing_indexes = {i["name"] for i in inspector.get_indexes("groups")}
@@ -163,7 +164,9 @@ def upgrade() -> None:
         sa.Column("signature", sa.String(length=512), nullable=True),
         sa.ForeignKeyConstraint(["actor_user_id"], ["users.id"], ondelete="SET NULL"),
         sa.ForeignKeyConstraint(["subject_user_id"], ["users.id"], ondelete="SET NULL"),
-        sa.PrimaryKeyConstraint("id", "created_at"),
+        sa.PrimaryKeyConstraint("id", "created_at")
+        if is_postgresql
+        else sa.PrimaryKeyConstraint("id"),
         postgresql_partition_by="RANGE (created_at)",
     )
     with safe_batch_alter_table("data_access_logs", schema=None) as batch_op:
@@ -396,7 +399,9 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id", "created_at"),
+        sa.PrimaryKeyConstraint("id", "created_at")
+        if is_postgresql
+        else sa.PrimaryKeyConstraint("id"),
         postgresql_partition_by="RANGE (created_at)",
     )
     with safe_batch_alter_table("notifications", schema=None) as batch_op:
@@ -684,7 +689,9 @@ def upgrade() -> None:
             ["notifications.id", "notifications.created_at"],
             ondelete="CASCADE",
         ),
-        sa.PrimaryKeyConstraint("id", "attempted_at"),
+        sa.PrimaryKeyConstraint("id", "attempted_at")
+        if is_postgresql
+        else sa.PrimaryKeyConstraint("id"),
         postgresql_partition_by="RANGE (attempted_at)",
     )
     with safe_batch_alter_table("notification_deliveries", schema=None) as batch_op:
