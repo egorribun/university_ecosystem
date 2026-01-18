@@ -44,7 +44,7 @@ def safe_batch_alter_table(table_name: str, schema=None, **kwargs):
     if table_name in SKIPPED_TABLES:
         yield DummyBatchOp()
     else:
-        with safe_batch_alter_table(table_name, schema=schema, **kwargs) as batch_op:
+        with op.batch_alter_table(table_name, schema=schema, **kwargs) as batch_op:
             yield batch_op
 
 
