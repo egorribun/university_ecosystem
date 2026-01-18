@@ -41,7 +41,7 @@ else:
         otel_logs.set_logger_provider = _set_logger_provider
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test.db")
-os.environ.setdefault("SECRET_KEY", "test-secret")
+os.environ.setdefault("SECRET_KEY", "test-secret-key-32-characters-long-entropy")
 os.environ.setdefault("ALGORITHM", "HS256")
 os.environ.setdefault("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
 os.environ.setdefault("STATIC_DIR", "app/test-static")

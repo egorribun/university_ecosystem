@@ -1,8 +1,4 @@
 from abc import ABC, abstractmethod
-from typing import Generic, TypeVar
-
-TQuery = TypeVar("TQuery")
-TResult = TypeVar("TResult")
 
 
 class Query(ABC):
@@ -11,7 +7,7 @@ class Query(ABC):
     pass
 
 
-class QueryHandler(Generic[TQuery, TResult], ABC):
+class QueryHandler[TQuery, TResult](ABC):
     """Base class for all query handlers."""
 
     @abstractmethod

@@ -16,11 +16,16 @@ from app.utils import ratelimit as ratelimit_module
 
 @pytest.mark.anyio
 async def test_rate_limit_per_ip(root_client):
+    """Test using a public endpoint that is NOT exempted."""
+    endpoint = "/api/v1/news"
     for _ in range(5):
-        response = await root_client.get("/healthz")
+        response = await root_client.get(endpoint)
+        # 200 OK or 404 (empty list) doesn't matter, as long as it reaches application
+        # If /api/v1/news returns empty list it's still 200.
         assert response.status_code == 200
         assert response.headers.get("X-RateLimit-Limit") == "5"
-    response = await root_client.get("/healthz")
+
+    response = await root_client.get(endpoint)
     assert response.status_code == 429
     expected = translate("errors.rate_limit.generic")
     assert response.json()["detail"] == expected
@@ -28,34 +33,43 @@ async def test_rate_limit_per_ip(root_client):
 
 
 @pytest.mark.anyio
+async def test_health_check_exempted(root_client):
+    """Test that health check is exempted from rate limits."""
+    for _ in range(20):
+        response = await root_client.get("/healthz")
+        assert response.status_code == 200
+        assert "X-RateLimit-Limit" not in response.headers
+
+
+@pytest.mark.anyio
 async def test_rate_limit_per_token(root_client):
     headers = {"Authorization": "Bearer token-a"}
+    endpoint = "/api/v1/news"
     for _ in range(5):
-        response = await root_client.get("/healthz", headers=headers)
+        response = await root_client.get(endpoint, headers=headers)
         assert response.status_code == 200
-    blocked = await root_client.get("/healthz", headers=headers)
+    blocked = await root_client.get(endpoint, headers=headers)
     assert blocked.status_code == 429
 
-    other = await root_client.get(
-        "/healthz", headers={"Authorization": "Bearer token-b"}
-    )
+    other = await root_client.get(endpoint, headers={"Authorization": "Bearer token-b"})
     assert other.status_code == 200
 
 
 @pytest.mark.anyio
 async def test_rate_limit_per_cookie(root_client):
     root_client.cookies.set("access_token", "cookie-token-a", path="/")
+    endpoint = "/api/v1/news"
 
     for _ in range(5):
-        response = await root_client.get("/healthz")
+        response = await root_client.get(endpoint)
         assert response.status_code == 200
 
-    blocked = await root_client.get("/healthz")
+    blocked = await root_client.get(endpoint)
     assert blocked.status_code == 429
 
     root_client.cookies.set("access_token", "cookie-token-b", path="/")
 
-    other = await root_client.get("/healthz")
+    other = await root_client.get(endpoint)
     assert other.status_code == 200
 
 

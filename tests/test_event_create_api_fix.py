@@ -63,7 +63,7 @@ async def test_create_event_frontend_payload_reproduction(async_client, user_fac
         json=payload,
     )
 
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     # print(f"\nConfimed 422 Error for equal times: {response.json()}")
 
 

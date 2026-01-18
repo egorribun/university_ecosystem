@@ -7,7 +7,7 @@ Extracted from main config.py for better organization.
 from __future__ import annotations
 
 from pydantic import Field
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class SecuritySettings(BaseSettings):
@@ -68,9 +68,7 @@ class SecuritySettings(BaseSettings):
         description="Use CSP report-only mode",
     )
 
-    class Config:
-        env_prefix = ""
-        extra = "ignore"
+    model_config = SettingsConfigDict(env_prefix="", extra="ignore")
 
     @property
     def cors_origins_list(self) -> list[str]:

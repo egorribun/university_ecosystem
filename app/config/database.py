@@ -7,7 +7,7 @@ Extracted from main config.py for better organization.
 from __future__ import annotations
 
 from pydantic import Field
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class DatabaseSettings(BaseSettings):
@@ -48,9 +48,7 @@ class DatabaseSettings(BaseSettings):
         description="Read replica connection URL (optional)",
     )
 
-    class Config:
-        env_prefix = ""
-        extra = "ignore"
+    model_config = SettingsConfigDict(env_prefix="", extra="ignore")
 
     @property
     def has_read_replica(self) -> bool:

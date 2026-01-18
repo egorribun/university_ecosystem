@@ -7,7 +7,7 @@ Extracted from main config.py for better organization.
 from __future__ import annotations
 
 from pydantic import Field
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class NotificationsSettings(BaseSettings):
@@ -68,9 +68,7 @@ class NotificationsSettings(BaseSettings):
         description="End of quiet hours (24h format)",
     )
 
-    class Config:
-        env_prefix = ""
-        extra = "ignore"
+    model_config = SettingsConfigDict(env_prefix="", extra="ignore")
 
     @property
     def has_vapid_keys(self) -> bool:

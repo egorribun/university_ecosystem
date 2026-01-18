@@ -99,7 +99,7 @@ async def test_send_message_blocks_infected_file(
 
     async def infected_scan(*_args, **_kwargs):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=translate("errors.files.infected", locale="en"),
         )
 
@@ -117,7 +117,7 @@ async def test_send_message_blocks_infected_file(
             locale="en",
         )
 
-    assert excinfo.value.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert excinfo.value.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     upload_dir = tmp_path / "chat_uploads"
     assert not upload_dir.exists() or not any(upload_dir.iterdir())
 

@@ -27,6 +27,7 @@ async def test_monster_coverage_run():
     mock_db.commit = AsyncMock()
     mock_db.rollback = AsyncMock()
     mock_db.refresh = AsyncMock()
+    mock_db.flush = AsyncMock()
 
     result = MagicMock()
     # scalars().all() returns a list

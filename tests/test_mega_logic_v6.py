@@ -19,8 +19,10 @@ from app.services.user_service import UserService
 @pytest.mark.asyncio
 async def test_user_service_mega():
     audit = MagicMock()
-    service = UserService(audit)
     db = AsyncMock()
+    db.add = MagicMock()
+    db.add_all = MagicMock()
+    service = UserService(db, audit)
 
     admin_user = models.User(id=1, email="admin@e.com", role="admin")
     student_user = models.User(id=2, email="s@e.com", role="student")
@@ -32,7 +34,7 @@ async def test_user_service_mega():
     data = schemas.UserProfileUpdate.model_construct(email="invalid")
     with patch("app.services.user_service.resolve_locale", return_value="en"):
         with pytest.raises(BusinessRuleViolation):
-            await service.update_user_profile(db, student_user, data, request)
+            await service.update_user_profile(student_user, data, request)
 
     # 2. update_user_profile - duplicate email
     data = schemas.UserProfileUpdate(email="taken@e.com")
@@ -42,7 +44,7 @@ async def test_user_service_mega():
     db.get.return_value = student_user
     with patch("app.services.user_service.resolve_locale", return_value="en"):
         with pytest.raises(EntityAlreadyExists):
-            await service.update_user_profile(db, student_user, data, request)
+            await service.update_user_profile(student_user, data, request)
 
     # 3. upload_avatar/cover - rollback/error paths
     file = MagicMock(spec=UploadFile)
@@ -56,13 +58,13 @@ async def test_user_service_mega():
         patch("app.services.user_service.resolve_locale", return_value="en"),
     ):
         with pytest.raises(Exception, match="db error"):  # noqa: B017
-            await service.upload_avatar(db, student_user, file, request)
+            await service.upload_avatar(student_user, file, request)
         db.rollback.assert_called()
         m_del.assert_called_with("/url")
 
         # upload_cover error
         with pytest.raises(Exception, match="db error"):  # noqa: B017
-            await service.upload_cover(db, student_user, file, request)
+            await service.upload_cover(student_user, file, request)
 
     # 4. admin create_user branches
     db.commit.side_effect = None
@@ -76,12 +78,12 @@ async def test_user_service_mega():
     with patch("app.services.user_service.resolve_locale", return_value="en"):
         # Forbidden
         with pytest.raises(PermissionDenied):
-            await service.create_user(db, data_user, request, student_user)
+            await service.create_user(data_user, request, student_user)
 
         # Missing invite code
         data_user.invite_code = None
         with pytest.raises(BusinessRuleViolation):
-            await service.create_user(db, data_user, request, admin_user)
+            await service.create_user(data_user, request, admin_user)
 
         # Invalid invite code
         data_user.invite_code = "inv"
@@ -89,7 +91,7 @@ async def test_user_service_mega():
         mock_invite_res.scalar_one_or_none.return_value = None
         db.execute.return_value = mock_invite_res
         with pytest.raises(BusinessRuleViolation):
-            await service.create_user(db, data_user, request, admin_user)
+            await service.create_user(data_user, request, admin_user)
 
     # 5. admin_update_user - MFA reset
     data_update = schemas.UserAdminUpdate(mfa_reset=True)
@@ -105,7 +107,7 @@ async def test_user_service_mega():
             new_callable=AsyncMock,
         ) as m_notif,
     ):
-        await service.admin_update_user(db, 3, data_update, request, admin_user)
+        await service.admin_update_user(3, data_update, request, admin_user)
         m_notif.assert_called_once()
 
     # 6. admin_delete_user - forbidden/self/not found
@@ -114,16 +116,16 @@ async def test_user_service_mega():
         db.get.side_effect = None
         db.get.return_value = admin_user
         with pytest.raises(BusinessRuleViolation):
-            await service.admin_delete_user(db, 1, request, admin_user)
+            await service.admin_delete_user(1, request, admin_user)
 
         # not found check
         db.get.return_value = None
         with pytest.raises(EntityNotFound):
-            await service.admin_delete_user(db, 999, request, admin_user)
+            await service.admin_delete_user(999, request, admin_user)
 
         # forbidden check
         with pytest.raises(PermissionDenied):
-            await service.admin_delete_user(db, 3, request, student_user)
+            await service.admin_delete_user(3, request, student_user)
 
     # 7. data_export - full
     db.get.return_value = student_user
@@ -155,7 +157,7 @@ async def test_user_service_mega():
             return_value=MagicMock(model_dump=lambda: {}),
         ),
     ):
-        export = await service.export_user_data(db, student_user, request)
+        export = await service.export_user_data(student_user, request)
         assert len(export.sessions) == 1
         assert len(export.notifications) == 1
         assert len(export.access_logs) == 1
@@ -164,6 +166,8 @@ async def test_user_service_mega():
 @pytest.mark.asyncio
 async def test_crud_advanced_branches():
     db = AsyncMock()
+    db.add = MagicMock()
+    db.add_all = MagicMock()
 
     # 1. get_all_events with cursor
     cursor = crud._encode_event_cursor(datetime.datetime.now(datetime.UTC), 10)

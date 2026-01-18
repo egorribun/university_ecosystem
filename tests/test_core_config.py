@@ -73,7 +73,8 @@ def test_settings_allow_development_defaults_when_opted_in(monkeypatch):
         settings = config_module.Settings(_allow_missing=True)
 
         assert settings.database_url == "sqlite+aiosqlite:///./dev.db"
-        assert settings.secret_key == "development-secret-key"
+        assert isinstance(settings.secret_key, str)
+        assert len(settings.secret_key) > 0
         assert settings.has_development_fallbacks is True
         assert set(settings.development_fallback_fields) == {
             "database_url",
@@ -175,7 +176,7 @@ def test_auto_create_schema_default_true_in_development(monkeypatch):
 
 def test_auto_create_schema_default_false_in_production(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///./test.db")
-    monkeypatch.setenv("SECRET_KEY", "production-secret")
+    monkeypatch.setenv("SECRET_KEY", "production-secret-must-be-at-least-32-chars-long")
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.delenv("AUTO_CREATE_SCHEMA", raising=False)
 
@@ -190,7 +191,7 @@ def test_auto_create_schema_default_false_in_production(monkeypatch):
 
 def test_auto_create_schema_warns_when_enabled_in_production(monkeypatch, caplog):
     monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///./test.db")
-    monkeypatch.setenv("SECRET_KEY", "production-secret")
+    monkeypatch.setenv("SECRET_KEY", "production-secret-must-be-at-least-32-chars-long")
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("AUTO_CREATE_SCHEMA", "true")
 

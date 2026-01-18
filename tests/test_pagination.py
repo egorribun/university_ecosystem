@@ -9,8 +9,8 @@ from hypothesis import strategies as st
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import crud
-from app.api import chat
 from app.models import models
+from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
 
 
 @settings(max_examples=30)
@@ -24,8 +24,8 @@ from app.models import models
 )
 def test_chat_cursor_round_trip(timestamp_ms: int, identifier: str) -> None:
     original = datetime.fromtimestamp(timestamp_ms / 1000, tz=UTC)
-    encoded = chat._encode_cursor(original, identifier)  # noqa: SLF001
-    decoded = chat._decode_cursor(encoded)  # noqa: SLF001
+    encoded = encode_datetime_cursor(original, identifier)
+    decoded = decode_datetime_cursor(encoded)
 
     assert decoded is not None
     decoded_ts, decoded_id = decoded
@@ -40,7 +40,7 @@ def test_chat_cursor_round_trip(timestamp_ms: int, identifier: str) -> None:
     ),
 )
 def test_chat_decode_cursor_rejects_invalid(value: str) -> None:
-    assert chat._decode_cursor(value) is None  # noqa: SLF001
+    assert decode_datetime_cursor(value) is None
 
 
 @settings(max_examples=25)

@@ -50,8 +50,8 @@ async def test_user_service_basics():
     from app.services.user_service import UserService
 
     audit = MagicMock()
-    service = UserService(audit)
     db = AsyncMock()
+    service = UserService(db, audit)
     user = models.User(id=1, email="u@e.com")
     user.avatar_url = None
     user.cover_url = None
@@ -70,7 +70,7 @@ async def test_user_service_basics():
     # update_user_profile
     data = schemas.UserProfileUpdate(full_name="New Name")
     with patch("app.services.user_service.resolve_locale", return_value="en"):
-        await service.update_user_profile(db, user, data, request)
+        await service.update_user_profile(user, data, request)
         assert user.full_name == "New Name"
 
     # delete_avatar
@@ -84,7 +84,7 @@ async def test_user_service_basics():
             new_callable=AsyncMock,
         ),
     ):
-        await service.delete_avatar(db, user)
+        await service.delete_avatar(user)
         assert user.avatar_url is None
         m_del.assert_called_once()
 
@@ -94,8 +94,8 @@ async def test_auth_service_basics():
     from app.services.auth_service import AuthService
 
     audit = MagicMock()
-    service = AuthService(audit)
     db = AsyncMock()
+    service = AuthService(db, audit)
     user = models.User(id=1, email="u@e.com", hashed_password="old_hash")
     request = MagicMock()
 
@@ -114,7 +114,7 @@ async def test_auth_service_basics():
         patch("app.services.auth_service.resolve_locale", return_value="en"),
     ):
         m_verify.side_effect = [True, False]
-        await service.change_password(db, user, data, request)
+        await service.change_password(user, data, request)
         assert user.hashed_password == "new_hash"
         db.commit.assert_called()
 

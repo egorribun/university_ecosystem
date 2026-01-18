@@ -5,15 +5,13 @@ from __future__ import annotations
 import base64
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Generic, TypeVar
+from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 if TYPE_CHECKING:
     from sqlalchemy import Select
     from sqlalchemy.ext.asyncio import AsyncSession
-
-T = TypeVar("T")
 
 
 class CursorParams(BaseModel):
@@ -32,7 +30,7 @@ class CursorParams(BaseModel):
 
 
 @dataclass
-class CursorPage(Generic[T]):
+class CursorPage[T]:
     """A page of results with cursor-based pagination."""
 
     items: list[T]
@@ -90,14 +88,16 @@ def decode_datetime_cursor(cursor: str | None) -> tuple[datetime, str] | None:
         return None
 
 
-async def paginate_cursor(
+async def paginate_cursor[
+    T
+](
     session: AsyncSession,
     stmt: Select,
     cursor_column,
     params: CursorParams,
     descending: bool = True,
     include_total: bool = False,
-) -> CursorPage:
+) -> CursorPage[T]:
     """
     Execute cursor-based pagination on a SQLAlchemy select statement.
 
@@ -160,7 +160,7 @@ async def paginate_cursor(
     )
 
 
-class PaginatedResponse(BaseModel, Generic[T]):
+class PaginatedResponse[T](BaseModel):
     """Standard paginated response schema."""
 
     items: list[T]
@@ -168,5 +168,4 @@ class PaginatedResponse(BaseModel, Generic[T]):
     has_more: bool = False
     total_count: int | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

@@ -314,10 +314,10 @@ async def test_upload_avatar_cleans_up_on_commit_failure(
 
     monkeypatch.setattr(db_session, "commit", failing_commit)
 
-    service = UserService(AuditService())
+    service = UserService(db_session, AuditService())
 
     with pytest.raises(RuntimeError):
-        await service.upload_avatar(db_session, user, upload, request=None)
+        await service.upload_avatar(user, upload, request=None)
 
     avatar_dir = tmp_path / "avatars"
     assert delete_calls, "delete_static_file should be invoked"
@@ -357,10 +357,10 @@ async def test_upload_cover_cleans_up_on_commit_failure(
 
     monkeypatch.setattr(db_session, "commit", failing_commit)
 
-    service = UserService(AuditService())
+    service = UserService(db_session, AuditService())
 
     with pytest.raises(RuntimeError):
-        await service.upload_cover(db_session, user, upload, request=None)
+        await service.upload_cover(user, upload, request=None)
 
     cover_dir = tmp_path / "covers"
     assert delete_calls, "delete_static_file should be invoked"

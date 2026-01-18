@@ -335,7 +335,7 @@ async def test_upload_event_file_rejects_infected_payload(
         assert kwargs.get("quarantine_payload") == payload
         assert size_bytes == len(payload)
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=translate("errors.files.infected", locale=locale),
         )
 
@@ -346,7 +346,7 @@ async def test_upload_event_file_rejects_infected_payload(
             event.id, upload, request=None, db=db_session, user=admin
         )
 
-    assert excinfo.value.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert excinfo.value.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     assert excinfo.value.detail == translate("errors.files.infected", locale="en")
     folder = tmp_path / "event_files"
     assert not folder.exists()

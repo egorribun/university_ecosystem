@@ -212,7 +212,12 @@ def upgrade() -> None:
         type_="foreignkey",
     )
     op.create_foreign_key(
-        None, "push_subscriptions", "users", ["user_id"], ["id"], ondelete="CASCADE"
+        op.f("push_subscriptions_user_id_fkey"),
+        "push_subscriptions",
+        "users",
+        ["user_id"],
+        ["id"],
+        ondelete="CASCADE",
     )
     op.drop_column("push_subscriptions", "updated_at")
     op.drop_column("push_subscriptions", "active")
@@ -397,7 +402,11 @@ def downgrade() -> None:
                 "updated_at", postgresql.TIMESTAMP(), autoincrement=False, nullable=True
             ),
         )
-        op.drop_constraint(None, "push_subscriptions", type_="foreignkey")
+        op.drop_constraint(
+            op.f("push_subscriptions_user_id_fkey"),
+            "push_subscriptions",
+            type_="foreignkey",
+        )
         op.create_foreign_key(
             op.f("push_subscriptions_user_id_fkey"),
             "push_subscriptions",

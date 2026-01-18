@@ -283,8 +283,8 @@ async def scan_for_malware(
             except Exception:
                 logger.warning("Failed to quarantine infected payload", exc_info=True)
         raise_validation_error(
-            locale,
             "errors.files.infected",
+            locale,
         )
 
 

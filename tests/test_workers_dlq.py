@@ -8,6 +8,8 @@ from app.workers.dead_letter_queue import DeadLetterQueue, JobStatus
 @pytest.mark.asyncio
 async def test_dlq_basic():
     mock_db = AsyncMock()
+    mock_db.add = MagicMock()
+    mock_db.add_all = MagicMock()
     dlq = DeadLetterQueue(mock_db)
 
     # Coverage for add_failed_job branches
