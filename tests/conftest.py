@@ -18,6 +18,7 @@ import logging
 
 import httpx
 import pytest
+import pytest_asyncio
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -151,7 +152,7 @@ def event_loop() -> AsyncIterator[asyncio.AbstractEventLoop]:
         loop.close()
 
 
-@pytest.fixture(autouse=True)
+@pytest_asyncio.fixture(autouse=True, loop_scope="session")
 async def notification_queue_shutdown() -> AsyncIterator[None]:
     await notification_queue.shutdown_notification_queue()
     try:
@@ -160,7 +161,7 @@ async def notification_queue_shutdown() -> AsyncIterator[None]:
         await notification_queue.shutdown_notification_queue()
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest_asyncio.fixture(scope="session", autouse=True, loop_scope="session")
 async def prepare_database() -> AsyncIterator[None]:
     database_url = os.environ.get("DATABASE_URL", "")
     is_postgresql = database_url.startswith("postgresql")
@@ -283,7 +284,7 @@ async def prepare_database() -> AsyncIterator[None]:
         await conn.run_sync(Base.metadata.drop_all)
 
 
-@pytest.fixture(autouse=True)
+@pytest_asyncio.fixture(autouse=True, loop_scope="session")
 async def clean_database(prepare_database: None) -> AsyncIterator[None]:
     yield
 
@@ -352,7 +353,7 @@ def _rate_limit_redis_client() -> AsyncIterator[fakeredis.aioredis.FakeRedis]:
         set_rate_limit_client_factory(None)
 
 
-@pytest.fixture(autouse=True)
+@pytest_asyncio.fixture(autouse=True, loop_scope="session")
 async def configure_rate_limit(
     _rate_limit_redis_client: fakeredis.aioredis.FakeRedis,
 ) -> AsyncIterator[None]:
@@ -420,7 +421,7 @@ def mock_background_tasks(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-@pytest.fixture
+@pytest_asyncio.fixture(loop_scope="session")
 async def async_client(
     mock_background_tasks: None,
     prepare_database: None,
@@ -436,7 +437,7 @@ async def async_client(
             yield client
 
 
-@pytest.fixture
+@pytest_asyncio.fixture(loop_scope="session")
 async def root_client(
     mock_background_tasks: None,
     prepare_database: None,
@@ -452,7 +453,7 @@ async def root_client(
             yield client
 
 
-@pytest.fixture
+@pytest_asyncio.fixture(loop_scope="session")
 async def db_session() -> AsyncIterator[AsyncSession]:
     async with async_session() as session:
         yield session
@@ -503,7 +504,7 @@ class _TestingRedisCache(cache_module.RedisCache):
                 await client.delete(*to_delete)
 
 
-@pytest.fixture
+@pytest_asyncio.fixture(loop_scope="session")
 async def fake_cache() -> AsyncIterator[_TestingRedisCache]:
     original_enabled = settings.cache_enabled
     settings.cache_enabled = True
@@ -521,7 +522,7 @@ async def fake_cache() -> AsyncIterator[_TestingRedisCache]:
         settings.cache_enabled = original_enabled
 
 
-@pytest.fixture
+@pytest_asyncio.fixture(loop_scope="session")
 async def user_factory(db_session) -> Callable[..., Awaitable[models.User]]:
     async def _factory(**kwargs) -> models.User:
         defaults = {
@@ -546,7 +547,7 @@ async def user_factory(db_session) -> Callable[..., Awaitable[models.User]]:
     return _factory
 
 
-@pytest.fixture
+@pytest_asyncio.fixture(loop_scope="session")
 async def story_factory(db_session) -> Callable[..., Awaitable[models.Story]]:
     async def _factory(**kwargs) -> models.Story:
         now = dt.datetime.now(dt.UTC)
