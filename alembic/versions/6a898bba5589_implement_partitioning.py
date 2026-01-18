@@ -22,6 +22,16 @@ def upgrade() -> None:
     if conn.dialect.name != "postgresql":
         return
 
+    import sqlalchemy as sa
+
+    inspector = sa.inspect(conn)
+    existing_tables = set(inspector.get_table_names())
+
+    # Skip if notifications table doesn't exist - fresh database with correct schema
+    # from Base.metadata.create_all. Partitioning is only for upgrading legacy DBs.
+    if "notifications" not in existing_tables:
+        return
+
     # --- 1. Data Access Logs ---
     op.execute("ALTER TABLE data_access_logs RENAME TO data_access_logs_old")
     op.execute(
