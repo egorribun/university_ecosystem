@@ -732,7 +732,11 @@ def upgrade() -> None:
             batch_op.f("ix_users_webauthn_id"), ["webauthn_id"], unique=True
         )
         batch_op.create_foreign_key(
-            None, "groups", ["group_id"], ["id"], ondelete="SET NULL"
+            "fk_users_group_id_groups",
+            "groups",
+            ["group_id"],
+            ["id"],
+            ondelete="SET NULL",
         )
         batch_op.drop_column("spotify_access_token")
         batch_op.drop_column("spotify_last_track_url")
