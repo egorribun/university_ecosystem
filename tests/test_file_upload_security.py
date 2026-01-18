@@ -12,8 +12,12 @@ settings.event_file_allowed_extensions = ".jpg,.png,.pdf"
 
 
 @pytest.mark.asyncio
-async def test_detect_mime_type_fallback():
-    # Test fallback detection without libmagic
+async def test_detect_mime_type_fallback(monkeypatch):
+    """Test fallback detection when libmagic is unavailable."""
+    # Force fallback path by disabling the magic detector
+    import app.utils.files as files_module
+
+    monkeypatch.setattr(files_module, "_magic_mime_detector", None)
 
     # JPEG
     assert detect_mime_type(b"\xff\xd8\xff\xe0") == "image/jpeg"

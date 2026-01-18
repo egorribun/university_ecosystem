@@ -400,3 +400,4 @@ elasticsearch[async]==8.17.0
 uvloop==0.21.0; sys_platform != 'win32'
 pyvips==2.2.1; sys_platform != 'win32'
 orjson==3.11.5
+geoip2==4.8.1
