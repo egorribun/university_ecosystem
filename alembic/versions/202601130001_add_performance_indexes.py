@@ -5,7 +5,7 @@ These indexes improve query performance for:
 2. Active session presence lookups
 3. Push subscription topic filtering
 
-Revision ID: 202601130001_add_performance_indexes
+Revision ID: 202601130001
 Revises: ede66395ff71_merge_chat_message_index_and_
 Create Date: 2026-01-13 19:15:00.000000
 """
@@ -15,7 +15,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = "202601130001_add_performance_indexes"
+revision = "202601130001"
 down_revision = "ede66395ff71"
 branch_labels = None
 depends_on = None
