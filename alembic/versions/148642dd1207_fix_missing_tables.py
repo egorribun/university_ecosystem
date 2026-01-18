@@ -52,11 +52,14 @@ def upgrade() -> None:
     """Upgrade schema."""
     bind = op.get_bind()
     inspector = sa.inspect(bind)
+    existing_columns = {c["name"] for c in inspector.get_columns("groups")}
     existing_indexes = {i["name"] for i in inspector.get_indexes("groups")}
 
     with safe_batch_alter_table("groups", schema=None) as batch_op:
-        batch_op.add_column(sa.Column("course", sa.Integer(), nullable=True))
-        batch_op.add_column(sa.Column("faculty", sa.String(), nullable=True))
+        if "course" not in existing_columns:
+            batch_op.add_column(sa.Column("course", sa.Integer(), nullable=True))
+        if "faculty" not in existing_columns:
+            batch_op.add_column(sa.Column("faculty", sa.String(), nullable=True))
         batch_op.alter_column(
             "id",
             existing_type=sa.VARCHAR(length=20),
@@ -873,6 +876,8 @@ def downgrade() -> None:
     inspector = sa.inspect(bind)
     existing_indexes = {i["name"] for i in inspector.get_indexes("groups")}
 
+    existing_columns = {c["name"] for c in inspector.get_columns("groups")}
+
     with safe_batch_alter_table("groups", schema=None) as batch_op:
         if "ix_groups_id" not in existing_indexes:
             batch_op.create_index(batch_op.f("ix_groups_id"), ["id"], unique=False)
@@ -883,8 +888,10 @@ def downgrade() -> None:
             existing_nullable=False,
             autoincrement=True,
         )
-        batch_op.drop_column("faculty")
-        batch_op.drop_column("course")
+        if "faculty" in existing_columns:
+            batch_op.drop_column("faculty")
+        if "course" in existing_columns:
+            batch_op.drop_column("course")
 
     with safe_batch_alter_table("failed_login_attempts", schema=None) as batch_op:
         batch_op.drop_index(batch_op.f("ix_failed_login_attempts_user_id"))
