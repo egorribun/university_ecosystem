@@ -260,23 +260,6 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  "/api/v1/auth/mfa/recovery-codes": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    get?: never
-    put?: never
-    /** Generate Recovery Codes Endpoint */
-    post: operations["generate_recovery_codes_endpoint_api_v1_auth_mfa_recovery_codes_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
   "/api/v1/auth/mfa/webauthn/{credential_id}": {
     parameters: {
       query?: never
@@ -2518,7 +2501,7 @@ export interface components {
        * Method
        * @enum {string}
        */
-      method: "totp" | "webauthn" | "recovery_code"
+      method: "totp" | "webauthn"
       /** Challenge Token */
       challenge_token: string
       /** Code */
@@ -2914,16 +2897,6 @@ export interface components {
       has_preferences: boolean
       /** Updated At */
       updated_at?: string | null
-    }
-    /** RecoveryCodesGenerateOut */
-    RecoveryCodesGenerateOut: {
-      /** Codes */
-      codes: string[]
-      /**
-       * Created At
-       * Format: date-time
-       */
-      created_at: string
     }
     /** ResetPasswordIn */
     ResetPasswordIn: {
@@ -3370,11 +3343,6 @@ export interface components {
       totp_enrollments?: components["schemas"]["MfaTotpEnrollmentOut"][]
       /** Mfa Challenges */
       mfa_challenges?: components["schemas"]["MfaChallengeOut"][]
-      /**
-       * Recovery Codes Left
-       * @default 0
-       */
-      recovery_codes_left: number
       /** Avatar Url Optimized */
       readonly avatar_url_optimized: string | null
       /** Cover Url Optimized */
@@ -3906,26 +3874,6 @@ export interface operations {
           "application/json": {
             [key: string]: unknown
           }[]
-        }
-      }
-    }
-  }
-  generate_recovery_codes_endpoint_api_v1_auth_mfa_recovery_codes_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["RecoveryCodesGenerateOut"]
         }
       }
     }
