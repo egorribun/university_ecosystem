@@ -82,8 +82,21 @@ def downgrade() -> None:
     if bind.dialect.name == "sqlite":
         return
 
-    op.drop_index("ix_data_access_logs_resource", table_name="data_access_logs")
-    op.drop_index("ix_data_access_logs_created_at", table_name="data_access_logs")
-    op.drop_index("ix_data_access_logs_subject", table_name="data_access_logs")
-    op.drop_index("ix_data_access_logs_actor", table_name="data_access_logs")
-    op.drop_table("data_access_logs")
+    inspector = sa.inspect(bind)
+    table_name = "data_access_logs"
+
+    # Skip if table doesn't exist
+    if not _table_exists(inspector, table_name):
+        return
+
+    existing_indexes = {index["name"] for index in inspector.get_indexes(table_name)}
+
+    if "ix_data_access_logs_resource" in existing_indexes:
+        op.drop_index("ix_data_access_logs_resource", table_name=table_name)
+    if "ix_data_access_logs_created_at" in existing_indexes:
+        op.drop_index("ix_data_access_logs_created_at", table_name=table_name)
+    if "ix_data_access_logs_subject" in existing_indexes:
+        op.drop_index("ix_data_access_logs_subject", table_name=table_name)
+    if "ix_data_access_logs_actor" in existing_indexes:
+        op.drop_index("ix_data_access_logs_actor", table_name=table_name)
+    op.drop_table(table_name)
