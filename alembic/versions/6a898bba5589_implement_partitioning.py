@@ -74,7 +74,8 @@ def upgrade() -> None:
         op.execute("DROP TABLE data_access_logs_old")
 
     # --- 2. Notifications ---
-    # Only if notifications exists (and implicitly deliveries usually goes with it, but we check individually if possible)
+    # Only if notifications exists (and implicitly deliveries usually goes with it,
+    # but we check individually if possible)
     # Note: Deliveries depends on Notifications, so we must be careful.
 
     if "notifications" in existing_tables:
@@ -146,8 +147,9 @@ def upgrade() -> None:
         )
         # Migrate data with join
         # Note: We join against notifications_old which MIGHT have been created above.
-        # Ideally we migrate from old to new. If notifications was partitioned above, 'notifications' is the new partitioned table
-        # and 'notifications_old' is the temp one.
+        # Ideally we migrate from old to new. If notifications was partitioned above,
+        # 'notifications' is the new partitioned table and 'notifications_old'
+        # is the temp one.
 
         # If notifications was partitioned, we use notifications_old.
         # If notifications was NOT partitioned (missing), we can't join?
