@@ -4,7 +4,7 @@ from prometheus_client import REGISTRY
 from app.core.observability import get_periodic_task_metrics
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_periodic_task_metrics_records_success() -> None:
     metrics = get_periodic_task_metrics("test_periodic_task_success")
 
@@ -22,7 +22,7 @@ async def test_periodic_task_metrics_records_success() -> None:
     assert duration_sum is not None and duration_sum >= 0.0
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_periodic_task_metrics_records_failure() -> None:
     metrics = get_periodic_task_metrics("test_periodic_task_failure")
 

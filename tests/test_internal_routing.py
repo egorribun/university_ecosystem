@@ -7,7 +7,7 @@ from app.api.internal import INTERNAL_ROUTE_PREFIXES
 from app.core.internal_access import InternalAccessMiddleware
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_internal_routes_absent_from_openapi(root_client: AsyncClient):
     response = await root_client.get("/api/openapi.json")
     assert response.status_code == 200
@@ -19,7 +19,7 @@ async def test_internal_routes_absent_from_openapi(root_client: AsyncClient):
         assert not leaked, leaked
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_internal_routes_require_token(root_client: AsyncClient):
     # Patch _is_allowed_ip to return False, simulating request from external IP
     with patch.object(InternalAccessMiddleware, "_is_allowed_ip", return_value=False):

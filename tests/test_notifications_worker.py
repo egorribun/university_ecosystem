@@ -30,7 +30,7 @@ def mock_metrics():
 # ============================================================
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_scheduler_init_normalization():
     """Test parameter normalization in constructor."""
     scheduler = NotificationsScheduler(
@@ -41,7 +41,7 @@ async def test_scheduler_init_normalization():
     assert scheduler.max_backoff_seconds == 10
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_scheduler_run_once():
     """Test run_once execution."""
     scheduler = NotificationsScheduler(
@@ -56,7 +56,7 @@ async def test_scheduler_run_once():
     assert result == 5
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_scheduler_run_forever_success(mock_metrics):
     """Test successful iteration in run_forever."""
     scheduler = NotificationsScheduler(
@@ -80,7 +80,7 @@ async def test_scheduler_run_forever_success(mock_metrics):
     mock_metrics.record_success.assert_called_with(3)
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_scheduler_run_forever_failure(mock_metrics):
     """Test error handling and backoff in run_forever."""
     scheduler = NotificationsScheduler(
@@ -108,7 +108,7 @@ async def test_scheduler_run_forever_failure(mock_metrics):
 # ============================================================
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_start_notifications_scheduler_lifecycle():
     """Test starting and stopping the scheduler."""
     with patch(

@@ -365,7 +365,19 @@ def upgrade() -> None:
         sa.Column(
             "search_vector",
             sa.Text().with_variant(postgresql.TSVECTOR(), "postgresql"),
-            server_default=sa.FetchedValue(),
+            sa.Computed(
+                "to_tsvector('simple', "
+                "coalesce(title, '') || ' ' || "
+                "coalesce(description, '') || ' ' || "
+                "coalesce(location, '') || ' ' || "
+                "coalesce(title_en, '') || ' ' || "
+                "coalesce(description_en, '') || ' ' || "
+                "coalesce(location_en, '') || ' ' || "
+                "coalesce(about, '') || ' ' || "
+                "coalesce(about_en, '') "
+                ")",
+                persisted=True,
+            ),
             nullable=True,
         ),
         sa.Column(

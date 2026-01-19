@@ -53,7 +53,7 @@ def reset_health_caches():
     health.reset_health_cache()
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_healthcheck_reports_dependency_statuses(async_client):
     response = await async_client.get("http://testserver/healthz")
     assert response.status_code == status.HTTP_200_OK
@@ -74,7 +74,7 @@ async def test_healthcheck_reports_dependency_statuses(async_client):
         _assert_latency_present(data, component)
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_healthcheck_database_failure_returns_503(async_client, monkeypatch):
     class _FailingConnection:
         async def __aenter__(self):
@@ -97,7 +97,7 @@ async def test_healthcheck_database_failure_returns_503(async_client, monkeypatc
     _assert_latency_present(data, "db_latency_ms")
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_healthcheck_cache_success(async_client, monkeypatch):
     cache = _SuccessfulCache()
     monkeypatch.setattr(health, "get_cache", lambda: cache)
@@ -109,7 +109,7 @@ async def test_healthcheck_cache_success(async_client, monkeypatch):
     _assert_latency_present(data, "cache_latency_ms")
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_healthcheck_cache_failure(async_client, monkeypatch):
     monkeypatch.setattr(health, "get_cache", lambda: _FailingCache())
 
@@ -120,7 +120,7 @@ async def test_healthcheck_cache_failure(async_client, monkeypatch):
     _assert_latency_present(data, "cache_latency_ms")
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_healthcheck_storage_failure(async_client, monkeypatch):
     class _FailingStorage:
         async def save_file(
@@ -141,7 +141,7 @@ async def test_healthcheck_storage_failure(async_client, monkeypatch):
     _assert_latency_present(data, "storage_latency_ms")
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_healthcheck_storage_probe_skips_heavy_when_disabled(
     async_client, monkeypatch
 ):
@@ -170,7 +170,7 @@ async def test_healthcheck_storage_probe_skips_heavy_when_disabled(
     _assert_latency_present(data, "storage_latency_ms")
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_healthcheck_storage_probe_uses_cache(async_client, monkeypatch):
     monkeypatch.setattr(health.settings, "health_storage_probe_enabled", True)
     monkeypatch.setattr(
@@ -201,7 +201,7 @@ async def test_healthcheck_storage_probe_uses_cache(async_client, monkeypatch):
     assert second.json()["storage"] == "ok"
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_healthcheck_notification_queue_failure(async_client, monkeypatch):
     async def _failing_queue_check(conn):
         raise RuntimeError("queue unavailable")
@@ -215,7 +215,7 @@ async def test_healthcheck_notification_queue_failure(async_client, monkeypatch)
     _assert_latency_present(data, "notification_queue_latency_ms")
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_healthcheck_notification_queue_missing_table(async_client, monkeypatch):
     monkeypatch.setattr(health.settings, "notifications_queue_in_memory_only", True)
     response = await async_client.get("http://testserver/healthz")
@@ -225,7 +225,7 @@ async def test_healthcheck_notification_queue_missing_table(async_client, monkey
     _assert_latency_present(data, "notification_queue_latency_ms")
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_healthcheck_reports_migration_versions_on_drift(
     async_client, monkeypatch
 ):
@@ -247,7 +247,7 @@ async def test_healthcheck_reports_migration_versions_on_drift(
     _assert_latency_present(data, "db_latency_ms")
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_healthcheck_file_scanner_success(async_client, monkeypatch):
     monkeypatch.setattr(health.settings, "event_file_scanner_enabled", True)
 
@@ -263,7 +263,7 @@ async def test_healthcheck_file_scanner_success(async_client, monkeypatch):
     _assert_latency_present(data, "file_scanner_latency_ms")
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_healthcheck_file_scanner_failure(async_client, monkeypatch):
     monkeypatch.setattr(health.settings, "event_file_scanner_enabled", True)
 
@@ -279,7 +279,7 @@ async def test_healthcheck_file_scanner_failure(async_client, monkeypatch):
     _assert_latency_present(data, "file_scanner_latency_ms")
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_healthcheck_file_scanner_uses_lightweight_probe(
     async_client, monkeypatch
 ):

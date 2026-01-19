@@ -89,7 +89,7 @@ def service(mock_db, mock_audit):
 # ============================================================
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_update_user_profile_success(service, mock_db, mock_user, mock_request):
     """Test successful profile update."""
     mock_db.get.return_value = mock_user
@@ -107,7 +107,7 @@ async def test_update_user_profile_success(service, mock_db, mock_user, mock_req
     mock_db.commit.assert_called_once()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_update_user_profile_invalid_email(
     service, mock_db, mock_user, mock_request
 ):
@@ -121,7 +121,7 @@ async def test_update_user_profile_invalid_email(
             await service.update_user_profile(mock_user, data, mock_request)
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_update_user_profile_email_in_use(
     service, mock_db, mock_user, mock_request
 ):
@@ -139,7 +139,7 @@ async def test_update_user_profile_email_in_use(
             await service.update_user_profile(mock_user, data, mock_request)
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_update_user_profile_preferences(
     service, mock_db, mock_user, mock_request
 ):
@@ -161,7 +161,7 @@ async def test_update_user_profile_preferences(
 # ============================================================
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_create_user_forbidden_non_admin(
     service, mock_db, mock_user, mock_request
 ):
@@ -173,7 +173,7 @@ async def test_create_user_forbidden_non_admin(
             await service.create_user(data, mock_request, mock_user)
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_create_user_teacher_requires_invite(
     service, mock_db, mock_admin_user, mock_request
 ):
@@ -187,7 +187,7 @@ async def test_create_user_teacher_requires_invite(
             await service.create_user(data, mock_request, mock_admin_user)
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_create_user_invalid_invite(
     service, mock_db, mock_admin_user, mock_request
 ):
@@ -205,7 +205,7 @@ async def test_create_user_invalid_invite(
             await service.create_user(data, mock_request, mock_admin_user)
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_create_user_success(service, mock_db, mock_admin_user, mock_request):
     """Test successful user creation by admin."""
     data = MagicMock()
@@ -229,7 +229,7 @@ async def test_create_user_success(service, mock_db, mock_admin_user, mock_reque
 # ============================================================
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_get_users_non_admin_no_search(service, mock_db, mock_user, mock_request):
     """Test get_users fails for non-admin without search."""
     with patch("app.services.user_service.resolve_locale", return_value="en"):
@@ -237,7 +237,7 @@ async def test_get_users_non_admin_no_search(service, mock_db, mock_user, mock_r
             await service.get_users(mock_request, mock_user)
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_get_users_non_admin_with_search(
     service, mock_db, mock_user, mock_request
 ):
@@ -252,7 +252,7 @@ async def test_get_users_non_admin_with_search(
     mock_get.assert_called_once()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_get_users_admin(service, mock_db, mock_admin_user, mock_request):
     """Test get_users succeeds for admin."""
     mock_users = [MagicMock(), MagicMock()]
@@ -269,7 +269,7 @@ async def test_get_users_admin(service, mock_db, mock_admin_user, mock_request):
 # ============================================================
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_admin_update_user_forbidden(service, mock_db, mock_user, mock_request):
     """Test admin_update_user fails for non-admin."""
     data = MagicMock()
@@ -279,7 +279,7 @@ async def test_admin_update_user_forbidden(service, mock_db, mock_user, mock_req
             await service.admin_update_user(2, data, mock_request, mock_user)
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_admin_update_user_success(
     service, mock_db, mock_admin_user, mock_request, mock_audit
 ):
@@ -301,7 +301,7 @@ async def test_admin_update_user_success(
     mock_audit.log.assert_called()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_admin_update_user_mfa_reset(
     service, mock_db, mock_admin_user, mock_request, mock_audit
 ):
@@ -330,7 +330,7 @@ async def test_admin_update_user_mfa_reset(
 # ============================================================
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_admin_delete_user_forbidden(service, mock_db, mock_user, mock_request):
     """Test admin_delete_user fails for non-admin."""
     with patch("app.services.user_service.resolve_locale", return_value="en"):
@@ -338,7 +338,7 @@ async def test_admin_delete_user_forbidden(service, mock_db, mock_user, mock_req
             await service.admin_delete_user(2, mock_request, mock_user)
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_admin_delete_user_not_found(
     service, mock_db, mock_admin_user, mock_request
 ):
@@ -350,7 +350,7 @@ async def test_admin_delete_user_not_found(
             await service.admin_delete_user(999, mock_request, mock_admin_user)
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_admin_delete_user_self(service, mock_db, mock_admin_user, mock_request):
     """Test admin cannot delete themselves."""
     mock_db.get.return_value = mock_admin_user
@@ -362,7 +362,7 @@ async def test_admin_delete_user_self(service, mock_db, mock_admin_user, mock_re
             )
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_admin_delete_user_success(
     service, mock_db, mock_admin_user, mock_request, mock_user, mock_audit
 ):
@@ -385,7 +385,7 @@ async def test_admin_delete_user_success(
 # ============================================================
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_delete_avatar_with_existing(service, mock_db, mock_user):
     """Test delete_avatar when user has avatar."""
     mock_user.avatar_url = "/static/avatars/test.jpg"
@@ -399,7 +399,7 @@ async def test_delete_avatar_with_existing(service, mock_db, mock_user):
     mock_db.commit.assert_called_once()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_delete_avatar_without_existing(service, mock_db, mock_user):
     """Test delete_avatar when user has no avatar."""
     mock_user.avatar_url = None
@@ -412,7 +412,7 @@ async def test_delete_avatar_without_existing(service, mock_db, mock_user):
     mock_delete.assert_not_called()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_delete_cover_with_existing(service, mock_db, mock_user):
     """Test delete_cover when user has cover."""
     mock_user.cover_url = "/static/covers/test.jpg"
@@ -430,7 +430,7 @@ async def test_delete_cover_with_existing(service, mock_db, mock_user):
 # ============================================================
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_delete_user_data_no_confirm(service, mock_db, mock_user, mock_request):
     """Test delete_user_data requires confirmation."""
     with patch("app.services.user_service.resolve_locale", return_value="en"):
@@ -438,7 +438,7 @@ async def test_delete_user_data_no_confirm(service, mock_db, mock_user, mock_req
             await service.delete_user_data(mock_user, mock_request, confirm=False)
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_delete_user_data_success(
     service, mock_db, mock_user, mock_request, mock_audit
 ):
@@ -462,7 +462,7 @@ async def test_delete_user_data_success(
 # ============================================================
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_upload_avatar_success(service, mock_db, mock_user, mock_request):
     """Test successful avatar upload."""
     mock_db.get.return_value = mock_user
@@ -480,7 +480,7 @@ async def test_upload_avatar_success(service, mock_db, mock_user, mock_request):
     mock_db.commit.assert_called_once()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_upload_avatar_commit_failure(service, mock_db, mock_user, mock_request):
     """Test avatar upload rolls back on commit failure."""
     mock_db.get.return_value = mock_user

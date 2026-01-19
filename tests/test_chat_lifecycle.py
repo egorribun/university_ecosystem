@@ -17,7 +17,7 @@ async def _login(
     return {"Authorization": f"Bearer {token}"}
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_chat_full_lifecycle(
     async_client, user_factory, _rate_limit_redis_client
 ):
@@ -68,7 +68,7 @@ async def test_chat_full_lifecycle(
     assert missing_resp.status_code == 404
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_get_chats_list(async_client, user_factory):
     password = "Lifecycle123!"
     user = await user_factory(hashed_password=get_password_hash(password))

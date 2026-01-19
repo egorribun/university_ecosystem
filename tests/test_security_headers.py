@@ -11,8 +11,9 @@ from app.core.config import Settings
 from asgi_lifespan import LifespanManager
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_security_headers_production_mode(monkeypatch):
+    monkeypatch.setenv("SECRET_KEY", "production-secret-key-at-least-32-chars")
     monkeypatch.setenv("ENABLE_STRICT_SECURITY_HEADERS", "true")
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("APP_BASE_URL", "https://example.com")
@@ -131,7 +132,7 @@ async def test_security_headers_production_mode(monkeypatch):
     assert "'script'" in directives.get("require-trusted-types-for", [])
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_security_headers_development_report_only(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "development")
     monkeypatch.delenv("ENABLE_STRICT_SECURITY_HEADERS", raising=False)
@@ -214,8 +215,9 @@ def _parse_csp(header_value: str) -> dict[str, list[str]]:
     return directives
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_security_headers_credentialless_coep(monkeypatch):
+    monkeypatch.setenv("SECRET_KEY", "production-secret-key-at-least-32-chars")
     monkeypatch.setenv("ENABLE_STRICT_SECURITY_HEADERS", "true")
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("APP_BASE_URL", "https://example.com")
@@ -251,9 +253,10 @@ async def test_security_headers_credentialless_coep(monkeypatch):
     assert headers.get("Cross-Origin-Resource-Policy") == "cross-origin"
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_gzip_preserves_security_headers_and_etag(monkeypatch):
     _reset_security_env(monkeypatch)
+    monkeypatch.setenv("SECRET_KEY", "production-secret-key-at-least-32-chars")
     monkeypatch.setenv("ENABLE_STRICT_SECURITY_HEADERS", "true")
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("APP_BASE_URL", "https://example.com")
@@ -311,6 +314,7 @@ def _reset_security_env(monkeypatch):
     monkeypatch.setenv("APP_BASE_URL", "")
     # Force production environment to avoid localhost fallback
     monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("SECRET_KEY", "production-secret-key-at-least-32-chars")
 
 
 def test_cors_hardening_filters_insecure_origins(monkeypatch):

@@ -36,7 +36,7 @@ async def _login(
     return {"Authorization": f"Bearer {token}"}
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_update_profile_email_normalizes(async_client, user_factory, db_session):
     password = "ChangeEmail123!"
     hashed = get_password_hash(password)
@@ -62,7 +62,7 @@ async def test_update_profile_email_normalizes(async_client, user_factory, db_se
     assert user.email == "new.email@example.com"
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_update_profile_email_duplicate(async_client, user_factory, db_session):
     password = "DuplicateEmail123!"
     hashed = get_password_hash(password)
@@ -91,7 +91,7 @@ async def test_update_profile_email_duplicate(async_client, user_factory, db_ses
     assert user.email == "first-user@example.com"
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_email_change_requires_confirmation(
     async_client, user_factory, db_session, monkeypatch
 ):
@@ -173,7 +173,7 @@ async def test_email_change_requires_confirmation(
     assert final_record.used
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_update_profile_timezone_persisted(
     async_client, user_factory, db_session
 ):
@@ -200,7 +200,7 @@ async def test_update_profile_timezone_persisted(
     assert user.timezone == "Europe/Paris"
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_update_profile_timezone_invalid(async_client, user_factory):
     password = "TimezoneInvalid123!"
     hashed = get_password_hash(password)
@@ -223,7 +223,7 @@ async def test_update_profile_timezone_invalid(async_client, user_factory):
     assert detail["msg"] == "Enter a valid time zone identifier"
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_delete_avatar_removes_file(async_client, user_factory, db_session):
     password = "DeleteAvatar123!"
     hashed = get_password_hash(password)
@@ -251,7 +251,7 @@ async def test_delete_avatar_removes_file(async_client, user_factory, db_session
     assert user.avatar_url is None
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 @pytest.mark.parametrize("avatar_url", ["", "https://example.com/avatar.png"])
 async def test_delete_avatar_ignores_invalid_path(
     async_client, user_factory, db_session, avatar_url
@@ -285,7 +285,7 @@ async def test_delete_avatar_ignores_invalid_path(
         sentinel_path.unlink(missing_ok=True)
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_upload_avatar_cleans_up_on_commit_failure(
     tmp_path, monkeypatch, db_session, user_factory
 ):
@@ -328,7 +328,7 @@ async def test_upload_avatar_cleans_up_on_commit_failure(
     assert user.avatar_url is None
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_upload_cover_cleans_up_on_commit_failure(
     tmp_path, monkeypatch, db_session, user_factory
 ):
@@ -371,7 +371,7 @@ async def test_upload_cover_cleans_up_on_commit_failure(
     assert user.cover_url is None
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_delete_cover_removes_file(async_client, user_factory, db_session):
     password = "DeleteCover123!"
     hashed = get_password_hash(password)
@@ -399,7 +399,7 @@ async def test_delete_cover_removes_file(async_client, user_factory, db_session)
     assert user.cover_url is None
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 @pytest.mark.parametrize("cover_url", ["", "https://example.com/cover.png"])
 async def test_delete_cover_ignores_invalid_path(
     async_client, user_factory, db_session, cover_url
@@ -433,7 +433,7 @@ async def test_delete_cover_ignores_invalid_path(
         sentinel_path.unlink(missing_ok=True)
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_forgot_password_sends_email_via_thread(
     async_client, user_factory, monkeypatch
 ):

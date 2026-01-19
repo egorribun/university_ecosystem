@@ -1,6 +1,6 @@
 import pytest
 
-pytestmark = pytest.mark.anyio("asyncio")
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 async def test_root_endpoint(root_client):

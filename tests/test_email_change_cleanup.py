@@ -13,7 +13,7 @@ from app.services.email_change_cleanup import (
 )
 from app.utils.email import RESET_TOKEN_EXPIRY_MINUTES
 
-pytestmark = pytest.mark.anyio("asyncio")
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 async def test_cleanup_stale_email_change_tokens_respects_retention(db_session):

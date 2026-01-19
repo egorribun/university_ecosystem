@@ -39,11 +39,13 @@ def upgrade() -> None:
 
     op.execute(sa.text(f"DROP INDEX IF EXISTS {_OLD_INDEX_NAME}"))
 
+    op.execute(sa.text("ALTER TABLE events DROP COLUMN IF EXISTS search_vector"))
+
     op.execute(
         sa.text(
             """
             ALTER TABLE events
-            ADD COLUMN IF NOT EXISTS search_vector tsvector
+            ADD COLUMN search_vector tsvector
             GENERATED ALWAYS AS (
                 to_tsvector(
                     'simple'::regconfig,

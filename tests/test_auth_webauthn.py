@@ -100,7 +100,7 @@ async def _login_for_token(async_client, email: str, password: str) -> str:
     return response.json()["access_token"]
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_webauthn_registration_flow(
     async_client, user_factory, db_session, mock_webauthn
 ):
@@ -166,7 +166,7 @@ async def test_webauthn_registration_flow(
     return creds[0]
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_webauthn_authentication_flow(
     async_client, user_factory, db_session, mock_webauthn
 ):
@@ -250,7 +250,7 @@ async def test_webauthn_authentication_flow(
     assert "access_token" in token_data
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_list_and_delete_credentials(
     async_client, user_factory, db_session, mock_webauthn
 ):

@@ -19,7 +19,7 @@ from app.core.rate_limit import (
     get_progressive_delay_tracker,
 )
 
-pytestmark = pytest.mark.anyio("asyncio")
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 class TestProgressiveDelayCalculation:

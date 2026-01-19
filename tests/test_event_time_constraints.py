@@ -11,7 +11,7 @@ from app.core.localization import translate
 from app.models import models
 from app.schemas import schemas
 
-pytestmark = pytest.mark.anyio("asyncio")
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 @contextmanager

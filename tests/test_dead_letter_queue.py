@@ -91,7 +91,7 @@ def dlq(mock_session):
     return DeadLetterQueue(mock_session)
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_add_failed_job_success(dlq, mock_session):
     """Test adding a failed job."""
     mock_result = MagicMock()
@@ -108,7 +108,7 @@ async def test_add_failed_job_success(dlq, mock_session):
     mock_session.commit.assert_called_once()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_add_failed_job_duplicate(dlq, mock_session):
     """Test duplicate job is skipped."""
     existing_job = MagicMock()
@@ -125,7 +125,7 @@ async def test_add_failed_job_duplicate(dlq, mock_session):
     assert result is None
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_get_jobs_ready_for_retry(dlq, mock_session):
     """Test getting jobs ready for retry."""
     mock_jobs = [MagicMock(), MagicMock()]
@@ -138,7 +138,7 @@ async def test_get_jobs_ready_for_retry(dlq, mock_session):
     assert result == mock_jobs
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_mark_job_retrying(dlq, mock_session):
     """Test marking job as retrying."""
     job = MagicMock()
@@ -150,7 +150,7 @@ async def test_mark_job_retrying(dlq, mock_session):
     mock_session.commit.assert_called_once()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_mark_job_completed(dlq, mock_session):
     """Test marking job as completed."""
     job = MagicMock()
@@ -163,7 +163,7 @@ async def test_mark_job_completed(dlq, mock_session):
     mock_session.commit.assert_called_once()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_get_queue_stats(dlq, mock_session):
     """Test getting queue statistics."""
     # Create mock rows with proper attributes
@@ -185,7 +185,7 @@ async def test_get_queue_stats(dlq, mock_session):
     assert stats[JobStatus.FAILED.value] == 2
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_cleanup_completed_jobs(dlq, mock_session):
     """Test cleaning up old completed jobs."""
     mock_result = MagicMock()

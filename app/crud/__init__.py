@@ -97,7 +97,8 @@ async def _is_postgres_session(session: AsyncSession) -> bool:
     bind = session.bind
     if bind is None:
         try:
-            bind = await session.get_bind()
+            # get_bind() is synchronous in SQLAlchemy, not async
+            bind = session.get_bind()
         except Exception:  # pragma: no cover - defensive guard
             return False
     dialect = getattr(bind, "dialect", None)
@@ -510,7 +511,7 @@ async def get_all_events(
     search: str = "",
     type: str = "",
     location: str = "",
-    is_active: bool = True,
+    is_active: bool | None = True,
     locale: str | None = None,
     *,
     limit: int | None = None,
@@ -557,10 +558,11 @@ async def get_all_events(
                 models.Event.location_en.ilike(like),
             )
         )
-    if is_active:
+    if is_active is True:
         conditions.append(models.Event.ends_at >= now)
-    else:
+    elif is_active is False:
         conditions.append(models.Event.ends_at < now)
+    # When is_active is None, skip time-based filtering entirely
 
     # Optimization: Calculate participant count via subquery to avoid loading
     # all attendance records

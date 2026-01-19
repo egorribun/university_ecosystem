@@ -113,7 +113,7 @@ def test_subscribe_all_decorator_registers_handler():
     assert get_pending_count() == 1
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_register_decorated_handlers():
     """Test decorated handlers are registered with the bus."""
     clear_pending_registrations()
@@ -152,7 +152,7 @@ def test_clear_pending_registrations():
 # ============================================================
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_event_bus_middleware():
     """Test middleware is executed around handlers."""
     bus = EventBus()
@@ -178,7 +178,7 @@ async def test_event_bus_middleware():
     assert execution_order == ["middleware_before", "handler", "middleware_after"]
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_event_bus_middleware_chain():
     """Test multiple middleware execute in correct order."""
     bus = EventBus()
@@ -213,7 +213,7 @@ async def test_event_bus_middleware_chain():
     ]
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_event_bus_dlq_integration():
     """Test failed handlers send events to DLQ."""
     bus = EventBus()
@@ -263,7 +263,7 @@ def test_event_bus_unsubscribe_all():
 # ============================================================
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_retry_middleware_success():
     """Test RetryMiddleware allows successful calls through."""
     middleware = RetryMiddleware(max_retries=3)
@@ -275,7 +275,7 @@ async def test_retry_middleware_success():
     handler.assert_called_once_with(event)
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_retry_middleware_retries_on_failure():
     """Test RetryMiddleware retries failed calls."""
     middleware = RetryMiddleware(max_retries=2, base_delay=0.01)
@@ -293,7 +293,7 @@ async def test_retry_middleware_retries_on_failure():
     assert attempts[0] == 2
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_retry_middleware_exhausts_retries():
     """Test RetryMiddleware raises after max retries."""
     middleware = RetryMiddleware(max_retries=2, base_delay=0.01)
@@ -310,7 +310,7 @@ async def test_retry_middleware_exhausts_retries():
     assert isinstance(exc_info.value.original_error, ValueError)
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_with_retry_decorator():
     """Test @with_retry decorator."""
     attempts = [0]
@@ -332,7 +332,7 @@ async def test_with_retry_decorator():
 # ============================================================
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_dlq_add_and_get():
     """Test adding and retrieving failed events."""
     dlq = DeadLetterQueue()
@@ -349,7 +349,7 @@ async def test_dlq_add_and_get():
     assert events[0].handler_name == "test_handler"
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_dlq_max_size():
     """Test DLQ respects max size limit."""
     dlq = DeadLetterQueue(max_size=3)
@@ -365,7 +365,7 @@ async def test_dlq_max_size():
     assert user_ids == [2, 3, 4]
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_dlq_clear():
     """Test clearing the DLQ."""
     dlq = DeadLetterQueue()
@@ -378,7 +378,7 @@ async def test_dlq_clear():
     assert dlq.size == 0
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_dlq_remove():
     """Test removing specific event from DLQ."""
     dlq = DeadLetterQueue()
@@ -396,7 +396,7 @@ async def test_dlq_remove():
     assert events[0].event.event_id == event2.event_id
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_dlq_replay():
     """Test replaying events from DLQ."""
     dlq = DeadLetterQueue()
@@ -415,7 +415,7 @@ async def test_dlq_replay():
     handler.assert_called_once()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_dlq_get_by_type():
     """Test filtering DLQ by event type."""
     dlq = DeadLetterQueue()
@@ -433,7 +433,7 @@ async def test_dlq_get_by_type():
     assert user_created_events[0].event.event_type == "user.created"
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_dlq_get_stats():
     """Test DLQ statistics."""
     dlq = DeadLetterQueue()

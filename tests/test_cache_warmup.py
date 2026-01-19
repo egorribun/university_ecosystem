@@ -131,7 +131,7 @@ def test_period_days_from_key_none():
 # ============================================================
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_warm_cache_disabled():
     """Test warm_cache returns early when disabled."""
     with patch("app.services.cache_warmup.settings") as mock_settings:
@@ -140,7 +140,7 @@ async def test_warm_cache_disabled():
         # Should not raise
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_warm_cache_cache_disabled():
     """Test warm_cache returns when cache backend is disabled."""
     mock_cache = MagicMock()

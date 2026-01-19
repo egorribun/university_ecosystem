@@ -73,7 +73,7 @@ class _RecordingStorage:
         self.calls.append(("delete", (file_url,), {}))
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_send_message_blocks_infected_file(
     tmp_path, monkeypatch, db_session, user_factory
 ):
@@ -122,7 +122,7 @@ async def test_send_message_blocks_infected_file(
     assert not upload_dir.exists() or not any(upload_dir.iterdir())
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_send_message_generates_public_urls(
     monkeypatch, db_session, user_factory
 ):

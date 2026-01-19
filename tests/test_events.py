@@ -87,7 +87,7 @@ def test_event_bus_unsubscribe():
     assert handler not in bus._handlers["user.created"]
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_event_bus_publish():
     """Test EventBus publishes to correct handlers."""
     bus = EventBus()
@@ -100,7 +100,7 @@ async def test_event_bus_publish():
     handler.assert_called_once_with(event)
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_event_bus_publish_to_all_handlers():
     """Test EventBus publishes to wildcard handlers."""
     bus = EventBus()
@@ -117,7 +117,7 @@ async def test_event_bus_publish_to_all_handlers():
     all_handler.assert_called_once_with(event)
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_event_bus_handles_handler_errors():
     """Test EventBus handles failing handlers gracefully."""
     bus = EventBus()

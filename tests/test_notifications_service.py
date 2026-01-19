@@ -170,7 +170,7 @@ def test_prepare_push_payload_keeps_original_when_outside_interval():
     assert "dnd_suppressed" not in result["data"]
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_create_notifications_records_webpush_deliveries(
     db_session,
     user_factory,
@@ -239,7 +239,7 @@ async def test_create_notifications_records_webpush_deliveries(
     assert key[("webpush", "sent")]["delivered"] == 1
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_create_notifications_records_skip_without_credentials(
     db_session, user_factory, monkeypatch: pytest.MonkeyPatch
 ):
@@ -269,7 +269,7 @@ async def test_create_notifications_records_skip_without_credentials(
     _reset_vapid_cache()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_generate_schedule_reminders_query_count_constant(
     db_session, user_factory, monkeypatch: pytest.MonkeyPatch
 ):
@@ -322,7 +322,7 @@ async def test_generate_schedule_reminders_query_count_constant(
     assert single_count == many_count
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_generate_schedule_reminders_handles_duplicate_titles(
     db_session, user_factory
 ):
@@ -376,7 +376,7 @@ async def test_generate_schedule_reminders_handles_duplicate_titles(
     assert repeat_created == 0
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_generate_schedule_reminders_skips_inactive_users(
     db_session, user_factory
 ):
@@ -423,7 +423,7 @@ async def test_generate_schedule_reminders_skips_inactive_users(
     assert {note.user_id for note in notifications} == {active_user.id}
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_scheduler_loop_logs_failures(monkeypatch: pytest.MonkeyPatch, caplog):
     from app.workers import notifications as worker_module
 
@@ -478,7 +478,7 @@ async def test_scheduler_loop_logs_failures(monkeypatch: pytest.MonkeyPatch, cap
     assert extra.get("backoff_seconds") == 6
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_event_creation_enqueues_notifications(
     async_client,
     db_session,
@@ -526,7 +526,7 @@ async def test_event_creation_enqueues_notifications(
     assert calls == 1
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_news_creation_enqueues_notifications(
     async_client,
     db_session,

@@ -12,7 +12,7 @@ from app.models.models import User as ModelUser
 
 _spotify_fallback_now_playing = _fallback_now_playing
 
-pytestmark = pytest.mark.anyio("asyncio")
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 def _make_user(

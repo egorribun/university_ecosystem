@@ -8,6 +8,17 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BACKEND_ROOT = PROJECT_ROOT
 
 
+@pytest.fixture(autouse=True)
+def restore_config_module():
+    """Restores the config module to its original state after each test."""
+    yield
+    from app.core import config as config_module
+    from app.core.config import base as base_module
+
+    importlib.reload(base_module)
+    importlib.reload(config_module)
+
+
 @contextmanager
 def _temporary_env_file(content: bytes | None):
     env_path = BACKEND_ROOT / ".env"

@@ -113,7 +113,7 @@ def test_legacy_bcrypt_truncation_behavior():
     assert not verify_password(mutated_before_limit, legacy_hash)
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_create_access_token_uses_active_signing_key(monkeypatch):
     monkeypatch.setattr(
         settings,
@@ -135,7 +135,7 @@ async def test_create_access_token_uses_active_signing_key(monkeypatch):
     assert decoded["sub"] == "user-123"
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_decode_token_accepts_legacy_and_active_secrets(monkeypatch):
     monkeypatch.setattr(
         settings,
@@ -167,7 +167,7 @@ async def test_decode_token_accepts_legacy_and_active_secrets(monkeypatch):
     assert rotated_decoded["sub"] == "current-user"
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_login_migrates_legacy_hash(async_client, user_factory, db_session):
     password = "LegacyLog1n!"
     legacy_hash = _make_legacy_hash(password)
@@ -195,7 +195,7 @@ async def test_login_migrates_legacy_hash(async_client, user_factory, db_session
     assert verify_password(password, user.hashed_password)
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_create_user_requires_authentication(async_client):
     payload = {
         "email": "unauthorized@example.com",
@@ -208,7 +208,7 @@ async def test_create_user_requires_authentication(async_client):
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_create_user_forbidden_for_non_admin(async_client, user_factory):
     password = "UserPass123!"
     user = await user_factory(
@@ -244,7 +244,7 @@ async def test_create_user_forbidden_for_non_admin(async_client, user_factory):
     assert response.json() == {"detail": "Access denied"}
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_create_user_allows_admin(async_client, user_factory):
     password = "AdminPass123!"
     admin = await user_factory(
@@ -282,7 +282,7 @@ async def test_create_user_allows_admin(async_client, user_factory):
     assert body["role"] == "student"
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_register_normalizes_email(async_client, db_session):
     raw_email = f"MixedCase{uuid.uuid4().hex[:6]}@Example.COM"
     payload = {
@@ -302,7 +302,7 @@ async def test_register_normalizes_email(async_client, db_session):
     assert user.email == raw_email.lower()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_login_accepts_mixed_case_username(async_client, user_factory):
     password = "ValidLogin123!"
     user = await user_factory(
@@ -328,7 +328,7 @@ async def test_login_accepts_mixed_case_username(async_client, user_factory):
     assert session["signing_key"]
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_forgot_password_accepts_mixed_case_email(
     async_client, user_factory, db_session
 ):
@@ -353,7 +353,7 @@ async def test_forgot_password_accepts_mixed_case_email(
     assert after_count == before_count + 1
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_admin_update_normalizes_email(async_client, user_factory, db_session):
     admin_password = "AdminMixed123!"
     admin = await user_factory(

@@ -58,7 +58,7 @@ def test_story_cleanup_config_negative():
 # ============================================================
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_cleanup_expired_stories_with_db():
     """Test cleanup with injected db session."""
     mock_db = AsyncMock()
@@ -74,7 +74,7 @@ async def test_cleanup_expired_stories_with_db():
     mock_db.commit.assert_called_once()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_cleanup_expired_stories_no_deleted():
     """Test cleanup when no stories deleted."""
     mock_db = AsyncMock()
@@ -89,7 +89,7 @@ async def test_cleanup_expired_stories_no_deleted():
     assert result == 0
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_cleanup_expired_stories_naive_datetime():
     """Test cleanup handles naive datetime."""
     mock_db = AsyncMock()
@@ -105,7 +105,7 @@ async def test_cleanup_expired_stories_naive_datetime():
     assert result == 2
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_cleanup_expired_stories_creates_session():
     """Test cleanup creates session when none provided."""
     mock_db = AsyncMock()
@@ -129,7 +129,7 @@ async def test_cleanup_expired_stories_creates_session():
 # ============================================================
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_start_story_cleanup_scheduler_returns_stop():
     """Test scheduler returns a callable stop function."""
     with patch("app.services.story_cleanup.cleanup_expired_stories", return_value=0):

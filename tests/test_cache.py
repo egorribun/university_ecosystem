@@ -15,7 +15,7 @@ class _RedisCacheForTests(RedisCache):
         return self._client
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_null_cache_noop():
     cache = NullCache()
     assert cache.enabled is False
@@ -25,7 +25,7 @@ async def test_null_cache_noop():
     await cache.invalidate("key")
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_redis_cache_roundtrip():
     cache = _RedisCacheForTests(url="redis://localhost:6379/0", default_ttl=5)
     payload = {"foo": "bar"}
@@ -105,7 +105,7 @@ def test_cache_key_generators():
     assert news_list_cache_key() == "news:list"
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_cache_invalidator_context_manager():
     from app.services.cache_invalidation import CacheInvalidator
 
@@ -121,7 +121,7 @@ async def test_cache_invalidator_context_manager():
     # After exiting context, keys are flushed
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_cache_invalidator_flush():
     from app.services.cache_invalidation import CacheInvalidator
 

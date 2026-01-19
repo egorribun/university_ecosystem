@@ -17,7 +17,7 @@ async def _login(async_client, email: str, password: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_notifications_localization(async_client, db_session, user_factory):
     password = "Notify123!"
     hashed = get_password_hash(password)

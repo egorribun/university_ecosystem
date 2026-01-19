@@ -29,14 +29,14 @@ def _configure_metrics() -> Iterator[str]:
         settings.metrics_allowlist = previous_allowlist
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_metrics_endpoint_requires_auth(root_client, _configure_metrics: str):
     response = await root_client.get("/metrics")
     assert response.status_code == 401
     assert response.headers["www-authenticate"] == 'Basic realm="Metrics"'
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_metrics_endpoint_rejects_missing_credentials_when_public(root_client):
     previous_enable = settings.enable_metrics_endpoint
     previous_username = settings.metrics_basic_auth_username
@@ -58,7 +58,7 @@ async def test_metrics_endpoint_rejects_missing_credentials_when_public(root_cli
     assert response.status_code == 503
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_metrics_endpoint_exposes_prometheus_payload(
     root_client, _configure_metrics: str
 ):
@@ -83,7 +83,7 @@ async def test_metrics_endpoint_exposes_prometheus_payload(
     assert "notification_queue_dead_lettered_jobs" in body
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_metrics_endpoint_rejects_partial_credentials(root_client):
     previous_enable = settings.enable_metrics_endpoint
     previous_username = settings.metrics_basic_auth_username
@@ -105,7 +105,7 @@ async def test_metrics_endpoint_rejects_partial_credentials(root_client):
     assert response.status_code == 503
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_metrics_endpoint_respects_allowlist(
     root_client, _configure_metrics: str
 ):
@@ -118,7 +118,7 @@ async def test_metrics_endpoint_respects_allowlist(
     assert response.status_code == 403
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_metrics_endpoint_allows_loopback_allowlist_without_auth(root_client):
     previous_enable = settings.enable_metrics_endpoint
     previous_username = settings.metrics_basic_auth_username
@@ -140,7 +140,7 @@ async def test_metrics_endpoint_allows_loopback_allowlist_without_auth(root_clie
     assert response.status_code == 200
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_health_check_metrics_recorded(root_client, _configure_metrics: str):
     probe = await root_client.get("/healthz")
     assert probe.status_code == 200

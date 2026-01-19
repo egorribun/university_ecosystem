@@ -157,6 +157,8 @@ async def prepare_database() -> AsyncIterator[None]:
 
     if is_postgresql:
         # For PostgreSQL, tables are created via Alembic migrations in CI
+        print(f"DEBUG: prepare_database using PostgreSQL. URL: {database_url}")
+        print(f"DEBUG: Engine URL: {engine.url}")
         yield
         return
 
@@ -278,7 +280,10 @@ async def clean_database(prepare_database: None) -> AsyncIterator[None]:
     yield
 
     database_url = os.environ.get("DATABASE_URL", "")
-    is_postgresql = database_url.startswith("postgresql")
+    # Robust check: use engine dialect or fallback to env
+    is_postgresql = engine.dialect.name == "postgresql" or database_url.startswith(
+        "postgresql"
+    )
 
     attempts = 5
     delay = 0.1
@@ -286,14 +291,15 @@ async def clean_database(prepare_database: None) -> AsyncIterator[None]:
         try:
             async with engine.begin() as conn:
                 if is_postgresql:
-                    # PostgreSQL: use TRUNCATE with CASCADE
-                    for table in reversed(Base.metadata.sorted_tables):
-                        try:
-                            await conn.exec_driver_sql(
-                                f'TRUNCATE TABLE "{table.name}" CASCADE'
-                            )
-                        except Exception:
-                            pass
+                    # PostgreSQL: use TRUNCATE with CASCADE for all tables at once
+                    # This is faster and avoids transaction issues if one table is missing
+                    table_names = [
+                        f'"{table.name}"' for table in Base.metadata.sorted_tables
+                    ]
+                    if table_names:
+                        await conn.exec_driver_sql(
+                            f"TRUNCATE TABLE {', '.join(table_names)} CASCADE"
+                        )
                 else:
                     # SQLite: use PRAGMA and DELETE
                     await conn.exec_driver_sql("PRAGMA foreign_keys=OFF")

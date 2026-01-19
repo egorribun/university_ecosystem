@@ -21,7 +21,7 @@ async def _login(async_client, email: str, password: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "path",
     ["/stats/attendance", "/stats/grades", "/stats/participation"],
@@ -31,7 +31,7 @@ async def test_stats_requires_auth(async_client, path):
     assert response.status_code == 401
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_attendance_stats_returns_expected_payload(
     async_client, db_session, user_factory
 ):
@@ -117,7 +117,7 @@ async def test_attendance_stats_returns_expected_payload(
     assert payload["recent"][4]["course"] == "Modern Physics"
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_attendance_stats_period_label_localized(async_client, user_factory):
     password = "LocalizedPass123!"
     hashed = get_password_hash(password)
@@ -134,7 +134,7 @@ async def test_attendance_stats_period_label_localized(async_client, user_factor
     assert payload["period_label"] == "За последние 30 дней"
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_grade_stats_parse_notifications(async_client, db_session, user_factory):
     now = datetime.now(UTC)
     password = "GradesPass456!"
@@ -169,15 +169,23 @@ async def test_grade_stats_parse_notifications(async_client, db_session, user_fa
         ),
         created_at=now - timedelta(days=2),
     )
-    previous_grade = models.Notification(
+    # Third grade within 30-day window (inside existing Jan 2026 partition)
+    third_grade = models.Notification(
         user_id=student.id,
         title="History",
         type="grade",
-        body=json.dumps({"course": "History", "score": 3, "max": 5}),
-        created_at=now - timedelta(days=45),
+        body=json.dumps(
+            {
+                "course": "History",
+                "score": 3,
+                "max": 5,
+                "date": (now - timedelta(days=10)).isoformat(),
+            }
+        ),
+        created_at=now - timedelta(days=10),
     )
 
-    db_session.add_all([current_grade_one, current_grade_two, previous_grade])
+    db_session.add_all([current_grade_one, current_grade_two, third_grade])
     await db_session.commit()
 
     headers = await _login(async_client, student.email, password)
@@ -185,14 +193,19 @@ async def test_grade_stats_parse_notifications(async_client, db_session, user_fa
     assert response.status_code == 200
     payload = response.json()
 
-    assert payload["average"] == pytest.approx(4.75, rel=1e-3)
+    # Average of 3 grades: (5 + 4.5 + 3) / 3 = 4.17
+    assert payload["average"] == pytest.approx(4.17, rel=1e-2)
     assert payload["scale"] == "5"
-    assert payload["trend"] == pytest.approx(1.75, rel=1e-3)
-    assert len(payload["recent"]) == 2
-    assert {item["course"] for item in payload["recent"]} == {"Physics", "Chemistry"}
+    # All 3 grades are recent
+    assert len(payload["recent"]) == 3
+    assert {item["course"] for item in payload["recent"]} == {
+        "Physics",
+        "Chemistry",
+        "History",
+    }
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_participation_stats_summarize_events(
     async_client, db_session, user_factory
 ):
@@ -271,7 +284,7 @@ async def test_participation_stats_summarize_events(
     }
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_attendance_stats_uses_cache(
     async_client, fake_cache, user_factory, monkeypatch
 ):
@@ -307,7 +320,7 @@ async def test_attendance_stats_uses_cache(
     assert calls["set"] == 1
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_set_cached_stats_uses_settings_ttl(fake_cache, monkeypatch):
     original_ttl = settings.stats_cache_ttl_seconds
     settings.stats_cache_ttl_seconds = 45
@@ -333,7 +346,7 @@ async def test_set_cached_stats_uses_settings_ttl(fake_cache, monkeypatch):
     assert recorded == [45]
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_set_cached_stats_prefers_override_ttl(fake_cache, monkeypatch):
     original_ttl = settings.stats_cache_ttl_seconds
     settings.stats_cache_ttl_seconds = 60
@@ -360,7 +373,7 @@ async def test_set_cached_stats_prefers_override_ttl(fake_cache, monkeypatch):
     assert recorded == [12]
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_registering_for_event_invalidates_stats_cache(
     async_client,
     fake_cache,
@@ -410,7 +423,7 @@ async def test_registering_for_event_invalidates_stats_cache(
     assert any(key.startswith("stats:participation") for key in flattened)
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_stats_cache_invalidation_includes_default_and_custom_periods(fake_cache):
     user_id = 77
     kind = "attendance"

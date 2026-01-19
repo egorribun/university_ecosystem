@@ -13,7 +13,7 @@ from tests.contracts.utils import (
     normalize_openapi,
 )
 
-pytestmark = pytest.mark.anyio("asyncio")
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 @pytest.fixture(scope="session")

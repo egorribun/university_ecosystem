@@ -3,7 +3,7 @@ import pytest
 from app.core.config import settings
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_static_file_served_with_cache_control(root_client):
     avatars_dir = settings.static_dir_path / "avatars"
     avatars_dir.mkdir(parents=True, exist_ok=True)

@@ -62,7 +62,7 @@ async def _enroll_totp(async_client, user, password: str, db_session) -> str:
     return secret
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_totp_enrollment_pending_state(async_client, user_factory, db_session):
     password = "PendingTotp123!"
     user = await user_factory(
@@ -102,7 +102,7 @@ async def test_totp_enrollment_pending_state(async_client, user_factory, db_sess
     assert rows[0]["confirmed_at"] is not None
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_totp_start_requires_reuse(async_client, user_factory):
     password = "TotpReuseRequired123!"
     user = await user_factory(
@@ -123,7 +123,7 @@ async def test_totp_start_requires_reuse(async_client, user_factory):
     )
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_totp_start_reuse_returns_same_secret(async_client, user_factory):
     password = "TotpReuseSameSecret123!"
     user = await user_factory(
@@ -150,7 +150,7 @@ async def test_totp_start_reuse_returns_same_secret(async_client, user_factory):
     assert reuse_payload["enrollment"]["id"] == first_payload["enrollment"]["id"]
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_pending_totp_enrollment_can_be_cancelled(
     async_client, user_factory, db_session
 ):
@@ -180,7 +180,7 @@ async def test_pending_totp_enrollment_can_be_cancelled(
     assert restart_response.status_code == status.HTTP_200_OK, restart_response.text
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_pending_totp_enrollment_cancel_rejected_for_confirmed(
     async_client, user_factory
 ):
@@ -214,7 +214,7 @@ async def test_pending_totp_enrollment_cancel_rejected_for_confirmed(
     assert cancel_response.json()["detail"] == "Enrollment is not pending"
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_totp_start_rejects_when_active_factor_exists(
     async_client, user_factory, db_session
 ):
@@ -263,7 +263,7 @@ def _find_audit_event(caplog, logger_name: str, event: str) -> dict:
     raise AssertionError(f"Audit event {event!r} not found for logger {logger_name!r}")
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_totp_enrollment_and_verification_flow(
     async_client, user_factory, db_session
 ):
@@ -336,7 +336,7 @@ async def test_totp_enrollment_and_verification_flow(
     assert challenge_row.consumed_at is not None
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_totp_login_requires_mfa_even_when_toggle_disabled(
     async_client, user_factory, db_session, monkeypatch
 ):
@@ -362,7 +362,7 @@ async def test_totp_login_requires_mfa_even_when_toggle_disabled(
     assert pending["default_method"] == mfa.MFA_METHOD_TOTP
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_totp_login_handles_legacy_records_without_confirmed_at(
     async_client, user_factory, db_session
 ):
@@ -406,7 +406,7 @@ async def test_totp_login_handles_legacy_records_without_confirmed_at(
     assert verify.status_code == status.HTTP_200_OK
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_totp_challenge_expiry_blocks_verification(
     async_client, user_factory, db_session
 ):
@@ -450,7 +450,7 @@ async def test_totp_challenge_expiry_blocks_verification(
     )
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_totp_attempt_limit_blocks_challenge(
     async_client, user_factory, db_session, monkeypatch
 ):
@@ -513,7 +513,7 @@ async def test_totp_attempt_limit_blocks_challenge(
     assert challenge_row.consumed_at is not None
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_login_fails_when_mfa_required_but_no_totp(async_client, user_factory):
     password = "MissingTotp123!"
     user = await user_factory(
@@ -533,7 +533,7 @@ async def test_login_fails_when_mfa_required_but_no_totp(async_client, user_fact
     )
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_step_up_request_without_enrollment_returns_error(
     async_client, user_factory
 ):
@@ -554,7 +554,7 @@ async def test_step_up_request_without_enrollment_returns_error(
     )
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_disabling_last_factor_clears_mfa_requirement(
     async_client, user_factory, db_session
 ):
@@ -621,7 +621,7 @@ async def test_disabling_last_factor_clears_mfa_requirement(
     assert "access_token" in post_delete_login.json()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_admin_reset_endpoint_clears_mfa_state(
     async_client, user_factory, db_session, monkeypatch, caplog
 ):
@@ -697,7 +697,7 @@ async def test_admin_reset_endpoint_clears_mfa_state(
     assert audit_event["reason"] == "admin_reset"
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_reset_mfa_command_resets_state(
     user_factory, db_session, caplog, monkeypatch
 ):
@@ -766,7 +766,7 @@ async def test_reset_mfa_command_resets_state(
     assert audit_event["reason"] == "admin_reset"
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_reset_mfa_command_noop_logs_reason(user_factory, caplog, monkeypatch):
     caplog.set_level(logging.INFO, logger="app.users.audit")
 
@@ -794,7 +794,7 @@ async def test_reset_mfa_command_noop_logs_reason(user_factory, caplog, monkeypa
     assert audit_event["reason"] == "admin_reset_noop"
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_mfa_verification_rejects_revoked_session(
     async_client, user_factory, db_session
 ):
@@ -839,7 +839,7 @@ async def test_mfa_verification_rejects_revoked_session(
     assert response.json()["detail"] == "Associated session has been revoked"
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_totp_reenrollment_after_reset(async_client, user_factory, db_session):
     password = "ReenrollMfa123!"
     user = await user_factory(

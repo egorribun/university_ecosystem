@@ -18,7 +18,7 @@ from app.core.circuit_breaker import (
     reset_all_circuit_breakers,
 )
 
-pytestmark = pytest.mark.anyio("asyncio")
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 class TestCircuitBreakerStates:

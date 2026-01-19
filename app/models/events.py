@@ -2,8 +2,8 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Column,
+    Computed,
     DateTime,
-    FetchedValue,
     ForeignKey,
     Index,
     Integer,
@@ -38,7 +38,19 @@ class Event(Base, EventEmitterMixin):
     )
     search_vector = Column(
         Text().with_variant(TSVECTOR(), "postgresql"),
-        server_default=FetchedValue(),
+        Computed(
+            "to_tsvector('simple', "
+            "coalesce(title, '') || ' ' || "
+            "coalesce(description, '') || ' ' || "
+            "coalesce(location, '') || ' ' || "
+            "coalesce(title_en, '') || ' ' || "
+            "coalesce(description_en, '') || ' ' || "
+            "coalesce(location_en, '') || ' ' || "
+            "coalesce(about, '') || ' ' || "
+            "coalesce(about_en, '') "
+            ")",
+            persisted=True,
+        ),
     )
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     is_active = Column(Boolean, default=True, index=True)

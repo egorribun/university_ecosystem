@@ -21,7 +21,7 @@ async def _login(async_client, email: str, password: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_attend_registers_event(async_client, db_session, user_factory):
     password = "AttendSuccess123!"
     student = await user_factory(
@@ -57,7 +57,7 @@ async def test_attend_registers_event(async_client, db_session, user_factory):
     assert payload["qr_token"]
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_attend_missing_event_returns_not_found(
     async_client, db_session, user_factory
 ):
@@ -81,7 +81,7 @@ async def test_attend_missing_event_returns_not_found(
     )
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_attend_registration_closed_returns_conflict(
     async_client, db_session, user_factory
 ):
@@ -118,7 +118,7 @@ async def test_attend_registration_closed_returns_conflict(
     )
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_attend_restores_missing_registration_timestamp(
     async_client, db_session, user_factory
 ):
@@ -222,7 +222,7 @@ async def _register_for_event(
     return token, attendance, event, student
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_attendance_token_can_be_verified(async_client, db_session, user_factory):
     token, attendance, event, student = await _register_for_event(
         async_client, db_session, user_factory
@@ -232,7 +232,7 @@ async def test_attendance_token_can_be_verified(async_client, db_session, user_f
     assert payload.user_id == student.id
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_attendance_token_reuse_rejected_after_expiry(
     async_client, db_session, user_factory, monkeypatch
 ):
@@ -246,7 +246,7 @@ async def test_attendance_token_reuse_rejected_after_expiry(
         attendance_tokens.verify_token(token, attendance, now=expired_at)
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_attendance_token_signature_tampering(
     async_client, db_session, user_factory
 ):

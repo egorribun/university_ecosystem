@@ -9,7 +9,7 @@ from app.models.models import ActiveSession, User
 from app.services.session_cleanup import revoke_sessions_matching
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_revoke_sessions_matching_calls_backend(db_session: AsyncSession):
     # 1. Create a dummy user and session
     db = db_session

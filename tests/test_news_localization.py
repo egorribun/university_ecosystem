@@ -16,7 +16,7 @@ def _assert_news_headers(response, expected_language: str) -> None:
     )
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_news_localization_preference(async_client, db_session):
     primary = models.News(
         title="Новость дня",
@@ -65,7 +65,7 @@ async def test_news_localization_preference(async_client, db_session):
     assert payload_ru["title_en"] is None
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_news_list_localization_headers_cache(
     async_client, db_session, fake_cache
 ):
@@ -101,7 +101,7 @@ async def test_news_list_localization_headers_cache(
     assert cached.headers.get("ETag") == etag
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_news_detail_localization_headers_cache(
     async_client, db_session, fake_cache
 ):
@@ -137,7 +137,7 @@ async def test_news_detail_localization_headers_cache(
     assert cached.headers.get("ETag") == etag
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "payload_kwargs, expected_changes",
     [
