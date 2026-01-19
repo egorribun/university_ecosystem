@@ -16,6 +16,14 @@ from alembic.script import ScriptDirectory
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
+# Skip marker for tests that require PostgreSQL (won't work with SQLite)
+_database_url = os.environ.get("DATABASE_URL", "")
+_is_postgresql = _database_url.startswith("postgresql")
+requires_postgresql = pytest.mark.skipif(
+    not _is_postgresql,
+    reason="Test requires PostgreSQL (uses pg_class or information_schema.public)",
+)
+
 
 def _get_postgres_url() -> str:
     """Get PostgreSQL URL from environment or use default test URL."""
@@ -40,6 +48,7 @@ def _make_config() -> Config:
     return config
 
 
+@requires_postgresql
 @pytest.mark.asyncio
 async def test_migrations_produce_expected_schema(db_session):
     """Verify that migrations create the expected tables and columns.
@@ -75,6 +84,7 @@ async def test_migrations_produce_expected_schema(db_session):
     assert {"dnd_enabled", "dnd_start", "dnd_end", "timezone"}.issubset(prefs_columns)
 
 
+@requires_postgresql
 @pytest.mark.asyncio
 async def test_mfa_tables_exist(db_session):
     """Verify MFA-related tables exist with correct structure."""
@@ -114,6 +124,7 @@ async def test_mfa_tables_exist(db_session):
     )
 
 
+@requires_postgresql
 @pytest.mark.asyncio
 async def test_partitioned_tables_exist(db_session):
     """Verify partitioned tables are set up correctly."""

@@ -174,12 +174,18 @@ async def prepare_database() -> AsyncIterator[None]:
         except OSError:
             pass
 
-    # Tables with composite PKs that are incompatible with SQLite autoincrement
-    # We exclude them from create_all and create them separately without composite PK
-    partitioned_tables = {
+    # Tables with composite PKs or PostgreSQL-specific features
+    # (like GENERATED columns). We exclude them from create_all and create
+    # them separately with SQLite-compatible schema
+    excluded_tables = {
         models.DataAccessLog.__table__.name,
         models.Notification.__table__.name,
         models.NotificationDelivery.__table__.name,
+        # Events table uses PostgreSQL to_tsvector in Computed column
+        models.Event.__table__.name,
+        # Event-dependent tables (must be created after events)
+        models.EventAttendance.__table__.name,
+        models.EventFile.__table__.name,
     }
 
     # Create all tables except partitioned ones
@@ -187,13 +193,13 @@ async def prepare_database() -> AsyncIterator[None]:
         await conn.exec_driver_sql("PRAGMA busy_timeout=5000")
         await conn.exec_driver_sql("PRAGMA journal_mode=WAL")
 
-        # Create non-partitioned tables
-        def _create_non_partitioned(connection):
+        # Create non-excluded tables
+        def _create_non_excluded(connection):
             for table in Base.metadata.sorted_tables:
-                if table.name not in partitioned_tables:
+                if table.name not in excluded_tables:
                     table.create(connection, checkfirst=True)
 
-        await conn.run_sync(_create_non_partitioned)
+        await conn.run_sync(_create_non_excluded)
 
         # Create partitioned tables with modified schema (single PK) for SQLite
         # DataAccessLog
@@ -268,6 +274,96 @@ async def prepare_database() -> AsyncIterator[None]:
         await conn.exec_driver_sql(
             "CREATE INDEX IF NOT EXISTS ix_notification_deliveries_notif_channel "
             "ON notification_deliveries(notification_id, channel)"
+        )
+
+        # Events table (search_vector as nullable TEXT for SQLite compatibility)
+        await conn.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title VARCHAR NOT NULL,
+                title_en VARCHAR,
+                description TEXT,
+                description_en TEXT,
+                location VARCHAR,
+                location_en VARCHAR,
+                event_type VARCHAR,
+                event_type_en VARCHAR,
+                starts_at DATETIME NOT NULL,
+                ends_at DATETIME NOT NULL,
+                created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                search_vector TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                is_active BOOLEAN DEFAULT 1,
+                speaker VARCHAR,
+                image_url VARCHAR,
+                about TEXT,
+                about_en TEXT,
+                CONSTRAINT ck_event_time_order CHECK (ends_at > starts_at)
+            )
+        """
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_events_starts_at ON events(starts_at)"
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_events_ends_at ON events(ends_at)"
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_events_event_type ON events(event_type)"
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_events_created_at ON events(created_at)"
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_events_is_active ON events(is_active)"
+        )
+
+        # EventAttendance table
+        await conn.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS event_attendance (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+                registered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                qr_secret VARCHAR NOT NULL,
+                qr_hmac VARCHAR NOT NULL,
+                UNIQUE (user_id, event_id)
+            )
+        """
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_event_attendance_user_id "
+            "ON event_attendance(user_id)"
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_event_attendance_event_id "
+            "ON event_attendance(event_id)"
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_event_attendance_registered_at "
+            "ON event_attendance(registered_at)"
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_event_attendance_event_user "
+            "ON event_attendance(event_id, user_id)"
+        )
+
+        # EventFile table
+        await conn.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS event_files (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+                file_url VARCHAR NOT NULL,
+                description VARCHAR
+            )
+        """
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_event_files_event_id "
+            "ON event_files(event_id)"
         )
 
     yield

@@ -1,3 +1,4 @@
+import os
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -10,6 +11,14 @@ from app.auth.security import get_password_hash
 from app.core import observability
 from app.models import models
 from app.services import attendance_tokens, notification_queue
+
+# Skip marker for tests that require PostgreSQL full-text search
+_database_url = os.environ.get("DATABASE_URL", "")
+_is_postgresql = _database_url.startswith("postgresql")
+requires_postgresql = pytest.mark.skipif(
+    not _is_postgresql,
+    reason="Test requires PostgreSQL (uses pg_attribute or full-text search)",
+)
 
 
 async def _login(async_client, email: str, password: str) -> dict[str, str]:
@@ -260,6 +269,7 @@ async def test_events_etag_and_not_modified(
     assert my_not_modified.headers.get("Cache-Control") == "private, max-age=180"
 
 
+@requires_postgresql
 @pytest.mark.asyncio
 async def test_get_all_events_search_deterministic_order(db_session, user_factory):
     """Test FTS search returns results ordered by relevance then starts_at.
