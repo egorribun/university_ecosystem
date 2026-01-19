@@ -348,8 +348,7 @@ def upgrade() -> None:
             batch_op.f("ix_email_change_tokens_user_id"), ["user_id"], unique=False
         )
 
-    safe_create_table(
-        "events",
+    events_columns = [
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("title", sa.String(), nullable=False),
         sa.Column("title_en", sa.String(), nullable=True),
@@ -362,39 +361,47 @@ def upgrade() -> None:
         sa.Column("starts_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("ends_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("created_by", sa.Integer(), nullable=False),
-        sa.Column(
-            "search_vector",
-            sa.Text().with_variant(postgresql.TSVECTOR(), "postgresql"),
-            sa.Computed(
-                "to_tsvector('simple', "
-                "coalesce(title, '') || ' ' || "
-                "coalesce(description, '') || ' ' || "
-                "coalesce(location, '') || ' ' || "
-                "coalesce(title_en, '') || ' ' || "
-                "coalesce(description_en, '') || ' ' || "
-                "coalesce(location_en, '') || ' ' || "
-                "coalesce(about, '') || ' ' || "
-                "coalesce(about_en, '') "
-                ")",
-                persisted=True,
+    ]
+    if is_postgresql:
+        events_columns.append(
+            sa.Column(
+                "search_vector",
+                sa.Text().with_variant(postgresql.TSVECTOR(), "postgresql"),
+                sa.Computed(
+                    "to_tsvector('simple', "
+                    "coalesce(title, '') || ' ' || "
+                    "coalesce(description, '') || ' ' || "
+                    "coalesce(location, '') || ' ' || "
+                    "coalesce(title_en, '') || ' ' || "
+                    "coalesce(description_en, '') || ' ' || "
+                    "coalesce(location_en, '') || ' ' || "
+                    "coalesce(about, '') || ' ' || "
+                    "coalesce(about_en, '') "
+                    ")",
+                    persisted=True,
+                ),
+                nullable=True,
+            )
+        )
+    events_columns.extend(
+        [
+            sa.Column(
+                "created_at",
+                sa.DateTime(timezone=True),
+                server_default=sa.text("(CURRENT_TIMESTAMP)"),
+                nullable=True,
             ),
-            nullable=True,
-        ),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("(CURRENT_TIMESTAMP)"),
-            nullable=True,
-        ),
-        sa.Column("is_active", sa.Boolean(), nullable=True),
-        sa.Column("speaker", sa.String(), nullable=True),
-        sa.Column("image_url", sa.String(), nullable=True),
-        sa.Column("about", sa.Text(), nullable=True),
-        sa.Column("about_en", sa.Text(), nullable=True),
-        sa.CheckConstraint("ends_at > starts_at", name="ck_event_time_order"),
-        sa.ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
+            sa.Column("is_active", sa.Boolean(), nullable=True),
+            sa.Column("speaker", sa.String(), nullable=True),
+            sa.Column("image_url", sa.String(), nullable=True),
+            sa.Column("about", sa.Text(), nullable=True),
+            sa.Column("about_en", sa.Text(), nullable=True),
+            sa.CheckConstraint("ends_at > starts_at", name="ck_event_time_order"),
+            sa.ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="CASCADE"),
+            sa.PrimaryKeyConstraint("id"),
+        ]
     )
+    safe_create_table("events", *events_columns)
     with safe_batch_alter_table("events", schema=None) as batch_op:
         batch_op.create_index(
             batch_op.f("ix_events_created_at"), ["created_at"], unique=False
