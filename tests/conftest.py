@@ -292,7 +292,8 @@ async def clean_database(prepare_database: None) -> AsyncIterator[None]:
             async with engine.begin() as conn:
                 if is_postgresql:
                     # PostgreSQL: use TRUNCATE with CASCADE for all tables at once
-                    # This is faster and avoids transaction issues if one table is missing
+                    # This is faster and avoids transaction issues if one
+                    # table is missing
                     table_names = [
                         f'"{table.name}"' for table in Base.metadata.sorted_tables
                     ]
