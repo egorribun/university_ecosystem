@@ -22,7 +22,7 @@ T = TypeVar("T")
 class RetryExhausted(Exception):
     """Raised when all retry attempts have been exhausted."""
 
-    def __init__(self, attempts: int, last_error: Exception | None = None):
+    def __init__(self, attempts: int, last_error: Exception | None = None) -> None:
         self.attempts = attempts
         self.last_error = last_error
         super().__init__(f"Retry exhausted after {attempts} attempts")

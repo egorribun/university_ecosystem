@@ -85,7 +85,7 @@ class DeadLetterQueue:
     BASE_BACKOFF_SECONDS = 60  # 1 minute
     MAX_BACKOFF_SECONDS = 3600  # 1 hour
 
-    def __init__(self, session: AsyncSession):
+    def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
     async def add_failed_job(

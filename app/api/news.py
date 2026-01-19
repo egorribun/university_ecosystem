@@ -9,7 +9,6 @@ from fastapi import (
     Depends,
     File,
     Header,
-    HTTPException,
     Query,
     Request,
     Response,
@@ -27,12 +26,18 @@ from app.api.deps import (
     get_current_user_optional,
 )
 from app.api.utils import save_upload
+from app.api.validation import (
+    ensure_exists,
+    raise_forbidden,
+    raise_not_found,
+    raise_validation_error,
+    require_admin,
+)
 from app.core.database import get_db
 from app.core.localization import (
     DEFAULT_LOCALE,
     SUPPORTED_LOCALES,
     resolve_locale,
-    translate,
 )
 from app.deps.cache import etag_matches, format_etag, get_cache
 from app.models import models
@@ -186,11 +191,7 @@ async def create_news(
     user: models.User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
-    if user.role != "admin":
-        raise HTTPException(
-            status_code=403,
-            detail=translate("errors.forbidden", locale=locale),
-        )
+    require_admin(user, locale)
     record = await crud.create_news(db, data)
     await _increment_news_list_version()
     serialized = _serialize_news(record, locale)
@@ -374,10 +375,7 @@ async def get_news(
     row = result.first()
 
     if not row:
-        raise HTTPException(
-            status_code=404,
-            detail=translate("errors.news.not_found", locale=locale),
-        )
+        raise_not_found("news", locale)
 
     news_obj, l_count, c_count, liked = row
     # Map database row to model object with extra attributes
@@ -404,16 +402,8 @@ async def update_news(
 ):
     locale = resolve_locale(request=request, user=user)
     news = await db.get(models.News, id)
-    if not news:
-        raise HTTPException(
-            status_code=404,
-            detail=translate("errors.news.not_found", locale=locale),
-        )
-    if user.role != "admin":
-        raise HTTPException(
-            status_code=403,
-            detail=translate("errors.forbidden", locale=locale),
-        )
+    ensure_exists(news, "news", locale)
+    require_admin(user, locale)
     updates = data.model_dump(exclude_unset=True) if data else {}
     if "title_en" in updates:
         updates["title_en"] = crud.sanitize_optional_text(updates.get("title_en"))
@@ -445,16 +435,8 @@ async def delete_news(
 ):
     locale = resolve_locale(request=request, user=user)
     news = await db.get(models.News, id)
-    if not news:
-        raise HTTPException(
-            status_code=404,
-            detail=translate("errors.news.not_found", locale=locale),
-        )
-    if user.role != "admin":
-        raise HTTPException(
-            status_code=403,
-            detail=translate("errors.forbidden", locale=locale),
-        )
+    ensure_exists(news, "news", locale)
+    require_admin(user, locale)
     image_url = news.image_url
     await db.delete(news)
     await db.commit()
@@ -477,11 +459,7 @@ async def like_news(
 ):
     locale = resolve_locale(request=request, user=user)
     news = await db.get(models.News, id)
-    if not news:
-        raise HTTPException(
-            status_code=404,
-            detail=translate("errors.news.not_found", locale=locale),
-        )
+    ensure_exists(news, "news", locale)
     is_liked = await crud.toggle_news_like(db, id, user.id)
     return {"is_liked": is_liked}
 
@@ -496,16 +474,9 @@ async def comment_on_news(
 ):
     locale = resolve_locale(request=request, user=user)
     news = await db.get(models.News, id)
-    if not news:
-        raise HTTPException(
-            status_code=404,
-            detail=translate("errors.news.not_found", locale=locale),
-        )
+    ensure_exists(news, "news", locale)
     if not content.strip():
-        raise HTTPException(
-            status_code=400,
-            detail=translate("errors.validation.required", locale=locale),
-        )
+        raise_validation_error("errors.validation.required", locale)
     comment = await crud.create_news_comment(db, id, user.id, content)
     return {
         "id": comment.id,
@@ -527,11 +498,7 @@ async def get_news_interact(
 ):
     locale = resolve_locale(request=request)
     news = await db.get(models.News, id)
-    if not news:
-        raise HTTPException(
-            status_code=404,
-            detail=translate("errors.news.not_found", locale=locale),
-        )
+    ensure_exists(news, "news", locale)
     data = await crud.get_news_interactions(
         db, id, user.id if user else None, limit=limit, offset=offset
     )
@@ -557,13 +524,9 @@ async def update_comment(
             "created_at": comment.created_at,
         }
     except LookupError:
-        raise HTTPException(
-            status_code=404, detail=translate("errors.not_found", locale=locale)
-        )
+        raise_not_found("news", locale, exact_key="errors.not_found")
     except PermissionError:
-        raise HTTPException(
-            status_code=403, detail=translate("errors.forbidden", locale=locale)
-        )
+        raise_forbidden(locale)
 
 
 @router.delete("/comments/{comment_id}")
@@ -580,13 +543,9 @@ async def delete_comment(
         )
         return {"ok": True}
     except LookupError:
-        raise HTTPException(
-            status_code=404, detail=translate("errors.not_found", locale=locale)
-        )
+        raise_not_found("news", locale, exact_key="errors.not_found")
     except PermissionError:
-        raise HTTPException(
-            status_code=403, detail=translate("errors.forbidden", locale=locale)
-        )
+        raise_forbidden(locale)
 
 
 @router.post("/upload_image")
@@ -597,11 +556,7 @@ async def upload_news_image(
     user: models.User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
-    if user.role != "admin":
-        raise HTTPException(
-            status_code=403,
-            detail=translate("errors.forbidden", locale=locale),
-        )
+    require_admin(user, locale)
     url = await save_upload(file, "news_images", "news", locale=locale)
     return {"url": url}
 

@@ -20,6 +20,8 @@ from typing import TYPE_CHECKING, Any
 import nats
 from nats.js.api import StreamConfig
 
+from app.core.orjson_utils import orjson
+
 if TYPE_CHECKING:
     from nats.aio.client import Client as NatsClient
     from nats.js import JetStreamContext
@@ -38,8 +40,6 @@ class NatsMessage:
 
     def json(self) -> dict[str, Any]:
         """Decode message data as JSON."""
-        import orjson
-
         return orjson.loads(self.data)
 
 
@@ -134,8 +134,6 @@ class NatsService:
             raise RuntimeError("Not connected to NATS")
 
         if isinstance(data, dict):
-            import orjson
-
             data = orjson.dumps(data)
 
         await self._client.publish(subject, data, headers=headers)
@@ -156,8 +154,6 @@ class NatsService:
             raise RuntimeError("Not connected to NATS")
 
         if isinstance(data, dict):
-            import orjson
-
             data = orjson.dumps(data)
 
         ack = await self._js.publish(subject, data)

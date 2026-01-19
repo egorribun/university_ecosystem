@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Header, HTTPException, Query, Response
+from fastapi import APIRouter, Header, Query, Response, status
 
+from app.api.validation import raise_http_error, raise_not_found
 from app.core.config import settings
 from app.services.image_proxy import get_transformed_image
 from app.utils.files import _get_storage_backend
@@ -19,7 +20,12 @@ async def proxy_image(
     and applies optional resizing.
     """
     if not settings.image_proxy_enabled:
-        raise HTTPException(status_code=404, detail="Image proxy is disabled")
+        # Using a generic 404 per security best practices or explicit 404
+        # Since logic asked for 404, we'll stick to not found-ish or just http error
+        # "Image proxy is disabled" - usually 404 is good to hide existence
+        # Defaulting to en for system errors where no user locale is typically resolved
+        # in this public endpoint
+        raise_not_found("Endpoint", "Image Proxy", "en")
 
     # Validate and snap width to allowed buckets to prevent cache fragmentation
     target_width = None
@@ -61,10 +67,13 @@ async def proxy_image(
                 ),  # Simplified indication
             },
         )
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError:
+        # Often file not found in storage
+        raise_not_found("Image", path, "en")
     except Exception:
         from logging import getLogger
 
         getLogger(__name__).exception("Image proxy error for %s", path)
-        raise HTTPException(status_code=500, detail="Internal image processing error")
+        raise_http_error(
+            status.HTTP_500_INTERNAL_SERVER_ERROR, "errors.common.internal_error", "en"
+        )

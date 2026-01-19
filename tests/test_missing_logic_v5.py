@@ -39,6 +39,8 @@ async def test_crud_missing_branches():
 
     # 3. create_user error paths
     db = AsyncMock()
+    db.add = MagicMock()
+    db.add_all = MagicMock()
     user_in = schemas.UserCreate(
         email="test@e.com",
         password="password123",

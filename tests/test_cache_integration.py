@@ -5,7 +5,7 @@ import pytest
 from app.models import models
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_schedule_cache_supports_etag(async_client, db_session, fake_cache):
     group = models.Group(name="Test Group", course=1, faculty="IT")
     db_session.add(group)
@@ -63,7 +63,7 @@ async def test_schedule_cache_supports_etag(async_client, db_session, fake_cache
     assert len(refreshed.json()) == 2
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_news_list_and_detail_cache(async_client, db_session, fake_cache):
     news = models.News(title="First", content="Initial")
     db_session.add(news)

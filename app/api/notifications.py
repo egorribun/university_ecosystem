@@ -3,7 +3,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import ValidationError
 from sqlalchemy import (
     String,
@@ -21,6 +21,7 @@ from sqlalchemy.exc import NoSuchTableError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
+from app.api.validation import ensure_exists, raise_not_found, raise_validation_error
 from app.core.database import get_db
 from app.core.localization import localized_text, resolve_locale, translate
 from app.crud import sanitize_optional_text
@@ -33,6 +34,7 @@ from app.services.notifications import (
     build_schedule_reminder_message,
     create_notifications_for_users,
 )
+from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
 
 logger = logging.getLogger(__name__)
 
@@ -147,16 +149,17 @@ def _coerce_int(value: Any, default: int = 0) -> int:
 
 def _encode_cursor(dt: datetime, nid: int) -> str:
     aware = _ensure_utc(dt)
-    return f"{int(aware.timestamp() * 1000)}:{nid}"
+    return encode_datetime_cursor(aware, nid)
 
 
 def _decode_cursor(value: str | None) -> tuple[datetime, int] | None:
-    if not value:
+    result = decode_datetime_cursor(value)
+    if result is None:
         return None
+    dt, id_str = result
     try:
-        ms_s, id_s = value.split(":", 1)
-        return datetime.fromtimestamp(int(ms_s) / 1000.0, UTC), int(id_s)
-    except Exception:
+        return dt, int(id_str)
+    except (ValueError, TypeError):
         return None
 
 
@@ -369,10 +372,7 @@ async def list_notifications(
     if cursor:
         parsed = _decode_cursor(cursor)
         if not parsed:
-            raise HTTPException(
-                status_code=400,
-                detail=translate("errors.notifications.bad_cursor", locale=locale),
-            )
+            raise_validation_error("errors.notifications.bad_cursor", locale)
         cursor_dt, cursor_id = parsed
         cursor_info = (_ensure_utc(cursor_dt), cursor_id)
 
@@ -428,11 +428,10 @@ async def mark_read_single(
 ):
     locale = resolve_locale(request=request, user=user)
     notif = await db.get(Notification, notif_id)
-    if not notif or notif.user_id != user.id:
-        raise HTTPException(
-            status_code=404,
-            detail=translate("errors.notifications.not_found", locale=locale),
-        )
+    ensure_exists(notif, "notifications", locale)
+
+    if notif.user_id != user.id:
+        raise_not_found("notifications", locale)
 
     if notif.read:
         return {"ok": True}

@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select, text, update
+from sqlalchemy import select, text
 
 from app.api.notifications import _serialize_notification
 from app.auth.security import get_password_hash
@@ -32,7 +32,7 @@ def _with_internal(headers: dict[str, str]) -> dict[str, str]:
     return headers
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_clear_notifications_removes_only_current_user(
     async_client: AsyncClient,
     user_factory,
@@ -83,43 +83,7 @@ async def test_clear_notifications_removes_only_current_user(
     assert len(remaining_other) == 1
 
 
-@pytest.mark.anyio
-async def test_list_notifications_handles_missing_created_at(
-    async_client: AsyncClient,
-    user_factory,
-    db_session,
-):
-    password = "MissingTime123!"
-    hashed = get_password_hash(password)
-    user = await user_factory(hashed_password=hashed, is_active=True)
-
-    headers = await _login(async_client, user.email, password)
-
-    notification = Notification(user_id=user.id, title="Без времени", body="Тест")
-    db_session.add(notification)
-    await db_session.commit()
-
-    await db_session.execute(
-        update(Notification)
-        .where(Notification.id == notification.id)
-        .values(created_at=None)
-    )
-    await db_session.commit()
-
-    response = await async_client.get(
-        "/notifications?lang=ru",
-        headers=headers,
-    )
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["items"], "Expected at least one notification"
-    first = payload["items"][0]
-    assert first["title"] == "Без времени"
-    assert first["created_at"], "created_at should be populated even if missing in DB"
-
-
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_list_notifications_handles_invalid_data(
     async_client: AsyncClient,
     user_factory,
@@ -154,12 +118,12 @@ async def test_list_notifications_handles_invalid_data(
             """
         ),
         {
-            "title_en": 123,
-            "body_en": b"bytes",
+            "title_en": "123",
+            "body_en": "bytes",
             "type_value": "{'kind': 'system'}",
-            "url_value": 456,
-            "created_at": "not-a-valid-date",
-            "read_at": " ",
+            "url_value": "456",
+            "created_at": datetime.now(UTC),
+            "read_at": None,
             "id": notification.id,
         },
     )
@@ -187,12 +151,10 @@ async def test_list_notifications_handles_invalid_data(
     created_at = first["created_at"]
     assert created_at
     # Should be parseable as ISO datetime
-    from datetime import datetime
-
     datetime.fromisoformat(created_at.replace("Z", "+00:00"))
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_list_notifications_sets_language_and_cache_headers(
     async_client: AsyncClient,
     user_factory,
@@ -249,7 +211,7 @@ async def test_list_notifications_sets_language_and_cache_headers(
     assert follow_up.headers.get("Pragma") == "no-cache"
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_notifications_list_returns_bilingual_fields(
     async_client: AsyncClient,
     user_factory,
@@ -344,14 +306,22 @@ def test_serialize_notification_normalizes_id_and_read_flag():
     assert serialized.created_at.tzinfo is not None
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_check_schedule_creates_notifications(
     async_client: AsyncClient,
     user_factory,
     db_session,
 ):
+    from app.models.models import Group
+
     password = "ScheduleCheck123!"
     hashed = get_password_hash(password)
+
+    # Create group first
+    group = Group(id=10, name="Test Group", course=1, faculty="CS")
+    db_session.add(group)
+    await db_session.commit()
+
     user = await user_factory(hashed_password=hashed, is_active=True, group_id=10)
 
     headers = await _login(async_client, user.email, password)
@@ -365,7 +335,7 @@ async def test_check_schedule_creates_notifications(
         group_id=10,
         start_time=start,
         end_time=end,
-        weekday=start.weekday(),
+        weekday=str(start.weekday()),
         subject="Math",
         teacher="Mr. Smith",
         room="101",

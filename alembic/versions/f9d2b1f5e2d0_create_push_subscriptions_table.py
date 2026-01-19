@@ -62,6 +62,10 @@ def _drop_index_safe(name: str, table: str) -> None:
 
 
 def upgrade() -> None:
+    # Skip if users table doesn't exist (FK dependency)
+    if not _table_exists("users"):
+        return
+
     if not _table_exists("push_subscriptions"):
         op.create_table(
             "push_subscriptions",

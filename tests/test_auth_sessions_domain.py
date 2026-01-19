@@ -16,7 +16,7 @@ def _make_request(headers: list[tuple[bytes, bytes]] | None = None) -> Request:
     return Request(scope)
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_resolve_target_user_rejects_non_admin(db_session, user_factory):
     current_user = await user_factory(role="student")
     target_user = await user_factory(role="student")
@@ -32,7 +32,7 @@ async def test_resolve_target_user_rejects_non_admin(db_session, user_factory):
     assert exc.value.status_code == status.HTTP_403_FORBIDDEN
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_resolve_target_user_allows_admin(db_session, user_factory):
     admin = await user_factory(role="admin")
     target_user = await user_factory(role="student")

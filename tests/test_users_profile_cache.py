@@ -21,7 +21,7 @@ async def _login(async_client: AsyncClient, email: str, password: str) -> str:
     return response.json()["access_token"]
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 @pytest.mark.parametrize("locale", ["en", "ru"])
 async def test_profile_cache_missing_signing_key_localized(
     async_client: AsyncClient, user_factory, db_session, locale: str
@@ -62,7 +62,7 @@ async def test_profile_cache_missing_signing_key_localized(
     )
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 @pytest.mark.parametrize("locale", ["en", "ru"])
 async def test_profile_cache_invalid_envelope_localized(
     async_client: AsyncClient, user_factory, locale: str
@@ -86,7 +86,7 @@ async def test_profile_cache_invalid_envelope_localized(
     )
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 @pytest.mark.parametrize("locale", ["en", "ru"])
 async def test_profile_cache_invalid_signature_localized(
     async_client: AsyncClient, user_factory, locale: str

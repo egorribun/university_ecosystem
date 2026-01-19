@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.repositories.base import BaseRepository, ModelT, ReadOnlyRepository
+from app.repositories.base import BaseRepository, ReadOnlyRepository
 
 
 def test_base_repository_is_abstract():
@@ -20,12 +20,13 @@ def test_readonly_repository_is_abstract():
 
 
 def test_repository_pattern_generics():
-    """Test repository uses proper generic types."""
-    from app.repositories.base import CreateSchemaT, UpdateSchemaT
+    """Test repository uses proper generic types (PEP 695 inline syntax)."""
+    # With PEP 695, type params are accessible via __type_params__
+    base_params = BaseRepository.__type_params__
+    readonly_params = ReadOnlyRepository.__type_params__
 
-    assert ModelT is not None
-    assert CreateSchemaT is not None
-    assert UpdateSchemaT is not None
+    assert len(base_params) == 3  # ModelT, CreateSchemaT, UpdateSchemaT
+    assert len(readonly_params) == 1  # ModelT
 
 
 def test_user_repository_import():

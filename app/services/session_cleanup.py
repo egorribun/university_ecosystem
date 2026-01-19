@@ -14,6 +14,7 @@ from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ClauseElement
 
+from app.auth.redis_session import get_session_backend
 from app.core.database import async_session
 from app.core.observability import get_periodic_task_metrics
 from app.models.models import ActiveSession, MfaChallenge
@@ -85,16 +86,24 @@ async def revoke_sessions_matching(
     sessions = result.scalars().all()
     if not sessions:
         return 0
+
+    session_backend = await get_session_backend()
     now = datetime.now(UTC)
     revoked = 0
+
     for session in sessions:
         if session.revoked_at is None:
             revoked += 1
             session.revoked_at = now
+            # Best effort revocation in backend
+            with suppress(Exception):
+                await session_backend.revoke_session(session.jti)
         else:
             revoked += 1
+
         if rotate_signing_key:
             session.signing_key = secrets.token_urlsafe(32)
+
     return revoked
 
 

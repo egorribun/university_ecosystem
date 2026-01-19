@@ -18,6 +18,7 @@ import logging
 
 import httpx
 import pytest
+import pytest_asyncio
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -41,7 +42,7 @@ else:
         otel_logs.set_logger_provider = _set_logger_provider
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test.db")
-os.environ.setdefault("SECRET_KEY", "test-secret")
+os.environ.setdefault("SECRET_KEY", "test-secret-key-32-characters-long-entropy")
 os.environ.setdefault("ALGORITHM", "HS256")
 os.environ.setdefault("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
 os.environ.setdefault("STATIC_DIR", "app/test-static")
@@ -140,18 +141,7 @@ def pytest_pyfunc_call(pyfuncitem: pytest.Function) -> bool | None:
     return True
 
 
-@pytest.fixture(scope="session")
-def event_loop() -> AsyncIterator[asyncio.AbstractEventLoop]:
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        yield loop
-    finally:
-        asyncio.set_event_loop(None)
-        loop.close()
-
-
-@pytest.fixture(autouse=True)
+@pytest_asyncio.fixture(autouse=True)
 async def notification_queue_shutdown() -> AsyncIterator[None]:
     await notification_queue.shutdown_notification_queue()
     try:
@@ -160,8 +150,19 @@ async def notification_queue_shutdown() -> AsyncIterator[None]:
         await notification_queue.shutdown_notification_queue()
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest_asyncio.fixture(scope="session", autouse=True)
 async def prepare_database() -> AsyncIterator[None]:
+    database_url = os.environ.get("DATABASE_URL", "")
+    is_postgresql = database_url.startswith("postgresql")
+
+    if is_postgresql:
+        # For PostgreSQL, tables are created via Alembic migrations in CI
+        print(f"DEBUG: prepare_database using PostgreSQL. URL: {database_url}")
+        print(f"DEBUG: Engine URL: {engine.url}")
+        yield
+        return
+
+    # SQLite-specific cleanup and setup
     if os.path.exists("test.db"):
         try:
             os.remove("test.db")
@@ -173,12 +174,18 @@ async def prepare_database() -> AsyncIterator[None]:
         except OSError:
             pass
 
-    # Tables with composite PKs that are incompatible with SQLite autoincrement
-    # We exclude them from create_all and create them separately without composite PK
-    partitioned_tables = {
+    # Tables with composite PKs or PostgreSQL-specific features
+    # (like GENERATED columns). We exclude them from create_all and create
+    # them separately with SQLite-compatible schema
+    excluded_tables = {
         models.DataAccessLog.__table__.name,
         models.Notification.__table__.name,
         models.NotificationDelivery.__table__.name,
+        # Events table uses PostgreSQL to_tsvector in Computed column
+        models.Event.__table__.name,
+        # Event-dependent tables (must be created after events)
+        models.EventAttendance.__table__.name,
+        models.EventFile.__table__.name,
     }
 
     # Create all tables except partitioned ones
@@ -186,13 +193,13 @@ async def prepare_database() -> AsyncIterator[None]:
         await conn.exec_driver_sql("PRAGMA busy_timeout=5000")
         await conn.exec_driver_sql("PRAGMA journal_mode=WAL")
 
-        # Create non-partitioned tables
-        def _create_non_partitioned(connection):
+        # Create non-excluded tables
+        def _create_non_excluded(connection):
             for table in Base.metadata.sorted_tables:
-                if table.name not in partitioned_tables:
+                if table.name not in excluded_tables:
                     table.create(connection, checkfirst=True)
 
-        await conn.run_sync(_create_non_partitioned)
+        await conn.run_sync(_create_non_excluded)
 
         # Create partitioned tables with modified schema (single PK) for SQLite
         # DataAccessLog
@@ -269,27 +276,136 @@ async def prepare_database() -> AsyncIterator[None]:
             "ON notification_deliveries(notification_id, channel)"
         )
 
+        # Events table (search_vector as nullable TEXT for SQLite compatibility)
+        await conn.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title VARCHAR NOT NULL,
+                title_en VARCHAR,
+                description TEXT,
+                description_en TEXT,
+                location VARCHAR,
+                location_en VARCHAR,
+                event_type VARCHAR,
+                event_type_en VARCHAR,
+                starts_at DATETIME NOT NULL,
+                ends_at DATETIME NOT NULL,
+                created_by INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                search_vector TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                is_active BOOLEAN DEFAULT 1,
+                speaker VARCHAR,
+                image_url VARCHAR,
+                about TEXT,
+                about_en TEXT,
+                CONSTRAINT ck_event_time_order CHECK (ends_at > starts_at)
+            )
+        """
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_events_starts_at ON events(starts_at)"
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_events_ends_at ON events(ends_at)"
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_events_event_type ON events(event_type)"
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_events_created_at ON events(created_at)"
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_events_is_active ON events(is_active)"
+        )
+
+        # EventAttendance table
+        await conn.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS event_attendance (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+                registered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                qr_secret VARCHAR NOT NULL,
+                qr_hmac VARCHAR NOT NULL,
+                UNIQUE (user_id, event_id)
+            )
+        """
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_event_attendance_user_id "
+            "ON event_attendance(user_id)"
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_event_attendance_event_id "
+            "ON event_attendance(event_id)"
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_event_attendance_registered_at "
+            "ON event_attendance(registered_at)"
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_event_attendance_event_user "
+            "ON event_attendance(event_id, user_id)"
+        )
+
+        # EventFile table
+        await conn.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS event_files (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+                file_url VARCHAR NOT NULL,
+                description VARCHAR
+            )
+        """
+        )
+        await conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_event_files_event_id "
+            "ON event_files(event_id)"
+        )
+
     yield
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
 
 
-@pytest.fixture(autouse=True)
+@pytest_asyncio.fixture(autouse=True)
 async def clean_database(prepare_database: None) -> AsyncIterator[None]:
     yield
+
+    database_url = os.environ.get("DATABASE_URL", "")
+    # Robust check: use engine dialect or fallback to env
+    is_postgresql = engine.dialect.name == "postgresql" or database_url.startswith(
+        "postgresql"
+    )
 
     attempts = 5
     delay = 0.1
     for attempt in range(1, attempts + 1):
         try:
             async with engine.begin() as conn:
-                await conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
-                for table in reversed(Base.metadata.sorted_tables):
-                    try:
-                        await conn.execute(table.delete())
-                    except Exception:
-                        pass
-                await conn.exec_driver_sql("PRAGMA foreign_keys=ON")
+                if is_postgresql:
+                    # PostgreSQL: use TRUNCATE with CASCADE for all tables at once
+                    # This is faster and avoids transaction issues if one
+                    # table is missing
+                    table_names = [
+                        f'"{table.name}"' for table in Base.metadata.sorted_tables
+                    ]
+                    if table_names:
+                        await conn.exec_driver_sql(
+                            f"TRUNCATE TABLE {', '.join(table_names)} CASCADE"
+                        )
+                else:
+                    # SQLite: use PRAGMA and DELETE
+                    await conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
+                    for table in reversed(Base.metadata.sorted_tables):
+                        try:
+                            await conn.execute(table.delete())
+                        except Exception:
+                            pass
+                    await conn.exec_driver_sql("PRAGMA foreign_keys=ON")
             break
         except OperationalError as exc:
             if "database is locked" not in str(exc).lower() or attempt == attempts:
@@ -306,6 +422,17 @@ async def clean_database(prepare_database: None) -> AsyncIterator[None]:
             )
             await asyncio.sleep(delay)
             delay *= 2
+        except RuntimeError as exc:
+            # Event loop closed before teardown finalizer completed
+            # This happens with uvloop + asyncpg when the transport closes early
+            error_message = str(exc).lower()
+            if (
+                "event loop is closed" in error_message
+                or "handler is closed" in error_message
+            ):
+                logging.debug("Skipping database cleanup: event loop already closed")
+                break
+            raise
 
 
 @pytest.fixture(scope="session")
@@ -318,7 +445,7 @@ def _rate_limit_redis_client() -> AsyncIterator[fakeredis.aioredis.FakeRedis]:
         set_rate_limit_client_factory(None)
 
 
-@pytest.fixture(autouse=True)
+@pytest_asyncio.fixture(autouse=True)
 async def configure_rate_limit(
     _rate_limit_redis_client: fakeredis.aioredis.FakeRedis,
 ) -> AsyncIterator[None]:
@@ -353,26 +480,27 @@ def mock_background_tasks(monkeypatch: pytest.MonkeyPatch) -> None:
 
         return _stop
 
-    monkeypatch.setattr(
-        "app.core.lifespan.start_notifications_scheduler",
-        _noop,
-    )
-    monkeypatch.setattr(
-        "app.core.lifespan.start_notifications_retention_scheduler",
-        _noop,
-    )
-    monkeypatch.setattr(
-        "app.core.lifespan.start_session_cleanup_scheduler",
-        _noop,
-    )
-    monkeypatch.setattr(
-        "app.core.lifespan.start_story_cleanup_scheduler",
-        _noop,
-    )
-    monkeypatch.setattr(
-        "app.core.lifespan.start_password_reset_cleanup_scheduler",
-        _noop,
-    )
+    # Obsolete patches - functions moved or removed
+    # monkeypatch.setattr(
+    #     "app.core.lifespan.start_notifications_scheduler",
+    #     _noop,
+    # )
+    # monkeypatch.setattr(
+    #     "app.core.lifespan.start_notifications_retention_scheduler",
+    #     _noop,
+    # )
+    # monkeypatch.setattr(
+    #     "app.core.lifespan.start_session_cleanup_scheduler",
+    #     _noop,
+    # )
+    # monkeypatch.setattr(
+    #     "app.core.lifespan.start_story_cleanup_scheduler",
+    #     _noop,
+    # )
+    # monkeypatch.setattr(
+    #     "app.core.lifespan.start_password_reset_cleanup_scheduler",
+    #     _noop,
+    # )
 
     async def _mock_migrations_current(conn=None) -> tuple[bool, set[str], set[str]]:
         return True, set(), set()
@@ -385,7 +513,7 @@ def mock_background_tasks(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def async_client(
     mock_background_tasks: None,
     prepare_database: None,
@@ -401,7 +529,7 @@ async def async_client(
             yield client
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def root_client(
     mock_background_tasks: None,
     prepare_database: None,
@@ -417,7 +545,7 @@ async def root_client(
             yield client
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def db_session() -> AsyncIterator[AsyncSession]:
     async with async_session() as session:
         yield session
@@ -468,7 +596,7 @@ class _TestingRedisCache(cache_module.RedisCache):
                 await client.delete(*to_delete)
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def fake_cache() -> AsyncIterator[_TestingRedisCache]:
     original_enabled = settings.cache_enabled
     settings.cache_enabled = True
@@ -486,7 +614,7 @@ async def fake_cache() -> AsyncIterator[_TestingRedisCache]:
         settings.cache_enabled = original_enabled
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def user_factory(db_session) -> Callable[..., Awaitable[models.User]]:
     async def _factory(**kwargs) -> models.User:
         defaults = {
@@ -511,7 +639,7 @@ async def user_factory(db_session) -> Callable[..., Awaitable[models.User]]:
     return _factory
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def story_factory(db_session) -> Callable[..., Awaitable[models.Story]]:
     async def _factory(**kwargs) -> models.Story:
         now = dt.datetime.now(dt.UTC)

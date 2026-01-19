@@ -22,6 +22,11 @@ def upgrade() -> None:
     if bind.dialect.name != "postgresql":
         return
 
+    # Check if events table exists before creating index
+    inspector = sa.inspect(bind)
+    if not inspector.has_table("events"):
+        return
+
     op.execute(
         sa.text(
             f"""

@@ -4,15 +4,15 @@ import secrets
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, require_fresh_mfa
+from app.api.validation import ensure_exists, require_admin, require_owner_or_admin
 from app.auth.security import decode_token
 from app.core.database import get_db
-from app.core.localization import resolve_locale, translate
-from app.models.enums import UserRole
+from app.core.localization import resolve_locale
 from app.models.models import ActiveSession, User
 from app.schemas import schemas
 from app.services.session_cleanup import revoke_sessions_matching
@@ -56,13 +56,9 @@ async def _resolve_target_user(
 ) -> tuple[int, User]:
     if requested_user_id is None or requested_user_id == current_user.id:
         return current_user.id, current_user
-    if current_user.role != UserRole.ADMIN.value:
-        message = translate("errors.forbidden", locale=locale)
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=message)
+    require_admin(current_user, locale)
     target = await db.get(User, requested_user_id)
-    if not target:
-        message = translate("errors.users.not_found", locale=locale)
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=message)
+    ensure_exists(target, "users", locale)
     return target.id, target
 
 
@@ -106,12 +102,8 @@ async def revoke_session(
 ) -> schemas.ActiveSessionOut:
     locale = resolve_locale(request=request, user=current_user)
     session = await db.get(ActiveSession, session_id)
-    if not session:
-        message = translate("errors.sessions.not_found", locale=locale)
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=message)
-    if session.user_id != current_user.id and current_user.role != UserRole.ADMIN.value:
-        message = translate("errors.forbidden", locale=locale)
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=message)
+    ensure_exists(session, "sessions", locale)
+    require_owner_or_admin(current_user, locale, owner_id=session.user_id)
     now = datetime.now(UTC)
     revoked_at = session.revoked_at or now
     session.revoked_at = revoked_at

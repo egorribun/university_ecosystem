@@ -84,7 +84,7 @@ async def _complete_step_up(
     return payload
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_list_sessions_includes_current_session_metadata(
     async_client: AsyncClient,
     user_factory,
@@ -116,7 +116,7 @@ async def test_list_sessions_includes_current_session_metadata(
     assert entry["last_seen_at"] is not None
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_admin_can_list_sessions_for_other_user(
     async_client: AsyncClient,
     user_factory,
@@ -154,7 +154,7 @@ async def test_admin_can_list_sessions_for_other_user(
     assert data[0]["is_current"] is False
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_non_admin_cannot_list_sessions_for_other_user(
     async_client: AsyncClient,
     user_factory,
@@ -184,7 +184,7 @@ async def test_non_admin_cannot_list_sessions_for_other_user(
     assert response.json()["detail"] == "Access denied"
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_revoke_session_removes_from_listing(
     async_client: AsyncClient,
     user_factory,
@@ -229,7 +229,7 @@ async def test_revoke_session_removes_from_listing(
     assert deleted.scalar_one() is not None
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_admin_can_revoke_foreign_session(
     async_client: AsyncClient,
     user_factory,
@@ -262,7 +262,7 @@ async def test_admin_can_revoke_foreign_session(
     assert deleted.scalar_one() is not None
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_logout_removes_session_immediately(
     async_client: AsyncClient,
     user_factory,
@@ -297,7 +297,7 @@ async def test_logout_removes_session_immediately(
     assert refreshed_sessions[0]["is_current"] is True
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_revoke_session_requires_step_up(
     async_client: AsyncClient,
     user_factory,
@@ -355,7 +355,7 @@ async def test_revoke_session_requires_step_up(
     assert success.json()["revoked_at"] is not None
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_revoke_other_user_session_forbidden(
     async_client: AsyncClient,
     user_factory,
@@ -383,7 +383,7 @@ async def test_revoke_other_user_session_forbidden(
     assert response.json()["detail"] == "Access denied"
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_revoke_missing_session_returns_404(
     async_client: AsyncClient,
     user_factory,

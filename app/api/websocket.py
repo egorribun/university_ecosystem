@@ -24,6 +24,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core import metrics
 from app.core.config import settings
 from app.core.database import async_session
 from app.core.feature_flags import feature_flags
@@ -146,7 +147,7 @@ presence_pubsub = PresencePubSub()
 class ConnectionManager:
     """Manages WebSocket connections for all users."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         # user_id -> set of WebSocket connections (user can have multiple tabs/devices)
         self.active_connections: dict[int, set[WebSocket]] = {}
         # websocket -> user_id (for reverse lookup on disconnect)
@@ -592,6 +593,7 @@ async def websocket_chat(websocket: WebSocket):
 
     # Connect and register
     await manager.connect(websocket, user.id, subprotocol=selected_subprotocol)
+    metrics.inc_ws_connections(path="/ws/chat")
     last_seen = await _update_last_seen(session_jti)
     await manager.broadcast_presence(
         user.id,
@@ -713,6 +715,9 @@ async def websocket_chat(websocket: WebSocket):
             source=PRESENCE_SOURCE_DISCONNECT,
             force=True,
         )
+    finally:
+        metrics.dec_ws_connections(path="/ws/chat")
+        logger.info(f"WebSocket cleanup for user {user.id}")
 
 
 async def notify_new_message(
@@ -725,6 +730,7 @@ async def notify_new_message(
     Returns the number of successful notifications sent.
     """
     presence = await build_presence_map([message.sender_id])
+    metrics.record_chat_message(channel=str(message.chat_id))
     return await manager.broadcast_to_chat(
         message.chat_id,
         {

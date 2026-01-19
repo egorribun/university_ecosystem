@@ -70,7 +70,7 @@ def test_notifications_retention_config_negative_retention():
 # ============================================================
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_start_scheduler_disabled():
     """Test scheduler is disabled when retention_days is 0."""
     config = NotificationsRetentionConfig(retention_days=0)
@@ -82,7 +82,7 @@ async def test_start_scheduler_disabled():
     await stop_fn()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_start_scheduler_default():
     """Test scheduler starts with default config."""
     with patch(

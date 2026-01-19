@@ -2,8 +2,8 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Column,
+    Computed,
     DateTime,
-    FetchedValue,
     ForeignKey,
     Index,
     Integer,
@@ -16,9 +16,10 @@ from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
+from app.core.events import EventEmitterMixin
 
 
-class Event(Base):
+class Event(Base, EventEmitterMixin):
     __tablename__ = "events"
 
     id = Column(Integer, primary_key=True)
@@ -37,7 +38,19 @@ class Event(Base):
     )
     search_vector = Column(
         Text().with_variant(TSVECTOR(), "postgresql"),
-        server_default=FetchedValue(),
+        Computed(
+            "to_tsvector('simple', "
+            "coalesce(title, '') || ' ' || "
+            "coalesce(description, '') || ' ' || "
+            "coalesce(location, '') || ' ' || "
+            "coalesce(title_en, '') || ' ' || "
+            "coalesce(description_en, '') || ' ' || "
+            "coalesce(location_en, '') || ' ' || "
+            "coalesce(about, '') || ' ' || "
+            "coalesce(about_en, '') "
+            ")",
+            persisted=True,
+        ),
     )
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
     is_active = Column(Boolean, default=True, index=True)
@@ -63,7 +76,7 @@ class Event(Base):
         )
 
 
-class EventAttendance(Base):
+class EventAttendance(Base, EventEmitterMixin):
     __tablename__ = "event_attendance"
 
     id = Column(Integer, primary_key=True)

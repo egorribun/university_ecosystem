@@ -35,8 +35,15 @@ def downgrade() -> None:
     inspector = sa.inspect(bind)
     if not inspector.has_table("events"):
         return
-    op.drop_column("events", "about_en")
-    op.drop_column("events", "event_type_en")
-    op.drop_column("events", "location_en")
-    op.drop_column("events", "description_en")
-    op.drop_column("events", "title_en")
+    existing = {column["name"] for column in inspector.get_columns("events")}
+
+    if "about_en" in existing:
+        op.drop_column("events", "about_en")
+    if "event_type_en" in existing:
+        op.drop_column("events", "event_type_en")
+    if "location_en" in existing:
+        op.drop_column("events", "location_en")
+    if "description_en" in existing:
+        op.drop_column("events", "description_en")
+    if "title_en" in existing:
+        op.drop_column("events", "title_en")

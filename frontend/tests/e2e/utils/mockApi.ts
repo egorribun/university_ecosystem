@@ -91,6 +91,7 @@ const createBaseProfile = (): User => ({
   mfa_required: false,
   mfa_default_method: null,
   mfa_last_verified_at: null,
+  recovery_codes_left: 0,
   totp_enrollments: [],
   mfa_challenges: [],
 })

@@ -57,8 +57,15 @@ def downgrade() -> None:
     if "active_sessions" not in inspector.get_table_names():
         return
 
-    op.drop_index("ix_active_sessions_jti", table_name="active_sessions")
-    op.drop_index("ix_active_sessions_revoked_at", table_name="active_sessions")
-    op.drop_index("ix_active_sessions_expires_at", table_name="active_sessions")
-    op.drop_index("ix_active_sessions_user_id", table_name="active_sessions")
+    # Get existing indexes to check before dropping
+    existing_indexes = {idx["name"] for idx in inspector.get_indexes("active_sessions")}
+
+    if "ix_active_sessions_jti" in existing_indexes:
+        op.drop_index("ix_active_sessions_jti", table_name="active_sessions")
+    if "ix_active_sessions_revoked_at" in existing_indexes:
+        op.drop_index("ix_active_sessions_revoked_at", table_name="active_sessions")
+    if "ix_active_sessions_expires_at" in existing_indexes:
+        op.drop_index("ix_active_sessions_expires_at", table_name="active_sessions")
+    if "ix_active_sessions_user_id" in existing_indexes:
+        op.drop_index("ix_active_sessions_user_id", table_name="active_sessions")
     op.drop_table("active_sessions")

@@ -102,12 +102,23 @@ _DEVELOPMENT_ENVIRONMENTS = {
 
 _DEVELOPMENT_FALLBACKS: dict[str, str] = {
     "database_url": "sqlite+aiosqlite:///./dev.db",
-    "secret_key": "development-secret-key",  # pragma: allowlist secret
 }
 
 
+def _generate_development_secret_key() -> str:
+    """Generate a secure random key for local development only.
+
+    This key is regenerated on every application restart, ensuring that
+    sessions are invalidated. For production, always provide a stable
+    SECRET_KEY via environment variables.
+    """
+    import secrets
+
+    return secrets.token_urlsafe(32)
+
+
 class BaseAppSettings(BaseSettings):
-    def __init__(self, **values):
+    def __init__(self, **values) -> None:
         allow_missing = values.pop("_allow_missing", False)
         try:
             super().__init__(**values)
@@ -137,11 +148,13 @@ class BaseAppSettings(BaseSettings):
                 unresolved: list[str] = []
                 for missing in missing_required:
                     field_name = missing.lower()
-                    fallback = _DEVELOPMENT_FALLBACKS.get(field_name)
-                    if fallback is None:
-                        unresolved.append(missing)
+                    if field_name == "secret_key":
+                        # Generate a secure random key for development
+                        fallback_values[field_name] = _generate_development_secret_key()
+                    elif field_name in _DEVELOPMENT_FALLBACKS:
+                        fallback_values[field_name] = _DEVELOPMENT_FALLBACKS[field_name]
                     else:
-                        fallback_values[field_name] = fallback
+                        unresolved.append(missing)
                 if not unresolved:
                     combined_values = {**values, **fallback_values}
                     super().__init__(**combined_values)
@@ -182,9 +195,27 @@ class BaseAppSettings(BaseSettings):
 
 
 def _should_allow_development_defaults(missing: Iterable[str] | None = None) -> bool:
-    if _ENV_FILE is not None:
+    """Determine if development fallback values are permitted.
+
+    Fallbacks are only allowed if ENVIRONMENT is set to a development-like
+    value (dev, test, etc.) and if no concrete .env file has been loaded
+    (which would imply a more production-ready configuration attempt).
+    """
+    # Prefer explicit ENVIRONMENT setting if available
+    env_name = (os.environ.get("ENVIRONMENT") or "").lower()
+    if env_name:
+        if env_name not in _DEVELOPMENT_ENVIRONMENTS:
+            return False
+    elif _ENV_FILE is not None:
+        # If no ENVIRONMENT set but .env exists, assume production-like intent
         return False
+
     if missing is None:
+        # Generic check: only allow if we don't have main secrets in env
         return not any(os.environ.get(name) for name in ("DATABASE_URL", "SECRET_KEY"))
+
+    # Check if all missing fields have valid fallbacks
     allowed = {name.upper() for name in _DEVELOPMENT_FALLBACKS}
+    allowed.add("SECRET_KEY")
+
     return all(name in allowed for name in missing)

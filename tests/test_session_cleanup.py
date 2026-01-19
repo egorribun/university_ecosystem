@@ -55,7 +55,7 @@ def test_session_cleanup_config_negative():
 # ============================================================
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_cleanup_expired_sessions_with_db():
     """Test cleanup with injected db session."""
     mock_db = AsyncMock()
@@ -71,7 +71,7 @@ async def test_cleanup_expired_sessions_with_db():
     mock_db.commit.assert_called_once()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_cleanup_expired_sessions_no_deleted():
     """Test cleanup when no sessions deleted."""
     mock_db = AsyncMock()
@@ -83,7 +83,7 @@ async def test_cleanup_expired_sessions_no_deleted():
     assert result == 0
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_cleanup_expired_sessions_creates_own_session():
     """Test cleanup creates session when none provided."""
     mock_db = AsyncMock()
@@ -106,7 +106,7 @@ async def test_cleanup_expired_sessions_creates_own_session():
 # ============================================================
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_start_session_cleanup_scheduler_returns_stop_function():
     """Test scheduler returns a callable stop function."""
     with patch("app.services.session_cleanup.cleanup_expired_sessions", return_value=0):

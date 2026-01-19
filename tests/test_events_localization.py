@@ -1,3 +1,4 @@
+import os
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -11,6 +12,14 @@ from app.core import observability
 from app.models import models
 from app.services import attendance_tokens, notification_queue
 
+# Skip marker for tests that require PostgreSQL full-text search
+_database_url = os.environ.get("DATABASE_URL", "")
+_is_postgresql = _database_url.startswith("postgresql")
+requires_postgresql = pytest.mark.skipif(
+    not _is_postgresql,
+    reason="Test requires PostgreSQL (uses pg_attribute or full-text search)",
+)
+
 
 async def _login(async_client, email: str, password: str) -> dict[str, str]:
     response = await async_client.post(
@@ -23,7 +32,7 @@ async def _login(async_client, email: str, password: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_events_localization(async_client, db_session, user_factory):
     password = "TestEvent123!"
     hashed = get_password_hash(password)
@@ -129,7 +138,7 @@ async def test_events_localization(async_client, db_session, user_factory):
     assert payload_ru[fallback.id]["description"] == "Без перевода"
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_create_event_records_enqueue_failure(
     async_client, db_session, user_factory, monkeypatch
 ):
@@ -182,7 +191,7 @@ async def test_create_event_records_enqueue_failure(
     await notification_queue.reset_testing_state()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_events_etag_and_not_modified(
     async_client, db_session, user_factory, fake_cache
 ):
@@ -260,64 +269,109 @@ async def test_events_etag_and_not_modified(
     assert my_not_modified.headers.get("Cache-Control") == "private, max-age=180"
 
 
-@pytest.mark.anyio
+@requires_postgresql
+@pytest.mark.asyncio
 async def test_get_all_events_search_deterministic_order(db_session, user_factory):
-    admin = await user_factory(role="admin")
+    """Test FTS search returns results ordered by relevance then starts_at.
 
+    Uses raw SQL INSERT to ensure PostgreSQL computes GENERATED ALWAYS
+    search_vector column, bypassing ORM caching issues.
+    """
+    from sqlalchemy import text
+
+    admin = await user_factory(role="admin")
     now = datetime.now(UTC)
     shared_phrase = "Symposium"
-    first = models.Event(
-        title=f"{shared_phrase} kickoff",
-        description="Agenda review",
-        location="Main campus",
-        starts_at=now + timedelta(days=1),
-        ends_at=now + timedelta(days=1, hours=2),
-        created_by=admin.id,
-        is_active=True,
-    )
-    second = models.Event(
-        title=f"{shared_phrase} planning",
-        description="Breakout sessions",
-        location="Main campus",
-        starts_at=now + timedelta(days=1),
-        ends_at=now + timedelta(days=1, hours=3),
-        created_by=admin.id,
-        is_active=True,
-    )
-    third = models.Event(
-        title="Обсуждение",
-        title_en=f"{shared_phrase} recap",
-        description="Post-event debrief",
-        location="Satellite hall",
-        starts_at=now + timedelta(days=2),
-        ends_at=now + timedelta(days=2, hours=2),
-        created_by=admin.id,
-        is_active=True,
-    )
-    unrelated = models.Event(
-        title="Another meetup",
-        description="Different topic",
-        location="Offsite",
-        starts_at=now + timedelta(days=3),
-        ends_at=now + timedelta(days=3, hours=1),
-        created_by=admin.id,
-        is_active=True,
-    )
 
-    db_session.add_all([first, second, third, unrelated])
+    # Insert events via raw SQL so PostgreSQL computes search_vector
+    insert_sql = text("""
+        INSERT INTO events (
+            title, title_en, description, location,
+            starts_at, ends_at, created_by, is_active
+        ) VALUES (
+            :title, :title_en, :description, :location,
+            :starts_at, :ends_at, :created_by, :is_active
+        ) RETURNING id
+    """)
+
+    events_data = [
+        {
+            "title": f"{shared_phrase} kickoff",
+            "title_en": None,
+            "description": "Agenda review",
+            "location": "Main campus",
+            "starts_at": now + timedelta(days=1),
+            "ends_at": now + timedelta(days=1, hours=2),
+            "created_by": admin.id,
+            "is_active": True,
+        },
+        {
+            "title": f"{shared_phrase} planning",
+            "title_en": None,
+            "description": "Breakout sessions",
+            "location": "Main campus",
+            "starts_at": now + timedelta(days=1),
+            "ends_at": now + timedelta(days=1, hours=3),
+            "created_by": admin.id,
+            "is_active": True,
+        },
+        {
+            "title": "Обсуждение",
+            "title_en": f"{shared_phrase} recap",
+            "description": "Post-event debrief",
+            "location": "Satellite hall",
+            "starts_at": now + timedelta(days=2),
+            "ends_at": now + timedelta(days=2, hours=2),
+            "created_by": admin.id,
+            "is_active": True,
+        },
+        {
+            "title": "Another meetup",
+            "title_en": None,
+            "description": "Different topic",
+            "location": "Offsite",
+            "starts_at": now + timedelta(days=3),
+            "ends_at": now + timedelta(days=3, hours=1),
+            "created_by": admin.id,
+            "is_active": True,
+        },
+    ]
+
+    event_ids = []
+    for data in events_data:
+        result = await db_session.execute(insert_sql, data)
+        event_ids.append(result.scalar_one())
+
     await db_session.commit()
-    for event in (first, second, third, unrelated):
-        await db_session.refresh(event)
 
-    result = await crud.get_all_events(db_session, search=shared_phrase, limit=10)
+    # DEBUG CHECK
+    info = await db_session.execute(
+        text("""
+        SELECT attname, attgenerated
+        FROM pg_attribute
+        WHERE attrelid = 'events'::regclass AND attname = 'search_vector'
+    """)
+    )
+    print(f"DEBUG: pg_attribute: {info.all()}")
+
+    # DEBUG ROWS
+    rows = await db_session.execute(text("SELECT id, title, search_vector FROM events"))
+    for r in rows:
+        print(f"DEBUG ROW: {r}")
+
+    # Now search - PostgreSQL has computed search_vector
+    result = await crud.get_all_events(
+        db_session, search=shared_phrase, limit=10, is_active=None
+    )
 
     assert result.total == 3
     assert result.has_more is False
     ordered_ids = [item.id for item in result.items]
-    assert ordered_ids == [first.id, second.id, third.id]
+    # First 3 events contain "Symposium", unrelated does not
+    assert ordered_ids == event_ids[:3]
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_events_pagination_semantics(async_client, db_session, user_factory):
     password = "PaginationPass123!"
     hashed = get_password_hash(password)
@@ -397,7 +451,7 @@ async def test_events_pagination_semantics(async_client, db_session, user_factor
     assert capped.json()["limit"] == crud.MAX_EVENTS_LIMIT
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_events_cache_invalidation_on_mutations(
     async_client, db_session, user_factory, fake_cache
 ):
@@ -520,7 +574,7 @@ async def test_events_cache_invalidation_on_mutations(
     assert await fake_cache.get(post_update_key) is not None
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_events_cache_uses_version_from_redis(
     async_client, db_session, user_factory, fake_cache
 ):

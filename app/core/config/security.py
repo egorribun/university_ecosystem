@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from functools import cached_property
 from typing import Any
 from urllib.parse import urlparse
@@ -8,6 +9,7 @@ from urllib.parse import urlparse
 from pydantic import ValidationInfo, field_validator
 
 from .base import (
+    _DEVELOPMENT_ENVIRONMENTS,
     BaseAppSettings,
     _coerce_str_list,
     _validate_non_empty,
@@ -92,6 +94,7 @@ class SecuritySettings(BaseAppSettings):
     webauthn_origin: str = "http://localhost:5173"
     trusted_device_expire_days: int = 30
     trusted_device_cookie_name: str = "trusted_device"
+    geoip_database_path: str | None = None
 
     security_csp: str = ""
     security_csp_dev: str = (
@@ -242,6 +245,46 @@ class SecuritySettings(BaseAppSettings):
         if value < 0:
             raise ValueError("MFA_TOTP_INITIAL_SKEW_WINDOWS must be zero or positive")
         return value
+
+    @field_validator("secret_key")
+    @classmethod
+    def _validate_secret_key_entropy(cls, v: str, info: ValidationInfo) -> str:
+        if not v:
+            raise ValueError("SECRET_KEY must not be empty")
+
+        # Try to detect environment from context or os
+        env = (
+            info.data.get("environment") or os.environ.get("ENVIRONMENT", "development")
+        ).lower()
+        if env not in _DEVELOPMENT_ENVIRONMENTS:
+            if len(v) < 32:
+                raise ValueError(
+                    "SECRET_KEY must be at least 32 characters long in production"
+                )
+        return v
+
+    @field_validator("jwt_signing_keys")
+    @classmethod
+    def _validate_jwt_signing_keys_entropy(
+        cls, v: str | list[str], info: ValidationInfo
+    ) -> str | list[str]:
+        keys = _coerce_str_list(v)
+        if not keys:
+            return v
+
+        env = (
+            info.data.get("environment") or os.environ.get("ENVIRONMENT", "development")
+        ).lower()
+        if env not in _DEVELOPMENT_ENVIRONMENTS:
+            for entry in keys:
+                if ":" in entry:
+                    _, secret = entry.split(":", 1)
+                    if len(secret.strip()) < 32:
+                        raise ValueError(
+                            "JWT_SIGNING_KEYS entries must be at least 32 characters "
+                            "long in production"
+                        )
+        return v
 
     def _build_jwt_signing_key_entries(self) -> list[tuple[str, str]]:
         entries: list[tuple[str, str]] = []

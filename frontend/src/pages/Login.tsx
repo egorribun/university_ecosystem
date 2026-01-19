@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, useActionState } from "react"
 import { Link, useNavigate, useLocation } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import {
@@ -149,7 +149,61 @@ const Login = () => {
   const [mfaErrorSource, setMfaErrorSource] = useState<"totp" | "general" | null>(null)
 
   const [submitting, setSubmitting] = useState(false)
-  const [submitError, setSubmitError] = useState<string | null>(null)
+  // const [submitError, setSubmitError] = useState<string | null>(null) // Replaced by action state
+
+  const [submitError, submitAction, isPending] = useActionState(
+    async (previousState: string | null, formData: FormData) => {
+      const username = String(formData.get("username") ?? "").trim()
+      const passwordValue = String(formData.get("password") ?? "")
+
+      if (!emailRe.test(username)) {
+        emailRef.current?.focus()
+        return t("auth:messages.invalidEmail")
+      }
+
+      if (!passwordValue) {
+        passwordRef.current?.focus()
+        return t("auth:messages.passwordRequired")
+      }
+
+      setPendingEmail(username)
+
+      try {
+        const challenge = await login(username, passwordValue, trustDevice)
+
+        if (trustDevice) {
+          setSavedEmail(username)
+        }
+
+        if (challenge) {
+          setMfaError(null)
+          setMfaErrorSource(null)
+          return null
+        }
+
+        navigate(from, { replace: true })
+        return null
+      } catch (err) {
+        let message = t("auth:login.error")
+        if (err instanceof Error && err.message) {
+          message = err.message
+        }
+        if (isAxiosError(err) && err.response?.data?.detail) {
+          message = err.response.data.detail
+        }
+        return message
+      }
+    },
+    null
+  )
+
+  // Sync submitting state for other parts of UI (like passkey) if needed,
+  // or just use isPending for the form.
+  // Note: handlePasskeyLogin still uses 'submitting' state.
+  // We keep 'submitting' for passkey but use 'isPending' for form.
+
+  const [passkeyError, setPasskeyError] = useState<string | null>(null)
+
   const otpHelperText = null
 
   const handleEmailBlur = () => {
@@ -184,66 +238,16 @@ const Login = () => {
 
   // Check if browser supports WebAuthn (requires secure context: HTTPS or localhost)
   const webauthnSupported = useMemo(() => browserSupportsWebAuthn(), [])
-  // ... (skip unchanged lines)
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const formData = new FormData(event.currentTarget)
-    const username = String(formData.get("username") ?? "").trim()
-    const passwordValue = String(formData.get("password") ?? "")
-
-    if (!emailRe.test(username)) {
-      setSubmitError(t("auth:messages.invalidEmail"))
-      emailRef.current?.focus()
-      return
-    }
-
-    if (!passwordValue) {
-      setSubmitError(t("auth:messages.passwordRequired"))
-      passwordRef.current?.focus()
-      return
-    }
-
-    setSubmitError(null)
-    setSubmitting(true)
-    setPendingEmail(username)
-    try {
-      const challenge = await login(username, passwordValue, trustDevice)
-
-      if (trustDevice) {
-        setSavedEmail(username)
-      }
-      // trustDevice is already synced via effect
-
-      if (challenge) {
-        setMfaError(null)
-        setMfaErrorSource(null)
-        return
-      }
-
-      navigate(from, { replace: true })
-    } catch (err) {
-      let message = t("auth:login.error")
-      if (err instanceof Error && err.message) {
-        message = err.message
-      }
-      if (isAxiosError(err) && err.response?.data?.detail) {
-        message = err.response.data.detail
-      }
-      setSubmitError(message)
-    } finally {
-      setSubmitting(false)
-    }
-  }
 
   const handlePasskeyLogin = async () => {
     const email = (emailRef.current?.value ?? emailMirror ?? "").trim()
     if (!emailRe.test(email)) {
-      setSubmitError(t("auth:messages.invalidEmail"))
+      setPasskeyError(t("auth:messages.invalidEmail"))
       emailRef.current?.focus()
       return
     }
 
-    setSubmitError(null)
+    setPasskeyError(null)
     setSubmitting(true)
     try {
       await loginWithPasskey(email, trustDevice)
@@ -254,7 +258,7 @@ const Login = () => {
       if (isAxiosError(err) && err.response?.data?.detail) {
         message = err.response.data.detail
       }
-      setSubmitError(message)
+      setPasskeyError(message)
     } finally {
       setSubmitting(false)
     }
@@ -560,12 +564,7 @@ const Login = () => {
           transition={{ duration: 0.5, ease: "easeOut", delay: 0.2 }}
           className="w-full max-w-xl rounded-[2.4rem] border border-[color:color-mix(in_srgb,var(--glass-border)_80%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_98%,rgba(255,255,255,0.12)_2%)] p-6 shadow-[0_30px_70px_rgba(15,23,42,0.3)] backdrop-blur-2xl sm:p-10"
         >
-          <form
-            noValidate
-            autoComplete="on"
-            onSubmit={handleSubmit}
-            className="flex flex-col gap-6"
-          >
+          <form noValidate autoComplete="on" action={submitAction} className="flex flex-col gap-6">
             <div className="space-y-2 text-center">
               <h2 className="text-3xl font-extrabold">{t("auth:login.title")}</h2>
               <p className="text-sm text-[color:color-mix(in_srgb,var(--page-text)_78%,var(--secondary-text)_22%)]">
@@ -593,7 +592,7 @@ const Login = () => {
                 onBlur={handleEmailBlur}
                 autoComplete="username"
                 autoFocus
-                disabled={submitting}
+                disabled={isPending || submitting}
                 inputMode="email"
                 required
               />
@@ -645,7 +644,7 @@ const Login = () => {
                   onKeyUp={(e) => setCaps((e as any).getModifierState?.("CapsLock"))}
                   onKeyDown={(e) => setCaps((e as any).getModifierState?.("CapsLock"))}
                   autoComplete="current-password"
-                  disabled={submitting}
+                  disabled={isPending || submitting}
                   required
                 />
                 {caps ? (
@@ -660,7 +659,7 @@ const Login = () => {
               className="min-h-[1.5rem] text-center text-sm font-semibold text-red-400"
               aria-live="assertive"
             >
-              {submitError}
+              {submitError || passkeyError}
             </div>
 
             <label className="flex items-center gap-3 text-sm font-medium text-[color:color-mix(in_srgb,var(--page-text)_90%,var(--secondary-text)_10%)]">
@@ -669,7 +668,7 @@ const Login = () => {
                 className="size-5 rounded-lg border-[color:color-mix(in_srgb,var(--nav-link)_50%,transparent)] bg-transparent accent-[color:var(--nav-link)]"
                 checked={trustDevice}
                 onChange={(e) => setTrustDevice(e.target.checked)}
-                disabled={submitting}
+                disabled={isPending || submitting}
               />
               {t("auth:actions.trustDevice", { defaultValue: "Доверять этому устройству" })}
             </label>
@@ -678,9 +677,9 @@ const Login = () => {
               <button
                 type="submit"
                 className="inline-flex w-full items-center justify-center gap-2 rounded-[1.6rem] bg-[radial-gradient(circle_at_top,var(--nav-link),var(--nav-link-hover))] px-6 py-4 text-lg font-extrabold text-white shadow-[0_20px_45px_rgba(36,99,235,0.35)] transition hover:translate-y-[-2px] hover:shadow-[0_30px_60px_rgba(36,99,235,0.45)] disabled:opacity-60"
-                disabled={submitting}
+                disabled={isPending || submitting}
               >
-                {submitting ? (
+                {isPending || submitting ? (
                   <>
                     <Spinner />
                     {t("auth:login.processing", { defaultValue: "Входим..." })}

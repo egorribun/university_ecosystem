@@ -48,6 +48,118 @@ def sanitize_html(text: str, allow_basic_tags: bool = False) -> str:
     return result
 
 
+# Allowed tags and attributes for rich text sanitization
+ALLOWED_RICH_TEXT_TAGS = frozenset(
+    {
+        "p",
+        "br",
+        "b",
+        "i",
+        "em",
+        "strong",
+        "u",
+        "s",
+        "strike",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "ul",
+        "ol",
+        "li",
+        "a",
+        "blockquote",
+        "code",
+        "pre",
+    }
+)
+
+ALLOWED_LINK_ATTRIBUTES = frozenset({"href", "title", "target", "rel"})
+
+# Pattern to match HTML tags with optional attributes
+_TAG_PATTERN = re.compile(
+    r"<(/?)(\w+)([^>]*)>",
+    re.IGNORECASE | re.DOTALL,
+)
+
+# Pattern to extract href attribute
+_HREF_PATTERN = re.compile(
+    r'\bhref\s*=\s*["\']([^"\']*)["\']',
+    re.IGNORECASE,
+)
+
+
+def sanitize_rich_text(html_content: str) -> str:
+    """
+    Sanitize rich text HTML content with whitelist approach.
+
+    Allows a limited set of safe HTML tags for rich text editors
+    while stripping all dangerous elements and attributes.
+
+    Args:
+        html_content: Raw HTML from user input
+
+    Returns:
+        Sanitized HTML with only allowed tags
+    """
+    if not html_content:
+        return ""
+
+    def replace_tag(match: re.Match) -> str:
+        closing_slash = match.group(1)
+        tag_name = match.group(2).lower()
+        attributes_str = match.group(3)
+
+        # Strip disallowed tags entirely
+        if tag_name not in ALLOWED_RICH_TEXT_TAGS:
+            return ""
+
+        # For closing tags, just return the clean closing tag
+        if closing_slash:
+            return f"</{tag_name}>"
+
+        # For anchor tags, validate href and add security attributes
+        if tag_name == "a":
+            href_match = _HREF_PATTERN.search(attributes_str)
+            if href_match:
+                href = href_match.group(1)
+                # Only allow http/https URLs
+                if href.startswith(("http://", "https://", "/")):
+                    # Escape href value and add security attributes
+                    safe_href = html.escape(href, quote=True)
+                    return (
+                        f'<a href="{safe_href}" '
+                        'rel="noopener noreferrer" target="_blank">'
+                    )
+            # Invalid or missing href - strip the link
+            return ""
+
+        # For all other allowed tags, return clean tag without attributes
+        return f"<{tag_name}>"
+
+    # Replace tags according to whitelist
+    result = _TAG_PATTERN.sub(replace_tag, html_content)
+
+    # Escape any remaining < or > that might be malformed HTML
+    result = result.replace("<", "&lt;").replace(">", "&gt;")
+
+    # Restore the valid tags we just created (they use our specific format)
+    for tag in ALLOWED_RICH_TEXT_TAGS:
+        result = result.replace(f"&lt;{tag}&gt;", f"<{tag}>")
+        result = result.replace(f"&lt;/{tag}&gt;", f"</{tag}>")
+
+    # Restore anchor tags with attributes
+    result = re.sub(
+        r'&lt;a href="([^"]*)" rel="noopener noreferrer" target="_blank"&gt;',
+        r'<a href="\1" rel="noopener noreferrer" target="_blank">',
+        result,
+    )
+
+    return result
+
+
 def sanitize_filename(filename: str, max_length: int = 255) -> str:
     """
     Sanitize a filename to prevent path traversal and invalid characters.
@@ -134,15 +246,16 @@ def sanitize_url(
     url: str, allowed_schemes: tuple[str, ...] = ("http", "https")
 ) -> str | None:
     """
-    Validate and sanitize a URL.
+    Validate and sanitize a URL with SSRF protections.
 
     Args:
         url: User-provided URL
         allowed_schemes: Tuple of allowed schemes
 
     Returns:
-        Sanitized URL or None if invalid
+        Sanitized URL or None if invalid/dangerous
     """
+    from ipaddress import ip_address
     from urllib.parse import urlparse
 
     if not url:
@@ -150,19 +263,52 @@ def sanitize_url(
 
     url = url.strip()
 
+    # Block dangerous scheme patterns early (case-insensitive)
+    lower_url = url.lower()
+    dangerous_patterns = ("javascript:", "data:", "vbscript:", "file:")
+    if any(pattern in lower_url for pattern in dangerous_patterns):
+        return None
+
     try:
         parsed = urlparse(url)
 
         # Check scheme
-        if parsed.scheme not in allowed_schemes:
+        if parsed.scheme.lower() not in allowed_schemes:
             return None
 
         # Check for netloc (domain)
         if not parsed.netloc:
             return None
 
-        # Prevent javascript: and data: schemes even in params
-        if "javascript:" in url.lower() or "data:" in url.lower():
+        # Block credentials in URL (potential for phishing/SSRF)
+        if parsed.username or parsed.password:
+            return None
+
+        # Extract hostname (strip port if present)
+        hostname = parsed.hostname
+        if not hostname:
+            return None
+
+        # Block unicode domain exploits (IDN homograph attacks)
+        try:
+            hostname.encode("ascii")
+        except UnicodeEncodeError:
+            # Contains non-ASCII - could be IDN homograph attack
+            # Allow only if it's a proper punycode domain
+            if not hostname.startswith("xn--"):
+                return None
+
+        # Block private/local IP addresses (SSRF protection)
+        try:
+            ip = ip_address(hostname)
+            if ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_link_local:
+                return None
+        except ValueError:
+            # Not an IP address, it's a hostname - that's fine
+            pass
+
+        # Block localhost variants
+        if hostname.lower() in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
             return None
 
         return url
@@ -205,6 +351,7 @@ def truncate(text: str, max_length: int, suffix: str = "...") -> str:
 
 __all__ = [
     "sanitize_html",
+    "sanitize_rich_text",
     "sanitize_filename",
     "sanitize_path",
     "sanitize_email",

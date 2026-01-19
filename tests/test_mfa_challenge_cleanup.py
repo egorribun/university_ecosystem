@@ -7,7 +7,7 @@ from app.models.models import MfaChallenge, User
 from app.services.mfa_challenge_cleanup import cleanup_stale_mfa_challenges
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_cleanup_stale_mfa_challenges_respects_grace_period(db_session):
     now = dt.datetime.now(dt.UTC)
     grace_seconds = 600

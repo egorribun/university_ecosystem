@@ -44,7 +44,9 @@ def downgrade() -> None:
     inspector = sa.inspect(bind)
     table_names = inspector.get_table_names()
 
-    if "event_attendance" in table_names:
+    if "event_attendance" in table_names and _has_index(
+        inspector, "event_attendance", ("user_id",)
+    ):
         op.drop_index("ix_event_attendance_user_id", table_name="event_attendance")
-    if "events" in table_names:
+    if "events" in table_names and _has_index(inspector, "events", ("starts_at",)):
         op.drop_index("ix_events_starts_at", table_name="events")

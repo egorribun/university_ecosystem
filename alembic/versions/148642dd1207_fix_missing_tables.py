@@ -1,0 +1,1403 @@
+"""fix_missing_tables
+
+Revision ID: 148642dd1207
+Revises: f7aa476e968a
+Create Date: 2026-01-18 22:30:50.324424
+
+"""
+
+from collections.abc import Sequence
+from contextlib import contextmanager
+
+import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
+
+import app.utils.encryption
+from alembic import op
+
+# revision identifiers, used by Alembic.
+revision: str = "148642dd1207"
+down_revision: str | None = "f7aa476e968a"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
+
+
+SKIPPED_TABLES = set()
+
+
+def safe_create_table(table_name: str, *args, **kwargs) -> None:
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    if not inspector.has_table(table_name):
+        op.create_table(table_name, *args, **kwargs)
+    else:
+        SKIPPED_TABLES.add(table_name)
+
+
+class DummyBatchOp:
+    def __getattr__(self, name):
+        return lambda *args, **kwargs: None
+
+
+@contextmanager
+def safe_batch_alter_table(table_name: str, schema=None, **kwargs):
+    if table_name in SKIPPED_TABLES:
+        yield DummyBatchOp()
+    else:
+        with op.batch_alter_table(table_name, schema=schema, **kwargs) as batch_op:
+            yield batch_op
+
+
+def ensure_partitioned(table_name: str, create_sql: str, partition_key: str) -> None:
+    """Enforce partitioning on an existing table in PostgreSQL."""
+    conn = op.get_bind()
+    if conn.dialect.name != "postgresql":
+        return
+
+    inspector = sa.inspect(conn)
+    if not inspector.has_table(table_name):
+        return
+
+    # Check if table is already partitioned
+    res = conn.execute(
+        sa.text(f"SELECT relkind FROM pg_class WHERE relname = '{table_name}'")
+    ).fetchone()
+
+    if res and res[0] == "p":  # 'p' means partitioned table
+        return
+
+    # Table exists but is not partitioned. We must convert it.
+    op.execute(f"ALTER TABLE {table_name} RENAME TO {table_name}_old")
+    op.execute(create_sql)
+
+    # Create default partition if it doesn't exist
+    op.execute(
+        f"CREATE TABLE IF NOT EXISTS {table_name}_default "
+        f"PARTITION OF {table_name} DEFAULT"
+    )
+
+    # Move data
+    columns = [c["name"] for c in inspector.get_columns(f"{table_name}_old")]
+    cols_str = ", ".join(columns)
+    op.execute(
+        f"INSERT INTO {table_name} ({cols_str}) SELECT {cols_str} FROM {table_name}_old"
+    )
+    op.execute(f"DROP TABLE {table_name}_old")
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    bind = op.get_bind()
+    is_postgresql = bind.dialect.name == "postgresql"
+    inspector = sa.inspect(bind)
+    existing_columns = {c["name"] for c in inspector.get_columns("groups")}
+    existing_indexes = {i["name"] for i in inspector.get_indexes("groups")}
+
+    with safe_batch_alter_table("groups", schema=None) as batch_op:
+        if "course" not in existing_columns:
+            batch_op.add_column(sa.Column("course", sa.Integer(), nullable=True))
+        if "faculty" not in existing_columns:
+            batch_op.add_column(sa.Column("faculty", sa.String(), nullable=True))
+        batch_op.alter_column(
+            "id",
+            existing_type=sa.VARCHAR(length=20),
+            type_=sa.Integer(),
+            existing_nullable=False,
+            autoincrement=True,
+            postgresql_using="id::integer",
+        )
+        if "ix_groups_id" in existing_indexes:
+            batch_op.drop_index(batch_op.f("ix_groups_id"))
+
+    if is_postgresql:
+        # Normalize UserRole Enum values to lowercase and add missing ones
+        op.execute("COMMIT")  # Can't alter type in transaction block usually
+        for role in ["student", "teacher", "admin", "superuser", "anonymous"]:
+            op.execute(sa.text(f"ALTER TYPE userrole ADD VALUE IF NOT EXISTS '{role}'"))
+
+        # Update existing roles to lowercase
+        op.execute("""
+            UPDATE users
+            SET role = LOWER(role::text)::userrole
+            WHERE role::text != LOWER(role::text)
+        """)
+
+        # Ensure partition-critical tables are actually partitioned
+        ensure_partitioned(
+            "data_access_logs",
+            """
+            CREATE TABLE data_access_logs (
+                id SERIAL,
+                actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                subject_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                resource_type VARCHAR(64) NOT NULL,
+                resource_id VARCHAR(128),
+                action VARCHAR(64) NOT NULL,
+                context JSON,
+                ip_address VARCHAR(64),
+                user_agent VARCHAR(512),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                signature VARCHAR(512),
+                PRIMARY KEY (id, created_at)
+            ) PARTITION BY RANGE (created_at);
+            """,
+            "created_at",
+        )
+
+        ensure_partitioned(
+            "notifications",
+            """
+            CREATE TABLE notifications (
+                id SERIAL,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                title VARCHAR NOT NULL,
+                title_en VARCHAR,
+                body TEXT,
+                body_en TEXT,
+                type VARCHAR,
+                url VARCHAR,
+                dedupe_key VARCHAR(255),
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                read BOOLEAN DEFAULT false,
+                read_at TIMESTAMPTZ,
+                PRIMARY KEY (id, created_at)
+            ) PARTITION BY RANGE (created_at);
+            """,
+            "created_at",
+        )
+
+        ensure_partitioned(
+            "notification_deliveries",
+            """
+            CREATE TABLE notification_deliveries (
+                id SERIAL,
+                notification_id INTEGER NOT NULL,
+                notification_created_at TIMESTAMPTZ NOT NULL,
+                channel VARCHAR NOT NULL DEFAULT 'inapp',
+                status VARCHAR NOT NULL DEFAULT 'delivered',
+                attempted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                delivered_at TIMESTAMPTZ,
+                status_code INTEGER,
+                detail TEXT,
+                PRIMARY KEY (id, attempted_at)
+            ) PARTITION BY RANGE (attempted_at);
+            """,
+            "attempted_at",
+        )
+    safe_create_table(
+        "chats",
+        sa.Column("id", sa.String(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    safe_create_table(
+        "news",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("title", sa.String(), nullable=False),
+        sa.Column("content", sa.Text(), nullable=False),
+        sa.Column("title_en", sa.String(), nullable=True),
+        sa.Column("content_en", sa.Text(), nullable=True),
+        sa.Column("image_url", sa.String(), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("(CURRENT_TIMESTAMP)"),
+            nullable=True,
+        ),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    with safe_batch_alter_table("news", schema=None) as batch_op:
+        batch_op.create_index(
+            batch_op.f("ix_news_created_at"), ["created_at"], unique=False
+        )
+
+    safe_create_table(
+        "schedule",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("group_id", sa.Integer(), nullable=False),
+        sa.Column("subject", sa.String(), nullable=False),
+        sa.Column("teacher", sa.String(), nullable=True),
+        sa.Column("room", sa.String(), nullable=True),
+        sa.Column("weekday", sa.String(), nullable=False),
+        sa.Column("start_time", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("end_time", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("parity", sa.String(), nullable=True),
+        sa.Column("lesson_type", sa.String(), nullable=True),
+        sa.CheckConstraint("end_time > start_time", name="ck_schedule_time_order"),
+        sa.ForeignKeyConstraint(["group_id"], ["groups.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    with safe_batch_alter_table("schedule", schema=None) as batch_op:
+        batch_op.create_index(
+            batch_op.f("ix_schedule_end_time"), ["end_time"], unique=False
+        )
+        batch_op.create_index(
+            batch_op.f("ix_schedule_group_id"), ["group_id"], unique=False
+        )
+        batch_op.create_index(
+            "ix_schedule_group_start_time", ["group_id", "start_time"], unique=False
+        )
+        batch_op.create_index(
+            batch_op.f("ix_schedule_parity"), ["parity"], unique=False
+        )
+        batch_op.create_index(
+            batch_op.f("ix_schedule_start_time"), ["start_time"], unique=False
+        )
+        batch_op.create_index(
+            batch_op.f("ix_schedule_weekday"), ["weekday"], unique=False
+        )
+
+    safe_create_table(
+        "chat_participants",
+        sa.Column("chat_id", sa.String(), nullable=False),
+        sa.Column("user_id", sa.Integer(), nullable=False),
+        sa.ForeignKeyConstraint(["chat_id"], ["chats.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("chat_id", "user_id"),
+    )
+    safe_create_table(
+        "data_access_logs",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("actor_user_id", sa.Integer(), nullable=True),
+        sa.Column("subject_user_id", sa.Integer(), nullable=True),
+        sa.Column("resource_type", sa.String(length=64), nullable=False),
+        sa.Column("resource_id", sa.String(length=128), nullable=True),
+        sa.Column("action", sa.String(length=64), nullable=False),
+        sa.Column("context", sa.JSON(), nullable=True),
+        sa.Column("ip_address", sa.String(length=64), nullable=True),
+        sa.Column("user_agent", sa.String(length=512), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("(CURRENT_TIMESTAMP)"),
+            nullable=False,
+        ),
+        sa.Column("signature", sa.String(length=512), nullable=True),
+        sa.ForeignKeyConstraint(["actor_user_id"], ["users.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(["subject_user_id"], ["users.id"], ondelete="SET NULL"),
+        sa.PrimaryKeyConstraint("id", "created_at")
+        if is_postgresql
+        else sa.PrimaryKeyConstraint("id"),
+        postgresql_partition_by="RANGE (created_at)",
+    )
+    with safe_batch_alter_table("data_access_logs", schema=None) as batch_op:
+        batch_op.create_index(
+            batch_op.f("ix_data_access_logs_action"), ["action"], unique=False
+        )
+        batch_op.create_index(
+            batch_op.f("ix_data_access_logs_actor_user_id"),
+            ["actor_user_id"],
+            unique=False,
+        )
+        batch_op.create_index(
+            batch_op.f("ix_data_access_logs_created_at"), ["created_at"], unique=False
+        )
+        batch_op.create_index(
+            batch_op.f("ix_data_access_logs_resource_id"), ["resource_id"], unique=False
+        )
+        batch_op.create_index(
+            batch_op.f("ix_data_access_logs_resource_type"),
+            ["resource_type"],
+            unique=False,
+        )
+        batch_op.create_index(
+            batch_op.f("ix_data_access_logs_subject_user_id"),
+            ["subject_user_id"],
+            unique=False,
+        )
+
+    safe_create_table(
+        "email_change_tokens",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("user_id", sa.Integer(), nullable=False),
+        sa.Column("new_email", sa.String(), nullable=False),
+        sa.Column("token_hash", sa.String(), nullable=False),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("used", sa.Boolean(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("(CURRENT_TIMESTAMP)"),
+            nullable=True,
+        ),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    with safe_batch_alter_table("email_change_tokens", schema=None) as batch_op:
+        batch_op.create_index(
+            batch_op.f("ix_email_change_tokens_created_at"),
+            ["created_at"],
+            unique=False,
+        )
+        batch_op.create_index(
+            batch_op.f("ix_email_change_tokens_expires_at"),
+            ["expires_at"],
+            unique=False,
+        )
+        batch_op.create_index(
+            batch_op.f("ix_email_change_tokens_new_email"), ["new_email"], unique=False
+        )
+        batch_op.create_index(
+            batch_op.f("ix_email_change_tokens_token_hash"), ["token_hash"], unique=True
+        )
+        batch_op.create_index(
+            batch_op.f("ix_email_change_tokens_used"), ["used"], unique=False
+        )
+        batch_op.create_index(
+            batch_op.f("ix_email_change_tokens_user_id"), ["user_id"], unique=False
+        )
+
+    events_columns = [
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("title", sa.String(), nullable=False),
+        sa.Column("title_en", sa.String(), nullable=True),
+        sa.Column("description", sa.Text(), nullable=True),
+        sa.Column("description_en", sa.Text(), nullable=True),
+        sa.Column("location", sa.String(), nullable=True),
+        sa.Column("location_en", sa.String(), nullable=True),
+        sa.Column("event_type", sa.String(), nullable=True),
+        sa.Column("event_type_en", sa.String(), nullable=True),
+        sa.Column("starts_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("ends_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("created_by", sa.Integer(), nullable=False),
+    ]
+    if is_postgresql:
+        events_columns.append(
+            sa.Column(
+                "search_vector",
+                sa.Text().with_variant(postgresql.TSVECTOR(), "postgresql"),
+                sa.Computed(
+                    "to_tsvector('simple', "
+                    "coalesce(title, '') || ' ' || "
+                    "coalesce(description, '') || ' ' || "
+                    "coalesce(location, '') || ' ' || "
+                    "coalesce(title_en, '') || ' ' || "
+                    "coalesce(description_en, '') || ' ' || "
+                    "coalesce(location_en, '') || ' ' || "
+                    "coalesce(about, '') || ' ' || "
+                    "coalesce(about_en, '') "
+                    ")",
+                    persisted=True,
+                ),
+                nullable=True,
+            )
+        )
+    events_columns.extend(
+        [
+            sa.Column(
+                "created_at",
+                sa.DateTime(timezone=True),
+                server_default=sa.text("(CURRENT_TIMESTAMP)"),
+                nullable=True,
+            ),
+            sa.Column("is_active", sa.Boolean(), nullable=True),
+            sa.Column("speaker", sa.String(), nullable=True),
+            sa.Column("image_url", sa.String(), nullable=True),
+            sa.Column("about", sa.Text(), nullable=True),
+            sa.Column("about_en", sa.Text(), nullable=True),
+            sa.CheckConstraint("ends_at > starts_at", name="ck_event_time_order"),
+            sa.ForeignKeyConstraint(["created_by"], ["users.id"], ondelete="CASCADE"),
+            sa.PrimaryKeyConstraint("id"),
+        ]
+    )
+    safe_create_table("events", *events_columns)
+    with safe_batch_alter_table("events", schema=None) as batch_op:
+        batch_op.create_index(
+            batch_op.f("ix_events_created_at"), ["created_at"], unique=False
+        )
+        batch_op.create_index(
+            batch_op.f("ix_events_ends_at"), ["ends_at"], unique=False
+        )
+        batch_op.create_index(
+            batch_op.f("ix_events_event_type"), ["event_type"], unique=False
+        )
+        batch_op.create_index(
+            batch_op.f("ix_events_is_active"), ["is_active"], unique=False
+        )
+        batch_op.create_index(
+            batch_op.f("ix_events_starts_at"), ["starts_at"], unique=False
+        )
+
+    safe_create_table(
+        "invite_codes",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("code", sa.String(), nullable=False),
+        sa.Column("role", sa.String(), nullable=False),
+        sa.Column("is_active", sa.Boolean(), nullable=True),
+        sa.Column("is_used", sa.Boolean(), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("(CURRENT_TIMESTAMP)"),
+            nullable=True,
+        ),
+        sa.Column("used_by_user_id", sa.Integer(), nullable=True),
+        sa.CheckConstraint(
+            "role IN ('student', 'teacher', 'admin')", name="ck_invite_codes_role_valid"
+        ),
+        sa.ForeignKeyConstraint(["used_by_user_id"], ["users.id"], ondelete="SET NULL"),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    with safe_batch_alter_table("invite_codes", schema=None) as batch_op:
+        batch_op.create_index(batch_op.f("ix_invite_codes_code"), ["code"], unique=True)
+        batch_op.create_index(
+            batch_op.f("ix_invite_codes_created_at"), ["created_at"], unique=False
+        )
+        batch_op.create_index(
+            batch_op.f("ix_invite_codes_is_active"), ["is_active"], unique=False
+        )
+        batch_op.create_index(
+            batch_op.f("ix_invite_codes_is_used"), ["is_used"], unique=False
+        )
+
+    safe_create_table(
+        "messages",
+        sa.Column("id", sa.String(), nullable=False),
+        sa.Column("chat_id", sa.String(), nullable=False),
+        sa.Column("sender_id", sa.Integer(), nullable=False),
+        sa.Column("content", sa.String(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("read_status", sa.Boolean(), nullable=False),
+        sa.ForeignKeyConstraint(["chat_id"], ["chats.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["sender_id"], ["users.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    safe_create_table(
+        "news_comments",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("news_id", sa.Integer(), nullable=False),
+        sa.Column("user_id", sa.Integer(), nullable=False),
+        sa.Column("content", sa.Text(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("(CURRENT_TIMESTAMP)"),
+            nullable=True,
+        ),
+        sa.ForeignKeyConstraint(["news_id"], ["news.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    with safe_batch_alter_table("news_comments", schema=None) as batch_op:
+        batch_op.create_index(
+            batch_op.f("ix_news_comments_news_id"), ["news_id"], unique=False
+        )
+        batch_op.create_index(
+            batch_op.f("ix_news_comments_user_id"), ["user_id"], unique=False
+        )
+
+    safe_create_table(
+        "news_likes",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("news_id", sa.Integer(), nullable=False),
+        sa.Column("user_id", sa.Integer(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("(CURRENT_TIMESTAMP)"),
+            nullable=True,
+        ),
+        sa.ForeignKeyConstraint(["news_id"], ["news.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    with safe_batch_alter_table("news_likes", schema=None) as batch_op:
+        batch_op.create_index(
+            batch_op.f("ix_news_likes_news_id"), ["news_id"], unique=False
+        )
+        batch_op.create_index(
+            batch_op.f("ix_news_likes_user_id"), ["user_id"], unique=False
+        )
+
+    safe_create_table(
+        "notifications",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("user_id", sa.Integer(), nullable=False),
+        sa.Column("title", sa.String(), nullable=False),
+        sa.Column("title_en", sa.String(), nullable=True),
+        sa.Column("body", sa.Text(), nullable=True),
+        sa.Column("body_en", sa.Text(), nullable=True),
+        sa.Column("type", sa.String(), nullable=True),
+        sa.Column("url", sa.String(), nullable=True),
+        sa.Column("dedupe_key", sa.String(length=255), nullable=True),
+        sa.Column("read", sa.Boolean(), nullable=True),
+        sa.Column("read_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("(CURRENT_TIMESTAMP)"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id", "created_at")
+        if is_postgresql
+        else sa.PrimaryKeyConstraint("id"),
+        postgresql_partition_by="RANGE (created_at)",
+    )
+    with safe_batch_alter_table("notifications", schema=None) as batch_op:
+        batch_op.create_index(
+            batch_op.f("ix_notifications_created_at"), ["created_at"], unique=False
+        )
+        batch_op.create_index(
+            batch_op.f("ix_notifications_dedupe_key"), ["dedupe_key"], unique=False
+        )
+        batch_op.create_index(
+            "ix_notifications_dupe_check",
+            ["user_id", "title", "url", "created_at"],
+            unique=False,
+        )
+        batch_op.create_index(
+            batch_op.f("ix_notifications_read"), ["read"], unique=False
+        )
+        batch_op.create_index(
+            batch_op.f("ix_notifications_read_at"), ["read_at"], unique=False
+        )
+        batch_op.create_index(
+            batch_op.f("ix_notifications_type"), ["type"], unique=False
+        )
+        batch_op.create_index(
+            "ix_notifications_user_created", ["user_id", "created_at"], unique=False
+        )
+        batch_op.create_index(
+            "ix_notifications_user_dedupe", ["user_id", "dedupe_key"], unique=False
+        )
+        batch_op.create_index(
+            batch_op.f("ix_notifications_user_id"), ["user_id"], unique=False
+        )
+
+    safe_create_table(
+        "password_reset_tokens",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("user_id", sa.Integer(), nullable=False),
+        sa.Column("token_hash", sa.String(), nullable=False),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("used", sa.Boolean(), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("(CURRENT_TIMESTAMP)"),
+            nullable=True,
+        ),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    with safe_batch_alter_table("password_reset_tokens", schema=None) as batch_op:
+        batch_op.create_index(
+            batch_op.f("ix_password_reset_tokens_created_at"),
+            ["created_at"],
+            unique=False,
+        )
+        batch_op.create_index(
+            batch_op.f("ix_password_reset_tokens_expires_at"),
+            ["expires_at"],
+            unique=False,
+        )
+        batch_op.create_index(
+            batch_op.f("ix_password_reset_tokens_token_hash"),
+            ["token_hash"],
+            unique=True,
+        )
+        batch_op.create_index(
+            batch_op.f("ix_password_reset_tokens_used"), ["used"], unique=False
+        )
+        batch_op.create_index(
+            batch_op.f("ix_password_reset_tokens_user_id"), ["user_id"], unique=False
+        )
+
+    safe_create_table(
+        "spotify_integrations",
+        sa.Column("user_id", sa.Integer(), nullable=False),
+        sa.Column("spotify_user_id", sa.String(), nullable=True),
+        sa.Column(
+            "access_token", app.utils.encryption.EncryptedString(), nullable=True
+        ),
+        sa.Column(
+            "refresh_token", app.utils.encryption.EncryptedString(), nullable=True
+        ),
+        sa.Column("token_expires_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("scope", sa.String(), nullable=True),
+        sa.Column("display_name", sa.String(), nullable=True),
+        sa.Column("is_connected", sa.Boolean(), nullable=True),
+        sa.Column("is_playing", sa.Boolean(), nullable=True),
+        sa.Column("last_checked_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("last_track_id", sa.String(), nullable=True),
+        sa.Column("last_track_name", sa.String(), nullable=True),
+        sa.Column("last_artist_name", sa.String(), nullable=True),
+        sa.Column("last_album_name", sa.String(), nullable=True),
+        sa.Column("last_track_url", sa.String(), nullable=True),
+        sa.Column("last_album_image_url", sa.String(), nullable=True),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("user_id"),
+    )
+    with safe_batch_alter_table("spotify_integrations", schema=None) as batch_op:
+        batch_op.create_index(
+            batch_op.f("ix_spotify_integrations_is_connected"),
+            ["is_connected"],
+            unique=False,
+        )
+        batch_op.create_index(
+            batch_op.f("ix_spotify_integrations_is_playing"),
+            ["is_playing"],
+            unique=False,
+        )
+        batch_op.create_index(
+            batch_op.f("ix_spotify_integrations_last_checked_at"),
+            ["last_checked_at"],
+            unique=False,
+        )
+        batch_op.create_index(
+            batch_op.f("ix_spotify_integrations_last_track_id"),
+            ["last_track_id"],
+            unique=False,
+        )
+        batch_op.create_index(
+            batch_op.f("ix_spotify_integrations_spotify_user_id"),
+            ["spotify_user_id"],
+            unique=True,
+        )
+        batch_op.create_index(
+            batch_op.f("ix_spotify_integrations_token_expires_at"),
+            ["token_expires_at"],
+            unique=False,
+        )
+
+    safe_create_table(
+        "trusted_devices",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("user_id", sa.Integer(), nullable=False),
+        sa.Column("token_hash", sa.String(length=128), nullable=False),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("last_used_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("user_agent", sa.String(length=512), nullable=True),
+        sa.Column("ip_address", sa.String(length=45), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("(CURRENT_TIMESTAMP)"),
+            nullable=False,
+        ),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    with safe_batch_alter_table("trusted_devices", schema=None) as batch_op:
+        batch_op.create_index(
+            batch_op.f("ix_trusted_devices_expires_at"), ["expires_at"], unique=False
+        )
+        batch_op.create_index(batch_op.f("ix_trusted_devices_id"), ["id"], unique=False)
+        batch_op.create_index(
+            batch_op.f("ix_trusted_devices_last_used_at"),
+            ["last_used_at"],
+            unique=False,
+        )
+        batch_op.create_index(
+            batch_op.f("ix_trusted_devices_token_hash"), ["token_hash"], unique=True
+        )
+
+    safe_create_table(
+        "user_preferences",
+        sa.Column("user_id", sa.Integer(), nullable=False),
+        sa.Column("dnd_enabled", sa.Boolean(), nullable=False),
+        sa.Column("dnd_start", sa.Time(), nullable=True),
+        sa.Column("dnd_end", sa.Time(), nullable=True),
+        sa.Column("timezone", sa.String(length=64), nullable=True),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("user_id"),
+    )
+    safe_create_table(
+        "webauthn_credentials",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("user_id", sa.Integer(), nullable=False),
+        sa.Column("credential_id", sa.String(), nullable=False),
+        sa.Column("public_key", sa.Text(), nullable=False),
+        sa.Column("sign_count", sa.Integer(), nullable=False),
+        sa.Column("transports", sa.JSON(), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("(CURRENT_TIMESTAMP)"),
+            nullable=False,
+        ),
+        sa.Column("last_used_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("label", sa.String(length=255), nullable=True),
+        sa.Column("backing_up", sa.Boolean(), nullable=True),
+        sa.Column("backup_state", sa.Boolean(), nullable=True),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    with safe_batch_alter_table("webauthn_credentials", schema=None) as batch_op:
+        batch_op.create_index(
+            batch_op.f("ix_webauthn_credentials_credential_id"),
+            ["credential_id"],
+            unique=True,
+        )
+        batch_op.create_index(
+            batch_op.f("ix_webauthn_credentials_user_id"), ["user_id"], unique=False
+        )
+
+    safe_create_table(
+        "attachments",
+        sa.Column("id", sa.String(), nullable=False),
+        sa.Column("message_id", sa.String(), nullable=False),
+        sa.Column("url", sa.String(), nullable=False),
+        sa.Column("file_type", sa.String(), nullable=False),
+        sa.Column("filename", sa.String(), nullable=False),
+        sa.Column("size", sa.Integer(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.ForeignKeyConstraint(["message_id"], ["messages.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    safe_create_table(
+        "event_attendance",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("user_id", sa.Integer(), nullable=False),
+        sa.Column("event_id", sa.Integer(), nullable=False),
+        sa.Column(
+            "registered_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("(CURRENT_TIMESTAMP)"),
+            nullable=True,
+        ),
+        sa.Column("qr_secret", sa.String(), nullable=False),
+        sa.Column("qr_hmac", sa.String(), nullable=False),
+        sa.ForeignKeyConstraint(["event_id"], ["events.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint(
+            "user_id", "event_id", name="uq_event_attendance_user_event"
+        ),
+    )
+    with safe_batch_alter_table("event_attendance", schema=None) as batch_op:
+        batch_op.create_index(
+            batch_op.f("ix_event_attendance_event_id"), ["event_id"], unique=False
+        )
+        batch_op.create_index(
+            "ix_event_attendance_event_user", ["event_id", "user_id"], unique=False
+        )
+        batch_op.create_index(
+            batch_op.f("ix_event_attendance_registered_at"),
+            ["registered_at"],
+            unique=False,
+        )
+        batch_op.create_index(
+            batch_op.f("ix_event_attendance_user_id"), ["user_id"], unique=False
+        )
+
+    safe_create_table(
+        "event_files",
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("event_id", sa.Integer(), nullable=False),
+        sa.Column("file_url", sa.String(), nullable=False),
+        sa.Column("description", sa.String(), nullable=True),
+        sa.ForeignKeyConstraint(["event_id"], ["events.id"], ondelete="CASCADE"),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    with safe_batch_alter_table("event_files", schema=None) as batch_op:
+        batch_op.create_index(
+            batch_op.f("ix_event_files_event_id"), ["event_id"], unique=False
+        )
+
+    safe_create_table(
+        "notification_deliveries",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("notification_id", sa.Integer(), nullable=False),
+        sa.Column(
+            "notification_created_at", sa.DateTime(timezone=True), nullable=False
+        ),
+        sa.Column("channel", sa.String(), nullable=False),
+        sa.Column("status", sa.String(), nullable=False),
+        sa.Column(
+            "attempted_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("(CURRENT_TIMESTAMP)"),
+            nullable=False,
+        ),
+        sa.Column("delivered_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("status_code", sa.Integer(), nullable=True),
+        sa.Column("detail", sa.Text(), nullable=True),
+        sa.ForeignKeyConstraint(
+            ["notification_id", "notification_created_at"],
+            ["notifications.id", "notifications.created_at"],
+            ondelete="CASCADE",
+        ),
+        sa.PrimaryKeyConstraint("id", "attempted_at")
+        if is_postgresql
+        else sa.PrimaryKeyConstraint("id"),
+        postgresql_partition_by="RANGE (attempted_at)",
+    )
+    with safe_batch_alter_table("notification_deliveries", schema=None) as batch_op:
+        batch_op.create_index(
+            batch_op.f("ix_notification_deliveries_attempted_at"),
+            ["attempted_at"],
+            unique=False,
+        )
+        batch_op.create_index(
+            batch_op.f("ix_notification_deliveries_channel"), ["channel"], unique=False
+        )
+        batch_op.create_index(
+            batch_op.f("ix_notification_deliveries_delivered_at"),
+            ["delivered_at"],
+            unique=False,
+        )
+        batch_op.create_index(
+            "ix_notification_deliveries_notif_channel",
+            ["notification_id", "channel"],
+            unique=False,
+        )
+        batch_op.create_index(
+            batch_op.f("ix_notification_deliveries_notification_id"),
+            ["notification_id"],
+            unique=False,
+        )
+        batch_op.create_index(
+            batch_op.f("ix_notification_deliveries_status"), ["status"], unique=False
+        )
+
+    existing_constraints = {
+        c["name"] for c in inspector.get_unique_constraints("active_sessions")
+    }
+
+    with safe_batch_alter_table("active_sessions", schema=None) as batch_op:
+        batch_op.alter_column("signing_key", existing_type=sa.VARCHAR(), nullable=False)
+        batch_op.drop_index(batch_op.f("ix_active_sessions_user_last_seen"))
+        if "uq_active_sessions_jti" in existing_constraints:
+            batch_op.drop_constraint(
+                batch_op.f("uq_active_sessions_jti"), type_="unique"
+            )
+
+    if inspector.has_table("failed_login_attempts"):
+        existing_failed_login_indexes = {
+            i["name"] for i in inspector.get_indexes("failed_login_attempts")
+        }
+
+        with safe_batch_alter_table("failed_login_attempts", schema=None) as batch_op:
+            if "ix_failed_login_attempts_user_id" not in existing_failed_login_indexes:
+                batch_op.create_index(
+                    batch_op.f("ix_failed_login_attempts_user_id"),
+                    ["user_id"],
+                    unique=False,
+                )
+
+    if inspector.has_table("mfa_challenges"):
+        existing_mfa_indexes = {
+            i["name"] for i in inspector.get_indexes("mfa_challenges")
+        }
+        with safe_batch_alter_table("mfa_challenges", schema=None) as batch_op:
+            if "ix_mfa_challenges_session_id" in existing_mfa_indexes:
+                batch_op.drop_index(batch_op.f("ix_mfa_challenges_session_id"))
+
+    if inspector.has_table("notification_queue_jobs"):
+        existing_jobs_indexes = {
+            i["name"] for i in inspector.get_indexes("notification_queue_jobs")
+        }
+        with safe_batch_alter_table("notification_queue_jobs", schema=None) as batch_op:
+            if "ix_notification_queue_jobs_kind" not in existing_jobs_indexes:
+                batch_op.create_index(
+                    batch_op.f("ix_notification_queue_jobs_kind"),
+                    ["kind"],
+                    unique=False,
+                )
+
+    if inspector.has_table("user_push_topics"):
+        existing_push_topics_indexes = {
+            i["name"] for i in inspector.get_indexes("user_push_topics")
+        }
+        with safe_batch_alter_table("user_push_topics", schema=None) as batch_op:
+            if "ix_user_push_topics_updated_at" in existing_push_topics_indexes:
+                batch_op.drop_index(batch_op.f("ix_user_push_topics_updated_at"))
+            if "ix_user_push_topics_user_id" not in existing_push_topics_indexes:
+                batch_op.create_index(
+                    batch_op.f("ix_user_push_topics_user_id"), ["user_id"], unique=False
+                )
+
+    if inspector.has_table("users"):
+        existing_users_indexes = {i["name"] for i in inspector.get_indexes("users")}
+        existing_users_columns = {c["name"] for c in inspector.get_columns("users")}
+        existing_users_fks = {fk["name"] for fk in inspector.get_foreign_keys("users")}
+
+        with safe_batch_alter_table("users", schema=None) as batch_op:
+            if "group_id" not in existing_users_columns:
+                batch_op.add_column(sa.Column("group_id", sa.Integer(), nullable=True))
+            if "webauthn_id" not in existing_users_columns:
+                batch_op.add_column(
+                    sa.Column("webauthn_id", sa.String(length=128), nullable=True)
+                )
+            if "avatar_url" not in existing_users_columns:
+                batch_op.add_column(sa.Column("avatar_url", sa.String(), nullable=True))
+            if "cover_url" not in existing_users_columns:
+                batch_op.add_column(sa.Column("cover_url", sa.String(), nullable=True))
+            if "about" not in existing_users_columns:
+                batch_op.add_column(sa.Column("about", sa.String(), nullable=True))
+            if "record_book_number" not in existing_users_columns:
+                batch_op.add_column(
+                    sa.Column("record_book_number", sa.String(), nullable=True)
+                )
+            if "status" not in existing_users_columns:
+                batch_op.add_column(sa.Column("status", sa.String(), nullable=True))
+            if "institute" not in existing_users_columns:
+                batch_op.add_column(sa.Column("institute", sa.String(), nullable=True))
+            if "course" not in existing_users_columns:
+                batch_op.add_column(sa.Column("course", sa.String(), nullable=True))
+            if "education_level" not in existing_users_columns:
+                batch_op.add_column(
+                    sa.Column("education_level", sa.String(), nullable=True)
+                )
+            if "track" not in existing_users_columns:
+                batch_op.add_column(sa.Column("track", sa.String(), nullable=True))
+            if "program" not in existing_users_columns:
+                batch_op.add_column(sa.Column("program", sa.String(), nullable=True))
+            if "telegram" not in existing_users_columns:
+                batch_op.add_column(sa.Column("telegram", sa.String(), nullable=True))
+            if "achievements" not in existing_users_columns:
+                batch_op.add_column(
+                    sa.Column("achievements", sa.String(), nullable=True)
+                )
+
+            if "ix_users_id" in existing_users_indexes:
+                batch_op.drop_index(batch_op.f("ix_users_id"))
+            if "ix_users_spotify_last_track_id" in existing_users_indexes:
+                batch_op.drop_index(batch_op.f("ix_users_spotify_last_track_id"))
+            if "ix_users_spotify_token_expires_at" in existing_users_indexes:
+                batch_op.drop_index(batch_op.f("ix_users_spotify_token_expires_at"))
+            if "ix_users_spotify_user_id" in existing_users_indexes:
+                batch_op.drop_index(batch_op.f("ix_users_spotify_user_id"))
+
+            if "ix_users_group_id" not in existing_users_indexes:
+                batch_op.create_index(
+                    batch_op.f("ix_users_group_id"), ["group_id"], unique=False
+                )
+            if "ix_users_webauthn_id" not in existing_users_indexes:
+                batch_op.create_index(
+                    batch_op.f("ix_users_webauthn_id"), ["webauthn_id"], unique=True
+                )
+
+            if "fk_users_group_id_groups" not in existing_users_fks:
+                batch_op.create_foreign_key(
+                    "fk_users_group_id_groups",
+                    "groups",
+                    ["group_id"],
+                    ["id"],
+                    ondelete="SET NULL",
+                )
+
+            if "spotify_access_token" in existing_users_columns:
+                batch_op.drop_column("spotify_access_token")
+            if "spotify_last_track_url" in existing_users_columns:
+                batch_op.drop_column("spotify_last_track_url")
+            if "spotify_refresh_token" in existing_users_columns:
+                batch_op.drop_column("spotify_refresh_token")
+            if "spotify_last_album_image_url" in existing_users_columns:
+                batch_op.drop_column("spotify_last_album_image_url")
+            if "dnd_end" in existing_users_columns:
+                batch_op.drop_column("dnd_end")
+            if "spotify_scope" in existing_users_columns:
+                batch_op.drop_column("spotify_scope")
+            if "spotify_last_track_id" in existing_users_columns:
+                batch_op.drop_column("spotify_last_track_id")
+            if "spotify_last_checked_at" in existing_users_columns:
+                batch_op.drop_column("spotify_last_checked_at")
+            if "dnd_start" in existing_users_columns:
+                batch_op.drop_column("dnd_start")
+            if "dnd_enabled" in existing_users_columns:
+                batch_op.drop_column("dnd_enabled")
+            if "spotify_token_expires_at" in existing_users_columns:
+                batch_op.drop_column("spotify_token_expires_at")
+            if "timezone" in existing_users_columns:
+                batch_op.drop_column("timezone")
+            if "spotify_user_id" in existing_users_columns:
+                batch_op.drop_column("spotify_user_id")
+
+    # ### end Alembic commands ###
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+
+    # ### commands auto generated by Alembic - please adjust! ###
+    # DROP TABLES FIRST (in reverse order of creation to handle FKs)
+    if inspector.has_table("notification_deliveries"):
+        existing_nd_indexes = {
+            i["name"] for i in inspector.get_indexes("notification_deliveries")
+        }
+        with op.batch_alter_table("notification_deliveries", schema=None) as batch_op:
+            if "ix_notification_deliveries_status" in existing_nd_indexes:
+                batch_op.drop_index(batch_op.f("ix_notification_deliveries_status"))
+            if "ix_notification_deliveries_notification_id" in existing_nd_indexes:
+                batch_op.drop_index(
+                    batch_op.f("ix_notification_deliveries_notification_id")
+                )
+            if "ix_notification_deliveries_notif_channel" in existing_nd_indexes:
+                batch_op.drop_index("ix_notification_deliveries_notif_channel")
+            if "ix_notification_deliveries_delivered_at" in existing_nd_indexes:
+                batch_op.drop_index(
+                    batch_op.f("ix_notification_deliveries_delivered_at")
+                )
+            if "ix_notification_deliveries_channel" in existing_nd_indexes:
+                batch_op.drop_index(batch_op.f("ix_notification_deliveries_channel"))
+            if "ix_notification_deliveries_attempted_at" in existing_nd_indexes:
+                batch_op.drop_index(
+                    batch_op.f("ix_notification_deliveries_attempted_at")
+                )
+        op.drop_table("notification_deliveries")
+
+    if inspector.has_table("event_files"):
+        existing_ef_indexes = {i["name"] for i in inspector.get_indexes("event_files")}
+        with op.batch_alter_table("event_files", schema=None) as batch_op:
+            if "ix_event_files_event_id" in existing_ef_indexes:
+                batch_op.drop_index(batch_op.f("ix_event_files_event_id"))
+        op.drop_table("event_files")
+
+    if inspector.has_table("event_attendance"):
+        existing_ea_indexes = {
+            i["name"] for i in inspector.get_indexes("event_attendance")
+        }
+        with op.batch_alter_table("event_attendance", schema=None) as batch_op:
+            if "ix_event_attendance_user_id" in existing_ea_indexes:
+                batch_op.drop_index(batch_op.f("ix_event_attendance_user_id"))
+            if "ix_event_attendance_registered_at" in existing_ea_indexes:
+                batch_op.drop_index(batch_op.f("ix_event_attendance_registered_at"))
+            if "ix_event_attendance_event_user" in existing_ea_indexes:
+                batch_op.drop_index("ix_event_attendance_event_user")
+            if "ix_event_attendance_event_id" in existing_ea_indexes:
+                batch_op.drop_index(batch_op.f("ix_event_attendance_event_id"))
+        op.drop_table("event_attendance")
+
+    op.drop_table("attachments")
+
+    if inspector.has_table("webauthn_credentials"):
+        existing_wc_indexes = {
+            i["name"] for i in inspector.get_indexes("webauthn_credentials")
+        }
+        with op.batch_alter_table("webauthn_credentials", schema=None) as batch_op:
+            if "ix_webauthn_credentials_user_id" in existing_wc_indexes:
+                batch_op.drop_index(batch_op.f("ix_webauthn_credentials_user_id"))
+            if "ix_webauthn_credentials_credential_id" in existing_wc_indexes:
+                batch_op.drop_index(batch_op.f("ix_webauthn_credentials_credential_id"))
+        op.drop_table("webauthn_credentials")
+
+    op.drop_table("user_preferences")
+
+    if inspector.has_table("trusted_devices"):
+        existing_td_indexes = {
+            i["name"] for i in inspector.get_indexes("trusted_devices")
+        }
+        with op.batch_alter_table("trusted_devices", schema=None) as batch_op:
+            if "ix_trusted_devices_token_hash" in existing_td_indexes:
+                batch_op.drop_index(batch_op.f("ix_trusted_devices_token_hash"))
+            if "ix_trusted_devices_last_used_at" in existing_td_indexes:
+                batch_op.drop_index(batch_op.f("ix_trusted_devices_last_used_at"))
+            if "ix_trusted_devices_id" in existing_td_indexes:
+                batch_op.drop_index(batch_op.f("ix_trusted_devices_id"))
+            if "ix_trusted_devices_expires_at" in existing_td_indexes:
+                batch_op.drop_index(batch_op.f("ix_trusted_devices_expires_at"))
+        op.drop_table("trusted_devices")
+
+    if inspector.has_table("spotify_integrations"):
+        existing_si_indexes = {
+            i["name"] for i in inspector.get_indexes("spotify_integrations")
+        }
+        with op.batch_alter_table("spotify_integrations", schema=None) as batch_op:
+            if "ix_spotify_integrations_token_expires_at" in existing_si_indexes:
+                batch_op.drop_index(
+                    batch_op.f("ix_spotify_integrations_token_expires_at")
+                )
+            if "ix_spotify_integrations_spotify_user_id" in existing_si_indexes:
+                batch_op.drop_index(
+                    batch_op.f("ix_spotify_integrations_spotify_user_id")
+                )
+            if "ix_spotify_integrations_last_track_id" in existing_si_indexes:
+                batch_op.drop_index(batch_op.f("ix_spotify_integrations_last_track_id"))
+            if "ix_spotify_integrations_last_checked_at" in existing_si_indexes:
+                batch_op.drop_index(
+                    batch_op.f("ix_spotify_integrations_last_checked_at")
+                )
+            if "ix_spotify_integrations_is_playing" in existing_si_indexes:
+                batch_op.drop_index(batch_op.f("ix_spotify_integrations_is_playing"))
+            if "ix_spotify_integrations_is_connected" in existing_si_indexes:
+                batch_op.drop_index(batch_op.f("ix_spotify_integrations_is_connected"))
+        op.drop_table("spotify_integrations")
+
+    if inspector.has_table("password_reset_tokens"):
+        existing_prt_indexes = {
+            i["name"] for i in inspector.get_indexes("password_reset_tokens")
+        }
+        with op.batch_alter_table("password_reset_tokens", schema=None) as batch_op:
+            if "ix_password_reset_tokens_user_id" in existing_prt_indexes:
+                batch_op.drop_index(batch_op.f("ix_password_reset_tokens_user_id"))
+            if "ix_password_reset_tokens_used" in existing_prt_indexes:
+                batch_op.drop_index(batch_op.f("ix_password_reset_tokens_used"))
+            if "ix_password_reset_tokens_token_hash" in existing_prt_indexes:
+                batch_op.drop_index(batch_op.f("ix_password_reset_tokens_token_hash"))
+            if "ix_password_reset_tokens_expires_at" in existing_prt_indexes:
+                batch_op.drop_index(batch_op.f("ix_password_reset_tokens_expires_at"))
+            if "ix_password_reset_tokens_created_at" in existing_prt_indexes:
+                batch_op.drop_index(batch_op.f("ix_password_reset_tokens_created_at"))
+        op.drop_table("password_reset_tokens")
+
+    if inspector.has_table("notifications"):
+        existing_notif_indexes = {
+            i["name"] for i in inspector.get_indexes("notifications")
+        }
+        with op.batch_alter_table("notifications", schema=None) as batch_op:
+            if "ix_notifications_user_id" in existing_notif_indexes:
+                batch_op.drop_index(batch_op.f("ix_notifications_user_id"))
+            if "ix_notifications_user_dedupe" in existing_notif_indexes:
+                batch_op.drop_index("ix_notifications_user_dedupe")
+            if "ix_notifications_user_created" in existing_notif_indexes:
+                batch_op.drop_index("ix_notifications_user_created")
+            if "ix_notifications_type" in existing_notif_indexes:
+                batch_op.drop_index(batch_op.f("ix_notifications_type"))
+            if "ix_notifications_read_at" in existing_notif_indexes:
+                batch_op.drop_index(batch_op.f("ix_notifications_read_at"))
+            if "ix_notifications_read" in existing_notif_indexes:
+                batch_op.drop_index(batch_op.f("ix_notifications_read"))
+            if "ix_notifications_dupe_check" in existing_notif_indexes:
+                batch_op.drop_index("ix_notifications_dupe_check")
+            if "ix_notifications_dedupe_key" in existing_notif_indexes:
+                batch_op.drop_index(batch_op.f("ix_notifications_dedupe_key"))
+            if "ix_notifications_created_at" in existing_notif_indexes:
+                batch_op.drop_index(batch_op.f("ix_notifications_created_at"))
+        op.drop_table("notifications")
+
+    if inspector.has_table("news_likes"):
+        existing_nl_indexes = {i["name"] for i in inspector.get_indexes("news_likes")}
+        with op.batch_alter_table("news_likes", schema=None) as batch_op:
+            if "ix_news_likes_user_id" in existing_nl_indexes:
+                batch_op.drop_index(batch_op.f("ix_news_likes_user_id"))
+            if "ix_news_likes_news_id" in existing_nl_indexes:
+                batch_op.drop_index(batch_op.f("ix_news_likes_news_id"))
+        op.drop_table("news_likes")
+
+    if inspector.has_table("news_comments"):
+        existing_nc_indexes = {
+            i["name"] for i in inspector.get_indexes("news_comments")
+        }
+        with op.batch_alter_table("news_comments", schema=None) as batch_op:
+            if "ix_news_comments_user_id" in existing_nc_indexes:
+                batch_op.drop_index(batch_op.f("ix_news_comments_user_id"))
+            if "ix_news_comments_news_id" in existing_nc_indexes:
+                batch_op.drop_index(batch_op.f("ix_news_comments_news_id"))
+        op.drop_table("news_comments")
+
+    op.drop_table("messages")
+
+    if inspector.has_table("invite_codes"):
+        existing_ic_indexes = {i["name"] for i in inspector.get_indexes("invite_codes")}
+        with op.batch_alter_table("invite_codes", schema=None) as batch_op:
+            if "ix_invite_codes_is_used" in existing_ic_indexes:
+                batch_op.drop_index(batch_op.f("ix_invite_codes_is_used"))
+            if "ix_invite_codes_is_active" in existing_ic_indexes:
+                batch_op.drop_index(batch_op.f("ix_invite_codes_is_active"))
+            if "ix_invite_codes_created_at" in existing_ic_indexes:
+                batch_op.drop_index(batch_op.f("ix_invite_codes_created_at"))
+            if "ix_invite_codes_code" in existing_ic_indexes:
+                batch_op.drop_index(batch_op.f("ix_invite_codes_code"))
+        op.drop_table("invite_codes")
+
+    if inspector.has_table("events"):
+        existing_e_indexes = {i["name"] for i in inspector.get_indexes("events")}
+        with op.batch_alter_table("events", schema=None) as batch_op:
+            if "ix_events_starts_at" in existing_e_indexes:
+                batch_op.drop_index(batch_op.f("ix_events_starts_at"))
+            if "ix_events_is_active" in existing_e_indexes:
+                batch_op.drop_index(batch_op.f("ix_events_is_active"))
+            if "ix_events_event_type" in existing_e_indexes:
+                batch_op.drop_index(batch_op.f("ix_events_event_type"))
+            if "ix_events_ends_at" in existing_e_indexes:
+                batch_op.drop_index(batch_op.f("ix_events_ends_at"))
+            if "ix_events_created_at" in existing_e_indexes:
+                batch_op.drop_index(batch_op.f("ix_events_created_at"))
+        op.drop_table("events")
+
+    if inspector.has_table("email_change_tokens"):
+        existing_ect_indexes = {
+            i["name"] for i in inspector.get_indexes("email_change_tokens")
+        }
+        with op.batch_alter_table("email_change_tokens", schema=None) as batch_op:
+            if "ix_email_change_tokens_user_id" in existing_ect_indexes:
+                batch_op.drop_index(batch_op.f("ix_email_change_tokens_user_id"))
+            if "ix_email_change_tokens_used" in existing_ect_indexes:
+                batch_op.drop_index(batch_op.f("ix_email_change_tokens_used"))
+            if "ix_email_change_tokens_token_hash" in existing_ect_indexes:
+                batch_op.drop_index(batch_op.f("ix_email_change_tokens_token_hash"))
+            if "ix_email_change_tokens_new_email" in existing_ect_indexes:
+                batch_op.drop_index(batch_op.f("ix_email_change_tokens_new_email"))
+            if "ix_email_change_tokens_expires_at" in existing_ect_indexes:
+                batch_op.drop_index(batch_op.f("ix_email_change_tokens_expires_at"))
+            if "ix_email_change_tokens_created_at" in existing_ect_indexes:
+                batch_op.drop_index(batch_op.f("ix_email_change_tokens_created_at"))
+        op.drop_table("email_change_tokens")
+
+    if inspector.has_table("data_access_logs"):
+        existing_logs_indexes = {
+            i["name"] for i in inspector.get_indexes("data_access_logs")
+        }
+        with op.batch_alter_table("data_access_logs", schema=None) as batch_op:
+            if "ix_data_access_logs_subject_user_id" in existing_logs_indexes:
+                batch_op.drop_index(batch_op.f("ix_data_access_logs_subject_user_id"))
+            if "ix_data_access_logs_resource_type" in existing_logs_indexes:
+                batch_op.drop_index(batch_op.f("ix_data_access_logs_resource_type"))
+            if "ix_data_access_logs_resource_id" in existing_logs_indexes:
+                batch_op.drop_index(batch_op.f("ix_data_access_logs_resource_id"))
+            if "ix_data_access_logs_created_at" in existing_logs_indexes:
+                batch_op.drop_index(batch_op.f("ix_data_access_logs_created_at"))
+            if "ix_data_access_logs_actor_user_id" in existing_logs_indexes:
+                batch_op.drop_index(batch_op.f("ix_data_access_logs_actor_user_id"))
+            if "ix_data_access_logs_action" in existing_logs_indexes:
+                batch_op.drop_index(batch_op.f("ix_data_access_logs_action"))
+
+        op.drop_table("data_access_logs")
+
+    op.drop_table("chat_participants")
+
+    if inspector.has_table("schedule"):
+        existing_s_indexes = {i["name"] for i in inspector.get_indexes("schedule")}
+        with op.batch_alter_table("schedule", schema=None) as batch_op:
+            if "ix_schedule_weekday" in existing_s_indexes:
+                batch_op.drop_index(batch_op.f("ix_schedule_weekday"))
+            if "ix_schedule_start_time" in existing_s_indexes:
+                batch_op.drop_index(batch_op.f("ix_schedule_start_time"))
+            if "ix_schedule_parity" in existing_s_indexes:
+                batch_op.drop_index(batch_op.f("ix_schedule_parity"))
+            if "ix_schedule_group_start_time" in existing_s_indexes:
+                batch_op.drop_index("ix_schedule_group_start_time")
+            if "ix_schedule_group_id" in existing_s_indexes:
+                batch_op.drop_index(batch_op.f("ix_schedule_group_id"))
+            if "ix_schedule_end_time" in existing_s_indexes:
+                batch_op.drop_index(batch_op.f("ix_schedule_end_time"))
+        op.drop_table("schedule")
+
+    if inspector.has_table("news"):
+        existing_n_indexes = {i["name"] for i in inspector.get_indexes("news")}
+        with op.batch_alter_table("news", schema=None) as batch_op:
+            if "ix_news_created_at" in existing_n_indexes:
+                batch_op.drop_index(batch_op.f("ix_news_created_at"))
+        op.drop_table("news")
+
+    op.drop_table("chats")
+
+    # ALTER PERSISTENT TABLES AFTER DROPPING DEPENDENCIES
+    with safe_batch_alter_table("users", schema=None) as batch_op:
+        batch_op.add_column(sa.Column("spotify_user_id", sa.VARCHAR(), nullable=True))
+        batch_op.add_column(sa.Column("timezone", sa.VARCHAR(length=64), nullable=True))
+        batch_op.add_column(
+            sa.Column("spotify_token_expires_at", sa.DateTime(), nullable=True)
+        )
+        batch_op.add_column(
+            sa.Column(
+                "dnd_enabled",
+                sa.BOOLEAN(),
+                server_default=sa.text("(false)"),
+                nullable=False,
+            )
+        )
+        batch_op.add_column(sa.Column("dnd_start", sa.TIME(), nullable=True))
+        batch_op.add_column(
+            sa.Column("spotify_last_checked_at", sa.DateTime(), nullable=True)
+        )
+        batch_op.add_column(
+            sa.Column("spotify_last_track_id", sa.VARCHAR(), nullable=True)
+        )
+        batch_op.add_column(sa.Column("spotify_scope", sa.VARCHAR(), nullable=True))
+        batch_op.add_column(sa.Column("dnd_end", sa.TIME(), nullable=True))
+        batch_op.add_column(
+            sa.Column("spotify_last_album_image_url", sa.VARCHAR(), nullable=True)
+        )
+        batch_op.add_column(
+            sa.Column("spotify_refresh_token", sa.TEXT(), nullable=True)
+        )
+        batch_op.add_column(
+            sa.Column("spotify_last_track_url", sa.VARCHAR(), nullable=True)
+        )
+        batch_op.add_column(sa.Column("spotify_access_token", sa.TEXT(), nullable=True))
+        batch_op.drop_constraint("fk_users_group_id_groups", type_="foreignkey")
+        batch_op.drop_index(batch_op.f("ix_users_webauthn_id"))
+        batch_op.drop_index(batch_op.f("ix_users_group_id"))
+        batch_op.create_index(
+            batch_op.f("ix_users_spotify_user_id"), ["spotify_user_id"], unique=True
+        )
+        batch_op.create_index(
+            batch_op.f("ix_users_spotify_token_expires_at"),
+            ["spotify_token_expires_at"],
+            unique=False,
+        )
+        batch_op.create_index(
+            batch_op.f("ix_users_spotify_last_track_id"),
+            ["spotify_last_track_id"],
+            unique=False,
+        )
+        batch_op.create_index(batch_op.f("ix_users_id"), ["id"], unique=False)
+        batch_op.drop_column("achievements")
+        batch_op.drop_column("telegram")
+        batch_op.drop_column("program")
+        batch_op.drop_column("track")
+        batch_op.drop_column("education_level")
+        batch_op.drop_column("course")
+        batch_op.drop_column("institute")
+        batch_op.drop_column("status")
+        batch_op.drop_column("record_book_number")
+        batch_op.drop_column("about")
+        batch_op.drop_column("cover_url")
+        batch_op.drop_column("avatar_url")
+        batch_op.drop_column("webauthn_id")
+        batch_op.drop_column("group_id")
+
+    with safe_batch_alter_table("user_push_topics", schema=None) as batch_op:
+        batch_op.drop_index(batch_op.f("ix_user_push_topics_user_id"))
+        batch_op.create_index(
+            batch_op.f("ix_user_push_topics_updated_at"), ["updated_at"], unique=False
+        )
+
+    with safe_batch_alter_table("notification_queue_jobs", schema=None) as batch_op:
+        batch_op.drop_index(batch_op.f("ix_notification_queue_jobs_kind"))
+
+    with safe_batch_alter_table("mfa_challenges", schema=None) as batch_op:
+        batch_op.create_index(
+            batch_op.f("ix_mfa_challenges_session_id"), ["session_id"], unique=False
+        )
+
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    existing_indexes = {i["name"] for i in inspector.get_indexes("groups")}
+    existing_columns = {c["name"] for c in inspector.get_columns("groups")}
+
+    with safe_batch_alter_table("groups", schema=None) as batch_op:
+        if "ix_groups_id" not in existing_indexes:
+            batch_op.create_index(batch_op.f("ix_groups_id"), ["id"], unique=False)
+        batch_op.alter_column(
+            "id",
+            existing_type=sa.Integer(),
+            type_=sa.VARCHAR(length=20),
+            existing_nullable=False,
+            autoincrement=True,
+        )
+        if "faculty" in existing_columns:
+            batch_op.drop_column("faculty")
+        if "course" in existing_columns:
+            batch_op.drop_column("course")
+
+    if inspector.has_table("failed_login_attempts"):
+        existing_failed_login_indexes = {
+            i["name"] for i in inspector.get_indexes("failed_login_attempts")
+        }
+        with safe_batch_alter_table("failed_login_attempts", schema=None) as batch_op:
+            if "ix_failed_login_attempts_user_id" in existing_failed_login_indexes:
+                batch_op.drop_index(batch_op.f("ix_failed_login_attempts_user_id"))
+
+    existing_active_sessions_constraints = {
+        c["name"] for c in inspector.get_unique_constraints("active_sessions")
+    }
+    with safe_batch_alter_table("active_sessions", schema=None) as batch_op:
+        if "uq_active_sessions_jti" not in existing_active_sessions_constraints:
+            batch_op.create_unique_constraint(
+                batch_op.f("uq_active_sessions_jti"), ["jti"]
+            )
+        batch_op.create_index(
+            batch_op.f("ix_active_sessions_user_last_seen"),
+            ["user_id", "last_seen_at"],
+            unique=False,
+        )
+        batch_op.alter_column("signing_key", existing_type=sa.VARCHAR(), nullable=True)
+    # ### end Alembic commands ###

@@ -158,3 +158,99 @@ def send_reset_email(
             extra={"email": to_email, "link": safe_link},
             exc_info=True,
         )
+
+
+def build_lockout_email_content(
+    full_name: str = "", *, locale: str | None = None
+) -> tuple[str, str, str]:
+    resolved_locale = resolve_locale(locale=locale)
+    name_suffix = f", {full_name}" if full_name else ""
+    subject = translate("email.lockout.subject", locale=resolved_locale)
+    heading = translate("email.lockout.heading", locale=resolved_locale)
+    greeting = translate(
+        "email.lockout.greeting", locale=resolved_locale, name=name_suffix
+    )
+    body = translate("email.lockout.body", locale=resolved_locale)
+    action = translate("email.lockout.action", locale=resolved_locale)
+
+    html = (
+        f'<div style="font-family:Inter,Arial,sans-serif">\n'
+        f"  <h2>{heading}</h2>\n"
+        f"  <p>{greeting}</p>\n"
+        f"  <p>{body}</p>\n"
+        f"  <p>{action}</p>\n"
+        f"</div>\n"
+    )
+    plain = translate(
+        "email.lockout.plain",
+        locale=resolved_locale,
+    )
+    return subject, plain, html
+
+
+def send_lockout_email(
+    to_email: str, full_name: str = "", *, locale: str | None = None
+) -> None:
+    host = settings.smtp_host or ""
+    port = int(settings.smtp_port or 0)
+    user = settings.smtp_user or ""
+    password = settings.smtp_password or ""
+    mail_from = settings.mail_from or "no-reply@example.com"
+    security = (
+        settings.smtp_security or ("starttls" if settings.smtp_starttls else "none")
+    ).lower()
+
+    msg = EmailMessage()
+    subject, plain, html = build_lockout_email_content(full_name, locale=locale)
+    msg["Subject"] = subject
+    msg["From"] = mail_from
+    msg["To"] = to_email
+    msg.set_content(plain)
+    msg.add_alternative(html, subtype="html")
+
+    try:
+        if user and security == "none" and not settings.is_development:
+            _log_event(
+                logging.ERROR,
+                "auth.lockout_email.insecure_smtp",
+                extra={
+                    "email": to_email,
+                    "smtp_security": security,
+                    "environment": settings.environment,
+                },
+            )
+            return
+        if not host or not port:
+            _log_event(
+                logging.WARNING,
+                "auth.lockout_email.fallback",
+                extra={"email": to_email},
+            )
+            return
+
+        context = ssl.create_default_context()
+        if security == "ssl":
+            with smtplib.SMTP_SSL(host, port, context=context, timeout=10) as s:
+                if user:
+                    s.login(user, password)
+                s.send_message(msg)
+        elif security == "starttls":
+            with smtplib.SMTP(host, port, timeout=10) as s:
+                s.ehlo()
+                s.starttls(context=context)
+                s.ehlo()
+                if user:
+                    s.login(user, password)
+                s.send_message(msg)
+        else:
+            with smtplib.SMTP(host, port, timeout=10) as s:
+                if user:
+                    s.login(user, password)
+                s.send_message(msg)
+    except Exception:
+        _log_event(
+            logging.ERROR,
+            "auth.lockout_email.error",
+            extra={"email": to_email},
+            exc_info=True,
+        )

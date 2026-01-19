@@ -14,52 +14,66 @@ from app.core.rate_limit import RateLimitMiddleware
 from app.utils import ratelimit as ratelimit_module
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_rate_limit_per_ip(root_client):
+    """Test using a public endpoint that is NOT exempted."""
+    endpoint = "/api/v1/news"
     for _ in range(5):
-        response = await root_client.get("/healthz")
+        response = await root_client.get(endpoint)
+        # 200 OK or 404 (empty list) doesn't matter, as long as it reaches application
+        # If /api/v1/news returns empty list it's still 200.
         assert response.status_code == 200
         assert response.headers.get("X-RateLimit-Limit") == "5"
-    response = await root_client.get("/healthz")
+
+    response = await root_client.get(endpoint)
     assert response.status_code == 429
     expected = translate("errors.rate_limit.generic")
     assert response.json()["detail"] == expected
     assert response.headers.get("Retry-After") is not None
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
+async def test_health_check_exempted(root_client):
+    """Test that health check is exempted from rate limits."""
+    for _ in range(20):
+        response = await root_client.get("/healthz")
+        assert response.status_code == 200
+        assert "X-RateLimit-Limit" not in response.headers
+
+
+@pytest.mark.asyncio
 async def test_rate_limit_per_token(root_client):
     headers = {"Authorization": "Bearer token-a"}
+    endpoint = "/api/v1/news"
     for _ in range(5):
-        response = await root_client.get("/healthz", headers=headers)
+        response = await root_client.get(endpoint, headers=headers)
         assert response.status_code == 200
-    blocked = await root_client.get("/healthz", headers=headers)
+    blocked = await root_client.get(endpoint, headers=headers)
     assert blocked.status_code == 429
 
-    other = await root_client.get(
-        "/healthz", headers={"Authorization": "Bearer token-b"}
-    )
+    other = await root_client.get(endpoint, headers={"Authorization": "Bearer token-b"})
     assert other.status_code == 200
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_rate_limit_per_cookie(root_client):
     root_client.cookies.set("access_token", "cookie-token-a", path="/")
+    endpoint = "/api/v1/news"
 
     for _ in range(5):
-        response = await root_client.get("/healthz")
+        response = await root_client.get(endpoint)
         assert response.status_code == 200
 
-    blocked = await root_client.get("/healthz")
+    blocked = await root_client.get(endpoint)
     assert blocked.status_code == 429
 
     root_client.cookies.set("access_token", "cookie-token-b", path="/")
 
-    other = await root_client.get("/healthz")
+    other = await root_client.get(endpoint)
     assert other.status_code == 200
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_rate_limit_skips_static_paths():
     app = FastAPI()
     app.add_middleware(
@@ -116,7 +130,7 @@ async def test_rate_limit_skips_static_paths():
     assert third.status_code == status.HTTP_429_TOO_MANY_REQUESTS
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_sensitive_login_rate_limit(async_client, user_factory):
     password = "ValidPass123!"
     user = await user_factory(
@@ -134,7 +148,7 @@ async def test_sensitive_login_rate_limit(async_client, user_factory):
     assert blocked.status_code == status.HTTP_429_TOO_MANY_REQUESTS
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_sensitive_forgot_password_rate_limit(async_client, user_factory):
     user = await user_factory(email="forgot-rate@example.com")
     payload = {"email": user.email}
@@ -147,7 +161,7 @@ async def test_sensitive_forgot_password_rate_limit(async_client, user_factory):
     assert blocked.status_code == status.HTTP_429_TOO_MANY_REQUESTS
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_rate_limit_memory_backend_blocks_requests():
     app = FastAPI()
 
@@ -177,7 +191,7 @@ async def test_rate_limit_memory_backend_blocks_requests():
     assert third.headers.get("Retry-After") is not None
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_sensitive_dependency_memory_backend():
     original_backend = settings.rate_limit_storage_backend
     original_uri = settings.rate_limit_storage_uri
@@ -213,7 +227,7 @@ async def test_sensitive_dependency_memory_backend():
     assert third.status_code == status.HTTP_429_TOO_MANY_REQUESTS
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_sensitive_dependency_memory_backend_resolves_proxy_headers():
     original_backend = settings.rate_limit_storage_backend
     original_uri = settings.rate_limit_storage_uri
@@ -261,7 +275,7 @@ async def test_sensitive_dependency_memory_backend_resolves_proxy_headers():
     assert third.status_code == status.HTTP_429_TOO_MANY_REQUESTS
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_sensitive_dependency_memory_backend_ignores_untrusted_proxy_headers():
     original_backend = settings.rate_limit_storage_backend
     original_uri = settings.rate_limit_storage_uri
@@ -309,7 +323,7 @@ async def test_sensitive_dependency_memory_backend_ignores_untrusted_proxy_heade
     assert third.status_code == status.HTTP_429_TOO_MANY_REQUESTS
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_sensitive_dependency_redis_backend(
     monkeypatch, _rate_limit_redis_client
 ):
@@ -354,7 +368,7 @@ async def test_sensitive_dependency_redis_backend(
     assert third.headers.get("Retry-After") is not None
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_sensitive_dependency_redis_backend_forwarded_header(
     monkeypatch, _rate_limit_redis_client
 ):
@@ -417,7 +431,7 @@ async def test_sensitive_dependency_redis_backend_forwarded_header(
     assert third.headers.get("Retry-After") is not None
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_enforce_rate_limit_falls_back_on_redis_error(monkeypatch):
     monkeypatch.setattr(rate_limit, "_memory_buckets", {})
 
@@ -444,7 +458,7 @@ async def test_enforce_rate_limit_falls_back_on_redis_error(monkeypatch):
         )
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_rate_limit_middleware_allows_when_redis_fails(monkeypatch):
     app = FastAPI()
 
@@ -511,7 +525,7 @@ def test_parse_rate_limit_invalid_returns_fallback(value: str) -> None:
     max_examples=15, suppress_health_check=[HealthCheck.function_scoped_fixture]
 )
 @given(identifier=st.text(min_size=1, max_size=12).filter(lambda s: ":" not in s))
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_check_rate_limit_blocks_after_limit(
     identifier: str, _rate_limit_redis_client, monkeypatch
 ):
@@ -546,7 +560,7 @@ async def test_check_rate_limit_blocks_after_limit(
     assert blocked.remaining == 0
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_rate_limit_per_endpoint_limits():
     """Test that different endpoints get different rate limits."""
     from app.core.rate_limit import EndpointRateLimit

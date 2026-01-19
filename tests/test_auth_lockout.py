@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import status
@@ -11,7 +12,7 @@ from app.core.config import settings
 from app.core.localization import translate
 from app.models.models import FailedLoginAttempt
 
-pytestmark = pytest.mark.anyio("asyncio")
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 _HEADERS = {"Content-Type": "application/x-www-form-urlencoded"}
 
@@ -51,8 +52,16 @@ async def test_login_lockout_enforced(
     first = await _login(async_client, user.email, "WrongPass!1")
     assert first.status_code == status.HTTP_401_UNAUTHORIZED
 
-    second = await _login(async_client, user.email, "WrongPass!1")
-    assert second.status_code == status.HTTP_423_LOCKED
+    with patch("app.auth.auth.send_lockout_alert") as mock_alert:
+        mock_alert.kiq = AsyncMock()
+
+        second = await _login(async_client, user.email, "WrongPass!1")
+        assert second.status_code == status.HTTP_423_LOCKED
+
+        mock_alert.kiq.assert_called_once()
+        args = mock_alert.kiq.call_args[0]
+        assert args[0] == user.email
+
     detail = second.json()["detail"]
     assert translate("errors.auth.account_locked", locale="en") in detail
     retry_after = int(second.headers["Retry-After"])

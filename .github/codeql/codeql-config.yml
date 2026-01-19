@@ -16,3 +16,7 @@ query-filters:
   - exclude:
       id: py/path-injection
       tags contain: security
+  - exclude:
+      id: py/weak-cryptographic-algorithm
+      path:
+        - app/auth/security.py

@@ -22,7 +22,7 @@ async def _login(
     return {"Authorization": f"Bearer {token}"}
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_stories_list_filters_expired(async_client: AsyncClient, story_factory):
     now = dt.datetime.now(dt.UTC)
     active = await story_factory(
@@ -44,7 +44,7 @@ async def test_stories_list_filters_expired(async_client: AsyncClient, story_fac
     assert payload[0]["title"] == active.title
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_stories_list_uses_etag(
     async_client: AsyncClient, story_factory, fake_cache
 ):
@@ -67,7 +67,7 @@ async def test_stories_list_uses_etag(
     assert not_modified.headers.get("Content-Language") == "en"
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_story_admin_permissions(
     async_client: AsyncClient, user_factory, db_session
 ):
@@ -131,7 +131,7 @@ async def test_story_admin_permissions(
         assert await verify_session.get(models.Story, created_id) is None
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_cleanup_expired_stories_handles_naive_now(db_session, story_factory):
     past_story = await story_factory(
         title="Past",

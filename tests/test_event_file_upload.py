@@ -90,7 +90,7 @@ async def _create_event(db_session, user: models.User) -> models.Event:
     return event
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_upload_event_file_offloads_io(
     tmp_path, monkeypatch, db_session, user_factory
 ):
@@ -130,7 +130,7 @@ async def test_upload_event_file_offloads_io(
     assert any(func.__name__ == "write_bytes" for func, _, _ in calls)
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_upload_event_file_cleans_up_on_commit_failure(
     tmp_path, monkeypatch, db_session, user_factory
 ):
@@ -174,7 +174,7 @@ async def test_upload_event_file_cleans_up_on_commit_failure(
         assert not any(folder.iterdir())
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_upload_event_file_rejects_large_payload(
     tmp_path, monkeypatch, db_session, user_factory
 ):
@@ -204,7 +204,7 @@ async def test_upload_event_file_rejects_large_payload(
     assert not folder.exists()
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_upload_event_file_respects_scanner_limit(
     tmp_path, monkeypatch, db_session, user_factory
 ):
@@ -240,7 +240,7 @@ async def test_upload_event_file_respects_scanner_limit(
     assert not folder.exists()
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_upload_event_file_rejects_forbidden_type(
     tmp_path, monkeypatch, db_session, user_factory
 ):
@@ -271,7 +271,7 @@ async def test_upload_event_file_rejects_forbidden_type(
     assert not folder.exists()
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_upload_event_file_rejects_mismatched_metadata(
     tmp_path, monkeypatch, db_session, user_factory
 ):
@@ -309,7 +309,7 @@ async def test_upload_event_file_rejects_mismatched_metadata(
     assert stored_samples[0].read_bytes() == pdf_payload
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_upload_event_file_rejects_infected_payload(
     tmp_path, monkeypatch, db_session, user_factory
 ):
@@ -335,7 +335,7 @@ async def test_upload_event_file_rejects_infected_payload(
         assert kwargs.get("quarantine_payload") == payload
         assert size_bytes == len(payload)
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=translate("errors.files.infected", locale=locale),
         )
 
@@ -346,13 +346,13 @@ async def test_upload_event_file_rejects_infected_payload(
             event.id, upload, request=None, db=db_session, user=admin
         )
 
-    assert excinfo.value.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert excinfo.value.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     assert excinfo.value.detail == translate("errors.files.infected", locale="en")
     folder = tmp_path / "event_files"
     assert not folder.exists()
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_upload_event_file_rejects_detected_type_not_allowed(
     tmp_path, monkeypatch, db_session, user_factory
 ):
@@ -384,7 +384,7 @@ async def test_upload_event_file_rejects_detected_type_not_allowed(
     assert not folder.exists()
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_upload_event_file_allows_multipage_pdf(
     tmp_path, monkeypatch, db_session, user_factory
 ):
@@ -425,7 +425,7 @@ async def test_upload_event_file_allows_multipage_pdf(
     assert calls and calls[0][0] == len(pdf_payload)
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_upload_event_file_quarantines_polyglot_pdf(
     tmp_path, monkeypatch, db_session, user_factory
 ):
@@ -459,7 +459,7 @@ async def test_upload_event_file_quarantines_polyglot_pdf(
     assert stored_samples[0].read_bytes() == payload
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_upload_event_file_quarantines_svg_with_js(
     tmp_path, monkeypatch, db_session, user_factory
 ):
@@ -499,7 +499,7 @@ async def test_upload_event_file_quarantines_svg_with_js(
     assert stored_samples[0].read_bytes() == payload
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_upload_event_file_allows_clean_payload_with_scanner(
     tmp_path, monkeypatch, db_session, user_factory
 ):
@@ -542,7 +542,7 @@ async def test_upload_event_file_allows_clean_payload_with_scanner(
     assert stored_path.read_bytes() == payload
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_update_event_replaces_image_removes_old_file(
     tmp_path, monkeypatch, db_session, user_factory
 ):
@@ -569,7 +569,7 @@ async def test_update_event_replaces_image_removes_old_file(
     assert not old_path.exists()
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_delete_event_file_removes_payload(
     tmp_path, monkeypatch, db_session, user_factory
 ):
@@ -603,7 +603,7 @@ async def test_delete_event_file_removes_payload(
     assert not stored_path.exists()
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_delete_event_removes_all_files(
     tmp_path, monkeypatch, db_session, user_factory
 ):

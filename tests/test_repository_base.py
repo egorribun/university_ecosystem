@@ -66,7 +66,7 @@ def test_repository_init(repository, mock_db):
     assert repository.db is mock_db
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_repository_get_found(repository, mock_db):
     """Test get returns record when found."""
     mock_user = MagicMock(spec=User)
@@ -82,7 +82,7 @@ async def test_repository_get_found(repository, mock_db):
     mock_db.execute.assert_called_once()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_repository_get_not_found(repository, mock_db):
     """Test get returns None when not found."""
     mock_result = MagicMock()
@@ -94,7 +94,7 @@ async def test_repository_get_not_found(repository, mock_db):
     assert result is None
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_repository_get_or_raise_found(repository, mock_db):
     """Test get_or_raise returns record when found."""
     mock_user = MagicMock(spec=User)
@@ -108,7 +108,7 @@ async def test_repository_get_or_raise_found(repository, mock_db):
     assert result is mock_user
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_repository_get_or_raise_not_found(repository, mock_db):
     """Test get_or_raise raises ValueError when not found."""
     mock_result = MagicMock()
@@ -119,7 +119,7 @@ async def test_repository_get_or_raise_not_found(repository, mock_db):
         await repository.get_or_raise(999)
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_repository_get_by_ids_returns_records(repository, mock_db):
     """Test get_by_ids returns multiple records."""
     mock_users = [MagicMock(spec=User), MagicMock(spec=User)]
@@ -132,7 +132,7 @@ async def test_repository_get_by_ids_returns_records(repository, mock_db):
     assert len(result) == 2
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_repository_get_by_ids_empty_list(repository, mock_db):
     """Test get_by_ids returns empty list for empty input."""
     result = await repository.get_by_ids([])
@@ -141,7 +141,7 @@ async def test_repository_get_by_ids_empty_list(repository, mock_db):
     mock_db.execute.assert_not_called()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_repository_list_with_pagination(repository, mock_db):
     """Test list with skip and limit."""
     mock_users = [MagicMock(spec=User), MagicMock(spec=User)]
@@ -155,7 +155,7 @@ async def test_repository_list_with_pagination(repository, mock_db):
     mock_db.execute.assert_called_once()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_repository_list_with_order(repository, mock_db):
     """Test list with order_by parameter."""
     mock_result = MagicMock()
@@ -167,7 +167,7 @@ async def test_repository_list_with_order(repository, mock_db):
     mock_db.execute.assert_called_once()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_repository_count(repository, mock_db):
     """Test count returns total records."""
     mock_result = MagicMock()
@@ -179,7 +179,7 @@ async def test_repository_count(repository, mock_db):
     assert result == 5
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_repository_count_zero(repository, mock_db):
     """Test count returns 0 when no records."""
     mock_result = MagicMock()
@@ -191,7 +191,7 @@ async def test_repository_count_zero(repository, mock_db):
     assert result == 0
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_repository_create_calls_db_methods(mock_db):
     """Test create calls correct DB methods."""
     # This test verifies the flow without full model instantiation
@@ -210,7 +210,7 @@ async def test_repository_create_calls_db_methods(mock_db):
     mock_db.refresh.assert_called_once()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_repository_create_with_pydantic(repository, mock_db):
     """Test create with Pydantic-like object."""
     data = MagicMock()
@@ -222,7 +222,7 @@ async def test_repository_create_with_pydantic(repository, mock_db):
     mock_db.add.assert_called_once()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_repository_update_found(repository, mock_db):
     """Test update modifies existing record."""
     mock_user = MagicMock(spec=User)
@@ -239,7 +239,7 @@ async def test_repository_update_found(repository, mock_db):
     mock_db.flush.assert_called_once()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_repository_update_not_found(repository, mock_db):
     """Test update returns None when not found."""
     mock_result = MagicMock()
@@ -251,7 +251,7 @@ async def test_repository_update_not_found(repository, mock_db):
     assert result is None
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_repository_update_with_pydantic(repository, mock_db):
     """Test update with Pydantic-like object."""
     mock_user = MagicMock(spec=User)
@@ -268,7 +268,7 @@ async def test_repository_update_with_pydantic(repository, mock_db):
     assert result is mock_user
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_repository_delete_success(repository, mock_db):
     """Test delete returns True on success."""
     mock_result = MagicMock()
@@ -280,7 +280,7 @@ async def test_repository_delete_success(repository, mock_db):
     assert result is True
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_repository_delete_not_found(repository, mock_db):
     """Test delete returns False when not found."""
     mock_result = MagicMock()
@@ -292,7 +292,7 @@ async def test_repository_delete_not_found(repository, mock_db):
     assert result is False
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_repository_delete_none_rowcount(repository, mock_db):
     """Test delete handles None rowcount."""
     mock_result = MagicMock()
@@ -304,7 +304,7 @@ async def test_repository_delete_none_rowcount(repository, mock_db):
     assert result is False
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_repository_exists_true(repository, mock_db):
     """Test exists returns True when record exists."""
     mock_result = MagicMock()
@@ -316,7 +316,7 @@ async def test_repository_exists_true(repository, mock_db):
     assert result is True
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_repository_exists_false(repository, mock_db):
     """Test exists returns False when not found."""
     mock_result = MagicMock()
@@ -328,7 +328,7 @@ async def test_repository_exists_false(repository, mock_db):
     assert result is False
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_repository_exists_none(repository, mock_db):
     """Test exists handles None scalar result."""
     mock_result = MagicMock()
@@ -345,7 +345,7 @@ async def test_repository_exists_none(repository, mock_db):
 # ============================================================
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_readonly_repository_get(readonly_repository, mock_db):
     """Test ReadOnlyRepository get method."""
     mock_user = MagicMock(spec=User)
@@ -358,7 +358,7 @@ async def test_readonly_repository_get(readonly_repository, mock_db):
     assert result is mock_user
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_readonly_repository_list(readonly_repository, mock_db):
     """Test ReadOnlyRepository list method."""
     mock_users = [MagicMock(spec=User), MagicMock(spec=User)]
@@ -371,7 +371,7 @@ async def test_readonly_repository_list(readonly_repository, mock_db):
     assert len(result) == 2
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_readonly_repository_list_defaults(readonly_repository, mock_db):
     """Test ReadOnlyRepository list with default parameters."""
     mock_result = MagicMock()

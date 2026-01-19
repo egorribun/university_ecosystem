@@ -5,10 +5,11 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import crud
+from app.api.validation import raise_not_found
 from app.core.database import get_db
 from app.core.localization import resolve_locale, translate
 from app.models import models
@@ -35,8 +36,7 @@ async def download_schedule_ics(
     locale = resolve_locale(request=request)
     group_obj = await db.get(models.Group, group)
     if not group_obj:
-        message = translate("errors.schedule.group_not_found", locale=locale)
-        raise HTTPException(status_code=404, detail=message)
+        raise_not_found("Group", group, locale)
 
     lessons: Sequence[models.Schedule] = await crud.get_schedule_by_group(db, group)
     ics_body = generate_schedule_ics(group_obj, lessons, locale=locale)

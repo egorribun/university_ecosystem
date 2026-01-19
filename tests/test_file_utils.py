@@ -110,7 +110,7 @@ def test_normalize_mime_type():
 # ============================================================
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_quarantine_payload(tmp_path):
     """Test writing payload to quarantine."""
     data = b"malicious data"

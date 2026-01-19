@@ -6,7 +6,7 @@ from app.models import models
 from app.schemas import schemas
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_update_news_removes_replaced_image(
     tmp_path, monkeypatch, db_session, user_factory
 ):
@@ -34,7 +34,7 @@ async def test_update_news_removes_replaced_image(
     assert not old_path.exists()
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_delete_news_removes_image_file(
     tmp_path, monkeypatch, db_session, user_factory
 ):

@@ -6,7 +6,7 @@ from app.auth.redis_session import RedisSessionBackend
 from fakeredis.aioredis import FakeRedis
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_redis_session_lifecycle():
     redis_client = FakeRedis(encoding="utf-8", decode_responses=True)
     backend = RedisSessionBackend(redis_client)
@@ -27,7 +27,7 @@ async def test_redis_session_lifecycle():
     assert await backend.is_session_valid(jti) is False
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_redis_session_expiration():
     redis_client = FakeRedis(encoding="utf-8", decode_responses=True)
     backend = RedisSessionBackend(redis_client)

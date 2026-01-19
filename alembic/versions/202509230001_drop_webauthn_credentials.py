@@ -33,51 +33,57 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.create_table(
-        _TABLE,
-        sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column(
-            "user_id",
-            sa.Integer(),
-            sa.ForeignKey("users.id", ondelete="CASCADE"),
-            nullable=False,
-        ),
-        sa.Column("credential_id", sa.String(length=255), nullable=False, unique=True),
-        sa.Column("public_key", sa.Text(), nullable=False),
-        sa.Column("sign_count", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("transports", sa.JSON(), nullable=True),
-        sa.Column("device_name", sa.String(length=255), nullable=True),
-        sa.Column(
-            "backed_up",
-            sa.Boolean(),
-            nullable=False,
-            server_default=sa.text("false"),
-        ),
-        sa.Column(
-            "clone_warning",
-            sa.Boolean(),
-            nullable=False,
-            server_default=sa.text("false"),
-        ),
-        sa.Column("aaguid", sa.String(length=64), nullable=True),
-        sa.Column("attestation_format", sa.String(length=64), nullable=True),
-        sa.Column("attestation_trust_score", sa.Integer(), nullable=True),
-        sa.Column("attestation_metadata", sa.JSON(), nullable=True),
-        sa.Column("metadata_warnings", sa.JSON(), nullable=True),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            nullable=False,
-            server_default=sa.func.now(),
-        ),
-        sa.Column("last_used_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column(
-            "is_active",
-            sa.Boolean(),
-            nullable=False,
-            server_default=sa.text("true"),
-        ),
-    )
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+
+    if _TABLE not in inspector.get_table_names():
+        op.create_table(
+            _TABLE,
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column(
+                "user_id",
+                sa.Integer(),
+                sa.ForeignKey("users.id", ondelete="CASCADE"),
+                nullable=False,
+            ),
+            sa.Column(
+                "credential_id", sa.String(length=255), nullable=False, unique=True
+            ),
+            sa.Column("public_key", sa.Text(), nullable=False),
+            sa.Column("sign_count", sa.Integer(), nullable=False, server_default="0"),
+            sa.Column("transports", sa.JSON(), nullable=True),
+            sa.Column("device_name", sa.String(length=255), nullable=True),
+            sa.Column(
+                "backed_up",
+                sa.Boolean(),
+                nullable=False,
+                server_default=sa.text("false"),
+            ),
+            sa.Column(
+                "clone_warning",
+                sa.Boolean(),
+                nullable=False,
+                server_default=sa.text("false"),
+            ),
+            sa.Column("aaguid", sa.String(length=64), nullable=True),
+            sa.Column("attestation_format", sa.String(length=64), nullable=True),
+            sa.Column("attestation_trust_score", sa.Integer(), nullable=True),
+            sa.Column("attestation_metadata", sa.JSON(), nullable=True),
+            sa.Column("metadata_warnings", sa.JSON(), nullable=True),
+            sa.Column(
+                "created_at",
+                sa.DateTime(timezone=True),
+                nullable=False,
+                server_default=sa.func.now(),
+            ),
+            sa.Column("last_used_at", sa.DateTime(timezone=True), nullable=True),
+            sa.Column(
+                "is_active",
+                sa.Boolean(),
+                nullable=False,
+                server_default=sa.text("true"),
+            ),
+        )
     op.create_index(
         "ix_mfa_webauthn_user_active",
         _TABLE,

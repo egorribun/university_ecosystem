@@ -17,7 +17,7 @@ async def _login(async_client, email: str, password: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_create_event_frontend_payload_reproduction(async_client, user_factory):
     password = "EventFix123!"
     teacher = await user_factory(
@@ -63,11 +63,11 @@ async def test_create_event_frontend_payload_reproduction(async_client, user_fac
         json=payload,
     )
 
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     # print(f"\nConfimed 422 Error for equal times: {response.json()}")
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_create_event_success_db(async_client, user_factory):
     """
     Test that a fully valid payload successfully creates an event in the DB.

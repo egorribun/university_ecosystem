@@ -7,7 +7,7 @@ import pytest
 from app.utils.retry import RetryExhausted, retry_async, with_retry
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_retry_async_success_first_attempt():
     """Test successful execution on first attempt."""
     mock_fn = AsyncMock(return_value="success")
@@ -18,7 +18,7 @@ async def test_retry_async_success_first_attempt():
     assert mock_fn.call_count == 1
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_retry_async_success_after_retry():
     """Test successful execution after retries."""
     mock_fn = AsyncMock(side_effect=[ValueError("fail"), ValueError("fail"), "success"])
@@ -34,7 +34,7 @@ async def test_retry_async_success_after_retry():
     assert mock_fn.call_count == 3
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_retry_async_exhausted():
     """Test RetryExhausted when all attempts fail."""
     mock_fn = AsyncMock(side_effect=ValueError("always fails"))
@@ -51,7 +51,7 @@ async def test_retry_async_exhausted():
     assert isinstance(exc_info.value.last_error, ValueError)
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_retry_async_non_retryable_exception():
     """Test that non-retryable exceptions are raised immediately."""
     mock_fn = AsyncMock(side_effect=KeyError("not retryable"))
@@ -67,7 +67,7 @@ async def test_retry_async_non_retryable_exception():
     assert mock_fn.call_count == 1
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_retry_async_on_retry_callback():
     """Test on_retry callback is called on each retry."""
     mock_fn = AsyncMock(
@@ -87,7 +87,7 @@ async def test_retry_async_on_retry_callback():
     assert callback.call_count == 2
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_with_retry_decorator():
     """Test with_retry decorator."""
     call_count = 0

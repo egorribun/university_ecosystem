@@ -3,9 +3,9 @@ from datetime import UTC, datetime
 import pytest
 from httpx import AsyncClient
 
-from app.api.chat import _decode_cursor, _encode_cursor
 from app.auth.security import get_password_hash
 from app.models.chat import Chat, Message
+from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
 
 
 async def _login(
@@ -21,7 +21,7 @@ async def _login(
     return {"Authorization": f"Bearer {token}"}
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_create_chat_errors(async_client, user_factory):
     password = "TestPassword123!"
     user = await user_factory(hashed_password=get_password_hash(password))
@@ -32,17 +32,19 @@ async def test_create_chat_errors(async_client, user_factory):
         "/chats", json={"participant_id": user.id}, headers=headers
     )
     assert resp.status_code == 400
-    assert "Cannot create chat with yourself" in resp.json()["detail"]
+    detail = resp.json()["detail"]
+    assert "errors.chat.self_chat" in detail or "Cannot create" in detail
 
     # 2. Create chat with non-existent user
     resp = await async_client.post(
         "/chats", json={"participant_id": 999999}, headers=headers
     )
     assert resp.status_code == 404
-    assert "User not found" in resp.json()["detail"]
+    detail = resp.json()["detail"]
+    assert "errors.users.not_found" in detail or "User not found" in detail
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_create_chat_idempotency(async_client, user_factory):
     password = "TestPassword123!"
     user = await user_factory(hashed_password=get_password_hash(password))
@@ -64,7 +66,7 @@ async def test_create_chat_idempotency(async_client, user_factory):
     assert resp2.json()["id"] == chat_id
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_get_chats_list_simple(async_client, user_factory, db_session):
     password = "TestPassword123!"
     user = await user_factory(hashed_password=get_password_hash(password))
@@ -90,7 +92,7 @@ async def test_get_chats_list_simple(async_client, user_factory, db_session):
     assert len(data["items"]) == 3
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_get_messages_errors(async_client, user_factory, db_session):
     password = "TestPassword123!"
     user = await user_factory(hashed_password=get_password_hash(password))
@@ -113,7 +115,7 @@ async def test_get_messages_errors(async_client, user_factory, db_session):
     assert resp.status_code == 403
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_send_message_errors(async_client, user_factory, db_session, monkeypatch):
     password = "TestPassword123!"
     user = await user_factory(hashed_password=get_password_hash(password))
@@ -148,12 +150,13 @@ async def test_send_message_errors(async_client, user_factory, db_session, monke
     )
     assert resp.status_code == 400
     assert (
-        "Too many attachments" in str(resp.content)
+        "errors.files.too_many_attachments" in str(resp.content)
+        or "Too many attachments" in str(resp.content)
         or "too many" in str(resp.content).lower()
-    )  # Relaxed check for translation keys
+    )
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_mark_read_logic(async_client, user_factory, db_session):
     password = "TestPassword123!"
     user = await user_factory(hashed_password=get_password_hash(password))
@@ -194,23 +197,23 @@ async def test_mark_read_logic(async_client, user_factory, db_session):
     )  # Should not affect my own messages technically, or logic ignores them
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_cursor_helpers():
     dt = datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC)
     cid = "chat-123"
 
-    encoded = _encode_cursor(dt, cid)
+    encoded = encode_datetime_cursor(dt, cid)
     assert ":" in encoded
 
-    decoded_dt, decoded_id = _decode_cursor(encoded)
+    decoded_dt, decoded_id = decode_datetime_cursor(encoded)
     assert abs((decoded_dt - dt).total_seconds()) < 0.002  # Precision check
     assert decoded_id == cid
 
-    assert _decode_cursor(None) is None
-    assert _decode_cursor("invalid") is None
+    assert decode_datetime_cursor(None) is None
+    assert decode_datetime_cursor("invalid") is None
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_delete_chat_permissions(async_client, user_factory, db_session):
     password = "TestPassword123!"
     user = await user_factory(hashed_password=get_password_hash(password))
@@ -232,7 +235,7 @@ async def test_delete_chat_permissions(async_client, user_factory, db_session):
     assert resp_clear.status_code == 403
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_messaging_flow_success(async_client, user_factory, db_session):
     password = "TestPassword123!"
     user = await user_factory(hashed_password=get_password_hash(password))

@@ -7,10 +7,11 @@ from fastapi import HTTPException, UploadFile, status
 from sqlalchemy import select
 from starlette.datastructures import Headers
 
-from app.api import chat as chat_api
 from app.core.config import settings
 from app.core.localization import translate
 from app.models.chat import Attachment, Chat
+from app.services import chat_service
+from app.services.chat_service import ChatService
 from app.utils import files
 
 
@@ -72,7 +73,7 @@ class _RecordingStorage:
         self.calls.append(("delete", (file_url,), {}))
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_send_message_blocks_infected_file(
     tmp_path, monkeypatch, db_session, user_factory
 ):
@@ -98,28 +99,30 @@ async def test_send_message_blocks_infected_file(
 
     async def infected_scan(*_args, **_kwargs):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=translate("errors.files.infected", locale="en"),
         )
 
     monkeypatch.setattr(files, "scan_for_malware", infected_scan)
-    monkeypatch.setattr(chat_api, "notify_new_message", lambda *_, **__: None)
+    monkeypatch.setattr(chat_service, "notify_new_message", lambda *_, **__: None)
+
+    service = ChatService(db_session)
 
     with pytest.raises(HTTPException) as excinfo:
-        await chat_api.send_message(
+        await service.send_message(
             chat.id,
+            user=sender,
             content="Hello",
             files=[upload],
-            current_user=sender,
-            session=db_session,
+            locale="en",
         )
 
-    assert excinfo.value.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert excinfo.value.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     upload_dir = tmp_path / "chat_uploads"
     assert not upload_dir.exists() or not any(upload_dir.iterdir())
 
 
-@pytest.mark.anyio("asyncio")
+@pytest.mark.asyncio
 async def test_send_message_generates_public_urls(
     monkeypatch, db_session, user_factory
 ):
@@ -151,14 +154,15 @@ async def test_send_message_generates_public_urls(
     async def _noop_notify(*_, **__):
         pass
 
-    monkeypatch.setattr(chat_api, "notify_new_message", _noop_notify)
+    monkeypatch.setattr(chat_service, "notify_new_message", _noop_notify)
 
-    message = await chat_api.send_message(
+    service = ChatService(db_session)
+    message = await service.send_message(
         chat.id,
+        user=sender,
         content="Hello",
         files=[upload],
-        current_user=sender,
-        session=db_session,
+        locale="en",
     )
 
     # message is now a MessageResponse (Pydantic schema), attachments are included

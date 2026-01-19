@@ -43,7 +43,7 @@ def test_generate_schedule_ics_includes_lessons() -> None:
     assert expected_teacher in ics
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_schedule_ics_endpoint(async_client, db_session) -> None:
     group = models.Group(name="ИУ-21", course=1, faculty="ИТ")
     db_session.add(group)
@@ -120,7 +120,7 @@ def test_generate_schedule_ics_english_avoids_cyrillic_labels() -> None:
     assert not _contains_cyrillic(description_line)
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_schedule_endpoint_localizes_lesson_type(
     async_client, db_session
 ) -> None:
@@ -159,7 +159,7 @@ async def test_schedule_endpoint_localizes_lesson_type(
     assert payload_ru[0]["lesson_type_display"] == expected_ru
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_schedule_endpoint_preserves_existing_vary_values(
     async_client, db_session, fake_cache
 ) -> None:

@@ -36,7 +36,7 @@ async def test_create_session_factory_uses_null_pool_for_development(monkeypatch
         captured["url"] = url
         captured["engine_kwargs"] = kwargs
         # Mock engine needs sync_engine for slow query logging setup
-        return SimpleNamespace(sync_engine=SimpleNamespace())
+        return SimpleNamespace(sync_engine=SimpleNamespace(pool=SimpleNamespace()))
 
     def fake_sessionmaker(engine, **kwargs):
         captured["engine"] = engine
@@ -60,7 +60,7 @@ async def test_create_session_factory_uses_null_pool_for_development(monkeypatch
         database_pool_recycle=600,
     )
 
-    engine, session_factory = database_module.create_session_factory(stub_settings)
+    engine, session_factory, _ = database_module.create_session_factory(stub_settings)
 
     assert hasattr(engine, "sync_engine")
     assert session_factory == "session"
@@ -87,7 +87,7 @@ async def test_create_session_factory_uses_pool_settings_for_production(monkeypa
     def fake_create_async_engine(url: str, **kwargs):
         captured["url"] = url
         captured["engine_kwargs"] = kwargs
-        return "engine"
+        return SimpleNamespace(sync_engine=SimpleNamespace(pool=SimpleNamespace()))
 
     def fake_sessionmaker(engine, **kwargs):
         captured["engine"] = engine
@@ -98,6 +98,7 @@ async def test_create_session_factory_uses_pool_settings_for_production(monkeypa
         database_module, "create_async_engine", fake_create_async_engine
     )
     monkeypatch.setattr(database_module, "async_sessionmaker", fake_sessionmaker)
+    monkeypatch.setattr(database_module.event, "listen", lambda *args, **kwargs: None)
 
     stub_settings = SimpleNamespace(
         database_url="postgresql+asyncpg://user:pass@example.com/db",
@@ -108,9 +109,9 @@ async def test_create_session_factory_uses_pool_settings_for_production(monkeypa
         database_pool_recycle=900,
     )
 
-    engine, session_factory = database_module.create_session_factory(stub_settings)
+    engine, session_factory, _ = database_module.create_session_factory(stub_settings)
 
-    assert engine == "engine"
+    assert isinstance(engine, SimpleNamespace)
     assert session_factory == "session"
     assert captured["url"] == "postgresql+asyncpg://user:pass@example.com/db"
     engine_kwargs = captured["engine_kwargs"]
@@ -122,7 +123,7 @@ async def test_create_session_factory_uses_pool_settings_for_production(monkeypa
         "pool_timeout": 45.0,
         "pool_recycle": 900,
     }
-    assert captured["engine"] == "engine"
+    assert captured["engine"] == engine
     assert captured["session_kwargs"] == {
         "expire_on_commit": False,
         "class_": database_module.AsyncSession,

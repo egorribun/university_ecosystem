@@ -5,7 +5,7 @@ from pydantic import ValidationError
 
 from app.schemas import schemas
 
-pytestmark = pytest.mark.anyio("asyncio")
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 def test_user_create_requires_valid_email():

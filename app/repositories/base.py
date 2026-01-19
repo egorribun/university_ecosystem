@@ -8,22 +8,18 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from typing import Any, Generic, TypeVar
+from typing import Any
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import Base
 
-ModelT = TypeVar("ModelT", bound=Base)
-CreateSchemaT = TypeVar("CreateSchemaT")
-UpdateSchemaT = TypeVar("UpdateSchemaT")
 
-
-class BaseRepository(ABC, Generic[ModelT, CreateSchemaT, UpdateSchemaT]):
+class BaseRepository[ModelT: Base, CreateSchemaT, UpdateSchemaT](ABC):
     """Abstract base repository for CRUD operations."""
 
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
     @property
@@ -114,10 +110,10 @@ class BaseRepository(ABC, Generic[ModelT, CreateSchemaT, UpdateSchemaT]):
         return (result.scalar() or 0) > 0
 
 
-class ReadOnlyRepository(ABC, Generic[ModelT]):
+class ReadOnlyRepository[ModelT](ABC):
     """Read-only repository for query operations."""
 
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
     @property
@@ -137,7 +133,4 @@ class ReadOnlyRepository(ABC, Generic[ModelT]):
 __all__ = [
     "BaseRepository",
     "ReadOnlyRepository",
-    "ModelT",
-    "CreateSchemaT",
-    "UpdateSchemaT",
 ]

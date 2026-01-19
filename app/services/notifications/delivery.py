@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql import Select
 
+from app.core import metrics
 from app.core.config import settings
 from app.models.models import (
     Notification,
@@ -294,6 +295,15 @@ async def create_notifications_for_users(
                                 detail="; ".join(detail_parts),
                             )
                         )
+                        if result.status == "sent":
+                            metrics.record_notification_delivered(
+                                notification_type=str(type or "unknown")
+                            )
+                        else:
+                            metrics.record_notification_failed(
+                                notification_type=str(type or "unknown"),
+                                reason=str(result.status),
+                            )
                     else:
                         delivery_rows.append(
                             _build_delivery_row(
@@ -303,6 +313,9 @@ async def create_notifications_for_users(
                                 attempted_at=attempt_ts,
                                 detail=f"subscription:{sub.id}; exception:{result}",
                             )
+                        )
+                        metrics.record_notification_failed(
+                            notification_type=str(type or "unknown"), reason="exception"
                         )
 
     if delivery_rows:

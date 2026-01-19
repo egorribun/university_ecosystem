@@ -6,6 +6,7 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.validation import raise_forbidden, raise_unauthorized
 from app.auth import mfa
 from app.auth.redis_session import get_session_backend
 from app.auth.security import decode_token
@@ -14,9 +15,6 @@ from app.core.database import get_db
 from app.core.localization import resolve_locale, translate
 from app.models.models import ActiveSession, User
 from app.models.user_loaders import USER_MFA_LOAD_OPTIONS
-from app.services.audit_service import AuditService
-from app.services.auth_service import AuthService
-from app.services.user_service import UserService
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
@@ -27,28 +25,31 @@ async def get_current_user(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> User:
     locale = resolve_locale(request=request)
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail=translate("errors.auth.credentials_invalid", locale=locale),
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+
+    def fail_auth():
+        raise_unauthorized(
+            locale,
+            "errors.auth.credentials_invalid",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     raw_token = token or request.cookies.get("access_token_v2")
     if not raw_token:
-        raise credentials_exception
+        fail_auth()
     payload = decode_token(raw_token)
     if not payload:
-        raise credentials_exception
+        fail_auth()
     sub = payload.get("sub")
     jti = payload.get("jti")
     try:
         user_id = int(sub)
     except (TypeError, ValueError):
-        raise credentials_exception
+        fail_auth()
     user = await db.get(User, user_id, options=USER_MFA_LOAD_OPTIONS)
     if not user or not user.is_active:
-        raise credentials_exception
+        fail_auth()
     if not jti:
-        raise credentials_exception
+        fail_auth()
 
     # Fast-path check in Redis session backend if enabled
     session_backend = await get_session_backend()
@@ -59,22 +60,22 @@ async def get_current_user(
         # it should be there.
         # If session_storage_backend is "redis", then we trust Redis.
         if settings.session_storage_backend == "redis":
-            raise credentials_exception
+            fail_auth()
 
     res = await db.execute(select(ActiveSession).where(ActiveSession.jti == jti))
     session = res.scalars().first()
     now = datetime.now(UTC)
     if not session or session.user_id != user.id:
-        raise credentials_exception
+        fail_auth()
     if session.revoked_at is not None:
-        raise credentials_exception
+        fail_auth()
     expires_at = session.expires_at
     if expires_at is None:
-        raise credentials_exception
+        fail_auth()
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=UTC)
     if expires_at <= now:
-        raise credentials_exception
+        fail_auth()
 
     # Fingerprint validation for session binding (logs suspicious activity)
     if session.fingerprint_hash:
@@ -154,10 +155,7 @@ async def get_current_admin_user(
     """Dependency that ensures the current user is an admin."""
     if user.role != "admin":
         locale = resolve_locale(request=request)
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=translate("errors.forbidden", locale=locale),
-        )
+        raise_forbidden(locale)
     return user
 
 
@@ -165,10 +163,7 @@ def _enforce_fresh_mfa(request: Request) -> None:
     session: ActiveSession | None = getattr(request.state, "active_session", None)
     locale = resolve_locale(request=request)
     if session is None:
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            detail=translate("errors.forbidden", locale=locale),
-        )
+        raise_forbidden(locale)
 
     ttl = max(0, getattr(settings, "mfa_step_up_ttl_seconds", 0))
     if ttl == 0:
@@ -220,17 +215,34 @@ def require_fresh_mfa_for_enrollment(
     _enforce_fresh_mfa(request)
 
 
-def get_audit_service() -> AuditService:
-    return AuditService()
+def get_locale(
+    request: Request,
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> str:
+    """
+    Resolve locale from request headers or user preference.
+    """
+    # Priority:
+    # 1. Query param (implied by some frontends, but not implemented here yet)
+    # 2. Accept-Language header (via resolve_locale)
+    # 3. User preference
+
+    # We use resolve_locale to handle header parsing
+    header_locale = resolve_locale(request)
+
+    # If user has a preference, it overrides header (or vice versa depending on policy)
+    # Usually: User Profile > Header > Default
+    user_locale = getattr(current_user, "preferred_locale", None)
+
+    if user_locale:
+        return user_locale
+
+    return header_locale
 
 
-def get_user_service(
-    audit: Annotated[AuditService, Depends(get_audit_service)],
-) -> UserService:
-    return UserService(audit)
+def get_chat_service(
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> "ChatService":  # type: ignore # noqa: F821
+    from app.services.chat_service import ChatService
 
-
-def get_auth_service(
-    audit: Annotated[AuditService, Depends(get_audit_service)],
-) -> AuthService:
-    return AuthService(audit)
+    return ChatService(session)

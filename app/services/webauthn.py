@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 class WebAuthnService:
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
     def _get_rp_id(self) -> str:

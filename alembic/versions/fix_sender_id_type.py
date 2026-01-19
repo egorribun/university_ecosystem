@@ -8,6 +8,8 @@ Create Date: 2025-11-23 02:17:00
 
 from collections.abc import Sequence
 
+import sqlalchemy as sa
+
 from alembic import op
 
 # revision identifiers, used by Alembic.
@@ -22,20 +24,43 @@ def upgrade() -> None:
     bind = op.get_bind()
     if bind.dialect.name == "sqlite":
         return
+
+    # Check if tables exist (may not exist on fresh databases)
+    inspector = sa.inspect(bind)
+    existing_tables = set(inspector.get_table_names())
+
     # Alter sender_id column type from VARCHAR to INTEGER
-    op.execute(
-        "ALTER TABLE messages ALTER COLUMN sender_id TYPE INTEGER "
-        "USING sender_id::INTEGER"
-    )
+    if "messages" in existing_tables:
+        op.execute(
+            "ALTER TABLE messages ALTER COLUMN sender_id TYPE INTEGER "
+            "USING sender_id::INTEGER"
+        )
 
     # Also need to fix the chat_participants user_id if it's wrong
-    op.execute(
-        "ALTER TABLE chat_participants ALTER COLUMN user_id TYPE INTEGER "
-        "USING user_id::INTEGER"
-    )
+    if "chat_participants" in existing_tables:
+        op.execute(
+            "ALTER TABLE chat_participants ALTER COLUMN user_id TYPE INTEGER "
+            "USING user_id::INTEGER"
+        )
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.execute("ALTER TABLE messages ALTER COLUMN sender_id TYPE VARCHAR")
-    op.execute("ALTER TABLE chat_participants ALTER COLUMN user_id TYPE VARCHAR")
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    existing_tables = set(inspector.get_table_names())
+
+    if bind.dialect.name == "sqlite":
+        if "messages" in existing_tables:
+            with op.batch_alter_table("messages") as batch_op:
+                batch_op.alter_column("sender_id", type_=sa.VARCHAR())
+        if "chat_participants" in existing_tables:
+            with op.batch_alter_table("chat_participants") as batch_op:
+                batch_op.alter_column("user_id", type_=sa.VARCHAR())
+    else:
+        if "messages" in existing_tables:
+            op.execute("ALTER TABLE messages ALTER COLUMN sender_id TYPE VARCHAR")
+        if "chat_participants" in existing_tables:
+            op.execute(
+                "ALTER TABLE chat_participants ALTER COLUMN user_id TYPE VARCHAR"
+            )

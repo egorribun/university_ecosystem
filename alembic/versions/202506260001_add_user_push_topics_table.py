@@ -109,7 +109,8 @@ def upgrade() -> None:  # noqa: D401 - Alembic migration hook.
                 ["updated_at"],
             )
 
-    _populate_existing_data()
+    if inspector.has_table("push_subscriptions"):
+        _populate_existing_data()
 
 
 def downgrade() -> None:  # noqa: D401 - Alembic migration hook.

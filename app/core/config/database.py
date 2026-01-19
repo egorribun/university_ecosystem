@@ -12,10 +12,16 @@ from .base import (
 
 class DatabaseSettings(BaseAppSettings):
     database_url: str
+    database_read_replica_url: str | None = None  # Optional read replica URL
     database_pool_size: int = 5
     database_max_overflow: int = 10
     database_pool_timeout: float = 30.0
     database_pool_recycle: int = 1_800
+
+    # Slow query logging configuration
+    slow_query_logging_enabled: bool = True
+    slow_query_threshold_ms: float = 500.0  # 500ms for production
+    slow_query_explain_enabled: bool = False  # Enable EXPLAIN for slow queries
 
     @field_validator("database_pool_size")
     @classmethod
@@ -36,3 +42,8 @@ class DatabaseSettings(BaseAppSettings):
     @classmethod
     def _validate_database_pool_recycle(cls, value: int) -> int:
         return _validate_non_negative_int(value, label="DATABASE_POOL_RECYCLE")
+
+    @field_validator("slow_query_threshold_ms")
+    @classmethod
+    def _validate_slow_query_threshold(cls, value: float) -> float:
+        return _validate_positive_float(value, label="SLOW_QUERY_THRESHOLD_MS")

@@ -29,7 +29,7 @@ def static_storage(tmp_path):
 # ============================================================
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_static_fs_save_file(static_storage, tmp_path):
     """Test saving a file to local filesystem."""
     data = b"hello world"
@@ -42,7 +42,7 @@ async def test_static_fs_save_file(static_storage, tmp_path):
     assert full_path.read_bytes() == data
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_static_fs_delete_file(static_storage, tmp_path):
     """Test deleting a file from local filesystem."""
     full_path = tmp_path / "avatars/test.jpg"
@@ -53,7 +53,7 @@ async def test_static_fs_delete_file(static_storage, tmp_path):
     assert not full_path.exists()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_static_fs_delete_non_existent(static_storage):
     """Test deleting non-existent file doesn't crash."""
     await static_storage.delete_file("/static/missing.jpg")
@@ -100,7 +100,7 @@ def s3_storage(mock_s3_client):
     )
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_s3_save_file_success(s3_storage, mock_s3_client):
     """Test saving a file to S3."""
     data = b"s3 data"
@@ -112,7 +112,7 @@ async def test_s3_save_file_success(s3_storage, mock_s3_client):
     mock_s3_client.put_object.assert_called_once()
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_s3_delete_file(s3_storage, mock_s3_client):
     """Test deleting a file from S3."""
     await s3_storage.delete_file("https://cdn.example.com/images/old.png")

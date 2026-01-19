@@ -33,7 +33,7 @@ class UnitOfWork:
             await uow.commit()
     """
 
-    def __init__(self, session_factory: Callable[[], AsyncSession]):
+    def __init__(self, session_factory: Callable[[], AsyncSession]) -> None:
         """
         Initialize Unit of Work.
 

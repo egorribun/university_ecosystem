@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.core.observability import _configure_otel
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_otel_span_generation():
     """Verify that _configure_otel returns a valid SDK TracerProvider when enabled."""
     # Force reset global state for testing

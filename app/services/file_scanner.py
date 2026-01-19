@@ -10,12 +10,27 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import IO, Any
 
-from fastapi import HTTPException, UploadFile, status
+from fastapi import UploadFile, status
 
+from app.api.validation import raise_http_error, raise_validation_error
+from app.core.circuit_breaker import (
+    CircuitBreaker,
+    CircuitBreakerConfig,
+    CircuitBreakerOpenError,
+)
 from app.core.config import settings
-from app.core.localization import translate
 
 logger = logging.getLogger(__name__)
+
+# Circuit breaker for ClamAV scanner with conservative settings
+_clamav_circuit_breaker = CircuitBreaker(
+    "clamav",
+    config=CircuitBreakerConfig(
+        failure_threshold=3,  # Lower threshold, scanner should be reliable
+        recovery_timeout_seconds=60.0,  # Longer recovery time for service restart
+        success_threshold=1,  # Single success to close
+    ),
+)
 
 
 class FileScannerUnavailableError(RuntimeError):
@@ -194,21 +209,47 @@ async def scan_for_malware(
     )
     size_limit = _scanner_size_limit_bytes()
     if size_limit and size_bytes and size_bytes > size_limit:
-        raise HTTPException(
-            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail=translate("errors.files.too_large", locale=locale),
+        raise_http_error(
+            status.HTTP_413_CONTENT_TOO_LARGE,
+            "errors.files.too_large",
+            locale,
         )
 
+    # Check circuit breaker first for fail-fast behavior
+    allow_on_unavailable = getattr(
+        settings, "event_file_scanner_allow_on_unavailable", False
+    )
     try:
-        if backend == "clamd":
-            if stream_upload is not None:
-                result = await _scan_upload_with_clamd(
-                    stream_upload, size_limit=size_limit
-                )
+        async with _clamav_circuit_breaker:
+            if backend == "clamd":
+                if stream_upload is not None:
+                    result = await _scan_upload_with_clamd(
+                        stream_upload, size_limit=size_limit
+                    )
+                else:
+                    result = await _scan_bytes_with_clamd(data)
             else:
-                result = await _scan_bytes_with_clamd(data)
-        else:
-            raise FileScannerUnavailableError(f"unsupported scanner backend: {backend}")
+                raise FileScannerUnavailableError(
+                    f"unsupported scanner backend: {backend}"
+                )
+    except CircuitBreakerOpenError as exc:
+        logger.warning(
+            "File scanner circuit breaker open, skipping scan",
+            extra={
+                "event": "file_scan",
+                "scan_backend": backend,
+                "scan_status": "circuit_breaker_open",
+                "remaining_seconds": exc.remaining_seconds,
+            },
+        )
+        if not allow_on_unavailable:
+            raise_http_error(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "errors.files.scanner_unavailable",
+                locale,
+            )
+        # Allow upload without scanning when configured
+        return
     except FileScannerPayloadTooLarge as exc:
         logger.warning(
             "File scan aborted: payload exceeded scanner limit",
@@ -220,16 +261,18 @@ async def scan_for_malware(
                 "scan_limit": exc.limit_bytes,
             },
         )
-        raise HTTPException(
-            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail=translate("errors.files.too_large", locale=locale),
-        ) from exc
+        raise_http_error(
+            status.HTTP_413_CONTENT_TOO_LARGE,
+            "errors.files.too_large",
+            locale,
+        )
     except FileScannerUnavailableError as exc:
         logger.error("File scanner unavailable: %s", exc)
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=translate("errors.files.scanner_unavailable", locale=locale),
-        ) from exc
+        raise_http_error(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "errors.files.scanner_unavailable",
+            locale,
+        )
 
     _log_scan_result(result, backend)
 
@@ -239,9 +282,9 @@ async def scan_for_malware(
                 await quarantine_handler(quarantine_payload, result.signature)
             except Exception:
                 logger.warning("Failed to quarantine infected payload", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=translate("errors.files.infected", locale=locale),
+        raise_validation_error(
+            "errors.files.infected",
+            locale,
         )
 
 

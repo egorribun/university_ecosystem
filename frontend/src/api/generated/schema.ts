@@ -260,6 +260,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  "/api/v1/auth/mfa/recovery-codes": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /** Generate Recovery Codes Endpoint */
+    post: operations["generate_recovery_codes_endpoint_api_v1_auth_mfa_recovery_codes_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   "/api/v1/auth/mfa/webauthn/{credential_id}": {
     parameters: {
       query?: never
@@ -1765,24 +1782,6 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  "/graphql": {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    /** Handle Http Get */
-    get: operations["handle_http_get_graphql_get"]
-    put?: never
-    /** Handle Http Post */
-    post: operations["handle_http_post_graphql_post"]
-    delete?: never
-    options?: never
-    head?: never
-    patch?: never
-    trace?: never
-  }
 }
 export type webhooks = Record<string, never>
 export interface components {
@@ -2519,7 +2518,7 @@ export interface components {
        * Method
        * @enum {string}
        */
-      method: "totp" | "webauthn"
+      method: "totp" | "webauthn" | "recovery_code"
       /** Challenge Token */
       challenge_token: string
       /** Code */
@@ -2915,6 +2914,16 @@ export interface components {
       has_preferences: boolean
       /** Updated At */
       updated_at?: string | null
+    }
+    /** RecoveryCodesGenerateOut */
+    RecoveryCodesGenerateOut: {
+      /** Codes */
+      codes: string[]
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string
     }
     /** ResetPasswordIn */
     ResetPasswordIn: {
@@ -3361,6 +3370,11 @@ export interface components {
       totp_enrollments?: components["schemas"]["MfaTotpEnrollmentOut"][]
       /** Mfa Challenges */
       mfa_challenges?: components["schemas"]["MfaChallengeOut"][]
+      /**
+       * Recovery Codes Left
+       * @default 0
+       */
+      recovery_codes_left: number
       /** Avatar Url Optimized */
       readonly avatar_url_optimized: string | null
       /** Cover Url Optimized */
@@ -3417,7 +3431,7 @@ export interface components {
      * @description Available roles for users within the system.
      * @enum {string}
      */
-    UserRole: "student" | "teacher" | "admin"
+    UserRole: "student" | "teacher" | "admin" | "superuser" | "anonymous"
     /** ValidationError */
     ValidationError: {
       /** Location */
@@ -3892,6 +3906,26 @@ export interface operations {
           "application/json": {
             [key: string]: unknown
           }[]
+        }
+      }
+    }
+  }
+  generate_recovery_codes_endpoint_api_v1_auth_mfa_recovery_codes_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["RecoveryCodesGenerateOut"]
         }
       }
     }
@@ -7086,53 +7120,6 @@ export interface operations {
         }
         content: {
           "application/json": components["schemas"]["HTTPValidationError"]
-        }
-      }
-    }
-  }
-  handle_http_get_graphql_get: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description The GraphiQL integrated development environment. */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": unknown
-        }
-      }
-      /** @description Not found if GraphiQL or query via GET are not enabled. */
-      404: {
-        headers: {
-          [name: string]: unknown
-        }
-        content?: never
-      }
-    }
-  }
-  handle_http_post_graphql_post: {
-    parameters: {
-      query?: never
-      header?: never
-      path?: never
-      cookie?: never
-    }
-    requestBody?: never
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": unknown
         }
       }
     }

@@ -1,24 +1,17 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_admin_user
+from app.core.container import get_secure_audit_service_dep
 from app.core.database import get_db
 from app.models import models
 from app.models.logs import DataAccessLog
 from app.schemas import schemas
-from app.services.audit_service import get_secure_audit_service
+from app.services.audit_service import SecureAuditService
 
 router = APIRouter(prefix="/audit", tags=["admin-audit"])
-
-
-def require_admin(user: models.User = Depends(get_current_user)):
-    if user.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required"
-        )
-    return user
 
 
 @router.get("", response_model=schemas.AuditLogListOut)
@@ -30,7 +23,8 @@ async def list_audit_logs(
     resource_type: str | None = None,
     action: str | None = None,
     db: AsyncSession = Depends(get_db),
-    _: models.User = Depends(require_admin),
+    secure_audit: SecureAuditService = Depends(get_secure_audit_service_dep),
+    _: models.User = Depends(get_current_admin_user),
 ):
     """List audit logs with filtering and integrity verification."""
 
@@ -76,8 +70,6 @@ async def list_audit_logs(
     total_result = await db.execute(count_stmt)
     total = total_result.scalar_one()
 
-    # Verify integrity and map to output schema
-    secure_audit = get_secure_audit_service()
     items = []
 
     for row in result:

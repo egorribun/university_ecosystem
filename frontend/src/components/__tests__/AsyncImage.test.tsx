@@ -1,7 +1,47 @@
 import { fireEvent, render, screen } from "@testing-library/react"
-import { describe, expect, it } from "vitest"
+import { beforeAll, describe, expect, it } from "vitest"
 
 import AsyncImage from "../AsyncImage"
+
+beforeAll(() => {
+  // Mock IntersectionObserver to immediately trigger visibility
+  class MockIntersectionObserver implements IntersectionObserver {
+    root: Element | Document | null = null
+    rootMargin: string = ""
+    thresholds: ReadonlyArray<number> = []
+    callback: IntersectionObserverCallback
+
+    constructor(callback: IntersectionObserverCallback) {
+      this.callback = callback
+    }
+
+    observe(target: Element): void {
+      // Immediately report the element as intersecting
+      this.callback(
+        [
+          {
+            isIntersecting: true,
+            target,
+            boundingClientRect: target.getBoundingClientRect(),
+            intersectionRatio: 1,
+            intersectionRect: target.getBoundingClientRect(),
+            rootBounds: null,
+            time: Date.now(),
+          },
+        ],
+        this
+      )
+    }
+
+    unobserve(): void {}
+    disconnect(): void {}
+    takeRecords(): IntersectionObserverEntry[] {
+      return []
+    }
+  }
+
+  window.IntersectionObserver = MockIntersectionObserver as typeof IntersectionObserver
+})
 
 describe("AsyncImage", () => {
   const src = "https://example.com/image.png"

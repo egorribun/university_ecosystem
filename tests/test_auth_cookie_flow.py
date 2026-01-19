@@ -13,7 +13,7 @@ from app.core.config import settings
 from app.core.localization import translate
 from app.models.models import ActiveSession
 
-pytestmark = pytest.mark.anyio("asyncio")
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 async def _create_active_user(user_factory, password: str):
@@ -255,7 +255,7 @@ async def test_logout_rotates_session_signing_key(
     assert session.signing_key != original_key
 
 
-@pytest.mark.anyio
+@pytest.mark.asyncio
 async def test_register_rate_limit(async_client):
     for attempt in range(4):
         payload = {

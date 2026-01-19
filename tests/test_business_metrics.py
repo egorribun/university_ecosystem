@@ -8,9 +8,13 @@ def test_record_login_success():
     from app.core.metrics import _LOGIN_SUCCESS, record_login_success
 
     if _LOGIN_SUCCESS is not None:
-        with patch.object(_LOGIN_SUCCESS, "inc") as mock_inc:
+        mock_labels = MagicMock()
+        with patch.object(
+            _LOGIN_SUCCESS, "labels", return_value=mock_labels
+        ) as mock_method:
             record_login_success()
-            mock_inc.assert_called_once()
+            mock_method.assert_called_once_with(method="password")
+            mock_labels.inc.assert_called_once()
 
 
 def test_record_login_failure():
@@ -113,3 +117,31 @@ def test_set_mfa_adoption():
         with patch.object(_MFA_ADOPTION, "set") as mock_set:
             set_mfa_adoption(50)
             mock_set.assert_called_once_with(50.0)
+
+
+def test_record_chat_message():
+    """Test chat message metric recording."""
+    from app.core.metrics import _CHAT_MESSAGES_TOTAL, record_chat_message
+
+    if _CHAT_MESSAGES_TOTAL is not None:
+        mock_labels = MagicMock()
+        with patch.object(
+            _CHAT_MESSAGES_TOTAL, "labels", return_value=mock_labels
+        ) as mock_method:
+            record_chat_message("123")
+            mock_method.assert_called_once_with(channel="123")
+            mock_labels.inc.assert_called_once()
+
+
+def test_set_ws_connections_active():
+    """Test websocket connections gauge."""
+    from app.core.metrics import _WS_CONNECTIONS_ACTIVE, set_ws_connections_active
+
+    if _WS_CONNECTIONS_ACTIVE is not None:
+        mock_labels = MagicMock()
+        with patch.object(
+            _WS_CONNECTIONS_ACTIVE, "labels", return_value=mock_labels
+        ) as mock_method:
+            set_ws_connections_active("/ws/chat", 5)
+            mock_method.assert_called_once_with(path="/ws/chat")
+            mock_labels.set.assert_called_once_with(5.0)
