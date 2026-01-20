@@ -373,9 +373,10 @@ async def _validate_subscription_payload(
 
 
 @router.get("/vapid-public-key")
-async def get_vapid_public_key() -> dict[str, str]:
+async def get_vapid_public_key() -> dict[str, str | None]:
     """Return configured VAPID public key."""
-    return {"publicKey": settings.VAPID_PUBLIC_KEY}
+    key = settings.VAPID_PUBLIC_KEY.strip() if settings.VAPID_PUBLIC_KEY else ""
+    return {"publicKey": key if key else None}
 
 
 @router.post("/subscribe", response_model=PushSubscriptionOut)

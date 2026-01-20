@@ -1,0 +1,174 @@
+# University Ecosystem - Full Docker Compose
+# Usage: docker compose -f docker-compose.full.yml up -d
+
+services:
+  # ============================================================================
+  # Core Application
+  # ============================================================================
+  backend:
+    build:
+      context: .
+      dockerfile: backend.Dockerfile
+      target: runtime
+    env_file:
+      - .env.docker
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/university"
+      FRONTEND_ORIGIN: http://localhost:8081
+      FRONTEND_ORIGINS: http://localhost:8081,http://localhost:8080
+      CACHE_ENABLED: "true"
+      CACHE_REDIS_URL: redis://redis:6379/0
+      RATE_LIMIT_STORAGE_BACKEND: redis
+      RATE_LIMIT_STORAGE_URI: redis://redis:6379/1
+      TASKIQ_BROKER_URL: redis://redis:6379/2
+      MINIO_ENDPOINT: minio:9000
+      MINIO_BUCKET: uploads
+      MINIO_SECURE: "false"
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+      # Spotify
+      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID}
+      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET}
+      SPOTIFY_REDIRECT_URI: ${SPOTIFY_REDIRECT_URI}
+      SPOTIFY_SCOPES: ${SPOTIFY_SCOPES}
+    volumes:
+      - static-data:/app/app/static
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    networks:
+      - internal
+      - public
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/healthz >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 5
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend.Dockerfile
+      target: runtime
+      args:
+        VITE_BACKEND_ORIGIN: ""
+    ports:
+      - "8081:80"
+    networks:
+      - public
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 5
+    restart: unless-stopped
+
+  notifications-worker:
+    build:
+      context: .
+      dockerfile: backend.Dockerfile
+      target: runtime
+    command: python -m app.workers.notifications
+    env_file:
+      - .env.docker
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/university"
+      CACHE_ENABLED: "true"
+      CACHE_REDIS_URL: redis://redis:6379/0
+      TASKIQ_BROKER_URL: redis://redis:6379/2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # ============================================================================
+  # Infrastructure Services
+  # ============================================================================
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-university}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:RELEASE.2024-01-31T20-20-33Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    volumes:
+      - minio-data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  migrations:
+    build:
+      context: .
+      dockerfile: backend.Dockerfile
+      target: runtime
+    command: alembic upgrade head
+    env_file:
+      - .env.docker
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/university"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+    restart: on-failure
+
+networks:
+  public:
+  internal:
+    internal: true
+
+volumes:
+  postgres-data:
+  static-data:
+  minio-data:

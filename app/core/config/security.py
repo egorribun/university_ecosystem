@@ -57,7 +57,7 @@ class SecuritySettings(BaseAppSettings):
     cors_expose_headers: str | list[str] = ""
 
     rate_limit_enabled: bool = True
-    rate_limit_default: str | list[str] = "100/minute"
+    rate_limit_default: str | list[str] = "200/minute"
     rate_limit_sensitive: str = "5/minute"
     rate_limit_auth: str = "5/minute"
     rate_limit_upload: str = "10/minute"

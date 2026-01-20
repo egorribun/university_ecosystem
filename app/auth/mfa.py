@@ -471,6 +471,12 @@ async def complete_totp_enrollment(
     enrollment: MfaTotpEnrollment,
     code: str,
 ) -> MfaTotpEnrollment:
+    if enrollment.secret is None:
+        logger.warning(
+            "Cannot complete TOTP enrollment %s: decryption failed",
+            enrollment.id,
+        )
+        raise_validation_error("errors.mfa.invalid_code", "en")
     if not verify_totp(enrollment.secret, code):
         raise_validation_error("errors.mfa.invalid_code", "en")
     now = _utcnow()
@@ -579,6 +585,13 @@ async def verify_totp_for_user(
     )
 
     for enrollment in enrollments:
+        if enrollment.secret is None:
+            logger.warning(
+                "Skipping TOTP enrollment %s for user %s: decryption failed",
+                enrollment.id,
+                user.id,
+            )
+            continue
         if verify_totp(enrollment.secret, code):
             if loaded_challenge is not None:
                 await consume_challenge(db, loaded_challenge)

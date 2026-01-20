@@ -29,11 +29,6 @@ export const localeMeta = {
     dayjsLocale: "ru",
     formatterLocale: "ru-RU",
   },
-  ar: {
-    dir: "rtl" as const,
-    dayjsLocale: "ar",
-    formatterLocale: "ar-EG",
-  },
 } as const
 
 export type SupportedLanguage = keyof typeof localeMeta

@@ -16,7 +16,6 @@ import { getNavigationConfig } from "@/config/navigation"
 import SettingsIcon from "@mui/icons-material/Settings"
 import { cn } from "@/utils/cn"
 import { MobileMenu } from "@/components/navbar/MobileMenu"
-import { SyncStatus } from "@/components/SyncStatus"
 
 const AVATAR_FALLBACK = AVATAR_PLACEHOLDER_URL
 
@@ -174,7 +173,6 @@ const Navbar = () => {
 
           {isMobile ? (
             <div className="ml-auto flex items-center gap-[clamp(10px,3vw,20px)]">
-              <SyncStatus />
               <MessengerButton />
               <NotificationsBell />
               {isAuth && user && !loading ? (
@@ -312,7 +310,6 @@ const Navbar = () => {
                 isAuth &&
                 user && (
                   <div className="ml-auto flex min-w-0 items-center gap-2.5 whitespace-nowrap">
-                    <SyncStatus />
                     <MessengerButton />
                     <NotificationsBell />
                     <SmartImage

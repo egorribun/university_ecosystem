@@ -24,8 +24,7 @@
     "description": "This changes menus, navigation labels, and system messages.",
     "options": {
       "ru": "Russian",
-      "en": "English",
-      "ar": "Arabic (RTL)"
+      "en": "English"
     }
   },
   "notifications": {

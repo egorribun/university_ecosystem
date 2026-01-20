@@ -48,7 +48,12 @@ class User(Base, EventEmitterMixin):
 
     full_name = Column(String)
     role = Column(
-        SqlEnum(UserRole, native_enum=True, name="userrole"),
+        SqlEnum(
+            UserRole,
+            native_enum=True,
+            name="userrole",
+            values_callable=lambda enum_class: [member.value for member in enum_class],
+        ),
         nullable=False,
         default=UserRole.STUDENT,
         index=True,

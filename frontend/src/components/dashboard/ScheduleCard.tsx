@@ -115,7 +115,7 @@ export function ScheduleCard({
 
   // Styles
   const panelBase =
-    "group relative isolate overflow-hidden rounded-[2.4rem] border !border-[color:var(--dash-panel-border)] !bg-[color:var(--dash-panel-bg-muted)] text-page-foreground !shadow-[var(--dash-panel-shadow-soft)] transition-[transform,box-shadow] duration-[var(--dash-hover-duration)] ease-[var(--dash-hover-ease)]"
+    "group card-glass rounded-[2.4rem] transition-[transform,box-shadow] duration-[var(--dash-hover-duration)] ease-[var(--dash-hover-ease)]"
   const panelHover =
     "hover:-translate-y-[var(--dash-hover-lift)] hover:scale-[var(--dash-hover-scale)] hover:shadow-[var(--dash-panel-hover-shadow)] motion-reduce:hover:transform-none motion-reduce:hover:shadow-[var(--dash-panel-shadow)]"
   const listActionBase =

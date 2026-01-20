@@ -123,7 +123,9 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
     [topicKeys, topicState]
   )
 
-  const notificationsEnabled = !!pushSubscription
+  const [optimisticEnabled, setOptimisticEnabled] = useState<boolean | null>(null)
+
+  const notificationsEnabled = optimisticEnabled ?? !!pushSubscription
 
   const permissionText = useMemo(() => {
     const key = notificationPermission === "default" ? "default" : notificationPermission
@@ -170,10 +172,15 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
       notify({ text: t("notifications:messages.notificationsUnsupported"), sev: "warning" })
       return
     }
+
+    // Optimistic update: instantly show enabled
+    setOptimisticEnabled(true)
     setPushBusy(true)
+
     try {
       const registration = await resolveServiceWorkerRegistration()
       if (!registration) {
+        setOptimisticEnabled(null) // Revert optimistic update
         notify({ text: t("notifications:messages.workerNotReady"), sev: "info" })
         return
       }
@@ -185,6 +192,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
       const permission = Notification.permission
       setNotificationPermission(permission)
       if (!sub) {
+        setOptimisticEnabled(null) // Revert optimistic update
         const text =
           permission === "denied"
             ? t("notifications:messages.enableInSettings")
@@ -196,6 +204,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
         return
       }
       if (permission !== "granted") {
+        setOptimisticEnabled(null) // Revert optimistic update
         notify({
           text: t("notifications:messages.enableInSettings"),
           sev: "info",
@@ -210,24 +219,33 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
       invalidatePushQueries()
       notify({ text: t("notifications:messages.enabled"), sev: "success" })
     } catch (error) {
+      setOptimisticEnabled(null) // Revert on error
       logError("Failed to enable notifications", error)
       notify({ text: t("notifications:messages.enableFailed"), sev: "error" })
     } finally {
+      // If successful, setOptimisticEnabled(null) allows falling back to real subscription state
+      setOptimisticEnabled(null)
       setPushBusy(false)
       setPushInitializing(false)
     }
   }, [activeUserId, applyServerTopics, invalidatePushQueries, notify, selectedTopics, t])
 
   const disableNotifications = useCallback(async () => {
+    // Optimistic update: instantly show disabled
+    setOptimisticEnabled(false)
+
     if (!isPushSupported()) {
       setPushSubscription(null)
       setPushConsent(false)
+      setOptimisticEnabled(null)
       return
     }
     setPushBusy(true)
     try {
       const registration = await resolveServiceWorkerRegistration()
       if (!registration) {
+        setOptimisticEnabled(null) // Revert on failure to find SW? Or just proceed?
+        // If SW is missing, we probably can't really unsubscribe properly, but local state should be cleared.
         notify({ text: t("notifications:messages.workerUnavailable"), sev: "warning" })
         return
       }
@@ -262,9 +280,12 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
       }
       invalidatePushQueries()
     } catch (error) {
+      // On error, we might want to keep it disabled visually or revert?
+      // Typically disabling is safer to assume success for UX.
       logError("Failed to disable notifications", error)
       notify({ text: t("notifications:messages.disableFailed"), sev: "error" })
     } finally {
+      setOptimisticEnabled(null)
       setPushBusy(false)
     }
   }, [invalidatePushQueries, notify, t])

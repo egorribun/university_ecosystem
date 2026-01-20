@@ -27,14 +27,38 @@ def upgrade() -> None:
     inspector = sa.inspect(conn)
     existing_tables = set(inspector.get_table_names())
 
+    def is_partitioned(table_name):
+        res = conn.execute(
+            sa.text(
+                "SELECT relkind FROM pg_class c "
+                "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE n.nspname = ANY(current_schemas(false)) "
+                "AND c.relname = :table_name"
+            ),
+            {"table_name": table_name},
+        ).fetchone()
+        return res and res[0] == "p"
+
+    def safe_rename(old_name, new_name):
+        """Drops any relation with new_name before renaming old_name to new_name."""
+        op.execute(sa.text(f"DROP TABLE IF EXISTS {new_name} CASCADE"))
+        op.execute(sa.text(f"DROP VIEW IF EXISTS {new_name} CASCADE"))
+        op.execute(sa.text(f"DROP INDEX IF EXISTS {new_name} CASCADE"))
+        op.execute(sa.text(f"DROP SEQUENCE IF EXISTS {new_name} CASCADE"))
+        op.execute(sa.text(f"ALTER TABLE {old_name} RENAME TO {new_name}"))
+
     # Skip if notifications table doesn't exist - fresh database with correct schema
     # from Base.metadata.create_all. Partitioning is only for upgrading legacy DBs.
     if "notifications" not in existing_tables:
         return
 
+    # Check if already partitioned - might happen if migration was interrupted
+    if is_partitioned("notifications"):
+        return
+
     # --- 1. Data Access Logs ---
-    if "data_access_logs" in existing_tables:
-        op.execute("ALTER TABLE data_access_logs RENAME TO data_access_logs_old")
+    if "data_access_logs" in existing_tables and not is_partitioned("data_access_logs"):
+        safe_rename("data_access_logs", "data_access_logs_old")
         op.execute(
             """
             CREATE TABLE data_access_logs (
@@ -74,12 +98,8 @@ def upgrade() -> None:
         op.execute("DROP TABLE data_access_logs_old")
 
     # --- 2. Notifications ---
-    # Only if notifications exists (and implicitly deliveries usually goes with it,
-    # but we check individually if possible)
-    # Note: Deliveries depends on Notifications, so we must be careful.
-
-    if "notifications" in existing_tables:
-        op.execute("ALTER TABLE notifications RENAME TO notifications_old")
+    if "notifications" in existing_tables and not is_partitioned("notifications"):
+        safe_rename("notifications", "notifications_old")
         op.execute(
             """
             CREATE TABLE notifications (
@@ -117,10 +137,10 @@ def upgrade() -> None:
         )
 
     # --- 3. Notification Deliveries ---
-    if "notification_deliveries" in existing_tables:
-        op.execute(
-            "ALTER TABLE notification_deliveries RENAME TO notification_deliveries_old"
-        )
+    if "notification_deliveries" in existing_tables and not is_partitioned(
+        "notification_deliveries"
+    ):
+        safe_rename("notification_deliveries", "notification_deliveries_old")
         op.execute(
             """
             CREATE TABLE notification_deliveries (
@@ -146,15 +166,6 @@ def upgrade() -> None:
         """
         )
         # Migrate data with join
-        # Note: We join against notifications_old which MIGHT have been created above.
-        # Ideally we migrate from old to new. If notifications was partitioned above,
-        # 'notifications' is the new partitioned table and 'notifications_old'
-        # is the temp one.
-
-        # If notifications was partitioned, we use notifications_old.
-        # If notifications was NOT partitioned (missing), we can't join?
-        # Assuming consistency, if deliveries exists, notifications exists.
-
         op.execute(
             """
             INSERT INTO notification_deliveries (
@@ -169,9 +180,8 @@ def upgrade() -> None:
         )
         op.execute("DROP TABLE notification_deliveries_old")
 
-    # Cleanup notifications_old only if it was created
-    if "notifications" in existing_tables:
-        op.execute("DROP TABLE notifications_old")
+    # Cleanup notifications_old only if it exists and we've successfully partitioned
+    op.execute("DROP TABLE IF EXISTS notifications_old CASCADE")
 
 
 def downgrade() -> None:
@@ -193,12 +203,18 @@ def downgrade() -> None:
     # However, to be nice:
 
     if "notification_deliveries" in existing_tables:
+        if "notification_deliveries_part" in existing_tables:
+            op.execute("DROP TABLE notification_deliveries_part")
         op.execute(
             "ALTER TABLE notification_deliveries RENAME TO notification_deliveries_part"
         )
     if "notifications" in existing_tables:
+        if "notifications_part" in existing_tables:
+            op.execute("DROP TABLE notifications_part")
         op.execute("ALTER TABLE notifications RENAME TO notifications_part")
     if "data_access_logs" in existing_tables:
+        if "data_access_logs_part" in existing_tables:
+            op.execute("DROP TABLE data_access_logs_part")
         op.execute("ALTER TABLE data_access_logs RENAME TO data_access_logs_part")
 
     # Recreate notifications
