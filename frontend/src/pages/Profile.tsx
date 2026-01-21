@@ -470,7 +470,7 @@ export default function Profile() {
             <Card className="overflow-hidden">
               <div className="h-64 relative">
                 <Skeleton width="100%" height="100%" />
-                <div className="absolute -bottom-16 left-12">
+                <div className="absolute -bottom-16 left-1/2 -translate-x-1/2">
                   <Skeleton
                     width={160}
                     height={160}
@@ -479,7 +479,7 @@ export default function Profile() {
                   />
                 </div>
               </div>
-              <div className="pt-20 px-12 pb-12 space-y-6">
+              <div className="pt-20 px-4 sm:px-12 pb-12 space-y-6">
                 <div className="space-y-2">
                   <Skeleton width={300} height={48} />
                   <Skeleton width={200} height={24} />

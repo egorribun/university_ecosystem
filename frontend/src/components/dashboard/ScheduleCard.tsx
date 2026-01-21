@@ -151,16 +151,18 @@ export function ScheduleCard({
         </div>
         {currentLesson && (
           <div>
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <Badge size="sm" tone="primary" label={t("dashboard:now")} />
-              <span className="text-base font-semibold text-page-foreground">
+            <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge size="sm" tone="primary" label={t("dashboard:now")} />
+                <Badge
+                  size="sm"
+                  className="border-primary-main/20 bg-primary-main/5 font-mono text-xs font-medium text-primary-main dark:bg-primary-main/10"
+                  label={`${fmtTime(currentLesson.start_time)}–${fmtTime(currentLesson.end_time)}`}
+                />
+              </div>
+              <span className="text-base font-semibold leading-tight text-page-foreground line-clamp-1">
                 {currentLesson.subject}
               </span>
-              <Badge
-                size="sm"
-                className="border-primary-main/20 bg-primary-main/5 font-mono text-primary-main dark:bg-primary-main/10"
-                label={`${fmtTime(currentLesson.start_time)}–${fmtTime(currentLesson.end_time)}`}
-              />
             </div>
             <ProgressBar
               value={currentProgress}
@@ -170,21 +172,21 @@ export function ScheduleCard({
           </div>
         )}
         {!currentLesson && nextLesson && (
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge
-                size="sm"
-                variant="outline"
-                tone="primary"
-                className="font-bold uppercase tracking-wide"
-                label={t("dashboard:next")}
-              />
-              <span className="text-base font-semibold text-page-foreground">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Badge
+              size="sm"
+              variant="outline"
+              tone="primary"
+              className="self-start font-bold uppercase tracking-wide"
+              label={t("dashboard:next")}
+            />
+            <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+              <span className="text-base font-semibold leading-tight text-page-foreground truncate">
                 {nextLesson.subject}
               </span>
               <Badge
                 size="sm"
-                className="border-primary-main/20 bg-primary-main/5 font-mono text-primary-main dark:bg-primary-main/10"
+                className="self-start border-primary-main/20 bg-primary-main/5 font-mono text-xs font-medium text-primary-main dark:bg-primary-main/10"
                 label={`${fmtTime(nextLesson.start_time)}–${fmtTime(nextLesson.end_time)}`}
               />
             </div>
@@ -212,33 +214,35 @@ export function ScheduleCard({
         {!loadingSched && todayLessons.length > 0 && (
           <ul className="space-y-3">
             {todayLessons.map((l) => (
-              <li key={l.id} className="dash-list-item">
+              <li key={l.id} className="dash-list-item px-0 py-0">
                 <div
                   className={cn(
                     listActionBase,
-                    "flex flex-col gap-2 text-left sm:gap-2.5",
+                    "flex flex-col gap-2 border-0 bg-transparent px-4 py-3 pb-4 hover:bg-white/5 sm:gap-2.5",
                     "cursor-default"
                   )}
                 >
-                  <div className="flex flex-wrap items-center gap-2 text-sm">
-                    <Badge
-                      size="sm"
-                      className="flex-shrink-0 border-primary-main/20 bg-primary-main/5 font-mono text-primary-main dark:bg-primary-main/10"
-                      label={`${fmtTime(l.start_time)}–${fmtTime(l.end_time)}`}
-                    />
-                    <span className="text-base font-semibold text-page-foreground">
+                  <div className="flex w-full items-start justify-between gap-3">
+                    <span className="text-base font-semibold leading-tight text-page-foreground line-clamp-2">
                       {l.subject}
                     </span>
+                    <Badge
+                      size="sm"
+                      className="flex-shrink-0 border-primary-main/20 bg-primary-main/5 font-mono text-xs font-medium text-primary-main dark:bg-primary-main/10"
+                      label={`${fmtTime(l.start_time)}–${fmtTime(l.end_time)}`}
+                    />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-sm text-secondary">
                     <Badge
                       size="sm"
                       className="border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
                       variant="outline"
                       label={l.lesson_type}
                     />
+                    <span className="truncate max-w-[150px] opacity-90">
+                      {t("dashboard:lessonMeta", { teacher: l.teacher, room: l.room })}
+                    </span>
                   </div>
-                  <p className="text-sm leading-relaxed text-secondary">
-                    {t("dashboard:lessonMeta", { teacher: l.teacher, room: l.room })}
-                  </p>
                 </div>
               </li>
             ))}

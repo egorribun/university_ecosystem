@@ -164,21 +164,21 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
             {scopedEvents.map((e) => {
               const d = parseLocalDate(String(e.starts_at))
               return (
-                <li key={e.id} className="dash-list-item">
+                <li key={e.id} className="dash-list-item px-0 py-0">
                   <button
                     type="button"
                     className={cn(
                       listActionBase,
-                      "flex flex-col items-start gap-3 text-left sm:gap-3"
+                      "flex min-h-[4.5rem] flex-col justify-center gap-2 border-0 bg-transparent px-4 py-3 hover:bg-white/5 active:scale-[0.99] sm:gap-2.5"
                     )}
                     onClick={() => navigate(`/events/${e.id}`)}
                     aria-label={t("dashboard:aria.eventItem", { title: e.title })}
                   >
-                    <span className="flex items-center gap-3">
-                      <span className="text-base font-semibold text-page-foreground">
+                    <span className="flex w-full items-start justify-between gap-3">
+                      <span className="text-base font-semibold leading-tight text-page-foreground line-clamp-2">
                         {e.title}
                       </span>
-                      <span className="inline-flex h-6 w-6 flex-none items-center justify-center rounded-full border border-[color:var(--dash-icon-halo-border)] bg-[color:var(--dash-icon-halo-bg)] text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--dash-icon-halo-text)] transition-colors duration-[var(--dash-hover-duration)] ease-[var(--dash-hover-ease)] group-hover:border-[color:var(--dash-icon-halo-border-active)] group-hover:text-[color:var(--dash-icon-halo-text-active)]">
+                      <span className="flex h-6 w-6 flex-none items-center justify-center rounded-full border border-[color:var(--dash-icon-halo-border)] bg-[color:var(--dash-icon-halo-bg)] text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--dash-icon-halo-text)] transition-colors duration-[var(--dash-hover-duration)] ease-[var(--dash-hover-ease)] group-hover:border-[color:var(--dash-icon-halo-border-active)] group-hover:text-[color:var(--dash-icon-halo-text-active)]">
                         <AutoAwesomeRoundedIcon
                           aria-hidden="true"
                           fontSize="inherit"
@@ -189,19 +189,26 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
                     <span className="flex flex-wrap items-center gap-2 text-sm text-secondary">
                       <Badge
                         size="sm"
-                        className="border-primary-main/20 bg-primary-main/5 font-mono text-primary-main dark:bg-primary-main/10"
+                        className="border-primary-main/20 bg-primary-main/5 font-mono text-xs font-medium text-primary-main dark:bg-primary-main/10"
                         label={
                           d
                             ? d.toLocaleString(locale, {
                                 day: "2-digit",
-                                month: "long",
+                                month: "short",
                                 hour: "2-digit",
                                 minute: "2-digit",
                               })
                             : ""
                         }
                       />
-                      {!!e.location && <Badge size="sm" variant="outline" label={e.location} />}
+                      {!!e.location && (
+                        <Badge
+                          size="sm"
+                          variant="outline"
+                          className="max-w-[120px] truncate"
+                          label={e.location}
+                        />
+                      )}
                     </span>
                   </button>
                 </li>

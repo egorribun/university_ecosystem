@@ -116,21 +116,22 @@ export default function MobileBottomNav() {
                 }
               }}
               className={({ isActive }) =>
-                "relative flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[var(--secondary-text)] transition-colors duration-200 " +
-                (isActive ? "active text-primary-main font-semibold" : "")
+                "group relative flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[var(--secondary-text)] transition-colors duration-200 active:scale-95 " +
+                (isActive ? "active text-primary-main font-semibold" : "hover:bg-primary-main/5")
               }
               aria-label={it.label}
             >
               {isActive && (
                 <motion.div
                   layoutId="bottom-nav-active-pill"
-                  className="absolute inset-0 rounded-xl bg-primary-main/10 dark:bg-primary-main/20"
+                  className="absolute inset-x-3 inset-y-1 rounded-xl bg-primary-main/10 dark:bg-primary-main/20"
                   transition={{ type: "spring", stiffness: 300, damping: 30 }}
                 />
               )}
               <span
                 className={
-                  "z-10 transition-transform duration-200 " + (isActive ? "-translate-y-0.5" : "")
+                  "z-10 transition-transform duration-200 " +
+                  (isActive ? "-translate-y-0.5 scale-110" : "group-active:scale-95")
                 }
               >
                 {it.icon}
@@ -138,7 +139,7 @@ export default function MobileBottomNav() {
               <span
                 className={
                   "z-10 text-[10px] uppercase tracking-wider transition-opacity duration-200 " +
-                  (isActive ? "opacity-100" : "opacity-70")
+                  (isActive ? "opacity-100 font-bold" : "opacity-70")
                 }
               >
                 {it.label}

@@ -51,7 +51,7 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
       <div
         ref={ref}
         className={cn(
-          "group relative isolate mb-2 rounded-2xl border border-[color:color-mix(in_srgb,white_10%,var(--nav-link)_90%)] p-6 shadow-[0_8px_24px_rgba(0,0,0,0.08),0_2px_8px_rgba(0,0,0,0.04)] [content-visibility:auto] [contain-intrinsic-size:400px] transition-all duration-300",
+          "group relative isolate mb-2 rounded-2xl border border-[color:color-mix(in_srgb,white_10%,var(--nav-link)_90%)] p-4 sm:p-6 shadow-[0_8px_24px_rgba(0,0,0,0.08),0_2px_8px_rgba(0,0,0,0.04)] [content-visibility:auto] [contain-intrinsic-size:400px] transition-all duration-300",
           isToday
             ? "bg-[color:color-mix(in_srgb,var(--nav-link)_5%,var(--card-bg)_95%)] ring-2 ring-[color:color-mix(in_srgb,var(--nav-link)_22%,transparent)] dark:bg-[color:color-mix(in_srgb,var(--nav-link)_7%,var(--card-bg)_93%)] dark:ring-[color:color-mix(in_srgb,var(--nav-link)_24%,transparent)]"
             : "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)] dark:shadow-[0_16px_48px_rgba(0,0,0,0.16),0_6px_20px_rgba(0,0,0,0.08)]",
