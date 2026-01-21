@@ -90,18 +90,12 @@ export default function MobileBottomNav() {
   return (
     <>
       <nav
-        className="bottom-nav glass"
+        className="fixed bottom-0 left-0 right-0 z-50 flex h-[calc(3.5rem+env(safe-area-inset-bottom))] w-full items-center justify-around border-t border-glass-border bg-glass backdrop-blur-md pb-safe shadow-glass transition-transform duration-300 md:hidden"
         role="navigation"
         aria-label={t("navigation:aria.mainNavigation")}
       >
         {items.map((it) => {
           const isActive = pathname.startsWith(it.to) && (it.to !== "/" || pathname === "/")
-          // Special case for dashboard/news exact vs prefix matching if needed,
-          // but specifically for bottom nav usually "startsWith" is good for sections,
-          // except maybe dashboard if it's root.
-          // However, the original code relied on NavLink's fuzzy matching or expected exact paths.
-          // Let's rely on useLocation pathname comparison for the active pill to be totally controlled.
-
           return (
             <NavLink
               key={it.to}
@@ -122,25 +116,43 @@ export default function MobileBottomNav() {
                 }
               }}
               className={({ isActive }) =>
-                "bottom-nav__item relative" + (isActive ? " active" : "")
+                "group relative flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[var(--secondary-text)] transition-colors duration-200 active:scale-95 " +
+                (isActive ? "active text-primary-main font-semibold" : "hover:bg-primary-main/5")
               }
               aria-label={it.label}
             >
               {isActive && (
                 <motion.div
                   layoutId="bottom-nav-active-pill"
-                  className="absolute inset-0 rounded-xl bg-[color:color-mix(in_srgb,var(--nav-link)_12%,transparent)] dark:bg-[color:color-mix(in_srgb,var(--nav-link)_20%,transparent)]"
+                  className="absolute inset-x-3 inset-y-1 rounded-xl bg-primary-main/10 dark:bg-primary-main/20"
                   transition={{ type: "spring", stiffness: 300, damping: 30 }}
                 />
               )}
-              <span className="bottom-nav__icon z-10">{it.icon}</span>
-              <span className="bottom-nav__label z-10">{it.label}</span>
+              <span
+                className={
+                  "z-10 transition-transform duration-200 " +
+                  (isActive ? "-translate-y-0.5 scale-110" : "group-active:scale-95")
+                }
+              >
+                {it.icon}
+              </span>
+              <span
+                className={
+                  "z-10 text-[10px] uppercase tracking-wider transition-opacity duration-200 " +
+                  (isActive ? "opacity-100 font-bold" : "opacity-70")
+                }
+              >
+                {it.label}
+              </span>
             </NavLink>
           )
         })}
       </nav>
       {!pathname.startsWith("/messenger") && (
-        <div className="bottom-nav-spacer" aria-hidden="true" />
+        <div
+          className="h-[calc(3.5rem+env(safe-area-inset-bottom))] md:hidden"
+          aria-hidden="true"
+        />
       )}
     </>
   )

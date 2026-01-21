@@ -3,21 +3,21 @@
 exports[`MobileBottomNav > renders links for main sections 1`] = `
 <nav
   aria-label="Main navigation"
-  class="bottom-nav glass"
+  class="fixed bottom-0 left-0 right-0 z-50 flex h-[calc(3.5rem+env(safe-area-inset-bottom))] w-full items-center justify-around border-t border-glass-border bg-glass backdrop-blur-md pb-safe shadow-glass transition-transform duration-300 md:hidden"
   role="navigation"
 >
   <a
     aria-current="page"
     aria-label="Home"
-    class="bottom-nav__item relative active"
+    class="group relative flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[var(--secondary-text)] transition-colors duration-200 active:scale-95 active text-primary-main font-semibold"
     data-discover="true"
     href="/dashboard"
   >
     <div
-      class="absolute inset-0 rounded-xl bg-[color:color-mix(in_srgb,var(--nav-link)_12%,transparent)] dark:bg-[color:color-mix(in_srgb,var(--nav-link)_20%,transparent)]"
+      class="absolute inset-x-3 inset-y-1 rounded-xl bg-primary-main/10 dark:bg-primary-main/20"
     />
     <span
-      class="bottom-nav__icon z-10"
+      class="z-10 transition-transform duration-200 -translate-y-0.5 scale-110"
     >
       <svg
         aria-hidden="true"
@@ -32,19 +32,19 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
       </svg>
     </span>
     <span
-      class="bottom-nav__label z-10"
+      class="z-10 text-[10px] uppercase tracking-wider transition-opacity duration-200 opacity-100 font-bold"
     >
       Home
     </span>
   </a>
   <a
     aria-label="News"
-    class="bottom-nav__item relative"
+    class="group relative flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[var(--secondary-text)] transition-colors duration-200 active:scale-95 hover:bg-primary-main/5"
     data-discover="true"
     href="/news"
   >
     <span
-      class="bottom-nav__icon z-10"
+      class="z-10 transition-transform duration-200 group-active:scale-95"
     >
       <svg
         aria-hidden="true"
@@ -59,19 +59,19 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
       </svg>
     </span>
     <span
-      class="bottom-nav__label z-10"
+      class="z-10 text-[10px] uppercase tracking-wider transition-opacity duration-200 opacity-70"
     >
       News
     </span>
   </a>
   <a
     aria-label="Events"
-    class="bottom-nav__item relative"
+    class="group relative flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[var(--secondary-text)] transition-colors duration-200 active:scale-95 hover:bg-primary-main/5"
     data-discover="true"
     href="/events"
   >
     <span
-      class="bottom-nav__icon z-10"
+      class="z-10 transition-transform duration-200 group-active:scale-95"
     >
       <svg
         aria-hidden="true"
@@ -86,19 +86,19 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
       </svg>
     </span>
     <span
-      class="bottom-nav__label z-10"
+      class="z-10 text-[10px] uppercase tracking-wider transition-opacity duration-200 opacity-70"
     >
       Events
     </span>
   </a>
   <a
     aria-label="Schedule"
-    class="bottom-nav__item relative"
+    class="group relative flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[var(--secondary-text)] transition-colors duration-200 active:scale-95 hover:bg-primary-main/5"
     data-discover="true"
     href="/schedule"
   >
     <span
-      class="bottom-nav__icon z-10"
+      class="z-10 transition-transform duration-200 group-active:scale-95"
     >
       <svg
         aria-hidden="true"
@@ -113,19 +113,19 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
       </svg>
     </span>
     <span
-      class="bottom-nav__label z-10"
+      class="z-10 text-[10px] uppercase tracking-wider transition-opacity duration-200 opacity-70"
     >
       Schedule
     </span>
   </a>
   <a
     aria-label="Profile"
-    class="bottom-nav__item relative"
+    class="group relative flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[var(--secondary-text)] transition-colors duration-200 active:scale-95 hover:bg-primary-main/5"
     data-discover="true"
     href="/profile"
   >
     <span
-      class="bottom-nav__icon z-10"
+      class="z-10 transition-transform duration-200 group-active:scale-95"
     >
       <svg
         aria-hidden="true"
@@ -140,7 +140,7 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
       </svg>
     </span>
     <span
-      class="bottom-nav__label z-10"
+      class="z-10 text-[10px] uppercase tracking-wider transition-opacity duration-200 opacity-70"
     >
       Profile
     </span>
@@ -152,21 +152,21 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
 <div>
   <nav
     aria-label="Main navigation"
-    class="bottom-nav glass"
+    class="fixed bottom-0 left-0 right-0 z-50 flex h-[calc(3.5rem+env(safe-area-inset-bottom))] w-full items-center justify-around border-t border-glass-border bg-glass backdrop-blur-md pb-safe shadow-glass transition-transform duration-300 md:hidden"
     role="navigation"
   >
     <a
       aria-current="page"
       aria-label="Home"
-      class="bottom-nav__item relative active"
+      class="group relative flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[var(--secondary-text)] transition-colors duration-200 active:scale-95 active text-primary-main font-semibold"
       data-discover="true"
       href="/dashboard"
     >
       <div
-        class="absolute inset-0 rounded-xl bg-[color:color-mix(in_srgb,var(--nav-link)_12%,transparent)] dark:bg-[color:color-mix(in_srgb,var(--nav-link)_20%,transparent)]"
+        class="absolute inset-x-3 inset-y-1 rounded-xl bg-primary-main/10 dark:bg-primary-main/20"
       />
       <span
-        class="bottom-nav__icon z-10"
+        class="z-10 transition-transform duration-200 -translate-y-0.5 scale-110"
       >
         <svg
           aria-hidden="true"
@@ -181,19 +181,19 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
         </svg>
       </span>
       <span
-        class="bottom-nav__label z-10"
+        class="z-10 text-[10px] uppercase tracking-wider transition-opacity duration-200 opacity-100 font-bold"
       >
         Home
       </span>
     </a>
     <a
       aria-label="News"
-      class="bottom-nav__item relative"
+      class="group relative flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[var(--secondary-text)] transition-colors duration-200 active:scale-95 hover:bg-primary-main/5"
       data-discover="true"
       href="/news"
     >
       <span
-        class="bottom-nav__icon z-10"
+        class="z-10 transition-transform duration-200 group-active:scale-95"
       >
         <svg
           aria-hidden="true"
@@ -208,19 +208,19 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
         </svg>
       </span>
       <span
-        class="bottom-nav__label z-10"
+        class="z-10 text-[10px] uppercase tracking-wider transition-opacity duration-200 opacity-70"
       >
         News
       </span>
     </a>
     <a
       aria-label="Events"
-      class="bottom-nav__item relative"
+      class="group relative flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[var(--secondary-text)] transition-colors duration-200 active:scale-95 hover:bg-primary-main/5"
       data-discover="true"
       href="/events"
     >
       <span
-        class="bottom-nav__icon z-10"
+        class="z-10 transition-transform duration-200 group-active:scale-95"
       >
         <svg
           aria-hidden="true"
@@ -235,19 +235,19 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
         </svg>
       </span>
       <span
-        class="bottom-nav__label z-10"
+        class="z-10 text-[10px] uppercase tracking-wider transition-opacity duration-200 opacity-70"
       >
         Events
       </span>
     </a>
     <a
       aria-label="Schedule"
-      class="bottom-nav__item relative"
+      class="group relative flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[var(--secondary-text)] transition-colors duration-200 active:scale-95 hover:bg-primary-main/5"
       data-discover="true"
       href="/schedule"
     >
       <span
-        class="bottom-nav__icon z-10"
+        class="z-10 transition-transform duration-200 group-active:scale-95"
       >
         <svg
           aria-hidden="true"
@@ -262,19 +262,19 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
         </svg>
       </span>
       <span
-        class="bottom-nav__label z-10"
+        class="z-10 text-[10px] uppercase tracking-wider transition-opacity duration-200 opacity-70"
       >
         Schedule
       </span>
     </a>
     <a
       aria-label="Profile"
-      class="bottom-nav__item relative"
+      class="group relative flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[var(--secondary-text)] transition-colors duration-200 active:scale-95 hover:bg-primary-main/5"
       data-discover="true"
       href="/profile"
     >
       <span
-        class="bottom-nav__icon z-10"
+        class="z-10 transition-transform duration-200 group-active:scale-95"
       >
         <svg
           aria-hidden="true"
@@ -289,7 +289,7 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
         </svg>
       </span>
       <span
-        class="bottom-nav__label z-10"
+        class="z-10 text-[10px] uppercase tracking-wider transition-opacity duration-200 opacity-70"
       >
         Profile
       </span>
@@ -297,7 +297,7 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
   </nav>
   <div
     aria-hidden="true"
-    class="bottom-nav-spacer"
+    class="h-[calc(3.5rem+env(safe-area-inset-bottom))] md:hidden"
   />
 </div>
 `;

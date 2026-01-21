@@ -4431,7 +4431,7 @@ export interface operations {
         }
         content: {
           "application/json": {
-            [key: string]: string
+            [key: string]: string | null
           }
         }
       }
@@ -6916,7 +6916,7 @@ export interface operations {
         }
         content: {
           "application/json": {
-            [key: string]: string
+            [key: string]: string | null
           }
         }
       }

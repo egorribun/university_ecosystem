@@ -236,7 +236,7 @@ const News = () => {
             <div
               data-fade
               style={fadeDelayStyle("200ms")}
-              className="grid gap-6 grid-cols-[repeat(auto-fill,minmax(340px,1fr))]"
+              className="grid gap-6 grid-cols-[repeat(auto-fill,minmax(280px,1fr))]"
             >
               {isInitialLoading
                 ? Array.from({ length: skeletonCount }).map((_, index) => (

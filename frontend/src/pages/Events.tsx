@@ -456,10 +456,7 @@ const Events = () => {
                 className="fixed z-50 mt-2 min-w-[260px] rounded-ue-lg border border-[color:var(--glass-border)] bg-[color:var(--card-bg)] p-4 shadow-surface-strong"
                 style={{
                   top: filterAnchor.getBoundingClientRect().bottom + 8,
-                  left: Math.min(
-                    filterAnchor.getBoundingClientRect().left,
-                    window.innerWidth - 280
-                  ),
+                  right: window.innerWidth - filterAnchor.getBoundingClientRect().right,
                 }}
               >
                 <div className="space-y-4">

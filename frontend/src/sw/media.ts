@@ -1,6 +1,7 @@
 /// <reference lib="webworker" />
 declare const self: ServiceWorkerGlobalScope
 
+import { CacheableResponsePlugin } from "workbox-cacheable-response"
 import { ExpirationPlugin } from "workbox-expiration"
 import { registerRoute } from "workbox-routing"
 import { CacheFirst, StaleWhileRevalidate } from "workbox-strategies"
@@ -71,6 +72,9 @@ export function initMediaCaching() {
     new CacheFirst({
       cacheName: "image-cache",
       plugins: [
+        new CacheableResponsePlugin({
+          statuses: [0, 200],
+        }),
         new ExpirationPlugin({
           maxEntries: 200,
           maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days

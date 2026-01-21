@@ -113,17 +113,17 @@ export function ScheduleCard({
     }
   }
 
-  // Styles
-  const panelBase =
-    "group relative isolate overflow-hidden rounded-[2.4rem] border !border-[color:var(--dash-panel-border)] !bg-[color:var(--dash-panel-bg-muted)] text-page-foreground !shadow-[var(--dash-panel-shadow-soft)] transition-[transform,box-shadow] duration-[var(--dash-hover-duration)] ease-[var(--dash-hover-ease)]"
-  const panelHover =
-    "hover:-translate-y-[var(--dash-hover-lift)] hover:scale-[var(--dash-hover-scale)] hover:shadow-[var(--dash-panel-hover-shadow)] motion-reduce:hover:transform-none motion-reduce:hover:shadow-[var(--dash-panel-shadow)]"
   const listActionBase =
-    "group relative isolate w-full overflow-hidden rounded-ue-lg border border-[color:var(--dash-panel-item-divider)] bg-[color:var(--dash-panel-item-bg)] px-4 py-3 text-left transition-[background-color,transform,box-shadow,border-color] duration-[var(--dash-hover-duration)] ease-[var(--dash-hover-ease)] sm:px-5 sm:py-4 group-even/list:bg-[color:var(--dash-panel-item-bg-alt)] hover:border-[color:var(--dash-panel-item-ring)] hover:bg-[color:var(--dash-panel-item-hover)] hover:-translate-y-[var(--dash-hover-lift)] hover:scale-[var(--dash-hover-scale)] focus-visible:border-[color:var(--dash-panel-item-ring)] focus-visible:outline-none focus-visible:shadow-focus motion-reduce:hover:transform-none motion-reduce:hover:translate-y-0 motion-reduce:hover:scale-100 before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit] before:border before:border-[color:var(--dash-panel-item-ring)] before:opacity-0 before:scale-[0.96] before:transition-[transform,opacity,border-color] before:duration-[var(--dash-hover-duration)] before:ease-[var(--dash-hover-ease)] before:content-[''] hover:before:opacity-100 hover:before:scale-100"
+    "group relative isolate w-full overflow-hidden rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-left transition-all duration-300 ease-out hover:bg-white/10 hover:border-white/10 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-main/50"
 
   return (
     <Card
-      className={cn(panelBase, panelHover, "dash-panel-schedule", className)}
+      className={cn(
+        "group card-glass rounded-[2.4rem] transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
+        "hover:-translate-y-1 hover:scale-[1.02] hover:shadow-lg motion-reduce:hover:transform-none motion-reduce:hover:shadow-none",
+        "dash-panel-schedule",
+        className
+      )}
       padding="lg"
       aria-busy={loadingSched}
       style={style}
@@ -151,16 +151,18 @@ export function ScheduleCard({
         </div>
         {currentLesson && (
           <div>
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <Badge size="sm" tone="primary" label={t("dashboard:now")} />
-              <span className="text-base font-semibold text-page-foreground">
+            <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge size="sm" tone="primary" label={t("dashboard:now")} />
+                <Badge
+                  size="sm"
+                  className="border-primary-main/20 bg-primary-main/5 font-mono text-xs font-medium text-primary-main dark:bg-primary-main/10"
+                  label={`${fmtTime(currentLesson.start_time)}–${fmtTime(currentLesson.end_time)}`}
+                />
+              </div>
+              <span className="text-base font-semibold leading-tight text-page-foreground line-clamp-1">
                 {currentLesson.subject}
               </span>
-              <Badge
-                size="sm"
-                className="chip-time"
-                label={`${fmtTime(currentLesson.start_time)}–${fmtTime(currentLesson.end_time)}`}
-              />
             </div>
             <ProgressBar
               value={currentProgress}
@@ -170,21 +172,21 @@ export function ScheduleCard({
           </div>
         )}
         {!currentLesson && nextLesson && (
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge
-                size="sm"
-                variant="outline"
-                tone="primary"
-                className="font-bold uppercase tracking-wide"
-                label={t("dashboard:next")}
-              />
-              <span className="text-base font-semibold text-page-foreground">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Badge
+              size="sm"
+              variant="outline"
+              tone="primary"
+              className="self-start font-bold uppercase tracking-wide"
+              label={t("dashboard:next")}
+            />
+            <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+              <span className="text-base font-semibold leading-tight text-page-foreground truncate">
                 {nextLesson.subject}
               </span>
               <Badge
                 size="sm"
-                className="chip-time"
+                className="self-start border-primary-main/20 bg-primary-main/5 font-mono text-xs font-medium text-primary-main dark:bg-primary-main/10"
                 label={`${fmtTime(nextLesson.start_time)}–${fmtTime(nextLesson.end_time)}`}
               />
             </div>
@@ -212,33 +214,35 @@ export function ScheduleCard({
         {!loadingSched && todayLessons.length > 0 && (
           <ul className="space-y-3">
             {todayLessons.map((l) => (
-              <li key={l.id} className="dash-list-item">
+              <li key={l.id} className="dash-list-item px-0 py-0">
                 <div
                   className={cn(
                     listActionBase,
-                    "flex flex-col gap-2 text-left sm:gap-2.5",
+                    "flex flex-col gap-2 border-0 bg-transparent px-4 py-3 pb-4 hover:bg-white/5 sm:gap-2.5",
                     "cursor-default"
                   )}
                 >
-                  <div className="flex flex-wrap items-center gap-2 text-sm">
-                    <Badge
-                      size="sm"
-                      className="chip-time"
-                      label={`${fmtTime(l.start_time)}–${fmtTime(l.end_time)}`}
-                    />
-                    <span className="text-base font-semibold text-page-foreground">
+                  <div className="flex w-full items-start justify-between gap-3">
+                    <span className="text-base font-semibold leading-tight text-page-foreground line-clamp-2">
                       {l.subject}
                     </span>
                     <Badge
                       size="sm"
-                      className="chip-type"
+                      className="flex-shrink-0 border-primary-main/20 bg-primary-main/5 font-mono text-xs font-medium text-primary-main dark:bg-primary-main/10"
+                      label={`${fmtTime(l.start_time)}–${fmtTime(l.end_time)}`}
+                    />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-sm text-secondary">
+                    <Badge
+                      size="sm"
+                      className="border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
                       variant="outline"
                       label={l.lesson_type}
                     />
+                    <span className="truncate max-w-[150px] opacity-90">
+                      {t("dashboard:lessonMeta", { teacher: l.teacher, room: l.room })}
+                    </span>
                   </div>
-                  <p className="text-sm leading-relaxed text-secondary">
-                    {t("dashboard:lessonMeta", { teacher: l.teacher, room: l.room })}
-                  </p>
                 </div>
               </li>
             ))}

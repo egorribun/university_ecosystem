@@ -62,74 +62,23 @@
   }
 }
 
-@layer utilities {
-  @keyframes dash-colon-blink {
-    0%,
-    49.9% {
-      opacity: 1;
-    }
-
-    50%,
-    100% {
-      opacity: 0;
-    }
-  }
-
-  .animate-dash-colon-blink {
-    animation: dash-colon-blink 2s steps(2, start) infinite;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .animate-dash-colon-blink {
-      animation: none;
-    }
-  }
-}
-
 @layer components {
-  /* Component tokens
-     .card-glass   → Frosted surface using the glass palette + blur.
-     .btn-gradient → Primary CTA gradient button with hover lift.
-     .chip         → Compact pill badge for schedules/filters.
-     .skeleton     → Neutral loading shimmer wrapper.
-  */
+  /* Component tokens */
   .card-glass {
     @apply relative overflow-hidden rounded-ue-xl border border-glass-border bg-glass text-page-foreground shadow-glass backdrop-blur-md;
     isolation: isolate;
+  }
+
+  .shadow-glass-strong {
+    box-shadow:
+      0 12px 40px -4px rgba(0, 0, 0, 0.2),
+      0 4px 16px -2px rgba(0, 0, 0, 0.1);
   }
 
   .card-glass::before {
     content: "";
     @apply pointer-events-none absolute inset-0 bg-gradient-to-br from-glass-tint1 via-glass-tint2 to-glass-tint3 opacity-[0.88];
     z-index: -1;
-  }
-
-  /* High-fidelity sheen effect */
-  .card-glass::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    z-index: 10;
-    background: linear-gradient(
-      125deg,
-      rgba(255, 255, 255, 0.08) 0%,
-      rgba(255, 255, 255, 0.02) 40%,
-      rgba(255, 255, 255, 0) 50%,
-      rgba(255, 255, 255, 0) 100%
-    );
-    border-radius: inherit;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-  }
-
-  .dark .card-glass::after {
-    border-color: rgba(255, 255, 255, 0.06);
-    background: linear-gradient(
-      125deg,
-      rgba(255, 255, 255, 0.05) 0%,
-      rgba(255, 255, 255, 0.01) 40%,
-      transparent 50%
-    );
   }
 
   .btn-gradient {
@@ -380,6 +329,7 @@
       transform: none !important;
       filter: none !important;
       animation: none !important;
+      transition: none !important;
     }
 
     [data-page-fade] [data-fade] {
@@ -387,65 +337,12 @@
       transform: none !important;
       filter: none !important;
       animation: none !important;
-    }
-  }
-
-  /* Messenger — Telegram Style Components */
-  @keyframes msg-online-pulse {
-    0%,
-    100% {
-      box-shadow: 0 0 0 0 var(--msg-online-pulse);
-    }
-
-    50% {
-      box-shadow: 0 0 0 4px transparent;
-    }
-  }
-
-  @keyframes msg-typing {
-    0%,
-    60%,
-    100% {
-      opacity: 0.3;
-      transform: translateY(0);
-    }
-
-    30% {
-      opacity: 1;
-      transform: translateY(-4px);
-    }
-  }
-
-  @keyframes msg-bubble-in {
-    from {
-      opacity: 0;
-      transform: translateY(10px) scale(0.95);
-    }
-
-    to {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-    }
-  }
-
-  @keyframes msg-send-pulse {
-    0% {
-      transform: scale(1);
-    }
-
-    50% {
-      transform: scale(0.9);
-    }
-
-    100% {
-      transform: scale(1);
+      transition: none !important;
     }
   }
 
   .msg-online-indicator {
-    @apply w-3.5 h-3.5 rounded-full border-2 border-white;
-    background-color: var(--msg-online-color);
-    animation: msg-online-pulse 2s ease-in-out infinite;
+    @apply h-3.5 w-3.5 rounded-full border-2 border-white bg-[var(--msg-online-color)] animate-msg-online-pulse;
   }
 
   body.dark .msg-online-indicator {
@@ -453,9 +350,7 @@
   }
 
   .msg-typing-dot {
-    @apply w-2 h-2 rounded-full;
-    background-color: var(--msg-typing-dot);
-    animation: msg-typing 1.4s ease-in-out infinite;
+    @apply h-2 w-2 rounded-full bg-[var(--msg-typing-dot)] animate-msg-typing;
   }
 
   .msg-typing-dot:nth-child(2) {
@@ -469,18 +364,18 @@
   .msg-bubble-sent {
     background: linear-gradient(135deg, var(--msg-bubble-sent-start), var(--msg-bubble-sent-end));
     box-shadow: 0 1px 2px var(--msg-bubble-sent-shadow);
-    animation: msg-bubble-in 0.2s ease-out;
+    @apply animate-msg-bubble-in;
   }
 
   .msg-bubble-received {
     background: var(--msg-bubble-received-bg);
     border: 1px solid var(--msg-bubble-received-border);
     box-shadow: 0 1px 2px var(--msg-bubble-received-shadow);
-    animation: msg-bubble-in 0.2s ease-out;
+    @apply animate-msg-bubble-in;
   }
 
   .msg-send-active {
-    animation: msg-send-pulse 0.15s ease-out;
+    @apply animate-msg-send-pulse;
   }
 
   .msg-contact-item {
@@ -556,6 +451,47 @@
     .msg-bubble-received,
     .msg-send-active {
       animation: none !important;
+    }
+  }
+}
+
+@layer utilities {
+  .text-primary-main {
+    color: var(--color-primary-main);
+  }
+
+  /* Safe Area Utilities */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .min-h-safe {
+    min-height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  }
+
+  @keyframes dash-colon-blink {
+    0%,
+    49.9% {
+      opacity: 1;
+    }
+
+    50%,
+    100% {
+      opacity: 0;
+    }
+  }
+
+  .animate-dash-colon-blink {
+    animation: dash-colon-blink 2s steps(2, start) infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-dash-colon-blink {
+      animation: none;
     }
   }
 }

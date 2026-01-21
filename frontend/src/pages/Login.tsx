@@ -86,18 +86,16 @@ function suggestEmailDomain(email: string) {
 }
 
 const inputBaseClass =
-  "w-full rounded-[1.2rem] border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] " +
-  "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(255,255,255,0.94)_4%)] px-4 py-3 text-base font-medium " +
-  "text-[color:var(--page-text)] shadow-[0_10px_30px_rgba(15,23,42,0.08)] focus:border-[color:var(--nav-link)] " +
-  "focus:outline-none focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--nav-link)_20%,transparent)] " +
-  "placeholder:text-[color:color-mix(in_srgb,var(--placeholder-fg)_75%,transparent)] " +
-  "dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] " +
-  "dark:bg-[color:color-mix(in_srgb,var(--card-bg)_92%,rgba(10,18,32,0.94)_8%)]"
+  "w-full rounded-[1.2rem] border border-nav-link/10 bg-surface/95 px-4 py-3 text-base font-medium " +
+  "text-page-foreground shadow-[0_10px_30px_rgba(15,23,42,0.08)] transition-all duration-200 " +
+  "focus:border-nav-link focus:outline-none focus:ring-4 focus:ring-nav-link/20 " +
+  "placeholder:text-placeholder/75 " +
+  "dark:border-nav-link/10 dark:bg-surface/90"
 
 const badgeClass =
-  "inline-flex min-w-[160px] items-baseline justify-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--glass-border)_80%,transparent)] " +
-  "bg-[color:color-mix(in_srgb,var(--card-bg)_92%,rgba(255,255,255,0.12)_8%)] px-4 py-2 text-sm font-semibold " +
-  "text-[color:color-mix(in_srgb,var(--page-text)_90%,var(--nav-link)_10%)] shadow-[0_6px_20px_rgba(15,23,42,0.12)]"
+  "inline-flex min-w-[160px] items-baseline justify-center gap-2 rounded-full border border-glass-border/80 " +
+  "bg-surface/90 px-4 py-2 text-sm font-semibold " +
+  "text-page-foreground/90 shadow-[0_6px_20px_rgba(15,23,42,0.12)]"
 
 const Spinner = () => (
   <span
@@ -498,24 +496,24 @@ const Login = () => {
   }
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-[color:var(--page-bg)] text-[color:var(--page-text)]">
+    <div className="relative min-h-screen w-full overflow-hidden bg-page text-page-foreground">
       <ParticleAuthBackground />
       <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col items-center justify-center gap-10 px-4 py-12 sm:px-6 lg:px-8 lg:flex-row">
         <motion.div
           initial={{ x: -200 }}
           animate={{ x: 0 }}
           transition={{ duration: 0.5, ease: "easeOut" }}
-          className="w-full rounded-[2.4rem] border border-[color:color-mix(in_srgb,var(--glass-border)_80%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_94%,rgba(255,255,255,0.1)_6%)] p-8 shadow-[0_30px_90px_rgba(15,23,42,0.28)] backdrop-blur-3xl lg:p-12"
+          className="w-full rounded-[2.4rem] border border-glass-border/80 bg-surface/60 p-8 shadow-[0_30px_90px_rgba(15,23,42,0.28)] backdrop-blur-3xl lg:p-12"
         >
-          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-[color:color-mix(in_srgb,var(--page-text)_70%,var(--nav-link)_30%)]">
+          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-page-foreground/70">
             {t("auth:login.heroBadge", { defaultValue: "University Ecosystem" })}
           </p>
-          <h1 className="mt-4 text-4xl font-extrabold leading-tight text-[color:var(--page-text)] sm:text-5xl">
+          <h1 className="mt-4 text-4xl font-extrabold leading-tight text-page-foreground sm:text-5xl">
             {t("auth:login.heroHeading", {
               defaultValue: "Добро пожаловать в Экосистему Университета",
             })}
           </h1>
-          <p className="mt-4 text-lg leading-relaxed text-[color:color-mix(in_srgb,var(--page-text)_82%,var(--secondary-text)_18%)]">
+          <p className="mt-4 text-lg leading-relaxed text-secondary">
             {t("auth:login.heroDescription", {
               defaultValue:
                 "Расписание, новости, мероприятия и мессенджер — всё в одном месте для студентов и преподавателей.",
@@ -526,17 +524,15 @@ const Login = () => {
             {heroHighlights.map(({ icon: Icon, title, description }) => (
               <div
                 key={title}
-                className="group relative overflow-hidden rounded-3xl border border-[color:color-mix(in_srgb,var(--glass-border)_85%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(255,255,255,0.08)_4%)] px-5 py-6 shadow-[0_20px_50px_rgba(15,23,42,0.18)] transition-transform duration-300 hover:-translate-y-1"
+                className="group relative overflow-hidden rounded-3xl border border-glass-border/85 bg-surface/50 px-5 py-6 shadow-[0_20px_50px_rgba(15,23,42,0.18)] transition-transform duration-300 hover:-translate-y-1"
               >
                 <div className="flex items-center gap-3">
-                  <span className="flex size-12 items-center justify-center rounded-2xl bg-[color:color-mix(in_srgb,var(--nav-link)_15%,transparent)] text-[color:var(--nav-link)]">
+                  <span className="flex size-12 items-center justify-center rounded-2xl bg-nav-link/15 text-nav-link">
                     <Icon className="h-5 w-5" aria-hidden="true" />
                   </span>
                   <p className="text-base font-semibold">{title}</p>
                 </div>
-                <p className="mt-4 text-sm text-[color:color-mix(in_srgb,var(--page-text)_78%,var(--secondary-text)_22%)]">
-                  {description}
-                </p>
+                <p className="mt-4 text-sm text-secondary">{description}</p>
               </div>
             ))}
           </div>
@@ -544,7 +540,7 @@ const Login = () => {
           <div className="mt-10 flex flex-wrap gap-4">
             {statPills.map((pill, i) => (
               <div key={i} className={badgeClass.replace("items-baseline", "items-center")}>
-                <pill.icon className="mr-1 h-4 w-4 text-[color:var(--nav-link)]" strokeWidth={3} />
+                <pill.icon className="mr-1 h-4 w-4 text-nav-link" strokeWidth={3} />
                 <span className="text-xs font-extrabold uppercase tracking-[0.2em]">
                   {pill.value}
                 </span>
@@ -562,12 +558,12 @@ const Login = () => {
           initial={{ y: 200 }}
           animate={{ y: 0 }}
           transition={{ duration: 0.5, ease: "easeOut", delay: 0.2 }}
-          className="w-full max-w-xl rounded-[2.4rem] border border-[color:color-mix(in_srgb,var(--glass-border)_80%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_98%,rgba(255,255,255,0.12)_2%)] p-6 shadow-[0_30px_70px_rgba(15,23,42,0.3)] backdrop-blur-2xl sm:p-10"
+          className="w-full max-w-xl rounded-[2.4rem] border border-glass-border/80 bg-surface/80 p-6 shadow-[0_30px_70px_rgba(15,23,42,0.3)] backdrop-blur-2xl sm:p-10"
         >
           <form noValidate autoComplete="on" action={submitAction} className="flex flex-col gap-6">
             <div className="space-y-2 text-center">
               <h2 className="text-3xl font-extrabold">{t("auth:login.title")}</h2>
-              <p className="text-sm text-[color:color-mix(in_srgb,var(--page-text)_78%,var(--secondary-text)_22%)]">
+              <p className="text-sm text-secondary">
                 {t("auth:login.subtitle", {
                   defaultValue: "Войдите, чтобы продолжить путешествие по университету",
                 })}
@@ -575,10 +571,7 @@ const Login = () => {
             </div>
 
             <div className="space-y-2">
-              <label
-                htmlFor="username"
-                className="text-sm font-semibold text-[color:var(--page-text)]"
-              >
+              <label htmlFor="username" className="text-sm font-semibold text-page-foreground">
                 {t("auth:fields.email")}
               </label>
               <input
@@ -596,7 +589,7 @@ const Login = () => {
                 inputMode="email"
                 required
               />
-              <p className="text-xs text-[color:color-mix(in_srgb,var(--page-text)_70%,var(--secondary-text)_30%)]">
+              <p className="text-xs text-secondary/80">
                 {!emailValid ? t("auth:messages.invalidFormat") : " "}
               </p>
               {emailSuggestion ? (

@@ -169,23 +169,35 @@ class EndpointRateLimit:
 
 # Default endpoint-specific rate limits
 DEFAULT_ENDPOINT_LIMITS: tuple[EndpointRateLimit, ...] = (
-    # Auth endpoints - strictest limits
+    # Auth endpoints - strictest limits (security-critical)
     EndpointRateLimit("/api/v1/auth/login", 5, 60),
     EndpointRateLimit("/api/v1/auth/register", 5, 60),
     EndpointRateLimit("/api/v1/auth/password-reset", 3, 60),
     EndpointRateLimit("/api/v1/auth/mfa", 5, 60),
     EndpointRateLimit("/api/v1/auth/totp", 5, 60),
     EndpointRateLimit("/token", 5, 60),
-    # Upload endpoints
+    # User profile endpoints - frequently accessed during navigation
     EndpointRateLimit("/api/v1/users/me/avatar", 10, 60),
-    EndpointRateLimit("/api/v1/news/", 10, 60),
-    EndpointRateLimit("/api/v1/events/", 20, 60),
-    EndpointRateLimit("/api/v1/chat/", 30, 60),
+    EndpointRateLimit("/api/v1/users/me", 120, 60),
+    EndpointRateLimit("/api/v1/users/", 60, 60),
+    # Notifications - frequently polled during navigation
+    EndpointRateLimit("/api/v1/notifications/check-schedule", 60, 60),
+    EndpointRateLimit("/api/v1/notifications", 120, 60),
+    # Content endpoints - read-heavy, higher limits needed
+    # Note: more specific patterns must come first since matching uses startswith
+    EndpointRateLimit("/api/v1/news/", 120, 60),
+    EndpointRateLimit("/api/v1/events/", 120, 60),
+    EndpointRateLimit("/api/v1/chat/", 120, 60),
+    EndpointRateLimit("/api/v1/stories", 120, 60),
+    EndpointRateLimit("/api/v1/schedule", 120, 60),
+    EndpointRateLimit("/api/v1/interactions", 200, 60),
+    # Static content endpoints
+    EndpointRateLimit("/static/", 300, 60),
     # Admin endpoints
-    EndpointRateLimit("/api/v1/admin", 50, 60),
-    EndpointRateLimit("/api/internal", 100, 60),
+    EndpointRateLimit("/api/v1/admin", 100, 60),
+    EndpointRateLimit("/api/internal", 200, 60),
     # WebSocket
-    EndpointRateLimit("/ws", 30, 60),
+    EndpointRateLimit("/ws", 60, 60),
 )
 
 
@@ -195,7 +207,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         app,
         *,
         redis_url: str | None = None,
-        limit: int = 60,
+        limit: int = 120,
         window_seconds: int = 60,
         enabled: bool = True,
         headers_enabled: bool = True,

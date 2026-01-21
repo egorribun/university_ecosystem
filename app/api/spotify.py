@@ -1,5 +1,6 @@
 import base64
 import logging
+import os
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
 
@@ -229,6 +230,12 @@ async def _ensure_access_token(
 async def spotify_auth_url(user: User = Depends(get_current_user)):
     state_result = await create_access_token(str(user.id), expires_delta=10)
     state_token = state_result[0] if isinstance(state_result, tuple) else state_result
+    logger.error(
+        f"DEBUG: spotify_client_id from settings: '{settings.spotify_client_id}'"
+    )
+    logger.error(
+        f"DEBUG: env var SPOTIFY_CLIENT_ID: '{os.environ.get('SPOTIFY_CLIENT_ID')}'"
+    )
     params = {
         "client_id": settings.spotify_client_id,
         "response_type": "code",
@@ -238,6 +245,7 @@ async def spotify_auth_url(user: User = Depends(get_current_user)):
         "show_dialog": "false",
     }
     url = "https://accounts.spotify.com/authorize?" + urlencode(params)
+    logger.error(f"DEBUG: Generated URL: {url}")
     return {"url": url}
 
 

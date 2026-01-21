@@ -37,6 +37,47 @@ const config: Config = {
           DEFAULT: "var(--btn-bg)",
           border: "var(--btn-border)",
         },
+        badge: {
+          lec: "var(--badge-lec)",
+          prac: "var(--badge-prac)",
+          lab: "var(--badge-lab)",
+        },
+        table: {
+          header: "var(--table-header-bg)",
+          "row-hover": "var(--table-row-hover)",
+          "row-today": "var(--table-row-today)",
+        },
+        menu: {
+          hover: {
+            bg: "var(--menu-hover-bg)",
+            text: "var(--menu-hover-text)",
+          },
+        },
+        option: {
+          DEFAULT: "var(--option-bg)",
+          hover: "var(--option-hover-bg)",
+        },
+        msg: {
+          bubble: {
+            sent: {
+              start: "var(--msg-bubble-sent-start)",
+              end: "var(--msg-bubble-sent-end)",
+            },
+            received: {
+              bg: "var(--msg-bubble-received-bg)",
+              border: "var(--msg-bubble-received-border)",
+            },
+          },
+          sidebar: {
+            bg: "var(--msg-sidebar-bg)",
+            active: "var(--msg-sidebar-active)",
+            hover: "var(--msg-sidebar-hover)",
+          },
+          input: {
+            bg: "var(--msg-input-bg)",
+            border: "var(--msg-input-border)",
+          },
+        },
         secondary: "var(--secondary-text)",
         glass: {
           DEFAULT: "var(--glass-bg)",
@@ -77,6 +118,7 @@ const config: Config = {
         focus: "var(--shadow-focus)",
         "focus-ring": "var(--ue-focus-ring)",
         glass: "var(--glass-shadow)",
+        option: "var(--option-shadow)",
       },
       borderRadius: {
         surface: "var(--radius-md)",
@@ -134,6 +176,23 @@ const config: Config = {
           "70%": { transform: "scale(1.8)", opacity: "0" },
           "100%": { transform: "scale(1.8)", opacity: "0" },
         },
+        "msg-online-pulse": {
+          "0%, 100%": { boxShadow: "0 0 0 0 var(--msg-online-pulse)" },
+          "50%": { boxShadow: "0 0 0 4px transparent" },
+        },
+        "msg-typing": {
+          "0%, 60%, 100%": { opacity: "0.3", transform: "translateY(0)" },
+          "30%": { opacity: "1", transform: "translateY(-4px)" },
+        },
+        "msg-bubble-in": {
+          from: { opacity: "0", transform: "translateY(10px) scale(0.95)" },
+          to: { opacity: "1", transform: "translateY(0) scale(1)" },
+        },
+        "msg-send-pulse": {
+          "0%": { transform: "scale(1)" },
+          "50%": { transform: "scale(0.9)" },
+          "100%": { transform: "scale(1)" },
+        },
       },
       animation: {
         "fade-in": "fade-in var(--anim-med, 0.3s cubic-bezier(0.42, 0, 0.58, 1)) both",
@@ -142,6 +201,10 @@ const config: Config = {
         "aura-pulse": "aura-pulse 14s ease-in-out infinite",
         "chip-highlight": "chip-highlight 12s ease-in-out infinite",
         "online-pulse": "online-pulse 1.8s ease-in-out infinite",
+        "msg-online-pulse": "msg-online-pulse 2s ease-in-out infinite",
+        "msg-typing": "msg-typing 1.4s ease-in-out infinite",
+        "msg-bubble-in": "msg-bubble-in 0.2s ease-out",
+        "msg-send-pulse": "msg-send-pulse 0.15s ease-out",
       },
     },
   },

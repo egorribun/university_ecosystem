@@ -484,7 +484,7 @@ export default function NewsDetail() {
 
   return (
     <Layout>
-      <div className="flex w-full flex-col gap-8 px-4 pb-16 pt-5 sm:px-6 lg:px-8">
+      <div className="flex w-full flex-col gap-6 px-4 pb-16 pt-4 sm:gap-8 sm:px-6 sm:pt-6 lg:px-8">
         <Button
           variant="outline"
           onClick={handleBack}

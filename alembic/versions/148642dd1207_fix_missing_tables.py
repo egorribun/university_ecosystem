@@ -67,6 +67,7 @@ def ensure_partitioned(table_name: str, create_sql: str, partition_key: str) -> 
         return
 
     # Table exists but is not partitioned. We must convert it.
+    op.execute(f"DROP TABLE IF EXISTS {table_name}_old CASCADE")
     op.execute(f"ALTER TABLE {table_name} RENAME TO {table_name}_old")
     op.execute(create_sql)
 
@@ -1064,7 +1065,8 @@ def downgrade() -> None:
                 batch_op.drop_index(batch_op.f("ix_event_attendance_event_id"))
         op.drop_table("event_attendance")
 
-    op.drop_table("attachments")
+    if inspector.has_table("attachments"):
+        op.drop_table("attachments")
 
     if inspector.has_table("webauthn_credentials"):
         existing_wc_indexes = {
@@ -1077,7 +1079,8 @@ def downgrade() -> None:
                 batch_op.drop_index(batch_op.f("ix_webauthn_credentials_credential_id"))
         op.drop_table("webauthn_credentials")
 
-    op.drop_table("user_preferences")
+    if inspector.has_table("user_preferences"):
+        op.drop_table("user_preferences")
 
     if inspector.has_table("trusted_devices"):
         existing_td_indexes = {
@@ -1181,7 +1184,8 @@ def downgrade() -> None:
                 batch_op.drop_index(batch_op.f("ix_news_comments_news_id"))
         op.drop_table("news_comments")
 
-    op.drop_table("messages")
+    if inspector.has_table("messages"):
+        op.drop_table("messages")
 
     if inspector.has_table("invite_codes"):
         existing_ic_indexes = {i["name"] for i in inspector.get_indexes("invite_codes")}
@@ -1250,7 +1254,8 @@ def downgrade() -> None:
 
         op.drop_table("data_access_logs")
 
-    op.drop_table("chat_participants")
+    if inspector.has_table("chat_participants"):
+        op.drop_table("chat_participants")
 
     if inspector.has_table("schedule"):
         existing_s_indexes = {i["name"] for i in inspector.get_indexes("schedule")}
@@ -1276,7 +1281,8 @@ def downgrade() -> None:
                 batch_op.drop_index(batch_op.f("ix_news_created_at"))
         op.drop_table("news")
 
-    op.drop_table("chats")
+    if inspector.has_table("chats"):
+        op.drop_table("chats")
 
     # ALTER PERSISTENT TABLES AFTER DROPPING DEPENDENCIES
     with safe_batch_alter_table("users", schema=None) as batch_op:

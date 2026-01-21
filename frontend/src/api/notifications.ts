@@ -129,7 +129,7 @@ export async function sendTest(): Promise<SendTestNotificationResponse> {
 
 export async function getVapidPublicKey(): Promise<string | null> {
   const { data } = await apiClient.get("/api/v1/push/vapid-public-key")
-  const schema = z.object({ publicKey: z.string().trim().min(1).optional() })
+  const schema = z.object({ publicKey: z.string().nullable().optional() })
   const parsed = ensureValidResponse(schema, data, "GET /api/v1/push/vapid-public-key")
   const normalized = parsed.publicKey?.trim()
   return normalized && normalized.length > 0 ? normalized : null
