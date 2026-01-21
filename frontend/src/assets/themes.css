@@ -222,15 +222,15 @@ body.dark {
   --msg-bubble-sent-shadow: rgba(0, 0, 0, 0.3);
   --msg-bubble-received-bg: #1e293b;
   --msg-bubble-received-border: #334155;
-  --msg-bubble-received-shadow: rgba(0,0,0,0.2);
+  --msg-bubble-received-shadow: rgba(0, 0, 0, 0.2);
   --msg-sidebar-bg: #020617;
   --msg-sidebar-active: #3b82f6;
   --msg-header-bg: rgba(15, 23, 42, 0.9);
 
   /* iOS Dark Override */
-  --ios-card-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  --ios-card-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
   --ios-glass-bg: rgba(15, 23, 42, 0.75);
-  --ios-glass-border: rgba(255,255,255,0.08);
+  --ios-glass-border: rgba(255, 255, 255, 0.08);
 }
 
 ::selection {
@@ -266,8 +266,6 @@ button:not(.MuiButtonBase-root),
   min-height: 44px;
   min-width: 44px;
 }
-
-
 
 button:not(.MuiButtonBase-root),
 .menu-link,
@@ -892,8 +890,6 @@ body.dark .menu-link:not(.logout):focus {
   box-shadow: 0 2px 12px #0002;
 }
 
-
-
 body.dark .MuiChip-outlined {
   border-color: #223349 !important;
   color: #eaf4ff !important;
@@ -1080,8 +1076,6 @@ body.dark .navbar-root {
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.28);
 }
 
-
-
 body,
 html {
   overflow-x: hidden;
@@ -1175,7 +1169,6 @@ body:not(.dark) .menu-btn-settings:focus-visible {
     z-index: 2;
   }
 }
-
 
 .menu-btn-settings.mobile {
   display: flex !important;
@@ -1614,8 +1607,6 @@ body.dark {
   --glass-tint-2: rgba(255, 255, 255, 0.02);
   --glass-tint-3: rgba(255, 255, 255, 0.01);
 }
-
-
 
 .glass:not(.map-head) {
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%) contrast(1.03) brightness(1.01);
