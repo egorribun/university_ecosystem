@@ -62,37 +62,10 @@
   }
 }
 
-@layer utilities {
-  @keyframes dash-colon-blink {
-    0%,
-    49.9% {
-      opacity: 1;
-    }
 
-    50%,
-    100% {
-      opacity: 0;
-    }
-  }
-
-  .animate-dash-colon-blink {
-    animation: dash-colon-blink 2s steps(2, start) infinite;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .animate-dash-colon-blink {
-      animation: none;
-    }
-  }
-}
 
 @layer components {
-  /* Component tokens
-     .card-glass   → Frosted surface using the glass palette + blur.
-     .btn-gradient → Primary CTA gradient button with hover lift.
-     .chip         → Compact pill badge for schedules/filters.
-     .skeleton     → Neutral loading shimmer wrapper.
-  */
+  /* Component tokens */
   .card-glass {
     @apply relative overflow-hidden rounded-ue-xl border border-glass-border bg-glass text-page-foreground shadow-glass backdrop-blur-md;
     isolation: isolate;
@@ -370,62 +343,8 @@
     }
   }
 
-  /* Messenger — Telegram Style Components */
-  @keyframes msg-online-pulse {
-    0%,
-    100% {
-      box-shadow: 0 0 0 0 var(--msg-online-pulse);
-    }
-
-    50% {
-      box-shadow: 0 0 0 4px transparent;
-    }
-  }
-
-  @keyframes msg-typing {
-    0%,
-    60%,
-    100% {
-      opacity: 0.3;
-      transform: translateY(0);
-    }
-
-    30% {
-      opacity: 1;
-      transform: translateY(-4px);
-    }
-  }
-
-  @keyframes msg-bubble-in {
-    from {
-      opacity: 0;
-      transform: translateY(10px) scale(0.95);
-    }
-
-    to {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-    }
-  }
-
-  @keyframes msg-send-pulse {
-    0% {
-      transform: scale(1);
-    }
-
-    50% {
-      transform: scale(0.9);
-    }
-
-    100% {
-      transform: scale(1);
-    }
-  }
-
   .msg-online-indicator {
-    @apply w-3.5 h-3.5 rounded-full border-2 border-white;
-    background-color: var(--msg-online-color);
-    animation: msg-online-pulse 2s ease-in-out infinite;
+    @apply h-3.5 w-3.5 rounded-full border-2 border-white bg-[var(--msg-online-color)] animate-msg-online-pulse;
   }
 
   body.dark .msg-online-indicator {
@@ -433,9 +352,7 @@
   }
 
   .msg-typing-dot {
-    @apply w-2 h-2 rounded-full;
-    background-color: var(--msg-typing-dot);
-    animation: msg-typing 1.4s ease-in-out infinite;
+    @apply h-2 w-2 rounded-full bg-[var(--msg-typing-dot)] animate-msg-typing;
   }
 
   .msg-typing-dot:nth-child(2) {
@@ -449,18 +366,18 @@
   .msg-bubble-sent {
     background: linear-gradient(135deg, var(--msg-bubble-sent-start), var(--msg-bubble-sent-end));
     box-shadow: 0 1px 2px var(--msg-bubble-sent-shadow);
-    animation: msg-bubble-in 0.2s ease-out;
+    @apply animate-msg-bubble-in;
   }
 
   .msg-bubble-received {
     background: var(--msg-bubble-received-bg);
     border: 1px solid var(--msg-bubble-received-border);
     box-shadow: 0 1px 2px var(--msg-bubble-received-shadow);
-    animation: msg-bubble-in 0.2s ease-out;
+    @apply animate-msg-bubble-in;
   }
 
   .msg-send-active {
-    animation: msg-send-pulse 0.15s ease-out;
+    @apply animate-msg-send-pulse;
   }
 
   .msg-contact-item {
@@ -538,86 +455,6 @@
       animation: none !important;
     }
   }
-
-  /* Mobile Bottom Navigation */
-  .bottom-nav {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 50;
-    display: flex;
-    align-items: center;
-    justify-content: space-around;
-
-    border-top: 1px solid var(--glass-border);
-    /* Manually apply glass effect to avoid @apply parser issues */
-    background-color: rgba(25, 30, 45, 0.85); /* Fallback */
-    background-color: color-mix(in srgb, var(--glass-bg) 85%, transparent);
-    backdrop-filter: blur(12px);
-
-    padding-left: 0.5rem;
-    padding-right: 0.5rem;
-    transition: transform 300ms;
-
-    height: var(--bn-h);
-    padding-bottom: 20px;
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-
-  .bottom-nav__item {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    align-items: center;
-    justify-content: center;
-    gap: 0.25rem;
-    border-radius: 0.75rem;
-    padding-top: 0.25rem;
-    padding-bottom: 0.25rem;
-    color: var(--secondary-text);
-    transition: color 200ms;
-    height: 100%;
-    min-width: 44px;
-  }
-
-  .bottom-nav__item.active {
-    color: var(--color-primary-main);
-    font-weight: 600;
-  }
-
-  .bottom-nav__icon {
-    position: relative;
-    transition: transform 200ms;
-  }
-
-  .bottom-nav__item.active .bottom-nav__icon {
-    transform: translateY(-2px);
-  }
-
-  .bottom-nav__label {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    transition: opacity 200ms;
-  }
-
-  .bottom-nav__item:not(.active) .bottom-nav__label {
-    opacity: 0.7;
-  }
-
-  .bottom-nav-spacer {
-    height: var(--bn-h);
-    margin-bottom: 0px;
-    margin-bottom: env(safe-area-inset-bottom);
-  }
-
-  @media (min-width: 768px) {
-    .bottom-nav,
-    .bottom-nav-spacer {
-      display: none;
-    }
-  }
 }
 
 @layer utilities {
@@ -636,5 +473,27 @@
 
   .min-h-safe {
     min-height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  }
+
+  @keyframes dash-colon-blink {
+    0%,
+    49.9% {
+      opacity: 1;
+    }
+
+    50%,
+    100% {
+      opacity: 0;
+    }
+  }
+
+  .animate-dash-colon-blink {
+    animation: dash-colon-blink 2s steps(2, start) infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-dash-colon-blink {
+      animation: none;
+    }
   }
 }

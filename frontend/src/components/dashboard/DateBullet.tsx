@@ -28,8 +28,8 @@ export function DateBullet({ date, locale }: DateBulletProps) {
       <span
         aria-label={t("ariaDatePublished", { date: full })}
         className={cn(
-          "chip-time flex h-11 w-11 min-h-11 min-w-11 flex-col items-center justify-center rounded-full text-[color:var(--dash-chip-time-text)]",
-          "shadow-[var(--dash-date-shadow)]"
+          "flex h-11 w-11 min-h-11 min-w-11 flex-col items-center justify-center rounded-full border border-primary-main/20 bg-primary-main/5 text-primary-main shadow-sm dark:bg-primary-main/10",
+          "shadow-sm"
         )}
       >
         <span className="text-[0.85rem] font-black leading-none tracking-tight">{dd}</span>

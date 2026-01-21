@@ -106,11 +106,6 @@ export default function Dashboard() {
 
   const showHeaderMotion = !prefersReducedMotion && !isNarrow
 
-  const panelBase =
-    "group card-glass rounded-[2.4rem] transition-[transform,box-shadow] duration-[var(--dash-hover-duration)] ease-[var(--dash-hover-ease)]"
-  const panelHover =
-    "hover:-translate-y-[var(--dash-hover-lift)] hover:scale-[var(--dash-hover-scale)] hover:shadow-[var(--dash-panel-hover-shadow)] motion-reduce:hover:transform-none motion-reduce:hover:shadow-[var(--dash-panel-shadow)]"
-
   if (authLoading) {
     return (
       <Layout>
@@ -134,8 +129,8 @@ export default function Dashboard() {
               data-pop="true"
               style={fadeDelayStyle("40ms")}
               className={cn(
-                panelBase,
-                panelHover,
+                "group card-glass rounded-[2.4rem] transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
+                "hover:-translate-y-1 hover:scale-[1.01] hover:shadow-xl motion-reduce:hover:transform-none motion-reduce:hover:shadow-none",
                 "p-6 md:p-9 focus-within:shadow-focus focus-visible:outline-none focus-visible:shadow-focus",
                 headerGradientClass
               )}
@@ -176,7 +171,7 @@ export default function Dashboard() {
                   >
                     <Badge
                       size="sm"
-                      className="chip-clock flex-shrink-0 font-mono text-base"
+                      className="flex-shrink-0 border-slate-200 bg-slate-100 font-mono text-base text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
                       aria-label={t("common:ariaCurrentTime")}
                     >
                       <span className="flex items-baseline gap-1 font-mono text-lg leading-none">
