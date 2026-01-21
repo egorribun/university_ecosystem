@@ -38,10 +38,17 @@ def upgrade() -> None:
     if is_postgres:
         op.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS ck_users_role_valid")
     else:
-        # For SQLite/others, we use batch mode if possible,
-        # but naming is less consistent
-        with op.batch_alter_table("users") as batch_op:
-            batch_op.drop_constraint("ck_users_role_valid", type_="check")
+        # For SQLite/others, we check if it exists first
+        from sqlalchemy import inspect
+
+        inspector = inspect(conn)
+        constraints = [
+            c["name"] for c in inspector.get_check_constraints("users") if c["name"]
+        ]
+
+        if "ck_users_role_valid" in constraints:
+            with op.batch_alter_table("users") as batch_op:
+                batch_op.drop_constraint("ck_users_role_valid", type_="check")
 
 
 def downgrade() -> None:
