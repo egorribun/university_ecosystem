@@ -107,8 +107,10 @@ async def record_enqueue_failure(
 
 
 async def wait_for_all_jobs(timeout: float = 1.0) -> None:
-    """No-op stub for waiting for jobs."""
-    pass
+    """Wait for all taskiq jobs to complete."""
+    from app.core.tkq import tracking_middleware
+
+    await tracking_middleware.wait_for_tasks(timeout=timeout)
 
 
 async def reset_testing_state() -> None:

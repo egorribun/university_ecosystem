@@ -115,32 +115,37 @@ export default function NotificationsBell() {
 
   return (
     <>
-      <button
+      <motion.button
         ref={buttonRef}
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          "relative rounded-xl transition-all duration-300 outline-none group flex items-center justify-center",
-          "w-[clamp(24px,6vw,36px)] h-[clamp(24px,6vw,36px)]",
+          "relative flex items-center justify-center rounded-xl transition-all duration-300 outline-none group",
+          "w-[clamp(32px,7vw,40px)] h-[clamp(32px,7vw,40px)] border border-transparent",
           isOpen
-            ? "bg-white/10 text-white shadow-[0_0_20px_rgba(255,255,255,0.1)]"
-            : "hover:bg-white/5 text-white/80 hover:text-white"
+            ? "bg-[var(--nav-link-active-bg)] border-[var(--glass-border)] shadow-sm"
+            : "hover:bg-[var(--glass-tint-2)] hover:border-[var(--glass-border)]"
         )}
+        style={{
+          color: isOpen ? "var(--nav-link)" : "var(--nav-text)",
+        }}
         aria-label={t("system:notificationsBell.open")}
       >
         <Bell
           className={cn(
-            "w-[clamp(16px,4vw,24px)] h-[clamp(16px,4vw,24px)] transition-transform duration-500",
+            "w-[clamp(18px,4.5vw,22px)] h-[clamp(18px,4.5vw,22px)] transition-transform duration-500",
             isOpen && "rotate-[-10deg]"
           )}
-          strokeWidth={1.5}
+          strokeWidth={1.8}
         />
         {unreadCount ? (
-          <span className="absolute top-0 right-0 flex h-[clamp(6px,1.5vw,10px)] w-[clamp(6px,1.5vw,10px)]">
+          <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-full w-full bg-red-500 border border-[#0F172A]"></span>
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500 border-2 border-white dark:border-[#0F172A]"></span>
           </span>
         ) : null}
-      </button>
+      </motion.button>
 
       {createPortal(
         <AnimatePresence>

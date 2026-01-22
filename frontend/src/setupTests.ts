@@ -60,6 +60,18 @@ if (!("matchMedia" in window)) {
     }),
   })
 }
+
+if (!("IntersectionObserver" in window)) {
+  Object.defineProperty(window, "IntersectionObserver", {
+    writable: true,
+    value: class {
+      constructor() {}
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  })
+}
 type ScrollToFunction = (options?: ScrollToOptions | number, y?: number) => void
 const windowWithScroll = window as typeof window & { scrollTo?: ScrollToFunction }
 if (!windowWithScroll.scrollTo) {

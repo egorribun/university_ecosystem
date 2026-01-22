@@ -77,7 +77,7 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
   const scopedEvents = eventsScope === "today" ? todayEvents : weekEvents
 
   const listActionBase =
-    "group relative isolate w-full overflow-hidden rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-left transition-all duration-300 ease-out hover:bg-white/10 hover:border-white/10 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-main/50"
+    "group relative isolate w-full overflow-hidden rounded-xl border border-[color:var(--dash-panel-item-divider)] bg-[color:var(--dash-panel-item-bg)] px-4 py-3 text-left transition-all duration-300 ease-out hover:bg-[color:var(--dash-panel-item-bg-hover)] hover:border-[color:var(--dash-panel-item-divider)] hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-main/50"
 
   return (
     <Card

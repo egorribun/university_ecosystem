@@ -16,6 +16,15 @@ import { getNavigationConfig } from "@/config/navigation"
 import SettingsIcon from "@mui/icons-material/Settings"
 import { cn } from "@/utils/cn"
 import { MobileMenu } from "@/components/navbar/MobileMenu"
+import { motion, useScroll, useMotionValueEvent } from "framer-motion"
+import {
+  hoverLift,
+  springSoft,
+  springBouncy,
+  staggerContainerVariants,
+  slideUpVariants,
+  hoverScale,
+} from "@/utils/animations"
 
 const AVATAR_FALLBACK = AVATAR_PLACEHOLDER_URL
 
@@ -36,10 +45,17 @@ const Navbar = () => {
   const pathname = location.pathname
   const { user, isAuth, loading } = useAuth()
   const { t } = useTranslation(["navigation"])
-  const { setOverlayState } = useAppShell()
 
   const [mobileMenu, setMobileMenu] = useState(false)
+  const [isScrolled, setIsScrolled] = useState(false)
 
+  const { scrollY } = useScroll()
+  useMotionValueEvent(scrollY, "change", (latest) => {
+    const scrolled = latest > 20
+    if (scrolled !== isScrolled) setIsScrolled(scrolled)
+  })
+
+  // Disable "scrolled" state on mobile to avoid layout shifts or too much blur
   const isMobile = useMediaQuery("(max-width: 1350px)")
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const { scrollToTop, markScrollFromBottom, isSamePath } = useScrollRestoration(location.pathname)
@@ -60,25 +76,6 @@ const Navbar = () => {
     setMobileMenu(false)
   }, [location.pathname])
 
-  useEffect(() => {
-    if (mobileMenu && isMobile) {
-      setOverlayState("mobile-drawer", {
-        scrollLocked: true,
-        blurred: !prefersReducedMotion,
-      })
-    } else {
-      setOverlayState("mobile-drawer", null)
-    }
-    return () => {
-      setOverlayState("mobile-drawer", null)
-    }
-  }, [isMobile, mobileMenu, prefersReducedMotion, setOverlayState])
-
-  useEffect(() => {
-    if (prefersReducedMotion) return
-    navRef.current?.classList.add("navbar-animate-in")
-  }, [prefersReducedMotion])
-
   const avatarCacheV = useMemo(() => {
     const raw =
       (user as any)?.avatar_updated_at ??
@@ -89,7 +86,6 @@ const Navbar = () => {
   }, [user])
 
   const avatarFallback = AVATAR_FALLBACK
-
   const avatarSource = user?.avatar_url || ""
   const hasAvatar = Boolean(avatarSource)
 
@@ -126,25 +122,34 @@ const Navbar = () => {
     [isSameTarget, markScrollFromBottom, navigate, prefersReducedMotion, scrollToTop]
   )
 
-  const avatarSize = isMobile ? "clamp(32px, 8vw, 36px)" : "36px"
-
   return (
     <>
-      <nav
+      <motion.nav
         ref={navRef}
+        initial={{ y: -100, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
         className={cn(
-          "navbar-root sticky top-[env(safe-area-inset-top,0px)] z-[var(--ue-z-index-nav)] w-full overflow-x-hidden flex flex-col justify-center",
-          isMobile ? "min-h-[56px]" : "min-h-[64px]",
-          prefersReducedMotion && "transition-none animate-none"
+          "navbar-root navbar-forced-white sticky top-0 z-[var(--ue-z-index-nav)] w-full flex flex-col justify-center",
+          "border-b border-[var(--glass-border)] transition-all",
+          isScrolled
+            ? "bg-[var(--glass-bg)] shadow-glass backdrop-blur-[var(--glass-blur)] py-2"
+            : "bg-transparent py-4",
+          "min-h-[64px] items-center",
+          prefersReducedMotion && "transition-none"
         )}
+        style={{
+          transitionDuration: "800ms",
+          transitionTimingFunction: "var(--ease-premium, cubic-bezier(0.16, 1, 0.3, 1))",
+        }}
       >
-        <div className="flex h-full w-full items-center px-[clamp(8px,2vw,16px)] box-border">
+        <div className="flex h-full w-full items-center px-[clamp(16px,5vw,48px)] box-border">
           <Link
             to="/dashboard"
             aria-label={t("navigation:aria.homeLink")}
             className={cn(
-              "brand inline-flex min-w-0 items-center rounded-xl p-1.5 no-underline",
-              isMobile ? "gap-2" : "gap-2.5"
+              "brand inline-flex min-w-0 items-center rounded-2xl px-3 py-1.5 no-underline group transition-all duration-300 hover:bg-[var(--glass-tint-1)]",
+              isMobile ? "gap-2.5" : "gap-4"
             )}
             onPointerDown={markScrollFromBottom}
             onClick={(e) => {
@@ -154,58 +159,70 @@ const Navbar = () => {
               }
             }}
           >
-            <div className="flex items-center justify-center shrink-0 rounded-full bg-white shadow-[0_0_8px_rgba(0,0,0,0.13)] w-[clamp(32px,8vw,52px)] h-[clamp(32px,8vw,52px)]">
+            <motion.div
+              variants={hoverScale}
+              whileHover="hover"
+              whileTap="tap"
+              className="flex items-center justify-center shrink-0 rounded-full bg-white shadow-md w-[clamp(32px,7vw,42px)] h-[clamp(32px,7vw,42px)] border border-white/60"
+            >
               <SmartImage
                 srcRaw={guuLogo}
                 alt={t("navigation:brandAlt")}
-                className="object-contain w-[clamp(24px,6.5vw,42px)] h-[clamp(24px,6.5vw,42px)]"
+                className="object-contain w-[65%] h-[65%]"
                 loading="eager"
                 fetchPriority="high"
-                sizes="(min-width: 1351px) 42px, (min-width: 768px) 34px, 24px"
-                responsiveWidths={[28, 36, 48, 64]}
+                sizes="(min-width: 1351px) 44px, (min-width: 768px) 36px, 26px"
+                responsiveWidths={[28, 48, 64]}
                 decoding="async"
               />
+            </motion.div>
+            <div className="flex flex-col justify-center">
+              <span
+                className="whitespace-nowrap font-black tracking-tight text-[clamp(14px,3.5vw,18px)] group-hover:opacity-80 transition-all duration-300 leading-tight"
+                style={{ color: "var(--nav-text)" }}
+              >
+                {t("navigation:brandName")}
+              </span>
             </div>
-            <span className="whitespace-nowrap font-extrabold tracking-wide text-white text-[clamp(13px,3.5vw,22px)]">
-              {t("navigation:brandName")}
-            </span>
           </Link>
 
           {isMobile ? (
-            <div className="ml-auto flex items-center gap-[clamp(10px,3vw,20px)]">
+            <div className="ml-auto flex items-center gap-[clamp(12px,3vw,24px)]">
               <MessengerButton />
               <NotificationsBell />
               {isAuth && user && !loading ? (
-                <SmartImage
-                  srcRaw={hasAvatar ? avatarSource : avatarFallback}
-                  cacheV={hasAvatar ? avatarCacheV : undefined}
-                  fallback={avatarFallback}
-                  alt={profileAlt}
-                  title={profileTitle}
-                  className="block cursor-pointer rounded-full border border-[#d7d7d7] bg-white object-cover w-[clamp(24px,6vw,36px)] h-[clamp(24px,6vw,36px)] shrink-0"
-                  onClick={() => go("/profile")}
-                />
+                <motion.div whileTap={{ scale: 0.95 }} transition={springSoft}>
+                  <SmartImage
+                    srcRaw={hasAvatar ? avatarSource : avatarFallback}
+                    cacheV={hasAvatar ? avatarCacheV : undefined}
+                    fallback={avatarFallback}
+                    alt={profileAlt}
+                    title={profileTitle}
+                    className="block cursor-pointer rounded-full border-2 border-white/50 shadow-sm object-cover w-[clamp(28px,6vw,40px)] h-[clamp(28px,6vw,40px)] shrink-0"
+                    onClick={() => go("/profile")}
+                  />
+                </motion.div>
               ) : (
                 <Skeleton
                   variant="circular"
                   sx={{
                     bgcolor: "rgba(255,255,255,0.32)",
-                    width: "clamp(24px, 6vw, 36px)",
-                    height: "clamp(24px, 6vw, 36px)",
+                    width: "clamp(28px, 6vw, 40px)",
+                    height: "clamp(28px, 6vw, 40px)",
                   }}
                   aria-hidden="true"
                   className="shrink-0"
                 />
               )}
-              <button
+              <motion.button
+                whileTap={{ scale: 0.9 }}
+                transition={springSoft}
                 type="button"
-                className="flex shrink-0 cursor-pointer items-center justify-center rounded-xl border border-white/18 bg-gradient-to-b from-white/12 to-white/5 p-0 text-white/92 shadow-[inset_0_1px_0_rgba(255,255,255,0.24)] backdrop-blur-md backdrop-saturate-150"
+                className="flex shrink-0 cursor-pointer items-center justify-center rounded-2xl border border-[var(--glass-border)] bg-[var(--glass-tint2)] p-0 shadow-sm backdrop-blur-md transition-all duration-300 hover:bg-[var(--glass-tint1)]"
                 style={{
-                  width: "clamp(24px, 6vw, 36px)",
-                  height: "clamp(24px, 6vw, 36px)",
-                  minWidth: "clamp(24px, 6vw, 36px)",
-                  minHeight: "clamp(24px, 6vw, 36px)",
-                  marginLeft: "clamp(6px, 1.5vw, 10px)",
+                  width: "clamp(36px, 8vw, 44px)",
+                  height: "clamp(36px, 8vw, 44px)",
+                  color: "var(--nav-text)",
                 }}
                 onClick={() => setMobileMenu((v) => !v)}
                 aria-label={
@@ -219,59 +236,63 @@ const Navbar = () => {
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
-                  strokeWidth="2"
+                  strokeWidth="2.5"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   aria-hidden="true"
-                  className="overflow-visible stroke-white w-[clamp(16px,4vw,24px)] h-[clamp(16px,4vw,24px)]"
+                  className="overflow-visible stroke-[var(--nav-text)] w-[20px] h-[20px]"
                 >
-                  <line
+                  <motion.line
                     x1="4"
                     y1="8"
                     x2="20"
                     y2="8"
-                    style={{
-                      transformOrigin: "12px 8px",
-                      transform: mobileMenu
-                        ? "translateY(4px) rotate(45deg)"
-                        : "translateY(0) rotate(0)",
-                      transition: "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                    animate={{
+                      y: mobileMenu ? 4 : 0,
+                      rotate: mobileMenu ? 45 : 0,
                     }}
+                    transition={springSoft}
                   />
-                  <line
+                  <motion.line
                     x1="4"
                     y1="12"
                     x2="20"
                     y2="12"
-                    style={{
-                      opacity: mobileMenu ? 0 : 1,
-                      transition: "opacity 0.2s ease-in-out",
-                    }}
+                    animate={{ opacity: mobileMenu ? 0 : 1 }}
+                    transition={{ duration: 0.2 }}
                   />
-                  <line
+                  <motion.line
                     x1="4"
                     y1="16"
                     x2="20"
                     y2="16"
-                    style={{
-                      transformOrigin: "12px 16px",
-                      transform: mobileMenu
-                        ? "translateY(-4px) rotate(-45deg)"
-                        : "translateY(0) rotate(0)",
-                      transition: "transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                    animate={{
+                      y: mobileMenu ? -4 : 0,
+                      rotate: mobileMenu ? -45 : 0,
                     }}
+                    transition={springSoft}
                   />
                 </svg>
-              </button>
+              </motion.button>
             </div>
           ) : (
             <>
-              <ul className="ml-4 flex flex-1 flex-row flex-wrap items-center gap-2 m-0 p-0 min-w-0 list-none text-[1.03rem] font-medium">
+              <motion.ul
+                variants={staggerContainerVariants(0.05, 0.2)}
+                initial="hidden"
+                animate="visible"
+                className="ml-8 flex flex-1 flex-row flex-wrap items-center gap-1 m-0 p-0 min-w-0 list-none text-[1.05rem] font-medium"
+              >
                 {menuLinks.map((item) => (
-                  <li key={item.to}>
+                  <motion.li
+                    key={item.to}
+                    variants={slideUpVariants}
+                    whileHover={{ y: -1 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
                     <Link
                       to={item.to}
-                      className={`menu-link${isActive(item.to) ? " active" : ""}`}
+                      className={cn("menu-link", isActive(item.to) && "active")}
                       onPointerDown={markScrollFromBottom}
                       onClick={(e) => {
                         if (isSameTarget(item.to)) {
@@ -280,77 +301,95 @@ const Navbar = () => {
                         }
                       }}
                     >
-                      {item.label}
+                      <span className="relative z-10 transition-colors duration-200">
+                        {item.label}
+                      </span>
+                      {isActive(item.to) && (
+                        <motion.div
+                          layoutId="navbar-active-bar"
+                          className="active-bar"
+                          transition={springSoft}
+                        />
+                      )}
                     </Link>
-                  </li>
+                  </motion.li>
                 ))}
-              </ul>
+              </motion.ul>
               {loading ? (
-                <div className="ml-auto flex items-center gap-2.5" aria-hidden="true">
+                <div className="ml-auto flex items-center gap-3" aria-hidden="true">
                   <Skeleton
                     variant="circular"
-                    width={36}
-                    height={36}
+                    width={40}
+                    height={40}
                     sx={{ bgcolor: "rgba(255,255,255,0.25)" }}
                   />
                   <Skeleton
-                    variant="rectangular"
-                    width={96}
-                    height={18}
-                    sx={{ borderRadius: 1, bgcolor: "rgba(255,255,255,0.25)" }}
-                  />
-                  <Skeleton
-                    variant="circular"
-                    width={32}
-                    height={32}
+                    variant="text"
+                    width={100}
+                    height={24}
                     sx={{ bgcolor: "rgba(255,255,255,0.25)" }}
                   />
                 </div>
               ) : (
                 isAuth &&
                 user && (
-                  <div className="ml-auto flex min-w-0 items-center gap-2.5 whitespace-nowrap">
+                  <motion.div
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.4, ...springSoft }}
+                    className="ml-auto flex min-w-0 items-center gap-4 whitespace-nowrap"
+                  >
                     <MessengerButton />
                     <NotificationsBell />
-                    <SmartImage
-                      srcRaw={hasAvatar ? avatarSource : avatarFallback}
-                      cacheV={hasAvatar ? avatarCacheV : undefined}
-                      fallback={avatarFallback}
-                      alt={profileAlt}
-                      title={profileTitle}
-                      className="block h-9 w-9 cursor-pointer rounded-full border-[1.5px] border-[#ccc] bg-white object-cover"
-                      onClick={() => go("/profile")}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => go("/profile")}
-                      aria-label={profileTitle}
-                      title={profileTitle}
-                      className="cursor-pointer border-none bg-transparent p-0 m-0 font-semibold text-white font-[family-name:var(--font-ui)] tracking-[var(--ls-ui)] leading-[var(--lh-ui)] text-[1.01rem]"
-                    >
-                      {user.full_name}
-                    </button>
-                    <button
-                      type="button"
-                      className="menu-btn-settings"
-                      onClick={() => go("/settings")}
-                      aria-label={t("navigation:menu.settings")}
-                      title={t("navigation:menu.settings")}
-                    >
-                      <SettingsIcon
-                        style={{
-                          fontSize: "20px",
-                          opacity: 0.9,
+                    <div className="flex h-10 items-center gap-3 pl-4 border-l border-[var(--glass-border)] ml-2">
+                      <motion.div
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        transition={springBouncy}
+                      >
+                        <SmartImage
+                          srcRaw={hasAvatar ? avatarSource : avatarFallback}
+                          cacheV={hasAvatar ? avatarCacheV : undefined}
+                          fallback={avatarFallback}
+                          alt={profileAlt}
+                          title={profileTitle}
+                          className="block h-9 w-9 cursor-pointer rounded-full border border-white/60 bg-white object-cover shadow-sm hover:shadow-md transition-all duration-300"
+                          onClick={() => go("/profile")}
+                        />
+                      </motion.div>
+                      <button
+                        type="button"
+                        onClick={() => go("/profile")}
+                        aria-label={profileTitle}
+                        title={profileTitle}
+                        className="cursor-pointer border-none bg-transparent p-0 m-0 font-bold text-[var(--nav-text)] tracking-tight text-[1.05rem] hover:text-[var(--nav-link)] transition-colors"
+                      >
+                        {user.full_name}
+                      </button>
+                      <motion.button
+                        whileHover={{
+                          rotate: 90,
+                          scale: 1.1,
+                          backgroundColor: "var(--glass-tint-2)",
                         }}
-                      />
-                    </button>
-                  </div>
+                        whileTap={{ scale: 0.9 }}
+                        transition={springSoft}
+                        type="button"
+                        className="flex items-center justify-center w-10 h-10 rounded-xl text-[var(--nav-text)] transition-colors"
+                        onClick={() => go("/settings")}
+                        aria-label={t("navigation:menu.settings")}
+                        title={t("navigation:menu.settings")}
+                      >
+                        <SettingsIcon sx={{ fontSize: 24 }} />
+                      </motion.button>
+                    </div>
+                  </motion.div>
                 )
               )}
             </>
           )}
         </div>
-      </nav>
+      </motion.nav>
 
       {isMobile && (
         <MobileMenu

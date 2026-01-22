@@ -7,6 +7,7 @@ import TodayIcon from "@mui/icons-material/Today"
 import PersonIcon from "@mui/icons-material/Person"
 import { useTranslation } from "react-i18next"
 import { motion } from "framer-motion"
+import { springBouncy, springSoft, hoverScale } from "@/utils/animations"
 
 function getScrollRoot(): HTMLElement {
   const cands: (Element | null | Document | HTMLElement)[] = [
@@ -90,7 +91,11 @@ export default function MobileBottomNav() {
   return (
     <>
       <nav
-        className="fixed bottom-0 left-0 right-0 z-50 flex h-[calc(3.5rem+env(safe-area-inset-bottom))] w-full items-center justify-around border-t border-glass-border bg-glass backdrop-blur-md pb-safe shadow-glass transition-transform duration-300 md:hidden"
+        className="fixed bottom-0 left-0 right-0 z-50 flex h-[calc(4rem+env(safe-area-inset-bottom))] w-full items-center justify-around border-t border-[var(--glass-border)] bg-[var(--nav-bg)] backdrop-blur-[var(--glass-blur)] pb-[env(safe-area-inset-bottom)] shadow-[var(--shadow-up)] transition-all md:hidden"
+        style={{
+          transitionDuration: "600ms",
+          transitionTimingFunction: "var(--ease-premium)",
+        }}
         role="navigation"
         aria-label={t("navigation:aria.mainNavigation")}
       >
@@ -108,49 +113,51 @@ export default function MobileBottomNav() {
                   requestAnimationFrame(() => smoothToTop(el))
                 }
               }}
-              onKeyDown={(e) => {
-                if ((e.key === "Enter" || e.key === " ") && samePath(pathname, it.to)) {
-                  e.preventDefault()
-                  const el = getScrollRoot()
-                  requestAnimationFrame(() => smoothToTop(el))
-                }
-              }}
               className={({ isActive }) =>
-                "group relative flex flex-1 flex-col items-center justify-center gap-1 py-1 text-[var(--secondary-text)] transition-colors duration-200 active:scale-95 " +
-                (isActive ? "active text-primary-main font-semibold" : "hover:bg-primary-main/5")
+                "group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-[var(--nav-text)] transition-all outline-none select-none " +
+                (isActive
+                  ? "active text-[var(--nav-link)] font-bold scale-110"
+                  : "opacity-60 hover:opacity-100")
               }
               aria-label={it.label}
             >
-              {isActive && (
-                <motion.div
-                  layoutId="bottom-nav-active-pill"
-                  className="absolute inset-x-3 inset-y-1 rounded-xl bg-primary-main/10 dark:bg-primary-main/20"
-                  transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                />
-              )}
-              <span
-                className={
-                  "z-10 transition-transform duration-200 " +
-                  (isActive ? "-translate-y-0.5 scale-110" : "group-active:scale-95")
-                }
-              >
-                {it.icon}
-              </span>
-              <span
-                className={
-                  "z-10 text-[10px] uppercase tracking-wider transition-opacity duration-200 " +
-                  (isActive ? "opacity-100 font-bold" : "opacity-70")
-                }
+              <div className="relative">
+                {isActive && (
+                  <motion.div
+                    layoutId="bottom-nav-active-glow"
+                    className="absolute inset-[-14px] rounded-full bg-[var(--nav-link)] opacity-10 blur-xl -z-10"
+                    transition={springBouncy}
+                  />
+                )}
+                <motion.span
+                  className="block z-10"
+                  animate={{
+                    y: isActive ? -2 : 0,
+                    scale: isActive ? 1.15 : 1,
+                  }}
+                  whileTap={{ scale: 0.9 }}
+                  transition={springSoft}
+                >
+                  {it.icon}
+                </motion.span>
+              </div>
+              <motion.span
+                className="z-10 text-[9px] font-bold uppercase tracking-tighter"
+                animate={{
+                  opacity: isActive ? 1 : 0.6,
+                }}
+                transition={springSoft}
               >
                 {it.label}
-              </span>
+              </motion.span>
             </NavLink>
           )
         })}
       </nav>
+      {/* Spacer for bottom nav */}
       {!pathname.startsWith("/messenger") && (
         <div
-          className="h-[calc(3.5rem+env(safe-area-inset-bottom))] md:hidden"
+          className="h-[calc(4rem+env(safe-area-inset-bottom))] bg-[var(--page-bg)] transition-colors duration-500 md:hidden"
           aria-hidden="true"
         />
       )}

@@ -58,6 +58,51 @@ vi.mock("@/components/SmartImage", () => ({
   ),
 }))
 
+vi.mock("framer-motion", () => {
+  const motionComponent = (Tag: string) => {
+    const Component = ({ children, className, onClick, ...props }: any) => {
+      const filteredProps = { ...props }
+      const motionProps = [
+        "initial",
+        "animate",
+        "exit",
+        "variants",
+        "transition",
+        "whileHover",
+        "whileTap",
+        "whileFocus",
+        "whileDrag",
+        "whileInView",
+        "viewport",
+        "layout",
+        "layoutId",
+      ]
+      motionProps.forEach((prop) => delete filteredProps[prop])
+      return (
+        <Tag className={className} onClick={onClick} {...filteredProps}>
+          {children}
+        </Tag>
+      )
+    }
+    Component.displayName = `Motion(${Tag})`
+    return Component
+  }
+  return {
+    AnimatePresence: ({ children }: any) => <>{children}</>,
+    motion: {
+      nav: motionComponent("nav"),
+      div: motionComponent("div"),
+      button: motionComponent("button"),
+      li: motionComponent("li"),
+      ul: motionComponent("ul"),
+      span: motionComponent("span"),
+      line: motionComponent("line"),
+    },
+    useScroll: () => ({ scrollY: { onChange: () => {} } }),
+    useMotionValueEvent: () => {},
+  }
+})
+
 const LocationDisplay = () => {
   const location = useLocation()
   return <div data-testid="location-display">{location.pathname}</div>

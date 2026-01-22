@@ -14,16 +14,13 @@ import { useDashboardStories, prefetchDashboardStories } from "@/hooks/useDashbo
 import { useClock } from "@/hooks/useClock"
 import { cn } from "@/utils/cn"
 import type { StoryItem } from "@/types/Story"
-
 // Extracted Components
 import { ScheduleCard } from "@/components/dashboard/ScheduleCard"
 import { NewsCard } from "@/components/dashboard/NewsCard"
 import { EventsCard } from "@/components/dashboard/EventsCard"
 import DashboardSkeleton from "@/components/dashboard/DashboardSkeleton"
 import Magnetic from "@/components/Magnetic"
-
-const fadeDelayStyle = (value: string): CSSProperties =>
-  ({ "--fade-delay": value }) as CSSProperties
+import { ScrollReveal } from "@/components/ScrollReveal"
 
 function getGreetingKey(hour: number): "morning" | "afternoon" | "evening" | "night" {
   if (hour >= 4 && hour < 12) return "morning"
@@ -124,120 +121,127 @@ export default function Dashboard() {
             ))}
           </div>
           <div className="relative z-[1] space-y-6">
-            <header
-              data-fade="up"
-              data-pop="true"
-              style={fadeDelayStyle("40ms")}
-              className={cn(
-                "group card-glass rounded-[2.4rem] transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
-                "hover:-translate-y-1 hover:scale-[1.01] hover:shadow-xl motion-reduce:hover:transform-none motion-reduce:hover:shadow-none",
-                "p-6 md:p-9 focus-within:shadow-focus focus-visible:outline-none focus-visible:shadow-focus",
-                headerGradientClass
-              )}
-            >
-              <span
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-0 dash-highlight-veil bg-[radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--dash-hero-highlight-soft)_65%,transparent),transparent_60%)] transition-opacity duration-700"
-              />
-              {showHeaderMotion ? (
+            <ScrollReveal mode="pop" delay={0.1} width="100%">
+              <header
+                className={cn(
+                  "group card-glass rounded-[2.4rem] transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
+                  "hover:-translate-y-1 hover:scale-[1.01] hover:shadow-xl motion-reduce:hover:transform-none motion-reduce:hover:shadow-none",
+                  "p-6 md:p-9 focus-within:shadow-focus focus-visible:outline-none focus-visible:shadow-focus",
+                  headerGradientClass
+                )}
+              >
                 <span
                   aria-hidden="true"
-                  className="pointer-events-none absolute -inset-y-24 -left-1/2 w-[170%] skew-x-[-18deg] bg-gradient-to-r from-transparent via-white/55 to-transparent opacity-0 transition-all duration-[2200ms] ease-out group-hover:translate-x-[35%] group-hover:opacity-70"
-                >
-                  <span className="block h-full w-full animate-skeleton-wave bg-gradient-to-r from-transparent via-white/70 to-transparent" />
-                </span>
-              ) : (
-                <span
-                  aria-hidden="true"
-                  className="pointer-events-none absolute -inset-y-20 -left-1/2 w-[160%] skew-x-[-14deg] bg-gradient-to-r from-transparent via-white/35 to-transparent opacity-0 transition-opacity duration-700 ease-out group-hover:opacity-45"
+                  className="pointer-events-none absolute inset-0 dash-highlight-veil bg-[radial-gradient(circle_at_top_left,color-mix(in_srgb,var(--dash-hero-highlight-soft)_65%,transparent),transparent_60%)] transition-opacity duration-700"
                 />
-              )}
-              <div className="pointer-events-none absolute -right-24 top-1/2 h-64 w-64 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,var(--dash-hero-highlight),transparent)] dash-highlight-veil blur-3xl" />
-              {showHeaderMotion ? (
-                <div className="pointer-events-none absolute left-[-20%] top-[-40%] h-56 w-56 animate-[spin_18s_linear_infinite] rounded-full bg-[conic-gradient(from_90deg_at_50%_50%,var(--dash-hero-conic-primary),var(--dash-hero-conic-secondary),var(--dash-hero-conic-tertiary),var(--dash-hero-conic-accent))] opacity-60 blur-[120px]" />
-              ) : (
-                <div className="pointer-events-none absolute left-[-18%] top-[-42%] h-48 w-48 rounded-full bg-[conic-gradient(from_130deg_at_50%_50%,var(--dash-hero-conic-primary),var(--dash-hero-conic-secondary),transparent_85%)] opacity-50 blur-[110px]" />
-              )}
-              <div className="relative grid gap-6 lg:grid-cols-12 lg:items-center">
-                <div className="space-y-3 text-nav-text lg:col-span-8">
-                  <h1 className="font-display text-[clamp(1.5rem,2.4vw,2.6rem)] font-extrabold leading-tight">
-                    {greeting}
-                    {user?.full_name ? `, ${user.full_name.split(" ")[0]}` : ""}!
-                  </h1>
-                  <div
-                    className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-nav-text/90"
-                    role="status"
-                    aria-live="polite"
+                {showHeaderMotion ? (
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute -inset-y-24 -left-1/2 w-[170%] skew-x-[-18deg] bg-gradient-to-r from-transparent via-white/55 to-transparent opacity-0 transition-all duration-[2200ms] ease-out group-hover:translate-x-[35%] group-hover:opacity-70"
                   >
-                    <Badge
-                      size="sm"
-                      className="flex-shrink-0 border-slate-200 bg-slate-100 font-mono text-base text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
-                      aria-label={t("common:ariaCurrentTime")}
+                    <span className="block h-full w-full animate-skeleton-wave bg-gradient-to-r from-transparent via-white/70 to-transparent" />
+                  </span>
+                ) : (
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute -inset-y-20 -left-1/2 w-[160%] skew-x-[-14deg] bg-gradient-to-r from-transparent via-white/35 to-transparent opacity-0 transition-opacity duration-700 ease-out group-hover:opacity-45"
+                  />
+                )}
+                <div className="pointer-events-none absolute -right-24 top-1/2 h-64 w-64 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,var(--dash-hero-highlight),transparent)] dash-highlight-veil blur-3xl" />
+                {showHeaderMotion ? (
+                  <div className="pointer-events-none absolute left-[-20%] top-[-40%] h-56 w-56 animate-[spin_18s_linear_infinite] rounded-full bg-[conic-gradient(from_90deg_at_50%_50%,var(--dash-hero-conic-primary),var(--dash-hero-conic-secondary),var(--dash-hero-conic-tertiary),var(--dash-hero-conic-accent))] opacity-60 blur-[120px]" />
+                ) : (
+                  <div className="pointer-events-none absolute left-[-18%] top-[-42%] h-48 w-48 rounded-full bg-[conic-gradient(from_130deg_at_50%_50%,var(--dash-hero-conic-primary),var(--dash-hero-conic-secondary),transparent_85%)] opacity-50 blur-[110px]" />
+                )}
+                <div className="relative grid gap-6 lg:grid-cols-12 lg:items-center">
+                  <div className="space-y-3 text-nav-text lg:col-span-8">
+                    <h1 className="font-display text-[clamp(1.5rem,2.4vw,2.6rem)] font-extrabold leading-tight">
+                      {greeting}
+                      {user?.full_name ? `, ${user.full_name.split(" ")[0]}` : ""}!
+                    </h1>
+                    <div
+                      className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-nav-text/90"
+                      role="status"
+                      aria-live="polite"
                     >
-                      <span className="flex items-baseline gap-1 font-mono text-lg leading-none">
-                        <span>{hh}</span>
-                        <span aria-hidden="true" className="inline-block animate-dash-colon-blink">
-                          :
+                      <Badge
+                        size="sm"
+                        className="flex-shrink-0 border-slate-200 bg-slate-100 font-mono text-base text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                        aria-label={t("common:ariaCurrentTime")}
+                      >
+                        <span className="flex items-baseline gap-1 font-mono text-lg leading-none">
+                          <span>{hh}</span>
+                          <span
+                            aria-hidden="true"
+                            className="inline-block animate-dash-colon-blink"
+                          >
+                            :
+                          </span>
+                          <span>{mm}</span>
                         </span>
-                        <span>{mm}</span>
+                      </Badge>
+                      <WeatherWidget className="flex-shrink-0" />
+                      <span className="text-sm font-medium tracking-tight leading-tight">
+                        {dateStr}
                       </span>
-                    </Badge>
-                    <WeatherWidget className="flex-shrink-0" />
-                    <span className="text-sm font-medium tracking-tight leading-tight">
-                      {dateStr}
-                    </span>
+                    </div>
+                  </div>
+                  <div className="hidden justify-end md:flex lg:col-span-4">
+                    <Magnetic strength={0.25}>
+                      <Button
+                        variant="outline"
+                        size="md"
+                        className="whitespace-nowrap px-5 transition-transform duration-300 hover:-translate-y-[2px]"
+                        onClick={() => navigate("/profile")}
+                        aria-label={t("navigation:aria.openProfile")}
+                      >
+                        {t("navigation:menu.profile")}
+                      </Button>
+                    </Magnetic>
                   </div>
                 </div>
-                <div className="hidden justify-end md:flex lg:col-span-4">
-                  <Magnetic strength={0.25}>
-                    <Button
-                      variant="outline"
-                      size="md"
-                      className="whitespace-nowrap px-5 transition-transform duration-300 hover:-translate-y-[2px]"
-                      onClick={() => navigate("/profile")}
-                      aria-label={t("navigation:aria.openProfile")}
-                    >
-                      {t("navigation:menu.profile")}
-                    </Button>
-                  </Magnetic>
-                </div>
-              </div>
-            </header>
+              </header>
+            </ScrollReveal>
 
-            <div data-fade="up" data-pop="true" style={fadeDelayStyle("100ms")}>
+            <ScrollReveal mode="slide" direction="up" delay={0.2}>
               <DashboardStories
                 stories={stories}
                 loading={loadingStories}
                 onPrefetch={prefetchStories}
                 onStoryOpen={handleStoryOpen}
               />
-            </div>
+            </ScrollReveal>
+
             <section className="mt-6 grid grid-cols-1 gap-4 md:mt-8 md:gap-6 lg:grid-cols-12">
-              <ScheduleCard
-                userRole={user?.role}
-                userGroupId={user?.group_id}
-                time={time}
-                data-fade="left"
-                data-pop="true"
-                style={fadeDelayStyle("140ms")}
+              <ScrollReveal
+                mode="slide"
+                direction="up"
+                delay={0.3}
                 className="lg:col-span-4"
-              />
+                width="100%"
+              >
+                <ScheduleCard userRole={user?.role} userGroupId={user?.group_id} time={time} />
+              </ScrollReveal>
 
-              <NewsCard
-                locale={locale}
-                data-fade="up"
-                data-pop="true"
-                style={fadeDelayStyle("200ms")}
+              <ScrollReveal
+                mode="slide"
+                direction="up"
+                delay={0.4}
                 className="lg:col-span-4"
-              />
+                width="100%"
+              >
+                <NewsCard locale={locale} />
+              </ScrollReveal>
 
-              <EventsCard
-                locale={locale}
-                data-fade="right"
-                data-pop="true"
-                style={fadeDelayStyle("260ms")}
+              <ScrollReveal
+                mode="slide"
+                direction="up"
+                delay={0.5}
                 className="lg:col-span-4"
-              />
+                width="100%"
+              >
+                <EventsCard locale={locale} />
+              </ScrollReveal>
             </section>
           </div>
         </section>

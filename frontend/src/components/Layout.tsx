@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next"
 import WifiOffIcon from "@mui/icons-material/WifiOff"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { cn } from "../utils/cn"
+import { fadeVariants } from "@/utils/animations"
 
 type LayoutProps = {
   children: ReactNode
@@ -15,12 +16,16 @@ const Layout = ({ children, className }: LayoutProps) => {
   const { t } = useTranslation("system")
 
   return (
-    <main
+    <motion.main
       id="main"
       role="main"
       tabIndex={-1}
+      initial="hidden"
+      animate="visible"
+      exit="exit"
+      variants={fadeVariants}
       className={cn(
-        "box-border min-h-screen w-full bg-[var(--page-bg)] text-[var(--page-text)]",
+        "box-border min-h-screen w-full bg-[var(--page-bg)] text-[var(--page-foreground)]",
         className
       )}
     >
@@ -38,7 +43,7 @@ const Layout = ({ children, className }: LayoutProps) => {
         )}
       </AnimatePresence>
       {children}
-    </main>
+    </motion.main>
   )
 }
 

@@ -6,15 +6,18 @@ export const spacingScale = {
   lg: "1.5rem",
   xl: "2rem",
   "2xl": "3rem",
+  "3xl": "4.5rem",
+  "4xl": "6rem",
 } as const
 
 export const radiusScale = {
-  xs: "0.35rem",
-  sm: "0.5rem",
-  md: "0.75rem",
-  lg: "1rem",
-  xl: "1.75rem",
-  pill: "999px",
+  xs: "0.5rem",
+  sm: "0.75rem",
+  md: "1rem",
+  lg: "1.5rem",
+  xl: "2rem",
+  "2xl": "3rem",
+  pill: "9999px",
 } as const
 
 export const zIndexTokens = {
@@ -25,16 +28,15 @@ export const zIndexTokens = {
 } as const
 
 export const focusRing = {
-  light:
-    "0 0 0 1px rgba(255, 255, 255, 0.92), 0 0 0 4px rgba(var(--mui-palette-primary-mainChannel) / 0.35)",
-  dark: "0 0 0 1px rgba(11, 15, 21, 0.92), 0 0 0 4px rgba(var(--mui-palette-primary-mainChannel) / 0.5)",
+  light: "0 0 0 2px rgba(255, 255, 255, 0.9), 0 0 0 4px rgba(59, 130, 246, 0.5)",
+  dark: "0 0 0 2px rgba(3, 7, 18, 0.9), 0 0 0 4px rgba(96, 165, 250, 0.6)",
 } as const
 
 export const shadows = {
   sm: "var(--shadow-1)",
   md: "var(--shadow-2)",
-  lg: "var(--dash-panel-shadow)",
-  xl: "var(--dash-panel-hover-shadow)",
+  lg: "var(--shadow-premium-lift)",
+  xl: "0 30px 60px -12px rgba(0, 0, 0, 0.25)",
 } as const
 
 export const glass = {
@@ -42,4 +44,7 @@ export const glass = {
   border: "var(--glass-border)",
   shadow: "var(--glass-shadow)",
   blur: "var(--glass-blur)",
+  tint1: "var(--glass-tint1)",
+  tint2: "var(--glass-tint2)",
+  tint3: "var(--glass-tint3)",
 } as const

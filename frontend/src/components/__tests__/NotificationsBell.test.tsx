@@ -32,17 +32,47 @@ vi.mock("react-i18next", () => ({
 }))
 
 // Mock framer-motion to avoid animation issues in tests
-vi.mock("framer-motion", () => ({
-  AnimatePresence: ({ children }: any) => <>{children}</>,
-  motion: {
-    div: ({ children, className, onClick, ...props }: any) => (
-      // eslint-disable-next-line jsx-a11y/no-static-element-interactions
-      <div className={className} onClick={onClick} {...props}>
-        {children}
-      </div>
-    ),
-  },
-}))
+vi.mock("framer-motion", () => {
+  const motionComponent = (Tag: string) => {
+    const Component = ({ children, className, onClick, ...props }: any) => {
+      // Filter out framer-motion specific props
+      const filteredProps = { ...props }
+      const motionProps = [
+        "initial",
+        "animate",
+        "exit",
+        "variants",
+        "transition",
+        "whileHover",
+        "whileTap",
+        "whileFocus",
+        "whileDrag",
+        "whileInView",
+        "viewport",
+        "layout",
+        "layoutId",
+      ]
+      motionProps.forEach((prop) => delete filteredProps[prop])
+
+      return (
+        <Tag className={className} onClick={onClick} {...filteredProps}>
+          {children}
+        </Tag>
+      )
+    }
+    Component.displayName = `Motion(${Tag})`
+    return Component
+  }
+
+  return {
+    AnimatePresence: ({ children }: any) => <>{children}</>,
+    motion: {
+      div: motionComponent("div"),
+      button: motionComponent("button"),
+      span: motionComponent("span"),
+    },
+  }
+})
 
 describe("NotificationsBell", () => {
   type NotificationsState = ReturnType<typeof useNotifications>
