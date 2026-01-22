@@ -373,7 +373,13 @@ async def prepare_database() -> AsyncIterator[None]:
 
 @pytest_asyncio.fixture(autouse=True)
 async def clean_database(prepare_database: None) -> AsyncIterator[None]:
+    # Clear wait queue before test
+    await notification_queue.reset_testing_state()
     yield
+
+    # Wait for background tasks before TRUNCATE to avoid deadlocks
+    # 5 seconds should be enough for local tests
+    await notification_queue.wait_for_all_jobs(timeout=5.0)
 
     database_url = os.environ.get("DATABASE_URL", "")
     # Robust check: use engine dialect or fallback to env
