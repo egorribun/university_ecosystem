@@ -5,39 +5,41 @@ export const colorSchemes: CssVarsThemeOptions["colorSchemes"] = {
     palette: {
       mode: "light",
       primary: {
-        main: "#0F4FAA",
-        light: "#3F7BDF",
-        dark: "#123F84",
+        main: "#3b82f6", // Electric Blue
+        light: "#60a5fa",
+        dark: "#2563eb",
         contrastText: "#ffffff",
       },
       secondary: {
-        main: "#17406F",
+        main: "#475569", // Slate
+        light: "#64748b",
+        dark: "#334155",
         contrastText: "#ffffff",
       },
       info: {
-        main: "#1F68C7",
+        main: "#0ea5e9", // Sky
         contrastText: "#ffffff",
       },
       success: {
-        main: "#2E7D32",
+        main: "#22c55e", // Green
         contrastText: "#ffffff",
       },
       warning: {
-        main: "#B7791F",
-        contrastText: "#102033",
+        main: "#f59e0b", // Amber
+        contrastText: "#ffffff",
       },
       error: {
-        main: "#D14343",
+        main: "#ef4444", // Red
         contrastText: "#ffffff",
       },
       text: {
-        primary: "#101621",
-        secondary: "#4c5a6f",
-        disabled: "rgba(59, 73, 92, 0.42)",
+        primary: "#1e293b", // Slate 800
+        secondary: "#475569", // Slate 600
+        disabled: "#94a3b8", // Slate 400
       },
-      divider: "rgba(16, 22, 33, 0.12)",
+      divider: "rgba(148, 163, 184, 0.12)",
       background: {
-        default: "#e8f1fb",
+        default: "#f0f4f8",
         paper: "#ffffff",
       },
     },
@@ -46,39 +48,41 @@ export const colorSchemes: CssVarsThemeOptions["colorSchemes"] = {
     palette: {
       mode: "dark",
       primary: {
-        main: "#7FB6E6",
-        light: "#9DC8F0",
-        dark: "#2F4F75",
-        contrastText: "#050B14",
+        main: "#60a5fa", // Blue 400 (Brighter for Dark Mode)
+        light: "#93c5fd",
+        dark: "#3b82f6",
+        contrastText: "#030712",
       },
       secondary: {
-        main: "#1B3A5D",
-        contrastText: "#DDE6F7",
+        main: "#94a3b8", // Slate 400
+        light: "#cbd5e1",
+        dark: "#64748b",
+        contrastText: "#030712",
       },
       info: {
-        main: "#8ABFEF",
-        contrastText: "#050B14",
+        main: "#38bdf8", // Sky 400
+        contrastText: "#030712",
       },
       success: {
-        main: "#4ADE80",
-        contrastText: "#050B14",
+        main: "#4ade80", // Green 400
+        contrastText: "#030712",
       },
       warning: {
-        main: "#FBBF24",
-        contrastText: "#050B14",
+        main: "#fbbf24", // Amber 400
+        contrastText: "#030712",
       },
       error: {
-        main: "#F87171",
-        contrastText: "#050B14",
+        main: "#f87171", // Red 400
+        contrastText: "#030712",
       },
       text: {
-        primary: "#dde6f7",
-        secondary: "#9fb2cc",
+        primary: "#f8fafc", // Slate 50
+        secondary: "#94a3b8", // Slate 400
       },
-      divider: "rgba(157, 181, 214, 0.18)",
+      divider: "rgba(148, 163, 184, 0.1)",
       background: {
-        default: "#060b14",
-        paper: "#101a2a",
+        default: "#030712", // Midnight
+        paper: "#0f172a", // Slate 900
       },
     },
   },

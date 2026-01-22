@@ -316,7 +316,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       whileHover={{ y: -4 }}
       transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
       className={cn(
-        "card-glass group relative flex flex-col transition-[box-shadow] duration-300 ease-out h-[280px] md:h-[480px] w-full transform-gpu",
+        "card-glass group relative flex flex-col transition-[box-shadow] duration-300 ease-out h-[400px] md:h-[480px] w-full transform-gpu",
         hoveringDisabled
           ? "cursor-default"
           : "cursor-pointer hover:shadow-glass-strong active:scale-[0.985]"
@@ -399,7 +399,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
           hoveringDisabled ? "cursor-default opacity-100" : "cursor-pointer"
         )}
       >
-        <div className="relative w-full overflow-hidden border-b border-white/10 bg-[linear-gradient(135deg,rgba(29,78,216,0.18),rgba(59,130,246,0.08))]">
+        <div className="relative w-full h-[200px] md:h-[220px] shrink-0 overflow-hidden border-b border-white/10 bg-[linear-gradient(135deg,rgba(29,78,216,0.18),rgba(59,130,246,0.08))]">
           <div
             className={cn(
               "absolute inset-0 animate-pulse bg-[color:color-mix(in_srgb,var(--glass-bg)_70%,white_30%)] transition-opacity duration-300",
@@ -417,7 +417,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
                     : t("news:alt.heroFallback")
                 }
                 sizes="(min-width: 1200px) 640px, (min-width: 900px) 520px, 100vw"
-                className="relative h-[110px] w-full object-cover transition duration-700 ease-out md:h-[220px]"
+                className="absolute inset-0 h-full w-full object-cover !object-cover transition duration-700 ease-out"
                 onLoad={handleCardImageReady}
                 onError={handleCardImageReady}
               />
@@ -427,7 +427,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
               />
             </>
           ) : (
-            <div className="flex h-[110px] w-full items-center justify-center bg-glass/70 text-white/70 md:h-[220px]">
+            <div className="flex h-full w-full items-center justify-center bg-glass/70 text-white/70">
               <ArticleIcon className="h-12 w-12" fontSize="large" />
             </div>
           )}

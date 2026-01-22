@@ -86,16 +86,15 @@ function suggestEmailDomain(email: string) {
 }
 
 const inputBaseClass =
-  "w-full rounded-[1.2rem] border border-nav-link/10 bg-surface/95 px-4 py-3 text-base font-medium " +
-  "text-page-foreground shadow-[0_10px_30px_rgba(15,23,42,0.08)] transition-all duration-200 " +
-  "focus:border-nav-link focus:outline-none focus:ring-4 focus:ring-nav-link/20 " +
-  "placeholder:text-placeholder/75 " +
-  "dark:border-nav-link/10 dark:bg-surface/90"
+  "w-full rounded-[1.2rem] border border-nav-link/10 bg-[var(--card-bg)] px-4 py-3 text-base font-medium " +
+  "text-page-foreground shadow-[var(--shadow-1)] transition-all duration-200 " +
+  "focus:border-nav-link focus:outline-none focus:shadow-[var(--ue-focus-ring)] " +
+  "placeholder:text-placeholder/75"
 
 const badgeClass =
   "inline-flex min-w-[160px] items-baseline justify-center gap-2 rounded-full border border-glass-border/80 " +
-  "bg-surface/90 px-4 py-2 text-sm font-semibold " +
-  "text-page-foreground/90 shadow-[0_6px_20px_rgba(15,23,42,0.12)]"
+  "bg-[var(--glass-bg)] backdrop-blur-md px-4 py-2 text-sm font-semibold " +
+  "text-page-foreground/90 shadow-[var(--shadow-1)]"
 
 const Spinner = () => (
   <span

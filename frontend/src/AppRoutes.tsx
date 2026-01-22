@@ -146,78 +146,68 @@ export function AppRoutes() {
 
   const isMessenger = location.pathname.startsWith("/messenger")
 
-  const routedContent = (
-    <div
-      id="main"
-      role="main"
-      tabIndex={-1}
-      style={{
-        minHeight: isMessenger ? undefined : "100dvh",
-        position: isMessenger ? "fixed" : undefined,
-        top: isMessenger ? "var(--app-nav-h, 64px)" : undefined,
-        left: isMessenger ? 0 : undefined,
-        right: isMessenger ? 0 : undefined,
-        bottom: isMessenger ? 0 : undefined,
-        overflow: isMessenger ? "hidden" : undefined,
-        overscrollBehavior: isMessenger ? "none" : undefined,
-        background: "var(--page-bg, var(--initial-bg, #060B14))",
-        color: "var(--page-text)",
-        zIndex: isMessenger ? 0 : undefined,
-      }}
-    >
-      <Suspense fallback={fallbackShell}>
-        <Routes location={location} key={location.pathname}>
-          <Route path="/login" element={wrap(<Login />)} />
-          <Route path="/register" element={wrap(<Register />)} />
-          <Route path="/forgot-password" element={wrap(<ForgotPassword />)} />
-          <Route path="/reset-password" element={wrap(<ResetPassword />)} />
-          <Route path="/reset-password/:token" element={wrap(<ResetPassword />)} />
-          <Route path="/dashboard" element={<PrivateRoute>{wrap(<Dashboard />)}</PrivateRoute>} />
-          <Route path="/news" element={<PrivateRoute>{wrap(<News />)}</PrivateRoute>} />
-          <Route path="/news/:id" element={<PrivateRoute>{wrap(<NewsDetail />)}</PrivateRoute>} />
-          <Route path="/schedule" element={<PrivateRoute>{wrap(<Schedule />)}</PrivateRoute>} />
-          <Route path="/activity" element={<PrivateRoute>{wrap(<UserActivity />)}</PrivateRoute>} />
-          <Route path="/events" element={<PrivateRoute>{wrap(<Events />)}</PrivateRoute>} />
-          <Route
-            path="/events/:id"
-            element={<PrivateRoute>{wrap(<EventDetail />)}</PrivateRoute>}
-          />
-          <Route path="/map" element={<PrivateRoute>{wrap(<MapPage />)}</PrivateRoute>} />
-          <Route path="/profile" element={<PrivateRoute>{wrap(<Profile />)}</PrivateRoute>} />
-          <Route path="/settings" element={<PrivateRoute>{wrap(<Settings />)}</PrivateRoute>} />
-          <Route path="/messenger" element={<PrivateRoute>{wrap(<Messenger />)}</PrivateRoute>} />
-          <Route
-            path="/messenger/:chatId"
-            element={<PrivateRoute>{wrap(<Messenger />)}</PrivateRoute>}
-          />
-          <Route path="/admin/users" element={<AdminRoute>{wrap(<AdminUsers />)}</AdminRoute>} />
-          <Route
-            path="/admin/notifications"
-            element={<AdminRoute>{wrap(<AdminNotifications />)}</AdminRoute>}
-          />
-          <Route
-            path="/admin/stories"
-            element={<AdminRoute>{wrap(<StoriesAdmin />)}</AdminRoute>}
-          />
-          <Route
-            path="/admin/feature-flags"
-            element={<AdminRoute>{wrap(<AdminFeatureFlags />)}</AdminRoute>}
-          />
-          <Route path="/admin/audit" element={<AdminRoute>{wrap(<AdminAudit />)}</AdminRoute>} />
-          <Route path="*" element={<Navigate to="/dashboard" />} />
-        </Routes>
-      </Suspense>
-    </div>
+  const routes = (
+    <Routes location={location} key={location.pathname}>
+      <Route path="/login" element={wrap(<Login />)} />
+      <Route path="/register" element={wrap(<Register />)} />
+      <Route path="/forgot-password" element={wrap(<ForgotPassword />)} />
+      <Route path="/reset-password" element={wrap(<ResetPassword />)} />
+      <Route path="/reset-password/:token" element={wrap(<ResetPassword />)} />
+      <Route path="/dashboard" element={<PrivateRoute>{wrap(<Dashboard />)}</PrivateRoute>} />
+      <Route path="/news" element={<PrivateRoute>{wrap(<News />)}</PrivateRoute>} />
+      <Route path="/news/:id" element={<PrivateRoute>{wrap(<NewsDetail />)}</PrivateRoute>} />
+      <Route path="/schedule" element={<PrivateRoute>{wrap(<Schedule />)}</PrivateRoute>} />
+      <Route path="/activity" element={<PrivateRoute>{wrap(<UserActivity />)}</PrivateRoute>} />
+      <Route path="/events" element={<PrivateRoute>{wrap(<Events />)}</PrivateRoute>} />
+      <Route path="/events/:id" element={<PrivateRoute>{wrap(<EventDetail />)}</PrivateRoute>} />
+      <Route path="/map" element={<PrivateRoute>{wrap(<MapPage />)}</PrivateRoute>} />
+      <Route path="/profile" element={<PrivateRoute>{wrap(<Profile />)}</PrivateRoute>} />
+      <Route path="/settings" element={<PrivateRoute>{wrap(<Settings />)}</PrivateRoute>} />
+      <Route path="/messenger" element={<PrivateRoute>{wrap(<Messenger />)}</PrivateRoute>} />
+      <Route
+        path="/messenger/:chatId"
+        element={<PrivateRoute>{wrap(<Messenger />)}</PrivateRoute>}
+      />
+      <Route path="/admin/users" element={<AdminRoute>{wrap(<AdminUsers />)}</AdminRoute>} />
+      <Route
+        path="/admin/notifications"
+        element={<AdminRoute>{wrap(<AdminNotifications />)}</AdminRoute>}
+      />
+      <Route path="/admin/stories" element={<AdminRoute>{wrap(<StoriesAdmin />)}</AdminRoute>} />
+      <Route
+        path="/admin/feature-flags"
+        element={<AdminRoute>{wrap(<AdminFeatureFlags />)}</AdminRoute>}
+      />
+      <Route path="/admin/audit" element={<AdminRoute>{wrap(<AdminAudit />)}</AdminRoute>} />
+      <Route path="*" element={<Navigate to="/dashboard" />} />
+    </Routes>
   )
 
   return (
     <>
       {!hideNavbar && <Navbar />}
-      {reduceMotion || hideNavbar ? (
-        routedContent
-      ) : (
-        <MotionPresence>{routedContent}</MotionPresence>
-      )}
+      <div
+        id="main"
+        role="main"
+        tabIndex={-1}
+        style={{
+          minHeight: isMessenger ? undefined : "100dvh",
+          position: isMessenger ? "fixed" : undefined,
+          top: isMessenger ? "var(--app-nav-h, 52px)" : undefined,
+          left: isMessenger ? 0 : undefined,
+          right: isMessenger ? 0 : undefined,
+          bottom: isMessenger ? 0 : undefined,
+          overflow: isMessenger ? "hidden" : undefined,
+          overscrollBehavior: isMessenger ? "none" : undefined,
+          background: "var(--page-bg, var(--initial-bg, #060B14))",
+          color: "var(--page-text)",
+          zIndex: isMessenger ? 0 : undefined,
+        }}
+      >
+        <Suspense fallback={fallbackShell}>
+          {reduceMotion || hideNavbar ? routes : <MotionPresence>{routes}</MotionPresence>}
+        </Suspense>
+      </div>
       {!hideNavbar && <BackToTop />}
       {!hideNavbar && <Footer />}
       {!hideNavbar && <MobileBottomNav />}
