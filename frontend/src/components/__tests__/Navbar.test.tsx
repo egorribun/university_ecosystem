@@ -60,7 +60,7 @@ vi.mock("@/components/SmartImage", () => ({
 
 vi.mock("framer-motion", () => {
   const motionComponent = (Tag: string) => {
-    return ({ children, className, onClick, ...props }: any) => {
+    const Component = ({ children, className, onClick, ...props }: any) => {
       const filteredProps = { ...props }
       const motionProps = [
         "initial",
@@ -84,6 +84,8 @@ vi.mock("framer-motion", () => {
         </Tag>
       )
     }
+    Component.displayName = `Motion(${Tag})`
+    return Component
   }
   return {
     AnimatePresence: ({ children }: any) => <>{children}</>,

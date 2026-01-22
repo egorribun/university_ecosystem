@@ -34,7 +34,7 @@ vi.mock("react-i18next", () => ({
 // Mock framer-motion to avoid animation issues in tests
 vi.mock("framer-motion", () => {
   const motionComponent = (Tag: string) => {
-    return ({ children, className, onClick, ...props }: any) => {
+    const Component = ({ children, className, onClick, ...props }: any) => {
       // Filter out framer-motion specific props
       const filteredProps = { ...props }
       const motionProps = [
@@ -60,6 +60,8 @@ vi.mock("framer-motion", () => {
         </Tag>
       )
     }
+    Component.displayName = `Motion(${Tag})`
+    return Component
   }
 
   return {
