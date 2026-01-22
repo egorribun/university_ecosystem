@@ -15,7 +15,7 @@
     --nav-link: #3b82f6;
 
     /* Glass Tokens - Light (Multi-layered brilliance) */
-    --glass-bg: rgba(255, 255, 255, 0.40);
+    --glass-bg: rgba(255, 255, 255, 0.4);
     --glass-border: rgba(255, 255, 255, 0.5);
     --glass-shadow: 0 8px 32px rgba(31, 38, 135, 0.06);
     --glass-blur: 24px;
@@ -24,19 +24,15 @@
     --glass-tint3: rgba(255, 255, 255, 0.15);
 
     /* Shadows - Deep & Ambient (Layered for realism) */
-    --shadow-1:
-      0 1px 2px 0 rgba(0, 0, 0, 0.03),
-      0 1px 3px 1px rgba(0, 0, 0, 0.02);
+    --shadow-1: 0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 3px 1px rgba(0, 0, 0, 0.02);
     --shadow-2:
-      0 4px 6px -1px rgba(0, 0, 0, 0.05),
-      0 10px 15px -3px rgba(0, 0, 0, 0.03),
+      0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 10px 15px -3px rgba(0, 0, 0, 0.03),
       0 20px 25px -5px rgba(0, 0, 0, 0.02);
     --shadow-up: 0 -4px 20px -5px rgba(0, 0, 0, 0.04);
     --shadow-focus: 0 0 0 4px rgba(59, 130, 246, 0.12);
     --shadow-glass: 0 8px 32px 0 rgba(31, 38, 135, 0.06);
     --shadow-premium-lift:
-      0 20px 40px -12px rgba(0, 0, 0, 0.1),
-      0 10px 20px -6px rgba(0, 0, 0, 0.05);
+      0 20px 40px -12px rgba(0, 0, 0, 0.1), 0 10px 20px -6px rgba(0, 0, 0, 0.05);
 
     /* Easing Functions - Kinetic & Organic */
     --ease-premium: cubic-bezier(0.22, 1, 0.36, 1);
@@ -99,8 +95,7 @@
     --shadow-1: 0 4px 12px -2px rgba(0, 0, 0, 0.5);
     --shadow-2: 0 20px 40px -12px rgba(0, 0, 0, 0.7);
     --shadow-premium-lift:
-      0 30px 60px -12px rgba(0, 0, 0, 0.8),
-      0 18px 36px -18px rgba(0, 0, 0, 0.5);
+      0 30px 60px -12px rgba(0, 0, 0, 0.8), 0 18px 36px -18px rgba(0, 0, 0, 0.5);
 
     --dash-header-grad-start: rgba(3, 7, 18, 0.92);
     --dash-header-grad-end: rgba(15, 23, 42, 0.85);
@@ -119,13 +114,20 @@
   body {
     @apply min-h-screen text-page-foreground font-ui antialiased overflow-x-hidden;
     background: var(--page-bg);
-    transition: background-color 0.6s var(--ease-premium), color 0.6s var(--ease-premium);
+    transition:
+      background-color 0.6s var(--ease-premium),
+      color 0.6s var(--ease-premium);
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     letter-spacing: -0.011em;
   }
 
-  h1, h2, h3, h4, h5, h6 {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     @apply font-display tracking-tight;
   }
 }
@@ -198,19 +200,37 @@
   }
 
   @keyframes fade-in-up {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   /* Kinetic & Organic Animations */
   @keyframes skeleton-shimmer {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(100%); }
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
   }
 
   @keyframes msg-bubble-in {
-    from { opacity: 0; transform: translateY(12px) scale(0.96); filter: blur(4px); }
-    to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0px); }
+    from {
+      opacity: 0;
+      transform: translateY(12px) scale(0.96);
+      filter: blur(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+      filter: blur(0px);
+    }
   }
 
   .animate-msg-bubble-in {
@@ -218,8 +238,13 @@
   }
 
   @keyframes dash-colon-blink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.3;
+    }
   }
 
   .animate-dash-colon-blink {

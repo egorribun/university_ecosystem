@@ -43,7 +43,8 @@
 
   --option-bg: rgba(255, 255, 255, 0.9);
   --option-hover-bg: #f0f9ff;
-  --option-shadow: 0 10px 15px -3px rgba(14, 165, 233, 0.15), 0 4px 6px -2px rgba(14, 165, 233, 0.1);
+  --option-shadow:
+    0 10px 15px -3px rgba(14, 165, 233, 0.15), 0 4px 6px -2px rgba(14, 165, 233, 0.1);
 
   /* Typography - Modern Stack */
   --font-ui:
@@ -70,12 +71,8 @@
 
   /* Premium Shadows - Layered & Colored */
   /* Ultra-soft ambient shadow + crisp directional shadow */
-  --shadow-1:
-    0 2px 4px -1px rgba(0, 0, 0, 0.04),
-    0 4px 6px -1px rgba(0, 0, 0, 0.02);
-  --shadow-2:
-    0 10px 30px -4px rgba(0, 0, 0, 0.08),
-    0 4px 8px -2px rgba(0, 0, 0, 0.03);
+  --shadow-1: 0 2px 4px -1px rgba(0, 0, 0, 0.04), 0 4px 6px -1px rgba(0, 0, 0, 0.02);
+  --shadow-2: 0 10px 30px -4px rgba(0, 0, 0, 0.08), 0 4px 8px -2px rgba(0, 0, 0, 0.03);
   --shadow-focus: 0 0 0 2px #fff, 0 0 0 4px #bae6fd; /* Sky 200 ring */
   --shadow-up: 0 -8px 24px rgba(0, 0, 0, 0.04);
 
@@ -92,8 +89,8 @@
   /* Subtle, sophisticated gradients commonly used in SaaS */
   --hero-grad-start: #f8fafc;
   --hero-grad-end: #e0f2fe;
-  --dash-header-grad-start: rgba(255,255,255,0.9);
-  --dash-header-grad-end: rgba(240,249,255,0.7);
+  --dash-header-grad-start: rgba(255, 255, 255, 0.9);
+  --dash-header-grad-end: rgba(240, 249, 255, 0.7);
 
   /* Dashboard Orbs */
   --dash-hero-orb: rgba(56, 189, 248, 0.15); /* Sky */
@@ -103,8 +100,7 @@
   --glass-bg: rgba(255, 255, 255, 0.7);
   --glass-border: rgba(255, 255, 255, 0.4);
   --glass-shadow:
-    0 4px 6px -1px rgba(0, 0, 0, 0.05),
-    0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 10px 15px -3px rgba(0, 0, 0, 0.1),
     0 20px 25px -5px rgba(0, 0, 0, 0.05);
   --glass-blur: 16px;
   --glass-highlight: rgba(255, 255, 255, 0.8);
@@ -134,7 +130,7 @@
   --msg-bubble-sent-end: #2563eb;
   --msg-bubble-sent-shadow: rgba(37, 99, 235, 0.25);
   --msg-bubble-received-bg: #f1f5f9;
-  --msg-bubble-received-border: rgba(255,255,255,0.5);
+  --msg-bubble-received-border: rgba(255, 255, 255, 0.5);
   --msg-bubble-received-shadow: rgba(0, 0, 0, 0.03);
 
   /* Safe Areas */
@@ -219,8 +215,7 @@ body.dark {
   --glass-bg: rgba(15, 23, 42, 0.75);
   --glass-border: rgba(255, 255, 255, 0.08);
   --glass-shadow:
-    0 10px 15px -3px rgba(0, 0, 0, 0.5),
-    0 4px 6px -2px rgba(0, 0, 0, 0.3),
+    0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.3),
     inset 0 0 0 1px rgba(255, 255, 255, 0.05);
   --glass-highlight: rgba(255, 255, 255, 0.03);
   --glass-tint-1: rgba(56, 189, 248, 0.05);
@@ -238,7 +233,7 @@ body.dark {
   --msg-bubble-sent-end: #3b82f6;
   --msg-bubble-sent-shadow: rgba(0, 0, 0, 0.4);
   --msg-bubble-received-bg: #1e293b;
-  --msg-bubble-received-border: rgba(255,255,255,0.08);
+  --msg-bubble-received-border: rgba(255, 255, 255, 0.08);
   --msg-bubble-received-shadow: rgba(0, 0, 0, 0.3);
   --msg-sidebar-bg: #020617;
   --msg-sidebar-active: #0ea5e9;
