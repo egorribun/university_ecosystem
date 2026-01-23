@@ -22,6 +22,7 @@ describe("Messenger Visual Overhaul", () => {
     {
       id: "1",
       name: "John Doe",
+      avatar: "",
       lastMessage: "Hello",
       lastMessageTime: "12:00",
       unread: 2,
