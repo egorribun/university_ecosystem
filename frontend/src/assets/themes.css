@@ -2813,12 +2813,20 @@ body.dark {
 .footer-root {
   background:
     radial-gradient(120% 180% at -10% -20%, rgba(36, 145, 255, 0.14), transparent 60%),
-    linear-gradient(112deg, var(--fed-blue-90v) 0%, var(--fed-blue-80v) 28%, var(--fed-blue-70v) 58%, var(--fed-blue-60v) 100%);
+    linear-gradient(
+      112deg,
+      var(--fed-blue-90v) 0%,
+      var(--fed-blue-80v) 28%,
+      var(--fed-blue-70v) 58%,
+      var(--fed-blue-60v) 100%
+    );
   color: #ffffff;
   border-top: 1px solid rgba(255, 255, 255, 0.12);
   position: relative;
   overflow: hidden;
-  transition: background var(--anim-slow), color var(--anim-med);
+  transition:
+    background var(--anim-slow),
+    color var(--anim-med);
 }
 
 .footer-root::after {
@@ -2940,7 +2948,9 @@ body.dark .footer-root {
   width: 36px;
   height: 36px;
   opacity: 0.82;
-  transition: transform var(--anim-fast), opacity var(--anim-fast) !important;
+  transition:
+    transform var(--anim-fast),
+    opacity var(--anim-fast) !important;
 }
 
 .footer-social-btn:hover {
@@ -2980,7 +2990,9 @@ body.dark .footer-root {
   padding: 0.35rem 0;
   outline-offset: 2px;
   font-size: 14px;
-  transition: opacity var(--anim-fast), transform var(--anim-fast);
+  transition:
+    opacity var(--anim-fast),
+    transform var(--anim-fast);
 }
 
 .footer-link:hover {
@@ -3640,4 +3652,3 @@ body.dark .custom-scrollbar::-webkit-scrollbar-thumb {
   min-width: 18px;
   text-align: center;
 }
-
