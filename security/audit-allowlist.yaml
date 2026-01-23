@@ -36,3 +36,9 @@ pip:
       expires: 2026-02-16
       reason: |
         Temporary allowlist for investigation. Assess impact and upgrade affected package.
+    - id: CVE-2026-0994
+      package: unknown
+      owner: backend@university.example
+      expires: 2026-02-23
+      reason: |
+        Temporary allowlist for investigation. Assess impact and upgrade affected package.
