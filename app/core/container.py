@@ -2,6 +2,8 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.cqrs.queries import GetScheduleHandler, GetStatsHandler
+from app.deps.cache import BaseCache, get_cache
 from app.services.audit_service import (
     AuditService,
     SecureAuditService,
@@ -45,3 +47,17 @@ def get_user_service(
     notifications: NotificationService = Depends(get_notification_service),
 ) -> UserService:
     return UserService(db=db, audit=audit, notifications=notifications)
+
+
+def get_schedule_handler(
+    db: AsyncSession = Depends(get_db),
+    cache: BaseCache = Depends(get_cache),
+) -> GetScheduleHandler:
+    return GetScheduleHandler(db=db, cache=cache)
+
+
+def get_stats_handler(
+    db: AsyncSession = Depends(get_db),
+    cache: BaseCache = Depends(get_cache),
+) -> GetStatsHandler:
+    return GetStatsHandler(db=db, cache=cache)
