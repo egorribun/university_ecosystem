@@ -123,7 +123,7 @@ services:
       retries: 3
 
   postgres:
-    image: pgvector/pgvector:17-pgvector
+    image: pgvector/pgvector:pg17
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - set in .env file}
