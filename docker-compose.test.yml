@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:17-alpine
+    image: pgvector/pgvector:17-pgvector
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: test
