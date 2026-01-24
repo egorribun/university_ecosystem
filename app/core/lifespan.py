@@ -42,6 +42,9 @@ async def lifespan(app: FastAPI):
 
     if settings.auto_create_schema:
         async with engine.begin() as conn:
+            from sqlalchemy import text
+
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
             await conn.run_sync(Base.metadata.create_all)
 
     if settings.partition_management_enabled:
