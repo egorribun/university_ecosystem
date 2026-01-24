@@ -62,7 +62,7 @@ interface ContactListProps {
 export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, onSelect }) => {
   return (
     <div
-      className="flex-1 overflow-y-auto custom-scrollbar p-2"
+      className="flex-1 overflow-y-auto custom-scrollbar p-2 msg-sidebar-bg"
       style={{ background: "var(--msg-sidebar-bg)" }}
     >
       <LayoutGroup>
