@@ -58,8 +58,10 @@ def _optimize_image_pillow(
     max_height: int,
 ) -> tuple[bytes, str]:
     """Process image using Pillow (fallback when pyvips unavailable)."""
-    with Image.open(BytesIO(data)) as img:
-        img = ImageOps.exif_transpose(img)
+    with Image.open(BytesIO(data)) as src_img:
+        img: Image.Image = src_img
+        if exif_transposed := ImageOps.exif_transpose(img):
+            img = exif_transposed
         width, height = img.size
 
         if width > max_width or height > max_height:

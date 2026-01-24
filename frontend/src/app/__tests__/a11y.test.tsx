@@ -23,6 +23,10 @@ vi.mock("@/components/NotificationsBell", () => ({
   ),
 }))
 
+vi.mock("@/components/MessengerButton", () => ({
+  default: () => <button aria-label="Messenger">Messenger</button>,
+}))
+
 vi.mock("@/hooks/useNotifications", () => ({
   useNotifications: () => ({
     items: [],

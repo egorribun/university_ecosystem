@@ -3,35 +3,43 @@ import { useTranslation } from "react-i18next"
 import { MessageSquare } from "lucide-react"
 import { cn } from "@/utils/cn"
 import { motion } from "framer-motion"
+import { useMessenger } from "@/contexts/MessengerContext"
 
 export default function MessengerButton() {
   const navigate = useNavigate()
   const { t } = useTranslation(["navigation"])
-
-  // Mock unread count for now
-  const unreadCount = 0
+  const { unreadCount } = useMessenger()
 
   return (
     <motion.button
-      whileHover={{ scale: 1.05, backgroundColor: "var(--glass-tint-2)" }}
+      whileHover={{
+        scale: 1.05,
+        backgroundColor: "var(--msg-sidebar-hover)",
+        boxShadow: "0 0 20px rgba(59, 130, 246, 0.2)",
+      }}
       whileTap={{ scale: 0.95 }}
       onClick={() => navigate("/messenger")}
       className={cn(
-        "relative flex items-center justify-center rounded-xl transition-all duration-300 outline-none group",
-        "w-[clamp(32px,7vw,40px)] h-[clamp(32px,7vw,40px)] border border-transparent hover:border-[var(--glass-border)]"
+        "relative flex items-center justify-center rounded-[14px] transition-all duration-300 outline-none group",
+        "w-10 h-10 border border-transparent hover:border-blue-500/30 bg-transparent glass-morphism shadow-sm"
       )}
-      style={{ color: "var(--nav-text)" }}
       aria-label={t("navigation:aria.messenger")}
     >
       <MessageSquare
-        className="w-[clamp(18px,4.5vw,22px)] h-[clamp(18px,4.5vw,22px)] transition-transform duration-500 group-hover:rotate-[-5deg]"
-        strokeWidth={1.8}
+        className="w-5 h-5 transition-all duration-500 group-hover:rotate-[-8deg] group-hover:scale-110 text-gray-600 dark:text-gray-300 group-hover:text-blue-500"
+        strokeWidth={2}
       />
       {unreadCount > 0 && (
-        <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-500 border-2 border-white dark:border-[#0F172A]"></span>
-        </span>
+        <motion.span
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center"
+        >
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-40"></span>
+          <span className="relative inline-flex rounded-full h-4 w-4 bg-blue-500 border-2 border-white dark:border-[#0F172A] text-[9px] font-bold text-white items-center justify-center">
+            {unreadCount}
+          </span>
+        </motion.span>
       )}
     </motion.button>
   )

@@ -17,6 +17,7 @@ import { useAuth, currentUserQueryKey } from "./contexts/AuthContext"
 import { usePushSync } from "./hooks/usePushSync"
 import { nowPlayingQueryKey } from "./hooks/useNowPlaying"
 import { prefetchRouteModules } from "./utils/prefetchRoutes"
+import { cn } from "@/utils/cn"
 
 import PageTransition from "./components/PageTransition"
 
@@ -184,36 +185,42 @@ export function AppRoutes() {
   )
 
   return (
-    <>
+    <div className="flex flex-col h-screen overflow-hidden">
       {!hideNavbar && <Navbar />}
+
       <div
         id="main"
         role="main"
         tabIndex={-1}
+        className="flex-1 min-h-0 relative"
         style={{
-          minHeight: isMessenger ? undefined : "100dvh",
-          position: isMessenger ? "fixed" : undefined,
-          top: isMessenger ? "var(--app-nav-h, 52px)" : undefined,
-          left: isMessenger ? 0 : undefined,
-          right: isMessenger ? 0 : undefined,
-          bottom: isMessenger ? 0 : undefined,
-          overflow: isMessenger ? "hidden" : undefined,
-          overscrollBehavior: isMessenger ? "none" : undefined,
           background: "var(--page-bg, var(--initial-bg, #060B14))",
           color: "var(--page-text)",
-          zIndex: isMessenger ? 0 : undefined,
         }}
       >
-        <Suspense fallback={fallbackShell}>
-          {reduceMotion || hideNavbar ? routes : <MotionPresence>{routes}</MotionPresence>}
-        </Suspense>
+        <div
+          className={cn(
+            "h-full",
+            isMessenger ? "overflow-hidden" : "overflow-y-auto custom-scrollbar"
+          )}
+        >
+          <Suspense fallback={fallbackShell}>
+            {reduceMotion || hideNavbar ? routes : <MotionPresence>{routes}</MotionPresence>}
+          </Suspense>
+
+          {!hideNavbar && !isMessenger && (
+            <>
+              <BackToTop />
+              <Footer />
+            </>
+          )}
+        </div>
       </div>
-      {!hideNavbar && <BackToTop />}
-      {!hideNavbar && <Footer />}
+
       {!hideNavbar && <MobileBottomNav />}
       <LivePushToasts />
       <OfflineIndicator />
       {!hideNavbar && <InstallPrompt />}
-    </>
+    </div>
   )
 }

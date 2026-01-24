@@ -58,6 +58,10 @@ vi.mock("@/components/SmartImage", () => ({
   ),
 }))
 
+vi.mock("@/components/MessengerButton", () => ({
+  default: () => <button data-testid="messenger-button">Messenger</button>,
+}))
+
 vi.mock("framer-motion", () => {
   const motionComponent = (Tag: string) => {
     const Component = ({ children, className, onClick, ...props }: any) => {
