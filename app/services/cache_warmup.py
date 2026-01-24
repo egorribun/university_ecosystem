@@ -136,6 +136,74 @@ async def _warm_stats(cache: BaseCache, db: AsyncSession) -> None:
     await asyncio.gather(*tasks)
 
 
+async def _warm_news(cache: BaseCache, db: AsyncSession) -> None:
+    if not cache.enabled:
+        return
+    # Warm up first page of news for default locales
+    from app.api.news import (
+        _get_news_list_version,
+        _news_list_cache_key,
+    )
+
+    version = await _get_news_list_version()
+    for locale in ["ru", "en"]:
+        cache_key = _news_list_cache_key(locale, 20, None, version)
+        cached = await cache.get(cache_key)
+        if cached and _is_entry_fresh(cached):
+            continue
+
+        rows = await crud.get_news_list(db, limit=21, cursor=None)
+        has_more = len(rows) > 20
+        if has_more:
+            rows = rows[:20]
+
+        from app.api.news import _serialize_news
+
+        items = [_serialize_news(item, locale) for item in rows]
+        payload = {
+            "items": items,
+            "has_more": has_more,
+            "next_cursor": None,  # Simplification for warmup
+        }
+        await cache.set(cache_key, jsonable_encoder(payload))
+
+
+async def _warm_events(cache: BaseCache, db: AsyncSession) -> None:
+    if not cache.enabled:
+        return
+    # Warm up first page of active events
+    from app.api.events import _events_list_cache_key, _get_events_list_version
+
+    version = await _get_events_list_version(cache)
+    for locale in ["ru", "en"]:
+        cache_key = _events_list_cache_key(
+            locale=locale,
+            search="",
+            event_type="",
+            location="",
+            is_active=True,
+            limit=20,
+            cursor=None,
+            version=version,
+        )
+        cached = await cache.get(cache_key)
+        if cached and _is_entry_fresh(cached):
+            continue
+
+        payload = await crud.get_all_events(
+            db,
+            user_id=0,  # System-level warmup
+            search="",
+            type="",
+            location="",
+            is_active=True,
+            locale=locale,
+            limit=20,
+            cursor=None,
+        )
+        await cache.set(cache_key, jsonable_encoder(payload))
+
+
 async def warm_cache() -> None:
     if not settings.cache_warmup_enabled:
         logger.info("Cache warmup disabled, skipping")
@@ -148,7 +216,11 @@ async def warm_cache() -> None:
 
     async with async_session() as db:
         try:
-            await _warm_schedule(cache, db)
-            await _warm_stats(cache, db)
+            await asyncio.gather(
+                _warm_schedule(cache, db),
+                _warm_stats(cache, db),
+                _warm_news(cache, db),
+                _warm_events(cache, db),
+            )
         except Exception:
             logger.exception("Cache warmup failed")

@@ -1,3 +1,4 @@
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
@@ -58,6 +59,7 @@ class Event(Base, EventEmitterMixin):
     image_url = Column(String)
     about = Column(Text)
     about_en = Column(Text)
+    embedding = Column(Vector(1536))
 
     __table_args__ = (
         CheckConstraint("ends_at > starts_at", name="ck_event_time_order"),

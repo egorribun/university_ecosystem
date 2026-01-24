@@ -1,10 +1,12 @@
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
+from app.core.events import EventEmitterMixin
 
 
-class News(Base):
+class News(Base, EventEmitterMixin):
     __tablename__ = "news"
 
     id = Column(Integer, primary_key=True)
@@ -13,6 +15,7 @@ class News(Base):
     title_en = Column(String)
     content_en = Column(Text)
     image_url = Column(String)
+    embedding = Column(Vector(1536))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     likes = relationship(

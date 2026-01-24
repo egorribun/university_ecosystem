@@ -11,6 +11,7 @@ from fastapi import (
     Response,
     status,
 )
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import crud
@@ -23,6 +24,10 @@ from app.cqrs.queries import GetScheduleHandler, GetScheduleQuery
 from app.deps.cache import get_cache
 from app.models import models
 from app.schemas import schemas
+from app.services.schedule_optimizer import (
+    ScheduleItemInternal,
+    ScheduleOptimizerService,
+)
 
 
 @lru_cache(maxsize=1)
@@ -58,6 +63,50 @@ async def add_schedule(
 ):
     locale = resolve_locale(request=request, user=user)
     require_teacher_or_admin(user, locale)
+
+    # Conflict check
+    optimizer = ScheduleOptimizerService()
+    existing_group = await crud.get_schedule_by_group(db, data.group_id)
+
+    # We also need to check by teacher if provided
+    existing_teacher = []
+    if data.teacher:
+        existing_teacher = (
+            (
+                await db.execute(
+                    select(models.Schedule).where(
+                        models.Schedule.teacher == data.teacher
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    all_existing = list(existing_group) + list(existing_teacher)
+    target = ScheduleItemInternal(
+        weekday=data.weekday,
+        start_time=data.start_time,
+        end_time=data.end_time,
+        parity=data.parity or "both",
+    )
+    existing_items = [
+        ScheduleItemInternal(
+            id=s.id,
+            weekday=s.weekday,
+            start_time=s.start_time,
+            end_time=s.end_time,
+            parity=s.parity,
+        )
+        for s in all_existing
+    ]
+
+    conflicts = await optimizer.detect_conflicts(target, existing_items)
+    if conflicts:
+        from app.api.validation import raise_conflict
+
+        raise_conflict("errors.schedule.conflict", locale)
+
     result = await crud.create_schedule(db, data)
     cache = get_cache()
     await cache.invalidate(_schedule_cache_key(result.group_id))

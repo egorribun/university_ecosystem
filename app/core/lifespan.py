@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -16,7 +17,9 @@ from app.services import notification_queue, webpush
 from app.services.cache_warmup import warm_cache
 from app.services.partition_manager import (
     ensure_partitions_exist,
+    start_partition_management_scheduler,
 )
+from app.workers.outbox import OutboxWorker
 
 
 @asynccontextmanager
@@ -43,6 +46,13 @@ async def lifespan(app: FastAPI):
 
     if settings.partition_management_enabled:
         await ensure_partitions_exist()
+        stop_partitions = await start_partition_management_scheduler(
+            settings.partition_management_interval_seconds
+        )
+
+    # Start OutboxWorker
+    outbox_worker = OutboxWorker()
+    outbox_task = asyncio.create_task(outbox_worker.run_forever())
 
     # Start in-memory rate limit cleanup (for fallback mode)
     start_memory_cleanup_task()
@@ -55,6 +65,11 @@ async def lifespan(app: FastAPI):
         await notification_queue.shutdown_notification_queue()
         webpush.cleanup()
         await shutdown_cache()
+        if settings.partition_management_enabled:
+            await stop_partitions()
+
+        await outbox_worker.stop()
+        await outbox_task
         await feature_flags.shutdown()
         await broker.shutdown()
         await stop_memory_cleanup_task()

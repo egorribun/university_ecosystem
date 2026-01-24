@@ -144,6 +144,18 @@ class EventRegistration(DomainEvent):
         return "event.registration"
 
 
+@dataclass
+class NewsCreated(DomainEvent):
+    """Fired when a new news article is created."""
+
+    news_id: int = 0
+    title: str = ""
+
+    @property
+    def event_type(self) -> str:
+        return "news.created"
+
+
 # Notification Events
 @dataclass
 class NotificationSent(DomainEvent):
@@ -367,6 +379,8 @@ __all__ = [
     "UserCreated",
     "UserUpdated",
     "UserDeleted",
+    # News events
+    "NewsCreated",
     # Auth events
     "UserLoggedIn",
     "MfaEnabled",

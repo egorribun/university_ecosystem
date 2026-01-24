@@ -14,34 +14,42 @@ PARTITIONED_TABLES = [
 ]
 
 
-async def ensure_partitions_exist(months_ahead: int = 1):
+async def ensure_partitions_exist():
     """
-    Ensures that PostgreSQL partitions exist for the current and next few months.
-    Only runs if the database is PostgreSQL.
+    Ensures that PostgreSQL partitions exist for the current and next few months,
+    and prunes old partitions based on retention settings.
     """
+    from app.core.config import settings
+
     async with engine.connect() as conn:
         if conn.dialect.name != "postgresql":
             logger.debug("Partition management skipped: not a PostgreSQL database")
             return
 
         now = datetime.now(UTC)
+
+        # 1. Ensure future partitions exist
         for table, column in PARTITIONED_TABLES:
-            for i in range(months_ahead + 1):
-                target_date = now + timedelta(days=31 * i)
-                year = target_date.year
-                month = target_date.month
+            for i in range(settings.partition_warmup_months + 1):
+                # Calculate month and year for the partition
+                month_offset = i
+                target_month = now.month + month_offset
+                target_year = now.year + (target_month - 1) // 12
+                target_month = (target_month - 1) % 12 + 1
 
                 # Start of month
-                start_date = datetime(year, month, 1, tzinfo=UTC)
+                start_date = datetime(target_year, target_month, 1, tzinfo=UTC)
                 # Start of next month
-                if month == 12:
-                    next_month_start = datetime(year + 1, 1, 1, tzinfo=UTC)
+                if target_month == 12:
+                    next_month_start = datetime(target_year + 1, 1, 1, tzinfo=UTC)
                 else:
-                    next_month_start = datetime(year, month + 1, 1, tzinfo=UTC)
+                    next_month_start = datetime(
+                        target_year, target_month + 1, 1, tzinfo=UTC
+                    )
 
-                partition_name = f"{table}_y{year}m{month:02d}"
+                partition_name = f"{table}_y{target_year}m{target_month:02d}"
 
-                logger.info(
+                logger.debug(
                     f"Ensuring partition {partition_name} exists for table {table}"
                 )
 
@@ -60,6 +68,55 @@ async def ensure_partitions_exist(months_ahead: int = 1):
                 except Exception as e:
                     logger.error(f"Failed to create partition {partition_name}: {e}")
                     # Don't rethrow, try other partitions
+
+        # 2. Prune old partitions
+        retention_days = settings.partition_retention_days
+        if retention_days > 0:
+            cutoff_date = now - timedelta(days=retention_days)
+            for table, _ in PARTITIONED_TABLES:
+                # Find partitions for this table
+                result = await conn.execute(
+                    text(
+                        """
+                    SELECT
+                        child.relname AS partition_name
+                    FROM pg_inherits
+                        JOIN pg_class parent ON pg_inherits.inhparent = parent.oid
+                        JOIN pg_class child ON pg_inherits.inhrelid = child.oid
+                    WHERE parent.relname = :table_name
+                """
+                    ),
+                    {"table_name": table},
+                )
+                partitions = result.scalars().all()
+
+                for p_name in partitions:
+                    # Expecting format table_yYYYYmMM
+                    if not p_name.startswith(f"{table}_y"):
+                        continue
+
+                    try:
+                        # Extract year and month from name
+                        parts = p_name.split("_y")[1].split("m")
+                        p_year = int(parts[0])
+                        p_month = int(parts[1])
+
+                        # Partition covers [p_year, p_month, 1] to [next_month, 1]
+                        # We prune if the END of the partition is before cutoff
+                        if p_month == 12:
+                            p_end_date = datetime(p_year + 1, 1, 1, tzinfo=UTC)
+                        else:
+                            p_end_date = datetime(p_year, p_month + 1, 1, tzinfo=UTC)
+
+                        if p_end_date < cutoff_date:
+                            logger.info(f"Pruning old partition {p_name}")
+                            await conn.execute(text(f"DROP TABLE {p_name}"))
+                            await conn.commit()
+
+                    except (ValueError, IndexError):
+                        continue
+                    except Exception as e:
+                        logger.error(f"Failed to prune partition {p_name}: {e}")
 
 
 async def start_partition_management_scheduler(interval_seconds: int = 86400):

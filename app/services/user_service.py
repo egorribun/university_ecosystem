@@ -23,16 +23,22 @@ from app.schemas import schemas
 from app.services.audit_service import AuditService
 from app.services.auth_service import attach_pending_email
 from app.services.data_access import export_access_logs, log_data_access
-from app.services.notifications import create_notifications_for_users
+from app.services.notification_service import NotificationService
 from app.utils.files import delete_static_file
 
 logger = logging.getLogger(__name__)
 
 
 class UserService:
-    def __init__(self, db: AsyncSession, audit: AuditService) -> None:
+    def __init__(
+        self,
+        db: AsyncSession,
+        audit: AuditService,
+        notifications: NotificationService,
+    ) -> None:
         self.db = db
         self.audit = audit
+        self.notifications = notifications
 
     async def update_user_profile(
         self,
@@ -63,12 +69,38 @@ class UserService:
             update_fields["email"] = validated_email
 
         preferences_fields = {"dnd_enabled", "dnd_start", "dnd_end", "timezone"}
+        profile_fields = {
+            "about",
+            "telegram",
+            "status",
+            "achievements",
+            "position",
+            "department",
+        }
+        education_fields = {
+            "institute",
+            "course",
+            "education_level",
+            "track",
+            "program",
+            "record_book_number",
+        }
 
         for field, value in update_fields.items():
             if field in preferences_fields:
                 if not db_user.preferences:
                     db_user.preferences = models.UserPreferences(user_id=db_user.id)
                 setattr(db_user.preferences, field, value)
+            elif field in profile_fields:
+                if not db_user.profile_detail:
+                    db_user.profile_detail = models.UserProfileDetail(
+                        user_id=db_user.id
+                    )
+                setattr(db_user.profile_detail, field, value)
+            elif field in education_fields:
+                if not db_user.education_path:
+                    db_user.education_path = models.EducationPath(user_id=db_user.id)
+                setattr(db_user.education_path, field, value)
             else:
                 setattr(db_user, field, value)
         await self.db.commit()
@@ -214,12 +246,10 @@ class UserService:
                 target_locale = resolve_locale(request=request, user=updated_user)
                 title = translate("notifications.mfa.reset.title", locale=target_locale)
                 body = translate("notifications.mfa.reset.body", locale=target_locale)
-                await create_notifications_for_users(
-                    self.db,
+                await self.notifications.send_security_notification(
+                    user_ids=[updated_user.id],
                     title=title,
                     body=body,
-                    type="security",
-                    user_ids=[updated_user.id],
                 )
         return updated_user
 

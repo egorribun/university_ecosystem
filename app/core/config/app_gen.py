@@ -29,6 +29,8 @@ class AppGeneralSettings(BaseAppSettings):
     access_log_retention_days: int = 365
     partition_management_enabled: bool = True
     partition_management_interval_seconds: int = 86400
+    partition_retention_days: int = 365
+    partition_warmup_months: int = 1
     enable_metrics_endpoint: bool = False
     metrics_basic_auth_username: str = ""
     metrics_basic_auth_password: str = ""
@@ -41,6 +43,13 @@ class AppGeneralSettings(BaseAppSettings):
 
     api_v2_prefix: str = "/api/v2"
     audit_log_secret: str = "development-audit-secret-change-me"
+
+    # Semantic Search
+    semantic_search_enabled: bool = True
+    embedding_model: str = "text-embedding-3-small"
+    embedding_dimensions: int = 1536
+    embedding_api_key: str = ""
+    embedding_api_base: str = "https://api.openai.com/v1"
 
     health_storage_probe_min_interval_seconds: int = 3600
 
