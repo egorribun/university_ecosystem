@@ -47,7 +47,7 @@ structlog>=24.0
 strawberry-graphql[fastapi]>=0.250
 minio>=7.2
 nats-py>=2.9
-elasticsearch[async]>=8.0
+elasticsearch[async]>=8.0,<9.0.0
 polars>=1.0
 geoip2>=4.0
 
