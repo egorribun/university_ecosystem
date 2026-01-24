@@ -18,27 +18,17 @@ pip:
       expires: 2026-12-31
       reason: |
         python-ecdsa has no upstream fix for CVE-2024-23342 (GHSA-wj6h-64fc-37mp). Monitor upstream and replace or upgrade when a patch lands.
-    - id: CVE-2026-22701
-      package: unknown
-      owner: backend@university.example
-      expires: 2026-02-16
-      reason: |
-        Temporary allowlist for investigation. Assess impact and upgrade affected package.
     - id: CVE-2026-22702
-      package: unknown
+      package: virtualenv
       owner: backend@university.example
-      expires: 2026-02-16
+      expires: 2026-03-01
       reason: |
-        Temporary allowlist for investigation. Assess impact and upgrade affected package.
-    - id: CVE-2026-23490
-      package: unknown
-      owner: backend@university.example
-      expires: 2026-02-16
-      reason: |
-        Temporary allowlist for investigation. Assess impact and upgrade affected package.
+        Vulnerability fixed in virtualenv 20.36.2. Currently, only 20.36.1 is available in the public index.
+        Upgrade and remove this exit when 20.36.2 becomes available.
     - id: CVE-2026-0994
-      package: unknown
+      package: protobuf
       owner: backend@university.example
-      expires: 2026-02-23
+      expires: 2026-03-01
       reason: |
-        Temporary allowlist for investigation. Assess impact and upgrade affected package.
+        DoS vulnerability in protobuf json_format. Currently using 6.33.4 (latest).
+        Official fix status is pending verification as this CVE was published very recently (2026-01-23).
