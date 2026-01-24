@@ -1149,6 +1149,26 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  "/api/v1/events/search/semantic": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * Semantic Search
+     * @description Semantic search for events using embeddings.
+     */
+    get: operations["semantic_search_api_v1_events_search_semantic_get"]
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   "/api/v1/news": {
     parameters: {
       query?: never
@@ -1272,6 +1292,26 @@ export interface paths {
     put?: never
     /** Upload News Image */
     post: operations["upload_news_image_api_v1_news_upload_image_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/news/search/semantic": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * Semantic Search
+     * @description Semantic search for news articles using embeddings.
+     */
+    get: operations["semantic_search_api_v1_news_search_semantic_get"]
+    put?: never
+    post?: never
     delete?: never
     options?: never
     head?: never
@@ -5724,6 +5764,41 @@ export interface operations {
       }
     }
   }
+  semantic_search_api_v1_events_search_semantic_get: {
+    parameters: {
+      query: {
+        query: string
+        limit?: number
+        min_score?: number
+      }
+      header?: {
+        "if-none-match"?: string | null
+      }
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["EventOut"][]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
   news_list_api_v1_news_get: {
     parameters: {
       query?: {
@@ -6080,6 +6155,41 @@ export interface operations {
         }
         content: {
           "application/json": unknown
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  semantic_search_api_v1_news_search_semantic_get: {
+    parameters: {
+      query: {
+        query: string
+        limit?: number
+        min_score?: number
+      }
+      header?: {
+        "if-none-match"?: string | null
+      }
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["NewsOut"][]
         }
       }
       /** @description Validation Error */
