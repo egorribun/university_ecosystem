@@ -9,6 +9,7 @@ from app.services.audit_service import (
     SecureAuditService,
     get_secure_audit_service,
 )
+from app.services.auth_service import AuthService
 from app.services.group_service import GroupService
 from app.services.notification_service import NotificationService
 from app.services.user_service import UserService
@@ -61,3 +62,10 @@ def get_stats_handler(
     cache: BaseCache = Depends(get_cache),
 ) -> GetStatsHandler:
     return GetStatsHandler(db=db, cache=cache)
+
+
+def get_auth_service(
+    db: AsyncSession = Depends(get_db),
+    audit: AuditService = Depends(get_audit_service),
+) -> AuthService:
+    return AuthService(db=db, audit=audit)
