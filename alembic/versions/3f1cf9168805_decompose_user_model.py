@@ -188,26 +188,26 @@ def downgrade() -> None:
 
     op.create_table(
         "dead_letter_jobs",
-        sa.Column("id", sa.INTEGER(), nullable=False),
-        sa.Column("job_type", sa.VARCHAR(length=100), nullable=False),
-        sa.Column("job_hash", sa.VARCHAR(length=64), nullable=False),
-        sa.Column("payload", sa.TEXT(), nullable=False),
-        sa.Column("error_message", sa.TEXT(), nullable=True),
+        sa.Column("id", sa.Integer(), nullable=False),
+        sa.Column("job_type", sa.String(length=100), nullable=False),
+        sa.Column("job_hash", sa.String(length=64), nullable=False),
+        sa.Column("payload", sa.Text(), nullable=False),
+        sa.Column("error_message", sa.Text(), nullable=True),
         sa.Column(
-            "retry_count", sa.INTEGER(), server_default=sa.text("'0'"), nullable=False
+            "retry_count", sa.Integer(), server_default=sa.text("'0'"), nullable=False
         ),
         sa.Column(
-            "max_retries", sa.INTEGER(), server_default=sa.text("'3'"), nullable=False
+            "max_retries", sa.Integer(), server_default=sa.text("'3'"), nullable=False
         ),
         sa.Column(
             "status",
-            sa.VARCHAR(length=20),
+            sa.String(length=20),
             server_default=sa.text("'pending'"),
             nullable=False,
         ),
-        sa.Column("next_retry_at", sa.DATETIME(), nullable=True),
-        sa.Column("created_at", sa.DATETIME(), nullable=False),
-        sa.Column("updated_at", sa.DATETIME(), nullable=False),
+        sa.Column("next_retry_at", sa.DateTime(), nullable=True),
+        sa.Column("created_at", sa.DateTime(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("job_hash"),
     )
