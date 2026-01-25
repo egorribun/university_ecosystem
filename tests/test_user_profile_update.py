@@ -314,7 +314,9 @@ async def test_upload_avatar_cleans_up_on_commit_failure(
 
     monkeypatch.setattr(db_session, "commit", failing_commit)
 
-    service = UserService(db_session, AuditService())
+    from unittest.mock import AsyncMock
+
+    service = UserService(db_session, AuditService(), AsyncMock())
 
     with pytest.raises(RuntimeError):
         await service.upload_avatar(user, upload, request=None)
@@ -357,7 +359,9 @@ async def test_upload_cover_cleans_up_on_commit_failure(
 
     monkeypatch.setattr(db_session, "commit", failing_commit)
 
-    service = UserService(db_session, AuditService())
+    from unittest.mock import AsyncMock
+
+    service = UserService(db_session, AuditService(), AsyncMock())
 
     with pytest.raises(RuntimeError):
         await service.upload_cover(user, upload, request=None)

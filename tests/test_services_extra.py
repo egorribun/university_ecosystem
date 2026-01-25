@@ -50,8 +50,9 @@ async def test_user_service_basics():
     from app.services.user_service import UserService
 
     audit = MagicMock()
+    notifications = AsyncMock()
     db = AsyncMock()
-    service = UserService(db, audit)
+    service = UserService(db, audit, notifications)
     user = models.User(id=1, email="u@e.com")
     user.avatar_url = None
     user.cover_url = None
@@ -129,5 +130,9 @@ async def test_partition_management_logic():
         # Mocking the async context manager engine.connect()
         m_engine.connect.return_value.__aenter__.return_value = conn
 
-        await ensure_partitions_exist(months_ahead=0)
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = []
+        conn.execute.return_value = mock_result
+
+        await ensure_partitions_exist()
         assert conn.execute.called

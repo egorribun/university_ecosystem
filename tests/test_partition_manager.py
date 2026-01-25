@@ -1,5 +1,5 @@
 import asyncio
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -34,7 +34,11 @@ class TestPartitionManager:
         with patch("app.services.partition_manager.engine") as mock_engine:
             mock_engine.connect.return_value.__aenter__.return_value = mock_conn
 
-            await ensure_partitions_exist(months_ahead=0)
+            mock_result = MagicMock()
+            mock_result.scalars.return_value.all.return_value = []
+            mock_conn.execute.return_value = mock_result
+
+            await ensure_partitions_exist()
 
             # verify it tries to create tables for current month
             assert mock_conn.execute.call_count >= len(PARTITIONED_TABLES)

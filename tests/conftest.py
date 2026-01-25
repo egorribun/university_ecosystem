@@ -299,6 +299,7 @@ async def prepare_database() -> AsyncIterator[None]:
                 image_url VARCHAR,
                 about TEXT,
                 about_en TEXT,
+                embedding TEXT,
                 CONSTRAINT ck_event_time_order CHECK (ends_at > starts_at)
             )
         """

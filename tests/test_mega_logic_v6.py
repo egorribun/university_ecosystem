@@ -22,7 +22,8 @@ async def test_user_service_mega():
     db = AsyncMock()
     db.add = MagicMock()
     db.add_all = MagicMock()
-    service = UserService(db, audit)
+    notifications = AsyncMock()
+    service = UserService(db, audit, notifications)
 
     admin_user = models.User(id=1, email="admin@e.com", role="admin")
     student_user = models.User(id=2, email="s@e.com", role="student")
@@ -103,12 +104,12 @@ async def test_user_service_mega():
         ),
         patch("app.services.user_service.resolve_locale", return_value="en"),
         patch(
-            "app.services.user_service.create_notifications_for_users",
+            "app.services.notification_service.create_notifications_for_users",
             new_callable=AsyncMock,
-        ) as m_notif,
+        ),
     ):
         await service.admin_update_user(3, data_update, request, admin_user)
-        m_notif.assert_called_once()
+        service.notifications.send_security_notification.assert_called_once()
 
     # 6. admin_delete_user - forbidden/self/not found
     with patch("app.services.user_service.resolve_locale", return_value="en"):

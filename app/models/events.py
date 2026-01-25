@@ -59,7 +59,7 @@ class Event(Base, EventEmitterMixin):
     image_url = Column(String)
     about = Column(Text)
     about_en = Column(Text)
-    embedding = Column(Vector(1536))
+    embedding = Column(Text().with_variant(Vector(1536), "postgresql"))
 
     __table_args__ = (
         CheckConstraint("ends_at > starts_at", name="ck_event_time_order"),

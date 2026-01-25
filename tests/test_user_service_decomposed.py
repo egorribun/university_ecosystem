@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,7 +11,7 @@ from app.services.user_service import UserService
 @pytest.mark.asyncio
 async def test_update_user_profile_decomposed_fields():
     # Setup
-    db = MagicMock(spec=AsyncSession)
+    db = AsyncMock(spec=AsyncSession)
     audit = MagicMock()
     notifications = MagicMock()
     service = UserService(db, audit, notifications)
@@ -22,6 +22,9 @@ async def test_update_user_profile_decomposed_fields():
     update_data = schemas.UserProfileUpdate(
         about="New about", institute="New institute", timezone="Europe/Moscow"
     )
+    mock_res = MagicMock()
+    mock_res.scalars.return_value.first.return_value = None
+    db.execute.return_value = mock_res
     request = MagicMock()
 
     # Execute
@@ -37,7 +40,7 @@ async def test_update_user_profile_decomposed_fields():
 @pytest.mark.asyncio
 async def test_update_user_profile_email_change():
     # Setup
-    db = MagicMock(spec=AsyncSession)
+    db = AsyncMock(spec=AsyncSession)
     audit = MagicMock()
     notifications = MagicMock()
     service = UserService(db, audit, notifications)
@@ -48,6 +51,7 @@ async def test_update_user_profile_email_change():
     # Mock email uniqueness check
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = None
+    mock_result.scalars.return_value.first.return_value = None
     db.execute.return_value = mock_result
 
     update_data = schemas.UserProfileUpdate(email="new@example.com")

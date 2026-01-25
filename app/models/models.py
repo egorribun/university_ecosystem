@@ -81,6 +81,9 @@ from app.models.schedule import Schedule as Schedule
 from app.models.spotify import SpotifyIntegration as SpotifyIntegration
 from app.models.stories import Story as Story
 from app.models.users import (
+    EducationPath as EducationPath,
+)
+from app.models.users import (
     InviteCode as InviteCode,
 )
 from app.models.users import (
@@ -88,4 +91,7 @@ from app.models.users import (
 )
 from app.models.users import (
     UserPreferences as UserPreferences,
+)
+from app.models.users import (
+    UserProfileDetail as UserProfileDetail,
 )
