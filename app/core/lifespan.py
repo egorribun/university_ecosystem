@@ -42,20 +42,23 @@ async def lifespan(app: FastAPI):
     configure_event_handlers()
 
     if settings.auto_create_schema:
-        async with engine.begin() as conn:
-            from sqlalchemy import text
+        import logging
 
+        from sqlalchemy import text
+
+        logger = logging.getLogger(__name__)
+
+        async with engine.begin() as conn:
             if conn.dialect.name == "postgresql":
                 try:
                     await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
                 except Exception as e:
-                    import logging
-
-                    logger = logging.getLogger(__name__)
                     logger.warning(
                         f"Could not create 'vector' extension: {e}. "
                         "Semantic search will be disabled."
                     )
+
+        async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
     await setup_periodic_cleanups()
