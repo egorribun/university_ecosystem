@@ -34,12 +34,14 @@ from app.api.validation import (
     require_owner_or_admin,
     require_teacher_or_admin,
 )
+from app.core.container import get_notification_service, get_vector_service
 from app.core.database import get_db
 from app.core.localization import normalize_locale, resolve_locale
 from app.deps.cache import RedisCache, etag_matches, format_etag, get_cache
 from app.models import models
 from app.schemas import schemas
-from app.services import attendance_tokens, notification_queue
+from app.services import attendance_tokens
+from app.services.notification_service import NotificationService
 from app.utils.files import delete_static_file, save_attachment
 
 logger = logging.getLogger(__name__)
@@ -214,6 +216,7 @@ async def create_event(
     background: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
+    notifications: NotificationService = Depends(get_notification_service),
 ):
     locale = resolve_locale(request=request, user=user)
     require_teacher_or_admin(user, locale)
@@ -224,24 +227,7 @@ async def create_event(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
         ) from exc
     await _invalidate_events_list_cache()
-    job = notification_queue.NotificationJob(
-        kind="event", record_id=record.id, locale=locale
-    )
-    try:
-        background.add_task(
-            notification_queue.enqueue_event_notification,
-            record.id,
-            locale=locale,
-        )
-    except Exception as exc:
-        await notification_queue.record_enqueue_failure(
-            job,
-            error=exc,
-            source="events.create_event",
-        )
-        logger.exception(
-            "Failed to enqueue event notification", extra={"event_id": record.id}
-        )
+    await notifications.dispatch_event_created(record.id, locale, background)
     return crud.serialize_event(record, locale)
 
 
@@ -663,6 +649,41 @@ async def delete_event_file(
     await db.commit()
     await delete_static_file(file_url)
     return {"ok": True}
+
+
+@router.get("/search/semantic", response_model=list[schemas.EventOut])
+async def semantic_search(
+    request: Request,
+    response: Response,
+    query: str = Query(..., min_length=3),
+    limit: int = Query(5, ge=1, le=20),
+    min_score: float = Query(0.7, ge=0.0, le=1.0),
+    if_none_match: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+    vector_service: Any = Depends(get_vector_service),
+):
+    """
+    Semantic search for events using embeddings.
+    """
+    locale = resolve_locale(request=request)
+    normalized_locale = normalize_locale(locale)
+
+    # Use ETag based on events list version
+    cache = get_cache()
+    version = await _get_events_list_version(cache)
+    etag = format_etag(f"semantic_events:{version}:{query}:{limit}:{min_score}")
+    if etag_matches(etag, if_none_match):
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED)
+
+    embedding = await vector_service.get_embedding(query)
+    results = await vector_service.search_similar(
+        models.Event, embedding, limit=limit, min_score=min_score
+    )
+
+    items = [crud.serialize_event(item, locale) for item in results]
+    response.headers["ETag"] = etag
+    _set_language_headers(response, normalized_locale)
+    return items
 
 
 __all__ = ["router"]

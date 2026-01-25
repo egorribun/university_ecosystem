@@ -25,6 +25,7 @@ from app.api.validation import raise_validation_error, require_admin
 from app.core.container import (
     get_audit_service,
     get_auth_service,
+    get_group_service,
     get_user_service,
 )
 from app.core.database import get_db
@@ -39,6 +40,7 @@ from app.services.data_access import (
     log_data_access,
     serialize_access_logs_csv,
 )
+from app.services.group_service import GroupService
 from app.services.notifications import create_notifications_for_users
 from app.services.user_service import UserService
 from app.utils.ratelimit import sensitive_route_limit
@@ -365,12 +367,9 @@ async def delete_user_admin(
 
 @groups_router.get("", response_model=list[schemas.GroupOut])
 async def get_groups(
-    db: AsyncSession = Depends(get_db),
+    service: GroupService = Depends(get_group_service),
 ):
-    from app import crud
-
-    groups = await crud.get_groups(db)
-    return groups
+    return await service.get_groups()
 
 
 router.include_router(users_router)

@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -16,7 +17,10 @@ from app.services import notification_queue, webpush
 from app.services.cache_warmup import warm_cache
 from app.services.partition_manager import (
     ensure_partitions_exist,
+    start_partition_management_scheduler,
 )
+from app.tasks.cleanups import setup_periodic_cleanups
+from app.workers.outbox import OutboxWorker
 
 
 @asynccontextmanager
@@ -38,11 +42,67 @@ async def lifespan(app: FastAPI):
     configure_event_handlers()
 
     if settings.auto_create_schema:
+        import logging
+
+        from sqlalchemy import text
+
+        logger = logging.getLogger(__name__)
+
+        async with engine.begin() as conn:
+            if conn.dialect.name == "postgresql":
+                try:
+                    await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+                except Exception as e:
+                    logger.warning(
+                        f"Could not create 'vector' extension: {e}. "
+                        "Semantic search will be disabled."
+                    )
+                    # Patch metadata to avoid using Vector type if extension is missing
+                    from pgvector.sqlalchemy import Vector
+                    from sqlalchemy import Text
+
+                    for table in Base.metadata.tables.values():
+                        for column in table.columns:
+                            # Check for direct Vector or Variant containing Vector
+                            is_vector = isinstance(column.type, Vector)
+                            is_variant_vector = False
+
+                            if hasattr(column.type, "_variant_mapping"):
+                                # If Variant, check if PG variant is Vector
+                                pg_utils = column.type._variant_mapping
+                                pg_variant = pg_utils.get("postgresql")
+                                if pg_variant and isinstance(pg_variant, Vector):
+                                    is_variant_vector = True
+
+                            if is_vector:
+                                column.type = Text()
+                            elif is_variant_vector:
+                                # Use base type as fallback
+                                column.type = getattr(column.type, "base_type", Text())
+
+                    # Disable semantic search in settings
+                    try:
+                        # Attempt to disable semantic search since extension is missing
+                        object.__setattr__(settings, "semantic_search_enabled", False)
+                    except Exception:
+                        logger.error(
+                            "Failed to disable semantic_search_enabled setting"
+                        )
+
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
 
+    await setup_periodic_cleanups()
+
     if settings.partition_management_enabled:
         await ensure_partitions_exist()
+        stop_partitions = await start_partition_management_scheduler(
+            settings.partition_management_interval_seconds
+        )
+
+    # Start OutboxWorker
+    outbox_worker = OutboxWorker()
+    outbox_task = asyncio.create_task(outbox_worker.run_forever())
 
     # Start in-memory rate limit cleanup (for fallback mode)
     start_memory_cleanup_task()
@@ -55,6 +115,11 @@ async def lifespan(app: FastAPI):
         await notification_queue.shutdown_notification_queue()
         webpush.cleanup()
         await shutdown_cache()
+        if settings.partition_management_enabled:
+            await stop_partitions()
+
+        await outbox_worker.stop()
+        await outbox_task
         await feature_flags.shutdown()
         await broker.shutdown()
         await stop_memory_cleanup_task()

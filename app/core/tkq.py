@@ -53,6 +53,7 @@ if settings.environment.lower() in ("test", "testing"):
 
     broker = InMemoryBroker()
     broker.add_middlewares(tracking_middleware)
+    schedule_source = None
     scheduler = TaskiqScheduler(broker, sources=[])
 else:
     result_backend = RedisAsyncResultBackend(
@@ -63,8 +64,8 @@ else:
         url=settings.taskiq_broker_url,
     ).with_result_backend(result_backend)
 
-    redis_source = RedisScheduleSource(url=settings.taskiq_broker_url)
-    scheduler = TaskiqScheduler(broker, sources=[redis_source])
+    schedule_source = RedisScheduleSource(url=settings.taskiq_broker_url)
+    scheduler = TaskiqScheduler(broker, sources=[schedule_source])
 
 # This allows TaskIQ to use FastAPI dependencies
 taskiq_fastapi.init(broker, "app.main:app")

@@ -310,7 +310,7 @@ jobs:
     needs: run-hooks
     services:
       postgres:
-        image: postgres:16-alpine
+        image: pgvector/pgvector:pg17
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
@@ -374,7 +374,7 @@ jobs:
     needs: run-hooks
     services:
       postgres:
-        image: postgres:16-alpine
+        image: pgvector/pgvector:pg17
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test
@@ -418,6 +418,8 @@ jobs:
 
           async def create_tables():
               async with engine.begin() as conn:
+                  from sqlalchemy import text
+                  await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
                   await conn.run_sync(Base.metadata.create_all)
 
           asyncio.run(create_tables())

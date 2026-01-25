@@ -267,6 +267,8 @@ packaging==26.0
     #   taskiq
 passlib[bcrypt]==1.7.4
     # via -r requirements.in
+pgvector==0.3.6
+    # via -r requirements.in
 pillow==12.1.0
     # via -r requirements.in
 pillow-avif-plugin==1.5.5

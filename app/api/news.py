@@ -33,6 +33,7 @@ from app.api.validation import (
     raise_validation_error,
     require_admin,
 )
+from app.core.container import get_notification_service, get_vector_service
 from app.core.database import get_db
 from app.core.localization import (
     DEFAULT_LOCALE,
@@ -42,7 +43,7 @@ from app.core.localization import (
 from app.deps.cache import etag_matches, format_etag, get_cache
 from app.models import models
 from app.schemas import schemas
-from app.services import notification_queue
+from app.services.notification_service import NotificationService
 from app.utils.files import delete_static_file
 
 logger = logging.getLogger(__name__)
@@ -189,22 +190,14 @@ async def create_news(
     background: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
+    notifications: NotificationService = Depends(get_notification_service),
 ):
     locale = resolve_locale(request=request, user=user)
     require_admin(user, locale)
     record = await crud.create_news(db, data)
     await _increment_news_list_version()
     serialized = _serialize_news(record, locale)
-    try:
-        background.add_task(
-            notification_queue.enqueue_news_notification,
-            record.id,
-            locale=locale,
-        )
-    except Exception:
-        logger.exception(
-            "Failed to enqueue news notification", extra={"news_id": record.id}
-        )
+    await notifications.dispatch_news_created(record.id, locale, background)
     return schemas.NewsOut.model_validate(serialized)
 
 
@@ -559,6 +552,41 @@ async def upload_news_image(
     require_admin(user, locale)
     url = await save_upload(file, "news_images", "news", locale=locale)
     return {"url": url}
+
+
+@router.get("/search/semantic", response_model=list[schemas.NewsOut])
+async def semantic_search(
+    request: Request,
+    response: Response,
+    query: str = Query(..., min_length=3),
+    limit: int = Query(5, ge=1, le=20),
+    min_score: float = Query(0.7, ge=0.0, le=1.0),
+    if_none_match: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+    vector_service: Any = Depends(get_vector_service),
+):
+    """
+    Semantic search for news articles using embeddings.
+    """
+    locale = resolve_locale(request=request)
+    normalized_locale = _normalized_cache_locale(locale)
+
+    # Note: We don't cache semantic search results easily due to query variety,
+    # but we can use ETag based on the content version.
+    version = await _get_news_list_version()
+    etag = format_etag(f"semantic:{version}:{query}:{limit}:{min_score}")
+    if etag_matches(etag, if_none_match):
+        return Response(status_code=status.HTTP_304_NOT_MODIFIED)
+
+    embedding = await vector_service.get_embedding(query)
+    results = await vector_service.search_similar(
+        models.News, embedding, limit=limit, min_score=min_score
+    )
+
+    items = [_serialize_news(item, locale) for item in results]
+    response.headers["ETag"] = etag
+    _set_language_headers(response, normalized_locale)
+    return items
 
 
 __all__ = ["router"]

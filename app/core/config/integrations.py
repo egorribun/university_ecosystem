@@ -9,3 +9,4 @@ class IntegrationSettings(BaseAppSettings):
     spotify_token_secret: str = ""
     spotify_redirect_uri: str = "http://localhost:8000/spotify/callback"
     spotify_scopes: str = "user-read-currently-playing user-read-playback-state"
+    rust_optimizer_url: str = "http://rust-optimizer:8080"

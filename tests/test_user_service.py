@@ -46,6 +46,14 @@ def mock_audit():
 
 
 @pytest.fixture
+def mock_notifications():
+    """Create mock NotificationService."""
+    notifications = AsyncMock()
+    notifications.send_security_notification = AsyncMock()
+    return notifications
+
+
+@pytest.fixture
 def mock_request():
     """Create mock Request."""
     request = MagicMock()
@@ -79,9 +87,9 @@ def mock_admin_user():
 
 
 @pytest.fixture
-def service(mock_db, mock_audit):
+def service(mock_db, mock_audit, mock_notifications):
     """Create UserService instance."""
-    return UserService(mock_db, mock_audit)
+    return UserService(mock_db, mock_audit, mock_notifications)
 
 
 # ============================================================
@@ -317,12 +325,9 @@ async def test_admin_update_user_mfa_reset(
             "app.services.user_service.crud.admin_update_user",
             return_value=(updated_user, reset_stats),
         ):
-            with patch(
-                "app.services.user_service.create_notifications_for_users"
-            ) as mock_notify:
-                await service.admin_update_user(2, data, mock_request, mock_admin_user)
+            await service.admin_update_user(2, data, mock_request, mock_admin_user)
 
-    mock_notify.assert_called_once()
+    service.notifications.send_security_notification.assert_called_once()
 
 
 # ============================================================

@@ -11,6 +11,10 @@ from sqlalchemy.orm import aliased, selectinload
 from app.auth import mfa
 from app.auth.security import get_password_hash
 from app.core.config import settings
+from app.core.events import (
+    EventCreated,
+    NewsCreated,
+)
 from app.core.localization import localized_text, normalize_locale, translate
 from app.deps.cache import BaseCache, cached
 from app.models import models
@@ -185,6 +189,8 @@ async def create_news(db: AsyncSession, news: schemas.NewsCreate):
 
     record = models.News(**payload)
     db.add(record)
+    await db.flush()
+    record.record_event(NewsCreated(news_id=record.id, title=record.title))
     await db.commit()
     await db.refresh(record)
     return record
@@ -698,6 +704,14 @@ async def create_event(db: AsyncSession, event: schemas.EventCreate, user_id: in
     )
     db.add(record)
     try:
+        await db.flush()
+        record.record_event(
+            EventCreated(
+                event_id_entity=record.id,
+                organizer_id=record.created_by,
+                title=record.title,
+            )
+        )
         await db.commit()
     except IntegrityError as exc:
         await db.rollback()

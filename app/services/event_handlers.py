@@ -10,16 +10,20 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from app.core.container import get_vector_service
+from app.core.database import async_session
 from app.core.events import (
     DomainEvent,
     EventCreated,
     EventRegistration,
     MfaEnabled,
+    NewsCreated,
     NotificationSent,
     UserCreated,
     UserLoggedIn,
     event_bus,
 )
+from app.models import models
 
 if TYPE_CHECKING:
     pass
@@ -112,6 +116,37 @@ async def handle_notification_sent(event: NotificationSent) -> None:
     # - Analytics
 
 
+async def generate_event_embedding(event: EventCreated) -> None:
+    """Generate embedding for newly created event."""
+    async with async_session() as db:
+        vector_service = get_vector_service(db)
+        # Fetch the event to get full content
+        db_event = await db.get(models.Event, event.event_id_entity)
+        if not db_event:
+            return
+
+        text_to_embed = (
+            f"{db_event.title} {db_event.description or ''} {db_event.location or ''}"
+        )
+        embedding = await vector_service.get_embedding(text_to_embed)
+        db_event.embedding = embedding
+        await db.commit()
+
+
+async def generate_news_embedding(event: NewsCreated) -> None:
+    """Generate embedding for newly created news."""
+    async with async_session() as db:
+        vector_service = get_vector_service(db)
+        db_news = await db.get(models.News, event.news_id)
+        if not db_news:
+            return
+
+        text_to_embed = f"{db_news.title} {db_news.content}"
+        embedding = await vector_service.get_embedding(text_to_embed)
+        db_news.embedding = embedding
+        await db.commit()
+
+
 def configure_event_handlers() -> None:
     """
     Register all event handlers with the global event bus.
@@ -126,6 +161,8 @@ def configure_event_handlers() -> None:
     event_bus.subscribe("auth.login", handle_user_logged_in)
     event_bus.subscribe("auth.mfa_enabled", handle_mfa_enabled)
     event_bus.subscribe("event.created", handle_event_created)
+    event_bus.subscribe("event.created", generate_event_embedding)
+    event_bus.subscribe("news.created", generate_news_embedding)
     event_bus.subscribe("event.registration", handle_event_registration)
     event_bus.subscribe("notification.sent", handle_notification_sent)
 

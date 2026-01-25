@@ -67,21 +67,25 @@ class User(Base, EventEmitterMixin):
 
     avatar_url = Column(String)
     cover_url = Column(String)
-    about = Column(String)
-    record_book_number = Column(String)
-    status = Column(String)
-    institute = Column(String)
-    course = Column(String)
-    education_level = Column(String)
-    track = Column(String)
-    program = Column(String)
-    telegram = Column(String)
-    achievements = Column(String)
-    department = Column(String)
-    position = Column(String)
 
     preferences = relationship(
         "UserPreferences",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        lazy="selectin",
+    )
+    profile_detail = relationship(
+        "UserProfileDetail",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        lazy="selectin",
+    )
+    education_path = relationship(
+        "EducationPath",
         back_populates="user",
         uselist=False,
         cascade="all, delete-orphan",
@@ -116,6 +120,70 @@ class User(Base, EventEmitterMixin):
         "preferences",
         "timezone",
         creator=lambda value: UserPreferences(timezone=value),
+    )
+
+    # UserProfileDetail proxies
+    about = association_proxy(
+        "profile_detail",
+        "about",
+        creator=lambda value: UserProfileDetail(about=value),
+    )
+    telegram = association_proxy(
+        "profile_detail",
+        "telegram",
+        creator=lambda value: UserProfileDetail(telegram=value),
+    )
+    status = association_proxy(
+        "profile_detail",
+        "status",
+        creator=lambda value: UserProfileDetail(status=value),
+    )
+    achievements = association_proxy(
+        "profile_detail",
+        "achievements",
+        creator=lambda value: UserProfileDetail(achievements=value),
+    )
+    position = association_proxy(
+        "profile_detail",
+        "position",
+        creator=lambda value: UserProfileDetail(position=value),
+    )
+    department = association_proxy(
+        "profile_detail",
+        "department",
+        creator=lambda value: UserProfileDetail(department=value),
+    )
+
+    # EducationPath proxies
+    institute = association_proxy(
+        "education_path",
+        "institute",
+        creator=lambda value: EducationPath(institute=value),
+    )
+    course = association_proxy(
+        "education_path",
+        "course",
+        creator=lambda value: EducationPath(course=value),
+    )
+    education_level = association_proxy(
+        "education_path",
+        "education_level",
+        creator=lambda value: EducationPath(education_level=value),
+    )
+    track = association_proxy(
+        "education_path",
+        "track",
+        creator=lambda value: EducationPath(track=value),
+    )
+    program = association_proxy(
+        "education_path",
+        "program",
+        creator=lambda value: EducationPath(program=value),
+    )
+    record_book_number = association_proxy(
+        "education_path",
+        "record_book_number",
+        creator=lambda value: EducationPath(record_book_number=value),
     )
 
     spotify_is_connected = association_proxy(
@@ -200,10 +268,32 @@ class User(Base, EventEmitterMixin):
 
     def __init__(self, **kwargs) -> None:
         preferences_fields = {"dnd_enabled", "dnd_start", "dnd_end", "timezone"}
+        profile_fields = {
+            "about",
+            "telegram",
+            "status",
+            "achievements",
+            "position",
+            "department",
+        }
+        education_fields = {
+            "institute",
+            "course",
+            "education_level",
+            "track",
+            "program",
+            "record_book_number",
+        }
         spotify_fields = {"spotify_is_connected", "spotify_display_name"}
 
         preferences_data = {
             key: kwargs.pop(key) for key in list(kwargs) if key in preferences_fields
+        }
+        profile_data = {
+            key: kwargs.pop(key) for key in list(kwargs) if key in profile_fields
+        }
+        education_data = {
+            key: kwargs.pop(key) for key in list(kwargs) if key in education_fields
         }
         spotify_data = {
             key: kwargs.pop(key) for key in list(kwargs) if key in spotify_fields
@@ -213,6 +303,10 @@ class User(Base, EventEmitterMixin):
 
         if preferences_data:
             self.preferences = UserPreferences(**preferences_data)
+        if profile_data:
+            self.profile_detail = UserProfileDetail(**profile_data)
+        if education_data:
+            self.education_path = EducationPath(**education_data)
         if spotify_data:
             from app.models.spotify import SpotifyIntegration
 
@@ -246,6 +340,48 @@ class UserPreferences(Base):
 
     def __repr__(self) -> str:
         return f"<UserPreferences(user_id={self.user_id}, dnd={self.dnd_enabled})>"
+
+
+class UserProfileDetail(Base):
+    __tablename__ = "user_profile_details"
+
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    about = Column(String)
+    telegram = Column(String)
+    status = Column(String)
+    achievements = Column(String)
+    position = Column(String)
+    department = Column(String)
+
+    user = relationship("User", back_populates="profile_detail")
+
+    def __repr__(self) -> str:
+        return f"<UserProfileDetail(user_id={self.user_id})>"
+
+
+class EducationPath(Base):
+    __tablename__ = "user_education_paths"
+
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    institute = Column(String)
+    course = Column(String)
+    education_level = Column(String)
+    track = Column(String)
+    program = Column(String)
+    record_book_number = Column(String)
+
+    user = relationship("User", back_populates="education_path")
+
+    def __repr__(self) -> str:
+        return f"<EducationPath(user_id={self.user_id}, program='{self.program}')>"
 
 
 class InviteCode(Base):

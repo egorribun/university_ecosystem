@@ -182,7 +182,7 @@ async def test_create_event_records_enqueue_failure(
     assert failure.job.record_id == body["id"]
     assert failure.job.kind == "event"
     assert failure.attempts == 1
-    assert failure.source == "events.create_event"
+    assert failure.source == "NotificationService.dispatch_event_created"
     assert failure.error and "notification queue unavailable" in failure.error
 
     stored = await db_session.get(models.Event, body["id"])

@@ -32,6 +32,7 @@ from app.models.chat import (
 from app.models.chat import (
     Message as Message,
 )
+from app.models.domain_events import StoredEvent as StoredEvent
 from app.models.enums import UserRole as UserRole
 from app.models.events import (
     Event as Event,
@@ -72,6 +73,9 @@ from app.models.schedule import Schedule as Schedule
 from app.models.spotify import SpotifyIntegration as SpotifyIntegration
 from app.models.stories import Story as Story
 from app.models.users import (
+    EducationPath as EducationPath,
+)
+from app.models.users import (
     InviteCode as InviteCode,
 )
 from app.models.users import (
@@ -80,3 +84,7 @@ from app.models.users import (
 from app.models.users import (
     UserPreferences as UserPreferences,
 )
+from app.models.users import (
+    UserProfileDetail as UserProfileDetail,
+)
+from app.workers.dead_letter_queue import DeadLetterJob as DeadLetterJob

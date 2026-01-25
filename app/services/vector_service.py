@@ -1,0 +1,63 @@
+import logging
+from typing import Any
+
+import httpx
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+
+class VectorService:
+    """Service for handling embeddings and semantic search."""
+
+    def __init__(self, db: AsyncSession) -> None:
+        self.db = db
+        self._client = httpx.AsyncClient(
+            base_url=settings.embedding_api_base,
+            headers={"Authorization": f"Bearer {settings.embedding_api_key}"}
+            if settings.embedding_api_key
+            else {},
+            timeout=10.0,
+        )
+
+    async def get_embedding(self, text: str) -> list[float]:
+        """Get embedding for a given text using the configured provider."""
+        if not settings.semantic_search_enabled:
+            return [0.0] * settings.embedding_dimensions
+
+        if not settings.embedding_api_key:
+            logger.warning("Embedding API key not set, returning zero vector")
+            return [0.0] * settings.embedding_dimensions
+
+        try:
+            response = await self._client.post(
+                "/embeddings", json={"input": text, "model": settings.embedding_model}
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data["data"][0]["embedding"]
+        except Exception:
+            logger.exception("Failed to fetch embedding")
+            return [0.0] * settings.embedding_dimensions
+
+    async def search_similar(
+        self, model: Any, embedding: list[float], limit: int = 5, min_score: float = 0.7
+    ) -> list[Any]:
+        """Perform a semantic search using cosine similarity."""
+        # Note: pgvector cosine distance is 1 - cosine_similarity
+        # So we want distance < (1 - min_score)
+        distance = model.embedding.cosine_distance(embedding)
+        stmt = (
+            select(model)
+            .where(distance < (1 - min_score))
+            .order_by(distance)
+            .limit(limit)
+        )
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def close(self):
+        await self._client.aclose()
