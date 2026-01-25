@@ -1,5 +1,5 @@
 from app.core.config import settings
-from app.core.tkq import broker, scheduler
+from app.core.tkq import broker, schedule_source
 from app.services import notification_queue
 from app.services.email_change_cleanup import cleanup_stale_email_change_tokens
 from app.services.mfa_challenge_cleanup import cleanup_stale_mfa_challenges
@@ -86,34 +86,43 @@ async def manage_partitions_task() -> None:
 
 async def setup_periodic_cleanups() -> None:
     """Schedule periodic cleanup tasks."""
-    if settings.environment.lower() not in ("test", "testing"):
+    if (
+        settings.environment.lower() not in ("test", "testing")
+        and schedule_source is not None
+    ):
         # Schedule every hour for most cleanups, or based on settings
 
         # Notifications cleanup every 24 hours
-        await cleanup_notifications_task.schedule_by_cron(scheduler, "0 2 * * *")
+        await cleanup_notifications_task.schedule_by_cron(schedule_source, "0 2 * * *")
 
         # Dead letter cleanup every 24 hours
-        await cleanup_dead_letter_jobs_task.schedule_by_cron(scheduler, "0 3 * * *")
+        await cleanup_dead_letter_jobs_task.schedule_by_cron(
+            schedule_source, "0 3 * * *"
+        )
 
         # Sessions cleanup every 6 hours
-        await cleanup_sessions_task.schedule_by_cron(scheduler, "0 */6 * * *")
+        await cleanup_sessions_task.schedule_by_cron(schedule_source, "0 */6 * * *")
 
         # Stories cleanup every 1 hour
-        await cleanup_stories_task.schedule_by_cron(scheduler, "0 * * * *")
+        await cleanup_stories_task.schedule_by_cron(schedule_source, "0 * * * *")
 
         # Password reset tokens every 1 hour
         await cleanup_password_reset_tokens_task.schedule_by_cron(
-            scheduler, "0 * * * *"
+            schedule_source, "0 * * * *"
         )
 
         # Email change tokens every 1 hour
-        await cleanup_email_change_tokens_task.schedule_by_cron(scheduler, "0 * * * *")
+        await cleanup_email_change_tokens_task.schedule_by_cron(
+            schedule_source, "0 * * * *"
+        )
 
         # MFA challenges every 1 hour
-        await cleanup_mfa_challenges_task.schedule_by_cron(scheduler, "0 * * * *")
+        await cleanup_mfa_challenges_task.schedule_by_cron(schedule_source, "0 * * * *")
 
         # Privacy artifacts cleanup every 24 hours
-        await cleanup_privacy_artifacts_task.schedule_by_cron(scheduler, "0 4 * * *")
+        await cleanup_privacy_artifacts_task.schedule_by_cron(
+            schedule_source, "0 4 * * *"
+        )
 
         # Partition management every 24 hours
-        await manage_partitions_task.schedule_by_cron(scheduler, "0 1 * * *")
+        await manage_partitions_task.schedule_by_cron(schedule_source, "0 1 * * *")
