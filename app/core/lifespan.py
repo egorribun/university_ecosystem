@@ -77,8 +77,8 @@ async def lifespan(app: FastAPI):
                             if is_vector:
                                 column.type = Text()
                             elif is_variant_vector:
-                                # Use the base type instead of the variant
-                                column.type = column.type.base_type
+                                # Use base type as fallback
+                                column.type = getattr(column.type, "base_type", Text())
 
                     # Disable semantic search in settings
                     try:
