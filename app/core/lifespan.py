@@ -19,6 +19,7 @@ from app.services.partition_manager import (
     ensure_partitions_exist,
     start_partition_management_scheduler,
 )
+from app.tasks.cleanups import setup_periodic_cleanups
 from app.workers.outbox import OutboxWorker
 
 
@@ -45,8 +46,19 @@ async def lifespan(app: FastAPI):
             from sqlalchemy import text
 
             if conn.dialect.name == "postgresql":
-                await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+                try:
+                    await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+                except Exception as e:
+                    import logging
+
+                    logger = logging.getLogger(__name__)
+                    logger.warning(
+                        f"Could not create 'vector' extension: {e}. "
+                        "Semantic search will be disabled."
+                    )
             await conn.run_sync(Base.metadata.create_all)
+
+    await setup_periodic_cleanups()
 
     if settings.partition_management_enabled:
         await ensure_partitions_exist()
