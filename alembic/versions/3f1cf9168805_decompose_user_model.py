@@ -72,13 +72,8 @@ def upgrade() -> None:
         """
     )
 
-    with op.batch_alter_table("dead_letter_jobs", schema=None) as batch_op:
-        batch_op.drop_index(batch_op.f("ix_dead_letter_jobs_job_type"))
-        batch_op.drop_index(batch_op.f("ix_dead_letter_jobs_next_retry_at"))
-        batch_op.drop_index(batch_op.f("ix_dead_letter_jobs_status"))
-        batch_op.drop_index(batch_op.f("ix_dlq_status_next_retry"))
-
-    op.drop_table("dead_letter_jobs")
+    # Removed erroneous table drop - model was missing from registration
+    # but table is still needed
 
     with op.batch_alter_table("users", schema=None) as batch_op:
         batch_op.drop_column("program")
@@ -186,48 +181,7 @@ def downgrade() -> None:
                 f"WHERE id IN (SELECT user_id FROM {table})"
             )
 
-    op.create_table(
-        "dead_letter_jobs",
-        sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("job_type", sa.String(length=100), nullable=False),
-        sa.Column("job_hash", sa.String(length=64), nullable=False),
-        sa.Column("payload", sa.Text(), nullable=False),
-        sa.Column("error_message", sa.Text(), nullable=True),
-        sa.Column(
-            "retry_count", sa.Integer(), server_default=sa.text("'0'"), nullable=False
-        ),
-        sa.Column(
-            "max_retries", sa.Integer(), server_default=sa.text("'3'"), nullable=False
-        ),
-        sa.Column(
-            "status",
-            sa.String(length=20),
-            server_default=sa.text("'pending'"),
-            nullable=False,
-        ),
-        sa.Column("next_retry_at", sa.DateTime(), nullable=True),
-        sa.Column("created_at", sa.DateTime(), nullable=False),
-        sa.Column("updated_at", sa.DateTime(), nullable=False),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("job_hash"),
-    )
-    with op.batch_alter_table("dead_letter_jobs", schema=None) as batch_op:
-        batch_op.create_index(
-            batch_op.f("ix_dlq_status_next_retry"),
-            ["status", "next_retry_at"],
-            unique=False,
-        )
-        batch_op.create_index(
-            batch_op.f("ix_dead_letter_jobs_status"), ["status"], unique=False
-        )
-        batch_op.create_index(
-            batch_op.f("ix_dead_letter_jobs_next_retry_at"),
-            ["next_retry_at"],
-            unique=False,
-        )
-        batch_op.create_index(
-            batch_op.f("ix_dead_letter_jobs_job_type"), ["job_type"], unique=False
-        )
+    # Removed erroneous table recreation
 
     op.drop_table("user_profile_details")
     op.drop_table("user_education_paths")

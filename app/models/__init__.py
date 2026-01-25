@@ -32,6 +32,7 @@ from app.models.chat import (
 from app.models.chat import (
     Message as Message,
 )
+from app.models.domain_events import StoredEvent as StoredEvent
 from app.models.enums import UserRole as UserRole
 from app.models.events import (
     Event as Event,
@@ -86,3 +87,4 @@ from app.models.users import (
 from app.models.users import (
     UserProfileDetail as UserProfileDetail,
 )
+from app.workers.dead_letter_queue import DeadLetterJob as DeadLetterJob
