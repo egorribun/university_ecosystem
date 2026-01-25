@@ -15,7 +15,7 @@ class News(Base, EventEmitterMixin):
     title_en = Column(String)
     content_en = Column(Text)
     image_url = Column(String)
-    embedding = Column(Vector(1536))
+    embedding = Column(Text().with_variant(Vector(1536), "postgresql"))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     likes = relationship(

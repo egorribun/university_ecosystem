@@ -57,6 +57,37 @@ async def lifespan(app: FastAPI):
                         f"Could not create 'vector' extension: {e}. "
                         "Semantic search will be disabled."
                     )
+                    # Patch metadata to avoid using Vector type if extension is missing
+                    from pgvector.sqlalchemy import Vector
+                    from sqlalchemy import Text
+
+                    for table in Base.metadata.tables.values():
+                        for column in table.columns:
+                            # Check for direct Vector or Variant containing Vector
+                            is_vector = isinstance(column.type, Vector)
+                            is_variant_vector = False
+
+                            if hasattr(column.type, "_variant_mapping"):
+                                # If Variant, check if PG variant is Vector
+                                pg_utils = column.type._variant_mapping
+                                pg_variant = pg_utils.get("postgresql")
+                                if pg_variant and isinstance(pg_variant, Vector):
+                                    is_variant_vector = True
+
+                            if is_vector:
+                                column.type = Text()
+                            elif is_variant_vector:
+                                # Use the base type instead of the variant
+                                column.type = column.type.base_type
+
+                    # Disable semantic search in settings
+                    try:
+                        # Attempt to disable semantic search since extension is missing
+                        object.__setattr__(settings, "semantic_search_enabled", False)
+                    except Exception:
+                        logger.error(
+                            "Failed to disable semantic_search_enabled setting"
+                        )
 
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
