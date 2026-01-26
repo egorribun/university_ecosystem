@@ -100,7 +100,7 @@ func (a *FileActivities) ResizeImageActivity(ctx context.Context, job ProcessJob
 	if err != nil {
 		return nil, err
 	}
-	defer obj.Close()
+	defer func() { _ = obj.Close() }()
 
 	// Decode image
 	img, format, err := image.Decode(obj)

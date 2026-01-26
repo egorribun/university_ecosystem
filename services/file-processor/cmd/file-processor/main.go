@@ -32,7 +32,7 @@ import (
 
 func main() {
 	logger, _ := zap.NewProduction()
-	defer logger.Sync()
+	defer func() { _ = logger.Sync() }()
 
 	// Load Config
 	cfg, err := config.Load()
@@ -75,14 +75,22 @@ func main() {
 		defer nc.Close()
 		js, _ := nc.JetStream()
 		if js != nil {
-			js.QueueSubscribe("files.process", "file-processors-temporal", func(msg *nats.Msg) {
+			_, err := js.QueueSubscribe("files.process", "file-processors-temporal", func(msg *nats.Msg) {
 				// Trigger workflow async
 				var job workflow.ProcessJob
-				json.Unmarshal(msg.Data, &job) // Error handling omitted for brevity
+				if err := json.Unmarshal(msg.Data, &job); err != nil {
+					logger.Warn("Failed to unmarshal NATS message", zap.Error(err))
+					return
+				}
 				opt := client.StartWorkflowOptions{ID: "nats-" + job.ID, TaskQueue: "FILE_PROCESSING_TASK_QUEUE"}
-				c.ExecuteWorkflow(context.Background(), opt, workflow.FileProcessingWorkflow, job)
-				msg.Ack()
+				if _, err := c.ExecuteWorkflow(context.Background(), opt, workflow.FileProcessingWorkflow, job); err != nil {
+					logger.Warn("Failed to execute workflow from NATS", zap.Error(err))
+				}
+				_ = msg.Ack()
 			}, nats.ManualAck())
+			if err != nil {
+				logger.Warn("Failed to subscribe to NATS queue", zap.Error(err))
+			}
 		}
 	}
 
