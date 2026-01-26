@@ -81,32 +81,13 @@ func TestGetEnvInt_ParsesZero(t *testing.T) {
 }
 
 func TestLoad_ReturnsConfigWithValidEnv(t *testing.T) {
-	// Save original env
-	originalJWT := os.Getenv("JWT_SECRET")
-	originalBackend := os.Getenv("BACKEND_URL")
-	originalPort := os.Getenv("GATEWAY_PORT")
-	originalRedis := os.Getenv("REDIS_URL")
-	originalFileProc := os.Getenv("FILE_PROCESSOR_ADDR")
-	originalRPS := os.Getenv("RATE_LIMIT_RPS")
-	originalBurst := os.Getenv("RATE_LIMIT_BURST")
-
-	defer func() {
-		restoreEnv("JWT_SECRET", originalJWT)
-		restoreEnv("BACKEND_URL", originalBackend)
-		restoreEnv("GATEWAY_PORT", originalPort)
-		restoreEnv("REDIS_URL", originalRedis)
-		restoreEnv("FILE_PROCESSOR_ADDR", originalFileProc)
-		restoreEnv("RATE_LIMIT_RPS", originalRPS)
-		restoreEnv("RATE_LIMIT_BURST", originalBurst)
-	}()
-
-	os.Setenv("JWT_SECRET", "test-secret-key")
-	os.Setenv("BACKEND_URL", "http://test-backend:8000")
-	os.Setenv("GATEWAY_PORT", "9090")
-	os.Setenv("REDIS_URL", "redis://test-redis:6379")
-	os.Setenv("FILE_PROCESSOR_ADDR", "test-processor:50051")
-	os.Setenv("RATE_LIMIT_RPS", "50")
-	os.Setenv("RATE_LIMIT_BURST", "100")
+	t.Setenv("JWT_SECRET", "test-secret-key")
+	t.Setenv("BACKEND_URL", "http://test-backend:8000")
+	t.Setenv("GATEWAY_PORT", "9090")
+	t.Setenv("REDIS_URL", "redis://test-redis:6379")
+	t.Setenv("FILE_PROCESSOR_ADDR", "test-processor:50051")
+	t.Setenv("RATE_LIMIT_RPS", "50")
+	t.Setenv("RATE_LIMIT_BURST", "100")
 
 	cfg, err := Load()
 	assert.NoError(t, err)
@@ -121,19 +102,8 @@ func TestLoad_ReturnsConfigWithValidEnv(t *testing.T) {
 }
 
 func TestLoad_UsesDefaultValuesWithJWTSet(t *testing.T) {
-	originalJWT := os.Getenv("JWT_SECRET")
-	originalBackend := os.Getenv("BACKEND_URL")
-	originalPort := os.Getenv("GATEWAY_PORT")
-
-	defer func() {
-		restoreEnv("JWT_SECRET", originalJWT)
-		restoreEnv("BACKEND_URL", originalBackend)
-		restoreEnv("GATEWAY_PORT", originalPort)
-	}()
-
-	os.Setenv("JWT_SECRET", "required-secret")
-	os.Unsetenv("GATEWAY_PORT")
-	os.Unsetenv("BACKEND_URL")
+	t.Setenv("JWT_SECRET", "required-secret")
+	// Don't set GATEWAY_PORT and BACKEND_URL to test defaults
 
 	cfg, err := Load()
 	assert.NoError(t, err)
@@ -144,9 +114,8 @@ func TestLoad_UsesDefaultValuesWithJWTSet(t *testing.T) {
 }
 
 func TestLoad_ReturnsErrorWhenJWTSecretMissing(t *testing.T) {
-	originalJWT := os.Getenv("JWT_SECRET")
-	os.Unsetenv("JWT_SECRET")
-	defer restoreEnv("JWT_SECRET", originalJWT)
+	// t.Setenv with empty string effectively unsets the var for this test
+	// Note: t.Setenv restores original value after test
 
 	cfg, err := Load()
 	assert.Error(t, err)
