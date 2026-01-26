@@ -96,6 +96,7 @@ PY2
 
       - name: Upload SARIF (image)
         if: always()
+        continue-on-error: true
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-image.sarif
@@ -103,6 +104,7 @@ PY2
 
       - name: Upload SARIF (filesystem)
         if: always()
+        continue-on-error: true
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-fs.sarif

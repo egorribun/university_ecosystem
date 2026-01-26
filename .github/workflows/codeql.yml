@@ -51,6 +51,7 @@ jobs:
           output: sarif-results/python.sarif
 
       - name: Upload SARIF
+        continue-on-error: true
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: sarif-results
