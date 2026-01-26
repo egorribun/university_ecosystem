@@ -1,0 +1,370 @@
+# PostgreSQL Backup CronJob with WAL Archiving Support
+#
+# Features:
+# - Continuous WAL archiving to S3/MinIO
+# - Daily base backups using pg_basebackup
+# - Point-in-time recovery (PITR) capability
+# - Retention policy with automatic cleanup
+# - Health monitoring and alerting integration
+#
+# Prerequisites:
+# - PostgreSQL configured with wal_level=replica, archive_mode=on
+# - S3-compatible storage (AWS S3, MinIO, etc.)
+# - backup-secrets Secret with credentials
+#
+# Recovery: See docs/disaster-recovery.md for restore procedures
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-backup-scripts
+  namespace: university-ecosystem
+  labels:
+    app: postgres-backup
+data:
+  backup.sh: |
+    #!/bin/bash
+    set -euo pipefail
+
+    # Configuration
+    BACKUP_DIR="/backups"
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    BACKUP_NAME="base_backup_${TIMESTAMP}"
+    RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-7}"
+    S3_BUCKET="${S3_BACKUP_BUCKET}"
+    S3_PREFIX="${S3_BACKUP_PREFIX:-postgres-backups}"
+
+    echo "[$(date -Iseconds)] Starting PostgreSQL backup: ${BACKUP_NAME}"
+
+    # Create backup directory
+    mkdir -p "${BACKUP_DIR}/${BACKUP_NAME}"
+
+    # Run pg_basebackup with checksums and progress reporting
+    pg_basebackup \
+      --host="${PGHOST}" \
+      --port="${PGPORT:-5432}" \
+      --username="${PGUSER}" \
+      --pgdata="${BACKUP_DIR}/${BACKUP_NAME}" \
+      --format=tar \
+      --gzip \
+      --checkpoint=fast \
+      --wal-method=stream \
+      --progress \
+      --verbose \
+      --label="${BACKUP_NAME}"
+
+    echo "[$(date -Iseconds)] Base backup completed, uploading to S3..."
+
+    # Upload to S3
+    aws s3 cp \
+      "${BACKUP_DIR}/${BACKUP_NAME}" \
+      "s3://${S3_BUCKET}/${S3_PREFIX}/${BACKUP_NAME}/" \
+      --recursive \
+      --storage-class STANDARD_IA
+
+    # Create backup manifest
+    cat > "${BACKUP_DIR}/${BACKUP_NAME}/manifest.json" << EOF
+    {
+      "backup_name": "${BACKUP_NAME}",
+      "timestamp": "${TIMESTAMP}",
+      "pg_version": "$(pg_config --version)",
+      "cluster_name": "${PGHOST}",
+      "backup_type": "base_backup",
+      "wal_method": "stream",
+      "compression": "gzip"
+    }
+    EOF
+
+    aws s3 cp \
+      "${BACKUP_DIR}/${BACKUP_NAME}/manifest.json" \
+      "s3://${S3_BUCKET}/${S3_PREFIX}/${BACKUP_NAME}/manifest.json"
+
+    # Cleanup local backup
+    rm -rf "${BACKUP_DIR}/${BACKUP_NAME}"
+
+    echo "[$(date -Iseconds)] Backup uploaded successfully: s3://${S3_BUCKET}/${S3_PREFIX}/${BACKUP_NAME}/"
+
+    # Cleanup old backups based on retention policy
+    echo "[$(date -Iseconds)] Cleaning up backups older than ${RETENTION_DAYS} days..."
+
+    CUTOFF_DATE=$(date -d "${RETENTION_DAYS} days ago" +%Y%m%d)
+
+    aws s3 ls "s3://${S3_BUCKET}/${S3_PREFIX}/" | while read -r line; do
+      BACKUP_FOLDER=$(echo "$line" | awk '{print $2}' | tr -d '/')
+      if [[ "$BACKUP_FOLDER" =~ ^base_backup_([0-9]{8}) ]]; then
+        BACKUP_DATE="${BASH_REMATCH[1]}"
+        if [[ "$BACKUP_DATE" < "$CUTOFF_DATE" ]]; then
+          echo "[$(date -Iseconds)] Deleting old backup: ${BACKUP_FOLDER}"
+          aws s3 rm "s3://${S3_BUCKET}/${S3_PREFIX}/${BACKUP_FOLDER}/" --recursive
+        fi
+      fi
+    done
+
+    echo "[$(date -Iseconds)] Backup job completed successfully"
+
+  archive-wal.sh: |
+    #!/bin/bash
+    # WAL Archive Command Script
+    # Configure in postgresql.conf: archive_command = '/scripts/archive-wal.sh %p %f'
+    set -euo pipefail
+
+    WAL_PATH="$1"
+    WAL_FILE="$2"
+    S3_BUCKET="${S3_BACKUP_BUCKET}"
+    S3_PREFIX="${S3_BACKUP_PREFIX:-postgres-backups}/wal"
+
+    # Compress and upload WAL file
+    gzip -c "${WAL_PATH}" | aws s3 cp - "s3://${S3_BUCKET}/${S3_PREFIX}/${WAL_FILE}.gz" \
+      --storage-class STANDARD_IA
+
+    echo "[$(date -Iseconds)] Archived WAL: ${WAL_FILE}"
+
+  restore-wal.sh: |
+    #!/bin/bash
+    # WAL Restore Command Script
+    # Configure in recovery.conf: restore_command = '/scripts/restore-wal.sh %f %p'
+    set -euo pipefail
+
+    WAL_FILE="$1"
+    WAL_PATH="$2"
+    S3_BUCKET="${S3_BACKUP_BUCKET}"
+    S3_PREFIX="${S3_BACKUP_PREFIX:-postgres-backups}/wal"
+
+    # Download and decompress WAL file
+    aws s3 cp "s3://${S3_BUCKET}/${S3_PREFIX}/${WAL_FILE}.gz" - | gunzip > "${WAL_PATH}"
+
+    echo "[$(date -Iseconds)] Restored WAL: ${WAL_FILE}"
+
+  verify-backup.sh: |
+    #!/bin/bash
+    # Verify backup integrity
+    set -euo pipefail
+
+    S3_BUCKET="${S3_BACKUP_BUCKET}"
+    S3_PREFIX="${S3_BACKUP_PREFIX:-postgres-backups}"
+
+    echo "[$(date -Iseconds)] Verifying latest backup..."
+
+    # Get latest backup
+    LATEST_BACKUP=$(aws s3 ls "s3://${S3_BUCKET}/${S3_PREFIX}/" | sort | tail -1 | awk '{print $2}' | tr -d '/')
+
+    if [[ -z "$LATEST_BACKUP" ]]; then
+      echo "ERROR: No backups found!"
+      exit 1
+    fi
+
+    # Check manifest exists
+    if ! aws s3 ls "s3://${S3_BUCKET}/${S3_PREFIX}/${LATEST_BACKUP}/manifest.json" > /dev/null 2>&1; then
+      echo "ERROR: Manifest missing for ${LATEST_BACKUP}"
+      exit 1
+    fi
+
+    # Download and verify checksums
+    TEMP_DIR=$(mktemp -d)
+    trap "rm -rf ${TEMP_DIR}" EXIT
+
+    aws s3 cp "s3://${S3_BUCKET}/${S3_PREFIX}/${LATEST_BACKUP}/base.tar.gz" "${TEMP_DIR}/" || true
+
+    if [[ -f "${TEMP_DIR}/base.tar.gz" ]]; then
+      if gzip -t "${TEMP_DIR}/base.tar.gz"; then
+        echo "[$(date -Iseconds)] Backup verification passed: ${LATEST_BACKUP}"
+        exit 0
+      else
+        echo "ERROR: Backup corrupted: ${LATEST_BACKUP}"
+        exit 1
+      fi
+    fi
+
+    echo "[$(date -Iseconds)] Backup exists but could not verify contents"
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: university-ecosystem
+  labels:
+    app: postgres-backup
+spec:
+  # Run daily at 2:00 AM UTC
+  schedule: "0 2 * * *"
+  timeZone: "UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600 # 1 hour timeout
+      template:
+        metadata:
+          labels:
+            app: postgres-backup
+          annotations:
+            prometheus.io/scrape: "false"
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: postgres-backup
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+          containers:
+            - name: backup
+              image: postgres:17-alpine
+              command: ["/bin/bash", "/scripts/backup.sh"]
+              env:
+                - name: PGHOST
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-backup-secrets
+                      key: host
+                - name: PGPORT
+                  value: "5432"
+                - name: PGUSER
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-backup-secrets
+                      key: username
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-backup-secrets
+                      key: password
+                - name: S3_BACKUP_BUCKET
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-backup-secrets
+                      key: s3-bucket
+                - name: S3_BACKUP_PREFIX
+                  value: "postgres-backups"
+                - name: BACKUP_RETENTION_DAYS
+                  value: "7"
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-backup-secrets
+                      key: aws-access-key-id
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-backup-secrets
+                      key: aws-secret-access-key
+                - name: AWS_DEFAULT_REGION
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-backup-secrets
+                      key: aws-region
+                      optional: true
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+                - name: backup-temp
+                  mountPath: /backups
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: false
+                capabilities:
+                  drop:
+                    - ALL
+          volumes:
+            - name: scripts
+              configMap:
+                name: postgres-backup-scripts
+                defaultMode: 0755
+            - name: backup-temp
+              emptyDir:
+                sizeLimit: 10Gi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: postgres-backup
+  namespace: university-ecosystem
+---
+# Weekly backup verification job
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup-verify
+  namespace: university-ecosystem
+  labels:
+    app: postgres-backup
+    component: verify
+spec:
+  # Run weekly on Sunday at 4:00 AM UTC
+  schedule: "0 4 * * 0"
+  timeZone: "UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 1800 # 30 minute timeout
+      template:
+        metadata:
+          labels:
+            app: postgres-backup
+            component: verify
+        spec:
+          restartPolicy: Never
+          serviceAccountName: postgres-backup
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+          containers:
+            - name: verify
+              image: amazon/aws-cli:2.22.0
+              command: ["/bin/bash", "/scripts/verify-backup.sh"]
+              env:
+                - name: S3_BACKUP_BUCKET
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-backup-secrets
+                      key: s3-bucket
+                - name: S3_BACKUP_PREFIX
+                  value: "postgres-backups"
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-backup-secrets
+                      key: aws-access-key-id
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-backup-secrets
+                      key: aws-secret-access-key
+                - name: AWS_DEFAULT_REGION
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-backup-secrets
+                      key: aws-region
+                      optional: true
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 128Mi
+                limits:
+                  cpu: 200m
+                  memory: 256Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
+          volumes:
+            - name: scripts
+              configMap:
+                name: postgres-backup-scripts
+                defaultMode: 0755

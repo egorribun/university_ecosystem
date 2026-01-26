@@ -6,7 +6,8 @@ from typing import Any
 from uuid import uuid4
 
 import httpx
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import InvalidTokenError
 from passlib.context import CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession
 from zxcvbn import zxcvbn
@@ -122,7 +123,6 @@ def _validate_password_hibp(password: str, *, locale: str | None = None) -> None
 
 
 def _validate_password_policy(password: str, *, locale: str | None = None) -> None:
-    print(f"DEBUG: Validating policy for length {len(password)}")
     length = len(password)
     min_length = settings.password_min_length
     max_length = settings.password_max_length
@@ -356,7 +356,7 @@ def decode_token(token: str) -> dict | None:
     candidates: list[str] = []
     try:
         header = jwt.get_unverified_header(token)
-    except JWTError:
+    except InvalidTokenError:
         header = {}
 
     kid = header.get("kid") if isinstance(header, dict) else None
@@ -374,6 +374,6 @@ def decode_token(token: str) -> dict | None:
     for secret in candidates:
         try:
             return jwt.decode(token, secret, algorithms=[settings.algorithm])
-        except JWTError:
+        except InvalidTokenError:
             continue
     return None
