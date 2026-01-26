@@ -763,7 +763,11 @@ async def verify_trusted_device_token(
         return False
 
     now = _utcnow()
-    if device.expires_at <= now:
+    expires_at = device.expires_at
+    if expires_at is not None and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+
+    if expires_at <= now:
         # Clean up expired token
         await db.delete(device)
         await db.flush()
@@ -795,7 +799,7 @@ async def generate_recovery_codes(db: AsyncSession, *, user: User) -> list[str]:
         codes.append(formatted)
 
         # Hash
-        hashed = get_password_hash(formatted)
+        hashed = get_password_hash(formatted, validate_policy=False)
 
         db.add(
             RecoveryCode(

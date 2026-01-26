@@ -12,8 +12,6 @@ from app.models.models import User as ModelUser
 
 _spotify_fallback_now_playing = _fallback_now_playing
 
-pytestmark = pytest.mark.asyncio(loop_scope="session")
-
 
 def _make_user(
     track_id: str | None = None,
@@ -105,6 +103,7 @@ async def _login(
     return {"Authorization": f"Bearer {token}"}
 
 
+@pytest.mark.asyncio(loop_scope="session")
 async def test_now_playing_returns_204_when_user_has_no_track(
     async_client: AsyncClient, user_factory
 ) -> None:
@@ -120,6 +119,7 @@ async def test_now_playing_returns_204_when_user_has_no_track(
     assert response.status_code == 204
 
 
+@pytest.mark.asyncio(loop_scope="session")
 async def test_now_playing_uses_last_known_track_from_fallback(
     async_client: AsyncClient, user_factory, db_session
 ) -> None:
@@ -147,6 +147,7 @@ async def test_now_playing_uses_last_known_track_from_fallback(
     assert body["artists"] == ["Fallback Artist"]
 
 
+@pytest.mark.asyncio(loop_scope="session")
 async def test_now_playing_returns_401_when_refresh_fails(
     async_client: AsyncClient, user_factory, db_session, monkeypatch
 ) -> None:
@@ -190,6 +191,7 @@ async def test_now_playing_returns_401_when_refresh_fails(
     assert user.spotify.access_token is None
 
 
+@pytest.mark.asyncio(loop_scope="session")
 async def test_now_playing_refreshes_when_access_token_missing(
     async_client: AsyncClient, user_factory, db_session, monkeypatch
 ) -> None:
@@ -251,6 +253,7 @@ async def test_now_playing_refreshes_when_access_token_missing(
     assert user.spotify.is_connected is True
 
 
+@pytest.mark.asyncio(loop_scope="session")
 async def test_now_playing_retries_after_unauthorized_response(
     async_client: AsyncClient, user_factory, db_session, monkeypatch
 ) -> None:
@@ -330,6 +333,7 @@ async def test_now_playing_retries_after_unauthorized_response(
     assert user.spotify.is_connected is True
 
 
+@pytest.mark.asyncio(loop_scope="session")
 async def test_now_playing_disconnects_on_unauthorized_response(
     async_client: AsyncClient, user_factory, db_session, monkeypatch
 ) -> None:
@@ -401,6 +405,7 @@ async def test_now_playing_disconnects_on_unauthorized_response(
     assert user.spotify.refresh_token is None
 
 
+@pytest.mark.asyncio(loop_scope="session")
 async def test_spotify_tokens_are_encrypted_in_database(
     db_session, user_factory
 ) -> None:
@@ -435,6 +440,7 @@ async def test_spotify_tokens_are_encrypted_in_database(
     assert user.spotify.refresh_token == "refresh-token-value"
 
 
+@pytest.mark.asyncio(loop_scope="session")
 async def test_ensure_access_token_returns_plaintext(db_session, user_factory) -> None:
     user = await user_factory(is_active=True)
 
