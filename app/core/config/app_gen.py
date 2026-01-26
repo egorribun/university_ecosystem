@@ -56,9 +56,11 @@ class AppGeneralSettings(BaseAppSettings):
     @field_validator("auto_create_schema", mode="before")
     @classmethod
     def _default_auto_create_schema(
-        cls, value: bool | None, info: ValidationInfo
+        cls, value: bool | str | None, info: ValidationInfo
     ) -> bool:
         if value is not None:
+            if isinstance(value, str):
+                return value.lower() not in ("false", "0", "no", "off", "")
             return bool(value)
         environment = str(info.data.get("environment") or "development").lower()
         return environment in _DEVELOPMENT_ENVIRONMENTS

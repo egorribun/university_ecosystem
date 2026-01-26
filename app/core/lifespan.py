@@ -90,7 +90,11 @@ async def lifespan(app: FastAPI):
                         )
 
         async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+            await conn.run_sync(
+                lambda sync_conn: Base.metadata.create_all(
+                    bind=sync_conn, checkfirst=True
+                )
+            )
 
     await setup_periodic_cleanups()
 

@@ -380,7 +380,7 @@ async def clean_database(prepare_database: None) -> AsyncIterator[None]:
 
     # Wait for background tasks before TRUNCATE to avoid deadlocks
     # 5 seconds should be enough for local tests
-    await notification_queue.wait_for_all_jobs(timeout=5.0)
+    # await notification_queue.wait_for_all_jobs(timeout=5.0)
 
     database_url = os.environ.get("DATABASE_URL", "")
     # Robust check: use engine dialect or fallback to env
