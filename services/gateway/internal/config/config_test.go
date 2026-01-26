@@ -9,7 +9,7 @@ import (
 
 func TestGetEnv_ReturnsDefaultWhenNotSet(t *testing.T) {
 	key := "TEST_UNSET_VARIABLE_XYZ"
-	os.Unsetenv(key)
+	_ = os.Unsetenv(key)
 
 	result := getEnv(key, "default_value")
 
@@ -19,8 +19,7 @@ func TestGetEnv_ReturnsDefaultWhenNotSet(t *testing.T) {
 func TestGetEnv_ReturnsEnvValueWhenSet(t *testing.T) {
 	key := "TEST_SET_VARIABLE_XYZ"
 	expected := "custom_value"
-	os.Setenv(key, expected)
-	defer os.Unsetenv(key)
+	t.Setenv(key, expected)
 
 	result := getEnv(key, "default_value")
 
@@ -29,7 +28,7 @@ func TestGetEnv_ReturnsEnvValueWhenSet(t *testing.T) {
 
 func TestGetEnvInt_ReturnsDefaultWhenNotSet(t *testing.T) {
 	key := "TEST_UNSET_INT_XYZ"
-	os.Unsetenv(key)
+	_ = os.Unsetenv(key)
 
 	result := getEnvInt(key, 42)
 
@@ -38,8 +37,7 @@ func TestGetEnvInt_ReturnsDefaultWhenNotSet(t *testing.T) {
 
 func TestGetEnvInt_ReturnsDefaultWhenEmpty(t *testing.T) {
 	key := "TEST_EMPTY_INT_XYZ"
-	os.Setenv(key, "")
-	defer os.Unsetenv(key)
+	t.Setenv(key, "")
 
 	result := getEnvInt(key, 100)
 
@@ -48,8 +46,7 @@ func TestGetEnvInt_ReturnsDefaultWhenEmpty(t *testing.T) {
 
 func TestGetEnvInt_ParsesValidInteger(t *testing.T) {
 	key := "TEST_VALID_INT_XYZ"
-	os.Setenv(key, "200")
-	defer os.Unsetenv(key)
+	t.Setenv(key, "200")
 
 	result := getEnvInt(key, 0)
 
@@ -58,8 +55,7 @@ func TestGetEnvInt_ParsesValidInteger(t *testing.T) {
 
 func TestGetEnvInt_ReturnsDefaultOnInvalidInteger(t *testing.T) {
 	key := "TEST_INVALID_INT_XYZ"
-	os.Setenv(key, "not_a_number")
-	defer os.Unsetenv(key)
+	t.Setenv(key, "not_a_number")
 
 	result := getEnvInt(key, 99)
 
@@ -68,8 +64,7 @@ func TestGetEnvInt_ReturnsDefaultOnInvalidInteger(t *testing.T) {
 
 func TestGetEnvInt_ParsesNegativeInteger(t *testing.T) {
 	key := "TEST_NEGATIVE_INT_XYZ"
-	os.Setenv(key, "-50")
-	defer os.Unsetenv(key)
+	t.Setenv(key, "-50")
 
 	result := getEnvInt(key, 0)
 
@@ -78,8 +73,7 @@ func TestGetEnvInt_ParsesNegativeInteger(t *testing.T) {
 
 func TestGetEnvInt_ParsesZero(t *testing.T) {
 	key := "TEST_ZERO_INT_XYZ"
-	os.Setenv(key, "0")
-	defer os.Unsetenv(key)
+	t.Setenv(key, "0")
 
 	result := getEnvInt(key, 999)
 
