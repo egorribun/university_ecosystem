@@ -142,11 +142,3 @@ func TestConfig_StructFields(t *testing.T) {
 	assert.Equal(t, 100, cfg.RateLimitRPS)
 	assert.Equal(t, 200, cfg.RateLimitBurst)
 }
-
-func restoreEnv(key, value string) {
-	if value == "" {
-		os.Unsetenv(key)
-	} else {
-		os.Setenv(key, value)
-	}
-}
