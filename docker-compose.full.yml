@@ -30,6 +30,7 @@ services:
       SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET}
       SPOTIFY_REDIRECT_URI: ${SPOTIFY_REDIRECT_URI}
       SPOTIFY_SCOPES: ${SPOTIFY_SCOPES}
+      AUTO_CREATE_SCHEMA: "false"
     volumes:
       - static-data:/app/app/static
     depends_on:
@@ -37,6 +38,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
     ports:
       - "8000:8000"
     networks:
@@ -85,11 +88,14 @@ services:
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: redis://redis:6379/0
       TASKIQ_BROKER_URL: redis://redis:6379/2
+      AUTO_CREATE_SCHEMA: "false"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
     networks:
       - internal
     restart: unless-stopped
@@ -98,7 +104,7 @@ services:
   # Infrastructure Services
   # ============================================================================
   postgres:
-    image: postgres:17-alpine
+    image: pgvector/pgvector:pg17
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}

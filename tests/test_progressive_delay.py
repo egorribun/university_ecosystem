@@ -19,8 +19,6 @@ from app.core.rate_limit import (
     get_progressive_delay_tracker,
 )
 
-pytestmark = pytest.mark.asyncio(loop_scope="session")
-
 
 class TestProgressiveDelayCalculation:
     """Tests for delay calculation logic."""
@@ -60,6 +58,7 @@ class TestProgressiveDelayTrackerMemory:
         async with _progressive_delay_memory_lock:
             _progressive_delay_memory.clear()
 
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_record_failure_increments_count(self) -> None:
         """Record failure increments failure counter."""
         tracker = ProgressiveDelayTracker()
@@ -71,6 +70,7 @@ class TestProgressiveDelayTrackerMemory:
         info2 = await tracker.record_failure("test:user1")
         assert info2.failures == 2
 
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_get_delay_without_recording(self) -> None:
         """Get delay returns current state without recording."""
         tracker = ProgressiveDelayTracker()
@@ -83,6 +83,7 @@ class TestProgressiveDelayTrackerMemory:
         info2 = await tracker.get_delay("test:user2")
         assert info2.failures == 1
 
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_reset_clears_failures(self) -> None:
         """Reset clears failure count for identifier."""
         tracker = ProgressiveDelayTracker()
@@ -98,6 +99,7 @@ class TestProgressiveDelayTrackerMemory:
         assert info_after.failures == 0
         assert info_after.should_delay is False
 
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_ttl_expiration_resets_failures(self) -> None:
         """Failures reset after TTL expiration."""
         tracker = ProgressiveDelayTracker(ttl_seconds=1)
@@ -112,6 +114,7 @@ class TestProgressiveDelayTrackerMemory:
             info_expired = await tracker.get_delay("test:ttl")
             assert info_expired.failures == 0
 
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_different_identifiers_independent(self) -> None:
         """Different identifiers have independent counters."""
         tracker = ProgressiveDelayTracker()
@@ -125,6 +128,7 @@ class TestProgressiveDelayTrackerMemory:
         assert info1.failures == 2
         assert info2.failures == 1
 
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_apply_delay_if_needed_applies_delay(self) -> None:
         """Apply delay if needed actually waits."""
         tracker = ProgressiveDelayTracker()
@@ -139,6 +143,7 @@ class TestProgressiveDelayTrackerMemory:
                 await tracker.apply_delay_if_needed("test:delay")
                 mock_sleep.assert_called_once_with(0.01)
 
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_apply_delay_if_needed_no_delay_when_zero(self) -> None:
         """No sleep called when delay is zero."""
         tracker = ProgressiveDelayTracker()
@@ -162,6 +167,7 @@ class TestProgressiveDelayTrackerRedis:
         client.delete = AsyncMock()
         return client
 
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_record_failure_uses_redis(
         self, mock_redis_client: MagicMock
     ) -> None:
@@ -179,6 +185,7 @@ class TestProgressiveDelayTrackerRedis:
             mock_redis_client.expire.assert_called_once()
             assert info.failures == 1
 
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_redis_fallback_on_error(self) -> None:
         """Falls back to memory on Redis error."""
         tracker = ProgressiveDelayTracker(redis_url="redis://localhost:6379")
@@ -194,6 +201,7 @@ class TestProgressiveDelayTrackerRedis:
             info = await tracker.record_failure("test:fallback")
             assert info.failures == 1
 
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_get_delay_redis(self, mock_redis_client: MagicMock) -> None:
         """Get delay reads from Redis."""
         tracker = ProgressiveDelayTracker(redis_url="redis://localhost:6379")
@@ -207,6 +215,7 @@ class TestProgressiveDelayTrackerRedis:
             info = await tracker.get_delay("test:get_redis")
             assert info.failures == 3
 
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_reset_redis(self, mock_redis_client: MagicMock) -> None:
         """Reset deletes from Redis."""
         tracker = ProgressiveDelayTracker(redis_url="redis://localhost:6379")

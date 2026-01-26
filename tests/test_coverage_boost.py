@@ -116,6 +116,7 @@ async def test_data_access_batch_log_empty():
 @pytest.mark.asyncio
 async def test_data_access_log_with_request():
     db = AsyncMock()
+    db.add = MagicMock()
     request = MagicMock(spec=Request)
     request.client.host = "1.2.3.4"
     request.headers = {"user-agent": "test-agent"}

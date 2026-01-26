@@ -218,8 +218,11 @@ def verify_and_update_password(
     return verified, new_hash
 
 
-def get_password_hash(password: str, *, locale: str | None = None) -> str:
-    _validate_password_policy(password, locale=locale)
+def get_password_hash(
+    password: str, *, locale: str | None = None, validate_policy: bool = True
+) -> str:
+    if validate_policy:
+        _validate_password_policy(password, locale=locale)
     return pwd_context.hash(password)
 
 

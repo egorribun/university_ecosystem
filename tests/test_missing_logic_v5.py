@@ -83,8 +83,10 @@ async def test_crud_missing_branches():
     assert await crud._is_postgres_session(db) is True
 
     db.bind = None
-    db.get_bind = AsyncMock()
-    db.get_bind.return_value.dialect.name = "sqlite"
+    # Use wrapping to make it awaitable if needed, or just AsyncMock correctly
+    mock_engine = MagicMock()
+    mock_engine.dialect.name = "sqlite"
+    db.get_bind = AsyncMock(return_value=mock_engine)
     assert await crud._is_postgres_session(db) is False
 
 

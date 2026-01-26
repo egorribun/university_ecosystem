@@ -5,8 +5,6 @@ from pydantic import ValidationError
 
 from app.schemas import schemas
 
-pytestmark = pytest.mark.asyncio(loop_scope="session")
-
 
 def test_user_create_requires_valid_email():
     with pytest.raises(ValidationError):
@@ -71,6 +69,7 @@ def test_event_update_accepts_valid_interval():
     assert payload.starts_at == starts
 
 
+@pytest.mark.asyncio(loop_scope="session")
 async def test_user_out_contract(user_factory):
     user = await user_factory(
         full_name="Test User", spotify_is_connected=True, spotify_display_name="DJ Test"
