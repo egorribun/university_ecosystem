@@ -59,16 +59,6 @@ ignore = [
 known-first-party = ["app"]
 
 [tool.pytest.ini_options]
-addopts = [
-    "--strict-markers",
-    "-ra",  # Show extra test summary for all except passed
-
-[tool.coverage.run]
-relative_files = true
-source = ["app"]
-branch = true
-
-[tool.coverage.report]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 filterwarnings = ["ignore::DeprecationWarning"]
@@ -78,6 +68,17 @@ markers = [
     "flaky: marks as potentially flaky test",
     "security: marks as security-related test",
 ]
+addopts = [
+    "--strict-markers",
+    "-ra",              # Show extra test summary for all except passed
+]
+
+[tool.coverage.run]
+relative_files = true
+source = ["app"]
+branch = true
+
+[tool.coverage.report]
 show_missing = true
 exclude_lines = [
     "pragma: no cover",
