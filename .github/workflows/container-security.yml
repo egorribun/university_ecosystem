@@ -29,7 +29,7 @@ jobs:
       TRIVY_SEVERITY: HIGH,CRITICAL
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -96,16 +96,14 @@ jobs:
 
       - name: Upload SARIF (image)
         if: always()
-        continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-image.sarif
           category: trivy-image
 
       - name: Upload SARIF (filesystem)
         if: always()
-        continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-fs.sarif
           category: trivy-fs

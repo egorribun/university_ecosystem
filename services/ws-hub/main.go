@@ -81,7 +81,7 @@ func getEnv(key, defaultValue string) string {
 
 func main() {
 	logger, _ := zap.NewProduction()
-	defer func() { _ = logger.Sync() }()
+	defer logger.Sync()
 
 	config := loadConfig()
 
@@ -126,13 +126,11 @@ func main() {
 		roomCount := len(hub.rooms)
 		hub.mu.RUnlock()
 
-		if err := json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(map[string]interface{}{
 			"status":  "healthy",
 			"clients": clientCount,
 			"rooms":   roomCount,
-		}); err != nil {
-			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-		}
+		})
 	})
 
 	// Start server with graceful shutdown
@@ -158,9 +156,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if err := server.Shutdown(ctx); err != nil {
-		logger.Error("Server shutdown error", zap.Error(err))
-	}
+	server.Shutdown(ctx)
 }
 
 func (h *Hub) run() {
@@ -235,27 +231,21 @@ func (h *Hub) broadcastMessage(msg *Message) {
 
 func (h *Hub) subscribeToNATS() {
 	// Subscribe to chat messages
-	_, err := h.nats.Subscribe("chat.>", func(msg *nats.Msg) {
+	h.nats.Subscribe("chat.>", func(msg *nats.Msg) {
 		var wsMsg Message
 		if err := json.Unmarshal(msg.Data, &wsMsg); err == nil {
 			h.broadcast <- &wsMsg
 		}
 	})
-	if err != nil {
-		h.logger.Warn("Failed to subscribe to chat", zap.Error(err))
-	}
 
 	// Subscribe to notifications
-	_, err = h.nats.Subscribe("notifications.>", func(msg *nats.Msg) {
+	h.nats.Subscribe("notifications.>", func(msg *nats.Msg) {
 		var wsMsg Message
 		if err := json.Unmarshal(msg.Data, &wsMsg); err == nil {
 			wsMsg.Type = "notification"
 			h.broadcast <- &wsMsg
 		}
 	})
-	if err != nil {
-		h.logger.Warn("Failed to subscribe to notifications", zap.Error(err))
-	}
 
 	h.logger.Info("Subscribed to NATS topics")
 }
@@ -290,13 +280,13 @@ func (h *Hub) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 func (c *Client) readPump() {
 	defer func() {
 		c.Hub.unregister <- c
-		_ = c.Conn.Close()
+		c.Conn.Close()
 	}()
 
 	c.Conn.SetReadLimit(64 * 1024)
-	_ = c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	c.Conn.SetPongHandler(func(string) error {
-		_ = c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 		return nil
 	})
 
@@ -320,9 +310,7 @@ func (c *Client) readPump() {
 			c.leaveRoom(msg.Room)
 		case "message":
 			// Publish to NATS for persistence
-			if err := c.Hub.nats.Publish("chat."+msg.Room, data); err != nil {
-				c.Hub.logger.Warn("Failed to publish to NATS", zap.Error(err))
-			}
+			c.Hub.nats.Publish("chat."+msg.Room, data)
 			c.Hub.broadcast <- &msg
 		}
 	}
@@ -332,15 +320,15 @@ func (c *Client) writePump() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer func() {
 		ticker.Stop()
-		_ = c.Conn.Close()
+		c.Conn.Close()
 	}()
 
 	for {
 		select {
 		case msg, ok := <-c.Send:
-			_ = c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if !ok {
-				_ = c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
+				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 
@@ -349,7 +337,7 @@ func (c *Client) writePump() {
 			}
 
 		case <-ticker.C:
-			_ = c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
