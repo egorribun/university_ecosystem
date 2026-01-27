@@ -48,23 +48,8 @@ func TestLoad_ReturnsDefaultValues(t *testing.T) {
 }
 
 func TestLoad_ReadsEnvironmentVariables(t *testing.T) {
-	originalGRPCPort := os.Getenv("GRPC_PORT")
-	originalNatsURL := os.Getenv("NATS_URL")
-	defer func() {
-		if originalGRPCPort == "" {
-			assert.NoError(t, os.Unsetenv("GRPC_PORT"))
-		} else {
-			assert.NoError(t, os.Setenv("GRPC_PORT", originalGRPCPort))
-		}
-		if originalNatsURL == "" {
-			assert.NoError(t, os.Unsetenv("NATS_URL"))
-		} else {
-			assert.NoError(t, os.Setenv("NATS_URL", originalNatsURL))
-		}
-	}()
-
-	os.Setenv("GRPC_PORT", "9999")
-	os.Setenv("NATS_URL", "nats://custom:4222")
+	t.Setenv("GRPC_PORT", "9999")
+	t.Setenv("NATS_URL", "nats://custom:4222")
 
 	cfg, err := Load()
 	assert.NoError(t, err)
