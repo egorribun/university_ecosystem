@@ -13,7 +13,9 @@ name: CI
 
 on:
   push:
+    branches: ["**"]
   pull_request:
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
@@ -29,6 +31,20 @@ env:
   ENVIRONMENT: testing
 
 jobs:
+  # ============================================================================
+  # Diagnostic Job
+  # ============================================================================
+  ci-diagnostic:
+    name: CI Diagnostic
+    runs-on: ubuntu-latest
+    steps:
+      - name: System Check
+        run: |
+          echo "CI Workflow Detected"
+          echo "Ref: ${GITHUB_REF}"
+          echo "Head Ref: ${GITHUB_HEAD_REF}"
+          echo "Event: ${GITHUB_EVENT_NAME}"
+
   # ============================================================================
   # Pre-commit and Code Quality
   # ============================================================================
