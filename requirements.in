@@ -50,7 +50,7 @@ nats-py>=2.9
 elasticsearch[async]>=8.0,<9.0.0
 polars>=1.0
 geoip2>=4.0
-pgvector[sqlalchemy]>=0.3.0
+pgvector[sqlalchemy]>=0.4.2
 
 # Pinning transitive dependencies to fix security vulnerabilities
 filelock>=3.20.3

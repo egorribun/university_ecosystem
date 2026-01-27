@@ -269,7 +269,7 @@ packaging==26.0
     #   taskiq
 passlib[bcrypt]==1.7.4
     # via -r requirements.in
-pgvector[sqlalchemy]==0.3.6
+pgvector[sqlalchemy]==0.4.2
     # via -r requirements.in
 pillow==12.1.0
     # via -r requirements.in
