@@ -8,9 +8,7 @@ on:
     - cron: "0 4 * * 0"
   workflow_dispatch:
 
-permissions:
-  contents: read
-  issues: write
+permissions: {}
 
 concurrency:
   group: flaky-tests-${{ github.ref }}
@@ -26,6 +24,9 @@ jobs:
   detect-flaky:
     name: Detect Flaky Tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     services:
       redis:
         image: redis:7-alpine

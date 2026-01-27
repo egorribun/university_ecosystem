@@ -12,22 +12,20 @@ on:
             - main
             - master
 
-permissions:
-    contents: read
-    pull-requests: write
-
-concurrency:
-    group: sonarcloud-${{ github.ref }}
-    cancel-in-progress: true
+permissions: {}
 
 jobs:
     sonarcloud:
         name: SonarCloud Analysis
         runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            pull-requests: write
         env:
             SECRET_KEY: "dummy_secret_key_for_ci_tests_at_least_32_chars"
             ENVIRONMENT: testing
             OTEL_SDK_DISABLED: "true"
+            SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         services:
             redis:
                 image: redis:7-alpine

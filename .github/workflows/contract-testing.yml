@@ -18,8 +18,7 @@ on:
       - "services/**"
   workflow_dispatch:
 
-permissions:
-  contents: read
+permissions: {}
 
 concurrency:
   group: contract-${{ github.ref }}
@@ -36,6 +35,8 @@ jobs:
   provider-verification:
     name: Provider Verification (Backend)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     services:
       redis:
         image: redis:7-alpine
@@ -106,6 +107,8 @@ jobs:
   consumer-contracts:
     name: Consumer Contracts (Frontend)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     defaults:
       run:
         working-directory: frontend
@@ -149,6 +152,8 @@ jobs:
   openapi-contract:
     name: OpenAPI Contract Validation
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v5
 
