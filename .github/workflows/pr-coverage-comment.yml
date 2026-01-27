@@ -11,7 +11,7 @@ on:
             - "pyproject.toml"
 
 permissions:
-    contents: read
+    contents: write
     pull-requests: write
 
 concurrency:
