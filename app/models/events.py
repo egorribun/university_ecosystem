@@ -70,6 +70,7 @@ class Event(Base, EventEmitterMixin):
     attendance = relationship(
         "EventAttendance", cascade="all, delete-orphan", passive_deletes=True
     )
+    organizer = relationship("User")
 
     def __repr__(self) -> str:
         return (

@@ -12,11 +12,14 @@ class News(Base, EventEmitterMixin):
     id = Column(Integer, primary_key=True)
     title = Column(String, nullable=False)
     content = Column(Text, nullable=False)
+    author_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), index=True)
     title_en = Column(String)
     content_en = Column(Text)
     image_url = Column(String)
     embedding = Column(Text().with_variant(Vector(1536), "postgresql"))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    author = relationship("User")
 
     likes = relationship(
         "NewsLike", back_populates="news", cascade="all, delete-orphan"

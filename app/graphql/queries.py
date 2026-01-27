@@ -60,8 +60,8 @@ def _event_to_type(event, organizer=None) -> EventType:
         title=event.title,
         description=getattr(event, "description", None),
         location=getattr(event, "location", None),
-        start_time=event.start_time,
-        end_time=getattr(event, "end_time", None),
+        start_time=event.starts_at,
+        end_time=getattr(event, "ends_at", None),
         is_active=getattr(event, "is_active", True),
         image_url=getattr(event, "image_url", None),
         organizer=_user_to_type(organizer) if organizer else None,
@@ -124,7 +124,7 @@ class Query:
         from app.models import News
 
         result = await info.context.session.execute(
-            select(News).where(News.id == str(id)).options(selectinload(News.author))
+            select(News).where(News.id == int(id)).options(selectinload(News.author))
         )
         news = result.scalar_one_or_none()
         if not news:
@@ -155,7 +155,7 @@ class Query:
 
         # Fetch
         result = await session.execute(
-            query.order_by(Event.start_time.desc()).offset(offset).limit(limit)
+            query.order_by(Event.starts_at.desc()).offset(offset).limit(limit)
         )
         events_list = result.scalars().all()
 
@@ -186,9 +186,9 @@ class Query:
         return [
             ScheduleEntryType(
                 id=strawberry.ID(str(e.id)),
-                day_of_week=e.day_of_week,
-                time_start=str(e.time_start),
-                time_end=str(e.time_end),
+                day_of_week=e.weekday,
+                time_start=str(e.start_time),
+                time_end=str(e.end_time),
                 subject=e.subject,
                 teacher=getattr(e, "teacher", None),
                 room=getattr(e, "room", None),

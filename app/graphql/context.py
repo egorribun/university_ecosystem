@@ -12,19 +12,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from strawberry.fastapi import BaseContext
+
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
-    from starlette.requests import Request
 
     from app.graphql.dataloaders import DataLoaderRegistry
     from app.models import User
 
 
 @dataclass
-class GraphQLContext:
+class GraphQLContext(BaseContext):
     """Context object available in all GraphQL resolvers via info.context."""
 
-    request: Request
     session: AsyncSession
     loaders: DataLoaderRegistry
     current_user: User | None = None

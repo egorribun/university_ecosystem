@@ -58,7 +58,7 @@ class EventType:
 @strawberry.type(description="Schedule entry")
 class ScheduleEntryType:
     id: strawberry.ID
-    day_of_week: int
+    day_of_week: str
     time_start: str
     time_end: str
     subject: str

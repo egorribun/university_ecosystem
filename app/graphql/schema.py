@@ -33,9 +33,9 @@ async def get_context(
             auth_header = request.headers.get("Authorization", "")
             if auth_header.startswith("Bearer "):
                 token = auth_header[7:]
-                from app.deps.auth import decode_access_token
+                from app.auth.security import decode_token
 
-                payload = decode_access_token(token)
+                payload = decode_token(token)
                 if payload:
                     user_id = payload.get("sub")
                     if user_id:
@@ -51,12 +51,13 @@ async def get_context(
             # Auth failures are acceptable for public queries
             pass
 
-        yield GraphQLContext(
-            request=request,
+        context = GraphQLContext(
             session=session,
             loaders=DataLoaderRegistry(session),
             current_user=current_user,
         )
+        context.request = request
+        yield context
 
 
 # Create the schema

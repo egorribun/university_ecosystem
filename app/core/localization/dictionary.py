@@ -318,6 +318,10 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Слишком много тестовых уведомлений",
         "en": "Too many test notifications",
     },
+    "errors.common.bad_request": {
+        "ru": "Некорректный запрос: {status_details}",
+        "en": "Bad request: {status_details}",
+    },
     "errors.schedule.not_found": {
         "ru": "Запись расписания не найдена",
         "en": "Schedule entry not found",
