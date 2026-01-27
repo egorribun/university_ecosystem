@@ -86,8 +86,10 @@ def _validate_password_hibp(password: str, *, locale: str | None = None) -> None
     # The full hash is never transmitted or stored.
     # ref: https://haveibeenpwned.com/API/v3#PwnedPasswords
     sha1 = (
-        hashlib.sha1(password.encode("utf-8")).hexdigest().upper()
-    )  # lgtm[py/weak-cryptographic-algorithm] nosec B303
+        hashlib.sha1(password.encode("utf-8"), usedforsecurity=False)
+        .hexdigest()
+        .upper()
+    )
     prefix = sha1[:5]
     suffix = sha1[5:]
     url = f"{settings.password_hibp_api_url.rstrip('/')}/{prefix}"
