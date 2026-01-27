@@ -103,7 +103,7 @@ jobs:
                       -Dsonar.exclusions=**/node_modules/**,**/__pycache__/**,**/migrations/**
 
             - name: SonarCloud Quality Gate
-              uses: SonarSource/sonarqube-quality-gate-action@cb3ed20e8b2b73ee45c48b260935561a7a0b33b0 # v1.2.0 (master)
+              uses: SonarSource/sonarqube-quality-gate-action@cf038b0e0cdecfa9e56c198bbb7d21d751d62c3b # v1.2.0
               timeout-minutes: 5
               env:
                   SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
