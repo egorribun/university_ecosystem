@@ -22,15 +22,15 @@ func TestLoad_ReturnsDefaultValues(t *testing.T) {
 	defer func() {
 		for key, value := range originalEnvVars {
 			if value == "" {
-				os.Unsetenv(key)
+				assert.NoError(t, os.Unsetenv(key))
 			} else {
-				os.Setenv(key, value)
+				assert.NoError(t, os.Setenv(key, value))
 			}
 		}
 	}()
 
 	for key := range originalEnvVars {
-		os.Unsetenv(key)
+		assert.NoError(t, os.Unsetenv(key))
 	}
 
 	cfg, err := Load()
@@ -52,14 +52,14 @@ func TestLoad_ReadsEnvironmentVariables(t *testing.T) {
 	originalNatsURL := os.Getenv("NATS_URL")
 	defer func() {
 		if originalGRPCPort == "" {
-			os.Unsetenv("GRPC_PORT")
+			assert.NoError(t, os.Unsetenv("GRPC_PORT"))
 		} else {
-			os.Setenv("GRPC_PORT", originalGRPCPort)
+			assert.NoError(t, os.Setenv("GRPC_PORT", originalGRPCPort))
 		}
 		if originalNatsURL == "" {
-			os.Unsetenv("NATS_URL")
+			assert.NoError(t, os.Unsetenv("NATS_URL"))
 		} else {
-			os.Setenv("NATS_URL", originalNatsURL)
+			assert.NoError(t, os.Setenv("NATS_URL", originalNatsURL))
 		}
 	}()
 

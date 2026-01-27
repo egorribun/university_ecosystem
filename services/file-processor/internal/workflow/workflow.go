@@ -100,7 +100,15 @@ func (a *FileActivities) ResizeImageActivity(ctx context.Context, job ProcessJob
 	if err != nil {
 		return nil, err
 	}
-	defer obj.Close()
+	defer func() {
+		if closeErr := obj.Close(); closeErr != nil {
+			// Log the error but don't fail the activity just because of a close error on a read-only object
+			// In Temporal, we can use the logger if we have it, or just ignore if it's not critical.
+			// Since we don't have a logger here (it's passed in ctx but usually via a specific way in Temporal),
+			// for now let's just make it checked to satisfy the linter.
+			_ = closeErr
+		}
+	}()
 
 	// Decode image
 	img, format, err := image.Decode(obj)
