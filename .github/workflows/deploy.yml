@@ -31,10 +31,10 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ !inputs.skip_tests }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: '3.13'
           cache: pip
@@ -73,7 +73,7 @@ jobs:
       frontend_digest: ${{ steps.build_frontend.outputs.digest }}
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       - name: Generate version tag
         id: version
@@ -127,7 +127,7 @@ jobs:
       name: ${{ inputs.environment }}
       url: ${{ steps.deploy.outputs.url }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       - name: Deploy (placeholder)
         id: deploy
@@ -157,10 +157,10 @@ jobs:
     needs: [deploy]
     if: ${{ inputs.environment == 'staging' }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: '3.13'
           cache: pip
@@ -202,3 +202,4 @@ jobs:
 
           **Triggered by:** @${{ github.actor }}
           SUMMARY
+

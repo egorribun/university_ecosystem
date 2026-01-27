@@ -1,0 +1,126 @@
+# Reusable Security Audit Workflow
+#
+# Call from other workflows:
+#   jobs:
+#     security:
+#       uses: ./.github/workflows/reusable-security-audit.yml
+
+name: Security Audit
+
+on:
+    workflow_call:
+        inputs:
+            python-version:
+                description: "Python version for pip-audit"
+                required: false
+                type: string
+                default: "3.13"
+            node-version:
+                description: "Node.js version for npm audit"
+                required: false
+                type: string
+                default: "22"
+            run-pip-audit:
+                description: "Run pip-audit for Python dependencies"
+                required: false
+                type: boolean
+                default: true
+            run-npm-audit:
+                description: "Run npm audit for Node.js dependencies"
+                required: false
+                type: boolean
+                default: true
+
+jobs:
+    pip-audit:
+        name: Python Dependency Audit
+        if: ${{ inputs.run-pip-audit }}
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Setup Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: ${{ inputs.python-version }}
+                  cache: pip
+                  cache-dependency-path: |
+                      requirements.txt
+                      requirements-dev.txt
+
+            - name: Install audit tooling
+              run: |
+                  python -m pip install --upgrade pip
+                  python -m pip install pip-audit pyyaml
+
+            - name: Run pip-audit with allowlist
+              run: |
+                  python scripts/audit_dependencies.py \
+                    --allowlist security/audit-allowlist.yaml \
+                    --pip requirements.txt requirements-dev.txt
+
+    npm-audit:
+        name: Node.js Dependency Audit
+        if: ${{ inputs.run-npm-audit }}
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: frontend
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ inputs.node-version }}
+                  cache: npm
+                  cache-dependency-path: frontend/package-lock.json
+
+            - name: Setup Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: ${{ inputs.python-version }}
+                  cache: pip
+                  cache-dependency-path: |
+                      requirements.txt
+                      requirements-dev.txt
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Install audit tooling
+              run: |
+                  python -m pip install --upgrade pip
+                  python -m pip install pyyaml
+
+            - name: Run npm audit with allowlist
+              run: |
+                  python ../scripts/audit_dependencies.py \
+                    --allowlist ../security/audit-allowlist.yaml \
+                    --npm .
+
+    docker-security:
+        name: Container Security Scan
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            security-events: write
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Run Trivy vulnerability scanner
+              uses: aquasecurity/trivy-action@master
+              with:
+                  scan-type: "fs"
+                  scan-ref: "."
+                  format: "sarif"
+                  output: "trivy-results.sarif"
+                  severity: "CRITICAL,HIGH"
+
+            - name: Upload Trivy scan results
+              uses: github/codeql-action/upload-sarif@v4
+              if: always()
+              continue-on-error: true
+              with:
+                  sarif_file: "trivy-results.sarif"
+

@@ -1,0 +1,59 @@
+# Reusable Python Setup Workflow
+#
+# Call from other workflows:
+#   jobs:
+#     setup:
+#       uses: ./.github/workflows/reusable-setup-python.yml
+#       with:
+#         python-version: '3.13'
+#         install-dev-deps: true
+
+name: Setup Python
+
+on:
+    workflow_call:
+        inputs:
+            python-version:
+                description: "Python version to install"
+                required: false
+                type: string
+                default: "3.13"
+            install-dev-deps:
+                description: "Install development dependencies"
+                required: false
+                type: boolean
+                default: false
+            working-directory:
+                description: "Working directory for pip install"
+                required: false
+                type: string
+                default: "."
+
+jobs:
+    setup:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Setup Python ${{ inputs.python-version }}
+              uses: actions/setup-python@v5
+              with:
+                  python-version: ${{ inputs.python-version }}
+                  cache: pip
+                  cache-dependency-path: |
+                      requirements.txt
+                      requirements-dev.txt
+                      pyproject.toml
+
+            - name: Install runtime dependencies
+              working-directory: ${{ inputs.working-directory }}
+              run: |
+                  python -m pip install --upgrade pip
+                  python -m pip install -r requirements.txt
+
+            - name: Install development dependencies
+              if: ${{ inputs.install-dev-deps }}
+              working-directory: ${{ inputs.working-directory }}
+              run: |
+                  python -m pip install -r requirements-dev.txt
+

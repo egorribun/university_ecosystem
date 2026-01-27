@@ -1,9 +1,9 @@
 name: Performance Tests (k6)
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   pull_request:
-    branches: [ main, master ]
+    branches: [main, master]
 jobs:
   k6_test:
     name: k6 Load Test
@@ -21,15 +21,16 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
-          cache: 'pip'
+          python-version: "3.13"
+          cache: "pip"
 
-      - name: Install dependencies
+      - name:
+          Install dependencies
           # We need aiosqlite for the fallback DB
         run: |
           pip install -r requirements.txt aiosqlite
@@ -43,7 +44,7 @@ jobs:
 
       - name: Start backend
         run: |
-          uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+          uvicorn app.main:app --host 127.0.0.1 --port 8000 > backend.log 2>&1 &
           echo "BACKEND_PID=$!" >> $GITHUB_ENV
         env:
           DATABASE_URL: sqlite+aiosqlite:///./dev.db
@@ -58,10 +59,11 @@ jobs:
               echo "Backend is ready"
               exit 0
             fi
-            echo "Waiting for backend..."
+            echo "Waiting for backend... (attempt $i)"
             sleep 1
           done
-          echo "Backend failed to start"
+          echo "Backend failed to start. Logs:"
+          cat backend.log || echo "No log file found"
           exit 1
 
       - name: Install k6
@@ -81,3 +83,4 @@ jobs:
           if [ -n "$BACKEND_PID" ]; then
             kill $BACKEND_PID || true
           fi
+

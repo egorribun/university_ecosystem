@@ -1,0 +1,186 @@
+# Reusable Backend Tests Workflow
+#
+# Call from other workflows:
+#   jobs:
+#     backend-tests:
+#       uses: ./.github/workflows/reusable-backend-tests.yml
+#       with:
+#         coverage-threshold: 72
+#       secrets:
+#         SECRET_KEY: ${{ secrets.SECRET_KEY }}
+
+name: Backend Tests
+
+on:
+    workflow_call:
+        inputs:
+            python-version:
+                description: "Python version to use"
+                required: false
+                type: string
+                default: "3.13"
+            coverage-threshold:
+                description: "Minimum coverage percentage"
+                required: false
+                type: number
+                default: 72
+            run-integration-tests:
+                description: "Run PostgreSQL integration tests"
+                required: false
+                type: boolean
+                default: false
+        secrets:
+            SECRET_KEY:
+                required: false
+                description: "Application secret key"
+
+env:
+    SECRET_KEY: ${{ secrets.SECRET_KEY || 'dummy_secret_key_for_ci_tests_at_least_32_chars' }}
+    ENVIRONMENT: testing
+    OTEL_SDK_DISABLED: "true"
+
+jobs:
+    unit-tests:
+        name: Unit Tests
+        runs-on: ubuntu-latest
+        services:
+            redis:
+                image: redis:7-alpine
+                ports:
+                    - 6379:6379
+                options: >-
+                    --health-cmd "redis-cli ping"
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 5
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Setup Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: ${{ inputs.python-version }}
+                  cache: pip
+                  cache-dependency-path: |
+                      requirements.txt
+                      requirements-dev.txt
+                      pyproject.toml
+
+            - name: Install dependencies
+              run: |
+                  python -m pip install --upgrade pip
+                  pip install -r requirements.txt -r requirements-dev.txt
+
+            - name: Run pytest
+              run: |
+                  pytest \
+                    --cov=app \
+                    --cov-report=xml \
+                    --cov-report=term-missing \
+                    --cov-fail-under=${{ inputs.coverage-threshold }} \
+                    --junitxml=pytest-report.xml
+
+            - name: Upload coverage artifact
+              uses: actions/upload-artifact@v4
+              with:
+                  name: backend-coverage-xml
+                  path: coverage.xml
+
+            - name: Upload pytest report
+              uses: actions/upload-artifact@v4
+              with:
+                  name: backend-pytest-report
+                  path: pytest-report.xml
+                  if-no-files-found: warn
+
+    integration-tests:
+        name: PostgreSQL Integration Tests
+        if: ${{ inputs.run-integration-tests }}
+        runs-on: ubuntu-latest
+        services:
+            postgres:
+                image: pgvector/pgvector:pg17
+                env:
+                    POSTGRES_USER: test
+                    POSTGRES_PASSWORD: test
+                    POSTGRES_DB: test
+                options: >-
+                    --health-cmd pg_isready
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 5
+                ports:
+                    - 5432:5432
+            redis:
+                image: redis:7-alpine
+                ports:
+                    - 6379:6379
+                options: >-
+                    --health-cmd "redis-cli ping"
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 5
+        env:
+            DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
+            REDIS_URL: redis://localhost:6379
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Setup Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: ${{ inputs.python-version }}
+                  cache: pip
+                  cache-dependency-path: |
+                      requirements.txt
+                      requirements-dev.txt
+                      pyproject.toml
+
+            - name: Install dependencies
+              run: |
+                  python -m pip install --upgrade pip
+                  pip install -r requirements.txt -r requirements-dev.txt
+
+            - name: Wait for PostgreSQL
+              run: |
+                  until pg_isready -h localhost -p 5432 -U test; do
+                    sleep 1
+                  done
+
+            - name: Run Alembic migrations
+              run: alembic upgrade head
+
+            - name: Run integration tests
+              run: pytest tests/ -v --tb=short -x --ignore=tests/performance
+
+            - name: Upload test results
+              uses: actions/upload-artifact@v4
+              if: failure()
+              with:
+                  name: postgres-test-failures
+                  path: pytest-report.xml
+                  if-no-files-found: ignore
+
+    type-check:
+        name: Type Check
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Setup Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: ${{ inputs.python-version }}
+                  cache: pip
+                  cache-dependency-path: |
+                      requirements.txt
+                      requirements-dev.txt
+
+            - name: Install dependencies
+              run: |
+                  python -m pip install --upgrade pip
+                  python -m pip install -r requirements.txt -r requirements-dev.txt
+
+            - name: Run mypy
+              run: mypy
+

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -9,7 +8,7 @@ import (
 
 func TestGetEnv_ReturnsDefaultWhenNotSet(t *testing.T) {
 	key := "TEST_WS_UNSET_VAR"
-	os.Unsetenv(key)
+	t.Setenv(key, "")
 
 	result := getEnv(key, "default_value")
 
@@ -18,8 +17,7 @@ func TestGetEnv_ReturnsDefaultWhenNotSet(t *testing.T) {
 
 func TestGetEnv_ReturnsEnvValueWhenSet(t *testing.T) {
 	key := "TEST_WS_SET_VAR"
-	os.Setenv(key, "custom_value")
-	defer os.Unsetenv(key)
+	t.Setenv(key, "custom_value")
 
 	result := getEnv(key, "default")
 
@@ -27,25 +25,10 @@ func TestGetEnv_ReturnsEnvValueWhenSet(t *testing.T) {
 }
 
 func TestLoadConfig_ReturnsDefaultValues(t *testing.T) {
-	originalPort := os.Getenv("WS_HUB_PORT")
-	originalNats := os.Getenv("NATS_URL")
-	originalJWT := os.Getenv("JWT_SECRET")
-
-	os.Unsetenv("WS_HUB_PORT")
-	os.Unsetenv("NATS_URL")
-	os.Unsetenv("JWT_SECRET")
-
-	defer func() {
-		if originalPort != "" {
-			os.Setenv("WS_HUB_PORT", originalPort)
-		}
-		if originalNats != "" {
-			os.Setenv("NATS_URL", originalNats)
-		}
-		if originalJWT != "" {
-			os.Setenv("JWT_SECRET", originalJWT)
-		}
-	}()
+	// t.Setenv with empty string clears the env var for this test
+	t.Setenv("WS_HUB_PORT", "")
+	t.Setenv("NATS_URL", "")
+	t.Setenv("JWT_SECRET", "")
 
 	config := loadConfig()
 
@@ -55,15 +38,9 @@ func TestLoadConfig_ReturnsDefaultValues(t *testing.T) {
 }
 
 func TestLoadConfig_ReadsEnvValues(t *testing.T) {
-	os.Setenv("WS_HUB_PORT", "9999")
-	os.Setenv("NATS_URL", "nats://custom:4222")
-	os.Setenv("JWT_SECRET", "super-secret")
-
-	defer func() {
-		os.Unsetenv("WS_HUB_PORT")
-		os.Unsetenv("NATS_URL")
-		os.Unsetenv("JWT_SECRET")
-	}()
+	t.Setenv("WS_HUB_PORT", "9999")
+	t.Setenv("NATS_URL", "nats://custom:4222")
+	t.Setenv("JWT_SECRET", "super-secret")
 
 	config := loadConfig()
 

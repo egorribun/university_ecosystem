@@ -1,0 +1,166 @@
+# Reusable Frontend Tests Workflow
+#
+# Call from other workflows:
+#   jobs:
+#     frontend-tests:
+#       uses: ./.github/workflows/reusable-frontend-tests.yml
+#       with:
+#         run-e2e: true
+
+name: Frontend Tests
+
+on:
+    workflow_call:
+        inputs:
+            node-version:
+                description: "Node.js version to use"
+                required: false
+                type: string
+                default: "22"
+            working-directory:
+                description: "Frontend directory"
+                required: false
+                type: string
+                default: "frontend"
+            run-e2e:
+                description: "Run Playwright E2E tests"
+                required: false
+                type: boolean
+                default: false
+            run-lighthouse:
+                description: "Run Lighthouse audits"
+                required: false
+                type: boolean
+                default: false
+
+jobs:
+    unit-tests:
+        name: Unit Tests
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: ${{ inputs.working-directory }}
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ inputs.node-version }}
+                  cache: npm
+                  cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Run type check
+              run: npm run typecheck
+
+            - name: Run unit tests
+              run: npm run test:ci
+              env:
+                  CI: "true"
+
+            - name: Upload vitest report
+              uses: actions/upload-artifact@v4
+              with:
+                  name: frontend-vitest-report
+                  path: ${{ inputs.working-directory }}/vitest-report.xml
+                  if-no-files-found: warn
+
+    lint:
+        name: Lint & Format
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: ${{ inputs.working-directory }}
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ inputs.node-version }}
+                  cache: npm
+                  cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Run ESLint
+              run: npm run lint
+
+            - name: Check formatting
+              run: npm run format:check
+
+    build:
+        name: Production Build
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: ${{ inputs.working-directory }}
+        env:
+            VITE_BACKEND_ORIGIN: http://localhost:8000
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ inputs.node-version }}
+                  cache: npm
+                  cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Build app
+              run: npm run build
+
+            - name: Upload production bundle
+              uses: actions/upload-artifact@v4
+              with:
+                  name: frontend-dist
+                  path: ${{ inputs.working-directory }}/dist
+                  if-no-files-found: error
+
+    lighthouse:
+        name: Lighthouse Audit
+        if: ${{ inputs.run-lighthouse }}
+        needs: build
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: ${{ inputs.working-directory }}
+        env:
+            VITE_BACKEND_ORIGIN: http://localhost:8000
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ inputs.node-version }}
+                  cache: npm
+                  cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+            - name: Download built dist
+              uses: actions/download-artifact@v4
+              with:
+                  name: frontend-dist
+                  path: ${{ inputs.working-directory }}/dist
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Run Lighthouse CI
+              run: npm run lhci
+
+            - name: Upload Lighthouse reports
+              uses: actions/upload-artifact@v4
+              if: always()
+              with:
+                  name: lighthouse-reports
+                  path: ${{ inputs.working-directory }}/.lighthouseci
+                  if-no-files-found: warn
+

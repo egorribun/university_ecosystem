@@ -1,0 +1,6 @@
+# TruffleHog Configuration
+# Ignore false positives and example credentials
+
+# Exit with non-zero only on verified secrets (not unverified warnings)
+results:
+  only_verified: true

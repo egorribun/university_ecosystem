@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
   schedule:
     # Run weekly on Monday at 03:00 UTC
-    - cron: '0 3 * * 1'
+    - cron: "0 3 * * 1"
 
 concurrency:
   group: zap-scan-${{ github.ref }}
@@ -51,12 +51,12 @@ jobs:
           --health-retries=5
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: "3.13"
           cache: pip
           cache-dependency-path: |
             requirements.txt
@@ -79,9 +79,20 @@ jobs:
           SECRET_KEY: ci-test-secret-key-do-not-use-in-production
           OTEL_SDK_DISABLED: "true"
         run: |
-          uvicorn app.main:app --host 0.0.0.0 --port ${{ env.BACKEND_PORT }} &
-          sleep 10
-          curl --retry 10 --retry-delay 2 --retry-connrefused http://localhost:${{ env.BACKEND_PORT }}/health
+          uvicorn app.main:app --host 0.0.0.0 --port ${{ env.BACKEND_PORT }} > backend.log 2>&1 &
+          echo "Waiting for backend..."
+          for i in {1..20}; do
+            if curl -s http://localhost:${{ env.BACKEND_PORT }}/health; then
+              echo "Backend is ready"
+              break
+            fi
+            sleep 1
+          done
+          if ! curl -s http://localhost:${{ env.BACKEND_PORT }}/health; then
+            echo "Backend failed to start. Logs:"
+            cat backend.log || echo "No log file"
+            exit 1
+          fi
 
       - name: Create ZAP rules file if missing
         run: |
@@ -89,11 +100,11 @@ jobs:
           if [ ! -f "${{ env.ZAP_RULES_FILE }}" ]; then
             cat > "${{ env.ZAP_RULES_FILE }}" << 'EOF'
           # ZAP Passive Scan Rules Configuration
-          # Format: rule_id	action	reason
+          # Format: rule_id action  reason
           # Actions: IGNORE, WARN, FAIL
-          10021	WARN	X-Content-Type-Options Header Missing
-          10038	WARN	Content Security Policy (CSP) Header Not Set
-          10098	IGNORE	Cross-Domain Misconfiguration (expected for API)
+          10021 WARN  X-Content-Type-Options Header Missing
+          10038 WARN  Content Security Policy (CSP) Header Not Set
+          10098 IGNORE  Cross-Domain Misconfiguration (expected for API)
           EOF
           fi
 
@@ -102,7 +113,7 @@ jobs:
         with:
           target: http://localhost:${{ env.BACKEND_PORT }}
           rules_file_name: ${{ env.ZAP_RULES_FILE }}
-          cmd_options: '-a -j -I'
+          cmd_options: "-a -j -I"
           allow_issue_writing: false
           fail_action: false
 
@@ -125,3 +136,4 @@ jobs:
 
           See the uploaded artifact for the full HTML report.
           SUMMARY
+
