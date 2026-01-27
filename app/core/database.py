@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sqlite3
 import threading
 import time
 from collections.abc import AsyncGenerator
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import event, text
@@ -23,6 +25,14 @@ from sqlalchemy.pool import NullPool
 if TYPE_CHECKING:
     from app.core.config import Settings
 from app.core.config import settings
+
+
+# Fix for aiosqlite/sqlite3 deprecation warning
+def adapt_datetime(val: datetime) -> str:
+    return val.isoformat()
+
+
+sqlite3.register_adapter(datetime, adapt_datetime)
 
 logger = logging.getLogger(__name__)
 slow_query_logger = logging.getLogger("slow_queries")

@@ -67,8 +67,11 @@ def _parse_datetime(value: Any) -> datetime | None:
         return value.astimezone(UTC) if value.tzinfo else value.replace(tzinfo=UTC)
 
     if isinstance(value, int | float):
+        numeric = value
+        if numeric > 1e12:
+            numeric /= 1000.0
         try:
-            return datetime.fromtimestamp(value, UTC)
+            return datetime.fromtimestamp(numeric, UTC)
         except (OverflowError, OSError, ValueError):
             return None
 
