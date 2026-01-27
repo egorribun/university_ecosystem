@@ -62,7 +62,8 @@ jobs:
                     -q --tb=short
 
             - name: Coverage comment
-              uses: py-cov-action/python-coverage-comment-action@03f8373b5204481d248386de6ac73356e9c9a068 # v3.0.0
+              id: coverage_comment
+              uses: py-cov-action/python-coverage-comment-action@v3 # Temporary tag to resolve valid SHA
               with:
                   GITHUB_TOKEN: ${{ github.token }}
                   MINIMUM_GREEN: 80
