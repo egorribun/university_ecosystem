@@ -13,10 +13,6 @@ on:
     paths:
       - "frontend/**"
 
-permissions:
-  contents: read
-  pull-requests: write
-
 concurrency:
   group: chromatic-${{ github.ref }}
   cancel-in-progress: true
@@ -28,6 +24,9 @@ jobs:
     defaults:
       run:
         working-directory: frontend
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v5
         with:
@@ -83,6 +82,8 @@ jobs:
     env:
       PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
       VITE_BACKEND_ORIGIN: http://localhost:8000
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v5
 
@@ -120,6 +121,8 @@ jobs:
     defaults:
       run:
         working-directory: frontend
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v5
 
