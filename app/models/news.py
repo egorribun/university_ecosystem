@@ -5,6 +5,8 @@ from sqlalchemy.orm import relationship
 from app.core.database import Base
 from app.core.events import EventEmitterMixin
 
+USERS_ID_FK = "users.id"
+
 
 class News(Base, EventEmitterMixin):
     __tablename__ = "news"
@@ -12,7 +14,9 @@ class News(Base, EventEmitterMixin):
     id = Column(Integer, primary_key=True)
     title = Column(String, nullable=False)
     content = Column(Text, nullable=False)
-    author_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    author_id = Column(
+        Integer, ForeignKey(USERS_ID_FK, ondelete="SET NULL"), index=True
+    )
     title_en = Column(String)
     content_en = Column(Text)
     image_url = Column(String)
@@ -40,7 +44,7 @@ class NewsLike(Base):
         Integer, ForeignKey("news.id", ondelete="CASCADE"), nullable=False, index=True
     )
     user_id = Column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+        Integer, ForeignKey(USERS_ID_FK, ondelete="CASCADE"), nullable=False, index=True
     )
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -61,7 +65,7 @@ class NewsComment(Base):
         Integer, ForeignKey("news.id", ondelete="CASCADE"), nullable=False, index=True
     )
     user_id = Column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+        Integer, ForeignKey(USERS_ID_FK, ondelete="CASCADE"), nullable=False, index=True
     )
     content = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
