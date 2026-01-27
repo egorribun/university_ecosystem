@@ -101,7 +101,7 @@ jobs:
 
       - name: Create issue for flaky tests
         if: steps.flaky_detection.outputs.flaky_found == 'true'
-        uses: peter-evans/create-issue-from-file@3f237efb4334346852e931ed86df0473a24ed465 # v5.0.1
+        uses: peter-evans/create-issue-from-file@v5 # Temporary tag to resolve valid SHA
         with:
           title: "🧪 Flaky tests detected"
           content-filepath: flaky-report.md

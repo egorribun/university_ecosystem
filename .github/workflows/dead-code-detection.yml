@@ -170,7 +170,7 @@ jobs:
 
       - name: Create issue for dead code (scheduled runs only)
         if: github.event_name == 'schedule' && steps.vulture.outputs.issue_count > 10
-        uses: peter-evans/create-issue-from-file@3f237efb4334346852e931ed86df0473a24ed465 # v5.0.1
+        uses: peter-evans/create-issue-from-file@v5 # Temporary tag to resolve valid SHA
         with:
           title: "🧹 Dead code detected - cleanup recommended"
           content-filepath: dead-code-report.md
