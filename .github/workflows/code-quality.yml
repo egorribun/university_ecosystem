@@ -147,7 +147,7 @@ jobs:
                     --ignore=tests/performance
 
             - name: CodeClimate Test Reporter
-              uses: paambaati/codeclimate-action@d84270de48512595914a2f42a6c117b9b008d3e2 # v9.0.0
+              uses: paambaati/codeclimate-action@d84270de48512595914a2f42a6c117b9b008d3e2 # v9.0.0 # trufflehog:ignore
               env:
                   CC_TEST_REPORTER_ID: ${{ secrets.CC_TEST_REPORTER_ID }}
               with:
