@@ -178,6 +178,8 @@ multidict==6.7.0
     #   yarl
 nats-py==2.12.0
     # via -r requirements.in
+numpy==2.4.1
+    # via pgvector
 opentelemetry-api==1.39.0
     # via
     #   -r requirements.in
@@ -267,7 +269,7 @@ packaging==26.0
     #   taskiq
 passlib[bcrypt]==1.7.4
     # via -r requirements.in
-pgvector==0.3.6
+pgvector[sqlalchemy]==0.3.6
     # via -r requirements.in
 pillow==12.1.0
     # via -r requirements.in
@@ -331,11 +333,11 @@ python-dotenv==1.2.1
     #   -r requirements.in
     #   pydantic-settings
     #   uvicorn
-PyJWT==2.10.1
+python-jose[cryptography]==3.5.0
     # via -r requirements.in
 python-magic==0.4.27
     # via -r requirements.in
-python-multipart==0.0.21
+python-multipart==0.0.22
     # via
     #   -r requirements.in
     #   strawberry-graphql
