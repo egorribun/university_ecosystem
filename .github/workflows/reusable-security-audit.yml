@@ -1,10 +1,4 @@
 # Reusable Security Audit Workflow
-#
-# Call from other workflows:
-#   jobs:
-#     security:
-#       uses: ./.github/workflows/reusable-security-audit.yml
-
 name: Security Audit
 
 on:
@@ -37,10 +31,10 @@ jobs:
         if: ${{ inputs.run-pip-audit }}
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v5
 
             - name: Setup Python
-              uses: actions/setup-python@v5
+              uses: actions/setup-python@v6
               with:
                   python-version: ${{ inputs.python-version }}
                   cache: pip
@@ -67,17 +61,17 @@ jobs:
             run:
                 working-directory: frontend
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v5
 
             - name: Setup Node.js
-              uses: actions/setup-node@v4
+              uses: actions/setup-node@v5
               with:
                   node-version: ${{ inputs.node-version }}
                   cache: npm
                   cache-dependency-path: frontend/package-lock.json
 
             - name: Setup Python
-              uses: actions/setup-python@v5
+              uses: actions/setup-python@v6
               with:
                   python-version: ${{ inputs.python-version }}
                   cache: pip
@@ -106,7 +100,7 @@ jobs:
             contents: read
             security-events: write
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v5
 
             - name: Run Trivy vulnerability scanner
               uses: aquasecurity/trivy-action@master
@@ -123,4 +117,3 @@ jobs:
               continue-on-error: true
               with:
                   sarif_file: "trivy-results.sarif"
-

@@ -1,14 +1,4 @@
 # Reusable Backend Tests Workflow
-#
-# Call from other workflows:
-#   jobs:
-#     backend-tests:
-#       uses: ./.github/workflows/reusable-backend-tests.yml
-#       with:
-#         coverage-threshold: 72
-#       secrets:
-#         SECRET_KEY: ${{ secrets.SECRET_KEY }}
-
 name: Backend Tests
 
 on:
@@ -44,15 +34,14 @@ on:
                 required: false
                 description: "Application secret key"
 
-env:
-    SECRET_KEY: ${{ secrets.SECRET_KEY || 'dummy_secret_key_for_ci_tests_at_least_32_chars' }}
-    ENVIRONMENT: testing
-    OTEL_SDK_DISABLED: "true"
-
 jobs:
     unit-tests:
-        name: Unit Tests
+        name: Unit Tests (${{ inputs.test-group-name }})
         runs-on: ubuntu-latest
+        env:
+            SECRET_KEY: ${{ secrets.SECRET_KEY || 'dummy_secret_key_for_ci_tests_at_least_32_chars' }}
+            ENVIRONMENT: testing
+            OTEL_SDK_DISABLED: "true"
         services:
             redis:
                 image: redis:7-alpine
@@ -64,10 +53,10 @@ jobs:
                     --health-timeout 5s
                     --health-retries 5
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v5
 
             - name: Setup Python
-              uses: actions/setup-python@v5
+              uses: actions/setup-python@v6
               with:
                   python-version: ${{ inputs.python-version }}
                   cache: pip
@@ -93,20 +82,26 @@ jobs:
             - name: Upload coverage artifact
               uses: actions/upload-artifact@v4
               with:
-                  name: backend-coverage-xml
+                  name: backend-coverage-${{ inputs.test-group-name }}
                   path: coverage.xml
 
             - name: Upload pytest report
               uses: actions/upload-artifact@v4
               with:
-                  name: backend-pytest-report
+                  name: backend-pytest-report-${{ inputs.test-group-name }}
                   path: pytest-report.xml
                   if-no-files-found: warn
 
     integration-tests:
-        name: PostgreSQL Integration Tests
+        name: Integration Tests (${{ inputs.test-group-name }})
         if: ${{ inputs.run-integration-tests }}
         runs-on: ubuntu-latest
+        env:
+            SECRET_KEY: ${{ secrets.SECRET_KEY || 'dummy_secret_key_for_ci_tests_at_least_32_chars' }}
+            ENVIRONMENT: testing
+            OTEL_SDK_DISABLED: "true"
+            DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
+            REDIS_URL: redis://localhost:6379
         services:
             postgres:
                 image: pgvector/pgvector:pg17
@@ -130,14 +125,11 @@ jobs:
                     --health-interval 10s
                     --health-timeout 5s
                     --health-retries 5
-        env:
-            DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
-            REDIS_URL: redis://localhost:6379
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v5
 
             - name: Setup Python
-              uses: actions/setup-python@v5
+              uses: actions/setup-python@v6
               with:
                   python-version: ${{ inputs.python-version }}
                   cache: pip
@@ -167,6 +159,6 @@ jobs:
               uses: actions/upload-artifact@v4
               if: failure()
               with:
-                  name: postgres-test-failures
+                  name: postgres-test-failures-${{ inputs.test-group-name }}
                   path: pytest-report.xml
                   if-no-files-found: ignore

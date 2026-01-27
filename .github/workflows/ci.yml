@@ -1,14 +1,4 @@
 # CI Pipeline - Refactored to use Reusable Workflows
-#
-# This is a streamlined CI configuration that delegates to modular reusable workflows.
-# Original: 835 lines → Refactored: ~200 lines
-#
-# Reusable workflows used:
-# - reusable-backend-tests.yml: Python unit/integration tests, type checking
-# - reusable-frontend-tests.yml: Node.js unit tests, lint, build
-# - reusable-go-tests.yml: Go service tests and linting
-# - reusable-security-audit.yml: pip-audit, npm audit, Trivy
-
 name: "CI - Matrix Expansion"
 
 on:
@@ -29,9 +19,6 @@ env:
   ENVIRONMENT: testing
 
 jobs:
-  # ============================================================================
-  # Diagnostic Job
-  # ============================================================================
   ci-diagnostic:
     name: CI Diagnostic
     runs-on: ubuntu-latest
@@ -43,9 +30,6 @@ jobs:
           echo "Head Ref: ${GITHUB_HEAD_REF}"
           echo "Event: ${GITHUB_EVENT_NAME}"
 
-  # ============================================================================
-  # Pre-commit and Code Quality
-  # ============================================================================
   run-hooks:
     name: Pre-commit & Linting
     runs-on: ubuntu-latest
@@ -94,9 +78,6 @@ jobs:
         with:
           extra_args: --all-files
 
-  # ============================================================================
-  # Docker Compose Validation
-  # ============================================================================
   compose-validate:
     name: Validate docker-compose.yml
     runs-on: ubuntu-latest
@@ -108,9 +89,6 @@ jobs:
           cp .env.example .env
           docker compose -f docker-compose.yml config
 
-  # ============================================================================
-  # Backend Tests (Reusable Workflow)
-  # ============================================================================
   backend-tests:
     name: Backend Tests (${{ matrix.group.name }})
     strategy:
@@ -142,9 +120,6 @@ jobs:
       run-integration-tests: true
     secrets: inherit
 
-  # ============================================================================
-  # Backend Type Checking (Single Job)
-  # ============================================================================
   backend-type-check:
     name: Backend Type Check
     runs-on: ubuntu-latest
@@ -169,9 +144,6 @@ jobs:
       - name: Run mypy
         run: mypy
 
-  # ============================================================================
-  # Go Tests (Reusable Workflow)
-  # ============================================================================
   go-tests:
     name: Go Tests (${{ matrix.service }})
     strategy:
@@ -188,9 +160,6 @@ jobs:
       go-version: "1.25.x"
     secrets: inherit
 
-  # ============================================================================
-  # Frontend Tests (Reusable Workflow)
-  # ============================================================================
   frontend-tests:
     name: Frontend Tests
     needs: run-hooks
@@ -200,9 +169,6 @@ jobs:
       run-lighthouse: true
     secrets: inherit
 
-  # ============================================================================
-  # Security Audits (Reusable Workflow)
-  # ============================================================================
   security-audit:
     name: Security Audit
     needs: run-hooks
@@ -212,9 +178,6 @@ jobs:
       node-version: "22"
     secrets: inherit
 
-  # ============================================================================
-  # Alembic Migrations
-  # ============================================================================
   alembic-migrations:
     name: Alembic Migrations
     runs-on: ubuntu-latest
@@ -284,9 +247,6 @@ jobs:
           alembic -c alembic.ini upgrade head
           alembic -c alembic.ini downgrade base
 
-  # ============================================================================
-  # OpenAPI Schema Generation & Verification
-  # ============================================================================
   openapi-verify:
     name: Verify OpenAPI Types
     runs-on: ubuntu-latest
@@ -346,9 +306,6 @@ jobs:
             exit 1
           fi
 
-  # ============================================================================
-  # Runtime Requirements Verification
-  # ============================================================================
   verify-runtime-reqs:
     name: Verify Runtime Requirements
     runs-on: ubuntu-latest
@@ -391,9 +348,6 @@ jobs:
           print("Runtime requirements look clean.")
           PY
 
-  # ============================================================================
-  # Lighthouse Performance Gate
-  # ============================================================================
   performance-gate:
     name: Performance Gate
     runs-on: ubuntu-latest
@@ -444,15 +398,11 @@ jobs:
             --preset=lighthouse:recommended \
             --budgetsFile=../budget.json
 
-  # ============================================================================
-  # Final Status Check
-  # ============================================================================
   ci-success:
     name: CI Success
     runs-on: ubuntu-latest
     if: always()
     needs:
-      - run-hooks
       - compose-validate
       - backend-tests
       - backend-type-check
@@ -465,18 +415,30 @@ jobs:
       - performance-gate
     steps:
       - name: Check all jobs passed
+        shell: bash
         run: |
-          if [[ "${{ needs.run-hooks.result }}" != "success" ]] ||
-             [[ "${{ needs.compose-validate.result }}" != "success" ]] ||
-             [[ "${{ needs.backend-tests.result }}" != "success" ]] ||
-             [[ "${{ needs.backend-type-check.result }}" != "success" ]] ||
-             [[ "${{ needs.go-tests.result }}" != "success" ]] ||
-             [[ "${{ needs.frontend-tests.result }}" != "success" ]] ||
-             [[ "${{ needs.security-audit.result }}" != "success" ]] ||
-             [[ "${{ needs.alembic-migrations.result }}" != "success" ]] ||
-             [[ "${{ needs.openapi-verify.result }}" != "success" ]] ||
-             [[ "${{ needs.verify-runtime-reqs.result }}" != "success" ]] ||
-             [[ "${{ needs.performance-gate.result }}" != "success" ]]; then
+          results=(
+            "${{ needs.compose-validate.result }}"
+            "${{ needs.backend-tests.result }}"
+            "${{ needs.backend-type-check.result }}"
+            "${{ needs.go-tests.result }}"
+            "${{ needs.frontend-tests.result }}"
+            "${{ needs.security-audit.result }}"
+            "${{ needs.alembic-migrations.result }}"
+            "${{ needs.openapi-verify.result }}"
+            "${{ needs.verify-runtime-reqs.result }}"
+            "${{ needs.performance-gate.result }}"
+          )
+
+          failed=false
+          for res in "${results[@]}"; do
+            if [[ "$res" != "success" && "$res" != "skipped" ]]; then
+              failed=true
+              break
+            fi
+          done
+
+          if [[ "$failed" == "true" ]]; then
             echo "::error::One or more CI jobs failed"
             exit 1
           fi

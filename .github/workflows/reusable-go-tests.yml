@@ -1,12 +1,4 @@
 # Reusable Go Tests Workflow
-#
-# Call from other workflows:
-#   jobs:
-#     go-tests:
-#       uses: ./.github/workflows/reusable-go-tests.yml
-#       with:
-#         go-version: '1.25.x'
-
 name: Go Tests
 
 on:
@@ -24,10 +16,10 @@ on:
 
 jobs:
   test:
-    name: Test Go Services
+    name: Test Go Service (${{ inputs.service-directory }})
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -55,15 +47,15 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: go-coverage
+          name: go-coverage-${{ github.job }}-${{ strategy.job-index }}
           path: |
-            services/*/coverage.out
+            ${{ inputs.service-directory }}/coverage.out
 
   lint:
-    name: Lint Go Services
+    name: Lint Go Service (${{ inputs.service-directory }})
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Go
         uses: actions/setup-go@v5
