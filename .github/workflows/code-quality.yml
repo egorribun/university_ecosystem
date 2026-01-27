@@ -82,15 +82,20 @@ jobs:
               run: npm run test:ci -- --coverage
               continue-on-error: true
 
+            - name: Verify SonarCloud Token
+              if: env.SONAR_TOKEN == ''
+              run: |
+                  echo "::warning title=Missing SONAR_TOKEN::The SONAR_TOKEN secret is not set. SonarCloud analysis will be skipped or may fail."
+
             - name: SonarCloud Scan
-              uses: SonarSource/sonarqube-scan-action@v4
+              uses: SonarSource/sonarqube-scan-action@v6
               env:
                   SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
                   SONAR_HOST_URL: https://sonarcloud.io
               with:
                   args: >
-                      -Dsonar.projectKey=${{ github.repository_owner }}_${{ github.event.repository.name }}
-                      -Dsonar.organization=${{ github.repository_owner }}
+                      -Dsonar.projectKey=egorribun_university_ecosystem
+                      -Dsonar.organization=egorribun
                       -Dsonar.python.coverage.reportPaths=coverage.xml
                       -Dsonar.javascript.lcov.reportPaths=frontend/coverage/lcov.info
                       -Dsonar.sources=app,frontend/src
