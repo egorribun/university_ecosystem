@@ -62,7 +62,7 @@ jobs:
                     -q --tb=short
 
             - name: Coverage comment
-              uses: py-cov-action/python-coverage-comment-action@v3
+              uses: py-cov-action/python-coverage-comment-action@03f8373b5204481d248386de6ac73356e9c9a068 # v3.0.0
               with:
                   GITHUB_TOKEN: ${{ github.token }}
                   MINIMUM_GREEN: 80

@@ -3,165 +3,165 @@
 name: Visual Regression (Chromatic)
 
 on:
-    push:
-        branches:
-            - main
-            - master
-        paths:
-            - "frontend/**"
-    pull_request:
-        paths:
-            - "frontend/**"
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "frontend/**"
+  pull_request:
+    paths:
+      - "frontend/**"
 
 permissions:
-    contents: read
-    pull-requests: write
+  contents: read
+  pull-requests: write
 
 concurrency:
-    group: chromatic-${{ github.ref }}
-    cancel-in-progress: true
+  group: chromatic-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-    chromatic:
-        name: Chromatic Visual Tests
-        runs-on: ubuntu-latest
-        defaults:
-            run:
-                working-directory: frontend
-        steps:
-            - uses: actions/checkout@v5
-              with:
-                  fetch-depth: 0 # Required for Chromatic to compare branches
+  chromatic:
+    name: Chromatic Visual Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # Required for Chromatic to compare branches
 
-            - name: Setup Node.js
-              uses: actions/setup-node@v5
-              with:
-                  node-version: "22"
-                  cache: npm
-                  cache-dependency-path: frontend/package-lock.json
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
-            - name: Install dependencies
-              run: npm ci
+      - name: Install dependencies
+        run: npm ci
 
-            - name: Check for Storybook
-              id: check_storybook
-              run: |
-                  if grep -q '"storybook"' package.json; then
-                    echo "has_storybook=true" >> "$GITHUB_OUTPUT"
-                  else
-                    echo "has_storybook=false" >> "$GITHUB_OUTPUT"
-                    echo "::warning::Storybook not found in package.json. Skipping Chromatic."
-                  fi
+      - name: Check for Storybook
+        id: check_storybook
+        run: |
+          if grep -q '"storybook"' package.json; then
+            echo "has_storybook=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_storybook=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Storybook not found in package.json. Skipping Chromatic."
+          fi
 
-            - name: Build Storybook
-              if: steps.check_storybook.outputs.has_storybook == 'true'
-              run: npm run build-storybook
-              continue-on-error: true
+      - name: Build Storybook
+        if: steps.check_storybook.outputs.has_storybook == 'true'
+        run: npm run build-storybook
+        continue-on-error: true
 
-            - name: Run Chromatic
-              if: steps.check_storybook.outputs.has_storybook == 'true'
-              uses: chromaui/action@latest
-              with:
-                  workingDir: frontend
-                  projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
-                  buildScriptName: build-storybook
-                  exitZeroOnChanges: true
-                  exitOnceUploaded: true
-                  onlyChanged: true
-                  externals: |
-                      - "public/**"
-              continue-on-error: true
+      - name: Run Chromatic
+        if: steps.check_storybook.outputs.has_storybook == 'true'
+        uses: chromaui/action@24d6731d279930722363ee6a0fc432ac30e7161e # v11
+        with:
+          workingDir: frontend
+          projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+          buildScriptName: build-storybook
+          exitZeroOnChanges: true
+          exitOnceUploaded: true
+          onlyChanged: true
+          externals: |
+            - "public/**"
+        continue-on-error: true
 
-    # Alternative: Percy for screenshot testing without Storybook
-    percy:
-        name: Percy Visual Tests
-        runs-on: ubuntu-latest
-        if: ${{ vars.USE_PERCY == 'true' }}
-        defaults:
-            run:
-                working-directory: frontend
-        env:
-            PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
-            VITE_BACKEND_ORIGIN: http://localhost:8000
-        steps:
-            - uses: actions/checkout@v5
+  # Alternative: Percy for screenshot testing without Storybook
+  percy:
+    name: Percy Visual Tests
+    runs-on: ubuntu-latest
+    if: ${{ vars.USE_PERCY == 'true' }}
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      PERCY_TOKEN: ${{ secrets.PERCY_TOKEN }}
+      VITE_BACKEND_ORIGIN: http://localhost:8000
+    steps:
+      - uses: actions/checkout@v5
 
-            - name: Setup Node.js
-              uses: actions/setup-node@v5
-              with:
-                  node-version: "22"
-                  cache: npm
-                  cache-dependency-path: frontend/package-lock.json
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
-            - name: Install dependencies
-              run: npm ci
+      - name: Install dependencies
+        run: npm ci
 
-            - name: Install Percy CLI
-              run: npm install -D @percy/cli
+      - name: Install Percy CLI
+        run: npm install -D @percy/cli
 
-            - name: Build application
-              run: npm run build
+      - name: Build application
+        run: npm run build
 
-            - name: Start preview server
-              run: |
-                  npm run preview &
-                  sleep 5
+      - name: Start preview server
+        run: |
+          npm run preview &
+          sleep 5
 
-            - name: Take Percy snapshots
-              run: |
-                  npx percy snapshot ./dist \
-                    --base-url http://localhost:4173 \
-                    --include "*.html"
+      - name: Take Percy snapshots
+        run: |
+          npx percy snapshot ./dist \
+            --base-url http://localhost:4173 \
+            --include "*.html"
 
-    # Playwright visual comparison (no external service required)
-    playwright-visual:
-        name: Playwright Visual Comparison
-        runs-on: ubuntu-latest
-        defaults:
-            run:
-                working-directory: frontend
-        steps:
-            - uses: actions/checkout@v5
+  # Playwright visual comparison (no external service required)
+  playwright-visual:
+    name: Playwright Visual Comparison
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
 
-            - name: Setup Node.js
-              uses: actions/setup-node@v5
-              with:
-                  node-version: "22"
-                  cache: npm
-                  cache-dependency-path: frontend/package-lock.json
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
 
-            - name: Install dependencies
-              run: npm ci
+      - name: Install dependencies
+        run: npm ci
 
-            - name: Install Playwright
-              run: npx playwright install --with-deps chromium
+      - name: Install Playwright
+        run: npx playwright install --with-deps chromium
 
-            - name: Check for visual tests
-              id: check_visual
-              run: |
-                  if find . -name "*.visual.spec.ts" -o -name "*.visual.spec.tsx" | grep -q .; then
-                    echo "has_visual_tests=true" >> "$GITHUB_OUTPUT"
-                  else
-                    echo "has_visual_tests=false" >> "$GITHUB_OUTPUT"
-                    echo "::notice::No visual test files found (*.visual.spec.ts). Skipping."
-                  fi
+      - name: Check for visual tests
+        id: check_visual
+        run: |
+          if find . -name "*.visual.spec.ts" -o -name "*.visual.spec.tsx" | grep -q .; then
+            echo "has_visual_tests=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_visual_tests=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No visual test files found (*.visual.spec.ts). Skipping."
+          fi
 
-            - name: Run visual regression tests
-              if: steps.check_visual.outputs.has_visual_tests == 'true'
-              run: npx playwright test --grep @visual
-              continue-on-error: true
+      - name: Run visual regression tests
+        if: steps.check_visual.outputs.has_visual_tests == 'true'
+        run: npx playwright test --grep @visual
+        continue-on-error: true
 
-            - name: Upload visual diff artifacts
-              if: failure()
-              uses: actions/upload-artifact@v4
-              with:
-                  name: visual-regression-diffs
-                  path: |
-                      frontend/test-results/
-                      frontend/playwright-report/
-                  retention-days: 14
+      - name: Upload visual diff artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-regression-diffs
+          path: |
+            frontend/test-results/
+            frontend/playwright-report/
+          retention-days: 14
 
-            - name: Update visual snapshots (main branch only)
-              if: github.ref == 'refs/heads/main' && failure()
-              run: |
-                  echo "::warning::Visual snapshots may need updating. Run 'npx playwright test --update-snapshots' locally."
+      - name: Update visual snapshots (main branch only)
+        if: github.ref == 'refs/heads/main' && failure()
+        run: |
+          echo "::warning::Visual snapshots may need updating. Run 'npx playwright test --update-snapshots' locally."

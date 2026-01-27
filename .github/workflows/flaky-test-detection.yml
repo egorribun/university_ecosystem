@@ -3,130 +3,130 @@
 name: Flaky Test Detection
 
 on:
-    schedule:
-        # Every Sunday at 04:00 UTC
-        - cron: "0 4 * * 0"
-    workflow_dispatch:
+  schedule:
+    # Every Sunday at 04:00 UTC
+    - cron: "0 4 * * 0"
+  workflow_dispatch:
 
 permissions:
-    contents: read
-    issues: write
+  contents: read
+  issues: write
 
 concurrency:
-    group: flaky-tests-${{ github.ref }}
-    cancel-in-progress: false
+  group: flaky-tests-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
-    SECRET_KEY: "dummy_secret_key_for_ci_tests_at_least_32_chars"
-    ENVIRONMENT: testing
-    OTEL_SDK_DISABLED: "true"
-    FLAKY_TEST_RUNS: 5
+  SECRET_KEY: "dummy_secret_key_for_ci_tests_at_least_32_chars"
+  ENVIRONMENT: testing
+  OTEL_SDK_DISABLED: "true"
+  FLAKY_TEST_RUNS: 5
 
 jobs:
-    detect-flaky:
-        name: Detect Flaky Tests
-        runs-on: ubuntu-latest
-        services:
-            redis:
-                image: redis:7-alpine
-                ports:
-                    - 6379:6379
-                options: >-
-                    --health-cmd "redis-cli ping"
-                    --health-interval 10s
-                    --health-timeout 5s
-                    --health-retries 5
-        steps:
-            - uses: actions/checkout@v5
+  detect-flaky:
+    name: Detect Flaky Tests
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v5
 
-            - name: Setup Python
-              uses: actions/setup-python@v6
-              with:
-                  python-version: "3.13"
-                  cache: pip
-                  cache-dependency-path: |
-                      requirements.txt
-                      requirements-dev.txt
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
 
-            - name: Install dependencies
-              run: |
-                  python -m pip install --upgrade pip
-                  pip install -r requirements.txt -r requirements-dev.txt
-                  pip install pytest-repeat
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+          pip install pytest-repeat
 
-            - name: Run flaky test detection
-              id: flaky_detection
-              continue-on-error: true
-              run: |
-                  # Run each test multiple times and capture failures
-                  pytest tests/ \
-                    --count=${{ env.FLAKY_TEST_RUNS }} \
-                    -x \
-                    --tb=short \
-                    -q \
-                    --ignore=tests/performance \
-                    2>&1 | tee flaky-test-output.txt
+      - name: Run flaky test detection
+        id: flaky_detection
+        continue-on-error: true
+        run: |
+          # Run each test multiple times and capture failures
+          pytest tests/ \
+            --count=${{ env.FLAKY_TEST_RUNS }} \
+            -x \
+            --tb=short \
+            -q \
+            --ignore=tests/performance \
+            2>&1 | tee flaky-test-output.txt
 
-                  # Check for any failures
-                  if grep -q "FAILED" flaky-test-output.txt; then
-                    echo "flaky_found=true" >> "$GITHUB_OUTPUT"
-                  else
-                    echo "flaky_found=false" >> "$GITHUB_OUTPUT"
-                  fi
+          # Check for any failures
+          if grep -q "FAILED" flaky-test-output.txt; then
+            echo "flaky_found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "flaky_found=false" >> "$GITHUB_OUTPUT"
+          fi
 
-            - name: Generate flaky test report
-              if: steps.flaky_detection.outputs.flaky_found == 'true'
-              run: |
-                  cat > flaky-report.md << 'EOF'
-                  ## 🧪 Flaky Test Detection Report
+      - name: Generate flaky test report
+        if: steps.flaky_detection.outputs.flaky_found == 'true'
+        run: |
+          cat > flaky-report.md << 'EOF'
+          ## 🧪 Flaky Test Detection Report
 
-                  The following tests showed inconsistent behavior across ${{ env.FLAKY_TEST_RUNS }} runs:
+          The following tests showed inconsistent behavior across ${{ env.FLAKY_TEST_RUNS }} runs:
 
-                  ```
-                  $(grep -A 5 "FAILED" flaky-test-output.txt || echo "See full output below")
-                  ```
+          ```
+          $(grep -A 5 "FAILED" flaky-test-output.txt || echo "See full output below")
+          ```
 
-                  ### Full Output
-                  <details>
-                  <summary>Click to expand</summary>
+          ### Full Output
+          <details>
+          <summary>Click to expand</summary>
 
-                  ```
-                  $(cat flaky-test-output.txt)
-                  ```
-                  </details>
+          ```
+          $(cat flaky-test-output.txt)
+          ```
+          </details>
 
-                  ---
-                  *Generated by Flaky Test Detection workflow*
-                  EOF
+          ---
+          *Generated by Flaky Test Detection workflow*
+          EOF
 
-            - name: Create issue for flaky tests
-              if: steps.flaky_detection.outputs.flaky_found == 'true'
-              uses: peter-evans/create-issue-from-file@v5
-              with:
-                  title: "🧪 Flaky tests detected"
-                  content-filepath: flaky-report.md
-                  labels: |
-                      bug
-                      flaky-test
-                      automated
+      - name: Create issue for flaky tests
+        if: steps.flaky_detection.outputs.flaky_found == 'true'
+        uses: peter-evans/create-issue-from-file@3f237efb4334346852e931ed86df0473a24ed465 # v5.0.1
+        with:
+          title: "🧪 Flaky tests detected"
+          content-filepath: flaky-report.md
+          labels: |
+            bug
+            flaky-test
+            automated
 
-            - name: Upload test output
-              if: always()
-              uses: actions/upload-artifact@v4
-              with:
-                  name: flaky-test-output
-                  path: flaky-test-output.txt
-                  if-no-files-found: warn
+      - name: Upload test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flaky-test-output
+          path: flaky-test-output.txt
+          if-no-files-found: warn
 
-            - name: Job summary
-              if: always()
-              run: |
-                  {
-                    echo "## Flaky Test Detection"
-                    echo ""
-                    if [[ "${{ steps.flaky_detection.outputs.flaky_found }}" == "true" ]]; then
-                      echo "⚠️ **Flaky tests detected!** See the created issue for details."
-                    else
-                      echo "✅ No flaky tests detected after ${{ env.FLAKY_TEST_RUNS }} runs per test."
-                    fi
-                  } >> "$GITHUB_STEP_SUMMARY"
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "## Flaky Test Detection"
+            echo ""
+            if [[ "${{ steps.flaky_detection.outputs.flaky_found }}" == "true" ]]; then
+              echo "⚠️ **Flaky tests detected!** See the created issue for details."
+            else
+              echo "✅ No flaky tests detected after ${{ env.FLAKY_TEST_RUNS }} runs per test."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -150,7 +150,7 @@ async def test_auth_service_coverage(db_session, user_factory):
     # initiate_email_change invalid password
     from app.schemas import schemas
 
-    payload = schemas.UserEmailChangeIn(email="new@e.com", password="wrong")
+    payload = schemas.UserEmailChangeIn(email="new@e.com", password="wrong")  # NOSONAR
     with pytest.raises(HTTPException):
         await service.initiate_email_change(user, payload, request, bg)
 

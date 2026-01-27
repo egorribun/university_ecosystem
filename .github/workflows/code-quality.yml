@@ -88,7 +88,7 @@ jobs:
                   echo "::warning title=Missing SONAR_TOKEN::The SONAR_TOKEN secret is not set. SonarCloud analysis will be skipped or may fail."
 
             - name: SonarCloud Scan
-              uses: SonarSource/sonarqube-scan-action@v6
+              uses: SonarSource/sonarqube-scan-action@b7cd21e # v6.0.0
               env:
                   SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
                   SONAR_HOST_URL: https://sonarcloud.io
@@ -105,7 +105,7 @@ jobs:
                       -Dsonar.exclusions=**/node_modules/**,**/__pycache__/**,**/migrations/**
 
             - name: SonarCloud Quality Gate
-              uses: SonarSource/sonarqube-quality-gate-action@v1
+              uses: SonarSource/sonarqube-quality-gate-action@cf038b0222a7f51950d87ce379f83f2113110c71 # v1.2.0
               timeout-minutes: 5
               env:
                   SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -147,7 +147,7 @@ jobs:
                     --ignore=tests/performance
 
             - name: CodeClimate Test Reporter
-              uses: paambaati/codeclimate-action@v9
+              uses: paambaati/codeclimate-action@d84270de48512595914a2f42a6c117b9b008d3e2 # v9.0.0
               env:
                   CC_TEST_REPORTER_ID: ${{ secrets.CC_TEST_REPORTER_ID }}
               with:

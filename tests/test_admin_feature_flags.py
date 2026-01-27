@@ -7,7 +7,7 @@ from app.auth.security import get_password_hash
 from app.core.feature_flags import FeatureFlag, FlagStatus, feature_flags
 
 # Common strong password for tests
-TEST_PASSWORD = "StrongPass123!"
+TEST_PASSWORD = "StrongPass123!"  # NOSONAR
 
 
 @pytest.fixture(autouse=True)

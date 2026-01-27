@@ -7,7 +7,7 @@ def test_redact_sensitive_mapping_empty():
 
 
 def test_redact_sensitive_mapping_all_redacted():
-    data = {"password": "secret", "token": "123", "user": "admin"}
+    data = {"password": "secret", "token": "123", "user": "admin"}  # NOSONAR
     redacted = redact_sensitive_mapping(data)
     assert redacted["password"] == REDACTED_VALUE
     assert redacted["token"] == REDACTED_VALUE
@@ -15,7 +15,7 @@ def test_redact_sensitive_mapping_all_redacted():
 
 
 def test_redact_sensitive_mapping_with_allowlist():
-    data = {"password": "secret", "user": "admin", "theme": "dark"}
+    data = {"password": "secret", "user": "admin", "theme": "dark"}  # NOSONAR
     allowlist = ["user", "theme"]
     redacted = redact_sensitive_mapping(data, allowlist=allowlist)
     assert redacted["password"] == REDACTED_VALUE
@@ -24,7 +24,7 @@ def test_redact_sensitive_mapping_with_allowlist():
 
 
 def test_redact_sensitive_mapping_case_insensitive():
-    data = {"Password": "secret", "USER": "admin"}
+    data = {"Password": "secret", "USER": "admin"}  # NOSONAR
     allowlist = ["user"]
     redacted = redact_sensitive_mapping(data, allowlist=allowlist)
     assert redacted["Password"] == REDACTED_VALUE
