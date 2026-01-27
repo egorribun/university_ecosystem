@@ -44,11 +44,12 @@ else:
 # Worker-specific database isolation for parallel tests
 worker_id = os.environ.get("PYTEST_XDIST_WORKER")
 if worker_id:
-    # Use worker-specific DB names to avoid race conditions.
+    # Force override worker-specific DB names to avoid race conditions.
     base_db = f"test_{worker_id}.db"
-    os.environ.setdefault("DATABASE_URL", f"sqlite+aiosqlite:///./{base_db}")
+    os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///./{base_db}"
 else:
-    os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test.db")
+    # Always use a dedicated test database, overriding any .env settings
+    os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///./test.db"
 
 os.environ.setdefault("SECRET_KEY", "test-secret-key-32-characters-long-entropy")
 os.environ.setdefault("ALGORITHM", "HS256")
