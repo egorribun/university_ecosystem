@@ -43,12 +43,18 @@ jobs:
           cd "${{ inputs.service-directory }}"
           go test -v -race -coverprofile=coverage.out ./...
 
+      - name: Generate artifact name
+        id: artifact-name
+        run: |
+          sanitized_name="${{ inputs.service-directory }}"
+          sanitized_name="${sanitized_name//\//-}"
+          echo "name=go-coverage-${sanitized_name}" >> "$GITHUB_OUTPUT"
+
       - name: Upload coverage artifacts
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          # Use service-directory in name to avoid matrix collision
-          name: go-coverage-${{ inputs.service-directory }}
+          name: ${{ steps.artifact-name.outputs.name }}
           path: |
             ${{ inputs.service-directory }}/coverage.out
 
