@@ -35,7 +35,7 @@ def test_parse_datetime():
     assert _parse_datetime(dt) == dt
 
     # Naive becomes UTC
-    naive = datetime(2023, 1, 1, 12, 0, 0)
+    naive = datetime(2023, 1, 1, 12, 0, 0)  # noqa: DTZ001
     expected = naive.replace(tzinfo=UTC)
     assert _parse_datetime(naive) == expected
 
@@ -141,7 +141,7 @@ async def test_fetch_notification_rows_fallback():
     with patch(
         "app.api.notifications._existing_notification_columns",
         return_value={"id", "title", "user_id"},
-    ) as mock_cols:
+    ):
         mock_result = MagicMock()
         mock_result.mappings.return_value.all.return_value = [
             {"id": 1, "title": "Test", "user_id": 1, "read": False}
@@ -157,7 +157,7 @@ async def test_fetch_notification_rows_fallback():
         assert rows[0]["title"] == "Test"
 
         # Verify call arguments
-        # We can't easily check the exact SQL object equality, but we know it executed something
+        # We can't easily check SQL equality, but we know it executed something
         assert mock_db.execute.called
 
 

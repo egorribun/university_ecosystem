@@ -85,7 +85,7 @@ async def test_increment_events_list_version_no_cache():
         # But we imported it.
         # Let's patch it in the module.
         with patch("app.api.events._LOCAL_EVENTS_LIST_VERSION", new=10):
-            # Wait, integers are immutable, patch might not work as expected if we don't target correctly.
+            # Wait, integers are immutable, patch might not work as expected.
             # But the function uses `global _LOCAL_EVENTS_LIST_VERSION`.
             # We can't verify the increment easily without inspecting the module state.
             pass
