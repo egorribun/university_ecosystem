@@ -1,21 +1,8 @@
-# CI Pipeline - Refactored to use Reusable Workflows
-#
-# This is a streamlined CI configuration that delegates to modular reusable workflows.
-# Original: 835 lines → Refactored: ~200 lines
-#
-# Reusable workflows used:
-# - reusable-backend-tests.yml: Python unit/integration tests, type checking
-# - reusable-frontend-tests.yml: Node.js unit tests, lint, build
-# - reusable-go-tests.yml: Go service tests and linting
-# - reusable-security-audit.yml: pip-audit, npm audit, Trivy
-
 name: CI
 
 on:
   push:
-    branches: ["**"]
   pull_request:
-    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
@@ -31,38 +18,19 @@ env:
   ENVIRONMENT: testing
 
 jobs:
-  # ============================================================================
-  # Diagnostic Job
-  # ============================================================================
-  ci-diagnostic:
-    name: CI Diagnostic
-    runs-on: ubuntu-latest
-    steps:
-      - name: System Check
-        run: |
-          echo "CI Workflow Detected"
-          echo "Ref: ${GITHUB_REF}"
-          echo "Head Ref: ${GITHUB_HEAD_REF}"
-          echo "Event: ${GITHUB_EVENT_NAME}"
-
-  # ============================================================================
-  # Pre-commit and Code Quality
-  # ============================================================================
   run-hooks:
-    name: Pre-commit & Linting
+    name: Run hooks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-
       - name: Run pre-commit (apply fixes)
         id: precommit_apply
         uses: pre-commit/action@v3.0.1
         with:
           extra_args: --all-files
         continue-on-error: true
-
       - name: Detect changes from pre-commit
         id: changes
         shell: bash
@@ -72,7 +40,6 @@ jobs:
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
-
       - name: Commit pre-commit fixes
         if: ${{ steps.changes.outputs.changed == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         shell: bash
@@ -84,187 +51,36 @@ jobs:
           git commit -m "chore: pre-commit autofix"
           git pull --rebase origin "$branch" || true
           git push --force-with-lease origin "HEAD:$branch"
-
       - name: Fail if fixes were needed and cannot push (fork PR)
         if: ${{ steps.changes.outputs.changed == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: |
           echo "::error::pre-commit fixed files; this PR comes from a fork so CI cannot push. Run 'pre-commit run --all-files' locally and push the changes."
           exit 1
-
       - name: Run pre-commit (verify clean)
         uses: pre-commit/action@v3.0.1
         with:
           extra_args: --all-files
-
-  # ============================================================================
-  # Docker Compose Validation
-  # ============================================================================
-  compose-validate:
-    name: Validate docker-compose.yml
-    runs-on: ubuntu-latest
-    needs: run-hooks
-    steps:
-      - uses: actions/checkout@v4
-      - name: Validate docker compose configuration
-        run: |
-          cp .env.example .env
-          docker compose -f docker-compose.yml config
-
-  # ============================================================================
-  # Backend Tests (Reusable Workflow)
-  # ============================================================================
-  backend-tests:
-    name: Backend Tests
-    needs: run-hooks
-    uses: ./.github/workflows/reusable-backend-tests.yml
-    with:
-      python-version: "3.13"
-      coverage-threshold: 72
-      run-integration-tests: true
-    secrets: inherit
-
-  # ============================================================================
-  # Go Tests (Reusable Workflow)
-  # ============================================================================
-  go-tests:
-    name: Go Tests
-    needs: run-hooks
-    uses: ./.github/workflows/reusable-go-tests.yml
-    with:
-      go-version: "1.25.x"
-    secrets: inherit
-
-  # ============================================================================
-  # Frontend Tests (Reusable Workflow)
-  # ============================================================================
-  frontend-tests:
-    name: Frontend Tests
-    needs: run-hooks
-    uses: ./.github/workflows/reusable-frontend-tests.yml
-    with:
-      node-version: "22"
-      run-lighthouse: true
-    secrets: inherit
-
-  # ============================================================================
-  # Security Audits (Reusable Workflow)
-  # ============================================================================
-  security-audit:
-    name: Security Audit
-    needs: run-hooks
-    uses: ./.github/workflows/reusable-security-audit.yml
-    with:
-      python-version: "3.13"
-      node-version: "22"
-    secrets: inherit
-
-  # ============================================================================
-  # Alembic Migrations
-  # ============================================================================
-  alembic-migrations:
-    name: Alembic Migrations
-    runs-on: ubuntu-latest
-    needs: run-hooks
-    services:
-      postgres:
-        image: pgvector/pgvector:pg17
-        env:
-          POSTGRES_USER: test
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: test
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-    env:
-      DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-          cache: pip
-          cache-dependency-path: |
-            requirements.txt
-            requirements-dev.txt
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt -r requirements-dev.txt
-
-      - name: Wait for PostgreSQL
-        run: |
-          until pg_isready -h localhost -p 5432 -U test; do
-            sleep 1
-          done
-
-      - name: Create database tables
-        env:
-          SECRET_KEY: "ci-test-secret-key-at-least-32-chars"
-          ENVIRONMENT: testing
-        run: |
-          python3 <<'PY'
-          import asyncio
-          from app.core.database import Base, engine
-
-          async def create_tables():
-              async with engine.begin() as conn:
-                  from sqlalchemy import text
-                  await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-                  await conn.run_sync(Base.metadata.create_all)
-
-          asyncio.run(create_tables())
-          PY
-
-      - name: Run Alembic upgrade and downgrade
-        env:
-          SECRET_KEY: "ci-test-secret-key-at-least-32-chars"
-          ENVIRONMENT: testing
-        run: |
-          alembic -c alembic.ini upgrade head
-          alembic -c alembic.ini downgrade base
-
-  # ============================================================================
-  # OpenAPI Schema Generation & Verification
-  # ============================================================================
-  openapi-verify:
-    name: Verify OpenAPI Types
-    runs-on: ubuntu-latest
-    needs: run-hooks
-    steps:
-      - uses: actions/checkout@v4
-
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.13"
           cache: pip
           cache-dependency-path: |
             requirements.txt
             requirements-dev.txt
-
       - name: Install backend dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
-
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
-
       - name: Generate OpenAPI schema
         env:
           DATABASE_URL: "sqlite+aiosqlite:///:memory:"
@@ -277,13 +93,13 @@ jobs:
           schema_path = pathlib.Path("frontend/openapi.json")
           schema_path.write_text(json.dumps(app.openapi()))
           PY
-
       - name: Generate API types
         working-directory: frontend
         env:
           OPENAPI_PATH: frontend/openapi.json
         run: npm run generate:api
-
+      - name: Remove temporary OpenAPI schema
+        run: rm -f frontend/openapi.json
       - name: Verify generated API types are up to date
         run: |
           if ! git diff --quiet -- frontend/src/api/generated/schema.ts; then
@@ -291,17 +107,62 @@ jobs:
             git diff -- frontend/src/api/generated/schema.ts
             exit 1
           fi
+      - name: Run ESLint, manifests check, and Prettier
+        working-directory: frontend
+        run: |
+          npm run lint
+          if ! npm run manifests:check; then
+            echo "::error::Generated PWA manifests are not up to date. Run 'npm run generate:manifests' and commit the results."
+            exit 1
+          fi
+          npm run format:check
+      - name: Build frontend with bundle budgets
+        working-directory: frontend
+        env:
+          CI: true
+        run: npm run build -- --report --logLevel warn --clearScreen false
 
-  # ============================================================================
-  # Runtime Requirements Verification
-  # ============================================================================
-  verify-runtime-reqs:
-    name: Verify Runtime Requirements
+  compose-validate:
+    name: Validate docker-compose.yml
     runs-on: ubuntu-latest
     needs: run-hooks
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - name: Validate docker compose configuration
+        run: |
+          cp .env.example .env
+          docker compose -f docker-compose.yml config
 
+  pip-audit:
+    name: Pip audit
+    runs-on: ubuntu-latest
+    needs: run-hooks
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: Install audit tooling
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pip-audit pyyaml
+      - name: Run pip-audit with allowlist enforcement
+        run: |
+          python scripts/audit_dependencies.py \
+            --allowlist security/audit-allowlist.yaml \
+            --pip requirements.txt requirements-dev.txt
+
+  verify-runtime-reqs:
+    name: Verify runtime requirements
+    runs-on: ubuntu-latest
+    needs: run-hooks
+    steps:
+      - uses: actions/checkout@v5
       - name: Ensure requirements.txt excludes test-only packages
         run: |
           python - <<'PY'
@@ -324,7 +185,7 @@ jobs:
               line = raw_line.strip()
               if not line or line.startswith("#"):
                   continue
-              name = re.split(r"[<=>!\[\]]", line, 1)[0].strip().lower()
+              name = re.split(r"[<=>!\\[]", line, 1)[0].strip().lower()
               if name in banned:
                   violations.append(raw_line.strip())
 
@@ -337,51 +198,633 @@ jobs:
           print("Runtime requirements look clean.")
           PY
 
-  # ============================================================================
-  # Lighthouse Performance Gate
-  # ============================================================================
-  performance-gate:
-    name: Performance Gate
+  backend-type-check:
+    name: Backend type check
     runs-on: ubuntu-latest
-    needs:
-      - frontend-tests
+    needs: run-hooks
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-dev.txt
+      - name: Run mypy
+        run: mypy
+
+  backend-tests:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    needs: run-hooks
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      OTEL_SDK_DISABLED: "true"
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+            pyproject.toml
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: Run pytest
+        run: pytest --cov=app --cov-report=xml --cov-report=term-missing --cov-fail-under=72 --junitxml=pytest-report.xml
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage-xml
+          path: coverage.xml
+      - name: Upload pytest report
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-pytest-report
+          path: pytest-report.xml
+          if-no-files-found: warn
+
+  go-tests:
+    name: Go tests
+    runs-on: ubuntu-latest
+    needs: run-hooks
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache: true
+          cache-dependency-path: |
+            services/gateway/go.sum
+            services/file-processor/go.sum
+            services/ws-hub/go.sum
+            go.sum
+      - name: Install dependencies
+        run: |
+          (cd services/gateway && go mod download)
+          (cd services/file-processor && go mod download)
+          (cd services/ws-hub && go mod download)
+      - name: Run Gateway tests
+        working-directory: services/gateway
+        run: go test -v -coverprofile=coverage.out ./...
+      - name: Run File Processor tests
+        working-directory: services/file-processor
+        run: go test -v -coverprofile=coverage.out ./...
+      - name: Run WS Hub tests
+        working-directory: services/ws-hub
+        run: go test -v -coverprofile=coverage.out ./...
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: go-coverage
+          path: |
+            services/gateway/coverage.out
+            services/file-processor/coverage.out
+            services/ws-hub/coverage.out
+
+  postgres-integration-tests:
+    name: PostgreSQL integration tests
+    runs-on: ubuntu-latest
+    needs: run-hooks
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
+      REDIS_URL: redis://localhost:6379
+      OTEL_SDK_DISABLED: "true"
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+            pyproject.toml
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: Wait for PostgreSQL
+        run: |
+          until pg_isready -h localhost -p 5432 -U test; do
+            sleep 1
+          done
+      - name: Run Alembic migrations
+        run: |
+          alembic upgrade head
+      - name: Run pytest with PostgreSQL
+        run: pytest tests/ -v --tb=short -x --ignore=tests/performance
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: postgres-test-failures
+          path: pytest-report.xml
+          if-no-files-found: ignore
+
+  alembic-migrations:
+    name: Alembic migrations
+    runs-on: ubuntu-latest
+    needs: run-hooks
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    env:
+      DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: Wait for PostgreSQL
+        run: |
+          until pg_isready -h localhost -p 5432 -U test; do
+            sleep 1
+          done
+      - name: Create database tables
+        env:
+          SECRET_KEY: "ci-test-secret-key-at-least-32-chars"
+          ENVIRONMENT: testing
+        run: |
+          python3 <<'PY'
+          import asyncio
+          from app.core.database import Base, engine
+
+          async def create_tables():
+              async with engine.begin() as conn:
+                  from sqlalchemy import text
+                  await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+                  await conn.run_sync(Base.metadata.create_all)
+
+          asyncio.run(create_tables())
+          PY
+      - name: Run Alembic upgrade and downgrade
+        env:
+          SECRET_KEY: "ci-test-secret-key-at-least-32-chars"
+          ENVIRONMENT: testing
+        run: |
+          alembic -c alembic.ini upgrade head
+          alembic -c alembic.ini downgrade base
+
+  frontend-tests:
+    name: Frontend tests
+    runs-on: ubuntu-latest
+    needs: run-hooks
     defaults:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
-
+      - uses: actions/checkout@v5
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-
       - name: Install dependencies
         run: npm ci
+      - name: Run type check
+        run: npm run typecheck
+      - name: Run unit tests
+        run: npm run test:ci
+        env:
+          CI: "true"
+      - name: Upload vitest report
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-vitest-report
+          path: frontend/vitest-report.xml
+          if-no-files-found: warn
 
+  npm-audit:
+    name: NPM audit
+    runs-on: ubuntu-latest
+    needs: frontend-tests
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: Install dependencies
+        run: npm ci
+      - name: Install audit tooling
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyyaml
+      - name: Run npm audit with allowlist enforcement
+        run: |
+          python ../scripts/audit_dependencies.py \
+            --allowlist ../security/audit-allowlist.yaml \
+            --npm .
+
+  build:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    needs: run-hooks
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      # Keep in sync with the Docker builder stage.
+      VITE_BACKEND_ORIGIN: http://localhost:8000
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Build app
+        run: npm run build
+      - name: Upload production bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          if-no-files-found: error
+
+  lighthouse-budgets:
+    name: Lighthouse budgets
+    runs-on: ubuntu-latest
+    needs: run-hooks
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      VITE_BACKEND_ORIGIN: http://localhost:8000
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Build frontend
+        run: npm run build
+      - name: Run Lighthouse CI budgets
+        run: npm run lhci
+      - name: Upload Lighthouse HTML reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-budget-reports
+          path: frontend/.lighthouseci
+          if-no-files-found: warn
+
+  lighthouse:
+    name: Lighthouse CI
+    needs:
+      - build
+    runs-on: ubuntu-latest
+    env:
+      PREVIEW_URL: ${{ vars.PREVIEW_URL || secrets.PREVIEW_URL || '' }}
+      TARGET_PORT: 4174
+      VITE_BACKEND_ORIGIN: http://localhost:8000
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Download built dist
+        uses: actions/download-artifact@v5
+        with:
+          name: frontend-dist
+          path: frontend/dist
+      - name: Decide target URL
+        shell: bash
+        run: |
+          if [ -n "$PREVIEW_URL" ]; then
+            echo "TARGET_URL=$PREVIEW_URL" >> "$GITHUB_ENV"
+          else
+            echo "TARGET_URL=http://127.0.0.1:${TARGET_PORT}/" >> "$GITHUB_ENV"
+          fi
+      - name: Install dependencies
+        run: npm ci
+      - name: Collect Lighthouse metrics
+        run: npx lhci collect --config=../.lighthouserc.js
+      - name: Run Lighthouse assertions
+        id: lighthouse_assert
+        run: |
+          npx lhci assert \
+            --config=../.lighthouserc.js \
+            --preset=lighthouse:recommended \
+            --budgetsFile=../budget.json
+        continue-on-error: true
+      - name: Generate Lighthouse reports
+        run: npx lhci upload --config=../.lighthouserc.js
+      - name: Build Lighthouse summary
+        id: lighthouse_summary
+        run: |
+          node <<'SCRIPT'
+          const fs = require('node:fs');
+          const path = require('node:path');
+
+          const marker = '<!-- lhci-report -->';
+          const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
+          const summaryPath = path.resolve(workspace, 'lighthouse-summary.md');
+          const manifestPath = path.resolve('.lighthouseci/manifest.json');
+
+          const buildFallbackSummary = (message) => {
+            return [
+              marker,
+              '### Lighthouse CI',
+              '',
+              message,
+            ].join('\n');
+          };
+
+          let summaryContent;
+
+          if (!fs.existsSync(manifestPath)) {
+            console.warn(`Manifest not found at ${manifestPath}`);
+            summaryContent = buildFallbackSummary(
+              '_No Lighthouse manifest was produced. Check the collect/upload steps for details._',
+            );
+          } else {
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+            if (!Array.isArray(manifest) || manifest.length === 0) {
+              console.warn('Lighthouse manifest is empty.');
+              summaryContent = buildFallbackSummary(
+                '_Lighthouse did not report any runs. Check the collect/upload steps for details._',
+              );
+            } else {
+              const metrics = [
+                {
+                  key: 'performance',
+                  label: 'Performance score',
+                  formatter: (value) => `${Math.round(value * 100)}`,
+                  budget: '≥ 90',
+                },
+                {
+                  key: 'largest-contentful-paint',
+                  label: 'Largest Contentful Paint (ms)',
+                  formatter: (value) => `${Math.round(value)}`,
+                  budget: '≤ 3,500',
+                },
+                {
+                  key: 'total-blocking-time',
+                  label: 'Total Blocking Time (ms)',
+                  formatter: (value) => `${Math.round(value)}`,
+                  budget: '≤ 300',
+                },
+                {
+                  key: 'cumulative-layout-shift',
+                  label: 'Cumulative Layout Shift',
+                  formatter: (value) => value.toFixed(3),
+                  budget: '≤ 0.10',
+                },
+              ];
+
+              const totals = new Map();
+              for (const run of manifest) {
+                const summary = run.summary || {};
+                for (const metric of metrics) {
+                  const value = summary[metric.key];
+                  if (typeof value === 'number' && Number.isFinite(value)) {
+                    totals.set(metric.key, (totals.get(metric.key) || 0) + value);
+                  }
+                }
+              }
+
+              const runs = manifest.length;
+              const tableLines = metrics.map((metric) => {
+                const total = totals.get(metric.key);
+                const average = typeof total === 'number' ? total / runs : Number.NaN;
+                const formatted = Number.isFinite(average) ? metric.formatter(average) : 'n/a';
+                return `| ${metric.label} | ${formatted} | ${metric.budget} |`;
+              });
+
+              const targetUrl = process.env.TARGET_URL ? `Target URL: ${process.env.TARGET_URL}` : '';
+              const lines = [
+                marker,
+                `### Lighthouse CI (${runs} run${runs === 1 ? '' : 's'})`,
+                '',
+                targetUrl,
+                targetUrl ? '' : undefined,
+                '| Metric | Average | Budget |',
+                '| --- | --- | --- |',
+                ...tableLines,
+                '',
+                '_Thresholds: Performance ≥ 90, LCP ≤ 3,500 ms, TBT ≤ 300 ms, CLS ≤ 0.10, JS ≤ 350 KB, CSS ≤ 120 KB._',
+              ].filter(Boolean);
+
+              summaryContent = lines.join('\n');
+            }
+          }
+
+          fs.writeFileSync(summaryPath, summaryContent, 'utf8');
+
+          const outputPath = process.env.GITHUB_OUTPUT;
+          fs.appendFileSync(
+            outputPath,
+            `summary_path=${summaryPath}\nsummary<<EOF\n${summaryContent}\nEOF\n`,
+            'utf8',
+          );
+          SCRIPT
+      - name: Comment Lighthouse summary
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        env:
+          SUMMARY_PATH: ${{ steps.lighthouse_summary.outputs.summary_path }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const marker = '<!-- lhci-report -->';
+            const summaryPath = process.env.SUMMARY_PATH
+              ? path.resolve(process.env.SUMMARY_PATH)
+              : path.resolve('lighthouse-summary.md');
+
+            if (!fs.existsSync(summaryPath)) {
+              core.warning(`Lighthouse summary not found at ${summaryPath}. Skipping PR comment.`);
+              return;
+            }
+
+            const body = fs.readFileSync(summaryPath, 'utf8');
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+
+            try {
+              const { data: comments } = await github.rest.issues.listComments({
+                owner,
+                repo,
+                issue_number,
+                per_page: 100,
+              });
+
+              const existing = comments.find((comment) =>
+                comment.user?.type === 'Bot' && comment.body?.includes(marker),
+              );
+
+              if (existing) {
+                await github.rest.issues.updateComment({
+                  owner,
+                  repo,
+                  comment_id: existing.id,
+                  body,
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number,
+                  body,
+                });
+              }
+            } catch (error) {
+              if (error?.status === 403) {
+                core.warning(
+                  'Unable to publish Lighthouse summary comment (403 Forbidden). This usually happens on forked pull requests. '
+                    + 'Skipping PR comment.',
+                );
+                return;
+              }
+
+              throw error;
+            }
+      - name: Upload Lighthouse artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-results
+          path: frontend/.lighthouseci
+          if-no-files-found: warn
+      - name: Fail Lighthouse job on assertion errors
+        if: steps.lighthouse_assert.conclusion == 'failure'
+        run: |
+          echo "::error::Lighthouse assertions failed. See logs above for details."
+          exit 1
+
+  performance-gate:
+    name: Performance gate
+    runs-on: ubuntu-latest
+    needs:
+      - lighthouse
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
       - name: Download Lighthouse results
         id: download_lighthouse_results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
-          name: lighthouse-reports
+          name: lighthouse-results
           path: frontend/.lighthouseci
         continue-on-error: true
-
       - name: Verify Lighthouse results artifact
         if: steps.download_lighthouse_results.outcome != 'success'
         env:
           DOWNLOAD_OUTCOME: ${{ steps.download_lighthouse_results.outcome }}
         shell: bash
         run: |
-          echo "::warning::Lighthouse results artifact not found. Check the 'Frontend Tests' job for upload issues."
+          echo "::warning::Lighthouse results artifact not found. Check the 'Lighthouse CI' job for upload issues."
+          echo "Expected to download the 'lighthouse-results' artifact produced by the Lighthouse CI job, but the download step reported: ${DOWNLOAD_OUTCOME}. Skipping threshold assertions."
           {
             echo "## Lighthouse performance gate";
             echo "- ⚠️ Artifact download outcome: ${DOWNLOAD_OUTCOME}";
-            echo "- Threshold assertions skipped due to missing artifact.";
+            echo "- Threshold assertions skipped due to missing 'lighthouse-results' artifact.";
           } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Enforce Lighthouse thresholds
         if: steps.download_lighthouse_results.outcome == 'success'
         run: |
@@ -389,40 +832,3 @@ jobs:
             --config=../.lighthouserc.js \
             --preset=lighthouse:recommended \
             --budgetsFile=../budget.json
-
-  # ============================================================================
-  # Final Status Check
-  # ============================================================================
-  ci-success:
-    name: CI Success
-    runs-on: ubuntu-latest
-    if: always()
-    needs:
-      - run-hooks
-      - compose-validate
-      - backend-tests
-      - go-tests
-      - frontend-tests
-      - security-audit
-      - alembic-migrations
-      - openapi-verify
-      - verify-runtime-reqs
-      - performance-gate
-    steps:
-      - name: Check all jobs passed
-        run: |
-          if [[ "${{ needs.run-hooks.result }}" != "success" ]] ||
-             [[ "${{ needs.compose-validate.result }}" != "success" ]] ||
-             [[ "${{ needs.backend-tests.result }}" != "success" ]] ||
-             [[ "${{ needs.go-tests.result }}" != "success" ]] ||
-             [[ "${{ needs.frontend-tests.result }}" != "success" ]] ||
-             [[ "${{ needs.security-audit.result }}" != "success" ]] ||
-             [[ "${{ needs.alembic-migrations.result }}" != "success" ]] ||
-             [[ "${{ needs.openapi-verify.result }}" != "success" ]] ||
-             [[ "${{ needs.verify-runtime-reqs.result }}" != "success" ]] ||
-             [[ "${{ needs.performance-gate.result }}" != "success" ]]; then
-            echo "::error::One or more CI jobs failed"
-            exit 1
-          fi
-          echo "✅ All CI checks passed!"
-

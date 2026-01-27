@@ -7,27 +7,6 @@ from app.core.exceptions.domain import DomainException as DomainException
 from app.core.exceptions.handlers import (
     domain_exception_handler as domain_exception_handler,
 )
-from app.core.exceptions.service import (
-    CacheError as CacheError,
-)
-from app.core.exceptions.service import (
-    DatabaseError as DatabaseError,
-)
-from app.core.exceptions.service import (
-    ExternalServiceError as ExternalServiceError,
-)
-from app.core.exceptions.service import (
-    NotificationError as NotificationError,
-)
-from app.core.exceptions.service import (
-    ServiceError as ServiceError,
-)
-from app.core.exceptions.service import (
-    StorageError as StorageError,
-)
-from app.core.exceptions.service import (
-    TokenError as TokenError,
-)
 
 
 class AppException(Exception):
