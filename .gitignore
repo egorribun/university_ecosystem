@@ -238,3 +238,6 @@ coverage-all.out
 test_output.txt
 $profile
 $tempProfile
+
+# Bandit security reports
+bandit_report*.json
