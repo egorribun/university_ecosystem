@@ -9,13 +9,11 @@
 # - reusable-go-tests.yml: Go service tests and linting
 # - reusable-security-audit.yml: pip-audit, npm audit, Trivy
 
-name: CI
+name: "CI - Matrix Expansion"
 
 on:
   push:
-    branches: ["**"]
   pull_request:
-    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
@@ -23,7 +21,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ci-matrix-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -118,26 +116,22 @@ jobs:
     strategy:
       matrix:
         group:
-          - { name: Auth, pattern: "tests/test_auth*" }
-          - { name: Events, pattern: "tests/test_event*" }
-          - { name: Notifications, pattern: "tests/test_notification*" }
-          - { name: Chat, pattern: "tests/test_chat*" }
-          - {
-              name: API-Config,
-              pattern: "tests/test_api* tests/test_config* tests/test_core_config.py",
-            }
-          - {
-              name: Storage,
-              pattern: "tests/test_file* tests/test_storage* tests/test_repository*",
-            }
-          - {
-              name: Utils,
-              pattern: "tests/test_utils* tests/test_encryption.py tests/test_sanitization.py",
-            }
-          - {
-              name: System,
-              pattern: "tests/test_health* tests/test_metrics* tests/test_periodic* tests/test_workers* tests/test_dead_letter* tests/test_circuit_breaker* tests/test_progressive* tests/test_retry.py tests/test_smoke.py",
-            }
+          - name: Auth
+            pattern: "tests/test_auth*"
+          - name: Events
+            pattern: "tests/test_event*"
+          - name: Notifications
+            pattern: "tests/test_notification*"
+          - name: Chat
+            pattern: "tests/test_chat*"
+          - name: API-Config
+            pattern: "tests/test_api* tests/test_config* tests/test_core_config.py"
+          - name: Storage
+            pattern: "tests/test_file* tests/test_storage* tests/test_repository*"
+          - name: Utils
+            pattern: "tests/test_utils* tests/test_encryption.py tests/test_sanitization.py"
+          - name: System
+            pattern: "tests/test_health* tests/test_metrics* tests/test_periodic* tests/test_workers* tests/test_dead_letter* tests/test_circuit_breaker* tests/test_progressive* tests/test_retry.py tests/test_smoke.py"
     needs: run-hooks
     uses: ./.github/workflows/reusable-backend-tests.yml
     with:
@@ -183,12 +177,10 @@ jobs:
     strategy:
       matrix:
         service:
-          [
-            services/gateway,
-            services/file-processor,
-            services/ws-hub,
-            services/rust-optimizer,
-          ]
+          - services/gateway
+          - services/file-processor
+          - services/ws-hub
+          - services/rust-optimizer
     needs: run-hooks
     uses: ./.github/workflows/reusable-go-tests.yml
     with:
