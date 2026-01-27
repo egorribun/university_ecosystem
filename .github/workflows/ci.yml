@@ -134,7 +134,6 @@ jobs:
           - services/gateway
           - services/file-processor
           - services/ws-hub
-          - services/rust-optimizer
     needs: run-hooks
     uses: ./.github/workflows/reusable-go-tests.yml
     with:
