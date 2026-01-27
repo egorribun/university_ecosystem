@@ -1,0 +1,145 @@
+# Reusable E2E Tests Workflow
+# Runs Playwright E2E tests against a running backend
+name: E2E Tests
+
+on:
+    workflow_call:
+        inputs:
+            node-version:
+                description: "Node.js version to use"
+                required: false
+                type: string
+                default: "22"
+            python-version:
+                description: "Python version for backend"
+                required: false
+                type: string
+                default: "3.13"
+            browser:
+                description: "Browser to test (chromium, firefox, webkit)"
+                required: false
+                type: string
+                default: "chromium"
+            test-pattern:
+                description: "Playwright test pattern"
+                required: false
+                type: string
+                default: ""
+            base-url:
+                description: "Override base URL for tests"
+                required: false
+                type: string
+                default: ""
+
+jobs:
+    e2e:
+        name: E2E Tests (${{ inputs.browser }})
+        runs-on: ubuntu-latest
+        timeout-minutes: 30
+        env:
+            SECRET_KEY: "dummy_secret_key_for_ci_tests_at_least_32_chars"
+            ENVIRONMENT: testing
+            DATABASE_URL: "sqlite+aiosqlite:///./e2e-test.db"
+            OTEL_SDK_DISABLED: "true"
+        services:
+            redis:
+                image: redis:7-alpine
+                ports:
+                    - 6379:6379
+                options: >-
+                    --health-cmd "redis-cli ping"
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 5
+        steps:
+            - uses: actions/checkout@v5
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v5
+              with:
+                  node-version: ${{ inputs.node-version }}
+                  cache: npm
+                  cache-dependency-path: frontend/package-lock.json
+
+            - name: Setup Python
+              uses: actions/setup-python@v6
+              with:
+                  python-version: ${{ inputs.python-version }}
+                  cache: pip
+                  cache-dependency-path: |
+                      requirements.txt
+                      requirements-dev.txt
+
+            - name: Install backend dependencies
+              run: |
+                  python -m pip install --upgrade pip
+                  pip install -r requirements.txt aiosqlite
+
+            - name: Install frontend dependencies
+              working-directory: frontend
+              run: npm ci
+
+            - name: Install Playwright
+              working-directory: frontend
+              run: npx playwright install --with-deps ${{ inputs.browser }}
+
+            - name: Run database migrations
+              run: alembic upgrade head
+
+            - name: Start backend server
+              run: |
+                  uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+                  echo "BACKEND_PID=$!" >> "$GITHUB_ENV"
+
+            - name: Wait for backend
+              run: |
+                  for i in {1..30}; do
+                    if curl -s http://127.0.0.1:8000/health > /dev/null; then
+                      echo "Backend is ready"
+                      exit 0
+                    fi
+                    echo "Waiting for backend... ($i/30)"
+                    sleep 2
+                  done
+                  echo "Backend failed to start"
+                  exit 1
+
+            - name: Run E2E tests
+              working-directory: frontend
+              run: |
+                  BASE_URL="${{ inputs.base-url }}"
+                  if [[ -z "$BASE_URL" ]]; then
+                    BASE_URL="http://127.0.0.1:5173"
+                  fi
+
+                  TEST_PATTERN="${{ inputs.test-pattern }}"
+
+                  npx playwright test $TEST_PATTERN \
+                    --project=${{ inputs.browser }} \
+                    --reporter=html
+              env:
+                  PLAYWRIGHT_BASE_URL: ${{ inputs.base-url || 'http://127.0.0.1:5173' }}
+                  VITE_BACKEND_ORIGIN: http://127.0.0.1:8000
+
+            - name: Terminate backend
+              if: always()
+              run: |
+                  if [[ -n "$BACKEND_PID" ]]; then
+                    kill $BACKEND_PID || true
+                  fi
+
+            - name: Upload Playwright report
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: playwright-report-${{ inputs.browser }}
+                  path: frontend/playwright-report/
+                  retention-days: 14
+
+            - name: Upload test traces
+              if: failure()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: playwright-traces-${{ inputs.browser }}
+                  path: frontend/test-results/
+                  retention-days: 7

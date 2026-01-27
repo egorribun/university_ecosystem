@@ -3,6 +3,7 @@
 pytest>=8.3
 pytest-asyncio>=0.23
 pytest-cov>=5
+pytest-xdist>=3.5  # Parallel test execution
 hypothesis>=6.112
 fakeredis>=2
 brotli-asgi>=1.4

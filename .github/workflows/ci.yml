@@ -91,15 +91,25 @@ jobs:
           docker compose -f docker-compose.yml config
 
   backend-tests:
-    name: Backend Tests (All)
+    name: Backend Tests (Python ${{ matrix.python-version }})
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+        include:
+          - python-version: "3.13"
+            coverage-check: true
+          - python-version: "3.12"
+            coverage-check: false
     needs: run-hooks
     uses: ./.github/workflows/reusable-backend-tests.yml
     with:
-      test-group-name: All
+      test-group-name: All-Py${{ matrix.python-version }}
       test-pattern: "tests/"
-      python-version: "3.13"
-      coverage-threshold: 72
-      run-integration-tests: true
+      python-version: ${{ matrix.python-version }}
+      coverage-threshold: ${{ matrix.coverage-check && 72 || 0 }}
+      run-integration-tests: ${{ matrix.python-version == '3.13' }}
+      parallel-workers: 0 # auto-detect CPU count
     secrets: inherit
 
   backend-type-check:

@@ -29,6 +29,16 @@ on:
                 required: false
                 type: string
                 default: "tests/"
+            parallel-workers:
+                description: "Number of parallel workers for pytest-xdist (0 = auto, -1 = disabled)"
+                required: false
+                type: number
+                default: 0
+            fail-fast:
+                description: "Stop on first test failure"
+                required: false
+                type: boolean
+                default: false
         secrets:
             SECRET_KEY:
                 required: false
@@ -72,12 +82,29 @@ jobs:
 
             - name: Run pytest
               run: |
+                  PARALLEL_ARGS=""
+                  if [[ "${{ inputs.parallel-workers }}" != "-1" ]]; then
+                    if [[ "${{ inputs.parallel-workers }}" == "0" ]]; then
+                      PARALLEL_ARGS="-n auto"
+                    else
+                      PARALLEL_ARGS="-n ${{ inputs.parallel-workers }}"
+                    fi
+                  fi
+
+                  FAIL_FAST=""
+                  if [[ "${{ inputs.fail-fast }}" == "true" ]]; then
+                    FAIL_FAST="-x"
+                  fi
+
                   pytest ${{ inputs.test-pattern }} \
+                    $PARALLEL_ARGS \
+                    $FAIL_FAST \
                     --cov=app \
                     --cov-report=xml \
                     --cov-report=term-missing \
                     --cov-fail-under=${{ inputs.coverage-threshold }} \
-                    --junitxml=pytest-report.xml
+                    --junitxml=pytest-report.xml \
+                    --dist=loadgroup
 
             - name: Upload coverage artifact
               uses: actions/upload-artifact@v4

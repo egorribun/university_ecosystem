@@ -1,0 +1,144 @@
+# Mutation Testing Workflow
+# Tests the quality of tests using mutation testing with mutmut
+name: Mutation Testing
+
+on:
+    schedule:
+        # Every Saturday at 02:00 UTC
+        - cron: "0 2 * * 6"
+    workflow_dispatch:
+        inputs:
+            target_module:
+                description: "Module to test (e.g., app/core or app/services)"
+                required: false
+                default: "app/core"
+                type: string
+
+permissions:
+    contents: read
+
+concurrency:
+    group: mutation-${{ github.ref }}
+    cancel-in-progress: false
+
+env:
+    SECRET_KEY: "dummy_secret_key_for_ci_tests_at_least_32_chars"
+    ENVIRONMENT: testing
+    OTEL_SDK_DISABLED: "true"
+
+jobs:
+    mutation-test:
+        name: Mutation Testing (${{ inputs.target_module || 'app/core' }})
+        runs-on: ubuntu-latest
+        timeout-minutes: 120
+        services:
+            redis:
+                image: redis:7-alpine
+                ports:
+                    - 6379:6379
+                options: >-
+                    --health-cmd "redis-cli ping"
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 5
+        steps:
+            - uses: actions/checkout@v5
+
+            - name: Setup Python
+              uses: actions/setup-python@v6
+              with:
+                  python-version: "3.13"
+                  cache: pip
+                  cache-dependency-path: |
+                      requirements.txt
+                      requirements-dev.txt
+
+            - name: Install dependencies
+              run: |
+                  python -m pip install --upgrade pip
+                  pip install -r requirements.txt -r requirements-dev.txt
+                  pip install mutmut
+
+            - name: Run mutation testing
+              id: mutmut
+              continue-on-error: true
+              run: |
+                  TARGET="${{ inputs.target_module || 'app/core' }}"
+                  echo "Running mutation testing on: $TARGET"
+
+                  # Run mutmut with limited scope for CI efficiency
+                  mutmut run \
+                    --paths-to-mutate="$TARGET" \
+                    --tests-dir=tests \
+                    --no-progress \
+                    --CI \
+                    2>&1 | tee mutmut-output.txt || true
+
+                  # Generate HTML report
+                  mutmut html || true
+
+            - name: Generate mutation score
+              run: |
+                  python3 << 'PYSCRIPT'
+                  import subprocess
+                  import json
+                  import sys
+
+                  try:
+                      result = subprocess.run(
+                          ["mutmut", "results", "--json"],
+                          capture_output=True,
+                          text=True
+                      )
+                      data = json.loads(result.stdout) if result.stdout else {}
+
+                      killed = data.get("killed", 0)
+                      survived = data.get("survived", 0)
+                      total = killed + survived
+
+                      if total > 0:
+                          score = (killed / total) * 100
+                          print(f"Mutation Score: {score:.1f}%")
+                          print(f"Killed: {killed}, Survived: {survived}, Total: {total}")
+
+                          if score < 60:
+                              print("⚠️ Mutation score is below 60% - tests may need improvement")
+                          elif score < 80:
+                              print("📊 Mutation score is acceptable but could be improved")
+                          else:
+                              print("✅ Excellent mutation score!")
+                      else:
+                          print("No mutations were tested")
+                  except Exception as e:
+                      print(f"Could not calculate mutation score: {e}")
+                      sys.exit(0)
+                  PYSCRIPT
+
+            - name: Upload mutation report
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: mutation-report
+                  path: |
+                      html/
+                      mutmut-output.txt
+                      .mutmut-cache
+                  if-no-files-found: warn
+
+            - name: Job summary
+              if: always()
+              run: |
+                  {
+                    echo "## Mutation Testing Report"
+                    echo ""
+                    echo "**Target:** \`${{ inputs.target_module || 'app/core' }}\`"
+                    echo ""
+                    if [ -f mutmut-output.txt ]; then
+                      echo "### Results"
+                      echo "\`\`\`"
+                      tail -20 mutmut-output.txt
+                      echo "\`\`\`"
+                    fi
+                    echo ""
+                    echo "See uploaded artifacts for full HTML report."
+                  } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,158 @@
+# Test Results Aggregation Workflow
+# Aggregates test results and generates badges
+name: Test Results & Badges
+
+on:
+    workflow_run:
+        workflows: ["CI - Matrix Expansion"]
+        types:
+            - completed
+
+permissions:
+    contents: write
+    actions: read
+
+jobs:
+    aggregate-results:
+        name: Aggregate Test Results
+        runs-on: ubuntu-latest
+        if: github.event.workflow_run.conclusion != 'cancelled'
+        steps:
+            - uses: actions/checkout@v5
+              with:
+                  ref: ${{ github.event.workflow_run.head_sha }}
+
+            - name: Download all artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  run-id: ${{ github.event.workflow_run.id }}
+                  github-token: ${{ secrets.GITHUB_TOKEN }}
+                  path: artifacts
+
+            - name: Setup Python
+              uses: actions/setup-python@v6
+              with:
+                  python-version: "3.13"
+
+            - name: Parse test results
+              id: parse_results
+              run: |
+                  python3 << 'PYSCRIPT'
+                  import json
+                  import os
+                  import xml.etree.ElementTree as ET
+                  from pathlib import Path
+
+                  artifacts_dir = Path("artifacts")
+                  results = {
+                      "total_tests": 0,
+                      "passed": 0,
+                      "failed": 0,
+                      "skipped": 0,
+                      "coverage": 0.0,
+                  }
+
+                  # Parse pytest JUnit XML reports
+                  for xml_file in artifacts_dir.rglob("pytest-report*.xml"):
+                      try:
+                          tree = ET.parse(xml_file)
+                          root = tree.getroot()
+                          for testsuite in root.iter("testsuite"):
+                              results["total_tests"] += int(testsuite.get("tests", 0))
+                              results["failed"] += int(testsuite.get("failures", 0))
+                              results["failed"] += int(testsuite.get("errors", 0))
+                              results["skipped"] += int(testsuite.get("skipped", 0))
+                      except Exception as e:
+                          print(f"Error parsing {xml_file}: {e}")
+
+                  results["passed"] = results["total_tests"] - results["failed"] - results["skipped"]
+
+                  # Parse coverage XML
+                  for cov_file in artifacts_dir.rglob("coverage.xml"):
+                      try:
+                          tree = ET.parse(cov_file)
+                          root = tree.getroot()
+                          line_rate = float(root.get("line-rate", 0))
+                          results["coverage"] = round(line_rate * 100, 1)
+                          break  # Use first coverage file found
+                      except Exception as e:
+                          print(f"Error parsing {cov_file}: {e}")
+
+                  # Output to GitHub
+                  with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+                      for key, value in results.items():
+                          f.write(f"{key}={value}\n")
+
+                  print(json.dumps(results, indent=2))
+                  PYSCRIPT
+
+            - name: Generate badges JSON
+              run: |
+                  mkdir -p .github/badges
+
+                  # Tests badge
+                  if [[ "${{ steps.parse_results.outputs.failed }}" == "0" ]]; then
+                    COLOR="brightgreen"
+                    STATUS="passing"
+                  else
+                    COLOR="red"
+                    STATUS="failing"
+                  fi
+
+                  cat > .github/badges/tests.json << EOF
+                  {
+                    "schemaVersion": 1,
+                    "label": "tests",
+                    "message": "${STATUS}",
+                    "color": "${COLOR}"
+                  }
+                  EOF
+
+                  # Coverage badge
+                  COVERAGE="${{ steps.parse_results.outputs.coverage }}"
+                  if (( $(echo "$COVERAGE >= 80" | bc -l) )); then
+                    COV_COLOR="brightgreen"
+                  elif (( $(echo "$COVERAGE >= 60" | bc -l) )); then
+                    COV_COLOR="yellow"
+                  else
+                    COV_COLOR="red"
+                  fi
+
+                  cat > .github/badges/coverage.json << EOF
+                  {
+                    "schemaVersion": 1,
+                    "label": "coverage",
+                    "message": "${COVERAGE}%",
+                    "color": "${COV_COLOR}"
+                  }
+                  EOF
+
+            - name: Commit badges
+              if: github.event.workflow_run.head_branch == 'main' || github.event.workflow_run.head_branch == 'master'
+              run: |
+                  git config user.name "github-actions[bot]"
+                  git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+                  if [[ -n "$(git status --porcelain .github/badges/)" ]]; then
+                    git add .github/badges/
+                    git commit -m "chore: update test badges [skip ci]"
+                    git push
+                  else
+                    echo "No badge changes to commit"
+                  fi
+
+            - name: Job summary
+              run: |
+                  {
+                    echo "## Test Results Summary"
+                    echo ""
+                    echo "| Metric | Value |"
+                    echo "|--------|-------|"
+                    echo "| Total Tests | ${{ steps.parse_results.outputs.total_tests }} |"
+                    echo "| Passed | ✅ ${{ steps.parse_results.outputs.passed }} |"
+                    echo "| Failed | ❌ ${{ steps.parse_results.outputs.failed }} |"
+                    echo "| Skipped | ⏭️ ${{ steps.parse_results.outputs.skipped }} |"
+                    echo "| Coverage | 📊 ${{ steps.parse_results.outputs.coverage }}% |"
+                    echo ""
+                    echo "**Workflow Run:** [${{ github.event.workflow_run.name }}](${{ github.event.workflow_run.html_url }})"
+                  } >> "$GITHUB_STEP_SUMMARY"
