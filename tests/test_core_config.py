@@ -1,4 +1,5 @@
 import importlib
+import os
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -171,7 +172,9 @@ def test_notifications_allowed_push_topics_parsed(monkeypatch):
 
 
 def test_auto_create_schema_default_true_in_development(monkeypatch):
-    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///./test.db")
+    worker_id = os.environ.get("PYTEST_XDIST_WORKER")
+    db_name = f"test_{worker_id}.db" if worker_id else "test.db"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///./{db_name}")
     monkeypatch.setenv("SECRET_KEY", "development-secret")
     monkeypatch.setenv("ENVIRONMENT", "development")
     monkeypatch.delenv("AUTO_CREATE_SCHEMA", raising=False)
@@ -186,7 +189,9 @@ def test_auto_create_schema_default_true_in_development(monkeypatch):
 
 
 def test_auto_create_schema_default_false_in_production(monkeypatch):
-    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///./test.db")
+    worker_id = os.environ.get("PYTEST_XDIST_WORKER")
+    db_name = f"test_{worker_id}.db" if worker_id else "test.db"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///./{db_name}")
     monkeypatch.setenv("SECRET_KEY", "production-secret-must-be-at-least-32-chars-long")
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.delenv("AUTO_CREATE_SCHEMA", raising=False)
@@ -201,7 +206,9 @@ def test_auto_create_schema_default_false_in_production(monkeypatch):
 
 
 def test_auto_create_schema_warns_when_enabled_in_production(monkeypatch, caplog):
-    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///./test.db")
+    worker_id = os.environ.get("PYTEST_XDIST_WORKER")
+    db_name = f"test_{worker_id}.db" if worker_id else "test.db"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///./{db_name}")
     monkeypatch.setenv("SECRET_KEY", "production-secret-must-be-at-least-32-chars-long")
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("AUTO_CREATE_SCHEMA", "true")
@@ -221,7 +228,9 @@ def test_auto_create_schema_warns_when_enabled_in_production(monkeypatch, caplog
 
 
 def test_response_compression_toggle(monkeypatch):
-    monkeypatch.setenv("DATABASE_URL", "sqlite+aiosqlite:///./test.db")
+    worker_id = os.environ.get("PYTEST_XDIST_WORKER")
+    db_name = f"test_{worker_id}.db" if worker_id else "test.db"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///./{db_name}")
     monkeypatch.setenv("SECRET_KEY", "testing-secret")
     monkeypatch.delenv("ENABLE_RESPONSE_COMPRESSION", raising=False)
 
