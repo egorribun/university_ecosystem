@@ -29,7 +29,7 @@ jobs:
       TRIVY_SEVERITY: ${{ env.TRIVY_FAIL_SEVERITIES }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -51,17 +51,17 @@ jobs:
           set -euo pipefail
           size_bytes=$(docker image inspect ${{ env.IMAGE_REF }} --format='{{.Size}}')
           size_human=$(SIZE_BYTES="$size_bytes" python - <<'PY2'
-          import math
-          import os
-          size = int(os.environ["SIZE_BYTES"])
-          units = ["B", "KiB", "MiB", "GiB", "TiB"]
-          idx = 0
-          while size >= 1024 and idx < len(units) - 1:
-              size /= 1024
-              idx += 1
-          print(f"{size:.2f} {units[idx]}")
-          PY2
-          )
+import math
+import os
+size = int(os.environ["SIZE_BYTES"])
+units = ["B", "KiB", "MiB", "GiB", "TiB"]
+idx = 0
+while size >= 1024 and idx < len(units) - 1:
+    size /= 1024
+    idx += 1
+print(f"{size:.2f} {units[idx]}")
+PY2
+)
           printf 'bytes=%s\n' "$size_bytes" >> "$GITHUB_OUTPUT"
           printf 'human=%s\n' "$size_human" >> "$GITHUB_OUTPUT"
 
@@ -75,9 +75,9 @@ jobs:
           format: sarif
           output: trivy-image.sarif
           severity: ${{ env.TRIVY_SEVERITY }}
-          vuln-type: "os,library"
+          vuln-type: 'os,library'
           ignore-unfixed: true
-          exit-code: "1"
+          exit-code: '1'
 
       - name: Trivy filesystem scan
         id: trivy_fs
@@ -90,22 +90,20 @@ jobs:
           output: trivy-fs.sarif
           severity: ${{ env.TRIVY_SEVERITY }}
           ignore-unfixed: true
-          security-checks: "vuln,config,secret"
-          skip-dirs: "node_modules,frontend/node_modules"
-          exit-code: "1"
+          security-checks: 'vuln,config,secret'
+          skip-dirs: 'node_modules,frontend/node_modules'
+          exit-code: '1'
 
       - name: Upload SARIF (image)
         if: always()
-        continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-image.sarif
           category: trivy-image
 
       - name: Upload SARIF (filesystem)
         if: always()
-        continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-fs.sarif
           category: trivy-fs
@@ -136,4 +134,3 @@ jobs:
         run: |
           echo "::error::Trivy detected ${{ env.TRIVY_SEVERITY }} vulnerabilities. See SARIF reports for details."
           exit 1
-
