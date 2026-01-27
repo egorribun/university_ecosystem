@@ -51,10 +51,10 @@ jobs:
           --health-retries=5
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: "3.13"
           cache: pip
@@ -100,11 +100,11 @@ jobs:
           if [ ! -f "${{ env.ZAP_RULES_FILE }}" ]; then
             cat > "${{ env.ZAP_RULES_FILE }}" << 'EOF'
           # ZAP Passive Scan Rules Configuration
-          # Format: rule_id	action	reason
+          # Format: rule_id action  reason
           # Actions: IGNORE, WARN, FAIL
-          10021	WARN	X-Content-Type-Options Header Missing
-          10038	WARN	Content Security Policy (CSP) Header Not Set
-          10098	IGNORE	Cross-Domain Misconfiguration (expected for API)
+          10021 WARN  X-Content-Type-Options Header Missing
+          10038 WARN  Content Security Policy (CSP) Header Not Set
+          10098 IGNORE  Cross-Domain Misconfiguration (expected for API)
           EOF
           fi
 
@@ -136,3 +136,4 @@ jobs:
 
           See the uploaded artifact for the full HTML report.
           SUMMARY
+

@@ -54,10 +54,10 @@ jobs:
                     --health-timeout 5s
                     --health-retries 5
         steps:
-            - uses: actions/checkout@v5
+            - uses: actions/checkout@v4
 
             - name: Setup Python
-              uses: actions/setup-python@v6
+              uses: actions/setup-python@v5
               with:
                   python-version: ${{ inputs.python-version }}
                   cache: pip
@@ -124,10 +124,10 @@ jobs:
             DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
             REDIS_URL: redis://localhost:6379
         steps:
-            - uses: actions/checkout@v5
+            - uses: actions/checkout@v4
 
             - name: Setup Python
-              uses: actions/setup-python@v6
+              uses: actions/setup-python@v5
               with:
                   python-version: ${{ inputs.python-version }}
                   cache: pip
@@ -165,10 +165,10 @@ jobs:
         name: Type Check
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v5
+            - uses: actions/checkout@v4
 
             - name: Setup Python
-              uses: actions/setup-python@v6
+              uses: actions/setup-python@v5
               with:
                   python-version: ${{ inputs.python-version }}
                   cache: pip
@@ -183,3 +183,4 @@ jobs:
 
             - name: Run mypy
               run: mypy
+

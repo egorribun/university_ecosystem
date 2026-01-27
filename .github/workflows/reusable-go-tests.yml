@@ -28,7 +28,7 @@ jobs:
     name: Test Go Services
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -68,7 +68,7 @@ jobs:
     name: Lint Go Services
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v4
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -98,3 +98,4 @@ jobs:
         with:
           version: latest
           working-directory: services/ws-hub
+

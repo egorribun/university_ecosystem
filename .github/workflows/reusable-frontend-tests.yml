@@ -41,10 +41,10 @@ jobs:
             run:
                 working-directory: ${{ inputs.working-directory }}
         steps:
-            - uses: actions/checkout@v5
+            - uses: actions/checkout@v4
 
             - name: Setup Node.js
-              uses: actions/setup-node@v5
+              uses: actions/setup-node@v4
               with:
                   node-version: ${{ inputs.node-version }}
                   cache: npm
@@ -75,10 +75,10 @@ jobs:
             run:
                 working-directory: ${{ inputs.working-directory }}
         steps:
-            - uses: actions/checkout@v5
+            - uses: actions/checkout@v4
 
             - name: Setup Node.js
-              uses: actions/setup-node@v5
+              uses: actions/setup-node@v4
               with:
                   node-version: ${{ inputs.node-version }}
                   cache: npm
@@ -102,10 +102,10 @@ jobs:
         env:
             VITE_BACKEND_ORIGIN: http://localhost:8000
         steps:
-            - uses: actions/checkout@v5
+            - uses: actions/checkout@v4
 
             - name: Setup Node.js
-              uses: actions/setup-node@v5
+              uses: actions/setup-node@v4
               with:
                   node-version: ${{ inputs.node-version }}
                   cache: npm
@@ -135,17 +135,17 @@ jobs:
         env:
             VITE_BACKEND_ORIGIN: http://localhost:8000
         steps:
-            - uses: actions/checkout@v5
+            - uses: actions/checkout@v4
 
             - name: Setup Node.js
-              uses: actions/setup-node@v5
+              uses: actions/setup-node@v4
               with:
                   node-version: ${{ inputs.node-version }}
                   cache: npm
                   cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
 
             - name: Download built dist
-              uses: actions/download-artifact@v5
+              uses: actions/download-artifact@v4
               with:
                   name: frontend-dist
                   path: ${{ inputs.working-directory }}/dist
@@ -163,3 +163,4 @@ jobs:
                   name: lighthouse-reports
                   path: ${{ inputs.working-directory }}/.lighthouseci
                   if-no-files-found: warn
+

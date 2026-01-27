@@ -21,7 +21,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -83,3 +83,4 @@ jobs:
           if [ -n "$BACKEND_PID" ]; then
             kill $BACKEND_PID || true
           fi
+
