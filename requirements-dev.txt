@@ -102,7 +102,6 @@ cryptography==46.0.3
     #   http-ece
     #   py-vapid
     #   pyopenssl
-    #   python-jose
     #   pywebpush
     #   webauthn
 defusedxml==0.7.1
@@ -115,8 +114,6 @@ distlib==0.4.0
     # via virtualenv
 dnspython==2.8.0
     # via email-validator
-ecdsa==0.19.1
-    # via python-jose
 elastic-transport==8.17.1
     # via elasticsearch
 elasticsearch[async]==8.19.3
@@ -209,6 +206,8 @@ nats-py==2.12.0
     # via -r requirements.in
 nodeenv==1.10.0
     # via pre-commit
+numpy==2.4.1
+    # via pgvector
 opentelemetry-api==1.39.0
     # via
     #   -r requirements.in
@@ -301,6 +300,8 @@ passlib[bcrypt]==1.7.4
     # via -r requirements.in
 pathspec==1.0.3
     # via mypy
+pgvector[sqlalchemy]==0.4.2
+    # via -r requirements.in
 pillow==12.1.0
     # via -r requirements.in
 pillow-avif-plugin==1.5.5
@@ -337,10 +338,7 @@ psycopg-binary==3.3.2
 py-vapid==1.9.4
     # via pywebpush
 pyasn1==0.6.2
-    # via
-    #   -r requirements.in
-    #   python-jose
-    #   rsa
+    # via -r requirements.in
 pycparser==3.0
     # via cffi
 pycron==3.2.0
@@ -359,6 +357,8 @@ pydantic-settings==2.12.0
     # via -r requirements.in
 pygments==2.19.2
     # via pytest
+pyjwt==2.10.1
+    # via -r requirements.in
 pyopenssl==25.3.0
     # via webauthn
 pyotp==2.9.0
@@ -384,11 +384,9 @@ python-dotenv==1.2.1
     #   -r requirements.in
     #   pydantic-settings
     #   uvicorn
-python-jose[cryptography]==3.5.0
-    # via -r requirements.in
 python-magic==0.4.27
     # via -r requirements.in
-python-multipart==0.0.21
+python-multipart==0.0.22
     # via
     #   -r requirements.in
     #   strawberry-graphql
@@ -408,15 +406,12 @@ requests==2.32.5
     #   geoip2
     #   opentelemetry-exporter-otlp-proto-http
     #   pywebpush
-rsa==4.9.1
-    # via python-jose
 s3transfer==0.16.0
     # via boto3
 sentry-sdk[opentelemetry]==2.50.0
     # via -r requirements.in
 six==1.17.0
     # via
-    #   ecdsa
     #   python-dateutil
     #   pywebpush
 slowapi==0.1.9

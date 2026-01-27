@@ -9,7 +9,7 @@ import (
 
 func TestGetEnv_ReturnsDefaultWhenNotSet(t *testing.T) {
 	key := "TEST_UNSET_VARIABLE_XYZ"
-	os.Unsetenv(key)
+	_ = os.Unsetenv(key)
 
 	result := getEnv(key, "default_value")
 
@@ -19,8 +19,10 @@ func TestGetEnv_ReturnsDefaultWhenNotSet(t *testing.T) {
 func TestGetEnv_ReturnsEnvValueWhenSet(t *testing.T) {
 	key := "TEST_SET_VARIABLE_XYZ"
 	expected := "custom_value"
-	os.Setenv(key, expected)
-	defer os.Unsetenv(key)
+	_ = os.Setenv(key, expected)
+	defer func() {
+		_ = os.Unsetenv(key)
+	}()
 
 	result := getEnv(key, "default_value")
 
@@ -29,7 +31,7 @@ func TestGetEnv_ReturnsEnvValueWhenSet(t *testing.T) {
 
 func TestGetEnvInt_ReturnsDefaultWhenNotSet(t *testing.T) {
 	key := "TEST_UNSET_INT_XYZ"
-	os.Unsetenv(key)
+	_ = os.Unsetenv(key)
 
 	result := getEnvInt(key, 42)
 
@@ -38,8 +40,10 @@ func TestGetEnvInt_ReturnsDefaultWhenNotSet(t *testing.T) {
 
 func TestGetEnvInt_ReturnsDefaultWhenEmpty(t *testing.T) {
 	key := "TEST_EMPTY_INT_XYZ"
-	os.Setenv(key, "")
-	defer os.Unsetenv(key)
+	_ = os.Setenv(key, "")
+	defer func() {
+		_ = os.Unsetenv(key)
+	}()
 
 	result := getEnvInt(key, 100)
 
@@ -48,8 +52,10 @@ func TestGetEnvInt_ReturnsDefaultWhenEmpty(t *testing.T) {
 
 func TestGetEnvInt_ParsesValidInteger(t *testing.T) {
 	key := "TEST_VALID_INT_XYZ"
-	os.Setenv(key, "200")
-	defer os.Unsetenv(key)
+	_ = os.Setenv(key, "200")
+	defer func() {
+		_ = os.Unsetenv(key)
+	}()
 
 	result := getEnvInt(key, 0)
 
@@ -58,8 +64,10 @@ func TestGetEnvInt_ParsesValidInteger(t *testing.T) {
 
 func TestGetEnvInt_ReturnsDefaultOnInvalidInteger(t *testing.T) {
 	key := "TEST_INVALID_INT_XYZ"
-	os.Setenv(key, "not_a_number")
-	defer os.Unsetenv(key)
+	_ = os.Setenv(key, "not_a_number")
+	defer func() {
+		_ = os.Unsetenv(key)
+	}()
 
 	result := getEnvInt(key, 99)
 
@@ -68,8 +76,10 @@ func TestGetEnvInt_ReturnsDefaultOnInvalidInteger(t *testing.T) {
 
 func TestGetEnvInt_ParsesNegativeInteger(t *testing.T) {
 	key := "TEST_NEGATIVE_INT_XYZ"
-	os.Setenv(key, "-50")
-	defer os.Unsetenv(key)
+	_ = os.Setenv(key, "-50")
+	defer func() {
+		_ = os.Unsetenv(key)
+	}()
 
 	result := getEnvInt(key, 0)
 
@@ -78,8 +88,10 @@ func TestGetEnvInt_ParsesNegativeInteger(t *testing.T) {
 
 func TestGetEnvInt_ParsesZero(t *testing.T) {
 	key := "TEST_ZERO_INT_XYZ"
-	os.Setenv(key, "0")
-	defer os.Unsetenv(key)
+	_ = os.Setenv(key, "0")
+	defer func() {
+		_ = os.Unsetenv(key)
+	}()
 
 	result := getEnvInt(key, 999)
 
@@ -106,13 +118,13 @@ func TestLoad_ReturnsConfigWithValidEnv(t *testing.T) {
 		restoreEnv("RATE_LIMIT_BURST", originalBurst)
 	}()
 
-	os.Setenv("JWT_SECRET", "test-secret-key")
-	os.Setenv("BACKEND_URL", "http://test-backend:8000")
-	os.Setenv("GATEWAY_PORT", "9090")
-	os.Setenv("REDIS_URL", "redis://test-redis:6379")
-	os.Setenv("FILE_PROCESSOR_ADDR", "test-processor:50051")
-	os.Setenv("RATE_LIMIT_RPS", "50")
-	os.Setenv("RATE_LIMIT_BURST", "100")
+	_ = os.Setenv("JWT_SECRET", "test-secret-key")
+	_ = os.Setenv("BACKEND_URL", "http://test-backend:8000")
+	_ = os.Setenv("GATEWAY_PORT", "9090")
+	_ = os.Setenv("REDIS_URL", "redis://test-redis:6379")
+	_ = os.Setenv("FILE_PROCESSOR_ADDR", "test-processor:50051")
+	_ = os.Setenv("RATE_LIMIT_RPS", "50")
+	_ = os.Setenv("RATE_LIMIT_BURST", "100")
 
 	cfg, err := Load()
 	assert.NoError(t, err)
@@ -137,9 +149,9 @@ func TestLoad_UsesDefaultValuesWithJWTSet(t *testing.T) {
 		restoreEnv("GATEWAY_PORT", originalPort)
 	}()
 
-	os.Setenv("JWT_SECRET", "required-secret")
-	os.Unsetenv("GATEWAY_PORT")
-	os.Unsetenv("BACKEND_URL")
+	_ = os.Setenv("JWT_SECRET", "required-secret")
+	_ = os.Unsetenv("GATEWAY_PORT")
+	_ = os.Unsetenv("BACKEND_URL")
 
 	cfg, err := Load()
 	assert.NoError(t, err)
@@ -151,7 +163,7 @@ func TestLoad_UsesDefaultValuesWithJWTSet(t *testing.T) {
 
 func TestLoad_ReturnsErrorWhenJWTSecretMissing(t *testing.T) {
 	originalJWT := os.Getenv("JWT_SECRET")
-	os.Unsetenv("JWT_SECRET")
+	_ = os.Unsetenv("JWT_SECRET")
 	defer restoreEnv("JWT_SECRET", originalJWT)
 
 	cfg, err := Load()
@@ -182,8 +194,8 @@ func TestConfig_StructFields(t *testing.T) {
 
 func restoreEnv(key, value string) {
 	if value == "" {
-		os.Unsetenv(key)
+		_ = os.Unsetenv(key)
 	} else {
-		os.Setenv(key, value)
+		_ = os.Setenv(key, value)
 	}
 }

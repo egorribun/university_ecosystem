@@ -6,7 +6,8 @@ from typing import Any
 from uuid import uuid4
 
 import httpx
-from jose import JWTError, jwt
+import jwt
+from jwt import PyJWTError as JWTError
 from passlib.context import CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession
 from zxcvbn import zxcvbn

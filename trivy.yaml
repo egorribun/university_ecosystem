@@ -1,0 +1,20 @@
+# Trivy configuration file
+# Reference: https://aquasecurity.github.io/trivy/latest/docs/references/configuration/config-file/
+
+scan:
+  # Skip directories
+  skip-dirs:
+    - node_modules
+    - frontend/node_modules
+
+vulnerability:
+  # Ignore unfixed vulnerabilities
+  ignore-unfixed: true
+
+  # Ignore file path
+  ignorefile: ".trivyignore"
+
+  # Severity types to check
+  type:
+    - os
+    - library

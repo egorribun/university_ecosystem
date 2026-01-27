@@ -1,0 +1,51 @@
+# Reusable Node.js Setup Workflow
+#
+# Call from other workflows:
+#   jobs:
+#     setup:
+#       uses: ./.github/workflows/reusable-setup-node.yml
+#       with:
+#         node-version: '22'
+#         working-directory: 'frontend'
+
+name: Setup Node.js
+
+on:
+    workflow_call:
+        inputs:
+            node-version:
+                description: "Node.js version to install"
+                required: false
+                type: string
+                default: "22"
+            working-directory:
+                description: "Working directory for npm install"
+                required: false
+                type: string
+                default: "frontend"
+            install-deps:
+                description: "Run npm ci to install dependencies"
+                required: false
+                type: boolean
+                default: true
+
+jobs:
+    setup:
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: ${{ inputs.working-directory }}
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Setup Node.js ${{ inputs.node-version }}
+              uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ inputs.node-version }}
+                  cache: npm
+                  cache-dependency-path: ${{ inputs.working-directory }}/package-lock.json
+
+            - name: Install dependencies
+              if: ${{ inputs.install-deps }}
+              run: npm ci
+

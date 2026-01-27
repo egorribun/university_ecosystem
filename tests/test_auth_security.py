@@ -1,9 +1,10 @@
 import uuid
 from datetime import UTC, datetime, timedelta
 
+import jwt
 import pytest
 from fastapi import status
-from jose import JWTError, jwt
+from jwt.exceptions import PyJWTError
 from passlib.hash import bcrypt
 from sqlalchemy import select
 
@@ -127,7 +128,7 @@ async def test_create_access_token_uses_active_signing_key(monkeypatch):
     header = jwt.get_unverified_header(token)
     assert header["kid"] == "new-key"
 
-    with pytest.raises(JWTError):
+    with pytest.raises(PyJWTError):
         jwt.decode(token, "old-secret", algorithms=[settings.algorithm])
 
     decoded = decode_token(token)

@@ -1,0 +1,82 @@
+# Reusable Go Tests Workflow
+name: Go Tests
+
+on:
+  workflow_call:
+    inputs:
+      go-version:
+        description: "Go version to use"
+        required: false
+        type: string
+        default: "1.25.x"
+      service-directory:
+        description: "Service directory to test (e.g., services/gateway)"
+        required: true
+        type: string
+
+jobs:
+  test:
+    name: Test Go Service (${{ inputs.service-directory }})
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache: true
+          cache-dependency-path: |
+            services/gateway/go.sum
+            services/file-processor/go.sum
+            services/ws-hub/go.sum
+            go.sum
+
+      - name: Install dependencies
+        run: |
+          cd "${{ inputs.service-directory }}"
+          go mod download
+
+      - name: Run tests with coverage
+        run: |
+          echo "Testing ${{ inputs.service-directory }}..."
+          cd "${{ inputs.service-directory }}"
+          go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Generate artifact name
+        id: artifact-name
+        run: |
+          sanitized_name="${{ inputs.service-directory }}"
+          sanitized_name="${sanitized_name//\//-}"
+          echo "name=go-coverage-${sanitized_name}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ steps.artifact-name.outputs.name }}
+          path: |
+            ${{ inputs.service-directory }}/coverage.out
+
+  lint:
+    name: Lint Go Service (${{ inputs.service-directory }})
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ inputs.go-version }}
+          cache: true
+          cache-dependency-path: |
+            services/gateway/go.sum
+            services/file-processor/go.sum
+            services/ws-hub/go.sum
+            go.sum
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: latest
+          working-directory: ${{ inputs.service-directory }}

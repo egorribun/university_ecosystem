@@ -32,7 +32,9 @@ import (
 func main() {
 	// Initialize logger
 	logger, _ := zap.NewProduction()
-	defer logger.Sync()
+	defer func() {
+		_ = logger.Sync()
+	}()
 
 	// Load configuration
 	cfg, err := config.Load()
@@ -55,16 +57,16 @@ func main() {
 
 	// Connect to File Processor gRPC
 	// In production, use proper credentials and connection pooling/balancing
-	grpcConn, err := grpc.Dial(cfg.FileProcessorAddr,
+	grpcConn, err := grpc.NewClient(cfg.FileProcessorAddr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(),
-		grpc.WithTimeout(5*time.Second),
 	)
 	if err != nil {
 		// Log but don't fail hard, maybe service is starting up
 		logger.Warn("Failed to connect to File Processor gRPC", zap.Error(err))
 	} else {
-		defer grpcConn.Close()
+		defer func() {
+			_ = grpcConn.Close()
+		}()
 		logger.Info("Connected to File Processor gRPC", zap.String("addr", cfg.FileProcessorAddr))
 	}
 	fileClient := pb.NewFileProcessingServiceClient(grpcConn)
