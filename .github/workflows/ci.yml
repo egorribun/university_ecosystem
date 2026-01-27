@@ -114,10 +114,35 @@ jobs:
   # Backend Tests (Reusable Workflow)
   # ============================================================================
   backend-tests:
-    name: Backend Tests
+    name: Backend Tests (${{ matrix.group.name }})
+    strategy:
+      matrix:
+        group:
+          - { name: Auth, pattern: "tests/test_auth*" }
+          - { name: Events, pattern: "tests/test_event*" }
+          - { name: Notifications, pattern: "tests/test_notification*" }
+          - { name: Chat, pattern: "tests/test_chat*" }
+          - {
+              name: API-Config,
+              pattern: "tests/test_api* tests/test_config* tests/test_core_config.py",
+            }
+          - {
+              name: Storage,
+              pattern: "tests/test_file* tests/test_storage* tests/test_repository*",
+            }
+          - {
+              name: Utils,
+              pattern: "tests/test_utils* tests/test_encryption.py tests/test_sanitization.py",
+            }
+          - {
+              name: System,
+              pattern: "tests/test_health* tests/test_metrics* tests/test_periodic* tests/test_workers* tests/test_dead_letter* tests/test_circuit_breaker* tests/test_progressive* tests/test_retry.py tests/test_smoke.py",
+            }
     needs: run-hooks
     uses: ./.github/workflows/reusable-backend-tests.yml
     with:
+      test-group-name: ${{ matrix.group.name }}
+      test-pattern: ${{ matrix.group.pattern }}
       python-version: "3.13"
       coverage-threshold: 72
       run-integration-tests: true
@@ -127,10 +152,20 @@ jobs:
   # Go Tests (Reusable Workflow)
   # ============================================================================
   go-tests:
-    name: Go Tests
+    name: Go Tests (${{ matrix.service }})
+    strategy:
+      matrix:
+        service:
+          [
+            services/gateway,
+            services/file-processor,
+            services/ws-hub,
+            services/rust-optimizer,
+          ]
     needs: run-hooks
     uses: ./.github/workflows/reusable-go-tests.yml
     with:
+      service-directory: ${{ matrix.service }}
       go-version: "1.25.x"
     secrets: inherit
 
@@ -145,6 +180,33 @@ jobs:
       node-version: "22"
       run-lighthouse: true
     secrets: inherit
+
+  # ============================================================================
+  # Backend Type Checking (Single Job)
+  # ============================================================================
+  backend-type-check:
+    name: Backend Type Check
+    runs-on: ubuntu-latest
+    needs: run-hooks
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run mypy
+        run: mypy
 
   # ============================================================================
   # Security Audits (Reusable Workflow)
@@ -401,6 +463,7 @@ jobs:
       - run-hooks
       - compose-validate
       - backend-tests
+      - backend-type-check
       - go-tests
       - frontend-tests
       - security-audit
@@ -414,6 +477,7 @@ jobs:
           if [[ "${{ needs.run-hooks.result }}" != "success" ]] ||
              [[ "${{ needs.compose-validate.result }}" != "success" ]] ||
              [[ "${{ needs.backend-tests.result }}" != "success" ]] ||
+             [[ "${{ needs.backend-type-check.result }}" != "success" ]] ||
              [[ "${{ needs.go-tests.result }}" != "success" ]] ||
              [[ "${{ needs.frontend-tests.result }}" != "success" ]] ||
              [[ "${{ needs.security-audit.result }}" != "success" ]] ||
@@ -425,4 +489,3 @@ jobs:
             exit 1
           fi
           echo "✅ All CI checks passed!"
-

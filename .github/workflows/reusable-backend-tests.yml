@@ -29,6 +29,16 @@ on:
                 required: false
                 type: boolean
                 default: false
+            test-group-name:
+                description: "Name of the test group (e.g., Auth, Events)"
+                required: false
+                type: string
+                default: "All"
+            test-pattern:
+                description: "Pytest pattern to include (e.g., tests/test_auth*)"
+                required: false
+                type: string
+                default: "tests/"
         secrets:
             SECRET_KEY:
                 required: false
@@ -73,7 +83,7 @@ jobs:
 
             - name: Run pytest
               run: |
-                  pytest \
+                  pytest ${{ inputs.test-pattern }} \
                     --cov=app \
                     --cov-report=xml \
                     --cov-report=term-missing \
@@ -151,7 +161,7 @@ jobs:
               run: alembic upgrade head
 
             - name: Run integration tests
-              run: pytest tests/ -v --tb=short -x --ignore=tests/performance
+              run: pytest ${{ inputs.test-pattern }} -v --tb=short -x --ignore=tests/performance
 
             - name: Upload test results
               uses: actions/upload-artifact@v4
@@ -160,27 +170,3 @@ jobs:
                   name: postgres-test-failures
                   path: pytest-report.xml
                   if-no-files-found: ignore
-
-    type-check:
-        name: Type Check
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v4
-
-            - name: Setup Python
-              uses: actions/setup-python@v5
-              with:
-                  python-version: ${{ inputs.python-version }}
-                  cache: pip
-                  cache-dependency-path: |
-                      requirements.txt
-                      requirements-dev.txt
-
-            - name: Install dependencies
-              run: |
-                  python -m pip install --upgrade pip
-                  python -m pip install -r requirements.txt -r requirements-dev.txt
-
-            - name: Run mypy
-              run: mypy
-

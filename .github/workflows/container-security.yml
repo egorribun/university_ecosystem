@@ -14,7 +14,7 @@ concurrency:
 env:
   IMAGE_NAME: university-ecosystem-backend
   IMAGE_TAG: scan
-  TRIVY_FAIL_SEVERITIES: ${{ vars.TRIVY_FAIL_SEVERITIES || 'HIGH,CRITICAL' }}
+  TRIVY_FAIL_SEVERITIES: "HIGH,CRITICAL"
 
 jobs:
   trivy:
@@ -25,8 +25,8 @@ jobs:
       security-events: write
       actions: read
     env:
-      IMAGE_REF: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
-      TRIVY_SEVERITY: ${{ env.TRIVY_FAIL_SEVERITIES }}
+      IMAGE_REF: university-ecosystem-backend:scan
+      TRIVY_SEVERITY: HIGH,CRITICAL
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -90,7 +90,7 @@ jobs:
           output: trivy-fs.sarif
           severity: ${{ env.TRIVY_SEVERITY }}
           ignore-unfixed: true
-          security-checks: "vuln,config,secret"
+          scanners: "vuln,config,secret"
           skip-dirs: "node_modules,frontend/node_modules"
           exit-code: "1"
 
@@ -136,4 +136,3 @@ jobs:
         run: |
           echo "::error::Trivy detected ${{ env.TRIVY_SEVERITY }} vulnerabilities. See SARIF reports for details."
           exit 1
-
