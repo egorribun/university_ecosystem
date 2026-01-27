@@ -88,7 +88,7 @@ jobs:
                   echo "::warning title=Missing SONAR_TOKEN::The SONAR_TOKEN secret is not set. SonarCloud analysis will be skipped or may fail."
 
             - name: SonarCloud Scan
-              uses: SonarSource/sonarqube-scan-action@b7cd21e # v6.0.0
+              uses: SonarSource/sonarqube-scan-action@0e479c090956b9c9f7ac01962325c8cf3d467610 # v6.0.0
               env:
                   SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
                   SONAR_HOST_URL: https://sonarcloud.io
