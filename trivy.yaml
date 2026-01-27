@@ -1,0 +1,13 @@
+# Trivy configuration file
+# Reference: https://aquasecurity.github.io/trivy/latest/docs/references/configuration/config-file/
+
+vulnerability:
+  # Ignore unfixed vulnerabilities
+  ignore-unfixed: true
+
+  # Ignore specific CVEs documented in .trivyignore
+  ignorefile: .trivyignore
+
+severity:
+  - HIGH
+  - CRITICAL

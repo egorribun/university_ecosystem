@@ -77,7 +77,7 @@ jobs:
           severity: ${{ env.TRIVY_SEVERITY }}
           vuln-type: "os,library"
           ignore-unfixed: true
-          trivyignores: .trivyignore
+          trivy-config: trivy.yaml
           exit-code: "1"
 
       - name: Trivy filesystem scan
@@ -91,7 +91,7 @@ jobs:
           output: trivy-fs.sarif
           severity: ${{ env.TRIVY_SEVERITY }}
           ignore-unfixed: true
-          trivyignores: .trivyignore
+          trivy-config: trivy.yaml
           scanners: "vuln,config,secret"
           skip-dirs: "node_modules,frontend/node_modules"
           exit-code: "1"
