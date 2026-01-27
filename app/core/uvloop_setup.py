@@ -27,9 +27,11 @@ def configure_uvloop() -> bool:
         return False
 
     try:
+        import asyncio
+
         import uvloop
 
-        uvloop.install()
+        asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
         logger.info("uvloop installed as default event loop")
         return True
     except ImportError:
