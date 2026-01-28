@@ -2,6 +2,8 @@
 
 import time
 
+import pytest
+
 from app.core.cache import (
     CacheEntry,
     LRUCache,
@@ -126,23 +128,26 @@ class TestLRUCache:
 class TestMultiLayerCache:
     """Tests for MultiLayerCache."""
 
-    def test_set_and_get_l1_only(self):
+    @pytest.mark.asyncio
+    async def test_set_and_get_l1_only(self):
         """Test L1 cache without Redis."""
         cache = MultiLayerCache(l1_max_size=10, l1_ttl=60.0)
-        cache.set("key1", "value1")
-        assert cache.get("key1") == "value1"
+        await cache.set("key1", "value1")
+        assert (await cache.get("key1")) == "value1"
 
-    def test_get_missing(self):
+    @pytest.mark.asyncio
+    async def test_get_missing(self):
         """Test get returns None for missing key."""
         cache = MultiLayerCache(l1_max_size=10, l1_ttl=60.0)
-        assert cache.get("nonexistent") is None
+        assert (await cache.get("nonexistent")) is None
 
-    def test_delete(self):
+    @pytest.mark.asyncio
+    async def test_delete(self):
         """Test delete from L1."""
         cache = MultiLayerCache(l1_max_size=10, l1_ttl=60.0)
-        cache.set("key1", "value1")
-        cache.delete("key1")
-        assert cache.get("key1") is None
+        await cache.set("key1", "value1")
+        await cache.delete("key1")
+        assert (await cache.get("key1")) is None
 
     def test_stats(self):
         """Test stats method."""
