@@ -87,7 +87,9 @@ def _calculate_lookup_hash(input_data: str) -> str:
     """
     # nosec: B303 - SHA-1 is required by the external API
     return (
-        hashlib.sha1(input_data.encode("utf-8"), usedforsecurity=False)
+        hashlib.sha1(
+            input_data.encode("utf-8"), usedforsecurity=False
+        )  # codeql[py/weak-sensitive-data-hashing]
         .hexdigest()
         .upper()
     )
