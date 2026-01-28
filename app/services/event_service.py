@@ -3,7 +3,7 @@ import logging
 from app.core.events import EventCreated, EventUpdated
 from app.core.exceptions.domain import EntityNotFound
 from app.models import models
-from app.repositories.event import EventRepository
+from app.repositories.event_repository import EventRepository
 from app.schemas import schemas
 from app.services.vector_service import VectorService
 

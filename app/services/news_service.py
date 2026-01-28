@@ -2,7 +2,7 @@ import logging
 
 from app.core.events import NewsCreated
 from app.models import models
-from app.repositories.news import NewsRepository
+from app.repositories.news_repository import NewsRepository
 from app.schemas import schemas
 from app.services.vector_service import VectorService
 

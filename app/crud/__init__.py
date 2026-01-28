@@ -31,7 +31,7 @@ from app.services import attendance_tokens, stats_cache
 
 async def get_user_auth(db: AsyncSession, login: str):
     """Find user by email or username (Proxy to UserRepository)."""
-    from app.repositories.user import UserRepository
+    from app.repositories.user_repository import UserRepository
 
     repo = UserRepository(db)
     return await repo.get_by_login(login)
@@ -250,7 +250,7 @@ async def get_news_list(
 ):
     """Get paginated news list (Proxy to NewsRepository)."""
     from app.core.container import get_vector_service
-    from app.repositories.news import NewsRepository
+    from app.repositories.news_repository import NewsRepository
 
     repo = NewsRepository(db)
     vector_service = get_vector_service(db)
@@ -513,7 +513,7 @@ async def get_all_events(
 ):
     """Get all events (Proxy to EventRepository)."""
     from app.core.container import get_vector_service
-    from app.repositories.event import EventRepository
+    from app.repositories.event_repository import EventRepository
 
     repo = EventRepository(db)
     vector_service = get_vector_service(db)
