@@ -84,7 +84,7 @@ def decode_datetime_cursor(cursor: str | None) -> tuple[datetime, str] | None:
         timestamp_str, secondary_id = cursor.split(":", 1)
         timestamp_seconds = int(timestamp_str) / 1000.0
         return datetime.fromtimestamp(timestamp_seconds, tz=UTC), secondary_id
-    except (ValueError, TypeError, OverflowError):
+    except (ValueError, TypeError, OverflowError, OSError):
         return None
 
 

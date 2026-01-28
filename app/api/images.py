@@ -25,7 +25,7 @@ async def proxy_image(
         # "Image proxy is disabled" - usually 404 is good to hide existence
         # Defaulting to en for system errors where no user locale is typically resolved
         # in this public endpoint
-        raise_not_found("Endpoint", "Image Proxy", "en")
+        raise_not_found("endpoint", "en", resource_id="Image Proxy")
 
     # Validate and snap width to allowed buckets to prevent cache fragmentation
     target_width = None
@@ -69,7 +69,7 @@ async def proxy_image(
         )
     except ValueError:
         # Often file not found in storage
-        raise_not_found("Image", path, "en")
+        raise_not_found("image", "en", resource_id=path)
     except Exception:
         from logging import getLogger
 

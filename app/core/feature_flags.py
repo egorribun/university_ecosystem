@@ -177,7 +177,7 @@ class FeatureFlagService:
                     await self._reload_flag(name)
         except asyncio.CancelledError:
             await ps.unsubscribe(FEATURE_FLAGS_CHANNEL)
-            await ps.close()
+            await ps.aclose()
         except Exception as e:
             logger.error("Error in feature flag Pub/Sub listener: %s", e)
 

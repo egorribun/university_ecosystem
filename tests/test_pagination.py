@@ -10,7 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import crud
 from app.models import models
-from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
+from app.utils.pagination import (
+    CursorParams,
+    decode_cursor,
+    decode_datetime_cursor,
+    encode_datetime_cursor,
+    paginate_cursor,
+)
 
 
 @settings(max_examples=30)
@@ -337,3 +343,105 @@ class TestPaginatedNewsSchema:
         assert len(schema.items) == 1
         assert schema.has_more is True
         assert schema.next_cursor == "1234567890:1"
+
+
+class TestGenericPagination:
+    """Tests for generic paginate_cursor function."""
+
+    @pytest.mark.asyncio
+    async def test_paginate_cursor_basic(self, db_session: AsyncSession, news_factory):
+        """Test basic pagination."""
+        await news_factory(count=5)
+        from sqlalchemy import select
+
+        stmt = select(models.News)
+        params = CursorParams(limit=2)
+
+        result = await paginate_cursor(db_session, stmt, models.News.id, params)
+
+        assert len(result.items) == 2
+        assert result.has_more is True
+        assert result.next_cursor is not None
+        assert result.total_count is None
+
+    @pytest.mark.asyncio
+    async def test_paginate_cursor_with_total(
+        self, db_session: AsyncSession, news_factory
+    ):
+        """Test pagination with total count."""
+        await news_factory(count=5)
+        from sqlalchemy import select
+
+        stmt = select(models.News)
+        params = CursorParams(limit=2)
+
+        result = await paginate_cursor(
+            db_session, stmt, models.News.id, params, include_total=True
+        )
+
+        assert len(result.items) == 2
+        assert result.has_more is True
+        assert result.total_count == 5
+
+    @pytest.mark.asyncio
+    async def test_paginate_cursor_ascending(
+        self, db_session: AsyncSession, news_factory
+    ):
+        """Test pagination in ascending order."""
+        await news_factory(count=5)
+        # News factory creates items with decreasing created_at (hours=count-i)
+        # Items are: [News 0 (oldest), ..., News 4 (newest)]
+        from sqlalchemy import select
+
+        stmt = select(models.News)
+        params = CursorParams(limit=2)
+
+        result = await paginate_cursor(
+            db_session, stmt, models.News.id, params, descending=False
+        )
+
+        assert len(result.items) == 2
+        # Ascending by ID: should be News 0, News 1
+        assert result.items[0].title == "News 0"
+        assert result.items[1].title == "News 1"
+
+    @pytest.mark.asyncio
+    async def test_paginate_cursor_with_cursor(
+        self, db_session: AsyncSession, news_factory
+    ):
+        """Test pagination with a cursor."""
+        await news_factory(count=5)
+        from sqlalchemy import select
+
+        stmt = select(models.News)
+
+        # Get first page
+        params1 = CursorParams(limit=2)
+        result1 = await paginate_cursor(db_session, stmt, models.News.id, params1)
+
+        # Get second page
+        params2 = CursorParams(limit=2, cursor=result1.next_cursor)
+        result2 = await paginate_cursor(db_session, stmt, models.News.id, params2)
+
+        assert len(result2.items) == 2
+        assert result1.items[-1].id > result2.items[0].id  # Descending
+
+    @pytest.mark.asyncio
+    async def test_decode_cursor_failures(self):
+        """Test decode_cursor with invalid inputs."""
+        assert decode_cursor("") == ""
+        assert decode_cursor("invalid-base64") == ""
+        assert decode_cursor("!!!!") == ""
+
+    @pytest.mark.asyncio
+    async def test_decode_datetime_cursor_edges(self):
+        """Test decode_datetime_cursor with edge cases."""
+        assert decode_datetime_cursor(None) is None
+        assert decode_datetime_cursor("not-a-timestamp:42") is None
+        assert decode_datetime_cursor("12345678:not-an-id:too-many-parts") == (
+            datetime.fromtimestamp(12345678 / 1000.0, tz=UTC),
+            "not-an-id:too-many-parts",
+        )
+        # Overflow/Invalid - Windows has smaller range for fromtimestamp
+        # We just want to ensure it return None if it fails
+        assert decode_datetime_cursor("999999999999999999999:42") is None

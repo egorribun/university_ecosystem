@@ -41,7 +41,16 @@ else:
 
         otel_logs.set_logger_provider = _set_logger_provider
 
-os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test.db")
+# Worker-specific database isolation for parallel tests
+worker_id = os.environ.get("PYTEST_XDIST_WORKER")
+if worker_id:
+    # Force override worker-specific DB names to avoid race conditions.
+    base_db = f"test_{worker_id}.db"
+    os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///./{base_db}"
+else:
+    # Always use a dedicated test database, overriding any .env settings
+    os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///./test.db"
+
 os.environ.setdefault("SECRET_KEY", "test-secret-key-32-characters-long-entropy")
 os.environ.setdefault("ALGORITHM", "HS256")
 os.environ.setdefault("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
@@ -163,14 +172,22 @@ async def prepare_database() -> AsyncIterator[None]:
         return
 
     # SQLite-specific cleanup and setup
-    if os.path.exists("test.db"):
+    db_path = database_url.replace("sqlite+aiosqlite:///./", "")
+    if os.path.exists(db_path):
         try:
-            os.remove("test.db")
+            os.remove(db_path)
         except OSError:
             pass
-    if os.path.exists("test.db-journal"):
+    journal_path = f"{db_path}-journal"
+    if os.path.exists(journal_path):
         try:
-            os.remove("test.db-journal")
+            os.remove(journal_path)
+        except OSError:
+            pass
+    wal_path = f"{db_path}-wal"
+    if os.path.exists(wal_path):
+        try:
+            os.remove(wal_path)
         except OSError:
             pass
 

@@ -1,0 +1,72 @@
+# PR Coverage Comment Workflow
+# Posts coverage diff as a comment on pull requests
+name: PR Coverage Comment
+
+on:
+    pull_request:
+        paths:
+            - "app/**"
+            - "tests/**"
+            - "requirements*.txt"
+            - "pyproject.toml"
+
+permissions:
+    contents: write
+    pull-requests: write
+
+concurrency:
+    group: coverage-comment-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    coverage:
+        name: Coverage Report
+        runs-on: ubuntu-latest
+        env:
+            SECRET_KEY: "dummy_secret_key_for_ci_tests_at_least_32_chars"
+            ENVIRONMENT: testing
+            OTEL_SDK_DISABLED: "true"
+        services:
+            redis:
+                image: redis:7-alpine
+                ports:
+                    - 6379:6379
+                options: >-
+                    --health-cmd "redis-cli ping"
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 5
+        steps:
+            - uses: actions/checkout@v5
+
+            - name: Setup Python
+              uses: actions/setup-python@v6
+              with:
+                  python-version: "3.13"
+                  cache: pip
+                  cache-dependency-path: |
+                      requirements.txt
+                      requirements-dev.txt
+
+            - name: Install dependencies
+              run: |
+                  python -m pip install --upgrade pip
+                  pip install -r requirements.txt -r requirements-dev.txt
+
+            - name: Run tests with coverage
+              run: |
+                  pytest tests/ \
+                    --cov=app \
+                    --cov-report=xml \
+                    --cov-report=term-missing \
+                    -q --tb=short
+
+            - name: Coverage comment
+              id: coverage_comment
+              uses: py-cov-action/python-coverage-comment-action@7188638f871f721a365d644f505d1ff3df20d683 # v3
+              with:
+                  GITHUB_TOKEN: ${{ github.token }}
+                  MINIMUM_GREEN: 80
+                  MINIMUM_ORANGE: 60
+                  ANNOTATE_MISSING_LINES: true
+                  ANNOTATION_TYPE: warning

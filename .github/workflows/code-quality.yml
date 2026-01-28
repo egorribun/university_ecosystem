@@ -1,0 +1,154 @@
+# SonarCloud Code Quality Analysis
+# Provides comprehensive static analysis with quality gates
+name: Code Quality (SonarCloud)
+
+on:
+    push:
+        branches:
+            - main
+            - master
+    pull_request:
+        branches:
+            - main
+            - master
+
+permissions: {}
+
+jobs:
+    sonarcloud:
+        name: SonarCloud Analysis
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            pull-requests: write
+        env:
+            SECRET_KEY: "dummy_secret_key_for_ci_tests_at_least_32_chars"
+            ENVIRONMENT: testing
+            OTEL_SDK_DISABLED: "true"
+            SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        services:
+            redis:
+                image: redis:7-alpine
+                ports:
+                    - 6379:6379
+                options: >-
+                    --health-cmd "redis-cli ping"
+                    --health-interval 10s
+                    --health-timeout 5s
+                    --health-retries 5
+        steps:
+            - uses: actions/checkout@v5
+              with:
+                  fetch-depth: 0 # Full history for accurate blame information
+
+            - name: Setup Python
+              uses: actions/setup-python@v6
+              with:
+                  python-version: "3.13"
+                  cache: pip
+                  cache-dependency-path: |
+                      requirements.txt
+                      requirements-dev.txt
+
+            - name: Install dependencies
+              run: |
+                  python -m pip install --upgrade pip
+                  pip install -r requirements.txt -r requirements-dev.txt
+
+            - name: Run tests with coverage
+              run: |
+                  pytest tests/ \
+                    --cov=app \
+                    --cov-report=xml:coverage.xml \
+                    --cov-report=term-missing \
+                    -q --tb=short \
+                    --ignore=tests/performance
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v5
+              with:
+                  node-version: "22"
+                  cache: npm
+                  cache-dependency-path: frontend/package-lock.json
+
+            - name: Install frontend dependencies
+              working-directory: frontend
+              run: npm ci
+
+            - name: Run frontend tests with coverage
+              working-directory: frontend
+              run: npm run test:ci -- --coverage
+              continue-on-error: true
+
+            - name: Verify SonarCloud Token
+              if: env.SONAR_TOKEN == ''
+              run: |
+                  echo "::warning title=Missing SONAR_TOKEN::The SONAR_TOKEN secret is not set. SonarCloud analysis will be skipped or may fail."
+
+            - name: SonarCloud Scan
+              uses: SonarSource/sonarqube-scan-action@a31c9398be7ace6bbfaf30c0bd5d415f843d45e9 # v7.0.0
+              env:
+                  SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+                  SONAR_HOST_URL: https://sonarcloud.io
+              with:
+                  args: >
+                      -Dsonar.projectKey=egorribun_university_ecosystem
+                      -Dsonar.organization=egorribun
+                      -Dsonar.python.coverage.reportPaths=coverage.xml
+                      -Dsonar.javascript.lcov.reportPaths=frontend/coverage/lcov.info
+                      -Dsonar.sources=app,frontend/src
+                      -Dsonar.tests=tests,frontend/src
+                      -Dsonar.test.inclusions=**/test_*.py,**/*.test.ts,**/*.test.tsx
+                      -Dsonar.python.version=3.13
+                      -Dsonar.exclusions=**/node_modules/**,**/__pycache__/**,**/migrations/**
+
+            - name: SonarCloud Quality Gate
+              uses: SonarSource/sonarqube-quality-gate-action@cf038b0e0cdecfa9e56c198bbb7d21d751d62c3b # v1.2.0
+              timeout-minutes: 5
+              env:
+                  SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+    # Alternative: CodeClimate for those without SonarCloud
+    codeclimate:
+        name: CodeClimate Analysis
+        runs-on: ubuntu-latest
+        if: ${{ vars.USE_CODECLIMATE == 'true' }}
+        env:
+            SECRET_KEY: "dummy_secret_key_for_ci_tests_at_least_32_chars"
+            ENVIRONMENT: testing
+            OTEL_SDK_DISABLED: "true"
+        services:
+            redis:
+                image: redis:7-alpine
+                ports:
+                    - 6379:6379
+        steps:
+            - uses: actions/checkout@v5
+
+            - name: Setup Python
+              uses: actions/setup-python@v6
+              with:
+                  python-version: "3.13"
+                  cache: pip
+
+            - name: Install dependencies
+              run: |
+                  python -m pip install --upgrade pip
+                  pip install -r requirements.txt -r requirements-dev.txt
+
+            - name: Run tests with coverage
+              run: |
+                  pytest tests/ \
+                    --cov=app \
+                    --cov-report=xml:coverage.xml \
+                    -q --tb=short \
+                    --ignore=tests/performance
+
+            - name: CodeClimate Test Reporter
+              uses: paambaati/codeclimate-action@d84270de48512595914a2f42a6c117b9b008d3e2 # v9.0.0 # trufflehog:ignore
+              env:
+                  CC_TEST_REPORTER_ID: ${{ secrets.CC_TEST_REPORTER_ID }}
+              with:
+                  coverageLocations: |
+                      ${{ github.workspace }}/coverage.xml:coverage.py
+                  debug: true

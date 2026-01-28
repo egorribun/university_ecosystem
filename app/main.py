@@ -35,6 +35,7 @@ from app.core.middleware import (
 )
 from app.core.observability import configure_observability
 from app.core.versioning import API_VERSION
+from app.graphql.schema import graphql_router
 from app.routers.notifications import legacy_router as legacy_push_router
 from app.services.file_scanner import (
     scan_for_malware as _scan_for_malware,
@@ -88,3 +89,4 @@ app.include_router(admin_api_router, include_in_schema=True)
 app.include_router(internal_api_router, include_in_schema=False)
 app.include_router(legacy_push_router)
 app.include_router(websocket_router)
+app.include_router(graphql_router, prefix="/graphql", include_in_schema=False)

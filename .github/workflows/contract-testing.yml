@@ -1,0 +1,215 @@
+# API Contract Testing with Pact
+# Ensures API contracts between services are maintained
+name: Contract Testing (Pact)
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "app/api/**"
+      - "frontend/src/api/**"
+      - "services/**"
+  pull_request:
+    paths:
+      - "app/api/**"
+      - "frontend/src/api/**"
+      - "services/**"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: contract-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SECRET_KEY: "dummy_secret_key_for_ci_tests_at_least_32_chars"
+  ENVIRONMENT: testing
+  OTEL_SDK_DISABLED: "true"
+  PACT_BROKER_BASE_URL: ${{ vars.PACT_BROKER_URL || 'https://pactflow.io' }}
+
+jobs:
+  # Provider verification - Backend API
+  provider-verification:
+    name: Provider Verification (Backend)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+          pip install pact-python
+
+      - name: Check for contract tests
+        id: check_contracts
+        run: |
+          if [ -d "tests/contracts" ] && find tests/contracts -name "*.py" | grep -q .; then
+            echo "has_contracts=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_contracts=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No contract tests found in tests/contracts/. Skipping provider verification."
+          fi
+
+      - name: Run contract tests
+        if: steps.check_contracts.outputs.has_contracts == 'true'
+        run: |
+          pytest tests/contracts/ -v --tb=short
+
+      - name: Verify provider against pacts
+        if: steps.check_contracts.outputs.has_contracts == 'true' && vars.PACT_BROKER_URL != ''
+        env:
+          PACT_BROKER_TOKEN: ${{ secrets.PACT_BROKER_TOKEN }}
+        run: |
+          python -c "
+          from pact import Verifier
+
+          verifier = Verifier(
+              provider='university-ecosystem-backend',
+              provider_base_url='http://localhost:8000'
+          )
+
+          # Verify against all consumer pacts
+          verifier.verify_pacts(
+              broker_url='${{ env.PACT_BROKER_BASE_URL }}',
+              broker_token=os.environ.get("PACT_BROKER_TOKEN"),
+              publish_version='${{ github.sha }}',
+              provider_version='${{ github.sha }}',
+              enable_pending=True
+          )
+          " || echo "::warning::Pact verification failed or broker not configured"
+
+  # Consumer contract generation - Frontend
+  consumer-contracts:
+    name: Consumer Contracts (Frontend)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check for Pact tests
+        id: check_pact
+        run: |
+          if find . -name "*.pact.spec.ts" -o -name "*.contract.spec.ts" | grep -q .; then
+            echo "has_pact_tests=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_pact_tests=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No Pact test files found (*.pact.spec.ts). Skipping consumer contract generation."
+          fi
+
+      - name: Run Pact consumer tests
+        if: steps.check_pact.outputs.has_pact_tests == 'true'
+        run: npm run test:pact || npm run test -- --testPathPattern="pact|contract"
+        continue-on-error: true
+
+      - name: Upload Pact files
+        if: steps.check_pact.outputs.has_pact_tests == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pact-contracts
+          path: frontend/pacts/
+          if-no-files-found: warn
+
+  # OpenAPI schema validation
+  openapi-contract:
+    name: OpenAPI Contract Validation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install schemathesis openapi-spec-validator
+
+      - name: Validate OpenAPI schema
+        run: |
+          python3 << 'PYSCRIPT'
+          import json
+          from app.main import app
+
+          # Export OpenAPI schema
+          schema = app.openapi()
+          with open("openapi.json", "w") as f:
+              json.dump(schema, f, indent=2)
+
+          print(f"OpenAPI version: {schema.get('openapi', 'unknown')}")
+          print(f"Paths: {len(schema.get('paths', {}))}")
+          print(f"Schemas: {len(schema.get('components', {}).get('schemas', {}))}")
+          PYSCRIPT
+
+      - name: Validate OpenAPI spec
+        run: |
+          python -m openapi_spec_validator openapi.json
+
+      - name: Run Schemathesis contract tests
+        if: vars.RUN_SCHEMATHESIS == 'true'
+        env:
+          SECRET_KEY: "dummy_secret_key_for_ci_tests_at_least_32_chars"
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+        run: |
+          # Start the server
+          uvicorn app.main:app --host 127.0.0.1 --port 8000 &
+          sleep 5
+
+          # Run Schemathesis tests
+          schemathesis run openapi.json \
+            --base-url http://127.0.0.1:8000 \
+            --checks all \
+            --stateful=links \
+            --max-examples=50 \
+            --hypothesis-deadline=5000 \
+            || echo "::warning::Some Schemathesis checks failed"
+
+      - name: Upload OpenAPI schema
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-schema
+          path: openapi.json

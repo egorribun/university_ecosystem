@@ -186,7 +186,7 @@ async def retry_dlq_job(
     job = result.scalar_one_or_none()
 
     if not job:
-        raise_not_found("Job", job_id, "en")
+        raise_not_found("Job", "en", resource_id=job_id)
 
     # Reset for retry
     job.status = JobStatus.PENDING.value

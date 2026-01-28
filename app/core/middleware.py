@@ -70,7 +70,7 @@ def configure_middleware(app: FastAPI, settings: AppSettings) -> None:
     app.add_middleware(
         SanitizationMiddleware,
         enabled=True,
-        skip_paths=("/api/internal/",),
+        skip_paths=("/api/internal/", "/graphql"),
     )
 
     app.add_middleware(

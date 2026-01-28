@@ -62,3 +62,30 @@ known-first-party = ["app"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 filterwarnings = ["ignore::DeprecationWarning"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks as integration test requiring external services",
+    "flaky: marks as potentially flaky test",
+    "security: marks as security-related test",
+]
+addopts = [
+    "--strict-markers",
+    "-ra",              # Show extra test summary for all except passed
+]
+
+[tool.coverage.run]
+relative_files = true
+source = ["app"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if __name__ == .__main__.:",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]

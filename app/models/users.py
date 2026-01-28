@@ -64,6 +64,7 @@ class User(Base, EventEmitterMixin):
     mfa_default_method = Column(String(64))
     mfa_last_verified_at = Column(DateTime(timezone=True), nullable=True, index=True)
     webauthn_id = Column(String(128), unique=True, index=True, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     avatar_url = Column(String)
     cover_url = Column(String)

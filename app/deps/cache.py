@@ -79,7 +79,7 @@ class CacheEntry:
 
         # XFetch formula: refresh if now - (ttl * beta * log(random)) > expiry
         # Simplified: remaining < -beta * ttl * log(random)
-        random_factor = random.random()
+        random_factor = random.random()  # nosec B311
         if random_factor == 0:
             random_factor = 1e-10
 

@@ -1,0 +1,253 @@
+# Dead Code Detection
+# Finds unused code using Vulture and other static analysis tools
+name: Dead Code Detection
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  schedule:
+    # Weekly on Tuesday at 03:00 UTC
+    - cron: "0 3 * * 2"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: dead-code-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  vulture:
+    name: Vulture Dead Code Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install Vulture
+        run: |
+          python -m pip install --upgrade pip
+          pip install vulture
+
+      - name: Create Vulture whitelist
+        run: |
+          cat > vulture_whitelist.py << 'EOF'
+          # Vulture whitelist - ignore these patterns
+
+          # FastAPI/Pydantic magic methods and attributes
+          _.Config
+          _.model_config
+          _.model_fields
+          _.model_validate
+          _.model_dump
+          _.root_validator
+          _.field_validator
+          _.computed_field
+
+          # Test fixtures (pytest)
+          _.fixture
+          _.async_client
+          _.db_session
+          _.prepare_database
+          _.clean_database
+
+          # Alembic
+          _.upgrade
+          _.downgrade
+          _.revision
+          _.down_revision
+
+          # SQLAlchemy
+          _.metadata
+          _.__tablename__
+          _.__table_args__
+          _.registry
+
+          # OpenTelemetry
+          _.instrument
+
+          # Celery/Taskiq
+          _.task
+          _.kicker
+
+          # CLI entry points
+          _.main
+          _.cli
+          _.app
+
+          # Abstract methods implemented by subclasses
+          _.execute
+          _.process
+          _.handle
+          EOF
+
+      - name: Run Vulture analysis
+        id: vulture
+        continue-on-error: true
+        run: |
+          # Run vulture with min confidence
+          vulture app/ \
+            --min-confidence 80 \
+            --exclude "**/migrations/*,**/__pycache__/*,**/gen/*" \
+            vulture_whitelist.py \
+            2>&1 | tee vulture-output.txt
+
+          # Count issues
+          ISSUE_COUNT=$(grep -c "unused" vulture-output.txt || echo "0")
+          echo "issue_count=$ISSUE_COUNT" >> "$GITHUB_OUTPUT"
+
+          if [ "$ISSUE_COUNT" -gt 0 ]; then
+            echo "::warning::Found $ISSUE_COUNT potential dead code issues"
+          fi
+
+      - name: Generate dead code report
+        run: |
+          python3 << 'PYSCRIPT'
+          import re
+          from pathlib import Path
+
+          output_file = Path("vulture-output.txt")
+          if not output_file.exists():
+              print("No Vulture output found")
+              exit(0)
+
+          content = output_file.read_text()
+          issues = []
+
+          for line in content.splitlines():
+              # Parse vulture output: file.py:123: unused function 'foo' (90% confidence)
+              match = re.match(r"(.+?):(\d+): (.+?) \((\d+)% confidence\)", line)
+              if match:
+                  issues.append({
+                      "file": match.group(1),
+                      "line": int(match.group(2)),
+                      "message": match.group(3),
+                      "confidence": int(match.group(4))
+                  })
+
+          # Group by file
+          by_file = {}
+          for issue in issues:
+              f = issue["file"]
+              if f not in by_file:
+                  by_file[f] = []
+              by_file[f].append(issue)
+
+          # Generate markdown report
+          report = ["# Dead Code Detection Report\n"]
+          report.append(f"**Total issues:** {len(issues)}\n")
+          report.append(f"**Files affected:** {len(by_file)}\n\n")
+
+          if issues:
+              report.append("## Issues by File\n")
+              for file, file_issues in sorted(by_file.items()):
+                  report.append(f"### `{file}`\n")
+                  for issue in sorted(file_issues, key=lambda x: x["line"]):
+                      report.append(f"- Line {issue['line']}: {issue['message']} ({issue['confidence']}% confidence)")
+                  report.append("")
+
+          Path("dead-code-report.md").write_text("\n".join(report))
+          print("\n".join(report))
+          PYSCRIPT
+
+      - name: Upload dead code report
+        uses: actions/upload-artifact@v4
+        with:
+          name: dead-code-report
+          path: |
+            vulture-output.txt
+            dead-code-report.md
+
+      - name: Create issue for dead code (scheduled runs only)
+        if: github.event_name == 'schedule' && steps.vulture.outputs.issue_count > 10
+        uses: peter-evans/create-issue-from-file@e8ef132d6df98ed982188e460ebb3b5d4ef3a9cd # v5
+        with:
+          title: "🧹 Dead code detected - cleanup recommended"
+          content-filepath: dead-code-report.md
+          labels: |
+            maintenance
+            dead-code
+            automated
+
+      - name: Job summary
+        run: |
+          {
+            echo "## Dead Code Analysis"
+            echo ""
+            echo "**Tool:** Vulture"
+            echo "**Issues Found:** ${{ steps.vulture.outputs.issue_count || '0' }}"
+            echo ""
+            if [ -f dead-code-report.md ]; then
+              cat dead-code-report.md
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # TypeScript dead code detection
+  ts-prune:
+    name: TypeScript Dead Exports
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install ts-prune
+        run: npm install -D ts-prune
+
+      - name: Run ts-prune
+        id: ts_prune
+        continue-on-error: true
+        run: |
+          npx ts-prune \
+            --ignore "index.ts" \
+            --ignore "*.test.ts" \
+            --ignore "*.test.tsx" \
+            --ignore "*.spec.ts" \
+            --ignore "vite-env.d.ts" \
+            2>&1 | tee ts-prune-output.txt
+
+          ISSUE_COUNT=$(wc -l < ts-prune-output.txt)
+          echo "issue_count=$ISSUE_COUNT" >> "$GITHUB_OUTPUT"
+
+      - name: Upload ts-prune report
+        uses: actions/upload-artifact@v4
+        with:
+          name: ts-dead-exports-report
+          path: frontend/ts-prune-output.txt
+
+      - name: Job summary
+        run: |
+          {
+            echo "## TypeScript Dead Exports"
+            echo ""
+            echo "**Issues Found:** ${{ steps.ts_prune.outputs.issue_count || '0' }}"
+            echo ""
+            echo "### Details"
+            echo "\`\`\`"
+            head -50 ts-prune-output.txt || echo "No unused exports found"
+            echo "\`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"

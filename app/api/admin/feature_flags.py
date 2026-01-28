@@ -28,20 +28,16 @@ async def update_feature_flag(
 
     update_data = data.model_dump(exclude_unset=True)
     if not update_data:
-        raise_validation_error(locale, "errors.invalid_input")
+        raise_validation_error("errors.invalid_input", locale)
 
     success = await feature_flags.update(name, **update_data)
     if not success:
-        # Note: Feature flags might not have translation keys for "not found"
-        # specifically for flags, so we might need a generic one.
-        # Current raise_not_found takes (resource, key, locale).
-        # We'll use a generic fallback if specific key isn't available.
-        raise_not_found("Feature flag", name, locale)
+        raise_not_found("feature_flag", locale, resource_id=name)
 
     # Return updated flag
     all_flags = feature_flags.list_flags()
     updated_flag = next((f for f in all_flags if f.name == name), None)
     if not updated_flag:
-        raise_not_found("Feature flag", name, locale)
+        raise_not_found("feature_flag", locale, resource_id=name)
 
     return updated_flag.to_dict()

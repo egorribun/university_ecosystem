@@ -60,7 +60,7 @@ class NotificationSettings(BaseAppSettings):
     notifications_scheduler_window_minutes: int = 6
     notifications_scheduler_max_backoff_seconds: int = 300
     notifications_scheduler_inline_enabled: bool = True
-    notifications_worker_metrics_host: str = "0.0.0.0"
+    notifications_worker_metrics_host: str = "0.0.0.0"  # nosec B104
     notifications_worker_metrics_port: int = 9101
     notifications_webpush_concurrency_limit: int = 10
     notifications_retention_days: int = 90

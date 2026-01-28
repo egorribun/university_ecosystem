@@ -1,0 +1,111 @@
+# Improved Caching Workflow
+# Provides enhanced caching for dependencies across workflows
+name: Cache Dependencies
+
+on:
+    workflow_call:
+        inputs:
+            python-version:
+                description: "Python version"
+                required: false
+                type: string
+                default: "3.13"
+            node-version:
+                description: "Node.js version"
+                required: false
+                type: string
+                default: "22"
+            go-version:
+                description: "Go version"
+                required: false
+                type: string
+                default: "1.25.x"
+        outputs:
+            python-cache-hit:
+                description: "Whether Python cache was hit"
+                value: ${{ jobs.cache.outputs.python-cache-hit }}
+            node-cache-hit:
+                description: "Whether Node.js cache was hit"
+                value: ${{ jobs.cache.outputs.node-cache-hit }}
+
+jobs:
+    cache:
+        name: Warm Dependency Caches
+        runs-on: ubuntu-latest
+        outputs:
+            python-cache-hit: ${{ steps.python-cache.outputs.cache-hit }}
+            node-cache-hit: ${{ steps.node-cache.outputs.cache-hit }}
+        steps:
+            - uses: actions/checkout@v5
+
+            # Python dependencies cache
+            - name: Setup Python
+              uses: actions/setup-python@v6
+              with:
+                  python-version: ${{ inputs.python-version }}
+
+            - name: Get pip cache dir
+              id: pip-cache-dir
+              run: echo "dir=$(pip cache dir)" >> "$GITHUB_OUTPUT"
+
+            - name: Cache Python dependencies
+              id: python-cache
+              uses: actions/cache@v4
+              with:
+                  path: |
+                      ${{ steps.pip-cache-dir.outputs.dir }}
+                      .venv
+                  key: python-${{ inputs.python-version }}-${{ hashFiles('requirements*.txt', 'requirements*.in') }}
+                  restore-keys: |
+                      python-${{ inputs.python-version }}-
+
+            - name: Install Python dependencies
+              if: steps.python-cache.outputs.cache-hit != 'true'
+              run: |
+                  python -m pip install --upgrade pip
+                  pip install -r requirements.txt -r requirements-dev.txt
+
+            # Node.js dependencies cache
+            - name: Setup Node.js
+              uses: actions/setup-node@v5
+              with:
+                  node-version: ${{ inputs.node-version }}
+
+            - name: Cache Node.js dependencies
+              id: node-cache
+              uses: actions/cache@v4
+              with:
+                  path: |
+                      frontend/node_modules
+                      ~/.npm
+                  key: node-${{ inputs.node-version }}-${{ hashFiles('frontend/package-lock.json') }}
+                  restore-keys: |
+                      node-${{ inputs.node-version }}-
+
+            - name: Install Node.js dependencies
+              if: steps.node-cache.outputs.cache-hit != 'true'
+              working-directory: frontend
+              run: npm ci
+
+            # Go dependencies cache (for services)
+            - name: Setup Go
+              uses: actions/setup-go@v5
+              with:
+                  go-version: ${{ inputs.go-version }}
+                  cache: true
+                  cache-dependency-path: |
+                      services/gateway/go.sum
+                      services/file-processor/go.sum
+                      services/ws-hub/go.sum
+
+            - name: Cache summary
+              run: |
+                  {
+                    echo "## Dependency Cache Status"
+                    echo ""
+                    echo "| Language | Cache Hit |"
+                    echo "|----------|-----------|"
+                    echo "| Python | ${{ steps.python-cache.outputs.cache-hit || 'false' }} |"
+                    echo "| Node.js | ${{ steps.node-cache.outputs.cache-hit || 'false' }} |"
+                    echo "| Go | (managed by setup-go) |"
+                  } >> "$GITHUB_STEP_SUMMARY"
