@@ -52,7 +52,8 @@ async def get_context(
                         )
                         current_user = result.scalar_one_or_none()
         except Exception as exc:
-            # Note: Auth failures are acceptable for public queries, but we should log them for debugging
+            # Note: Auth failures are acceptable for public queries,
+            # but we should log them for debugging
             from app.auth.security import SecurityError
 
             if not isinstance(exc, SecurityError):
