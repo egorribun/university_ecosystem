@@ -108,7 +108,7 @@ jobs:
                   scan-type: "fs"
                   scan-ref: "."
                   format: "sarif"
-                  output: "trivy-results.sarif"
+                  output: "trivy-fs.sarif"
                   severity: "CRITICAL,HIGH"
 
             - name: Upload Trivy scan results
@@ -116,4 +116,4 @@ jobs:
               if: always()
               continue-on-error: true
               with:
-                  sarif_file: "trivy-results.sarif"
+                  sarif_file: "trivy-fs.sarif"
