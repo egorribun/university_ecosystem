@@ -44,6 +44,12 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 )
 
+type contextKey string
+
+const (
+	userIDKey contextKey = "user_id"
+)
+
 func main() {
 	logger, _ := zap.NewProduction()
 	defer func() {
@@ -255,7 +261,7 @@ func authFunc(secret string, logger *zap.Logger) auth.AuthFunc {
 		if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
 			// We could extract user_id and inject into context here
 			if sub, ok := claims["sub"].(string); ok {
-				newCtx := context.WithValue(ctx, "user_id", sub)
+				newCtx := context.WithValue(ctx, userIDKey, sub)
 				return newCtx, nil
 			}
 		}
