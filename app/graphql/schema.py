@@ -58,7 +58,6 @@ async def get_context(
 
             if not isinstance(exc, SecurityError):
                 logger.debug("GraphQL auth fail: %s", exc)
-            pass
 
         context = GraphQLContext(
             session=session,
