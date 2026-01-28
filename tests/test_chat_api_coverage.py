@@ -27,7 +27,7 @@ async def test_chat_api_exhaustive(mock_user, mock_db):
     app.dependency_overrides[get_db] = lambda: mock_db
     try:
         async with AsyncClient(
-            transport=ASGITransport(app=app), base_url="http://test"
+            transport=ASGITransport(app=app), base_url="http://testserver"
         ) as ac:
             mock_res = MagicMock()
             mock_res.scalars.return_value.all.return_value = []
@@ -42,5 +42,17 @@ async def test_chat_api_exhaustive(mock_user, mock_db):
             # send message - using data since it has Form fields
             # send_message(chat_id: str, content: str = Form(""), ...)
             await ac.post("/api/v1/chats/1/messages", data={"content": "hello"})
+
+            # get chat details
+            await ac.get("/api/v1/chats/1")
+
+            # mark read
+            await ac.post("/api/v1/chats/1/read")
+
+            # clear history
+            await ac.post("/api/v1/chats/1/clear")
+
+            # delete chat
+            await ac.delete("/api/v1/chats/1")
     finally:
         app.dependency_overrides.clear()
