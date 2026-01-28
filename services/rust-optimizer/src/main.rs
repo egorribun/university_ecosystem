@@ -6,14 +6,55 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use opentelemetry::KeyValue;
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::{runtime, trace as sdktrace, Resource};
+use std::env;
 use std::net::SocketAddr;
 use tokio::signal;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() {
+    let sentry_dsn = env::var("SENTRY_DSN").unwrap_or_default();
+    let environment = env::var("VITE_ENVIRONMENT").unwrap_or_else(|_| "development".to_string());
+
+    // Initialize Sentry
+    let _guard = if !sentry_dsn.is_empty() {
+        Some(sentry::init((
+            sentry_dsn,
+            sentry::ClientOptions {
+                release: sentry::release_name!(),
+                environment: Some(environment.clone().into()),
+                traces_sample_rate: 1.0,
+                ..Default::default()
+            },
+        )))
+    } else {
+        None
+    };
+
+    // Initialize OpenTelemetry
+    let tracer = opentelemetry_otlp::new_pipeline()
+        .tracing()
+        .with_exporter(
+            opentelemetry_otlp::new_exporter()
+                .tonic()
+                .with_endpoint("http://jaeger:4317"),
+        )
+        .with_trace_config(sdktrace::config().with_resource(Resource::new(vec![
+            KeyValue::new("service.name", "rust-optimizer"),
+            KeyValue::new("environment", environment),
+        ])))
+        .install_batch(runtime::Tokio)
+        .expect("Failed to initialize OpenTelemetry");
+
+    let opentelemetry_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
+        .with(sentry_tracing::layer())
+        .with(opentelemetry_layer)
         .init();
 
     // Initialize Prometheus exporter
@@ -28,12 +69,20 @@ async fn main() {
     let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
     tracing::info!("listening on {}", addr);
 
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    let listener = match tokio::net::TcpListener::bind(addr).await {
+        Ok(l) => l,
+        Err(e) => {
+            tracing::error!("failed to bind to {}: {}", addr, e);
+            return;
+        }
+    };
 
-    axum::serve(listener, app)
+    if let Err(e) = axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await
-        .unwrap();
+    {
+        tracing::error!("server error: {}", e);
+    }
 }
 
 async fn shutdown_signal() {

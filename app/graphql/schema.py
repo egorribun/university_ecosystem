@@ -6,6 +6,8 @@ included in the FastAPI application.
 
 from __future__ import annotations
 
+import logging
+
 import strawberry
 from fastapi import Request
 from strawberry.fastapi import GraphQLRouter
@@ -13,6 +15,8 @@ from strawberry.fastapi import GraphQLRouter
 from app.graphql.context import GraphQLContext
 from app.graphql.dataloaders import DataLoaderRegistry
 from app.graphql.queries import Query
+
+logger = logging.getLogger(__name__)
 
 
 async def get_context(
@@ -47,8 +51,12 @@ async def get_context(
                             select(User).where(User.id == int(user_id))
                         )
                         current_user = result.scalar_one_or_none()
-        except Exception:
-            # Auth failures are acceptable for public queries
+        except Exception as exc:
+            # Note: Auth failures are acceptable for public queries, but we should log them for debugging
+            from app.auth.security import SecurityError
+
+            if not isinstance(exc, SecurityError):
+                logger.debug("GraphQL auth fail: %s", exc)
             pass
 
         context = GraphQLContext(

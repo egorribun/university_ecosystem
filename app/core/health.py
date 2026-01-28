@@ -66,8 +66,8 @@ async def check_database_health(db: AsyncSession) -> DatabaseHealthResult:
             if pool is not None:
                 pool_size = pool.size()
                 pool_checked_out = pool.checkedout()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Failed to fetch pool stats: %s", e)
 
         # Determine status based on latency
         if latency_ms <= LATENCY_HEALTHY_THRESHOLD_MS:

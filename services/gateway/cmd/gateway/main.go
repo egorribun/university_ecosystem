@@ -1,5 +1,3 @@
-// Package main implements the API Gateway for University Ecosystem.
-// It provides rate limiting, JWT validation, and reverse proxy to FastAPI.
 package main
 
 import (
@@ -20,6 +18,15 @@ import (
 	ginprometheus "github.com/zsais/go-gin-prometheus"
 	"go.uber.org/zap"
 
+	"github.com/getsentry/sentry-go"
+	sentrygin "github.com/getsentry/sentry-go/gin"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -42,6 +49,34 @@ func main() {
 		logger.Fatal("Failed to load configuration", zap.Error(err))
 	}
 
+	// Create a context for OpenTelemetry shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Initialize Sentry
+	if cfg.SentryDSN != "" {
+		err := sentry.Init(sentry.ClientOptions{
+			Dsn:              cfg.SentryDSN,
+			Environment:      cfg.Environment,
+			Release:          "gateway@1.0.0",
+			TracesSampleRate: 1.0,
+		})
+		if err != nil {
+			logger.Error("Sentry initialization failed", zap.Error(err))
+		} else {
+			logger.Info("Sentry initialized", zap.String("environment", cfg.Environment))
+		}
+	}
+
+	// Initialize OpenTelemetry
+	tp, err := initTracer(ctx, cfg)
+	if err != nil {
+		logger.Error("OpenTelemetry initialization failed", zap.Error(err))
+	} else {
+		defer func() { _ = tp.Shutdown(ctx) }()
+		logger.Info("OpenTelemetry initialized")
+	}
+
 	// Parse backend URL
 	backendURL, err := url.Parse(cfg.BackendURL)
 	if err != nil {
@@ -56,12 +91,10 @@ func main() {
 	}
 
 	// Connect to File Processor gRPC
-	// In production, use proper credentials and connection pooling/balancing
 	grpcConn, err := grpc.NewClient(cfg.FileProcessorAddr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
-		// Log but don't fail hard, maybe service is starting up
 		logger.Warn("Failed to connect to File Processor gRPC", zap.Error(err))
 	} else {
 		defer func() {
@@ -76,12 +109,18 @@ func main() {
 
 	// Create router
 	router := gin.New()
-
-	// Global middleware
+	router.Use(gin.Recovery())
 	router.Use(ginzap.Ginzap(logger, time.RFC3339, true))
 	router.Use(ginzap.RecoveryWithZap(logger, true))
+
+	// Add Observability Middlewares
+	if cfg.SentryDSN != "" {
+		router.Use(sentrygin.New(sentrygin.Options{Repanic: true}))
+	}
+	router.Use(otelgin.Middleware("gateway"))
+
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
+		AllowOrigins:     cfg.AllowedOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "X-Request-ID"},
 		ExposeHeaders:    []string{"X-Request-ID", "X-RateLimit-Remaining"},
@@ -122,8 +161,6 @@ func main() {
 	}
 
 	// Protected routes (JWT required)
-	// We guaranteed JWTSecret is present in config.Load(), so we don't need the if check anymore
-	// But sticking to the pattern of checking just in case config logic changes later
 	if cfg.JWTSecret != "" {
 		jwtMiddleware := middleware.NewJWTMiddleware(cfg.JWTSecret)
 		protected := router.Group("/")
@@ -156,17 +193,46 @@ func main() {
 		}
 	}()
 
-	// Wait for interrupt signal to gracefully shutdown the server with a timeout
+	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
+
 	logger.Info("Shutting down server...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
-		logger.Fatal("Server forced to shutdown", zap.Error(err))
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		logger.Error("Server forced to shutdown", zap.Error(err))
 	}
 
 	logger.Info("Server exiting")
+}
+
+func initTracer(ctx context.Context, cfg *config.Config) (*sdktrace.TracerProvider, error) {
+	exporter, err := otlptracegrpc.New(ctx,
+		otlptracegrpc.WithInsecure(),
+		otlptracegrpc.WithEndpoint("jaeger:4317"), // Default OTEL endpoint
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := resource.New(ctx,
+		resource.WithAttributes(
+			semconv.ServiceNameKey.String("gateway"),
+			attribute.String("environment", cfg.Environment),
+		),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(exporter),
+		sdktrace.WithResource(res),
+	)
+	otel.SetTracerProvider(tp)
+	return tp, nil
 }

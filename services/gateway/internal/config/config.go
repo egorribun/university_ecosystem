@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // Config holds the gateway configuration
@@ -15,6 +16,9 @@ type Config struct {
 	FileProcessorAddr string
 	RateLimitRPS      int
 	RateLimitBurst    int
+	AllowedOrigins    []string
+	SentryDSN         string
+	Environment       string
 }
 
 // Load loads the configuration from environment variables
@@ -28,6 +32,9 @@ func Load() (*Config, error) {
 		FileProcessorAddr: getEnv("FILE_PROCESSOR_ADDR", "file-processor:50051"),
 		RateLimitRPS:      getEnvInt("RATE_LIMIT_RPS", 100),
 		RateLimitBurst:    getEnvInt("RATE_LIMIT_BURST", 200),
+		AllowedOrigins:    getEnvSlice("ALLOWED_ORIGINS", []string{"http://localhost:3000", "http://localhost:5173"}),
+		SentryDSN:         getEnv("SENTRY_DSN", ""),
+		Environment:       getEnv("VITE_ENVIRONMENT", "development"),
 	}
 
 	if cfg.JWTSecret == "" {
@@ -60,4 +67,23 @@ func getEnvInt(key string, defaultValue int) int {
 		return defaultValue
 	}
 	return val
+}
+
+func getEnvSlice(key string, defaultValue []string) []string {
+	valStr := os.Getenv(key)
+	if valStr == "" {
+		return defaultValue
+	}
+	// Split by comma
+	parts := strings.Split(valStr, ",")
+	var result []string
+	for _, p := range parts {
+		if trimmed := strings.TrimSpace(p); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	if len(result) == 0 {
+		return defaultValue
+	}
+	return result
 }

@@ -17,6 +17,9 @@ type Config struct {
 	MinioSecretKey string `mapstructure:"minio_secret_key"`
 	MinioSecure    bool   `mapstructure:"minio_secure"`
 	GraphQLPort    string `mapstructure:"graphql_port"`
+	JWTSecret      string `mapstructure:"jwt_secret"`
+	SentryDSN      string `mapstructure:"sentry_dsn"`
+	Environment    string `mapstructure:"environment"`
 }
 
 // Load loads the configuration from environment variables using Viper
@@ -43,6 +46,9 @@ func Load() (*Config, error) {
 	_ = viper.BindEnv("minio_access_key", "MINIO_ACCESS_KEY")
 	_ = viper.BindEnv("minio_secret_key", "MINIO_SECRET_KEY")
 	_ = viper.BindEnv("minio_secure", "MINIO_SECURE")
+	_ = viper.BindEnv("jwt_secret", "JWT_SECRET")
+	_ = viper.BindEnv("sentry_dsn", "SENTRY_DSN")
+	_ = viper.BindEnv("environment", "VITE_ENVIRONMENT")
 
 	var cfg Config
 	if err := viper.Unmarshal(&cfg); err != nil {

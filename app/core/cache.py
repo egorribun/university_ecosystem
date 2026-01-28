@@ -167,7 +167,7 @@ class MultiLayerCache:
         self.l2_ttl = l2_ttl
         self._redis = redis_client
 
-    def get(self, key: str) -> Any | None:
+    async def get(self, key: str) -> Any | None:
         """
         Get value from cache (L1 -> L2).
         """
@@ -179,7 +179,7 @@ class MultiLayerCache:
         # Try L2 if available
         if self._redis is not None:
             try:
-                value = self._redis.get(key)
+                value = await self._redis.get(key)
                 if value is not None:
                     # Populate L1 from L2
                     self.l1.set(key, value)
@@ -189,7 +189,7 @@ class MultiLayerCache:
 
         return None
 
-    def set(self, key: str, value: Any, l1_ttl: float | None = None) -> None:
+    async def set(self, key: str, value: Any, l1_ttl: float | None = None) -> None:
         """
         Set value in both L1 and L2.
         """
@@ -199,22 +199,45 @@ class MultiLayerCache:
         # Set in L2 if available
         if self._redis is not None:
             try:
-                self._redis.setex(key, int(self.l2_ttl), value)
+                await self._redis.setex(key, int(self.l2_ttl), value)
             except Exception as e:
                 logger.warning("L2 cache set failed: %s", e)
 
-    def delete(self, key: str) -> None:
+    async def delete(self, key: str) -> None:
         """Delete from both layers."""
         self.l1.delete(key)
         if self._redis is not None:
             try:
-                self._redis.delete(key)
+                await self._redis.delete(key)
             except Exception as e:
                 logger.warning("L2 cache delete failed: %s", e)
 
-    def invalidate_prefix(self, prefix: str) -> int:
-        """Invalidate by prefix in L1."""
-        return self.l1.invalidate_prefix(prefix)
+    async def invalidate_prefix(self, prefix: str) -> int:
+        """
+        Invalidate by prefix in both L1 and L2 layers.
+
+        Returns total number of keys invalidated (L1 + L2).
+        """
+        count = self.l1.invalidate_prefix(prefix)
+
+        if self._redis is not None:
+            try:
+                # Use SCAN instead of KEYS for production safety
+                cursor = 0
+                match_pattern = f"{prefix}*"
+                while True:
+                    cursor, keys = await self._redis.scan(
+                        cursor=cursor, match=match_pattern, count=100
+                    )
+                    if keys:
+                        await self._redis.delete(*keys)
+                        count += len(keys)
+                    if cursor == 0:
+                        break
+            except Exception as e:
+                logger.warning("L2 cache prefix invalidation failed: %s", e)
+
+        return count
 
     def stats(self) -> dict[str, Any]:
         """Return cache statistics."""
