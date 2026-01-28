@@ -194,9 +194,9 @@ async def test_webauthn_authentication_flow(
             "label": "Key",
         },
     )
-    assert confirm_resp.status_code == status.HTTP_200_OK, (
-        f"Registration failed: {confirm_resp.json()}"
-    )
+    assert (
+        confirm_resp.status_code == status.HTTP_200_OK
+    ), f"Registration failed: {confirm_resp.json()}"
 
     # Fetch the actual credential_id from the database
     stmt = select(models.WebAuthnCredential).where(
