@@ -241,3 +241,6 @@ $tempProfile
 
 # Bandit security reports
 bandit_report*.json
+
+# Executables
+*.exe

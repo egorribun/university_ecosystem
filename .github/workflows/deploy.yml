@@ -4,15 +4,15 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: 'Target environment'
+        description: "Target environment"
         required: true
-        default: 'staging'
+        default: "staging"
         type: choice
         options:
           - staging
           - production
       skip_tests:
-        description: 'Skip pre-deployment tests'
+        description: "Skip pre-deployment tests"
         required: false
         default: false
         type: boolean
@@ -36,7 +36,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
-          python-version: '3.13'
+          python-version: "3.13"
           cache: pip
           cache-dependency-path: |
             requirements.txt
@@ -146,10 +146,15 @@ jobs:
 
           echo "url=https://${{ inputs.environment }}.example.com" >> "$GITHUB_OUTPUT"
 
-      - name: Post-deployment health check
+      - name: Post-deployment smoke test
         run: |
-          echo "Running health checks..."
-          # curl --retry 5 --retry-delay 10 "${{ steps.deploy.outputs.url }}/health"
+          chmod +x scripts/smoke-test.sh
+          ./scripts/smoke-test.sh
+        env:
+          GATEWAY_URL: "https://${{ inputs.environment }}-api.example.com/health"
+          WS_HUB_URL: "https://${{ inputs.environment }}-ws.example.com/health"
+          BACKEND_URL: "https://${{ inputs.environment }}.example.com/healthz"
+          FRONTEND_URL: "https://${{ inputs.environment }}.example.com/"
 
   rollback:
     name: Rollback capability test
@@ -162,7 +167,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
-          python-version: '3.13'
+          python-version: "3.13"
           cache: pip
           cache-dependency-path: requirements.txt
 

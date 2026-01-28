@@ -10,8 +10,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/graph-gophers/graphql-go"
 	"github.com/graph-gophers/graphql-go/relay"
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	"github.com/nats-io/nats.go"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -19,15 +21,33 @@ import (
 	"go.temporal.io/sdk/worker"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/status"
 
 	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
 	"github.com/university-ecosystem/file-processor/internal/config"
 	gql "github.com/university-ecosystem/file-processor/internal/graphql"
 	"github.com/university-ecosystem/file-processor/internal/service"
 	"github.com/university-ecosystem/file-processor/internal/workflow"
+
+	"github.com/getsentry/sentry-go"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+)
+
+type contextKey string
+
+const (
+	userIDKey contextKey = "user_id"
 )
 
 func main() {
@@ -40,6 +60,34 @@ func main() {
 	cfg, err := config.Load()
 	if err != nil {
 		logger.Fatal("Failed to load configuration", zap.Error(err))
+	}
+
+	// Create a context for OpenTelemetry shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Initialize Sentry
+	if cfg.SentryDSN != "" {
+		err := sentry.Init(sentry.ClientOptions{
+			Dsn:              cfg.SentryDSN,
+			Environment:      cfg.Environment,
+			Release:          "file-processor@1.0.0",
+			TracesSampleRate: 1.0,
+		})
+		if err != nil {
+			logger.Error("Sentry initialization failed", zap.Error(err))
+		} else {
+			logger.Info("Sentry initialized", zap.String("environment", cfg.Environment))
+		}
+	}
+
+	// Initialize OpenTelemetry
+	tp, err := initTracer(ctx, cfg)
+	if err != nil {
+		logger.Error("OpenTelemetry initialization failed", zap.Error(err))
+	} else {
+		defer func() { _ = tp.Shutdown(ctx) }()
+		logger.Info("OpenTelemetry initialized")
 	}
 
 	// Connect to Temporal
@@ -109,8 +157,15 @@ func main() {
 	}
 
 	grpcServer := grpc.NewServer(
-		grpc.StreamInterceptor(grpc_prometheus.StreamServerInterceptor),
-		grpc.UnaryInterceptor(grpc_prometheus.UnaryServerInterceptor),
+		grpc.StatsHandler(otelgrpc.NewServerHandler()),
+		grpc.ChainStreamInterceptor(
+			grpc_prometheus.StreamServerInterceptor,
+			auth.StreamServerInterceptor(authFunc(cfg.JWTSecret, logger)),
+		),
+		grpc.ChainUnaryInterceptor(
+			grpc_prometheus.UnaryServerInterceptor,
+			auth.UnaryServerInterceptor(authFunc(cfg.JWTSecret, logger)),
+		),
 	)
 
 	// Register Implementation from internal/service
@@ -153,7 +208,7 @@ func main() {
 
 	httpServer := &http.Server{
 		Addr:    ":" + cfg.GraphQLPort,
-		Handler: httpHandler,
+		Handler: otelhttp.NewHandler(httpHandler, "graphql_metrics"),
 	}
 
 	go func() {
@@ -172,9 +227,9 @@ func main() {
 
 	// Graceful shutdown sequence
 	// 1. HTTP Server
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := httpServer.Shutdown(ctx); err != nil {
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		logger.Error("HTTP Server forced to shutdown", zap.Error(err))
 	}
 
@@ -183,4 +238,60 @@ func main() {
 
 	// 3. Temporal Worker (stopped by defer w.Stop())
 	logger.Info("Server exited")
+}
+func authFunc(secret string, logger *zap.Logger) auth.AuthFunc {
+	return func(ctx context.Context) (context.Context, error) {
+		tokenStr, err := auth.AuthFromMD(ctx, "bearer")
+		if err != nil {
+			return nil, err
+		}
+
+		token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, status.Errorf(codes.Unauthenticated, "invalid signing method")
+			}
+			return []byte(secret), nil
+		})
+
+		if err != nil {
+			logger.Warn("gRPC auth failed", zap.Error(err))
+			return nil, status.Errorf(codes.Unauthenticated, "invalid token: %v", err)
+		}
+
+		if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+			// We could extract user_id and inject into context here
+			if sub, ok := claims["sub"].(string); ok {
+				newCtx := context.WithValue(ctx, userIDKey, sub)
+				return newCtx, nil
+			}
+		}
+
+		return nil, status.Errorf(codes.Unauthenticated, "invalid token claims")
+	}
+}
+func initTracer(ctx context.Context, cfg *config.Config) (*sdktrace.TracerProvider, error) {
+	exporter, err := otlptracegrpc.New(ctx,
+		otlptracegrpc.WithInsecure(),
+		otlptracegrpc.WithEndpoint("jaeger:4317"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := resource.New(ctx,
+		resource.WithAttributes(
+			semconv.ServiceNameKey.String("file-processor"),
+			attribute.String("environment", cfg.Environment),
+		),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(exporter),
+		sdktrace.WithResource(res),
+	)
+	otel.SetTracerProvider(tp)
+	return tp, nil
 }

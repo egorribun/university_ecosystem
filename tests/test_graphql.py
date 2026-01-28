@@ -1,4 +1,5 @@
 import datetime as dt
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
@@ -188,3 +189,69 @@ async def test_graphql_context_error_handling(root_client: AsyncClient):
     )
     assert response.status_code == 200
     assert response.json()["data"]["me"] is None
+
+
+@pytest.mark.asyncio
+async def test_graphql_context_non_bearer_auth(root_client: AsyncClient):
+    # Test with Basic auth which is ignored by get_context
+    query = "{ me { email } }"
+    response = await root_client.post(
+        "/graphql",
+        json={"query": query},
+        headers={"Authorization": "Basic dXNlcjpwYXNz"},
+    )
+    assert response.status_code == 200
+    assert response.json()["data"]["me"] is None
+
+
+@pytest.mark.asyncio
+async def test_graphql_context_user_not_found(root_client: AsyncClient, monkeypatch):
+    # Test with valid token but non-existent user ID
+    from app.auth.security import create_access_token
+
+    token = await create_access_token(sub="999999")
+
+    query = "{ me { email } }"
+    response = await root_client.post(
+        "/graphql",
+        json={"query": query},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+    assert response.json()["data"]["me"] is None
+
+
+@pytest.mark.asyncio
+async def test_graphql_context_db_error(root_client: AsyncClient, monkeypatch):
+    # Test with database error during user fetching
+    from app.auth.security import create_access_token
+
+    token = await create_access_token(sub="1")
+
+    # Mock select to raise error
+
+    async def mock_execute(*args, **kwargs):
+        raise Exception("Database explosion")
+
+    # We need to monkeypatch the session executed inside get_context
+    # This is tricky because it's an 'async with' session.
+    # But get_context logs the error and continues.
+
+    query = "{ me { email } }"
+    # We'll use a malformed token that causes decode_token to pass but then fail later?
+    # Actually, the easiest is to mock decode_token to return a payload,
+    # but then have the session.execute fail.
+
+    with patch("app.core.database.async_session") as mock_session_cm:
+        mock_session = AsyncMock()
+        mock_session.execute.side_effect = Exception("DB Fail")
+        mock_session_cm.return_value.__aenter__.return_value = mock_session
+
+        response = await root_client.post(
+            "/graphql",
+            json={"query": query},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 200
+        # Should still return None for 'me' due to exception handling in get_context
+        assert response.json()["data"]["me"] is None

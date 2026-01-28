@@ -30,7 +30,7 @@ gateway:
     port: 8080
     nodePort: 30080
   config:
-    jwtSecret: "change-me-in-production"
+    jwtSecret: "" # MUST be provided as --set gateway.config.jwtSecret=...
     rateLimitRps: 100
 
 # File Processor (Go)

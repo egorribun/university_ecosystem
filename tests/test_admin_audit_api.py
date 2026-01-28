@@ -165,3 +165,41 @@ async def test_list_audit_logs_pagination(root_client, user_factory, db_session)
     assert response.status_code == 200
     # There should be exactly 2 logs left if total is 5 and offset is 3
     assert len(response.json()["items"]) == 2
+
+
+async def test_list_audit_logs_actor_filtering(root_client, user_factory, db_session):
+    password = "ActorPass123!"
+    hashed = get_password_hash(password)
+    admin = await user_factory(
+        role="admin", email="admin-actor@example.com", hashed_password=hashed
+    )
+    actor_user = await user_factory(role="student", email="actor-test@example.com")
+
+    login_response = await root_client.post(
+        "/api/v1/auth/login",
+        data={"username": admin.email, "password": password},
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    token = login_response.json()["access_token"]
+
+    # Create a log with a specific actor
+    log = models.DataAccessLog(
+        actor_user_id=actor_user.id,
+        action="actor_action",
+        resource_type="actor_test",
+        created_at=datetime.now(UTC),
+    )
+    db_session.add(log)
+    await db_session.commit()
+
+    # Filter by actor_id
+    response = await root_client.get(
+        f"/admin/audit?actor_id={actor_user.id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["items"]) >= 1
+    assert all(item["actor_user_id"] == actor_user.id for item in data["items"])
+    # This also covers the verify_integrity call in the loop
+    assert "is_valid" in data["items"][0]

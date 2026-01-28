@@ -12,6 +12,7 @@ import (
 	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 )
 
 // ProxyHandler creates a Gin handler that proxies requests
@@ -83,6 +84,11 @@ func FileProcessSyncHandler(grpcConn *grpc.ClientConn, fileClient pb.FileProcess
 		// Call gRPC
 		rpcCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
+
+		// Propagate Authorization header to gRPC metadata
+		if authHeader := c.GetHeader("Authorization"); authHeader != "" {
+			rpcCtx = metadata.AppendToOutgoingContext(rpcCtx, "authorization", authHeader)
+		}
 
 		resp, err := fileClient.ProcessFile(rpcCtx, &pb.ProcessFileRequest{
 			Id:        req.ID,

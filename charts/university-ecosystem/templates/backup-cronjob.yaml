@@ -1,0 +1,58 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: '{{ include "university-ecosystem.fullname" . }}-db-backup'
+  labels: { { - include "university-ecosystem.labels" . | nindent 4 } }
+spec:
+  schedule: "0 2 * * *" # Every day at 2 AM
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: backup
+              image: minio/mc:latest # or a custom image with postgres-client + mc
+              command: ["/bin/sh", "/scripts/backup-db.sh"]
+              env:
+                - name: DB_HOST
+                  value: '{{ include "university-ecosystem.fullname" . }}-postgres'
+                - name: DB_USER
+                  value: "postgres"
+                - name: DB_NAME
+                  value: "university_ecosystem"
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: '{{ include "university-ecosystem.fullname" . }}-postgres'
+                      key: postgres-password
+                - name: MINIO_ENDPOINT
+                  value: "http://minio:9000"
+                - name: MINIO_BUCKET
+                  value: "backups"
+                - name: MINIO_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: '{{ include "university-ecosystem.fullname" . }}-secrets'
+                      key: minio-access-key
+                - name: MINIO_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: '{{ include "university-ecosystem.fullname" . }}-secrets'
+                      key: minio-secret-key
+              volumeMounts:
+                - name: scripts
+                  mountPath: /scripts
+          restartPolicy: OnFailure
+          volumes:
+            - name: scripts
+              configMap:
+                name: '{{ include "university-ecosystem.fullname" . }}-backup-scripts'
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: '{{ include "university-ecosystem.fullname" . }}-backup-scripts'
+data:
+  backup-db.sh: |
+    # (Content of scripts/backup-db.sh will be injected here or via Helm)
