@@ -67,7 +67,7 @@ jobs:
 
       - name: Trivy image scan
         id: trivy_image
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.33.1
         continue-on-error: true
         with:
           scan-type: image
@@ -76,13 +76,13 @@ jobs:
           output: trivy-image.sarif
           severity: ${{ env.TRIVY_SEVERITY }}
           vuln-type: "os,library"
+          vuln-type: "os,library"
           ignore-unfixed: true
-          trivy-config: trivy.yaml
           exit-code: "1"
 
       - name: Trivy filesystem scan
         id: trivy_fs
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.33.1
         continue-on-error: true
         with:
           scan-type: fs
