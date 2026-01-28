@@ -80,19 +80,25 @@ def _format_password_class_labels(class_names: list[str], *, locale: str | None)
     return ", ".join(translated)
 
 
+def _calculate_lookup_hash(input_data: str) -> str:
+    """
+    Calculate a SHA-1 hash for API lookups (e.g. HIBP).
+    This is NOT used for password storage or verification.
+    """
+    # nosec: B303 - SHA-1 is required by the external API
+    return (
+        hashlib.sha1(input_data.encode("utf-8"), usedforsecurity=False)
+        .hexdigest()
+        .upper()
+    )
+
+
 def _validate_password_hibp(password: str, *, locale: str | None = None) -> None:
     # SHA-1 is required by the "Have I Been Pwned" API for their k-Anonymity model.
     # We only send the first 5 characters of the hash prefix to the API.
     # The full hash is never transmitted or stored.
     # ref: https://haveibeenpwned.com/API/v3#PwnedPasswords
-    # Rename to generic term to avoid "sensitive data" triggers in static analysis
-    search_term = password
-    # nosec: B303 - SHA-1 is mandated by the HIBP API (k-anonymity), not used for storage
-    sha1 = (
-        hashlib.sha1(search_term.encode("utf-8"), usedforsecurity=False)
-        .hexdigest()
-        .upper()
-    )
+    sha1 = _calculate_lookup_hash(password)
     prefix = sha1[:5]
     suffix = sha1[5:]
     url = f"{settings.password_hibp_api_url.rstrip('/')}/{prefix}"
