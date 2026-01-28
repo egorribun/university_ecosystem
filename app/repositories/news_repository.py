@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import datetime
 
-from sqlalchemy import and_, exists, func, or_, select
+from sqlalchemy import and_, exists, false, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -82,7 +82,7 @@ class NewsRepository(BaseRepository[News, dict, dict]):
             )
             .label("is_liked")
             if current_user_id
-            else func.false().label("is_liked")
+            else false().label("is_liked")
         )
 
         stmt = select(News, likes_sub, comments_sub, is_liked_sub)
