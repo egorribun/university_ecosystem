@@ -103,7 +103,8 @@ class EventRepository(BaseRepository[models.Event]):
         if user_id:
             join_cond = and_(join_cond, user_attendance_alias.user_id == user_id)
         else:
-            # Join with something that never matches to keep the structure but avoid leaks
+            # Join with something that never matches to keep the structure
+            # but avoid leaks
             join_cond = and_(join_cond, user_attendance_alias.user_id == -1)
 
         stmt = (

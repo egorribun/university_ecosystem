@@ -35,7 +35,7 @@ class ScheduleOptimizerService:
     async def _call_grpc(self, method: str, request_data: dict[str, Any]) -> Any:
         """Low-level gRPC caller using grpclib."""
         host, port = self.grpc_addr.split(":")
-        async with Channel(host, int(port)) as channel:
+        async with Channel(host, int(port)):
             # Note: In a production environment, we would use generated stubs.
             # Here we demonstrate the intent.
             # For brevity in this refactor, we keep the REST fallback as primary

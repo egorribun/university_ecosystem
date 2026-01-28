@@ -3,7 +3,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, case, exists, func, literal, or_, select, true
+from sqlalchemy import and_, case, func, literal, select, true
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
@@ -135,10 +135,10 @@ async def create_user(db: AsyncSession, user_in: schemas.UserCreate):
         if not code:
             raise ValueError(translate("errors.users.invalid_invite"))
 
-    exists = await db.execute(
+    user_exists_result = await db.execute(
         select(models.User).where(func.lower(models.User.email) == normalized_email)
     )
-    if exists.scalar_one_or_none():
+    if user_exists_result.scalar_one_or_none():
         raise ValueError(translate("errors.users.email_in_use"))
 
     hashed_password = get_password_hash(user_in.password)

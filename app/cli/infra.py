@@ -67,7 +67,7 @@ def check():
             from app.services.storage import get_storage_service
 
             try:
-                storage = get_storage_service()
+                get_storage_service()
                 table.add_row(
                     "S3 Storage",
                     "[green]ONLINE[/]",
