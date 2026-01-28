@@ -11,7 +11,6 @@ from sqlalchemy.orm import aliased, selectinload
 from app.auth import mfa
 from app.auth.security import get_password_hash
 from app.core.config import settings
-from app.core.container import get_vector_service
 from app.core.events import (
     EventCreated,
     EventUpdated,
@@ -250,6 +249,7 @@ async def get_news_list(
     search: str | None = None,
 ):
     """Get paginated news list (Proxy to NewsRepository)."""
+    from app.core.container import get_vector_service
     from app.repositories.news import NewsRepository
 
     repo = NewsRepository(db)

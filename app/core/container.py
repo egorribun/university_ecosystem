@@ -1,8 +1,11 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.cqrs.queries import GetScheduleHandler, GetStatsHandler
 from app.deps.cache import BaseCache, get_cache
 from app.services.audit_service import (
     AuditService,
@@ -14,6 +17,9 @@ from app.services.group_service import GroupService
 from app.services.notification_service import NotificationService
 from app.services.user_service import UserService
 from app.services.vector_service import VectorService
+
+if TYPE_CHECKING:
+    from app.cqrs.queries import GetScheduleHandler, GetStatsHandler
 
 
 def get_audit_service() -> AuditService:
@@ -54,6 +60,8 @@ def get_schedule_handler(
     db: AsyncSession = Depends(get_db),
     cache: BaseCache = Depends(get_cache),
 ) -> GetScheduleHandler:
+    from app.cqrs.queries import GetScheduleHandler
+
     return GetScheduleHandler(db=db, cache=cache)
 
 
@@ -61,6 +69,8 @@ def get_stats_handler(
     db: AsyncSession = Depends(get_db),
     cache: BaseCache = Depends(get_cache),
 ) -> GetStatsHandler:
+    from app.cqrs.queries import GetStatsHandler
+
     return GetStatsHandler(db=db, cache=cache)
 
 
