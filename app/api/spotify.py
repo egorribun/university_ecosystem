@@ -16,7 +16,7 @@ from app.api.validation import (
     raise_unauthorized,
     raise_validation_error,
 )
-from app.auth.security import create_access_token, decode_token
+from app.auth.security import AccessTokenConfig, create_access_token, decode_token
 from app.core.circuit_breaker import (
     CircuitBreaker,
     CircuitBreakerConfig,
@@ -228,7 +228,9 @@ async def _ensure_access_token(
 
 @router.get("/auth-url", response_model=SpotifyAuthURL)
 async def spotify_auth_url(user: User = Depends(get_current_user)):
-    state_result = await create_access_token(str(user.id), expires_delta=10)
+    state_result = await create_access_token(
+        str(user.id), config=AccessTokenConfig(expires_delta=10)
+    )
     state_token = state_result[0] if isinstance(state_result, tuple) else state_result
     logger.error(
         f"DEBUG: spotify_client_id from settings: '{settings.spotify_client_id}'"

@@ -161,23 +161,21 @@ func main() {
 	}
 
 	// Protected routes (JWT required)
-	if cfg.JWTSecret != "" {
-		jwtMiddleware := middleware.NewJWTMiddleware(cfg.JWTSecret)
-		protected := router.Group("/")
-		protected.Use(jwtMiddleware.Validate())
-		{
-			// New gRPC Endpoint for Synchronous File Processing
-			protected.POST("/api/v1/files/process/sync", handlers.FileProcessSyncHandler(grpcConn, fileClient, logger))
-
-			protected.Any("/api/v1/*path", handlers.ProxyHandler(proxy))
-			protected.Any("/api/admin/*path", handlers.ProxyHandler(proxy))
-		}
-		logger.Info("JWT validation enabled")
-	} else {
-		// No JWT validation - proxy everything
-		router.Any("/api/*path", handlers.ProxyHandler(proxy))
-		logger.Warn("JWT validation disabled - no secret configured")
+	if cfg.JWTSecret == "" {
+		logger.Fatal("JWT_SECRET is mandatory for non-public routes. Gateway cannot start securely without it.")
 	}
+
+	jwtMiddleware := middleware.NewJWTMiddleware(cfg.JWTSecret)
+	protected := router.Group("/")
+	protected.Use(jwtMiddleware.Validate())
+	{
+		// New gRPC Endpoint for Synchronous File Processing
+		protected.POST("/api/v1/files/process/sync", handlers.FileProcessSyncHandler(grpcConn, fileClient, logger))
+
+		protected.Any("/api/v1/*path", handlers.ProxyHandler(proxy))
+		protected.Any("/api/admin/*path", handlers.ProxyHandler(proxy))
+	}
+	logger.Info("JWT validation enabled")
 
 	// Start server with graceful shutdown
 	addr := ":" + cfg.Port

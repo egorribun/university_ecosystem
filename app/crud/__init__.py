@@ -11,9 +11,12 @@ from sqlalchemy.orm import aliased, selectinload
 from app.auth import mfa
 from app.auth.security import get_password_hash
 from app.core.config import settings
+from app.core.container import get_vector_service
 from app.core.events import (
     EventCreated,
+    EventUpdated,
     NewsCreated,
+    NewsUpdated,
 )
 from app.core.localization import localized_text, normalize_locale, translate
 from app.deps.cache import BaseCache, cached
@@ -28,10 +31,11 @@ from app.services import attendance_tokens, stats_cache
 
 
 async def get_user_auth(db: AsyncSession, login: str):
-    login_norm = login.strip().lower()
-    stmt = select(models.User).where(func.lower(models.User.email) == login_norm)
-    result = await db.execute(stmt)
-    return result.scalar_one_or_none()
+    """Find user by email or username (Proxy to UserRepository)."""
+    from app.repositories.user import UserRepository
+
+    repo = UserRepository(db)
+    return await repo.get_by_login(login)
 
 
 def _ensure_utc(value: datetime) -> datetime:
@@ -196,6 +200,31 @@ async def create_news(db: AsyncSession, news: schemas.NewsCreate):
     return record
 
 
+async def update_news(
+    db: AsyncSession, record: models.News, data: schemas.NewsUpdate
+) -> models.News:
+    updates = data.model_dump(exclude_unset=True)
+    for field in ("title_en", "content_en"):
+        if field in updates:
+            updates[field] = sanitize_optional_text(updates[field])
+
+    if not updates:
+        return record
+
+    content_changed = "title" in updates or "content" in updates
+
+    for field, value in updates.items():
+        setattr(record, field, value)
+
+    db.add(record)
+    if content_changed:
+        record.record_event(NewsUpdated(news_id=record.id, title=record.title))
+
+    await db.commit()
+    await db.refresh(record)
+    return record
+
+
 def _decode_news_cursor(value: str | None) -> tuple[datetime, int] | None:
     """Decode a news pagination cursor into (timestamp, id)."""
     if not value:
@@ -218,73 +247,32 @@ async def get_news_list(
     limit: int = 20,
     cursor: str | None = None,
     current_user_id: int | None = None,
+    search: str | None = None,
 ):
-    """Get paginated news list with counts and like status."""
-    cursor_values = _decode_news_cursor(cursor)
+    """Get paginated news list (Proxy to NewsRepository)."""
+    from app.repositories.news import NewsRepository
 
-    # Subqueries for counts
-    likes_sub = (
-        select(func.count(models.NewsLike.id))
-        .where(models.NewsLike.news_id == models.News.id)
-        .scalar_subquery()
-        .label("likes_count")
-    )
-    comments_sub = (
-        select(func.count(models.NewsComment.id))
-        .where(models.NewsComment.news_id == models.News.id)
-        .scalar_subquery()
-        .label("comments_count")
-    )
+    repo = NewsRepository(db)
+    vector_service = get_vector_service(db)
 
-    # Subquery for user like status
-    is_liked_sub = literal(False).label("is_liked")
-    if current_user_id:
-        is_liked_sub = (
-            select(
-                exists().where(
-                    models.NewsLike.news_id == models.News.id,
-                    models.NewsLike.user_id == current_user_id,
-                )
-            )
-            .scalar_subquery()
-            .label("is_liked")
-        )
+    query_embedding = None
+    if search and settings.semantic_search_enabled:
+        query_embedding = await vector_service.get_embedding(search)
 
-    stmt = select(
-        models.News,
-        likes_sub,
-        comments_sub,
-        is_liked_sub,
+    results = await repo.list_news(
+        limit=limit,
+        cursor=_decode_news_cursor(cursor),
+        current_user_id=current_user_id,
+        search_query=search,
+        query_embedding=query_embedding,
     )
 
-    if cursor_values:
-        last_created_at, last_id = cursor_values
-        stmt = stmt.where(
-            or_(
-                models.News.created_at < last_created_at,
-                and_(
-                    models.News.created_at == last_created_at,
-                    models.News.id < last_id,
-                ),
-            )
-        )
-
-    stmt = stmt.order_by(models.News.created_at.desc(), models.News.id.desc()).limit(
-        limit
-    )
-
-    result = await db.execute(stmt)
-    rows = result.all()
-
-    # Map database rows to model objects with extra attributes
     items = []
-    for news_obj, l_count, c_count, liked in rows:
-        # We attach these to the object so _serialize_news can find them
+    for news_obj, l_count, c_count, liked in results:
         setattr(news_obj, "likes_count", l_count or 0)
         setattr(news_obj, "comments_count", c_count or 0)
         setattr(news_obj, "is_liked", bool(liked))
         items.append(news_obj)
-
     return items
 
 
@@ -523,156 +511,63 @@ async def get_all_events(
     limit: int | None = None,
     cursor: str | None = None,
 ):
-    now = datetime.now(UTC)
-    raw_limit = DEFAULT_EVENTS_LIMIT if limit is None else limit
-    safe_limit = min(MAX_EVENTS_LIMIT, max(0, raw_limit))
+    """Get all events (Proxy to EventRepository)."""
+    from app.core.container import get_vector_service
+    from app.repositories.event import EventRepository
+
+    repo = EventRepository(db)
+    vector_service = get_vector_service(db)
+
+    query_embedding = None
+    if search and settings.semantic_search_enabled:
+        query_embedding = await vector_service.get_embedding(search)
+
+    raw_limit = limit or DEFAULT_EVENTS_LIMIT
     cursor_values = _decode_event_cursor(cursor)
 
-    conditions = []
-    rank_expr = None
-    if search:
-        if await _is_postgres_session(db):
-            ts_query = func.plainto_tsquery("simple", search)
-            conditions.append(models.Event.search_vector.op("@@")(ts_query))
-            rank_expr = func.ts_rank(models.Event.search_vector, ts_query)
-        else:
-            like = f"%{search}%"
-            conditions.append(
-                or_(
-                    models.Event.title.ilike(like),
-                    models.Event.title_en.ilike(like),
-                    models.Event.description.ilike(like),
-                    models.Event.description_en.ilike(like),
-                    models.Event.location.ilike(like),
-                    models.Event.location_en.ilike(like),
-                    models.Event.about.ilike(like),
-                    models.Event.about_en.ilike(like),
-                )
-            )
-    if type:
-        conditions.append(
-            or_(
-                models.Event.event_type == type,
-                models.Event.event_type_en == type,
-            )
-        )
-    if location:
-        like = f"%{location}%"
-        conditions.append(
-            or_(
-                models.Event.location.ilike(like),
-                models.Event.location_en.ilike(like),
-            )
-        )
-    if is_active is True:
-        conditions.append(models.Event.ends_at >= now)
-    elif is_active is False:
-        conditions.append(models.Event.ends_at < now)
-    # When is_active is None, skip time-based filtering entirely
-
-    # Optimization: Calculate participant count via subquery to avoid loading
-    # all attendance records
-    participant_count_sub = (
-        select(func.count())
-        .select_from(models.EventAttendance)
-        .where(models.EventAttendance.event_id == models.Event.id)
-        .correlate(models.Event)
-        .scalar_subquery()
-        .label("participant_count")
+    results = await repo.search_events(
+        user_id=user_id,
+        search_query=search,
+        event_type=type,
+        location=location,
+        is_active=is_active,
+        limit=raw_limit + 1,
+        cursor=cursor_values,
+        query_embedding=query_embedding,
     )
 
-    # Optimization: Fetch current user's attendance via outer join
-    user_attendance_alias = aliased(models.EventAttendance)
-
-    stmt = (
-        select(
-            models.Event,
-            participant_count_sub,
-            user_attendance_alias,
-        )
-        .outerjoin(
-            user_attendance_alias,
-            and_(
-                user_attendance_alias.event_id == models.Event.id,
-                user_attendance_alias.user_id == user_id,
-            ),
-        )
-        .options(selectinload(models.Event.files))
-    )
-
-    if conditions:
-        stmt = stmt.where(and_(*conditions))
-    if cursor_values:
-        last_starts_at, last_id = cursor_values
-        stmt = stmt.where(
-            or_(
-                models.Event.starts_at > last_starts_at,
-                and_(
-                    models.Event.starts_at == last_starts_at,
-                    models.Event.id > last_id,
-                ),
-            )
-        )
-
-    if rank_expr is not None:
-        ordered_stmt = stmt.order_by(
-            rank_expr.desc(), models.Event.starts_at.asc(), models.Event.id.asc()
-        )
-    else:
-        ordered_stmt = stmt.order_by(
-            models.Event.starts_at.asc(), models.Event.id.asc()
-        )
-    fetch_limit = safe_limit + 1 if safe_limit > 0 else 1
-    page_stmt = ordered_stmt.limit(fetch_limit)
-    rows = await db.execute(page_stmt)
-    # rows.all() returns a list of tuples:
-    # (Event, participant_count, EventAttendance|None)
-    fetched_data = rows.all()
-    # Separate events object list for cursor logic
-    fetched_events = [row[0] for row in fetched_data]
-
-    data_slice = fetched_data[:safe_limit] if safe_limit else []
-    events_slice = fetched_events[:safe_limit] if safe_limit else []
-
-    total: int | None
-    if cursor_values:
-        total = None
-    else:
-        total_stmt = select(func.count()).select_from(models.Event)
-        if conditions:
-            total_stmt = total_stmt.where(and_(*conditions))
-        total = (await db.execute(total_stmt)).scalar_one()
+    data_slice = results[:raw_limit]
+    has_more = len(results) > raw_limit
 
     normalized_locale = normalize_locale(locale)
-    result: list[schemas.EventOut] = []
-
-    for event, p_count, user_attendance in data_slice:
-        is_registered = user_attendance is not None
-        qr_token = (
-            attendance_tokens.issue_token(user_attendance) if user_attendance else None
-        )
-
-        result.append(
+    items: list[schemas.EventOut] = []
+    for event, count, attn in data_slice:
+        items.append(
             serialize_event(
                 event,
                 normalized_locale,
-                participant_count=p_count or 0,
+                participant_count=count or 0,
                 files=event.files,
-                is_registered=is_registered,
-                my_qr_token=qr_token,
+                is_registered=attn is not None,
+                my_qr_token=attendance_tokens.issue_token(attn) if attn else None,
             )
         )
 
-    has_more = len(fetched_events) > len(events_slice)
-    next_cursor: str | None = None
-    if has_more and events_slice:
-        last_event = events_slice[-1]
+    total = None
+    if not cursor_values:
+        total = (
+            await db.execute(select(func.count()).select_from(models.Event))
+        ).scalar_one()
+
+    next_cursor = None
+    if has_more and data_slice:
+        last_event = data_slice[-1][0]
         next_cursor = _encode_event_cursor(last_event.starts_at, last_event.id)
 
     return schemas.PaginatedEvents(
-        items=result,
+        items=items,
         total=total,
-        limit=safe_limit,
+        limit=raw_limit,
         cursor=cursor if cursor_values else None,
         next_cursor=next_cursor,
         has_more=has_more,
@@ -737,6 +632,12 @@ async def update_event(
             updates[field] = sanitize_optional_text(updates[field])
     if not updates:
         return record
+
+    # Check if content that affects embedding changed
+    text_changed = any(
+        f in updates for f in ("title", "description", "location", "about")
+    )
+
     if "starts_at" in updates:
         updates["starts_at"] = _ensure_utc(updates["starts_at"])
     if "ends_at" in updates:
@@ -755,6 +656,10 @@ async def update_event(
     for field, value in updates.items():
         setattr(record, field, value)
     db.add(record)
+
+    if text_changed:
+        record.record_event(EventUpdated(event_id_entity=record.id, title=record.title))
+
     try:
         await db.commit()
     except IntegrityError as exc:

@@ -27,6 +27,7 @@ from app.api.validation import (
 )
 from app.auth import mfa
 from app.auth.security import (
+    AccessTokenConfig,
     create_access_token,
     decode_token,
     verify_and_update_password,
@@ -864,21 +865,25 @@ async def _perform_login(
     token_result = await create_access_token(
         str(user.id),
         db=db,
-        session_metadata={
-            "ip_address": client_ip,
-            "user_agent": user_agent,
-            "last_seen_at": now,
-            "mfa_required": (
-                bool(user.mfa_required) and not is_trusted
-                if "is_trusted" in locals()
-                else bool(user.mfa_required)
-            ),
-            "mfa_method": user.mfa_default_method,
-            "mfa_completed_at": (
-                now if "is_trusted" in locals() and is_trusted else None
-            ),
-            "mfa_verified_at": now if "is_trusted" in locals() and is_trusted else None,
-        },
+        config=AccessTokenConfig(
+            session_metadata={
+                "ip_address": client_ip,
+                "user_agent": user_agent,
+                "last_seen_at": now,
+                "mfa_required": (
+                    bool(user.mfa_required) and not is_trusted
+                    if "is_trusted" in locals()
+                    else bool(user.mfa_required)
+                ),
+                "mfa_method": user.mfa_default_method,
+                "mfa_completed_at": (
+                    now if "is_trusted" in locals() and is_trusted else None
+                ),
+                "mfa_verified_at": now
+                if "is_trusted" in locals() and is_trusted
+                else None,
+            },
+        ),
     )
     if isinstance(token_result, tuple):
         token, session = token_result

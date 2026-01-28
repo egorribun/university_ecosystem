@@ -1,12 +1,11 @@
 import logging
+from typing import Any
 
-from fastapi import Request, UploadFile
-from pydantic import EmailStr, TypeAdapter
-from sqlalchemy import delete, func, or_, select
+from fastapi import Request
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import crud
-from app.api.utils import save_upload
 from app.core.exceptions.domain import (
     BusinessRuleViolation,
     EntityAlreadyExists,
@@ -33,10 +32,12 @@ class UserService:
     def __init__(
         self,
         db: AsyncSession,
+        repo: Any,  # UserRepository
         audit: AuditService,
         notifications: NotificationService,
     ) -> None:
         self.db = db
+        self.repo = repo
         self.audit = audit
         self.notifications = notifications
 
@@ -46,28 +47,21 @@ class UserService:
         data: schemas.UserProfileUpdate,
         request: Request,
     ) -> models.User:
-        db_user = await self.db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
+        db_user = await self.repo.get(user.id)
+        if not db_user:
+            raise EntityNotFound("User", user.id)
+
         update_fields = data.model_dump(exclude_unset=True)
 
         if "email" in update_fields and update_fields["email"] is not None:
-            raw_email = str(update_fields["email"]).strip().lower()
-            adapter = TypeAdapter(EmailStr)
-            try:
-                validated_email = adapter.validate_python(raw_email)
-            except ValueError as exc:
-                raise BusinessRuleViolation("errors.users.invalid_email") from exc
-
-            existing = await self.db.execute(
-                select(models.User.id).where(
-                    func.lower(models.User.email) == validated_email,
-                    models.User.id != user.id,
-                )
-            )
-            if existing.scalar_one_or_none() is not None:
+            validated_email = str(update_fields["email"]).strip().lower()
+            if await self.repo.check_email_exists(
+                validated_email, exclude_user_id=user.id
+            ):
                 raise EntityAlreadyExists("User", validated_email)
-
             update_fields["email"] = validated_email
 
+        # ... (keeping complex mapping logic in service for now as it's business-heavy)
         preferences_fields = {"dnd_enabled", "dnd_start", "dnd_end", "timezone"}
         profile_fields = {
             "about",
@@ -103,92 +97,12 @@ class UserService:
                 setattr(db_user.education_path, field, value)
             else:
                 setattr(db_user, field, value)
+
         await self.db.commit()
         await self.db.refresh(db_user)
         await ensure_mfa_relationships_loaded(self.db, db_user)
         await attach_pending_email(self.db, db_user)
         return db_user
-
-    async def upload_avatar(
-        self,
-        user: models.User,
-        file: UploadFile,
-        request: Request,
-    ) -> models.User:
-        locale = resolve_locale(request=request, user=user)
-        url = await save_upload(
-            file, "avatars", f"user_{user.id}_avatar", locale=locale
-        )
-        db_user = await self.db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
-        previous_url = db_user.avatar_url
-        db_user.avatar_url = url
-        try:
-            await self.db.commit()
-        except Exception:
-            await self.db.rollback()
-            db_user.avatar_url = previous_url
-            await delete_static_file(url)
-            raise
-        try:
-            await self.db.refresh(db_user)
-            await ensure_mfa_relationships_loaded(self.db, db_user)
-        except Exception:
-            db_user.avatar_url = previous_url
-            await delete_static_file(url)
-            raise
-        return db_user
-
-    async def upload_cover(
-        self,
-        user: models.User,
-        file: UploadFile,
-        request: Request,
-    ) -> models.User:
-        locale = resolve_locale(request=request, user=user)
-        url = await save_upload(file, "covers", f"user_{user.id}_cover", locale=locale)
-        db_user = await self.db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
-        previous_url = db_user.cover_url
-        db_user.cover_url = url
-        try:
-            await self.db.commit()
-        except Exception:
-            await self.db.rollback()
-            db_user.cover_url = previous_url
-            await delete_static_file(url)
-            raise
-        try:
-            await self.db.refresh(db_user)
-            await ensure_mfa_relationships_loaded(self.db, db_user)
-        except Exception:
-            db_user.cover_url = previous_url
-            await delete_static_file(url)
-            raise
-        return db_user
-
-    async def create_user(
-        self,
-        data: schemas.UserCreate,
-        request: Request,
-        current_user: models.User,
-    ) -> models.User:
-        if current_user.role != "admin":
-            raise PermissionDenied()
-
-        if data.role in ["teacher", "admin"]:
-            if not data.invite_code:
-                raise BusinessRuleViolation("errors.users.invite_required")
-
-            q = select(models.InviteCode).where(
-                models.InviteCode.code == data.invite_code,
-                models.InviteCode.role == data.role,
-                models.InviteCode.is_active.is_(True),
-            )
-            code_obj = (await self.db.execute(q)).scalar_one_or_none()
-            if not code_obj:
-                raise BusinessRuleViolation("errors.users.invalid_invite")
-
-        user = await crud.create_user(self.db, data)
-        return user
 
     async def get_users(
         self,
@@ -201,20 +115,16 @@ class UserService:
         limit: int | None = None,
         offset: int | None = None,
     ) -> list[models.User]:
-        # Allow admins to list all users, or any authenticated user to search
         if current_user.role != "admin" and not search and not full_name:
             raise PermissionDenied()
 
-        # Use search param as full_name if provided
         name_query = search if search else full_name
-
-        return await crud.get_users(
-            self.db,
+        return await self.repo.list_users(
             full_name=name_query,
             group_id=group_id,
             role=role,
-            limit=limit,
-            offset=offset,
+            limit=limit or 100,
+            offset=offset or 0,
         )
 
     async def admin_update_user(

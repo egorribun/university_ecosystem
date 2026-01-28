@@ -162,7 +162,9 @@ def configure_event_handlers() -> None:
     event_bus.subscribe("auth.mfa_enabled", handle_mfa_enabled)
     event_bus.subscribe("event.created", handle_event_created)
     event_bus.subscribe("event.created", generate_event_embedding)
+    event_bus.subscribe("event.updated", generate_event_embedding)
     event_bus.subscribe("news.created", generate_news_embedding)
+    event_bus.subscribe("news.updated", generate_news_embedding)
     event_bus.subscribe("event.registration", handle_event_registration)
     event_bus.subscribe("notification.sent", handle_notification_sent)
 
