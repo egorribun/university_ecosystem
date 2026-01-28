@@ -27,6 +27,13 @@ LEGACY_SCHEME = "bcrypt"
 
 _logger = logging.getLogger(__name__)
 
+
+class SecurityError(Exception):
+    """Base class for security-related errors."""
+
+    pass
+
+
 # NOTE: the upstream ``bcrypt`` package started raising ``ValueError`` for
 # inputs longer than 72 bytes during backend feature detection when running
 # under Python 3.12+.  Passlib expects backends to gracefully truncate these

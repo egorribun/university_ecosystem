@@ -1,6 +1,7 @@
 """Tests for L1/L2 cache layer."""
 
 import time
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -148,6 +149,81 @@ class TestMultiLayerCache:
         await cache.set("key1", "value1")
         await cache.delete("key1")
         assert (await cache.get("key1")) is None
+
+    @pytest.mark.asyncio
+    async def test_get_l2_hit_populates_l1(self):
+        """Test L2 hit populates L1."""
+        redis = AsyncMock()
+        redis.get.return_value = "l2_value"
+        cache = MultiLayerCache(redis_client=redis)
+
+        # L1 miss, L2 hit
+        val = await cache.get("key")
+        assert val == "l2_value"
+        # Verify L1 is now populated
+        assert cache.l1.get("key") == "l2_value"
+
+    @pytest.mark.asyncio
+    async def test_get_l2_exception(self):
+        """Test L2 exception doesn't crash get."""
+        redis = AsyncMock()
+        redis.get.side_effect = Exception("Redis error")
+        cache = MultiLayerCache(redis_client=redis)
+
+        # Should return None instead of crashing
+        assert await cache.get("key") is None
+
+    @pytest.mark.asyncio
+    async def test_set_l2_exception(self):
+        """Test L2 exception doesn't crash set."""
+        redis = AsyncMock()
+        redis.setex.side_effect = Exception("Redis error")
+        cache = MultiLayerCache(redis_client=redis)
+
+        # Should not crash
+        await cache.set("key", "val")
+        assert cache.l1.get("key") == "val"
+
+    @pytest.mark.asyncio
+    async def test_delete_l2_exception(self):
+        """Test L2 exception doesn't crash delete."""
+        redis = AsyncMock()
+        redis.delete.side_effect = Exception("Redis error")
+        cache = MultiLayerCache(redis_client=redis)
+
+        await cache.set("key", "val")
+        # Should not crash
+        await cache.delete("key")
+        assert cache.l1.get("key") is None
+
+    @pytest.mark.asyncio
+    async def test_invalidate_prefix_l2_success(self):
+        """Test L2 prefix invalidation success."""
+        redis = AsyncMock()
+        # Mock SCAN to return some keys then finish
+        redis.scan.side_effect = [(1, ["p:1", "p:2"]), (0, ["p:3"])]
+        cache = MultiLayerCache(redis_client=redis)
+        cache.l1.set("p:1", "v1")
+        cache.l1.set("other", "vo")
+
+        count = await cache.invalidate_prefix("p:")
+        assert count == 4  # 1 (L1) + 3 (L2)
+        assert redis.delete.call_count == 2
+        assert cache.l1.get("p:1") is None
+        assert cache.l1.get("other") == "vo"
+
+    @pytest.mark.asyncio
+    async def test_invalidate_prefix_l2_exception(self):
+        """Test L2 prefix invalidation exception."""
+        redis = AsyncMock()
+        redis.scan.side_effect = Exception("Redis error")
+        cache = MultiLayerCache(redis_client=redis)
+        cache.l1.set("p:1", "v1")
+
+        # Should return L1 count even if L2 fails
+        count = await cache.invalidate_prefix("p:")
+        assert count == 1
+        assert cache.l1.get("p:1") is None
 
     def test_stats(self):
         """Test stats method."""
