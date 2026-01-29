@@ -18,7 +18,15 @@ def create_admin(
     email: Annotated[
         str, typer.Option(help="Admin email address.")
     ] = "admin@example.com",
-    password: Annotated[str, typer.Option(help="Admin password.")] = "admin123",
+    password: Annotated[
+        str,
+        typer.Option(
+            help="Admin password.",
+            prompt=True,
+            hide_input=True,
+            envvar="ADMIN_PASSWORD",
+        ),
+    ] = None,
     full_name: Annotated[str, typer.Option(help="Admin full name.")] = "Test Admin",
 ):
     """Create a test admin user if not exists."""
