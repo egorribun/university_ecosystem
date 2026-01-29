@@ -136,7 +136,7 @@ jobs:
           uv sync --frozen
 
       - name: Run mypy
-        run: mypy
+        run: uv run mypy
 
   go-tests:
     name: Go Tests (${{ matrix.service }})
@@ -228,7 +228,7 @@ jobs:
           SECRET_KEY: "ci-test-secret-key-at-least-32-chars"
           ENVIRONMENT: testing
         run: |
-          python3 <<'PY'
+          uv run python3 <<'PY'
           import asyncio
           from app.core.database import Base, engine
 
@@ -246,8 +246,8 @@ jobs:
           SECRET_KEY: "ci-test-secret-key-at-least-32-chars"
           ENVIRONMENT: testing
         run: |
-          alembic -c alembic.ini upgrade head
-          alembic -c alembic.ini downgrade base
+          uv run alembic -c alembic.ini upgrade head
+          uv run alembic -c alembic.ini downgrade base
 
   openapi-verify:
     name: Verify OpenAPI Types
@@ -286,7 +286,7 @@ jobs:
         env:
           DATABASE_URL: "sqlite+aiosqlite:///:memory:"
         run: |
-          python3 - <<'PY'
+          uv run python3 - <<'PY'
           import json
           import pathlib
           from app.main import app
@@ -318,9 +318,23 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
       - name: Ensure pyproject.toml excludes test-only packages from main dependencies
         run: |
-          python - <<'PY'
+          uv run python - <<'PY'
           import pathlib
           import re
           import sys

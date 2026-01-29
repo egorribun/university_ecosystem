@@ -96,7 +96,7 @@ jobs:
                     FAIL_FAST="-x"
                   fi
 
-                  pytest ${{ inputs.test-pattern }} \
+                  uv run pytest ${{ inputs.test-pattern }} \
                     $PARALLEL_ARGS \
                     $FAIL_FAST \
                     --cov=app \
@@ -177,10 +177,10 @@ jobs:
                   done
 
             - name: Run Alembic migrations
-              run: alembic upgrade head
+              run: uv run alembic upgrade head
 
             - name: Run integration tests
-              run: pytest ${{ inputs.test-pattern }} -v --tb=short -x --ignore=tests/performance
+              run: uv run pytest ${{ inputs.test-pattern }} -v --tb=short -x --ignore=tests/performance
 
             - name: Upload test results
               uses: actions/upload-artifact@v4
