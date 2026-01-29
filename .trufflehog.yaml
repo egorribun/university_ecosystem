@@ -3,3 +3,5 @@ exclude:
     - uv.lock
     - package-lock.json
     - go.sum
+  secrets:
+    - "128006a9ca6ecba0793cdcd05524ff66e1c0b5187d421dfcae39dd12345e4b57" # Yandex Maps ID in MapContent.tsx
