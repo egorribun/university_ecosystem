@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime
 from typing import Any
@@ -32,7 +33,7 @@ class ScheduleOptimizerService:
             settings, "RUST_OPTIMIZER_GRPC_ADDR", "rust-optimizer:50051"
         )
 
-    async def _call_grpc(self, method: str, request_data: dict[str, Any]) -> Any:
+    async def _call_grpc(self) -> Any:
         """Low-level gRPC caller using grpclib."""
         host, port = self.grpc_addr.split(":")
         async with Channel(host, int(port)):
@@ -74,6 +75,11 @@ class ScheduleOptimizerService:
         Reserved for gRPC implementation for O(N log N) performance.
         """
         # Placeholder for gRPC implementation
-        logger.warning("Batch detection requested. Ensure gRPC service is healthy.")
+        msg = (
+            f"Batch detection requested for {len(items)} items. "
+            "Ensure gRPC service is healthy."
+        )
+        logger.warning(msg)
+        await asyncio.sleep(0)  # Silence async warning
         # Fallback to O(N^2) for now if needed, but ideally calls Rust via gRPC
         return []

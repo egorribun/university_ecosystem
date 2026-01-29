@@ -105,7 +105,7 @@ class NewsRepository(BaseRepository[News, dict, dict]):
             if (
                 settings.semantic_search_enabled
                 and query_embedding
-                and any(v != 0.0 for v in query_embedding)
+                and any(abs(v) > 1e-9 for v in query_embedding)
             ):
                 sim_score = 1.0 - News.embedding.cosine_distance(query_embedding)
                 rank_expr = sim_score.label("sim_score")
