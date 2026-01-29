@@ -1,24 +1,20 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from typer.testing import CliRunner
+import pytest
 
-from app.cli.infra import app
+from app.cli.infra import check_infra
 from app.deps.cache import RedisCache
 
-runner = CliRunner()
 
-
-def test_infra_check_all_success():
-    # We need to patch the async runner inside the command
-    # However, the command runs asyncio.run(_run())
-    # So we need to patch the internal components that _run calls.
-
+@pytest.mark.asyncio
+async def test_infra_check_all_success():
     with (
         patch("app.cli.infra.engine") as mock_engine,
         patch("app.cli.infra.get_cache") as mock_get_cache,
         patch("app.cli.infra.get_nats_service") as mock_get_nats,
-        patch("app.cli.infra.get_storage_service"),
+        patch("app.services.storage.get_storage_backend") as mock_get_storage,
         patch("app.cli.infra.settings") as mock_settings,
+        patch("rich.console.Console.print") as mock_print,
     ):
         # Postgres
         mock_conn = AsyncMock()
@@ -41,16 +37,19 @@ def test_infra_check_all_success():
         # Storage
         mock_settings.storage_backend = "minio"
 
-        result = runner.invoke(app, ["check"])
-        assert result.exit_code == 0
+        await check_infra()
+
+        assert mock_print.called
 
 
-def test_infra_check_all_failures():
+@pytest.mark.asyncio
+async def test_infra_check_all_failures():
     with (
         patch("app.cli.infra.engine") as mock_engine,
         patch("app.cli.infra.get_cache") as mock_get_cache,
         patch("app.cli.infra.get_nats_service") as mock_get_nats,
         patch("app.cli.infra.settings") as mock_settings,
+        patch("rich.console.Console.print") as mock_print,
     ):
         # Postgres fail
         mock_engine.connect.side_effect = Exception("DB Fail")
@@ -68,15 +67,17 @@ def test_infra_check_all_failures():
         # Storage skipped
         mock_settings.storage_backend = "local"
 
-        result = runner.invoke(app, ["check"])
-        assert result.exit_code == 0  # Command itself doesn't crash
+        await check_infra()
+        assert mock_print.called
 
 
-def test_infra_check_redis_skipped():
+@pytest.mark.asyncio
+async def test_infra_check_redis_skipped():
     with (
         patch("app.cli.infra.engine") as mock_engine,
         patch("app.cli.infra.get_cache") as mock_get_cache,
         patch("app.cli.infra.get_nats_service") as mock_nats,
+        patch("rich.console.Console.print") as mock_print,
     ):
         # Mock other services to pass or fail, doesn't matter
         mock_engine.connect.return_value.__aenter__.return_value.execute = AsyncMock()
@@ -85,16 +86,18 @@ def test_infra_check_redis_skipped():
         # Redis not RedisCache
         mock_get_cache.return_value = MagicMock()  # Not RedisCache instance
 
-        result = runner.invoke(app, ["check"])
-        assert result.exit_code == 0
+        await check_infra()
 
 
-def test_infra_check_nats_timeout():
+@pytest.mark.asyncio
+async def test_infra_check_nats_timeout():
     with (
         patch("app.cli.infra.engine") as mock_engine,
         patch("app.cli.infra.get_cache") as mock_cache,
         patch("app.cli.infra.get_nats_service") as mock_get_nats,
+        patch("rich.console.Console.print") as mock_print,
     ):
+        # Mock other services to pass or fail, doesn't matter
         mock_engine.connect.return_value.__aenter__.return_value.execute = AsyncMock()
         mock_cache.return_value = MagicMock()
 
@@ -102,5 +105,5 @@ def test_infra_check_nats_timeout():
         mock_nats.connect = AsyncMock(side_effect=TimeoutError)
         mock_get_nats.return_value = mock_nats
 
-        result = runner.invoke(app, ["check"])
-        assert result.exit_code == 0
+        await check_infra()
+        assert mock_print.called

@@ -94,9 +94,23 @@ async def test_list_news_cursor(news_repo, mock_db):
 async def test_list_news_search_semantic(news_repo, mock_db):
     with (
         patch.object(settings, "semantic_search_enabled", True),
+        patch("app.repositories.news_repository.select"),
         patch("app.repositories.news_repository.News") as mock_news,
     ):
-        mock_news.embedding.cosine_distance.return_value = 0.0
+        # Mock arithmetic: 1.0 - distance -> score_expr
+        mock_score_expr = MagicMock()
+
+        # .label() returns expression object, not string
+        mock_labeled_expr = MagicMock()
+        mock_score_expr.label.return_value = mock_labeled_expr
+
+        # Since comparison is also used: score > 0.45
+        mock_score_expr.__gt__.return_value = True
+
+        mock_distance = MagicMock()
+        mock_distance.__rsub__.return_value = mock_score_expr
+
+        mock_news.embedding.cosine_distance.return_value = mock_distance
 
         await news_repo.list_news(search_query="test", query_embedding=[0.1])
         # Just verify it ran
