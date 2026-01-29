@@ -61,4 +61,4 @@ async def test_batch_detect_conflicts(optimizer_service):
 @pytest.mark.asyncio
 async def test_call_grpc_not_implemented(optimizer_service):
     with pytest.raises(NotImplementedError):
-        await optimizer_service._call_grpc("method", {})
+        await optimizer_service._call_grpc()
