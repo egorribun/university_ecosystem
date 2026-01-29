@@ -15,6 +15,7 @@ pytest_failures.log
 # Test databases
 test.db
 test-migration.db
+test_gw*.db
 cache/images/cache.db
 
 pids
