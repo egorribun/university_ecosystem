@@ -33,6 +33,7 @@ def mock_db():
     db.refresh = AsyncMock()
     db.rollback = AsyncMock()
     db.execute = AsyncMock()
+    db.execute.return_value = MagicMock()
     db.get = AsyncMock()
     return db
 
@@ -234,6 +235,8 @@ async def test_create_user_success(service, mock_db, mock_admin_user, mock_reque
     mock_new_user = MagicMock()
     mock_new_user.id = 100
     service.repo.create.return_value = mock_new_user
+
+    mock_db.execute.return_value.scalars.return_value.first.return_value = None
 
     with patch("app.services.user_service.resolve_locale", return_value="en"):
         result = await service.create_user(data, mock_request, mock_admin_user)
@@ -514,4 +517,6 @@ async def test_upload_avatar_commit_failure(service, mock_db, mock_user, mock_re
                     await service.upload_avatar(mock_user, mock_file, mock_request)
 
     mock_db.rollback.assert_called_once()
-    mock_delete.assert_called_once()
+    assert mock_delete.call_count == 2
+    mock_delete.assert_any_call("/old.jpg")
+    mock_delete.assert_any_call("/static/avatars/new.jpg")

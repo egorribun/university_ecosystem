@@ -54,6 +54,7 @@ async def test_update_user_profile_email_change():
     mock_result.scalar_one_or_none.return_value = None
     mock_result.scalars.return_value.first.return_value = None
     db.execute.return_value = mock_result
+    repo.check_email_exists.return_value = False
 
     update_data = schemas.UserProfileUpdate(email="new@example.com")
     request = MagicMock()

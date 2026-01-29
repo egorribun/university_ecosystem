@@ -454,5 +454,31 @@ class UserService:
             await self.db.refresh(db_user)
         except Exception:
             await self.db.rollback()
+            await delete_static_file(file_url)
+            raise
+        return db_user
+
+    async def upload_cover(
+        self,
+        user: models.User,
+        file: UploadFile,
+        request: Request,
+    ) -> models.User:
+        db_user = await self.repo.get(user.id)
+        if not db_user:
+            raise EntityNotFound("User", user.id)
+
+        file_url = await save_upload(file, "covers", f"user_{user.id}_cover")
+
+        if db_user.cover_url:
+            await delete_static_file(db_user.cover_url)
+
+        db_user.cover_url = file_url
+        try:
+            await self.db.commit()
+            await self.db.refresh(db_user)
+        except Exception:
+            await self.db.rollback()
+            await delete_static_file(file_url)
             raise
         return db_user
