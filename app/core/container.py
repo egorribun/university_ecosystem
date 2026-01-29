@@ -20,6 +20,9 @@ from app.services.event_service import EventService
 from app.services.group_service import GroupService
 from app.services.news_service import NewsService
 from app.services.notification_service import NotificationService
+from app.services.user.admin_service import UserAdminService
+from app.services.user.data_service import UserDataService
+from app.services.user.profile_service import UserProfileService
 from app.services.user_service import UserService
 from app.services.vector_service import VectorService
 
@@ -62,6 +65,30 @@ def get_user_service(
     return UserService(db=db, repo=repo, audit=audit, notifications=notifications)
 
 
+def get_user_profile_service(
+    db: AsyncSession = Depends(get_db),
+) -> UserProfileService:
+    repo = get_user_repository(db)
+    return UserProfileService(db=db, repo=repo)
+
+
+def get_user_admin_service(
+    db: AsyncSession = Depends(get_db),
+    audit: AuditService = Depends(get_audit_service),
+    notifications: NotificationService = Depends(get_notification_service),
+) -> UserAdminService:
+    repo = get_user_repository(db)
+    return UserAdminService(db=db, repo=repo, audit=audit, notifications=notifications)
+
+
+def get_user_data_service(
+    db: AsyncSession = Depends(get_db),
+    audit: AuditService = Depends(get_audit_service),
+) -> UserDataService:
+    repo = get_user_repository(db)
+    return UserDataService(db=db, repo=repo, audit=audit)
+
+
 def get_event_service(
     db: AsyncSession = Depends(get_db),
     vector_service: VectorService = Depends(get_vector_service),
@@ -90,10 +117,11 @@ def get_schedule_handler(
 def get_stats_handler(
     db: AsyncSession = Depends(get_db),
     cache: BaseCache = Depends(get_cache),
+    user_service: UserService = Depends(get_user_service),
 ) -> GetStatsHandler:
     from app.cqrs.queries import GetStatsHandler
 
-    return GetStatsHandler(db=db, cache=cache)
+    return GetStatsHandler(db=db, cache=cache, user_service=user_service)
 
 
 def get_auth_service(

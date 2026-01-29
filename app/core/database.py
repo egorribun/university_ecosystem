@@ -32,7 +32,13 @@ def adapt_datetime(val: datetime) -> str:
     return val.isoformat()
 
 
-sqlite3.register_adapter(datetime, adapt_datetime)
+def configure_database() -> None:
+    """
+    Configure database adapters and global settings.
+    Must be called at application startup.
+    """
+    sqlite3.register_adapter(datetime, adapt_datetime)
+
 
 logger = logging.getLogger(__name__)
 slow_query_logger = logging.getLogger("slow_queries")
@@ -287,16 +293,18 @@ class Base(DeclarativeBase):
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
-    while True:
+    for _ in range(3):
         try:
             async with async_session() as session:
                 yield session
-            break
+            return
         except DBAPIError as exc:  # pragma: no cover - defensive guard
             if exc.connection_invalidated:
                 logger.warning("Database connection invalidated; retrying session")
                 continue
             raise
+    # Only raised if all retries fail
+    raise RuntimeError("Database connection unavailable after retries")
 
 
 async def get_read_db() -> AsyncGenerator[AsyncSession, None]:

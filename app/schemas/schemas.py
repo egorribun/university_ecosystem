@@ -76,6 +76,15 @@ class UserBase(BaseModel):
     timezone: str | None = None
 
 
+class UserSearchFilter(BaseModel):
+    full_name: str | None = None
+    search: str | None = None
+    group_id: int | None = None
+    role: UserRole | None = None
+    limit: int = 100
+    offset: int = 0
+
+
 class UserCreate(UserBase):
     password: str = Field(min_length=8, max_length=200)
     invite_code: str | None = None
@@ -289,6 +298,12 @@ class UserProfileUpdate(BaseModel):
 
 class GroupCreate(BaseModel):
     name: str
+    course: int | None = None
+    faculty: str | None = None
+
+
+class GroupUpdate(BaseModel):
+    name: str | None = None
     course: int | None = None
     faculty: str | None = None
 

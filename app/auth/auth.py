@@ -8,7 +8,16 @@ from typing import Any, Literal, cast
 from uuid import uuid4
 
 import jwt
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    status,
+)
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, EmailStr
@@ -236,6 +245,7 @@ async def _mint_access_token(
     session: ActiveSession,
     *,
     extra: Mapping[str, Any] | None = None,
+    bg_tasks: BackgroundTasks | None = None,
 ) -> str:
     minutes = _access_token_lifetime_minutes()
     now = datetime.now(UTC)
@@ -263,18 +273,25 @@ async def _mint_access_token(
     await db.commit()
 
     # Register session in Redis if enabled
-    from app.auth.redis_session import get_session_backend
+    from app.auth.security import register_session_bg
 
-    session_backend = await get_session_backend()
-    await session_backend.register_session(
-        user_id=session.user_id,
-        jti=session.jti,
-        expires_at=expires_at,
-        metadata={
-            "ip_address": session.ip_address,
-            "user_agent": session.user_agent,
-        },
-    )
+    if bg_tasks:
+        bg_tasks.add_task(
+            register_session_bg,
+            user_id=session.user_id,
+            jti=session.jti,
+            expires_at=expires_at,
+            ip_address=session.ip_address,
+            user_agent=session.user_agent,
+        )
+    else:
+        await register_session_bg(
+            user_id=session.user_id,
+            jti=session.jti,
+            expires_at=expires_at,
+            ip_address=session.ip_address,
+            user_agent=session.user_agent,
+        )
 
     return token
 
@@ -646,6 +663,7 @@ async def _perform_login(
     response: Response,
     db: AsyncSession,
     audit: AuditService,
+    bg_tasks: BackgroundTasks,
     trust_device: bool = False,
 ) -> dict[str, str] | JSONResponse:
     normalized_email = email.strip().lower()
@@ -865,6 +883,7 @@ async def _perform_login(
     token_result = await create_access_token(
         str(user.id),
         db=db,
+        bg_tasks=bg_tasks,
         config=AccessTokenConfig(
             session_metadata={
                 "ip_address": client_ip,
@@ -987,6 +1006,7 @@ async def login_passkey_verify(
     payload: LoginPasskeyVerifyIn,
     response: Response,
     request: Request,
+    bg_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     audit: AuditService = Depends(get_audit_service),
 ):
@@ -1048,7 +1068,7 @@ async def login_passkey_verify(
     await mfa.record_mfa_success(
         db, user=user, session=session, method=mfa.MFA_METHOD_WEBAUTHN
     )
-    token = await _mint_access_token(db, session)
+    token = await _mint_access_token(db, session, bg_tasks=bg_tasks)
     _set_access_token_cookie(response, token)
 
     if payload.trust_device:
@@ -1090,6 +1110,7 @@ async def login_passkey_verify(
 async def login(
     response: Response,
     request: Request,
+    bg_tasks: BackgroundTasks,
     trust_device: bool = Form(False),
     form_data: OAuth2PasswordRequestForm = Depends(OAuth2PasswordRequestForm),
     db: AsyncSession = Depends(get_db),
@@ -1102,6 +1123,7 @@ async def login(
         response,
         db,
         audit,
+        bg_tasks=bg_tasks,
         trust_device=trust_device,
     )
 
@@ -1116,6 +1138,7 @@ async def login_json(
     payload: LoginIn,
     response: Response,
     request: Request,
+    bg_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     audit: AuditService = Depends(get_audit_service),
 ):
@@ -1126,6 +1149,7 @@ async def login_json(
         response,
         db,
         audit,
+        bg_tasks=bg_tasks,
         trust_device=payload.trust_device,
     )
 

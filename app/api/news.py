@@ -20,14 +20,13 @@ from redis.exceptions import RedisError
 from sqlalchemy import exists, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import crud
 from app.api.deps import (
     get_current_user,
     get_current_user_optional,
+    get_news_service,
 )
 from app.api.utils import save_upload
 from app.api.validation import (
-    ensure_exists,
     raise_forbidden,
     raise_not_found,
     raise_validation_error,
@@ -43,8 +42,8 @@ from app.core.localization import (
 from app.deps.cache import etag_matches, format_etag, get_cache
 from app.models import models
 from app.schemas import schemas
+from app.services.news_service import NewsService
 from app.services.notification_service import NotificationService
-from app.utils.files import delete_static_file
 
 logger = logging.getLogger(__name__)
 
@@ -139,41 +138,6 @@ def _set_language_headers(response: Response, locale: str) -> None:
     ensure_vary_header(response, "Accept-Language")
 
 
-def _localized_text(locale: str, ru_value: Any, en_value: Any) -> str:
-    normalized = _normalized_cache_locale(locale)
-    candidates: tuple[Any, ...]
-    if normalized == "en":
-        candidates = (en_value, ru_value)
-    else:
-        candidates = (ru_value, en_value)
-    for candidate in candidates:
-        text = _non_empty_text(candidate)
-        if text is not None:
-            return text
-    # Nothing useful, prefer original Russian field as it is required in DB
-    return str(ru_value or en_value or "")
-
-
-def _serialize_news(
-    record: models.News | schemas.NewsOut, locale: str
-) -> dict[str, Any]:
-    model_out = (
-        record
-        if isinstance(record, schemas.NewsOut)
-        else schemas.NewsOut.model_validate(record)
-    )
-    data = model_out.model_dump()
-    data["title"] = _localized_text(locale, data.get("title"), data.get("title_en"))
-    data["content"] = _localized_text(
-        locale, data.get("content"), data.get("content_en")
-    )
-    # Include interaction data if present on the record
-    data["likes_count"] = getattr(record, "likes_count", 0)
-    data["comments_count"] = getattr(record, "comments_count", 0)
-    data["is_liked"] = getattr(record, "is_liked", False)
-    return data
-
-
 def _news_cache_keys(news_id: int | None = None) -> list[str]:
     keys: list[str] = [_LEGACY_NEWS_LIST_CACHE_KEY]
     keys.extend(f"{_NEWS_LIST_CACHE_PREFIX}:{locale}:*" for locale in _CACHE_LOCALES)
@@ -188,17 +152,17 @@ async def create_news(
     data: schemas.NewsCreate,
     request: Request,
     background: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
+    service: NewsService = Depends(get_news_service),
     user: models.User = Depends(get_current_user),
     notifications: NotificationService = Depends(get_notification_service),
 ):
     locale = resolve_locale(request=request, user=user)
     require_admin(user, locale)
-    record = await crud.create_news(db, data)
+    record = await service.create_news(data)
     await _increment_news_list_version()
-    serialized = _serialize_news(record, locale)
+    serialized = service.serialize_news(record, locale)
     await notifications.dispatch_news_created(record.id, locale, background)
-    return schemas.NewsOut.model_validate(serialized)
+    return serialized
 
 
 @router.get(
@@ -213,13 +177,13 @@ async def news_list(
     limit: int = Query(20, ge=1, le=100, description="Number of items to return"),
     cursor: str | None = Query(None, description="Pagination cursor"),
     if_none_match: str | None = Header(default=None),
-    db: AsyncSession = Depends(get_db),
+    service: NewsService = Depends(get_news_service),
     user: models.User | None = Depends(get_current_user_optional),
 ):
     """
     Get paginated list of news articles.
 
-    - **limit**: Number of items to return (1-100, default 20)
+    - **limit**: Items to return (1-100, default 20)
     - **cursor**: Pagination cursor for next page
 
     Returns news ordered by creation date (newest first).
@@ -249,9 +213,32 @@ async def news_list(
             return cached.payload
 
     # Get news with pagination
-    rows = await crud.get_news_list(
-        db, limit=limit + 1, cursor=cursor, current_user_id=user.id if user else None
+    # Note: list_news in service returns tuples (news_obj, l_count, c_count, liked)
+    # Actually, should we update service to return objects?
+    # Checked app/crud/__init__.py: get_news_list returned list of objects.
+    # Checked app/services/news_service.py: list_news returns result from repo directly.
+    # Service returns Sequence[tuple[News, int, int, bool]].
+    # Let's handle tuples here or fix service. Fixing service is cleaner.
+    # But I am editing API file now.
+    # Let's assume service.list_news returns tuples for now and I process them,
+    # OR better, since I am replacing crud.get_news_list which returned objects,
+    # I should probably update Service.list_news to behave like crud.get_news_list.
+    # Checking Service.list_news again.. it returns await repo.list_news().
+    # So it returns tuples.
+
+    results = await service.list_news(
+        limit=limit + 1,
+        cursor=cursor,
+        current_user_id=user.id if user else None,
+        search=None,
     )
+
+    rows = []
+    for news_obj, l_count, c_count, liked in results:
+        news_obj.likes_count = l_count or 0
+        news_obj.comments_count = c_count or 0
+        news_obj.is_liked = bool(liked)
+        rows.append(news_obj)
 
     # Check if there are more items
     has_more = len(rows) > limit
@@ -270,7 +257,7 @@ async def news_list(
         next_cursor = f"{ts}:{last_item.id}"
 
     # Serialize items
-    items = [_serialize_news(item, locale) for item in rows]
+    items = [service.serialize_news(item, locale) for item in rows]
 
     payload = {
         "items": items,
@@ -298,6 +285,7 @@ async def get_news(
     response: Response,
     if_none_match: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db),
+    service: NewsService = Depends(get_news_service),
     user: models.User | None = Depends(get_current_user_optional),
 ):
     """
@@ -376,7 +364,7 @@ async def get_news(
     setattr(news_obj, "comments_count", c_count or 0)
     setattr(news_obj, "is_liked", bool(liked))
 
-    serialized = _serialize_news(news_obj, locale)
+    serialized = service.serialize_news(news_obj, locale)
     encoded = jsonable_encoder(serialized)
     if cache.enabled:
         entry = await cache.set(cache_key, encoded)
@@ -390,56 +378,47 @@ async def update_news(
     id: int,
     request: Request,
     data: schemas.NewsUpdate | None = Body(default=None),
-    db: AsyncSession = Depends(get_db),
+    service: NewsService = Depends(get_news_service),
     user: models.User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
-    news = await db.get(models.News, id)
-    ensure_exists(news, "news", locale)
     require_admin(user, locale)
-    updates = data.model_dump(exclude_unset=True) if data else {}
-    if "title_en" in updates:
-        updates["title_en"] = crud.sanitize_optional_text(updates.get("title_en"))
-    if "content_en" in updates:
-        updates["content_en"] = crud.sanitize_optional_text(updates.get("content_en"))
 
-    old_image_url = news.image_url
-    for field, value in updates.items():
-        setattr(news, field, value)
-    await db.commit()
-    await db.refresh(news)
-    if old_image_url and news.image_url != old_image_url:
-        await delete_static_file(old_image_url)
+    try:
+        updated = await service.update_news(id, data or schemas.NewsUpdate())
+    except ValueError:
+        raise_not_found("news", locale)
+
     await _increment_news_list_version()
     cache = get_cache()
-    await cache.invalidate(
-        _news_item_cache_key(id, locale), _legacy_news_item_cache_key(id)
-    )
-    serialized = _serialize_news(news, locale)
-    return schemas.NewsOut.model_validate(serialized)
+    if cache.enabled:
+        await cache.invalidate(
+            _news_item_cache_key(id, locale), _legacy_news_item_cache_key(id)
+        )
+    serialized = service.serialize_news(updated, locale)
+    return serialized
 
 
 @router.delete("/{id}", response_model=dict)
 async def delete_news(
     id: int,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    service: NewsService = Depends(get_news_service),
     user: models.User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
-    news = await db.get(models.News, id)
-    ensure_exists(news, "news", locale)
     require_admin(user, locale)
-    image_url = news.image_url
-    await db.delete(news)
-    await db.commit()
-    if image_url:
-        await delete_static_file(image_url)
+
+    deleted = await service.delete_news(id)
+    if not deleted:
+        raise_not_found("news", locale)
+
     await _increment_news_list_version()
     cache = get_cache()
-    await cache.invalidate(
-        _news_item_cache_key(id, locale), _legacy_news_item_cache_key(id)
-    )
+    if cache.enabled:
+        await cache.invalidate(
+            _news_item_cache_key(id, locale), _legacy_news_item_cache_key(id)
+        )
     return {"ok": True}
 
 
@@ -447,13 +426,14 @@ async def delete_news(
 async def like_news(
     id: int,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    service: NewsService = Depends(get_news_service),
     user: models.User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
-    news = await db.get(models.News, id)
-    ensure_exists(news, "news", locale)
-    is_liked = await crud.toggle_news_like(db, id, user.id)
+    news = await service.get_news_item(id)
+    if not news:
+        raise_not_found("news", locale)
+    is_liked = await service.toggle_like(id, user.id)
     return {"is_liked": is_liked}
 
 
@@ -461,16 +441,26 @@ async def like_news(
 async def comment_on_news(
     id: int,
     request: Request,
+    background: BackgroundTasks,
     content: str = Body(..., embed=True),
-    db: AsyncSession = Depends(get_db),
+    service: NewsService = Depends(get_news_service),
     user: models.User = Depends(get_current_user),
+    notifications: NotificationService = Depends(get_notification_service),
 ):
     locale = resolve_locale(request=request, user=user)
-    news = await db.get(models.News, id)
-    ensure_exists(news, "news", locale)
+    news = await service.get_news_item(id)
+    if not news:
+        raise_not_found("news", locale)
     if not content.strip():
         raise_validation_error("errors.validation.required", locale)
-    comment = await crud.create_news_comment(db, id, user.id, content)
+
+    comment = await service.create_comment(id, user.id, content)
+
+    # Notify admins about new comment
+    await notifications.dispatch_comment_created(
+        id, comment.id, user.id, locale, background
+    )
+
     return {
         "id": comment.id,
         "content": comment.content,
@@ -486,14 +476,16 @@ async def get_news_interact(
     request: Request,
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    db: AsyncSession = Depends(get_db),
+    service: NewsService = Depends(get_news_service),
     user: models.User | None = Depends(get_current_user_optional),
 ):
     locale = resolve_locale(request=request)
-    news = await db.get(models.News, id)
-    ensure_exists(news, "news", locale)
-    data = await crud.get_news_interactions(
-        db, id, user.id if user else None, limit=limit, offset=offset
+    news = await service.get_news_item(id)
+    if not news:
+        raise_not_found("news", locale)
+
+    data = await service.get_interactions(
+        id, user.id if user else None, limit=limit, offset=offset
     )
     return data
 
@@ -503,12 +495,12 @@ async def update_comment(
     comment_id: int,
     request: Request,
     data: schemas.NewsCommentUpdate,
-    db: AsyncSession = Depends(get_db),
+    service: NewsService = Depends(get_news_service),
     user: models.User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
     try:
-        comment = await crud.update_news_comment(db, comment_id, user.id, data.content)
+        comment = await service.update_comment(comment_id, user.id, data.content)
         return {
             "id": comment.id,
             "content": comment.content,
@@ -526,13 +518,13 @@ async def update_comment(
 async def delete_comment(
     comment_id: int,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    service: NewsService = Depends(get_news_service),
     user: models.User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
     try:
-        await crud.delete_news_comment(
-            db, comment_id, user.id, is_admin=(user.role == "admin")
+        await service.delete_comment(
+            comment_id, user.id, is_admin=(user.role == "admin")
         )
         return {"ok": True}
     except LookupError:
@@ -564,6 +556,7 @@ async def semantic_search(
     if_none_match: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db),
     vector_service: Any = Depends(get_vector_service),
+    service: NewsService = Depends(get_news_service),
 ):
     """
     Semantic search for news articles using embeddings.
@@ -583,7 +576,7 @@ async def semantic_search(
         models.News, embedding, limit=limit, min_score=min_score
     )
 
-    items = [_serialize_news(item, locale) for item in results]
+    items = [service.serialize_news(item, locale) for item in results]
     response.headers["ETag"] = etag
     _set_language_headers(response, normalized_locale)
     return items

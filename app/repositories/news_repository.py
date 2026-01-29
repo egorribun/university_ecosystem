@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import and_, exists, false, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -166,6 +167,99 @@ class NewsRepository(BaseRepository[News, dict, dict]):
         else:
             self.db.add(models.NewsLike(news_id=news_id, user_id=user_id))
             return True
+
+    async def get_comment(self, comment_id: int) -> models.NewsComment | None:
+        """Get a comment by ID."""
+        return await self.db.get(models.NewsComment, comment_id)
+
+    async def create_comment(
+        self, news_id: int, user_id: int, content: str
+    ) -> models.NewsComment:
+        """Create a new comment."""
+        comment = models.NewsComment(news_id=news_id, user_id=user_id, content=content)
+        self.db.add(comment)
+        await self.db.flush()
+        await self.db.refresh(comment, ["user"])
+        return comment
+
+    async def update_comment(
+        self, comment: models.NewsComment, content: str
+    ) -> models.NewsComment:
+        """Update a comment."""
+        comment.content = content
+        self.db.add(comment)
+        await self.db.flush()
+        await self.db.refresh(comment, ["user"])
+        return comment
+
+    async def delete_comment(self, comment: models.NewsComment) -> None:
+        """Delete a comment."""
+        await self.db.delete(comment)
+
+    async def get_interactions(
+        self,
+        news_id: int,
+        current_user_id: int | None = None,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        """Get likes count, current user's like status, and comments for a news item."""
+        # Count likes
+        likes_stmt = select(func.count(models.NewsLike.id)).where(
+            models.NewsLike.news_id == news_id
+        )
+        likes_result = await self.db.execute(likes_stmt)
+        likes_count = likes_result.scalar() or 0
+
+        # User like status
+        is_liked = False
+        if current_user_id:
+            liked_stmt = select(models.NewsLike.id).where(
+                models.NewsLike.news_id == news_id,
+                models.NewsLike.user_id == current_user_id,
+            )
+            is_liked = (await self.db.execute(liked_stmt)).scalar() is not None
+
+        # Get comments with user names (paginated)
+        comments_stmt = (
+            select(
+                models.NewsComment.id,
+                models.NewsComment.content,
+                models.NewsComment.user_id,
+                models.User.full_name,
+                models.NewsComment.created_at,
+            )
+            .join(models.User, models.NewsComment.user_id == models.User.id)
+            .where(models.NewsComment.news_id == news_id)
+            .order_by(models.NewsComment.created_at.asc())
+            .limit(limit)
+            .offset(offset)
+        )
+        comments_result = await self.db.execute(comments_stmt)
+        comments = [
+            {
+                "id": row[0],
+                "content": row[1],
+                "user_id": row[2],
+                "user_name": row[3],
+                "created_at": row[4],
+            }
+            for row in comments_result.all()
+        ]
+
+        # Total comments count
+        total_comments_stmt = select(func.count(models.NewsComment.id)).where(
+            models.NewsComment.news_id == news_id
+        )
+        total_comments = (await self.db.execute(total_comments_stmt)).scalar() or 0
+
+        return {
+            "likes_count": likes_count,
+            "is_liked": is_liked,
+            "comments": comments,
+            "comments_count": total_comments,
+        }
 
 
 def get_news_repository(db: AsyncSession) -> NewsRepository:

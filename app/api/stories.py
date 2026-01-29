@@ -1,5 +1,4 @@
 import logging
-from typing import Any
 
 from fastapi import (
     APIRouter,
@@ -13,13 +12,13 @@ from fastapi import (
     status,
 )
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import crud
-from app.api.deps import get_current_user
+from app.api.deps import (
+    get_current_user,
+    get_story_service,
+)
 from app.api.utils import save_upload
 from app.api.validation import ensure_exists, require_admin
-from app.core.database import get_db
 from app.core.localization import (
     DEFAULT_LOCALE,
     SUPPORTED_LOCALES,
@@ -28,7 +27,7 @@ from app.core.localization import (
 from app.deps.cache import etag_matches, format_etag, get_cache
 from app.models import models
 from app.schemas import schemas
-from app.utils.files import delete_static_file
+from app.services.story_service import StoryService
 
 logger = logging.getLogger(__name__)
 
@@ -64,19 +63,12 @@ def _set_language_headers(response: Response, locale: str) -> None:
     ensure_vary_header(response, "Accept-Language")
 
 
-def _serialize_story(
-    record: models.Story | schemas.StoryOut, locale: str
-) -> dict[str, Any]:
-    story = crud.serialize_story(record, locale)
-    return story.model_dump()
-
-
 @router.get("", response_model=list[schemas.StoryOut])
 async def list_stories(
     request: Request,
     response: Response,
     if_none_match: str | None = Header(default=None),
-    db: AsyncSession = Depends(get_db),
+    service: StoryService = Depends(get_story_service),
 ):
     locale = resolve_locale(request=request)
     normalized_locale = _normalized_cache_locale(locale)
@@ -103,9 +95,10 @@ async def list_stories(
             _set_language_headers(response, normalized_locale)
             return cached.payload
 
-    rows = await crud.list_active_stories(db)
-    serialized = [_serialize_story(item, locale) for item in rows]
-    encoded = jsonable_encoder(serialized)
+    # Service returns list[StoryOut] directly
+    serialized = await service.list_active_stories(locale)
+    # jsonable_encoder needed for caching?
+    encoded = jsonable_encoder([item.model_dump() for item in serialized])
 
     if cache.enabled:
         entry = await cache.set(cache_key, encoded)
@@ -118,16 +111,15 @@ async def list_stories(
 async def create_story(
     data: schemas.StoryCreate,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    service: StoryService = Depends(get_story_service),
     user: models.User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
     require_admin(user, locale)
-    record = await crud.create_story(db, data, created_by=user.id)
+    record = await service.create_story(data, created_by=user.id)
     cache = get_cache()
     await cache.invalidate(*_stories_cache_keys())
-    serialized = crud.serialize_story(record, locale)
-    return serialized
+    return service.serialize_story(record, locale)
 
 
 @router.patch("/{story_id}", response_model=schemas.StoryOut)
@@ -135,51 +127,36 @@ async def update_story(
     story_id: int,
     request: Request,
     data: schemas.StoryUpdate | None = Body(default=None),
-    db: AsyncSession = Depends(get_db),
+    service: StoryService = Depends(get_story_service),
     user: models.User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
-    story = await db.get(models.Story, story_id)
-    ensure_exists(story, "stories", locale)
     require_admin(user, locale)
-    old_cover = story.cover_url
-    updated = await crud.update_story(db, story, data)
-    if old_cover and updated.cover_url != old_cover:
-        try:
-            await delete_static_file(old_cover)
-        except Exception:  # pragma: no cover - cleanup best effort
-            logger.warning(
-                "Failed to delete old story cover",
-                extra={"story_id": story_id},
-                exc_info=True,
-            )
+
+    try:
+        updated = await service.update_story(story_id, data or schemas.StoryUpdate())
+    except ValueError:
+        ensure_exists(None, "stories", locale)
+
     cache = get_cache()
     await cache.invalidate(*_stories_cache_keys())
-    return crud.serialize_story(updated, locale)
+    return service.serialize_story(updated, locale)
 
 
 @router.delete("/{story_id}", response_model=dict)
 async def delete_story(
     story_id: int,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    service: StoryService = Depends(get_story_service),
     user: models.User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
-    story = await db.get(models.Story, story_id)
-    ensure_exists(story, "stories", locale)
     require_admin(user, locale)
-    cover_url = story.cover_url
-    await crud.delete_story(db, story)
-    if cover_url:
-        try:
-            await delete_static_file(cover_url)
-        except Exception:  # pragma: no cover - cleanup best effort
-            logger.warning(
-                "Failed to delete story cover",
-                extra={"story_id": story_id},
-                exc_info=True,
-            )
+
+    deleted = await service.delete_story(story_id)
+    if not deleted:
+        ensure_exists(None, "stories", locale)
+
     cache = get_cache()
     await cache.invalidate(*_stories_cache_keys())
     return {"ok": True}

@@ -146,20 +146,36 @@ async def _warm_news(cache: BaseCache, db: AsyncSession) -> None:
     )
 
     version = await _get_news_list_version()
+
+    from app.core.container import get_vector_service
+    from app.repositories.news_repository import NewsRepository
+    from app.services.news_service import NewsService
+
+    # We need vector service for NewsService init
+    vector_service = get_vector_service(db)
+    repo = NewsRepository(db)
+    service = NewsService(repo, vector_service)
+
     for locale in ["ru", "en"]:
         cache_key = _news_list_cache_key(locale, 20, None, version)
         cached = await cache.get(cache_key)
         if cached and _is_entry_fresh(cached):
             continue
 
-        rows = await crud.get_news_list(db, limit=21, cursor=None)
+        results = await service.list_news(limit=21, cursor=None)
+
+        rows = []
+        for news_obj, l_count, c_count, liked in results:
+            news_obj.likes_count = l_count or 0
+            news_obj.comments_count = c_count or 0
+            news_obj.is_liked = bool(liked)
+            rows.append(news_obj)
+
         has_more = len(rows) > 20
         if has_more:
             rows = rows[:20]
 
-        from app.api.news import _serialize_news
-
-        items = [_serialize_news(item, locale) for item in rows]
+        items = [service.serialize_news(item, locale) for item in rows]
         payload = {
             "items": items,
             "has_more": has_more,
@@ -190,18 +206,31 @@ async def _warm_events(cache: BaseCache, db: AsyncSession) -> None:
         if cached and _is_entry_fresh(cached):
             continue
 
-        payload = await crud.get_all_events(
-            db,
-            user_id=0,  # System-level warmup
-            search="",
-            type="",
-            location="",
-            is_active=True,
-            locale=locale,
-            limit=20,
-            cursor=None,
-        )
-        await cache.set(cache_key, jsonable_encoder(payload))
+    from app.repositories.event_repository import EventRepository
+    from app.services.event_service import EventService
+    from app.services.vector_service import VectorService
+
+    # We need a vector service instance, but for warmup of *list* we probably don't
+    # need actual embeddings if the search query is empty. However, EventService
+    # requires it. We can rely on DI container or construct it manually.
+    # Since this is a background task, manual construction is safer/easier.
+    # VectorService needs settings.
+
+    vector_service = VectorService()
+    repo = EventRepository(db)
+    service = EventService(repo, vector_service)
+
+    payload = await service.get_events(
+        user_id=0,  # System-level warmup
+        search="",
+        type="",
+        location="",
+        is_active=True,
+        locale=locale,
+        limit=20,
+        cursor=None,
+    )
+    await cache.set(cache_key, jsonable_encoder(payload))
 
 
 async def warm_cache() -> None:

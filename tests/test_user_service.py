@@ -22,6 +22,7 @@ from app.core.exceptions.domain import (
     EntityNotFound,
     PermissionDenied,
 )
+from app.schemas import schemas
 from app.services.user_service import UserService
 
 
@@ -216,7 +217,8 @@ async def test_create_user_invalid_invite(
     data.role = "admin"
     data.invite_code = "INVALID"
 
-    service.repo.check_invite_code.return_value = None
+    service.repo.get_invite_code.return_value = None
+    service.repo.check_email_exists.return_value = False
 
     with patch("app.services.user_service.resolve_locale", return_value="en"):
         with pytest.raises(BusinessRuleViolation):
@@ -264,8 +266,9 @@ async def test_get_users_non_admin_with_search(
     service.repo.list_users.return_value = []
 
     with patch("app.services.user_service.resolve_locale", return_value="en"):
-        with patch("app.services.user_service.crud.get_users", return_value=[]):
-            result = await service.get_users(mock_request, mock_user, search="test")
+        result = await service.get_users(
+            mock_request, mock_user, filters=schemas.UserSearchFilter(search="test")
+        )
 
     assert result == []
     service.repo.list_users.assert_called_once()
@@ -278,8 +281,9 @@ async def test_get_users_admin(service, mock_db, mock_admin_user, mock_request):
     service.repo.list_users.return_value = mock_users
 
     with patch("app.services.user_service.resolve_locale", return_value="en"):
-        with patch("app.services.user_service.crud.get_users", return_value=mock_users):
-            result = await service.get_users(mock_request, mock_admin_user)
+        result = await service.get_users(
+            mock_request, mock_admin_user, filters=schemas.UserSearchFilter()
+        )
 
     assert len(result) == 2
 
@@ -308,11 +312,10 @@ async def test_admin_update_user_success(
     updated_user = MagicMock()
     updated_user.id = 2
 
+    service.repo.get.return_value = updated_user
+
     with patch("app.services.user_service.resolve_locale", return_value="en"):
-        with patch(
-            "app.services.user_service.crud.admin_update_user",
-            return_value=(updated_user, None),
-        ):
+        with patch("app.services.user_service.ensure_mfa_relationships_loaded"):
             result = await service.admin_update_user(
                 2, data, mock_request, mock_admin_user
             )
@@ -332,12 +335,16 @@ async def test_admin_update_user_mfa_reset(
     reset_stats = MagicMock()
     reset_stats.changed = True
 
+    updated_user.preferences = None
+    service.repo.get.return_value = updated_user
+    data.model_dump.return_value = {"reset_mfa": True}
+
     with patch("app.services.user_service.resolve_locale", return_value="en"):
         with patch(
-            "app.services.user_service.crud.admin_update_user",
-            return_value=(updated_user, reset_stats),
+            "app.auth.mfa.reset_user_mfa", return_value=reset_stats
         ):
-            await service.admin_update_user(2, data, mock_request, mock_admin_user)
+            with patch("app.services.user_service.ensure_mfa_relationships_loaded"):
+                await service.admin_update_user(2, data, mock_request, mock_admin_user)
 
     service.notifications.send_security_notification.assert_called_once()
 

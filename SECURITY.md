@@ -29,10 +29,9 @@ To report a vulnerability, use the **Security** tab on GitHub and open a new **P
 
 ## Password Storage & Policy
 
-- We hash passwords with Argon2id via Passlib using time cost **3**, memory cost **65536 KiB** (~64 MB) and parallelism **4**.
-- Legacy bcrypt hashes are accepted for login and rehashed to Argon2id on success; bcrypt's 72-byte input limit is enforced during legacy hashing to prevent silent truncation issues.
-- Password length requirements: **8–200 characters**. Unicode is fully supported and input is stored verbatim (no trimming or normalization).
-- Password changes and account provisioning use the same policy and algorithm, and the behaviour is covered by automated tests.
+- **Algorithm**: We hash passwords with Argon2id via Passlib (Time: 3, Mem: 64MB, Parallelism: 4).
+- **Exceptions**: SHA-1 is used *exclusively* for the [Have I Been Pwned API](https://haveibeenpwned.com/API/v3#PwnedPasswords) k-anonymity check. Only the first 5 characters of the hash are transmitted; the full hash is never stored. This usage is intentional and safe.
+- **Legacy**: Pre-existing bcrypt hashes are automatically rehashed to Argon2id upon successful login.
 
 ## Authentication Audit Logging
 

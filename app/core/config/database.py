@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from pydantic import field_validator
 
 from .base import (
@@ -13,8 +15,11 @@ from .base import (
 class DatabaseSettings(BaseAppSettings):
     database_url: str
     database_read_replica_url: str | None = None  # Optional read replica URL
-    database_pool_size: int = 5
-    database_max_overflow: int = 10
+
+    # Auto-tuning pool size based on CPU cores if not explicitly set
+    # Formula: (CPU_COUNT * 2) + 1
+    database_pool_size: int = (os.cpu_count() or 1) * 2 + 1
+    database_max_overflow: int = (os.cpu_count() or 1) * 4
     database_pool_timeout: float = 30.0
     database_pool_recycle: int = 1_800
 

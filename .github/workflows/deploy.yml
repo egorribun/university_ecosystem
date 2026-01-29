@@ -146,10 +146,16 @@ jobs:
 
           echo "url=https://${{ inputs.environment }}.example.com" >> "$GITHUB_OUTPUT"
 
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install requests
+        run: pip install requests
+
       - name: Post-deployment smoke test
-        run: |
-          chmod +x scripts/smoke-test.sh
-          ./scripts/smoke-test.sh
+        run: python scripts/smoke_test.py
         env:
           GATEWAY_URL: "https://${{ inputs.environment }}-api.example.com/health"
           WS_HUB_URL: "https://${{ inputs.environment }}-ws.example.com/health"
@@ -190,7 +196,7 @@ jobs:
   notify:
     name: Notify deployment status
     runs-on: ubuntu-latest
-    needs: [deploy, rollback]
+    needs: [build-and-push, deploy, rollback]
     if: always()
     steps:
       - name: Deployment summary

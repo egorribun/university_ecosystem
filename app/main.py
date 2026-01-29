@@ -78,7 +78,7 @@ _logger = logging.getLogger(__name__)
 
 
 @app.get("/", response_class=JSONResponse)
-async def root():
+async def get_root():
     return JSONResponse(status_code=200, content={"status": "ok"})
 
 

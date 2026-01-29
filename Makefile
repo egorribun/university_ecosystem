@@ -6,8 +6,7 @@ ENV_FILE ?= $(CURDIR)/.env
 install: backend-install frontend-install
 
 backend-install:
-	python -m pip install --upgrade pip
-	python -m pip install -r $(CURDIR)/requirements.txt -r $(CURDIR)/requirements-dev.txt
+	uv sync
 
 frontend-install:
 	npm ci --prefix $(FRONTEND_DIR)

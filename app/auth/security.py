@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import httpx
 import jwt
+from fastapi import BackgroundTasks
 from jwt import PyJWTError as JWTError
 from passlib.context import CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -257,10 +258,36 @@ class AccessTokenConfig:
     session_metadata: dict[str, Any] = field(default_factory=dict)
 
 
+async def register_session_bg(
+    user_id: int,
+    jti: str,
+    expires_at: datetime,
+    ip_address: str | None,
+    user_agent: str | None,
+) -> None:
+    """Background task to register session in Redis."""
+    try:
+        from app.auth.redis_session import get_session_backend
+
+        session_backend = await get_session_backend()
+        await session_backend.register_session(
+            user_id=user_id,
+            jti=jti,
+            expires_at=expires_at,
+            metadata={
+                "ip_address": ip_address,
+                "user_agent": user_agent,
+            },
+        )
+    except Exception as e:
+        _logger.warning(f"Failed to register session in Redis (background): {e}")
+
+
 async def create_access_token(
     sub: str | Any,
     db: AsyncSession | None = None,
     config: AccessTokenConfig | None = None,
+    bg_tasks: BackgroundTasks | None = None,
 ) -> str | tuple[str, ActiveSession]:
     config = config or AccessTokenConfig()
     minutes = config.expires_delta or settings.access_token_expire_minutes
@@ -327,8 +354,14 @@ async def create_access_token(
         # Enforce concurrent session limit (revoke oldest sessions if limit exceeded)
         max_sessions = settings.max_sessions_per_user
         if max_sessions > 0:
-            from sqlalchemy import func, select
+            from sqlalchemy import func, select, text
             from sqlalchemy.orm import load_only
+
+            # Acquire advisory lock to serialize session management for this user
+            if db.bind.dialect.name == "postgresql":
+                await db.execute(
+                    text("SELECT pg_advisory_xact_lock(1, :uid)"), {"uid": user_id}
+                )
 
             # Count current active sessions for this user (excluding just-created one)
             count_stmt = (
@@ -358,22 +391,31 @@ async def create_access_token(
                 session_backend = await get_session_backend()
                 for old_session in oldest_sessions:
                     old_session.revoked_at = now
+                    # We might want to background this too, but revocation is critical
                     await session_backend.revoke_session(old_session.jti)
 
         await db.commit()
         await db.refresh(session)
 
         # Register in Redis session backend if enabled
-        session_backend = await get_session_backend()
-        await session_backend.register_session(
-            user_id=user_id,
-            jti=jti,
-            expires_at=expires_at,
-            metadata={
-                "ip_address": session.ip_address,
-                "user_agent": session.user_agent,
-            },
-        )
+        if bg_tasks:
+            bg_tasks.add_task(
+                register_session_bg,
+                user_id=user_id,
+                jti=jti,
+                expires_at=expires_at,
+                ip_address=session.ip_address,
+                user_agent=session.user_agent,
+            )
+        else:
+            await register_session_bg(
+                user_id=user_id,
+                jti=jti,
+                expires_at=expires_at,
+                ip_address=session.ip_address,
+                user_agent=session.user_agent,
+            )
+
         return token, session
     return token
 

@@ -1,0 +1,122 @@
+from app.core.localization import localized_text, normalize_locale
+from app.models import models
+from app.repositories.story_repository import StoryRepository
+from app.schemas import schemas
+from app.utils.files import delete_static_file
+from app.utils.sanitization import sanitize_optional_text
+
+
+class StoryService:
+    def __init__(self, repo: StoryRepository):
+        self.repo = repo
+
+    def serialize_story(
+        self,
+        story: models.Story | schemas.StoryOut,
+        locale: str | None,
+    ) -> schemas.StoryOut:
+        normalized_locale = normalize_locale(locale)
+        story_out = (
+            story
+            if isinstance(story, schemas.StoryOut)
+            else schemas.StoryOut.model_validate(story)
+        )
+        data = story_out.model_dump()
+        data["title"] = localized_text(
+            normalized_locale,
+            ru=data.get("title"),
+            en=data.get("title_en"),
+        ) or (data.get("title") or "")
+        data["short_text"] = localized_text(
+            normalized_locale,
+            ru=data.get("short_text"),
+            en=data.get("short_text_en"),
+        ) or (data.get("short_text") or "")
+        return schemas.StoryOut.model_validate(data)
+
+    async def list_active_stories(
+        self, locale: str | None = None
+    ) -> list[schemas.StoryOut]:
+        rows = await self.repo.get_active(
+            limit=100
+        )  # Reasonable limit for active stories
+        return [self.serialize_story(item, locale) for item in rows]
+
+    async def create_story(
+        self, data: schemas.StoryCreate, created_by: int
+    ) -> models.Story:
+        payload = data.model_dump()
+        payload["title_en"] = sanitize_optional_text(payload.get("title_en"))
+        payload["short_text_en"] = sanitize_optional_text(payload.get("short_text_en"))
+        payload["cover_url"] = sanitize_optional_text(payload.get("cover_url"))
+        payload["cta_url"] = sanitize_optional_text(payload.get("cta_url"))
+
+        if payload.get("published_at"):
+            payload["published_at"] = self.repo._ensure_utc(payload["published_at"])
+        if payload.get("expires_at"):
+            payload["expires_at"] = self.repo._ensure_utc(payload["expires_at"])
+
+        payload["created_by"] = created_by
+
+        # We stick to repo.create if it fits, or manual add
+        # Repo create assumes straight mapping, let's use it but might need overrides
+        # BaseRepository.create takes dict or Pydantic.
+
+        story = await self.repo.create(payload)
+        await self.repo.db.commit()
+        return story
+
+    async def update_story(
+        self, story_id: int, data: schemas.StoryUpdate
+    ) -> models.Story:
+        story = await self.repo.get(story_id)
+        if not story:
+            raise ValueError("story_not_found")
+
+        old_cover = story.cover_url
+
+        updates = data.model_dump(exclude_unset=True)
+        if "title_en" in updates:
+            updates["title_en"] = sanitize_optional_text(updates.get("title_en"))
+        if "short_text_en" in updates:
+            updates["short_text_en"] = sanitize_optional_text(
+                updates.get("short_text_en")
+            )
+        if "cover_url" in updates:
+            updates["cover_url"] = sanitize_optional_text(updates.get("cover_url"))
+        if "cta_url" in updates:
+            updates["cta_url"] = sanitize_optional_text(updates.get("cta_url"))
+
+        if updates.get("published_at"):
+            updates["published_at"] = self.repo._ensure_utc(updates["published_at"])
+        if updates.get("expires_at"):
+            updates["expires_at"] = self.repo._ensure_utc(updates["expires_at"])
+
+        updated_story = await self.repo.update(story.id, updates)
+
+        # Cleanup old cover if changed
+        if old_cover and updated_story.cover_url != old_cover:
+            try:
+                await delete_static_file(old_cover)
+            except Exception:
+                # Log but don't fail, similar to API logic
+                pass
+
+        await self.repo.db.commit()
+        return updated_story
+
+    async def delete_story(self, story_id: int) -> bool:
+        story = await self.repo.get(story_id)
+        if not story:
+            return False
+
+        cover_url = story.cover_url
+        await self.repo.delete(story_id)
+        await self.repo.db.commit()
+
+        if cover_url:
+            try:
+                await delete_static_file(cover_url)
+            except Exception:
+                pass
+        return True

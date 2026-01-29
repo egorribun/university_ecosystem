@@ -62,17 +62,65 @@ def mock_schedule_handler():
     return handler
 
 
+@pytest.fixture
+def mock_schedule_service():
+    service = AsyncMock()
+
+    # Mock create
+    mock_created = MagicMock(spec=models.Schedule)
+    mock_created.id = 1
+    mock_created.group_id = 101
+    mock_created.subject = "Test Subject"
+    mock_created.weekday = "1"
+    mock_created.start_time = datetime(2026, 1, 1, 9, 0, tzinfo=UTC)
+    mock_created.end_time = datetime(2026, 1, 1, 10, 30, tzinfo=UTC)
+    mock_created.teacher = "Test Teacher"
+    mock_created.room = "101"
+    mock_created.parity = "both"
+    mock_created.lesson_type = "lecture"
+    mock_created.lesson_type_display = "Lecture"
+    service.create_schedule.return_value = mock_created
+
+    # Mock update
+    mock_updated = MagicMock(spec=models.Schedule)
+    mock_updated.id = 1
+    mock_updated.group_id = 101
+    mock_updated.subject = "Test Subject"
+    mock_updated.weekday = "1"
+    mock_updated.start_time = datetime(2026, 1, 1, 9, 0, tzinfo=UTC)
+    mock_updated.end_time = datetime(2026, 1, 1, 10, 30, tzinfo=UTC)
+    mock_updated.teacher = "New Teacher"
+    mock_updated.room = "101"
+    mock_updated.parity = "both"
+    mock_updated.lesson_type = "lecture"
+    mock_updated.lesson_type_display = "Lecture"
+    service.get_by_id.return_value = mock_updated
+    service.update_schedule.return_value = mock_updated
+
+    # Mock delete
+    service.delete_schedule.return_value = True
+
+    return service
+
+
 @pytest.mark.asyncio
-async def test_schedule_api_coverage(mock_user, mock_db, mock_schedule_handler):
+async def test_schedule_api_coverage(
+    mock_user, mock_db, mock_schedule_handler, mock_schedule_service
+):
+    # We override get_schedule_service dependency
+    from app.api.deps import get_schedule_service
+
     app.dependency_overrides[get_current_user] = lambda: mock_user
-    app.dependency_overrides[get_db] = lambda: mock_db
+    app.dependency_overrides[get_schedule_service] = lambda: mock_schedule_service
     app.dependency_overrides[get_schedule_handler] = lambda: mock_schedule_handler
+    # We also keep get_db override if needed by other deps, but schedule endpoints now use service
+    app.dependency_overrides[get_db] = lambda: mock_db
 
     try:
         async with AsyncClient(
             transport=ASGITransport(app=app), base_url="http://testserver"
         ) as ac:
-            # Test get schedule
+            # Test get schedule (uses handler)
             res = await ac.get("/api/v1/schedule/101")
             assert res.status_code == 200
             assert res.headers["ETag"] == "sched-etag"
@@ -87,6 +135,7 @@ async def test_schedule_api_coverage(mock_user, mock_db, mock_schedule_handler):
             # Test update schedule
             res = await ac.patch("/api/v1/schedule/1", json={"teacher": "New Teacher"})
             assert res.status_code == 200
+            assert mock_schedule_service.update_schedule.called
 
             # Test delete schedule
             res = await ac.delete("/api/v1/schedule/1")

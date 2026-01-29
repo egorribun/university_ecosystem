@@ -20,11 +20,10 @@ from fastapi import (
 )
 from fastapi.encoders import jsonable_encoder
 from redis.exceptions import RedisError
-from sqlalchemy import and_, delete, func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import crud
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, get_event_service
 from app.api.utils import save_upload
 from app.api.validation import (
     ensure_exists,
@@ -41,6 +40,7 @@ from app.deps.cache import RedisCache, etag_matches, format_etag, get_cache
 from app.models import models
 from app.schemas import schemas
 from app.services import attendance_tokens
+from app.services.event_service import EventService
 from app.services.notification_service import NotificationService
 from app.utils.files import delete_static_file, save_attachment
 
@@ -214,21 +214,21 @@ async def create_event(
     data: schemas.EventCreate,
     request: Request,
     background: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
     notifications: NotificationService = Depends(get_notification_service),
+    events: EventService = Depends(get_event_service),
 ):
     locale = resolve_locale(request=request, user=user)
     require_teacher_or_admin(user, locale)
     try:
-        record = await crud.create_event(db, data, user_id=user.id)
+        record = await events.create_event(data, user_id=user.id)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
         ) from exc
     await _invalidate_events_list_cache()
     await notifications.dispatch_event_created(record.id, locale, background)
-    return crud.serialize_event(record, locale)
+    return events.serialize_event(record, locale)
 
 
 @router.get(
@@ -240,20 +240,20 @@ async def create_event(
 async def all_events(
     request: Request,
     response: Response,
-    db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
     search: str = Query("", alias="search"),
     type: str = Query("", alias="type"),
     location: str = Query("", alias="location"),
     is_active: bool = Query(True, alias="is_active"),
     limit: int = Query(
-        crud.DEFAULT_EVENTS_LIMIT,
+        20,
         ge=1,
-        le=crud.MAX_EVENTS_LIMIT,
+        le=50,
         alias="limit",
     ),
     cursor: str | None = Query(None, alias="cursor"),
     if_none_match: str | None = Header(default=None),
+    events: EventService = Depends(get_event_service),
 ):
     """
     Get paginated list of events.
@@ -297,8 +297,7 @@ async def all_events(
             response.headers["ETag"] = etag_header
             return cached.payload
 
-    payload = await crud.get_all_events(
-        db,
+    payload = await events.get_events(
         user_id=user.id,
         search=search,
         type=type,
@@ -352,6 +351,7 @@ async def attend(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
+    events: EventService = Depends(get_event_service),
 ):
     """
     Register attendance for an event.
@@ -367,7 +367,7 @@ async def attend(
     if not event.is_active or event_ends_at <= datetime.now(UTC):
         raise_conflict("errors.events.registration_closed", locale)
     try:
-        return await crud.register_attendance(db, data, user_id=user.id)
+        return await events.register_attendance(data, user_id=user.id)
     except LookupError:
         raise_not_found("events", locale)
     except ValueError:
@@ -377,24 +377,24 @@ async def attend(
 @router.delete("/attendance", response_model=dict)
 async def unregister_event(
     data: schemas.EventAttendanceCreate,
-    db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
+    events: EventService = Depends(get_event_service),
 ):
-    return await crud.unregister_attendance(db, data, user_id=user.id)
+    return await events.unregister_attendance(data, user_id=user.id)
 
 
 @router.get("/my", response_model=list[schemas.EventOut])
 async def my_events(
     request: Request,
     response: Response,
-    db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
     if_none_match: str | None = Header(default=None),
+    events: EventService = Depends(get_event_service),
 ):
     locale = resolve_locale(request=request, user=user)
     _set_language_headers(response, locale)
     response.headers["Cache-Control"] = _EVENTS_CACHE_CONTROL
-    payload = await crud.get_my_events(db, user_id=user.id, locale=locale)
+    payload = await events.get_my_events(user_id=user.id, locale=locale)
     encoded, digest, weak_header = _encode_payload_with_etag(payload)
     if etag_matches(digest, if_none_match):
         not_modified = Response(status_code=status.HTTP_304_NOT_MODIFIED)
@@ -456,7 +456,6 @@ async def upload_event_image(
     *,
     request: Request,
     user: models.User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
 ):
     locale = resolve_locale(request=request, user=user)
     require_teacher_or_admin(user, locale)
@@ -471,6 +470,7 @@ async def update_event(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
+    events: EventService = Depends(get_event_service),
 ):
     locale = resolve_locale(request=request, user=user)
     q = await db.get(models.Event, event_id)
@@ -478,7 +478,7 @@ async def update_event(
     require_owner_or_admin(user, locale, owner_id=q.created_by, allow_teacher=True)
     old_image_url = q.image_url
     try:
-        q = await crud.update_event(db, q, data)
+        q = await events.update_event(event_id, data)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if old_image_url and q.image_url != old_image_url:
@@ -500,7 +500,7 @@ async def update_event(
         )
     ).scalar()
     await _invalidate_events_list_cache()
-    return crud.serialize_event(
+    return events.serialize_event(
         q,
         locale,
         participant_count=participant_count,
@@ -531,6 +531,9 @@ async def delete_event(
         ).all()
         if row[0]
     ]
+    # Use delete directly? Or repo? Keeping existing logic for now as it wasn't in crud
+    from sqlalchemy import delete
+
     await db.execute(
         delete(models.EventFile).where(models.EventFile.event_id == event_id)
     )
@@ -552,6 +555,7 @@ async def get_event(
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
     if_none_match: str | None = Header(default=None),
+    events: EventService = Depends(get_event_service),
 ):
     locale = resolve_locale(request=request, user=user)
     _set_language_headers(response, locale)
@@ -610,7 +614,7 @@ async def get_event(
     # Files are already loaded via selectinload
     files = getattr(q, "files", []) or []
 
-    payload = crud.serialize_event(
+    payload = events.serialize_event(
         q,
         locale,
         participant_count=participant_count,
@@ -661,6 +665,7 @@ async def semantic_search(
     if_none_match: str | None = Header(default=None),
     db: AsyncSession = Depends(get_db),
     vector_service: Any = Depends(get_vector_service),
+    events: EventService = Depends(get_event_service),
 ):
     """
     Semantic search for events using embeddings.
@@ -680,7 +685,7 @@ async def semantic_search(
         models.Event, embedding, limit=limit, min_score=min_score
     )
 
-    items = [crud.serialize_event(item, locale) for item in results]
+    items = [events.serialize_event(item, locale) for item in results]
     response.headers["ETag"] = etag
     _set_language_headers(response, normalized_locale)
     return items

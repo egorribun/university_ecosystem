@@ -1,5 +1,5 @@
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
@@ -11,6 +11,7 @@ from app.auth import mfa
 from app.auth.redis_session import get_session_backend
 from app.auth.security import decode_token
 from app.core.config import settings
+from app.core.container import get_vector_service
 from app.core.database import get_db
 from app.core.localization import resolve_locale, translate
 from app.models.models import ActiveSession, User
@@ -246,3 +247,48 @@ def get_chat_service(
     from app.services.chat_service import ChatService
 
     return ChatService(session)
+
+
+def get_event_service(
+    session: Annotated[AsyncSession, Depends(get_db)],
+    vector_service: Annotated[Any, Depends(get_vector_service)],
+) -> Any:
+    from app.repositories.event_repository import EventRepository
+    from app.services.event_service import EventService
+
+    repo = EventRepository(session)
+    return EventService(repo, vector_service)
+
+
+def get_news_service(
+    session: Annotated[AsyncSession, Depends(get_db)],
+    vector_service: Annotated[Any, Depends(get_vector_service)],
+) -> Any:
+    from app.repositories.news_repository import NewsRepository
+    from app.services.news_service import NewsService
+
+    repo = NewsRepository(session)
+    return NewsService(repo, vector_service)
+
+
+def get_story_service(
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> Any:
+    from app.repositories.story_repository import StoryRepository
+    from app.services.story_service import StoryService
+
+    repo = StoryRepository(session)
+    return StoryService(repo)
+
+
+def get_schedule_service(
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> Any:
+    from app.repositories.schedule_repository import GroupRepository, ScheduleRepository
+    from app.services.schedule_optimizer import ScheduleOptimizerService
+    from app.services.schedule_service import ScheduleService
+
+    repo = ScheduleRepository(session)
+    group_repo = GroupRepository(session)
+    optimizer = ScheduleOptimizerService()
+    return ScheduleService(repo, group_repo, optimizer)
