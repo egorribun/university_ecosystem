@@ -421,12 +421,16 @@ class UserService:
         password = data.password
         hashed = get_password_hash(password)
 
-        user_data = data.model_dump(exclude={"invite_code", "password"})
+        user_data = data.model_dump(
+            exclude={"invite_code", "password", "spotify_connected"}
+        )
         user_data["hashed_password"] = hashed
 
         user = await self.repo.create(user_data)
 
         self.audit.log("users.create", request, user_id=user.id, reason="admin_create")
+        await ensure_mfa_relationships_loaded(self.db, user)
+        await attach_pending_email(self.db, user)
         return user
 
     async def upload_avatar(
