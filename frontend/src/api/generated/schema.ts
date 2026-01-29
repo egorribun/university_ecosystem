@@ -12,8 +12,8 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    /** Root */
-    get: operations["root__get"]
+    /** Get Root */
+    get: operations["get_root__get"]
     put?: never
     post?: never
     delete?: never
@@ -751,10 +751,10 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    /** Me */
-    get: operations["me_api_v1_users_me_get"]
-    /** Update Me */
-    put: operations["update_me_api_v1_users_me_put"]
+    /** Get Current User Profile */
+    get: operations["get_current_user_profile_api_v1_users_me_get"]
+    /** Update Current User Profile */
+    put: operations["update_current_user_profile_api_v1_users_me_put"]
     post?: never
     delete?: never
     options?: never
@@ -771,8 +771,8 @@ export interface paths {
     }
     get?: never
     put?: never
-    /** Change Email */
-    post: operations["change_email_api_v1_users_me_email_post"]
+    /** Request Email Change */
+    post: operations["request_email_change_api_v1_users_me_email_post"]
     delete?: never
     options?: never
     head?: never
@@ -788,8 +788,8 @@ export interface paths {
     }
     get?: never
     put?: never
-    /** Confirm Email Change */
-    post: operations["confirm_email_change_api_v1_users_me_email_confirm_post"]
+    /** Verify Email Change */
+    post: operations["verify_email_change_api_v1_users_me_email_confirm_post"]
     delete?: never
     options?: never
     head?: never
@@ -822,8 +822,8 @@ export interface paths {
     }
     get?: never
     put?: never
-    /** Export Me */
-    post: operations["export_me_api_v1_users_me_export_post"]
+    /** Export Current User Data */
+    post: operations["export_current_user_data_api_v1_users_me_export_post"]
     delete?: never
     options?: never
     head?: never
@@ -839,8 +839,8 @@ export interface paths {
     }
     get?: never
     put?: never
-    /** Delete Me */
-    post: operations["delete_me_api_v1_users_me_delete_post"]
+    /** Delete Current User Account */
+    post: operations["delete_current_user_account_api_v1_users_me_delete_post"]
     delete?: never
     options?: never
     head?: never
@@ -3519,7 +3519,7 @@ export interface components {
 }
 export type $defs = Record<string, never>
 export interface operations {
-  root__get: {
+  get_root__get: {
     parameters: {
       query?: never
       header?: never
@@ -4795,7 +4795,7 @@ export interface operations {
       }
     }
   }
-  me_api_v1_users_me_get: {
+  get_current_user_profile_api_v1_users_me_get: {
     parameters: {
       query?: never
       header?: never
@@ -4815,7 +4815,7 @@ export interface operations {
       }
     }
   }
-  update_me_api_v1_users_me_put: {
+  update_current_user_profile_api_v1_users_me_put: {
     parameters: {
       query?: never
       header?: never
@@ -4848,7 +4848,7 @@ export interface operations {
       }
     }
   }
-  change_email_api_v1_users_me_email_post: {
+  request_email_change_api_v1_users_me_email_post: {
     parameters: {
       query?: never
       header?: never
@@ -4881,7 +4881,7 @@ export interface operations {
       }
     }
   }
-  confirm_email_change_api_v1_users_me_email_confirm_post: {
+  verify_email_change_api_v1_users_me_email_confirm_post: {
     parameters: {
       query?: never
       header?: never
@@ -4947,7 +4947,7 @@ export interface operations {
       }
     }
   }
-  export_me_api_v1_users_me_export_post: {
+  export_current_user_data_api_v1_users_me_export_post: {
     parameters: {
       query?: never
       header?: never
@@ -4967,7 +4967,7 @@ export interface operations {
       }
     }
   }
-  delete_me_api_v1_users_me_delete_post: {
+  delete_current_user_account_api_v1_users_me_delete_post: {
     parameters: {
       query?: never
       header?: never
@@ -5112,9 +5112,9 @@ export interface operations {
         full_name?: string | null
         search?: string | null
         group_id?: number | null
-        role?: string | null
-        limit?: number | null
-        offset?: number | null
+        role?: components["schemas"]["UserRole"] | null
+        limit?: number
+        offset?: number
       }
       header?: never
       path?: never
