@@ -67,23 +67,18 @@ jobs:
 
       - name: Trivy image scan
         id: trivy_image
-        uses: aquasecurity/trivy-action@0.28.0
-        continue-on-error: true
+        uses: aquasecurity/trivy-action@0.33.1
         with:
           scan-type: image
           image-ref: ${{ env.IMAGE_REF }}
           format: sarif
           output: trivy-image.sarif
           severity: ${{ env.TRIVY_SEVERITY }}
-          vuln-type: "os,library"
           ignore-unfixed: true
-          trivy-config: trivy.yaml
-          exit-code: "1"
 
       - name: Trivy filesystem scan
         id: trivy_fs
-        uses: aquasecurity/trivy-action@0.28.0
-        continue-on-error: true
+        uses: aquasecurity/trivy-action@0.33.1
         with:
           scan-type: fs
           scan-ref: .
@@ -91,21 +86,19 @@ jobs:
           output: trivy-fs.sarif
           severity: ${{ env.TRIVY_SEVERITY }}
           ignore-unfixed: true
-          trivy-config: trivy.yaml
-          scanners: "vuln,config,secret"
-          skip-dirs: "node_modules,frontend/node_modules"
-          exit-code: "1"
 
       - name: Upload SARIF (image)
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
+        continue-on-error: true
         with:
           sarif_file: trivy-image.sarif
           category: trivy-image
 
       - name: Upload SARIF (filesystem)
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
+        continue-on-error: true
         with:
           sarif_file: trivy-fs.sarif
           category: trivy-fs

@@ -1,6 +1,7 @@
 import hashlib
 import logging
 import secrets
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
@@ -247,14 +248,22 @@ def get_password_hash(
     return pwd_context.hash(password)
 
 
+@dataclass(slots=True)
+class AccessTokenConfig:
+    """Configuration for access token creation."""
+
+    expires_delta: int | None = None
+    extra: dict[str, Any] = field(default_factory=dict)
+    session_metadata: dict[str, Any] = field(default_factory=dict)
+
+
 async def create_access_token(
     sub: str | Any,
-    expires_delta: int | None = None,
-    extra: dict | None = None,
     db: AsyncSession | None = None,
-    session_metadata: dict | None = None,
+    config: AccessTokenConfig | None = None,
 ) -> str | tuple[str, ActiveSession]:
-    minutes = expires_delta or settings.access_token_expire_minutes
+    config = config or AccessTokenConfig()
+    minutes = config.expires_delta or settings.access_token_expire_minutes
     now = datetime.now(UTC)
     expires_at = now + timedelta(minutes=minutes)
     jti = str(uuid4())
@@ -265,8 +274,8 @@ async def create_access_token(
         "exp": expires_at,
         "jti": jti,
     }
-    if extra:
-        payload.update(extra)
+    if config.extra:
+        payload.update(config.extra)
     kid = settings.jwt_signing_active_kid
     secret = settings.jwt_signing_active_secret
     token = jwt.encode(
@@ -284,16 +293,16 @@ async def create_access_token(
             ) from None
         session = ActiveSession(user_id=user_id, jti=jti, expires_at=expires_at)
         session.signing_key = secrets.token_urlsafe(32)
-        if session_metadata:
-            ip_address = session_metadata.get("ip_address")
-            user_agent = session_metadata.get("user_agent")
-            accept_language = session_metadata.get("accept_language")
-            fingerprint_hash = session_metadata.get("fingerprint_hash")
-            last_seen_at = session_metadata.get("last_seen_at")
-            mfa_required = session_metadata.get("mfa_required")
-            mfa_method = session_metadata.get("mfa_method")
-            mfa_completed_at = session_metadata.get("mfa_completed_at")
-            mfa_verified_at = session_metadata.get("mfa_verified_at")
+        if config.session_metadata:
+            ip_address = config.session_metadata.get("ip_address")
+            user_agent = config.session_metadata.get("user_agent")
+            accept_language = config.session_metadata.get("accept_language")
+            fingerprint_hash = config.session_metadata.get("fingerprint_hash")
+            last_seen_at = config.session_metadata.get("last_seen_at")
+            mfa_required = config.session_metadata.get("mfa_required")
+            mfa_method = config.session_metadata.get("mfa_method")
+            mfa_completed_at = config.session_metadata.get("mfa_completed_at")
+            mfa_verified_at = config.session_metadata.get("mfa_verified_at")
             if ip_address:
                 session.ip_address = str(ip_address)[:64]
             if user_agent:

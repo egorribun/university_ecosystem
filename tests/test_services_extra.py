@@ -52,14 +52,15 @@ async def test_user_service_basics():
     audit = MagicMock()
     notifications = AsyncMock()
     db = AsyncMock()
-    service = UserService(db, audit, notifications)
+    repo = AsyncMock()
+    service = UserService(db, repo, audit, notifications)
     user = models.User(id=1, email="u@e.com")
     user.avatar_url = None
     user.cover_url = None
     request = MagicMock()
 
-    # Mock db.get to return user
-    db.get.return_value = user
+    # Mock repo.get to return user
+    repo.get.return_value = user
     # Mock db.execute to return a mock result
     # We use MagicMock for the result because scalars() is a
     # synchronous call in SQLAlchemy

@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package university_ecosystem.optimizer.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/university-ecosystem/core/gen/go/optimizer/v1;optimizerv1";
+
+service OptimizerService {
+  // Check for conflicts between a target schedule item and a list of existing items.
+  rpc DetectConflicts(DetectConflictsRequest) returns (DetectConflictsResponse);
+
+  // Check for conflicts in a large batch of schedule items (e.g., full semester).
+  rpc BatchDetectConflicts(BatchDetectConflictsRequest) returns (BatchDetectConflictsResponse);
+
+  // Suggest the best available slot based on constraints.
+  rpc FindOptimalSlot(FindOptimalSlotRequest) returns (FindOptimalSlotResponse);
+}
+
+message ScheduleItem {
+  optional int32 id = 1;
+  string weekday = 2;
+  google.protobuf.timestamp start_time = 3;
+  google.protobuf.timestamp end_time = 4;
+  string parity = 5; // "odd", "even", "both"
+  string room = 6;
+  string teacher = 7;
+}
+
+message DetectConflictsRequest {
+  ScheduleItem target = 1;
+  repeated ScheduleItem existing = 2;
+}
+
+message DetectConflictsResponse {
+  repeated ScheduleItem conflicts = 1;
+}
+
+message BatchDetectConflictsRequest {
+  repeated ScheduleItem items = 1;
+}
+
+message BatchDetectConflictsResponse {
+  message ConflictPair {
+    ScheduleItem item_a = 1;
+    ScheduleItem item_b = 2;
+  }
+  repeated ConflictPair conflicts = 1;
+}
+
+message FindOptimalSlotRequest {
+  string subject = 1;
+  repeated string preferred_weekdays = 2;
+  int32 duration_minutes = 3;
+  repeated ScheduleItem existing_schedule = 4;
+}
+
+message FindOptimalSlotResponse {
+  optional ScheduleItem suggested_slot = 1;
+  string status = 2; // "FOUND", "NOT_FOUND", "PARTIAL"
+}

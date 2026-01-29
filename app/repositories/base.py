@@ -1,13 +1,6 @@
-"""
-Base repository pattern implementation.
-
-Provides abstract repository for standardized data access operations.
-"""
-
-from __future__ import annotations
-
-from abc import ABC, abstractmethod
+import abc
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import delete, func, select
@@ -16,121 +9,89 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import Base
 
 
-class BaseRepository[ModelT: Base, CreateSchemaT, UpdateSchemaT](ABC):
-    """Abstract base repository for CRUD operations."""
-
-    def __init__(self, db: AsyncSession) -> None:
+class ReadOnlyRepository[T: Base](abc.ABC):
+    def __init__(self, db: AsyncSession):
         self.db = db
 
     @property
-    @abstractmethod
-    def model(self) -> type[ModelT]:
-        """Return the SQLAlchemy model class."""
-        ...
+    @abc.abstractmethod
+    def model(self) -> type[T]: ...
 
-    async def get(self, id: int) -> ModelT | None:
-        """Get a single record by ID."""
-        result = await self.db.execute(select(self.model).where(self.model.id == id))
+    async def get(self, id: Any) -> T | None:
+        stmt = select(self.model).where(self.model.id == id)
+        result = await self.db.execute(stmt)
         return result.scalars().first()
 
-    async def get_or_raise(self, id: int) -> ModelT:
-        """Get a record by ID or raise ValueError."""
-        record = await self.get(id)
-        if record is None:
+    async def get_or_raise(self, id: Any) -> T:
+        db_obj = await self.get(id)
+        if db_obj is None:
             raise ValueError(f"{self.model.__name__} with id {id} not found")
-        return record
+        return db_obj
 
-    async def get_by_ids(self, ids: Sequence[int]) -> list[ModelT]:
-        """Get multiple records by IDs."""
+    async def get_by_ids(self, ids: list[Any]) -> Sequence[T]:
         if not ids:
             return []
-        result = await self.db.execute(select(self.model).where(self.model.id.in_(ids)))
-        return list(result.scalars().all())
+        stmt = select(self.model).where(self.model.id.in_(ids))
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
 
     async def list(
-        self,
-        *,
-        skip: int = 0,
-        limit: int = 100,
-        order_by: Any | None = None,
-    ) -> list[ModelT]:
-        """List records with pagination."""
-        stmt = select(self.model)
+        self, *, skip: int = 0, limit: int = 100, order_by: Any = None
+    ) -> Sequence[T]:
+        stmt = select(self.model).offset(skip).limit(limit)
         if order_by is not None:
             stmt = stmt.order_by(order_by)
-        stmt = stmt.offset(skip).limit(limit)
         result = await self.db.execute(stmt)
-        return list(result.scalars().all())
+        return result.scalars().all()
 
     async def count(self) -> int:
-        """Count total records."""
-        result = await self.db.execute(select(func.count(self.model.id)))
+        stmt = select(func.count()).select_from(self.model)
+        result = await self.db.execute(stmt)
         return result.scalar() or 0
 
-    async def create(self, data: CreateSchemaT) -> ModelT:
-        """Create a new record."""
-        if hasattr(data, "model_dump"):
-            obj_data = data.model_dump()  # type: ignore
-        else:
-            obj_data = dict(data)  # type: ignore
-        instance = self.model(**obj_data)
-        self.db.add(instance)
-        await self.db.flush()
-        await self.db.refresh(instance)
-        return instance
-
-    async def update(self, id: int, data: UpdateSchemaT) -> ModelT | None:
-        """Update a record by ID."""
-        record = await self.get(id)
-        if record is None:
-            return None
-
-        if hasattr(data, "model_dump"):
-            update_data = data.model_dump(exclude_unset=True)  # type: ignore
-        else:
-            update_data = dict(data)  # type: ignore
-
-        for field, value in update_data.items():
-            setattr(record, field, value)
-
-        await self.db.flush()
-        await self.db.refresh(record)
-        return record
-
-    async def delete(self, id: int) -> bool:
-        """Delete a record by ID."""
-        result = await self.db.execute(delete(self.model).where(self.model.id == id))
-        return (result.rowcount or 0) > 0
-
-    async def exists(self, id: int) -> bool:
-        """Check if a record exists."""
-        result = await self.db.execute(
-            select(func.count(self.model.id)).where(self.model.id == id)
-        )
+    async def exists(self, id: Any) -> bool:
+        stmt = select(func.count()).select_from(self.model).where(self.model.id == id)
+        result = await self.db.execute(stmt)
         return (result.scalar() or 0) > 0
 
 
-class ReadOnlyRepository[ModelT](ABC):
-    """Read-only repository for query operations."""
+class BaseRepository[T: Base, CreateT, UpdateT](ReadOnlyRepository[T]):
+    async def create(self, obj_in: CreateT | dict[str, Any]) -> T:
+        if hasattr(obj_in, "model_dump"):
+            obj_data = obj_in.model_dump()
+        else:
+            obj_data = obj_in  # type: ignore
 
-    def __init__(self, db: AsyncSession) -> None:
-        self.db = db
+        db_obj = self.model(**obj_data)
+        self.db.add(db_obj)
+        await self.db.flush()
+        await self.db.refresh(db_obj)
+        return db_obj
 
-    @property
-    @abstractmethod
-    def model(self) -> type[ModelT]: ...
+    async def update(self, id: Any, obj_in: UpdateT | dict[str, Any]) -> T | None:
+        db_obj = await self.get(id)
+        if db_obj is None:
+            return None
 
-    async def get(self, id: int) -> ModelT | None:
-        result = await self.db.execute(select(self.model).where(self.model.id == id))
-        return result.scalars().first()
+        if hasattr(obj_in, "model_dump"):
+            update_data = obj_in.model_dump(exclude_unset=True)
+        else:
+            update_data = obj_in  # type: ignore
 
-    async def list(self, *, skip: int = 0, limit: int = 100) -> list[ModelT]:
-        stmt = select(self.model).offset(skip).limit(limit)
+        for field, value in update_data.items():
+            setattr(db_obj, field, value)
+
+        self.db.add(db_obj)
+        await self.db.flush()
+        await self.db.refresh(db_obj)
+        return db_obj
+
+    async def delete(self, id: Any) -> bool:
+        stmt = delete(self.model).where(self.model.id == id)
         result = await self.db.execute(stmt)
-        return list(result.scalars().all())
+        return (result.rowcount or 0) > 0
 
-
-__all__ = [
-    "BaseRepository",
-    "ReadOnlyRepository",
-]
+    def _ensure_utc(self, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)

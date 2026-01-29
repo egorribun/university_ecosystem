@@ -133,6 +133,18 @@ class EventCreated(DomainEvent):
 
 
 @dataclass
+class EventUpdated(DomainEvent):
+    """Fired when an existing event is updated."""
+
+    event_id_entity: int = 0
+    title: str = ""
+
+    @property
+    def event_type(self) -> str:
+        return "event.updated"
+
+
+@dataclass
 class EventRegistration(DomainEvent):
     """Fired when a user registers for an event."""
 
@@ -154,6 +166,18 @@ class NewsCreated(DomainEvent):
     @property
     def event_type(self) -> str:
         return "news.created"
+
+
+@dataclass
+class NewsUpdated(DomainEvent):
+    """Fired when an existing news article is updated."""
+
+    news_id: int = 0
+    title: str = ""
+
+    @property
+    def event_type(self) -> str:
+        return "news.updated"
 
 
 # Notification Events
@@ -381,11 +405,13 @@ __all__ = [
     "UserDeleted",
     # News events
     "NewsCreated",
+    "NewsUpdated",
     # Auth events
     "UserLoggedIn",
     "MfaEnabled",
     # Event events
     "EventCreated",
+    "EventUpdated",
     "EventRegistration",
     # Notification events
     "NotificationSent",

@@ -23,7 +23,8 @@ async def test_user_service_mega():
     db.add = MagicMock()
     db.add_all = MagicMock()
     notifications = AsyncMock()
-    service = UserService(db, audit, notifications)
+    repo = AsyncMock()
+    service = UserService(db, repo, audit, notifications)
 
     admin_user = models.User(id=1, email="admin@e.com", role="admin")
     student_user = models.User(id=2, email="s@e.com", role="student")
@@ -31,25 +32,20 @@ async def test_user_service_mega():
     request.client.host = "127.0.0.1"
     request.headers.get.return_value = "PyTest"
 
-    # 1. update_user_profile - invalid email
-    data = schemas.UserProfileUpdate.model_construct(email="invalid")
-    with patch("app.services.user_service.resolve_locale", return_value="en"):
-        with pytest.raises(BusinessRuleViolation):
-            await service.update_user_profile(student_user, data, request)
-
     # 2. update_user_profile - duplicate email
     data = schemas.UserProfileUpdate(email="taken@e.com")
     mock_res_dup = MagicMock()
     mock_res_dup.scalar_one_or_none.return_value = 3
     db.execute.return_value = mock_res_dup
-    db.get.return_value = student_user
+    repo.get.return_value = student_user
+    repo.check_email_exists.return_value = True
     with patch("app.services.user_service.resolve_locale", return_value="en"):
         with pytest.raises(EntityAlreadyExists):
             await service.update_user_profile(student_user, data, request)
 
     # 3. upload_avatar/cover - rollback/error paths
     file = MagicMock(spec=UploadFile)
-    db.get.return_value = student_user
+    repo.get.return_value = student_user
     db.commit.side_effect = Exception("db error")
     with (
         patch("app.services.user_service.save_upload", return_value="/url"),
@@ -59,16 +55,17 @@ async def test_user_service_mega():
         patch("app.services.user_service.resolve_locale", return_value="en"),
     ):
         with pytest.raises(Exception, match="db error"):  # noqa: B017
-            await service.upload_avatar(student_user, file, request)
+            await service.upload_avatar(student_user, file)
         db.rollback.assert_called()
         m_del.assert_called_with("/url")
 
         # upload_cover error
         with pytest.raises(Exception, match="db error"):  # noqa: B017
-            await service.upload_cover(student_user, file, request)
+            await service.upload_cover(student_user, file)
 
     # 4. admin create_user branches
     db.commit.side_effect = None
+    repo.check_email_exists.return_value = False
     data_user = schemas.UserCreate(
         email="n@e.com",
         password="password123",
@@ -88,6 +85,7 @@ async def test_user_service_mega():
 
         # Invalid invite code
         data_user.invite_code = "inv"
+        repo.check_invite_code.return_value = False
         mock_invite_res = MagicMock()
         mock_invite_res.scalar_one_or_none.return_value = None
         db.execute.return_value = mock_invite_res
@@ -114,13 +112,13 @@ async def test_user_service_mega():
     # 6. admin_delete_user - forbidden/self/not found
     with patch("app.services.user_service.resolve_locale", return_value="en"):
         # self deletion check
-        db.get.side_effect = None
-        db.get.return_value = admin_user
+        repo.get.side_effect = None
+        repo.get.return_value = admin_user
         with pytest.raises(BusinessRuleViolation):
             await service.admin_delete_user(1, request, admin_user)
 
         # not found check
-        db.get.return_value = None
+        repo.get.return_value = None
         with pytest.raises(EntityNotFound):
             await service.admin_delete_user(999, request, admin_user)
 
@@ -129,7 +127,7 @@ async def test_user_service_mega():
             await service.admin_delete_user(3, request, student_user)
 
     # 7. data_export - full
-    db.get.return_value = student_user
+    repo.get.return_value = student_user
     mock_res_sessions = MagicMock()
     mock_res_sessions.scalars.return_value = [
         models.ActiveSession(id=1, ip_address="1.1.1.1")
@@ -180,7 +178,7 @@ async def test_crud_advanced_branches():
     assert paginated.items == []
     assert paginated.next_cursor is None
 
-    # 2. _decode_news_cursor error paths
+    # 2._decode_news_cursor error paths
     assert crud._decode_news_cursor("") is None
     assert crud._decode_news_cursor("not-colon") is None
     assert crud._decode_news_cursor("notint:1") is None

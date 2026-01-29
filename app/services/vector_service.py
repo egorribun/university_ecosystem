@@ -43,21 +43,42 @@ class VectorService:
             logger.exception("Failed to fetch embedding")
             return [0.0] * settings.embedding_dimensions
 
-    async def search_similar(
-        self, model: Any, embedding: list[float], limit: int = 5, min_score: float = 0.7
-    ) -> list[Any]:
-        """Perform a semantic search using cosine similarity."""
-        # Note: pgvector cosine distance is 1 - cosine_similarity
-        # So we want distance < (1 - min_score)
+    async def search_similar_with_scores(
+        self,
+        model: Any,
+        embedding: list[float],
+        limit: int = 5,
+        min_score: float = 0.5,
+    ) -> list[tuple[Any, float]]:
+        """
+        Perform a semantic search and return results with their scores.
+        Scores are normalized (1.0 = perfect match, 0.0 = no similarity).
+        """
+        if not settings.semantic_search_enabled or not embedding:
+            return []
+
+        # pgvector cosine_distance is 1 - cosine_similarity
+        # similarity is what we usually call 'score'
         distance = model.embedding.cosine_distance(embedding)
+        score = (1.0 - distance).label("similarity_score")
+
         stmt = (
-            select(model)
-            .where(distance < (1 - min_score))
-            .order_by(distance)
+            select(model, score)
+            .where(score >= min_score)
+            .order_by(score.desc())
             .limit(limit)
         )
         result = await self.db.execute(stmt)
-        return list(result.scalars().all())
+        return [(row[0], float(row[1])) for row in result.all()]
+
+    async def search_similar(
+        self, model: Any, embedding: list[float], limit: int = 5, min_score: float = 0.5
+    ) -> list[Any]:
+        """Perform a simple semantic search using cosine similarity."""
+        results = await self.search_similar_with_scores(
+            model, embedding, limit=limit, min_score=min_score
+        )
+        return [r[0] for r in results]
 
     async def close(self):
         await self._client.aclose()
