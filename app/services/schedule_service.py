@@ -52,7 +52,8 @@ class ScheduleService:
 
         conflicts = await self.optimizer.detect_conflicts(target, existing_items)
         if conflicts:
-            # We raise directly or use helper? The API helper 'raise_conflict' raises HTTPException.
+            # We raise directly or use helper?
+            # The API helper 'raise_conflict' raises HTTPException.
             # Services should ideally raise Domain Exceptions.
             # But the existing `raise_conflict` is imported from `app.api.validation`.
             # Let's use it for now to match behavior, or raise BusinessRuleViolation.

@@ -514,7 +514,8 @@ class UserService:
         # For now, let's accept slight risk or modify repo to not auto-commit?
         # BaseRepository `create` calls `db.commit()`.
 
-        # Let's assume we can live with separate commits for now (User created, then Code marked used).
+        # Let's assume we can live with separate commits for now
+        # (User created, then Code marked used).
         # Worst case: User created, code not marked. User is valid, code reusable.
         # Risk: Code reusable.
         # Mitigation: Update code first? No, need user_id.

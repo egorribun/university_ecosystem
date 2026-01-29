@@ -113,7 +113,8 @@ async def test_schedule_api_coverage(
     app.dependency_overrides[get_current_user] = lambda: mock_user
     app.dependency_overrides[get_schedule_service] = lambda: mock_schedule_service
     app.dependency_overrides[get_schedule_handler] = lambda: mock_schedule_handler
-    # We also keep get_db override if needed by other deps, but schedule endpoints now use service
+    # We also keep get_db override if needed by other deps,
+    # but schedule endpoints now use service
     app.dependency_overrides[get_db] = lambda: mock_db
 
     try:

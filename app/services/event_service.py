@@ -168,7 +168,8 @@ class EventService:
                 try:
                     my_qr_token = attendance_tokens.issue_token(attendance)
                 except Exception:
-                    # If token issue fails (missing secret etc), just ignore for list view
+                    # If token issue fails (missing secret etc),
+                    # just ignore for list view
                     pass
 
             output.append(
@@ -221,7 +222,8 @@ class EventService:
     ) -> models.EventAttendance:
         cache_kinds = ("attendance", "participation")
 
-        # Check existing using repo/session directly for now as repo might not have this specific method
+        # Check existing using repo/session directly for now
+        # as repo might not have this specific method
         # Ideally move this query to repo, but keeping logic here for migration speed
         stmt = (
             select(models.EventAttendance)
