@@ -12,6 +12,17 @@ from app.services.nats_messaging import get_nats_service
 app = typer.Typer(help="Infrastructure health checks.")
 console = Console()
 
+# Status constants
+STATUS_ONLINE = "[green]ONLINE[/]"
+STATUS_OFFLINE = "[red]OFFLINE[/]"
+STATUS_SKIPPED = "[yellow]SKIPPED[/]"
+
+# Component constants
+COMPONENT_POSTGRES = "PostgreSQL"
+COMPONENT_REDIS = "Redis (Cache)"
+COMPONENT_NATS = "NATS"
+COMPONENT_S3 = "S3 Storage"
+
 
 async def check_infra():
     """Check infrastructure health status."""
@@ -24,9 +35,9 @@ async def check_infra():
     try:
         async with engine.connect() as conn:
             await conn.execute("SELECT 1")
-        table.add_row("PostgreSQL", "[green]ONLINE[/]", "Connected successfully")
+        table.add_row(COMPONENT_POSTGRES, STATUS_ONLINE, "Connected successfully")
     except Exception as e:
-        table.add_row("PostgreSQL", "[red]OFFLINE[/]", str(e))
+        table.add_row(COMPONENT_POSTGRES, STATUS_OFFLINE, str(e))
 
     # 2. Redis (Cache)
     try:
@@ -34,27 +45,27 @@ async def check_infra():
         if isinstance(cache, RedisCache):
             client = await cache._get_client()
             await client.ping()
-            table.add_row("Redis (Cache)", "[green]ONLINE[/]", "Ping successful")
+            table.add_row(COMPONENT_REDIS, STATUS_ONLINE, "Ping successful")
         else:
             table.add_row(
-                "Redis (Cache)",
-                "[yellow]SKIPPED[/]",
+                COMPONENT_REDIS,
+                STATUS_SKIPPED,
                 f"Using {type(cache).__name__}",
             )
     except Exception as e:
-        table.add_row("Redis (Cache)", "[red]OFFLINE[/]", str(e))
+        table.add_row(COMPONENT_REDIS, STATUS_OFFLINE, str(e))
 
     # 3. NATS
     try:
         nats_service = get_nats_service()
         # We don't want to block forever if NATS is down
         await asyncio.wait_for(nats_service.connect(), timeout=5.0)
-        table.add_row("NATS", "[green]ONLINE[/]", "Connected successfully")
+        table.add_row(COMPONENT_NATS, STATUS_ONLINE, "Connected successfully")
         await nats_service.close()
     except TimeoutError:
-        table.add_row("NATS", "[red]OFFLINE[/]", "Connection timed out (5s)")
+        table.add_row(COMPONENT_NATS, STATUS_OFFLINE, "Connection timed out (5s)")
     except Exception as e:
-        table.add_row("NATS", "[red]OFFLINE[/]", str(e))
+        table.add_row(COMPONENT_NATS, STATUS_OFFLINE, str(e))
 
     # 4. Storage (MinIO)
     if hasattr(settings, "storage_backend") and settings.storage_backend in (
@@ -66,16 +77,16 @@ async def check_infra():
         try:
             get_storage_backend(settings)
             table.add_row(
-                "S3 Storage",
-                "[green]ONLINE[/]",
+                COMPONENT_S3,
+                STATUS_ONLINE,
                 f"Backend: {settings.storage_backend}",
             )
         except Exception as e:
-            table.add_row("S3 Storage", "[red]OFFLINE[/]", str(e))
+            table.add_row(COMPONENT_S3, STATUS_OFFLINE, str(e))
     else:
         table.add_row(
-            "S3 Storage",
-            "[yellow]SKIPPED[/]",
+            COMPONENT_S3,
+            STATUS_SKIPPED,
             f"Backend: {getattr(settings, 'storage_backend', 'unknown')}",
         )
 

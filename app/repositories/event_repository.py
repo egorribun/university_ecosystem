@@ -104,7 +104,7 @@ class EventRepository(BaseRepository[Event, dict, dict]):
             if (
                 settings.semantic_search_enabled
                 and query_embedding
-                and any(v != 0.0 for v in query_embedding)
+                and any(abs(v) > 1e-9 for v in query_embedding)
             ):
                 sim_score = 1.0 - Event.embedding.cosine_distance(query_embedding)
                 rank_expr = (rank_expr + sim_score * 2.0).label("hybrid_rank")
