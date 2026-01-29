@@ -5,9 +5,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from sqlalchemy import text
+
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from sqlalchemy import text
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncConnection

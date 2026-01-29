@@ -340,9 +340,7 @@ async def test_admin_update_user_mfa_reset(
     data.model_dump.return_value = {"reset_mfa": True}
 
     with patch("app.services.user_service.resolve_locale", return_value="en"):
-        with patch(
-            "app.auth.mfa.reset_user_mfa", return_value=reset_stats
-        ):
+        with patch("app.auth.mfa.reset_user_mfa", return_value=reset_stats):
             with patch("app.services.user_service.ensure_mfa_relationships_loaded"):
                 await service.admin_update_user(2, data, mock_request, mock_admin_user)
 
