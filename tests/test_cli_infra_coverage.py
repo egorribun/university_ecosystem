@@ -12,7 +12,7 @@ async def test_infra_check_all_success():
         patch("app.cli.infra.engine") as mock_engine,
         patch("app.cli.infra.get_cache") as mock_get_cache,
         patch("app.cli.infra.get_nats_service") as mock_get_nats,
-        patch("app.services.storage.get_storage_backend") as mock_get_storage,
+        patch("app.services.storage.get_storage_backend"),
         patch("app.cli.infra.settings") as mock_settings,
         patch("rich.console.Console.print") as mock_print,
     ):
@@ -77,7 +77,7 @@ async def test_infra_check_redis_skipped():
         patch("app.cli.infra.engine") as mock_engine,
         patch("app.cli.infra.get_cache") as mock_get_cache,
         patch("app.cli.infra.get_nats_service") as mock_nats,
-        patch("rich.console.Console.print") as mock_print,
+        patch("rich.console.Console.print"),
     ):
         # Mock other services to pass or fail, doesn't matter
         mock_engine.connect.return_value.__aenter__.return_value.execute = AsyncMock()
