@@ -1,11 +1,12 @@
 import logging
-from typing import Any
 
-from fastapi import Request
-from sqlalchemy import delete, or_, select
+from fastapi import Request, UploadFile
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import crud
+from app.api.utils import save_upload
+from app.auth.security import get_password_hash
 from app.core.exceptions.domain import (
     BusinessRuleViolation,
     EntityAlreadyExists,
@@ -15,9 +16,9 @@ from app.core.exceptions.domain import (
 from app.core.localization import resolve_locale, translate
 from app.models import models
 from app.models.user_loaders import (
-    USER_MFA_LOAD_OPTIONS,
     ensure_mfa_relationships_loaded,
 )
+from app.repositories.user_repository import UserRepository
 from app.schemas import schemas
 from app.services.audit_service import AuditService
 from app.services.auth_service import attach_pending_email
@@ -32,7 +33,7 @@ class UserService:
     def __init__(
         self,
         db: AsyncSession,
-        repo: Any,  # UserRepository
+        repo: UserRepository,
         audit: AuditService,
         notifications: NotificationService,
     ) -> None:
@@ -174,7 +175,7 @@ class UserService:
         if current_user.role != "admin":
             raise PermissionDenied()
 
-        db_user = await self.db.get(models.User, user_id, options=USER_MFA_LOAD_OPTIONS)
+        db_user = await self.repo.get(user_id)
         if db_user is None:
             raise EntityNotFound("User", user_id)
 
@@ -202,28 +203,7 @@ class UserService:
         db_user.mfa_default_method = None
         db_user.mfa_last_verified_at = None
 
-        await self.db.execute(
-            delete(models.ActiveSession).where(models.ActiveSession.user_id == user_id)
-        )
-        await self.db.execute(
-            delete(models.MfaChallenge).where(models.MfaChallenge.user_id == user_id)
-        )
-        await self.db.execute(
-            delete(models.MfaTotpEnrollment).where(
-                models.MfaTotpEnrollment.user_id == user_id
-            )
-        )
-        await self.db.execute(
-            delete(models.Notification).where(models.Notification.user_id == user_id)
-        )
-        await self.db.execute(
-            delete(models.DataAccessLog).where(
-                or_(
-                    models.DataAccessLog.actor_user_id == user_id,
-                    models.DataAccessLog.subject_user_id == user_id,
-                )
-            )
-        )
+        await self.repo.delete_sensitive_data(user_id)
 
         db_user.preferences = None
         db_user.spotify = None
@@ -239,7 +219,7 @@ class UserService:
         self,
         user: models.User,
     ) -> models.User:
-        db_user = await self.db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
+        db_user = await self.repo.get(user.id)
         if db_user.avatar_url:
             await delete_static_file(db_user.avatar_url)
         db_user.avatar_url = None
@@ -252,7 +232,7 @@ class UserService:
         self,
         user: models.User,
     ) -> models.User:
-        db_user = await self.db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
+        db_user = await self.repo.get(user.id)
         if db_user.cover_url:
             await delete_static_file(db_user.cover_url)
         db_user.cover_url = None
@@ -264,7 +244,9 @@ class UserService:
     async def export_user_data(
         self, user: models.User, request: Request
     ) -> schemas.DataExportOut:
-        db_user = await self.db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
+        db_user = await self.repo.get(user.id)
+        if not db_user:
+            raise EntityNotFound("User", user.id)
         await ensure_mfa_relationships_loaded(self.db, db_user)
         await attach_pending_email(self.db, db_user)
 
@@ -374,7 +356,7 @@ class UserService:
         if not confirm:
             raise BusinessRuleViolation("errors.users.confirmation_required")
 
-        db_user = await self.db.get(models.User, user.id, options=USER_MFA_LOAD_OPTIONS)
+        db_user = await self.repo.get(user.id)
         if not db_user:
             raise EntityNotFound("User", user.id)
         anonymized_email = f"deleted+{user.id}@deleted.example.com"
@@ -397,28 +379,7 @@ class UserService:
         db_user.mfa_default_method = None
         db_user.mfa_last_verified_at = None
 
-        await self.db.execute(
-            delete(models.ActiveSession).where(models.ActiveSession.user_id == user.id)
-        )
-        await self.db.execute(
-            delete(models.MfaChallenge).where(models.MfaChallenge.user_id == user.id)
-        )
-        await self.db.execute(
-            delete(models.MfaTotpEnrollment).where(
-                models.MfaTotpEnrollment.user_id == user.id
-            )
-        )
-        await self.db.execute(
-            delete(models.Notification).where(models.Notification.user_id == user.id)
-        )
-        await self.db.execute(
-            delete(models.DataAccessLog).where(
-                or_(
-                    models.DataAccessLog.actor_user_id == user.id,
-                    models.DataAccessLog.subject_user_id == user.id,
-                )
-            )
-        )
+        await self.repo.delete_sensitive_data(user.id)
 
         db_user.preferences = None
         db_user.spotify = None
@@ -437,3 +398,57 @@ class UserService:
         await self.db.commit()
         await self.db.refresh(db_user)
         return schemas.DataDeletionOut(deleted=True, anonymized_email=anonymized_email)
+
+    async def create_user(
+        self,
+        data: schemas.UserCreate,
+        request: Request,
+        current_user: models.User,
+    ) -> models.User:
+        if current_user.role != "admin":
+            raise PermissionDenied()
+
+        if data.invite_code:
+            valid_code = await self.repo.check_invite_code(data.invite_code)
+            if not valid_code:
+                raise BusinessRuleViolation("errors.users.invalid_invite_code")
+        elif data.role in ["teacher"]:
+            raise BusinessRuleViolation("errors.users.invite_code_required")
+
+        if await self.repo.check_email_exists(data.email):
+            raise EntityAlreadyExists("User", data.email)
+
+        password = data.password
+        hashed = get_password_hash(password)
+
+        user_data = data.model_dump(exclude={"invite_code", "password"})
+        user_data["hashed_password"] = hashed
+
+        user = await self.repo.create(user_data)
+
+        self.audit.log("users.create", request, user_id=user.id, reason="admin_create")
+        return user
+
+    async def upload_avatar(
+        self,
+        user: models.User,
+        file: UploadFile,
+        request: Request,
+    ) -> models.User:
+        db_user = await self.repo.get(user.id)
+        if not db_user:
+            raise EntityNotFound("User", user.id)
+
+        file_url = await save_upload(file, "avatars", f"user_{user.id}_avatar")
+
+        if db_user.avatar_url:
+            await delete_static_file(db_user.avatar_url)
+
+        db_user.avatar_url = file_url
+        try:
+            await self.db.commit()
+            await self.db.refresh(db_user)
+        except Exception:
+            await self.db.rollback()
+            raise
+        return db_user

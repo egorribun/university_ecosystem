@@ -316,7 +316,7 @@ async def test_upload_avatar_cleans_up_on_commit_failure(
 
     from unittest.mock import AsyncMock
 
-    service = UserService(db_session, AuditService(), AsyncMock())
+    service = UserService(db_session, AsyncMock(), AuditService(), AsyncMock())
 
     with pytest.raises(RuntimeError):
         await service.upload_avatar(user, upload, request=None)
@@ -361,7 +361,7 @@ async def test_upload_cover_cleans_up_on_commit_failure(
 
     from unittest.mock import AsyncMock
 
-    service = UserService(db_session, AuditService(), AsyncMock())
+    service = UserService(db_session, AsyncMock(), AuditService(), AsyncMock())
 
     with pytest.raises(RuntimeError):
         await service.upload_cover(user, upload, request=None)

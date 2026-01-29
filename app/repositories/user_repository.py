@@ -22,6 +22,12 @@ class UserRepository(BaseRepository[User, UserCreate, dict]):
     def model(self) -> type[User]:
         return User
 
+    async def get(self, id: int) -> User | None:
+        """Get user by ID with MFA options loaded."""
+        stmt = select(User).where(User.id == id).options(*USER_MFA_LOAD_OPTIONS)
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
+
     async def get_by_email(self, email: str) -> User | None:
         """Get user by email (case-insensitive)."""
         normalized = email.strip().lower()
