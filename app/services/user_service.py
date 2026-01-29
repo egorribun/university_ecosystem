@@ -437,7 +437,6 @@ class UserService:
         self,
         user: models.User,
         file: UploadFile,
-        request: Request,
     ) -> models.User:
         db_user = await self.repo.get(user.id)
         if not db_user:
@@ -462,7 +461,6 @@ class UserService:
         self,
         user: models.User,
         file: UploadFile,
-        request: Request,
     ) -> models.User:
         db_user = await self.repo.get(user.id)
         if not db_user:

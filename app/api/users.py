@@ -245,7 +245,7 @@ async def upload_avatar(
     user: models.User = Depends(get_current_user),
     service: UserService = Depends(get_user_service),
 ):
-    return await service.upload_avatar(user, file, request)
+    return await service.upload_avatar(user, file)
 
 
 @users_router.post("/me/cover", response_model=schemas.UserOut)
@@ -256,7 +256,7 @@ async def upload_cover(
     user: models.User = Depends(get_current_user),
     service: UserService = Depends(get_user_service),
 ):
-    return await service.upload_cover(user, file, request)
+    return await service.upload_cover(user, file)
 
 
 @users_router.delete("/me/avatar", response_model=schemas.UserOut)

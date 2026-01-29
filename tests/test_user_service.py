@@ -493,7 +493,7 @@ async def test_upload_avatar_success(service, mock_db, mock_user, mock_request):
             return_value="/static/avatars/new.jpg",
         ):
             with patch("app.services.user_service.ensure_mfa_relationships_loaded"):
-                await service.upload_avatar(mock_user, mock_file, mock_request)
+                await service.upload_avatar(mock_user, mock_file)
 
     assert mock_user.avatar_url == "/static/avatars/new.jpg"
     mock_db.commit.assert_called_once()
@@ -514,7 +514,7 @@ async def test_upload_avatar_commit_failure(service, mock_db, mock_user, mock_re
         ):
             with patch("app.services.user_service.delete_static_file") as mock_delete:
                 with pytest.raises(Exception, match="Commit failed"):
-                    await service.upload_avatar(mock_user, mock_file, mock_request)
+                    await service.upload_avatar(mock_user, mock_file)
 
     mock_db.rollback.assert_called_once()
     assert mock_delete.call_count == 2
