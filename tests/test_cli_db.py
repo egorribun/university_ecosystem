@@ -11,6 +11,7 @@ runner = CliRunner()
 @pytest.fixture
 def mock_db_session():
     mock_session = AsyncMock()
+    mock_session.add = MagicMock()
     mock_session.__aenter__.return_value = mock_session
     mock_session.__aexit__.return_value = None
     return mock_session

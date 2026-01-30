@@ -9,7 +9,14 @@ from app.repositories.news_repository import NewsRepository, get_news_repository
 
 @pytest.fixture
 def mock_db():
-    return AsyncMock()
+    db = AsyncMock()
+    db.add = MagicMock()
+    # execute is async, but returns a Result object which has sync methods
+    # (all, scalars, etc)
+    # By default AsyncMock returns AsyncMock children, so result.all() becomes async
+    # We fix this by making the return value of execute a MagicMock
+    db.execute.return_value = MagicMock()
+    return db
 
 
 @pytest.fixture

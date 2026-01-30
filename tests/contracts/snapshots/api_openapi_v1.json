@@ -1787,7 +1787,7 @@
       "post": {
         "tags": ["users"],
         "summary": "Confirm Email Change",
-        "operationId": "confirm_email_change_api_v1_users_me_email_confirm_post",
+        "operationId": "verify_email_change_api_v1_users_me_email_confirm_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1874,8 +1874,8 @@
     "/api/v1/users/me/export": {
       "post": {
         "tags": ["users"],
-        "summary": "Export Me",
-        "operationId": "export_me_api_v1_users_me_export_post",
+        "summary": "Export Current User Data",
+        "operationId": "export_current_user_data_api_v1_users_me_export_post",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1898,8 +1898,8 @@
     "/api/v1/users/me/delete": {
       "post": {
         "tags": ["users"],
-        "summary": "Delete Me",
-        "operationId": "delete_me_api_v1_users_me_delete_post",
+        "summary": "Delete Current User Account",
+        "operationId": "delete_current_user_account_api_v1_users_me_delete_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2179,7 +2179,7 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "$ref": "#/components/schemas/UserRole"
                 },
                 {
                   "type": "null"
@@ -2193,16 +2193,8 @@
             "in": "query",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "integer",
-                  "maximum": 100,
-                  "minimum": 1
-                },
-                {
-                  "type": "null"
-                }
-              ],
+              "type": "integer",
+              "default": 100,
               "title": "Limit"
             }
           },
@@ -2211,15 +2203,8 @@
             "in": "query",
             "required": false,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "integer",
-                  "minimum": 0
-                },
-                {
-                  "type": "null"
-                }
-              ],
+              "type": "integer",
+              "default": 0,
               "title": "Offset"
             }
           }
@@ -2617,8 +2602,6 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "maximum": 50,
-              "minimum": 1,
               "default": 20,
               "title": "Limit"
             }
@@ -3234,8 +3217,6 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "maximum": 100,
-              "minimum": 1,
               "description": "Number of items to return",
               "default": 20,
               "title": "Limit"
@@ -3592,8 +3573,6 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "maximum": 100,
-              "minimum": 1,
               "default": 50,
               "title": "Limit"
             }
@@ -3604,7 +3583,6 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "minimum": 0,
               "default": 0,
               "title": "Offset"
             }
@@ -5040,8 +5018,6 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "maximum": 200,
-              "minimum": 1,
               "default": 50,
               "title": "Limit"
             }
@@ -5052,7 +5028,6 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "minimum": 0,
               "default": 0,
               "title": "Offset"
             }
