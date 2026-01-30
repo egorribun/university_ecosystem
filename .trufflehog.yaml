@@ -3,5 +3,16 @@ exclude:
     - uv.lock
     - package-lock.json
     - go.sum
+    - node_modules/
+    - .venv/
+    - .venv313/
+    - .mypy_cache/
+    - .pytest_cache/
+    - .ruff_cache/
+    - alembic/
+    - dist/
+    - build/
   secrets:
     - "128006a9ca6ecba0793cdcd05524ff66e1c0b5187d421dfcae39dd12345e4b57" # Yandex Maps ID in MapContent.tsx
+    - "Qj7p4R2zYx8N1a5Hk9V3u0Mw6Tg4Lr8Cz2Jv5Qw7Xn1Dk6Fh0Sg3Vb9Pp4Rz8Lm2"
+    - "66520cd52e373a3c478e8fe38762269b520e2e22c1e6c7c234dc69e5cfc922eb"
