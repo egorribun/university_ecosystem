@@ -11,6 +11,13 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 audit_output.json
 coverage_report*.txt
 pytest_failures.log
+*_failures*.txt
+debug_*.txt
+test_out.txt
+test_trace.txt
+failed_tests_list.txt
+last_failed_tests*.txt
+final_check.txt
 
 # Test databases
 test.db
