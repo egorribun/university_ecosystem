@@ -516,7 +516,8 @@ async def delete_event(
     user: models.User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
-    # Check existence and permission. Service delete checks existence, but maybe we want validation first?
+    # Check existence and permission. Service delete checks existence,
+    # but maybe we want validation first?
     # Existing code does: ensure_exists, require_owner_or_admin.
     # We should fetch event to check logic? Or let service do it?
     # Service doesn't check owner.

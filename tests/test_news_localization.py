@@ -170,7 +170,7 @@ async def test_partial_news_updates_keep_other_fields(
     user_factory,
     news_service,
 ):
-    admin = await user_factory(role="admin")
+    await user_factory(role="admin")
     record = models.News(
         title="Новость дня",
         content="Русский текст",
