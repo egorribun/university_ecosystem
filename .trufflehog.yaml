@@ -3,6 +3,8 @@ exclude:
     - uv.lock
     - package-lock.json
     - go.sum
+    - "**/*.db"
+    - "**/*.sqlite*"
     - node_modules/
     - .venv/
     - .venv313/
