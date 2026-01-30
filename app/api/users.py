@@ -136,8 +136,8 @@ async def reset_password(
     return {"ok": True}
 
 
-@users_router.get("/me", response_model=schemas.UserOut)
-async def get_current_user_profile(
+@users_router.get("/me", response_model=schemas.UserOut, summary="Me")
+async def me(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
@@ -157,8 +157,8 @@ async def get_current_user_profile(
     return user
 
 
-@users_router.put("/me", response_model=schemas.UserOut)
-async def update_current_user_profile(
+@users_router.put("/me", response_model=schemas.UserOut, summary="Update Me")
+async def update_me(
     data: schemas.UserProfileUpdate,
     request: Request,
     user: models.User = Depends(get_current_user),
@@ -171,8 +171,9 @@ async def update_current_user_profile(
     "/me/email",
     response_model=schemas.UserOut,
     dependencies=[Depends(sensitive_route_limit())],
+    summary="Change Email",
 )
-async def request_email_change(
+async def change_email(
     payload: schemas.UserEmailChangeIn,
     request: Request,
     bg: BackgroundTasks,
@@ -187,6 +188,7 @@ async def request_email_change(
     "/me/email/confirm",
     response_model=schemas.UserOut,
     dependencies=[Depends(sensitive_route_limit())],
+    summary="Confirm Email Change",
 )
 async def verify_email_change(
     payload: schemas.UserEmailConfirmIn,

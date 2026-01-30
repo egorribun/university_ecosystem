@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import UploadFile
 
-import app.crud as crud
 from app.core.exceptions.domain import (
     BusinessRuleViolation,
     EntityAlreadyExists,
@@ -68,7 +67,7 @@ async def test_user_service_mega():
     repo.check_email_exists.return_value = False
     data_user = schemas.UserCreate(
         email="n@e.com",
-        password="password123",
+        password="StrongP@ssw0rd!",
         full_name="N",
         role="teacher",
         invite_code="inv",
@@ -85,7 +84,7 @@ async def test_user_service_mega():
 
         # Invalid invite code
         data_user.invite_code = "inv"
-        repo.check_invite_code.return_value = False
+        repo.get_invite_code.return_value = None
         mock_invite_res = MagicMock()
         mock_invite_res.scalar_one_or_none.return_value = None
         db.execute.return_value = mock_invite_res
@@ -93,19 +92,22 @@ async def test_user_service_mega():
             await service.create_user(data_user, request, admin_user)
 
     # 5. admin_update_user - MFA reset
-    data_update = schemas.UserAdminUpdate(mfa_reset=True)
+    data_update = schemas.UserAdminUpdate(reset_mfa=True)
     db_user = models.User(id=3, email="u@e.com")
+    repo.get.return_value = db_user
     with (
-        patch(
-            "app.services.user_service.crud.admin_update_user",
-            return_value=(db_user, MagicMock(changed=True)),
-        ),
+        patch("app.auth.mfa.reset_user_mfa", new_callable=AsyncMock) as m_reset,
         patch("app.services.user_service.resolve_locale", return_value="en"),
+        patch(
+            "app.services.user_service.ensure_mfa_relationships_loaded",
+            new_callable=AsyncMock,
+        ),
         patch(
             "app.services.notification_service.create_notifications_for_users",
             new_callable=AsyncMock,
         ),
     ):
+        m_reset.return_value = MagicMock(changed=True)
         await service.admin_update_user(3, data_update, request, admin_user)
         service.notifications.send_security_notification.assert_called_once()
 
@@ -163,22 +165,31 @@ async def test_user_service_mega():
 
 
 @pytest.mark.asyncio
-async def test_crud_advanced_branches():
+async def test_service_advanced_branches():
     db = AsyncMock()
     db.add = MagicMock()
     db.add_all = MagicMock()
 
-    # 1. get_all_events with cursor
-    cursor = crud._encode_event_cursor(datetime.datetime.now(datetime.UTC), 10)
+    # 1. get_events with cursor
+    from app.repositories.event_repository import EventRepository
+    from app.services.event_service import EventService
+    from app.services.vector_service import VectorService
+    from app.utils.pagination import encode_datetime_cursor as _encode_event_cursor
+
+    e_repo = EventRepository(db)
+    e_service = EventService(e_repo, VectorService(db))
+
+    cursor = _encode_event_cursor(datetime.datetime.now(datetime.UTC), 10)
     mock_res_events = MagicMock()
-    mock_res_events.scalars.return_value.all.return_value = []
+    mock_res_events.all.return_value = []
     db.execute.return_value = mock_res_events
 
-    paginated = await crud.get_all_events(db, cursor=cursor, limit=10)
-    assert paginated.items == []
-    assert paginated.next_cursor is None
+    items = await e_service.get_events(cursor=cursor, limit=10)
+    assert items.items == []
 
-    # 2._decode_news_cursor error paths
-    assert crud._decode_news_cursor("") is None
-    assert crud._decode_news_cursor("not-colon") is None
-    assert crud._decode_news_cursor("notint:1") is None
+    # 2. decode_datetime_cursor error paths
+    from app.utils.pagination import decode_datetime_cursor
+
+    assert decode_datetime_cursor("") is None
+    assert decode_datetime_cursor("not-colon") is None
+    assert decode_datetime_cursor("notint:1") is None

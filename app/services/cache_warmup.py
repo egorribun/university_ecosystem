@@ -7,7 +7,6 @@ import time
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import crud
 from app.api.schedule import _SCHEDULE_CACHE_TTL_SECONDS
 from app.core.config import settings
 from app.core.database import async_session
@@ -40,7 +39,16 @@ async def _warm_schedule_group(
     if cached and _is_entry_fresh(cached):
         return
 
-    rows = await crud.get_schedule_by_group(db, group_id)
+    from app.repositories.schedule_repository import GroupRepository, ScheduleRepository
+    from app.services.schedule_optimizer import ScheduleOptimizerService
+    from app.services.schedule_service import ScheduleService
+
+    repo = ScheduleRepository(db)
+    group_repo = GroupRepository(db)
+    optimizer = ScheduleOptimizerService()
+    service = ScheduleService(repo, group_repo, optimizer)
+
+    rows = await service.get_schedule(group_id)
     if not rows:
         return
 
@@ -95,25 +103,31 @@ async def _warm_stats_for_user(
         return
 
     days = _period_days_from_key(resolved_period) or 30
+    from app.repositories.user_repository import UserRepository
+    from app.services.audit_service import audit_service
+    from app.services.notification_service import NotificationService
+    from app.services.user_service import UserService
+
+    repo = UserRepository(db)
+    notifications = NotificationService(db)
+    service = UserService(db, repo, audit_service, notifications)
+
     tasks = [
-        crud.get_attendance_stats(
-            db,
+        service.get_attendance_stats(
             user_id=user_id,
             period_days=days,
             period_key=resolved_period,
             cache=cache,
             skip_cache=skip_cache,
         ),
-        crud.get_grade_stats(
-            db,
+        service.get_grade_stats(
             user_id=user_id,
             period_days=days,
             cache=cache,
             period_key=resolved_period,
             skip_cache=skip_cache,
         ),
-        crud.get_participation_stats(
-            db,
+        service.get_participation_stats(
             user_id=user_id,
             period_days=days,
             cache=cache,

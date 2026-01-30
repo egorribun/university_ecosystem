@@ -1,5 +1,4 @@
 import logging
-from datetime import UTC
 from typing import Any
 
 from fastapi import (
@@ -213,64 +212,23 @@ async def news_list(
             return cached.payload
 
     # Get news with pagination
-    # Note: list_news in service returns tuples (news_obj, l_count, c_count, liked)
-    # Actually, should we update service to return objects?
-    # Checked app/crud/__init__.py: get_news_list returned list of objects.
-    # Checked app/services/news_service.py: list_news returns result from repo directly.
-    # Service returns Sequence[tuple[News, int, int, bool]].
-    # Let's handle tuples here or fix service. Fixing service is cleaner.
-    # But I am editing API file now.
-    # Let's assume service.list_news returns tuples for now and I process them,
-    # OR better, since I am replacing crud.get_news_list which returned objects,
-    # I should probably update Service.list_news to behave like crud.get_news_list.
-    # Checking Service.list_news again.. it returns await repo.list_news().
-    # So it returns tuples.
-
     results = await service.list_news(
-        limit=limit + 1,
+        limit=limit,
         cursor=cursor,
         current_user_id=user.id if user else None,
         search=None,
+        locale=normalized_locale,
     )
 
-    rows = []
-    for news_obj, l_count, c_count, liked in results:
-        news_obj.likes_count = l_count or 0
-        news_obj.comments_count = c_count or 0
-        news_obj.is_liked = bool(liked)
-        rows.append(news_obj)
-
-    # Check if there are more items
-    has_more = len(rows) > limit
-    if has_more:
-        rows = rows[:limit]
-
-    # Calculate next cursor
-    next_cursor = None
-    if has_more and rows:
-        last_item = rows[-1]
-        # Cursor format: timestamp:id
-        created_at = last_item.created_at
-        if created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=UTC)
-        ts = int(created_at.timestamp() * 1000)
-        next_cursor = f"{ts}:{last_item.id}"
-
-    # Serialize items
-    items = [service.serialize_news(item, locale) for item in rows]
-
-    payload = {
-        "items": items,
-        "has_more": has_more,
-        "next_cursor": next_cursor,
-    }
-    encoded = jsonable_encoder(payload)
-
-    if cache.enabled:
+    if cache.enabled and cache_key:
+        encoded = jsonable_encoder(results)
         entry = await cache.set(cache_key, encoded)
-        response.headers["ETag"] = format_etag(entry.etag)
-    _set_language_headers(response, normalized_locale)
-    return encoded
+        etag_header = format_etag(entry.etag)
+        response.headers["ETag"] = etag_header
+        _set_language_headers(response, normalized_locale)
+        return encoded
+
+    return results
 
 
 @router.get(

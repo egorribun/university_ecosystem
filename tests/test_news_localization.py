@@ -1,8 +1,23 @@
+from unittest.mock import MagicMock
+
 import pytest
 
-from app.api import news
 from app.models import models
+from app.repositories.news_repository import NewsRepository
 from app.schemas import schemas
+from app.services.news_service import NewsService
+
+
+@pytest.fixture
+def news_service(db_session):
+    repo = NewsRepository(db_session)
+    vector = MagicMock()
+
+    async def _embed(*args, **kwargs):
+        return [0.1] * 1536
+
+    vector.get_embedding.side_effect = _embed
+    return NewsService(repo, vector)
 
 
 def _assert_news_headers(response, expected_language: str) -> None:
@@ -153,6 +168,7 @@ async def test_partial_news_updates_keep_other_fields(
     expected_changes,
     db_session,
     user_factory,
+    news_service,
 ):
     admin = await user_factory(role="admin")
     record = models.News(
@@ -175,12 +191,9 @@ async def test_partial_news_updates_keep_other_fields(
     }
 
     payload = schemas.NewsUpdate(**payload_kwargs)
-    await news.update_news(
+    await news_service.update_news(
         record.id,
-        request=None,
-        data=payload,
-        db=db_session,
-        user=admin,
+        payload,
     )
 
     stored = await db_session.get(models.News, record.id)

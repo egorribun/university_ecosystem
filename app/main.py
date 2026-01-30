@@ -77,8 +77,8 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 _logger = logging.getLogger(__name__)
 
 
-@app.get("/", response_class=JSONResponse)
-async def get_root():
+@app.get("/", response_class=JSONResponse, summary="Root")
+async def root():
     return JSONResponse(status_code=200, content={"status": "ok"})
 
 

@@ -35,6 +35,10 @@ logger = logging.getLogger(__name__)
 
 
 class UserService:
+    async def get_user_by_email(self, email: str) -> models.User | None:
+        """Get user by email."""
+        return await self.repo.get_by_email(email)
+
     def __init__(
         self,
         db: AsyncSession,

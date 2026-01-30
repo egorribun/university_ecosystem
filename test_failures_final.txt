@@ -1,0 +1,606 @@
+bringing up nodes...
+bringing up nodes...
+
+........................................................................ [  6%]
+........................................................................ [ 12%]
+........................................................................ [ 19%]
+........................................................................ [ 25%]
+....................................F................................... [ 32%]
+........................................................................ [ 38%]
+......................F................................................. [ 44%]
+........................................................................ [ 51%]
+........................................................................ [ 57%]
+....................F.F.F.F..F...F...................................... [ 64%]
+........F.....................................................sss....... [ 70%]
+.............................................................F.s........ [ 77%]
+............................................................F..F...F.... [ 83%]
+..................................................F..................... [ 89%]
+....................F...................F............................... [ 96%]
+.....................................F....                               [100%]
+================================== FAILURES ===================================
+______________ test_update_event_replaces_image_removes_old_file ______________
+[gw13] win32 -- Python 3.13.11 C:\Python313\python.exe
+C:\Python313\Lib\site-packages\sqlalchemy\sql\coercions.py:804: in _literal_coercion
+    return expr._bind_param(operator, element, type_=bindparam_type)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\sqlalchemy\sql\elements.py:4669: in _bind_param
+    return BindParameter(
+C:\Python313\Lib\site-packages\sqlalchemy\sql\elements.py:2055: in __init__
+    self.type = _compared_to_type.coerce_compared_value(
+C:\Python313\Lib\site-packages\sqlalchemy\sql\type_api.py:1065: in coerce_compared_value
+    _coerced_type = _resolve_value_to_type(value)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\sqlalchemy\sql\sqltypes.py:3911: in _resolve_value_to_type
+    raise exc.ArgumentError(
+E   sqlalchemy.exc.ArgumentError: Object <Event(id=13, title='Test Event...', starts_at=2026-01-30 16:14:52.553296)> is not legal as a SQL literal value
+
+The above exception was the direct cause of the following exception:
+tests\test_event_file_upload.py:576: in test_update_event_replaces_image_removes_old_file
+    result = await events.update_event(
+app\api\events.py:481: in update_event
+    q = await events.update_event(event_id, data)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\services\event_service.py:248: in update_event
+    updated_event = await self.repo.update(event, updates)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\repositories\base.py:72: in update
+    db_obj = await self.get(id)
+             ^^^^^^^^^^^^^^^^^^
+app\repositories\base.py:21: in get
+    stmt = select(self.model).where(self.model.id == id)
+                                    ^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\sqlalchemy\sql\operators.py:584: in __eq__
+    return self.operate(eq, other)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\sqlalchemy\orm\attributes.py:453: in operate
+    return op(self.comparator, *other, **kwargs)  # type: ignore[no-any-return]  # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\sqlalchemy\sql\operators.py:584: in __eq__
+    return self.operate(eq, other)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\sqlalchemy\orm\properties.py:479: in operate
+    return op(self.__clause_element__(), *other, **kwargs)  # type: ignore[no-any-return]  # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\sqlalchemy\sql\annotation.py:371: in __eq__
+    return self.__element.__class__.__eq__(self, other)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\sqlalchemy\sql\operators.py:584: in __eq__
+    return self.operate(eq, other)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\sqlalchemy\sql\elements.py:1535: in operate
+    return op(self.comparator, *other, **kwargs)  # type: ignore[no-any-return]  # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\sqlalchemy\sql\operators.py:584: in __eq__
+    return self.operate(eq, other)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\sqlalchemy\sql\type_api.py:210: in operate
+    return op_fn(self.expr, op, *other, **addtl_kw)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\sqlalchemy\sql\default_comparator.py:120: in _boolean_compare
+    obj = coercions.expect(
+C:\Python313\Lib\site-packages\sqlalchemy\sql\coercions.py:396: in expect
+    resolved = impl._literal_coercion(
+C:\Python313\Lib\site-packages\sqlalchemy\sql\coercions.py:806: in _literal_coercion
+    self._raise_for_expected(element, err=err)
+C:\Python313\Lib\site-packages\sqlalchemy\sql\coercions.py:785: in _raise_for_expected
+    return super()._raise_for_expected(
+C:\Python313\Lib\site-packages\sqlalchemy\sql\coercions.py:519: in _raise_for_expected
+    raise exc.ArgumentError(msg, code=code) from err
+E   sqlalchemy.exc.ArgumentError: SQL expression element or literal value expected, got <Event(id=13, title='Test Event...', starts_at=2026-01-30 16:14:52.553296)>.
+_______________________ test_openapi_contract_snapshot ________________________
+[gw8] win32 -- Python 3.13.11 C:\Python313\python.exe
+tests\contracts\test_openapi_contract.py:49: in test_openapi_contract_snapshot
+    assert_openapi_superset(expected_schema, openapi_schema)
+tests\contracts\utils.py:45: in assert_openapi_superset
+    assert_openapi_superset(value, actual[key], path=f"{path}.{key}")
+tests\contracts\utils.py:45: in assert_openapi_superset
+    assert_openapi_superset(value, actual[key], path=f"{path}.{key}")
+tests\contracts\utils.py:45: in assert_openapi_superset
+    assert_openapi_superset(value, actual[key], path=f"{path}.{key}")
+tests\contracts\utils.py:45: in assert_openapi_superset
+    assert_openapi_superset(value, actual[key], path=f"{path}.{key}")
+tests\contracts\utils.py:60: in assert_openapi_superset
+    assert expected == actual, f"{path}: expected {expected!r}, got {actual!r}"
+           ^^^^^^^^^^^^^^^^^^
+E   AssertionError: root.paths./.get.operationId: expected 'root__get', got 'get_root__get'
+____________________ test_security_headers_production_mode ____________________
+[gw3] win32 -- Python 3.13.11 C:\Python313\python.exe
+tests\test_security_headers.py:26: in test_security_headers_production_mode
+    settings = Settings()
+               ^^^^^^^^^^
+app\core\config\base.py:124: in __init__
+    super().__init__(**values)
+C:\Python313\Lib\site-packages\pydantic_settings\main.py:194: in __init__
+    super().__init__(
+E   pydantic_core._pydantic_core.ValidationError: 1 validation error for Settings
+E   audit_log_secret
+E     Value error, Default AUDIT_LOG_SECRET cannot be used in production [type=value_error, input_value='development-audit-secret-change-me', input_type=str]
+E       For further information visit https://errors.pydantic.dev/2.12/v/value_error
+__________________ test_security_headers_credentialless_coep __________________
+[gw3] win32 -- Python 3.13.11 C:\Python313\python.exe
+tests\test_security_headers.py:228: in test_security_headers_credentialless_coep
+    settings = Settings()
+               ^^^^^^^^^^
+app\core\config\base.py:124: in __init__
+    super().__init__(**values)
+C:\Python313\Lib\site-packages\pydantic_settings\main.py:194: in __init__
+    super().__init__(
+E   pydantic_core._pydantic_core.ValidationError: 1 validation error for Settings
+E   audit_log_secret
+E     Value error, Default AUDIT_LOG_SECRET cannot be used in production [type=value_error, input_value='development-audit-secret-change-me', input_type=str]
+E       For further information visit https://errors.pydantic.dev/2.12/v/value_error
+________________ test_gzip_preserves_security_headers_and_etag ________________
+[gw3] win32 -- Python 3.13.11 C:\Python313\python.exe
+tests\test_security_headers.py:264: in test_gzip_preserves_security_headers_and_etag
+    settings = Settings()
+               ^^^^^^^^^^
+app\core\config\base.py:124: in __init__
+    super().__init__(**values)
+C:\Python313\Lib\site-packages\pydantic_settings\main.py:194: in __init__
+    super().__init__(
+E   pydantic_core._pydantic_core.ValidationError: 1 validation error for Settings
+E   audit_log_secret
+E     Value error, Default AUDIT_LOG_SECRET cannot be used in production [type=value_error, input_value='development-audit-secret-change-me', input_type=str]
+E       For further information visit https://errors.pydantic.dev/2.12/v/value_error
+________________ test_cors_hardening_filters_insecure_origins _________________
+[gw3] win32 -- Python 3.13.11 C:\Python313\python.exe
+tests\test_security_headers.py:329: in test_cors_hardening_filters_insecure_origins
+    settings = Settings()
+               ^^^^^^^^^^
+app\core\config\base.py:124: in __init__
+    super().__init__(**values)
+C:\Python313\Lib\site-packages\pydantic_settings\main.py:194: in __init__
+    super().__init__(
+E   pydantic_core._pydantic_core.ValidationError: 1 validation error for Settings
+E   audit_log_secret
+E     Value error, Default AUDIT_LOG_SECRET cannot be used in production [type=value_error, input_value='development-audit-secret-change-me', input_type=str]
+E       For further information visit https://errors.pydantic.dev/2.12/v/value_error
+______________ test_cors_credentials_disabled_for_insecure_hosts ______________
+[gw3] win32 -- Python 3.13.11 C:\Python313\python.exe
+tests\test_security_headers.py:347: in test_cors_credentials_disabled_for_insecure_hosts
+    settings = Settings()
+               ^^^^^^^^^^
+app\core\config\base.py:124: in __init__
+    super().__init__(**values)
+C:\Python313\Lib\site-packages\pydantic_settings\main.py:194: in __init__
+    super().__init__(
+E   pydantic_core._pydantic_core.ValidationError: 1 validation error for Settings
+E   audit_log_secret
+E     Value error, Default AUDIT_LOG_SECRET cannot be used in production [type=value_error, input_value='development-audit-secret-change-me', input_type=str]
+E       For further information visit https://errors.pydantic.dev/2.12/v/value_error
+___________________ test_cors_allows_localhost_when_strict ____________________
+[gw3] win32 -- Python 3.13.11 C:\Python313\python.exe
+tests\test_security_headers.py:366: in test_cors_allows_localhost_when_strict
+    settings = Settings()
+               ^^^^^^^^^^
+app\core\config\base.py:124: in __init__
+    super().__init__(**values)
+C:\Python313\Lib\site-packages\pydantic_settings\main.py:194: in __init__
+    super().__init__(
+E   pydantic_core._pydantic_core.ValidationError: 1 validation error for Settings
+E   audit_log_secret
+E     Value error, Default AUDIT_LOG_SECRET cannot be used in production [type=value_error, input_value='development-audit-secret-change-me', input_type=str]
+E       For further information visit https://errors.pydantic.dev/2.12/v/value_error
+_________ test_localized_text_prefers_requested_locale_with_fallbacks _________
+[gw13] win32 -- Python 3.13.11 C:\Python313\python.exe
+tests\test_news_helpers.py:29: in test_localized_text_prefers_requested_locale_with_fallbacks
+    news._localized_text("en", ru_value="╨єёёъшщ", en_value="English") == "English"
+    ^^^^^^^^^^^^^^^^^^^^
+E   AttributeError: module 'app.api.news' has no attribute '_localized_text'
+_____________ TestNewsPagination.test_news_list_cursor_pagination _____________
+[gw10] win32 -- Python 3.13.11 C:\Python313\python.exe
+tests\test_pagination.py:168: in test_news_list_cursor_pagination
+    assert len(data2["items"]) == 2
+E   assert 0 == 2
+E    +  where 0 = len([])
+---------------------------- Captured stderr setup ----------------------------
+{"timestamp": "2026-01-30T19:15:07.110Z", "level": "INFO", "logger": "app.core.events", "message": "Domain event persistence listeners registered.", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-01-30T19:15:07.110Z", "level": "INFO", "logger": "app.services.event_handlers", "message": "Domain event handlers configured", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-01-30T19:15:07.111Z", "level": "INFO", "logger": "app.services.cache_warmup", "message": "Cache warmup disabled, skipping", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-01-30T19:15:07.111Z", "level": "INFO", "logger": "app.workers.outbox", "message": "OutboxWorker started", "service_name": "university-ecosystem", "environment": "testing"}
+----------------------------- Captured log setup ------------------------------
+[32mINFO    [0m app.core.events:events.py:265 Domain event persistence listeners registered.
+[32mINFO    [0m app.services.event_handlers:event_handlers.py:171 Domain event handlers configured
+[32mINFO    [0m app.services.cache_warmup:cache_warmup.py:252 Cache warmup disabled, skipping
+[32mINFO    [0m app.workers.outbox:outbox.py:31 OutboxWorker started
+---------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-01-30T19:15:07.342Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET http://testserver/api/v1/news?limit=2 \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-01-30T19:15:07.553Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET http://testserver/api/v1/news?limit=2&cursor=1769771707112:4 \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+------------------------------ Captured log call ------------------------------
+[32mINFO    [0m httpx:_client.py:1740 HTTP Request: GET http://testserver/api/v1/news?limit=2 "HTTP/1.1 200 OK"
+[32mINFO    [0m httpx:_client.py:1740 HTTP Request: GET http://testserver/api/v1/news?limit=2&cursor=1769771707112:4 "HTTP/1.1 200 OK"
+_ test_partial_news_updates_keep_other_fields[payload_kwargs0-expected_changes0] _
+[gw8] win32 -- Python 3.13.11 C:\Python313\python.exe
+tests\test_news_localization.py:178: in test_partial_news_updates_keep_other_fields
+    await news.update_news(
+E   TypeError: update_news() got an unexpected keyword argument 'db'
+_ test_partial_news_updates_keep_other_fields[payload_kwargs1-expected_changes1] _
+[gw8] win32 -- Python 3.13.11 C:\Python313\python.exe
+tests\test_news_localization.py:178: in test_partial_news_updates_keep_other_fields
+    await news.update_news(
+E   TypeError: update_news() got an unexpected keyword argument 'db'
+______________________ test_events_pagination_semantics _______________________
+[gw2] win32 -- Python 3.13.11 C:\Python313\python.exe
+tests\test_events_localization.py:440: in test_events_pagination_semantics
+    assert len(third_data["items"]) == 1
+E   AssertionError: assert 3 == 1
+E    +  where 3 = len([{'about': None, 'about_en': None, 'created_at': '2026-01-30T16:15:08', 'created_by': 1, ...}, {'about': None, 'about_...', 'created_by': 1, ...}, {'about': None, 'about_en': None, 'created_at': '2026-01-30T16:15:08', 'created_by': 1, ...}])
+---------------------------- Captured stderr setup ----------------------------
+{"timestamp": "2026-01-30T19:15:08.061Z", "level": "INFO", "logger": "app.core.events", "message": "Domain event persistence listeners registered.", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-01-30T19:15:08.061Z", "level": "INFO", "logger": "app.services.event_handlers", "message": "Domain event handlers configured", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-01-30T19:15:08.062Z", "level": "INFO", "logger": "app.services.cache_warmup", "message": "Cache warmup disabled, skipping", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-01-30T19:15:08.062Z", "level": "INFO", "logger": "app.workers.outbox", "message": "OutboxWorker started", "service_name": "university-ecosystem", "environment": "testing"}
+----------------------------- Captured log setup ------------------------------
+[32mINFO    [0m app.core.events:events.py:265 Domain event persistence listeners registered.
+[32mINFO    [0m app.services.event_handlers:event_handlers.py:171 Domain event handlers configured
+[32mINFO    [0m app.services.cache_warmup:cache_warmup.py:252 Cache warmup disabled, skipping
+[32mINFO    [0m app.workers.outbox:outbox.py:31 OutboxWorker started
+---------------------------- Captured stdout call -----------------------------
+DEBUG: Validating policy for length 18
+---------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-01-30T19:15:08.680Z", "level": "INFO", "logger": "app.auth", "message": "{\"event\": \"auth.login.success\", \"user_id\": \"2\", \"request_id\": \"9ea360614d9444dca776b217c177f946\", \"ip\": \"127.0.0.1\", \"path\": \"/api/v1/auth/login\", \"method\": \"POST\", \"reason\": \"authenticated\"}", "trace_id": "9ea360614d9444dca776b217c177f946", "request_id": "9ea360614d9444dca776b217c177f946", "service_name": "university-ecosystem", "environment": "testing", "event": "auth.login.success", "user_id": "2", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+{"timestamp": "2026-01-30T19:15:08.688Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/auth/login \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-01-30T19:15:08.949Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET http://testserver/api/v1/events?limit=3 \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-01-30T19:15:09.159Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET http://testserver/api/v1/events?limit=3&cursor=MTc3MDAzODEwOC41Mjc2Mzg6Nw%3D%3D \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-01-30T19:15:09.380Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET http://testserver/api/v1/events?cursor=MTc3MDIxMDkwOC41Mjc2Mzg6OQ%3D%3D \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+------------------------------ Captured log call ------------------------------
+[32mINFO    [0m app.auth:audit_service.py:147 {"event": "auth.login.success", "user_id": "2", "request_id": "9ea360614d9444dca776b217c177f946", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+[32mINFO    [0m httpx:_client.py:1740 HTTP Request: POST http://testserver/api/v1/auth/login "HTTP/1.1 200 OK"
+[32mINFO    [0m httpx:_client.py:1740 HTTP Request: GET http://testserver/api/v1/events?limit=3 "HTTP/1.1 200 OK"
+[32mINFO    [0m httpx:_client.py:1740 HTTP Request: GET http://testserver/api/v1/events?limit=3&cursor=MTc3MDAzODEwOC41Mjc2Mzg6Nw%3D%3D "HTTP/1.1 200 OK"
+[32mINFO    [0m httpx:_client.py:1740 HTTP Request: GET http://testserver/api/v1/events?cursor=MTc3MDIxMDkwOC41Mjc2Mzg6OQ%3D%3D "HTTP/1.1 200 OK"
+_______________________________ test_list_news ________________________________
+[gw11] win32 -- Python 3.13.11 C:\Python313\python.exe
+tests\test_news_service.py:38: in test_list_news
+    await news_service.list_news(search=search_query)
+app\services\news_service.py:52: in list_news
+    has_more = len(results) > limit
+               ^^^^^^^^^^^^
+E   TypeError: object of type 'PaginatedNews' has no len()
+___________________________ test_user_service_mega ____________________________
+[gw13] win32 -- Python 3.13.11 C:\Python313\python.exe
+tests\test_mega_logic_v6.py:92: in test_user_service_mega
+    await service.create_user(data_user, request, admin_user)
+app\services\user_service.py:572: in create_user
+    hashed = get_password_hash(password)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\auth\security.py:248: in get_password_hash
+    _validate_password_policy(password, locale=locale)
+app\auth\security.py:180: in _validate_password_policy
+    raise ValueError(
+E   ValueError: Password must include: uppercase letters, symbols.
+---------------------------- Captured stdout call -----------------------------
+DEBUG: Validating policy for length 11
+_________________ test_events_cache_invalidation_on_mutations _________________
+[gw2] win32 -- Python 3.13.11 C:\Python313\python.exe
+C:\Python313\Lib\site-packages\sqlalchemy\sql\coercions.py:804: in _literal_coercion
+    return expr._bind_param(operator, element, type_=bindparam_type)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\sqlalchemy\sql\elements.py:4669: in _bind_param
+    return BindParameter(
+C:\Python313\Lib\site-packages\sqlalchemy\sql\elements.py:2055: in __init__
+    self.type = _compared_to_type.coerce_compared_value(
+C:\Python313\Lib\site-packages\sqlalchemy\sql\type_api.py:1065: in coerce_compared_value
+    _coerced_type = _resolve_value_to_type(value)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\sqlalchemy\sql\sqltypes.py:3911: in _resolve_value_to_type
+    raise exc.ArgumentError(
+E   sqlalchemy.exc.ArgumentError: Object <Event(id=13, title='New cached event...', starts_at=2026-02-02 16:15:10.256290)> is not legal as a SQL literal value
+
+The above exception was the direct cause of the following exception:
+tests\test_events_localization.py:551: in test_events_cache_invalidation_on_mutations
+    update_response = await async_client.patch(
+C:\Python313\Lib\site-packages\httpx\_client.py:1933: in patch
+    return await self.request(
+C:\Python313\Lib\site-packages\httpx\_client.py:1540: in request
+    return await self.send(request, auth=auth, follow_redirects=follow_redirects)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\httpx\_client.py:1629: in send
+    response = await self._send_handling_auth(
+C:\Python313\Lib\site-packages\httpx\_client.py:1657: in _send_handling_auth
+    response = await self._send_handling_redirects(
+C:\Python313\Lib\site-packages\httpx\_client.py:1694: in _send_handling_redirects
+    response = await self._send_single_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\httpx\_client.py:1730: in _send_single_request
+    response = await transport.handle_async_request(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\httpx\_transports\asgi.py:170: in handle_async_request
+    await self.app(scope, receive, send)
+C:\Python313\Lib\site-packages\fastapi\applications.py:1135: in __call__
+    await super().__call__(scope, receive, send)
+C:\Python313\Lib\site-packages\starlette\applications.py:107: in __call__
+    await self.middleware_stack(scope, receive, send)
+C:\Python313\Lib\site-packages\starlette\middleware\errors.py:186: in __call__
+    raise exc
+C:\Python313\Lib\site-packages\starlette\middleware\errors.py:164: in __call__
+    await self.app(scope, receive, _send)
+C:\Python313\Lib\site-packages\starlette\middleware\cors.py:85: in __call__
+    await self.app(scope, receive, send)
+C:\Python313\Lib\site-packages\starlette\middleware\trustedhost.py:51: in __call__
+    await self.app(scope, receive, send)
+C:\Python313\Lib\site-packages\uvicorn\middleware\proxy_headers.py:60: in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\starlette\middleware\base.py:191: in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+                                   ^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\contextlib.py:162: in __exit__
+    self.gen.throw(value)
+C:\Python313\Lib\site-packages\starlette\_utils.py:85: in collapse_excgroups
+    raise exc
+C:\Python313\Lib\site-packages\starlette\middleware\base.py:193: in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\core\rate_limit.py:284: in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\starlette\middleware\base.py:168: in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+C:\Python313\Lib\site-packages\starlette\middleware\base.py:144: in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+C:\Python313\Lib\site-packages\starlette\middleware\base.py:191: in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+                                   ^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\contextlib.py:162: in __exit__
+    self.gen.throw(value)
+C:\Python313\Lib\site-packages\starlette\_utils.py:85: in collapse_excgroups
+    raise exc
+C:\Python313\Lib\site-packages\starlette\middleware\base.py:193: in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\core\middleware.py:40: in _http_response_hardening
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\starlette\middleware\base.py:168: in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+C:\Python313\Lib\site-packages\starlette\middleware\base.py:144: in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+C:\Python313\Lib\site-packages\starlette\middleware\base.py:191: in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+                                   ^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\contextlib.py:162: in __exit__
+    self.gen.throw(value)
+C:\Python313\Lib\site-packages\starlette\_utils.py:85: in collapse_excgroups
+    raise exc
+C:\Python313\Lib\site-packages\starlette\middleware\base.py:193: in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\core\internal_access.py:34: in dispatch
+    return await call_next(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\starlette\middleware\base.py:168: in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+C:\Python313\Lib\site-packages\starlette\middleware\base.py:144: in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+C:\Python313\Lib\site-packages\starlette\middleware\base.py:191: in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+                                   ^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\contextlib.py:162: in __exit__
+    self.gen.throw(value)
+C:\Python313\Lib\site-packages\starlette\_utils.py:85: in collapse_excgroups
+    raise exc
+C:\Python313\Lib\site-packages\starlette\middleware\base.py:193: in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\core\sanitization.py:94: in dispatch
+    return await call_next(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\starlette\middleware\base.py:168: in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+C:\Python313\Lib\site-packages\starlette\middleware\base.py:144: in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+tests\conftest.py:98: in __call__
+    await self.app(scope, receive, send)
+C:\Python313\Lib\site-packages\brotli_asgi\__init__.py:81: in __call__
+    await br_responder(scope, receive, send)
+C:\Python313\Lib\site-packages\brotli_asgi\__init__.py:126: in __call__
+    await self.app(scope, receive, self.send_with_brotli)
+C:\Python313\Lib\site-packages\starlette\middleware\base.py:191: in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+                                   ^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\contextlib.py:162: in __exit__
+    self.gen.throw(value)
+C:\Python313\Lib\site-packages\starlette\_utils.py:85: in collapse_excgroups
+    raise exc
+C:\Python313\Lib\site-packages\starlette\middleware\base.py:193: in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\core\metrics.py:538: in dispatch
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\starlette\middleware\base.py:168: in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+C:\Python313\Lib\site-packages\starlette\middleware\base.py:144: in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+C:\Python313\Lib\site-packages\starlette\middleware\base.py:191: in __call__
+    with recv_stream, send_stream, collapse_excgroups():
+                                   ^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\contextlib.py:162: in __exit__
+    self.gen.throw(value)
+C:\Python313\Lib\site-packages\starlette\_utils.py:85: in collapse_excgroups
+    raise exc
+C:\Python313\Lib\site-packages\starlette\middleware\base.py:193: in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\core\observability.py:129: in dispatch
+    response: Response = await call_next(request)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\starlette\middleware\base.py:168: in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+C:\Python313\Lib\site-packages\starlette\middleware\base.py:144: in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+C:\Python313\Lib\site-packages\starlette\middleware\exceptions.py:63: in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+C:\Python313\Lib\site-packages\starlette\_exception_handler.py:53: in wrapped_app
+    raise exc
+C:\Python313\Lib\site-packages\starlette\_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+C:\Python313\Lib\site-packages\fastapi\middleware\asyncexitstack.py:18: in __call__
+    await self.app(scope, receive, send)
+C:\Python313\Lib\site-packages\starlette\routing.py:716: in __call__
+    await self.middleware_stack(scope, receive, send)
+C:\Python313\Lib\site-packages\starlette\routing.py:736: in app
+    await route.handle(scope, receive, send)
+C:\Python313\Lib\site-packages\starlette\routing.py:290: in handle
+    await self.app(scope, receive, send)
+C:\Python313\Lib\site-packages\fastapi\routing.py:115: in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+C:\Python313\Lib\site-packages\starlette\_exception_handler.py:53: in wrapped_app
+    raise exc
+C:\Python313\Lib\site-packages\starlette\_exception_handler.py:42: in wrapped_app
+    await app(scope, receive, sender)
+C:\Python313\Lib\site-packages\fastapi\routing.py:101: in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\fastapi\routing.py:355: in app
+    raw_response = await run_endpoint_function(
+C:\Python313\Lib\site-packages\fastapi\routing.py:243: in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\api\events.py:481: in update_event
+    q = await events.update_event(event_id, data)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\services\event_service.py:248: in update_event
+    updated_event = await self.repo.update(event, updates)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\repositories\base.py:72: in update
+    db_obj = await self.get(id)
+             ^^^^^^^^^^^^^^^^^^
+app\repositories\base.py:21: in get
+    stmt = select(self.model).where(self.model.id == id)
+                                    ^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\sqlalchemy\sql\operators.py:584: in __eq__
+    return self.operate(eq, other)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\sqlalchemy\orm\attributes.py:453: in operate
+    return op(self.comparator, *other, **kwargs)  # type: ignore[no-any-return]  # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\sqlalchemy\sql\operators.py:584: in __eq__
+    return self.operate(eq, other)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\sqlalchemy\orm\properties.py:479: in operate
+    return op(self.__clause_element__(), *other, **kwargs)  # type: ignore[no-any-return]  # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\sqlalchemy\sql\annotation.py:371: in __eq__
+    return self.__element.__class__.__eq__(self, other)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\sqlalchemy\sql\operators.py:584: in __eq__
+    return self.operate(eq, other)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\sqlalchemy\sql\elements.py:1535: in operate
+    return op(self.comparator, *other, **kwargs)  # type: ignore[no-any-return]  # noqa: E501
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\sqlalchemy\sql\operators.py:584: in __eq__
+    return self.operate(eq, other)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\sqlalchemy\sql\type_api.py:210: in operate
+    return op_fn(self.expr, op, *other, **addtl_kw)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Python313\Lib\site-packages\sqlalchemy\sql\default_comparator.py:120: in _boolean_compare
+    obj = coercions.expect(
+C:\Python313\Lib\site-packages\sqlalchemy\sql\coercions.py:396: in expect
+    resolved = impl._literal_coercion(
+C:\Python313\Lib\site-packages\sqlalchemy\sql\coercions.py:806: in _literal_coercion
+    self._raise_for_expected(element, err=err)
+C:\Python313\Lib\site-packages\sqlalchemy\sql\coercions.py:785: in _raise_for_expected
+    return super()._raise_for_expected(
+C:\Python313\Lib\site-packages\sqlalchemy\sql\coercions.py:519: in _raise_for_expected
+    raise exc.ArgumentError(msg, code=code) from err
+E   sqlalchemy.exc.ArgumentError: SQL expression element or literal value expected, got <Event(id=13, title='New cached event...', starts_at=2026-02-02 16:15:10.256290)>.
+---------------------------- Captured stderr setup ----------------------------
+{"timestamp": "2026-01-30T19:15:10.150Z", "level": "INFO", "logger": "app.core.events", "message": "Domain event persistence listeners registered.", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-01-30T19:15:10.150Z", "level": "INFO", "logger": "app.services.event_handlers", "message": "Domain event handlers configured", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-01-30T19:15:10.151Z", "level": "INFO", "logger": "app.services.cache_warmup", "message": "Cache warmup disabled, skipping", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-01-30T19:15:10.151Z", "level": "INFO", "logger": "app.workers.outbox", "message": "OutboxWorker started", "service_name": "university-ecosystem", "environment": "testing"}
+----------------------------- Captured log setup ------------------------------
+[32mINFO    [0m app.core.events:events.py:265 Domain event persistence listeners registered.
+[32mINFO    [0m app.services.event_handlers:event_handlers.py:171 Domain event handlers configured
+[32mINFO    [0m app.services.cache_warmup:cache_warmup.py:252 Cache warmup disabled, skipping
+[32mINFO    [0m app.workers.outbox:outbox.py:31 OutboxWorker started
+---------------------------- Captured stdout call -----------------------------
+DEBUG: Validating policy for length 14
+DEBUG: Validating policy for length 16
+---------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-01-30T19:15:10.335Z", "level": "INFO", "logger": "app.auth", "message": "{\"event\": \"auth.login.success\", \"user_id\": \"2\", \"request_id\": \"1cffc2e6269e46c192ee528d8d76e455\", \"ip\": \"127.0.0.1\", \"path\": \"/api/v1/auth/login\", \"method\": \"POST\", \"reason\": \"authenticated\"}", "trace_id": "1cffc2e6269e46c192ee528d8d76e455", "request_id": "1cffc2e6269e46c192ee528d8d76e455", "service_name": "university-ecosystem", "environment": "testing", "event": "auth.login.success", "user_id": "2", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+{"timestamp": "2026-01-30T19:15:10.341Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/auth/login \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-01-30T19:15:10.504Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET http://testserver/api/v1/events \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-01-30T19:15:10.699Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET http://testserver/api/v1/events \"HTTP/1.1 304 Not Modified\"", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-01-30T19:15:10.947Z", "level": "INFO", "logger": "app.auth", "message": "{\"event\": \"auth.login.success\", \"user_id\": \"1\", \"request_id\": \"8581e2dcaa854f73959d64bf8bccd68c\", \"ip\": \"127.0.0.1\", \"path\": \"/api/v1/auth/login\", \"method\": \"POST\", \"reason\": \"authenticated\"}", "trace_id": "8581e2dcaa854f73959d64bf8bccd68c", "request_id": "8581e2dcaa854f73959d64bf8bccd68c", "service_name": "university-ecosystem", "environment": "testing", "event": "auth.login.success", "user_id": "1", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+{"timestamp": "2026-01-30T19:15:10.952Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/auth/login \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-01-30T19:15:11.158Z", "level": "INFO", "logger": "taskiq.receiver.receiver", "message": "Executing task app.tasks.notifications:enqueue_event_notification_task with ID: 41f3088df3a442e885aa74939e499253", "trace_id": "68b1ebec28fc4ca791474ccb53700a84", "request_id": "68b1ebec28fc4ca791474ccb53700a84", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-01-30T19:15:11.161Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/events \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-01-30T19:15:11.346Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET http://testserver/api/v1/events \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+------------------------------ Captured log call ------------------------------
+[32mINFO    [0m app.auth:audit_service.py:147 {"event": "auth.login.success", "user_id": "2", "request_id": "1cffc2e6269e46c192ee528d8d76e455", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+[32mINFO    [0m httpx:_client.py:1740 HTTP Request: POST http://testserver/api/v1/auth/login "HTTP/1.1 200 OK"
+[32mINFO    [0m httpx:_client.py:1740 HTTP Request: GET http://testserver/api/v1/events "HTTP/1.1 200 OK"
+[32mINFO    [0m httpx:_client.py:1740 HTTP Request: GET http://testserver/api/v1/events "HTTP/1.1 304 Not Modified"
+[32mINFO    [0m app.auth:audit_service.py:147 {"event": "auth.login.success", "user_id": "1", "request_id": "8581e2dcaa854f73959d64bf8bccd68c", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+[32mINFO    [0m httpx:_client.py:1740 HTTP Request: POST http://testserver/api/v1/auth/login "HTTP/1.1 200 OK"
+[32mINFO    [0m taskiq.receiver.receiver:receiver.py:122 Executing task app.tasks.notifications:enqueue_event_notification_task with ID: 41f3088df3a442e885aa74939e499253
+[32mINFO    [0m httpx:_client.py:1740 HTTP Request: POST http://testserver/api/v1/events "HTTP/1.1 200 OK"
+[32mINFO    [0m httpx:_client.py:1740 HTTP Request: GET http://testserver/api/v1/events "HTTP/1.1 200 OK"
+__________________________ test_monster_coverage_run __________________________
+[gw13] win32 -- Python 3.13.11 C:\Python313\python.exe
+tests\test_z_coverage_monster.py:45: in test_monster_coverage_run
+    await e_service.get_events(user_id=1, search="s", locale="ru")
+app\services\event_service.py:146: in get_events
+    query_embedding = await self.vector_service.get_embedding(search)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   TypeError: object MagicMock can't be used in 'await' expression
+============================== warnings summary ===============================
+tests/test_news_repository_coverage.py::test_list_news_search_semantic
+  C:\Users\egorribun\Documents\university_ecosystem\tests\test_news_repository_coverage.py:115: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    await news_repo.list_news(search_query="test", query_embedding=[0.1])
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_news_repository_coverage.py::test_toggle_like_add
+  C:\Users\egorribun\Documents\university_ecosystem\app\repositories\news_repository.py:168: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    self.db.add(models.NewsLike(news_id=news_id, user_id=user_id))
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_metrics_endpoint.py::test_metrics_endpoint_exposes_prometheus_payload
+tests/test_metrics_endpoint.py::test_metrics_endpoint_allows_loopback_allowlist_without_auth
+tests/test_metrics_endpoint.py::test_health_check_metrics_recorded
+  C:\Python313\Lib\site-packages\GPUtil\GPUtil.py:73: DeprecationWarning: Use shutil.which instead of find_executable
+    nvidia_smi = spawn.find_executable('nvidia-smi')
+
+tests/test_cli_db.py::test_create_admin_success
+  C:\Users\egorribun\Documents\university_ecosystem\app\cli\db.py:58: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    db.add(admin)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_cli_db.py::test_create_invite_success
+  C:\Users\egorribun\Documents\university_ecosystem\app\cli\db.py:83: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    session.add(invite)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+SKIPPED [1] tests\test_migrations_runtime.py:51: Test requires PostgreSQL (uses pg_class or information_schema.public)
+SKIPPED [1] tests\test_migrations_runtime.py:87: Test requires PostgreSQL (uses pg_class or information_schema.public)
+SKIPPED [1] tests\test_migrations_runtime.py:127: Test requires PostgreSQL (uses pg_class or information_schema.public)
+SKIPPED [1] tests\test_events_localization.py:271: Test requires PostgreSQL (uses pg_attribute or full-text search)
+FAILED tests/test_event_file_upload.py::test_update_event_replaces_image_removes_old_file
+FAILED tests/contracts/test_openapi_contract.py::test_openapi_contract_snapshot
+FAILED tests/test_security_headers.py::test_security_headers_production_mode
+FAILED tests/test_security_headers.py::test_security_headers_credentialless_coep
+FAILED tests/test_security_headers.py::test_gzip_preserves_security_headers_and_etag
+FAILED tests/test_security_headers.py::test_cors_hardening_filters_insecure_origins
+FAILED tests/test_security_headers.py::test_cors_credentials_disabled_for_insecure_hosts
+FAILED tests/test_security_headers.py::test_cors_allows_localhost_when_strict
+FAILED tests/test_news_helpers.py::test_localized_text_prefers_requested_locale_with_fallbacks
+FAILED tests/test_pagination.py::TestNewsPagination::test_news_list_cursor_pagination
+FAILED tests/test_news_localization.py::test_partial_news_updates_keep_other_fields[payload_kwargs0-expected_changes0]
+FAILED tests/test_news_localization.py::test_partial_news_updates_keep_other_fields[payload_kwargs1-expected_changes1]
+FAILED tests/test_events_localization.py::test_events_pagination_semantics - ...
+FAILED tests/test_news_service.py::test_list_news - TypeError: object of type...
+FAILED tests/test_mega_logic_v6.py::test_user_service_mega - ValueError: Pass...
+FAILED tests/test_events_localization.py::test_events_cache_invalidation_on_mutations
+FAILED tests/test_z_coverage_monster.py::test_monster_coverage_run - TypeErro...
+17 failed, 1101 passed, 4 skipped, 7 warnings in 31.81s

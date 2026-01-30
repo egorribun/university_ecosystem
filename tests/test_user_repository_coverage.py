@@ -61,17 +61,23 @@ async def test_get_by_email_or_raise(user_repo, test_user):
 
 @pytest.mark.asyncio
 async def test_list_users_filters(user_repo, test_user):
+    from app.schemas import schemas
+
     # Filter by name
-    users = await user_repo.list_users(full_name="Repo User")
+    users = await user_repo.list_users(schemas.UserSearchFilter(full_name="Repo User"))
     assert len(users) >= 1
     assert any(u.id == test_user.id for u in users)
 
     # Filter by role
-    users_role = await user_repo.list_users(role=UserRole.STUDENT.value)
+    users_role = await user_repo.list_users(
+        schemas.UserSearchFilter(role=UserRole.STUDENT.value)
+    )
     assert len(users_role) >= 1
 
-    users_none = await user_repo.list_users(role="admin_impossible")
-    assert not any(u.id == test_user.id for u in users_none)
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        await user_repo.list_users(schemas.UserSearchFilter(role="admin_impossible"))
 
 
 @pytest.mark.asyncio

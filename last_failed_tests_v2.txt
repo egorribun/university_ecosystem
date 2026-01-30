@@ -1,0 +1,25 @@
+============================= test session starts =============================
+collected 60 items / 15 deselected / 45 selected
+run-last-failure: rerun previous 45 failures (skipped 110 files)
+
+tests\contracts\test_openapi_contract.py F                               [  2%]
+tests\test_auth_cookie_flow.py F                                         [  4%]
+tests\test_auth_security.py F                                            [  6%]
+tests\test_core_config.py FF                                             [ 11%]
+tests\test_event_create_api_fix.py F                                     [ 13%]
+tests\test_event_file_upload.py F                                        [ 15%]
+tests\test_event_time_constraints.py FFFFFF                              [ 28%]
+tests\test_events_localization.py FFFFFF                                 [ 42%]
+tests\test_mega_logic_v6.py FF                                           [ 46%]
+tests\test_missing_logic_v5.py FF                                        [ 51%]
+tests\test_news_helpers.py F                                             [ 53%]
+tests\test_news_image_cleanup.py FF                                      [ 57%]
+tests\test_news_localization.py FF                                       [ 62%]
+tests\test_notifications_service.py FF                                   [ 66%]
+tests\test_pagination.py FFFFFF                                          [ 80%]
+tests\test_schedule_ics.py F                                             [ 82%]
+tests\test_security_headers.py FFFFFF                                    [ 95%]
+tests\test_user_repository_coverage.py F                                 [ 97%]
+tests\test_z_coverage_monster.py F                                       [100%]
+
+===================== 45 failed, 15 deselected in 18.77s ======================

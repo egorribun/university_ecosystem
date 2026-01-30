@@ -1,0 +1,129 @@
+bringing up nodes...
+bringing up nodes...
+
+........................................................................ [  6%]
+........................................................................ [ 12%]
+........................................................................ [ 19%]
+........................................................................ [ 25%]
+........................................................................ [ 32%]
+........................................................................ [ 38%]
+...................F.................................................... [ 45%]
+........................................................................ [ 51%]
+........................................................................ [ 58%]
+........................................................................ [ 64%]
+........................................................................ [ 71%]
+......s.sss......................F...................................... [ 77%]
+...................................F.................................... [ 83%]
+........................................................................ [ 90%]
+........................................................................ [ 96%]
+...................................                                      [100%]
+================================== FAILURES ===================================
+_______________________ test_openapi_contract_snapshot ________________________
+[gw2] win32 -- Python 3.13.11 C:\Python313\python.exe
+tests\contracts\test_openapi_contract.py:49: in test_openapi_contract_snapshot
+    assert_openapi_superset(expected_schema, openapi_schema)
+tests\contracts\utils.py:45: in assert_openapi_superset
+    assert_openapi_superset(value, actual[key], path=f"{path}.{key}")
+tests\contracts\utils.py:45: in assert_openapi_superset
+    assert_openapi_superset(value, actual[key], path=f"{path}.{key}")
+tests\contracts\utils.py:45: in assert_openapi_superset
+    assert_openapi_superset(value, actual[key], path=f"{path}.{key}")
+tests\contracts\utils.py:45: in assert_openapi_superset
+    assert_openapi_superset(value, actual[key], path=f"{path}.{key}")
+tests\contracts\utils.py:60: in assert_openapi_superset
+    assert expected == actual, f"{path}: expected {expected!r}, got {actual!r}"
+           ^^^^^^^^^^^^^^^^^^
+E   AssertionError: root.paths./api/v1/users/me/email.post.operationId: expected 'change_email_api_v1_users_me_email_post', got 'request_email_change_api_v1_users_me_email_post'
+_____________ TestNewsPagination.test_news_list_cursor_pagination _____________
+[gw9] win32 -- Python 3.13.11 C:\Python313\python.exe
+tests\test_pagination.py:171: in test_news_list_cursor_pagination
+    assert len(data2["items"]) == 2
+E   AssertionError: assert 1 == 2
+E    +  where 1 = len([{'comments_count': 0, 'content': 'Content for news 0 EN', 'content_en': 'Content for news 0 EN', 'created_at': '2026-01-30T11:31:54.060158', ...}])
+---------------------------- Captured stderr setup ----------------------------
+{"timestamp": "2026-01-30T19:31:54.057Z", "level": "INFO", "logger": "app.core.events", "message": "Domain event persistence listeners registered.", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-01-30T19:31:54.057Z", "level": "INFO", "logger": "app.services.event_handlers", "message": "Domain event handlers configured", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-01-30T19:31:54.058Z", "level": "INFO", "logger": "app.services.cache_warmup", "message": "Cache warmup disabled, skipping", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-01-30T19:31:54.059Z", "level": "INFO", "logger": "app.workers.outbox", "message": "OutboxWorker started", "service_name": "university-ecosystem", "environment": "testing"}
+----------------------------- Captured log setup ------------------------------
+[32mINFO    [0m app.core.events:events.py:265 Domain event persistence listeners registered.
+[32mINFO    [0m app.services.event_handlers:event_handlers.py:171 Domain event handlers configured
+[32mINFO    [0m app.services.cache_warmup:cache_warmup.py:252 Cache warmup disabled, skipping
+[32mINFO    [0m app.workers.outbox:outbox.py:31 OutboxWorker started
+---------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-01-30T19:31:54.395Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET http://testserver/api/v1/news?limit=2 \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-01-30T19:31:54.539Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET http://testserver/api/v1/news?limit=2&cursor=1769772714060234:4 \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+------------------------------ Captured log call ------------------------------
+[32mINFO    [0m httpx:_client.py:1740 HTTP Request: GET http://testserver/api/v1/news?limit=2 "HTTP/1.1 200 OK"
+[32mINFO    [0m httpx:_client.py:1740 HTTP Request: GET http://testserver/api/v1/news?limit=2&cursor=1769772714060234:4 "HTTP/1.1 200 OK"
+______________________ test_events_pagination_semantics _______________________
+[gw5] win32 -- Python 3.13.11 C:\Python313\python.exe
+tests\test_events_localization.py:440: in test_events_pagination_semantics
+    assert len(third_data["items"]) == 1
+E   AssertionError: assert 3 == 1
+E    +  where 3 = len([{'about': None, 'about_en': None, 'created_at': '2026-01-30T16:31:54', 'created_by': 1, ...}, {'about': None, 'about_...', 'created_by': 1, ...}, {'about': None, 'about_en': None, 'created_at': '2026-01-30T16:31:54', 'created_by': 1, ...}])
+---------------------------- Captured stderr setup ----------------------------
+{"timestamp": "2026-01-30T19:31:54.588Z", "level": "INFO", "logger": "app.core.events", "message": "Domain event persistence listeners registered.", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-01-30T19:31:54.588Z", "level": "INFO", "logger": "app.services.event_handlers", "message": "Domain event handlers configured", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-01-30T19:31:54.589Z", "level": "INFO", "logger": "app.services.cache_warmup", "message": "Cache warmup disabled, skipping", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-01-30T19:31:54.590Z", "level": "INFO", "logger": "app.workers.outbox", "message": "OutboxWorker started", "service_name": "university-ecosystem", "environment": "testing"}
+----------------------------- Captured log setup ------------------------------
+[32mINFO    [0m app.core.events:events.py:265 Domain event persistence listeners registered.
+[32mINFO    [0m app.services.event_handlers:event_handlers.py:171 Domain event handlers configured
+[32mINFO    [0m app.services.cache_warmup:cache_warmup.py:252 Cache warmup disabled, skipping
+[32mINFO    [0m app.workers.outbox:outbox.py:31 OutboxWorker started
+---------------------------- Captured stdout call -----------------------------
+DEBUG: Validating policy for length 18
+---------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-01-30T19:31:54.867Z", "level": "INFO", "logger": "app.auth", "message": "{\"event\": \"auth.login.success\", \"user_id\": \"2\", \"request_id\": \"66dbe5a5f09940b8afaf5a392467accc\", \"ip\": \"127.0.0.1\", \"path\": \"/api/v1/auth/login\", \"method\": \"POST\", \"reason\": \"authenticated\"}", "trace_id": "66dbe5a5f09940b8afaf5a392467accc", "request_id": "66dbe5a5f09940b8afaf5a392467accc", "service_name": "university-ecosystem", "environment": "testing", "event": "auth.login.success", "user_id": "2", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+{"timestamp": "2026-01-30T19:31:54.874Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/auth/login \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-01-30T19:31:55.145Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET http://testserver/api/v1/events?limit=3 \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-01-30T19:31:55.368Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET http://testserver/api/v1/events?limit=3&cursor=MTc3MDAzOTExNC43MzEzMzM6Nw%3D%3D \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-01-30T19:31:55.521Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: GET http://testserver/api/v1/events?cursor=MTc3MDIxMTkxNC43MzEzMzM6OQ%3D%3D \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+------------------------------ Captured log call ------------------------------
+[32mINFO    [0m app.auth:audit_service.py:147 {"event": "auth.login.success", "user_id": "2", "request_id": "66dbe5a5f09940b8afaf5a392467accc", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+[32mINFO    [0m httpx:_client.py:1740 HTTP Request: POST http://testserver/api/v1/auth/login "HTTP/1.1 200 OK"
+[32mINFO    [0m httpx:_client.py:1740 HTTP Request: GET http://testserver/api/v1/events?limit=3 "HTTP/1.1 200 OK"
+[32mINFO    [0m httpx:_client.py:1740 HTTP Request: GET http://testserver/api/v1/events?limit=3&cursor=MTc3MDAzOTExNC43MzEzMzM6Nw%3D%3D "HTTP/1.1 200 OK"
+[32mINFO    [0m httpx:_client.py:1740 HTTP Request: GET http://testserver/api/v1/events?cursor=MTc3MDIxMTkxNC43MzEzMzM6OQ%3D%3D "HTTP/1.1 200 OK"
+============================== warnings summary ===============================
+tests/test_news_repository_coverage.py::test_list_news_search_semantic
+  C:\Users\egorribun\Documents\university_ecosystem\tests\test_news_repository_coverage.py:115: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    await news_repo.list_news(search_query="test", query_embedding=[0.1])
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_news_repository_coverage.py::test_toggle_like_add
+  C:\Users\egorribun\Documents\university_ecosystem\app\repositories\news_repository.py:168: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    self.db.add(models.NewsLike(news_id=news_id, user_id=user_id))
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_metrics_endpoint.py::test_metrics_endpoint_exposes_prometheus_payload
+tests/test_metrics_endpoint.py::test_metrics_endpoint_allows_loopback_allowlist_without_auth
+tests/test_metrics_endpoint.py::test_health_check_metrics_recorded
+  C:\Python313\Lib\site-packages\GPUtil\GPUtil.py:73: DeprecationWarning: Use shutil.which instead of find_executable
+    nvidia_smi = spawn.find_executable('nvidia-smi')
+
+tests/test_cli_db.py::test_create_admin_success
+  C:\Users\egorribun\Documents\university_ecosystem\app\cli\db.py:58: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    db.add(admin)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_cli_db.py::test_create_invite_success
+  C:\Users\egorribun\Documents\university_ecosystem\app\cli\db.py:83: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    session.add(invite)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+SKIPPED [1] tests\test_events_localization.py:271: Test requires PostgreSQL (uses pg_attribute or full-text search)
+SKIPPED [1] tests\test_migrations_runtime.py:51: Test requires PostgreSQL (uses pg_class or information_schema.public)
+SKIPPED [1] tests\test_migrations_runtime.py:87: Test requires PostgreSQL (uses pg_class or information_schema.public)
+SKIPPED [1] tests\test_migrations_runtime.py:127: Test requires PostgreSQL (uses pg_class or information_schema.public)
+FAILED tests/contracts/test_openapi_contract.py::test_openapi_contract_snapshot
+FAILED tests/test_pagination.py::TestNewsPagination::test_news_list_cursor_pagination
+FAILED tests/test_events_localization.py::test_events_pagination_semantics - ...
+3 failed, 1108 passed, 4 skipped, 7 warnings in 30.55s

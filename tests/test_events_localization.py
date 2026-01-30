@@ -5,7 +5,6 @@ import pytest
 from fastapi import status
 from prometheus_client import CollectorRegistry
 
-from app import crud
 from app.api import events
 from app.auth.security import get_password_hash
 from app.core import observability
@@ -360,13 +359,19 @@ async def test_get_all_events_search_deterministic_order(db_session, user_factor
         print(f"DEBUG ROW: {r}")
 
     # Now search - PostgreSQL has computed search_vector
-    result = await crud.get_all_events(
-        db_session, search=shared_phrase, limit=10, is_active=None
+    from app.repositories.event_repository import EventRepository
+    from app.services.event_service import EventService
+    from app.services.vector_service import VectorService
+
+    e_repo = EventRepository(db_session)
+    e_service = EventService(e_repo, VectorService())
+
+    result_items = await e_service.get_events(
+        search=shared_phrase, limit=10, is_active=None
     )
 
-    assert result.total == 3
-    assert result.has_more is False
-    ordered_ids = [item.id for item in result.items]
+    assert len(result_items) == 3
+    ordered_ids = [item.id for item in result_items]
     # First 3 events contain "Symposium", unrelated does not
     assert ordered_ids == event_ids[:3]
 
@@ -439,16 +444,18 @@ async def test_events_pagination_semantics(async_client, db_session, user_factor
 
     default_response = await async_client.get("/events", headers=headers)
     assert default_response.status_code == status.HTTP_200_OK
-    assert default_response.json()["limit"] == crud.DEFAULT_EVENTS_LIMIT
+    # DEFAULT_EVENTS_LIMIT was 20 in crud
+    assert default_response.json()["limit"] == 20
     assert default_response.json()["total"] == 7
 
     capped = await async_client.get(
         "/events",
         headers=headers,
-        params={"limit": crud.MAX_EVENTS_LIMIT},
+        params={"limit": 100},
     )
     assert capped.status_code == status.HTTP_200_OK
-    assert capped.json()["limit"] == crud.MAX_EVENTS_LIMIT
+    # MAX_EVENTS_LIMIT was 100 in crud
+    assert capped.json()["limit"] == 100
 
 
 @pytest.mark.asyncio

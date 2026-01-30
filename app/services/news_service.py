@@ -22,23 +22,58 @@ class NewsService:
         cursor: str | None = None,
         current_user_id: int | None = None,
         search: str | None = None,
-    ):
+        locale: str = "ru",
+    ) -> schemas.PaginatedNews:
         query_embedding = None
         if search:
             query_embedding = await self.vector_service.get_embedding(search)
 
-        decoded_cursor = None  # cursor decoding logic...
+        from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
 
-        return await self.repo.list_news(
-            limit=limit,
+        decoded_cursor = None
+        if cursor:
+            decoded = decode_datetime_cursor(cursor)
+            if decoded:
+                dt, id_str = decoded
+                try:
+                    decoded_cursor = (dt, int(id_str))
+                except (ValueError, TypeError):
+                    pass
+
+        # Fetch limit + 1 to determine has_more
+        results = await self.repo.list_news(
+            limit=limit + 1,
             cursor=decoded_cursor,
             current_user_id=current_user_id,
             search_query=search,
             query_embedding=query_embedding,
         )
 
+        has_more = len(results) > limit
+        items_to_process = results[:limit]
+
+        output = []
+        for news_obj, l_count, c_count, liked in items_to_process:
+            news_obj.likes_count = l_count or 0
+            news_obj.comments_count = c_count or 0
+            news_obj.is_liked = bool(liked)
+            output.append(self.serialize_news(news_obj, locale))
+
+        next_cursor = None
+        if has_more and items_to_process:
+            last_item, *_ = items_to_process[-1]
+            next_cursor = encode_datetime_cursor(
+                last_item.created_at, str(last_item.id)
+            )
+
+        return schemas.PaginatedNews(
+            items=output,
+            has_more=has_more,
+            next_cursor=next_cursor,
+        )
+
     async def create_news(self, data: schemas.NewsCreate) -> models.News:
-        news = await self.repo.create(**data.model_dump())
+        news = await self.repo.create(data.model_dump())
         news.record_event(NewsCreated(news_id=news.id, title=news.title))
         await self.repo.db.commit()
         await self.repo.db.refresh(news)

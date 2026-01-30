@@ -60,7 +60,7 @@ class EventRepository(BaseRepository[Event, dict, dict]):
         """Count upcoming events."""
         now = datetime.now(UTC)
         result = await self.db.execute(
-            select(func.count(Event.id)).where(Event.start_date >= now)
+            select(func.count(Event.id)).where(Event.starts_at >= now)
         )
         return result.scalar() or 0
 

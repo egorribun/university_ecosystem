@@ -24,6 +24,18 @@ from app.utils import files
 FIXTURE_UPLOADS = Path(__file__).parent / "fixtures" / "uploads"
 
 
+@pytest.fixture
+def event_service(db_session):
+    from unittest.mock import MagicMock
+
+    from app.repositories.event_repository import EventRepository
+    from app.services.event_service import EventService
+
+    repo = EventRepository(db_session)
+    vector = MagicMock()
+    return EventService(repo, vector)
+
+
 def _fallback_detect_mime(data: bytes) -> str | None:
     """Simple MIME detection fallback for platforms without libmagic."""
     if not data:
@@ -544,7 +556,7 @@ async def test_upload_event_file_allows_clean_payload_with_scanner(
 
 @pytest.mark.asyncio
 async def test_update_event_replaces_image_removes_old_file(
-    tmp_path, monkeypatch, db_session, user_factory
+    tmp_path, monkeypatch, db_session, user_factory, event_service
 ):
     admin = await user_factory(role="admin")
     event = await _create_event(db_session, admin)
@@ -562,7 +574,7 @@ async def test_update_event_replaces_image_removes_old_file(
 
     payload = schemas.EventUpdate(image_url="/static/event_images/new.png")
     result = await events.update_event(
-        event.id, payload, request=None, db=db_session, user=admin
+        event.id, payload, request=None, db=db_session, user=admin, events=event_service
     )
 
     assert result.image_url == "/static/event_images/new.png"
@@ -605,7 +617,7 @@ async def test_delete_event_file_removes_payload(
 
 @pytest.mark.asyncio
 async def test_delete_event_removes_all_files(
-    tmp_path, monkeypatch, db_session, user_factory
+    tmp_path, monkeypatch, db_session, user_factory, event_service
 ):
     admin = await user_factory(role="admin")
     event = await _create_event(db_session, admin)
@@ -640,7 +652,7 @@ async def test_delete_event_removes_all_files(
         assert path.exists()
 
     result = await events.delete_event(
-        event.id, request=None, db=db_session, user=admin
+        event.id, request=None, events=event_service, user=admin
     )
 
     assert result == {"ok": True}

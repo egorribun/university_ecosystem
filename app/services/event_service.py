@@ -1,4 +1,3 @@
-import base64
 import logging
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -16,6 +15,7 @@ from app.repositories.event_repository import EventRepository
 from app.schemas import schemas
 from app.services import attendance_tokens, stats_cache
 from app.services.vector_service import VectorService
+from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
 from app.utils.sanitization import sanitize_optional_text
 
 logger = logging.getLogger(__name__)
@@ -31,27 +31,8 @@ def _localized_event_field(
     """Select the appropriate language field based on locale."""
     target = locale or "ru"
     if target == "ru":
-        return ru_value or (en_value if not required else ru_value)
-    return en_value or (ru_value if not required else en_value)
-
-
-def _decode_event_cursor(value: str | None) -> tuple[datetime, int] | None:
-    if not value:
-        return None
-    try:
-        parts = base64.urlsafe_b64decode(value).decode("utf-8").split(":")
-        if len(parts) != 2:
-            return None
-        ts = float(parts[0])
-        event_id = int(parts[1])
-        return datetime.fromtimestamp(ts, tz=UTC), event_id
-    except Exception:
-        return None
-
-
-def _encode_event_cursor(starts_at: datetime, event_id: int) -> str:
-    payload = f"{starts_at.timestamp()}:{event_id}"
-    return base64.urlsafe_b64encode(payload.encode("utf-8")).decode("utf-8")
+        return ru_value or en_value
+    return en_value or ru_value
 
 
 class EventService:
@@ -140,26 +121,39 @@ class EventService:
         limit: int = 20,
         cursor: str | None = None,
         locale: str | None = None,
-    ) -> list[schemas.EventOut]:
+    ) -> schemas.PaginatedEvents:
         query_embedding = None
         if search:
             query_embedding = await self.vector_service.get_embedding(search)
 
-        decoded_cursor = _decode_event_cursor(cursor)
+        decoded_cursor = decode_datetime_cursor(cursor)
 
+        # Get limit+1 to determine has_more
         results = await self.repo.search_events(
             user_id=user_id,
             search_query=search,
             event_type=type,
             location=location,
             is_active=is_active,
-            limit=limit,
+            limit=limit + 1,
             cursor=decoded_cursor,
             query_embedding=query_embedding,
         )
 
+        has_more = len(results) > limit
+        items_to_process = results[:limit]
+
+        # Calculate total only on first page
+        total = None
+        if not cursor:
+            total = (
+                await self.repo.count_upcoming()
+                if is_active is True
+                else await self.repo.count()
+            )
+
         output: list[schemas.EventOut] = []
-        for row in results:
+        for row in items_to_process:
             event, p_count, attendance = row
             # If user_id is provided, attendance will be User's record or None
             is_registered = attendance is not None if user_id else None
@@ -182,12 +176,33 @@ class EventService:
                     my_qr_token=my_qr_token,
                 )
             )
-        return output
+        next_cursor = None
+        if has_more and items_to_process:
+            last_event, *_ = items_to_process[-1]
+            next_cursor = encode_datetime_cursor(
+                last_event.starts_at, str(last_event.id)
+            )
+
+        return schemas.PaginatedEvents(
+            items=output,
+            total=total,
+            limit=limit,
+            cursor=cursor,
+            next_cursor=next_cursor,
+            has_more=has_more,
+        )
 
     async def create_event(
         self, data: schemas.EventCreate, user_id: int
     ) -> models.Event:
-        event = await self.repo.create(**data.model_dump(), created_by=user_id)
+        if data.starts_at >= data.ends_at:
+            from app.core.localization import translate
+
+            raise ValueError(translate("validation.events.end_after_start"))
+
+        obj_data = data.model_dump()
+        obj_data["created_by"] = user_id
+        event = await self.repo.create(obj_data)
         event.record_event(EventCreated(event_id_entity=event.id, title=event.title))
         await self.repo.db.commit()
         await self.repo.db.refresh(event)
@@ -205,7 +220,15 @@ class EventService:
             f in updates for f in ("title", "description", "location", "about")
         )
 
-        updated_event = await self.repo.update(event, **updates)
+        if "starts_at" in updates or "ends_at" in updates:
+            new_start = updates.get("starts_at", event.starts_at)
+            new_end = updates.get("ends_at", event.ends_at)
+            if new_start >= new_end:
+                from app.core.localization import translate
+
+                raise ValueError(translate("validation.events.end_after_start"))
+
+        updated_event = await self.repo.update(event.id, updates)
         if text_changed:
             updated_event.record_event(
                 EventUpdated(
@@ -216,6 +239,44 @@ class EventService:
         await self.repo.db.commit()
         await self.repo.db.refresh(updated_event)
         return updated_event
+
+    async def delete_event(self, event_id: int) -> bool:
+        event = await self.repo.get(event_id)
+        if not event:
+            return False
+
+        # Get file URLs before deletion
+        result = await self.repo.db.execute(
+            select(models.EventFile.file_url).where(
+                models.EventFile.event_id == event_id
+            )
+        )
+        file_urls = [row[0] for row in result.all() if row[0]]
+        image_url = event.image_url
+
+        from sqlalchemy import delete
+
+        await self.repo.db.execute(
+            delete(models.EventFile).where(models.EventFile.event_id == event_id)
+        )
+        await self.repo.delete(event_id)
+        await self.repo.db.commit()
+
+        from app.utils.files import delete_static_file
+
+        if image_url:
+            try:
+                await delete_static_file(image_url)
+            except Exception:
+                pass
+
+        for url in file_urls:
+            try:
+                await delete_static_file(url)
+            except Exception:
+                pass
+
+        return True
 
     async def register_attendance(
         self, data: schemas.EventAttendanceCreate, user_id: int

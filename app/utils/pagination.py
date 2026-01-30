@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import base64
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -65,8 +65,11 @@ def encode_datetime_cursor(dt: datetime, secondary_id: str | int) -> str:
     Returns:
         Opaque cursor string in format "timestamp_ms:id"
     """
-    timestamp_ms = int(dt.timestamp() * 1000)
-    return f"{timestamp_ms}:{secondary_id}"
+    dt_aware = dt if dt.tzinfo else dt.replace(tzinfo=UTC)
+    timestamp_us = int(
+        (dt_aware - datetime(1970, 1, 1, tzinfo=UTC)) // timedelta(microseconds=1)
+    )
+    return f"{timestamp_us}:{secondary_id}"
 
 
 def decode_datetime_cursor(cursor: str | None) -> tuple[datetime, str] | None:
@@ -82,8 +85,10 @@ def decode_datetime_cursor(cursor: str | None) -> tuple[datetime, str] | None:
         return None
     try:
         timestamp_str, secondary_id = cursor.split(":", 1)
-        timestamp_seconds = int(timestamp_str) / 1000.0
-        return datetime.fromtimestamp(timestamp_seconds, tz=UTC), secondary_id
+        timestamp_us = int(timestamp_str)
+        # Use integer math to reconstruct datetime perfectly
+        dt = datetime(1970, 1, 1, tzinfo=UTC) + timedelta(microseconds=timestamp_us)
+        return dt, secondary_id
     except (ValueError, TypeError, OverflowError, OSError):
         return None
 

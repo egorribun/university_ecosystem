@@ -4,7 +4,7 @@ import math
 import secrets
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
-from typing import Any, Literal, cast
+from typing import Annotated, Any, Literal, cast
 from uuid import uuid4
 
 import jwt
@@ -24,9 +24,9 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import crud
 from app.api.deps import (
     get_current_user,
+    get_user_service,
     require_fresh_mfa,
     require_fresh_mfa_for_enrollment,
 )
@@ -67,6 +67,7 @@ from app.schemas.schemas import (
     WebAuthnRegistrationVerifyIn,
 )
 from app.services.audit_service import AuditService
+from app.services.user_service import UserService
 from app.tasks.email import send_lockout_alert
 from app.utils.encryption import encrypt_string
 from app.utils.ratelimit import sensitive_route_limit
@@ -665,14 +666,12 @@ async def _perform_login(
     audit: AuditService,
     bg_tasks: BackgroundTasks,
     trust_device: bool = False,
+    user_service: UserService = Depends(get_user_service),
 ) -> dict[str, str] | JSONResponse:
     normalized_email = email.strip().lower()
     base_locale = resolve_locale(request=request)
 
-    res = await db.execute(
-        select(User).where(func.lower(User.email) == normalized_email)
-    )
-    user = res.scalars().first()
+    user = await user_service.get_user_by_email(normalized_email)
     locale = resolve_locale(request=request, user=user) if user else base_locale
 
     lock_until = await _active_lockout(db, normalized_email)
@@ -1115,6 +1114,7 @@ async def login(
     form_data: OAuth2PasswordRequestForm = Depends(OAuth2PasswordRequestForm),
     db: AsyncSession = Depends(get_db),
     audit: AuditService = Depends(get_audit_service),
+    user_service: UserService = Depends(get_user_service),
 ):
     return await _perform_login(
         form_data.username,
@@ -1125,6 +1125,7 @@ async def login(
         audit,
         bg_tasks=bg_tasks,
         trust_device=trust_device,
+        user_service=user_service,
     )
 
 
@@ -1141,6 +1142,7 @@ async def login_json(
     bg_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     audit: AuditService = Depends(get_audit_service),
+    user_service: UserService = Depends(get_user_service),
 ):
     return await _perform_login(
         payload.email,
@@ -1151,6 +1153,7 @@ async def login_json(
         audit,
         bg_tasks=bg_tasks,
         trust_device=payload.trust_device,
+        user_service=user_service,
     )
 
 
@@ -1796,11 +1799,12 @@ async def get_session_signing_key(
 async def register(
     user: UserCreate,
     request: Request,
+    user_service: Annotated[Any, Depends(get_user_service)],
     db: AsyncSession = Depends(get_db),
 ):
     locale = resolve_locale(request=request)
     try:
-        new_user = await crud.create_user(db, user)
+        new_user = await user_service.register_user(user)
     except ValueError as exc:
         await db.rollback()
         raise HTTPException(

@@ -41,7 +41,10 @@ def get_secure_audit_service_dep() -> SecureAuditService:
 def get_group_service(
     db: AsyncSession = Depends(get_db),
 ) -> GroupService:
-    return GroupService(db=db)
+    from app.repositories.schedule_repository import GroupRepository
+
+    repo = GroupRepository(db)
+    return GroupService(db=db, repo=repo)
 
 
 def get_notification_service(

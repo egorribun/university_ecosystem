@@ -1,46 +1,45 @@
+import base64
 import datetime
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 import app.auth.auth as auth
-import app.crud as crud
 from app.models import models
 from app.schemas import schemas
 
 
 @pytest.mark.asyncio
-async def test_crud_missing_branches():
+async def test_service_missing_branches():
     # 1. _decode_event_cursor error paths
-    assert crud._decode_event_cursor("") is None
-    assert crud._decode_event_cursor("invalid-json") is None
-    assert crud._decode_event_cursor("[]") is None
-    assert crud._decode_event_cursor(json.dumps({"starts_at": 123})) is None
-    assert (
-        crud._decode_event_cursor(json.dumps({"starts_at": "invalid-date", "id": 1}))
-        is None
-    )
-    assert (
-        crud._decode_event_cursor(
-            json.dumps({"starts_at": "2023-10-10T10:00:00Z", "id": "not-int"})
-        )
-        is None
-    )
+    from app.utils.pagination import decode_datetime_cursor as _decode_event_cursor
+
+    assert _decode_event_cursor("") is None
+    assert _decode_event_cursor("invalid-base64") is None
+    assert _decode_event_cursor(base64.urlsafe_b64encode(b"[]").decode()) is None
 
     # 2. sanitize_optional_text
-    assert crud.sanitize_optional_text(None) is None
-    assert crud.sanitize_optional_text(b"hello") == "hello"
-    assert (
-        crud.sanitize_optional_text(b"\xff") is None
-    )  # Decodes to empty string with 'ignore', then stripped
-    assert crud.sanitize_optional_text("") is None
-    assert crud.sanitize_optional_text(123) == "123"
+    from app.utils.sanitization import sanitize_optional_text
 
-    # 3. create_user error paths
+    assert sanitize_optional_text(None) is None
+    assert sanitize_optional_text(b"hello") == "hello"
+    assert (
+        sanitize_optional_text(b"\xff") is None
+    )  # Decodes to empty string with 'ignore', then stripped
+    assert sanitize_optional_text("") is None
+    assert sanitize_optional_text(123) == "123"
+
+    # 3. create_user/register_user error paths
+    from app.services.user_service import UserService
+
     db = AsyncMock()
     db.add = MagicMock()
     db.add_all = MagicMock()
+    repo = AsyncMock()
+    audit = MagicMock()
+    notifications = AsyncMock()
+    service = UserService(db, repo, audit, notifications)
+
     user_in = schemas.UserCreate(
         email="test@e.com",
         password="password123",
@@ -50,44 +49,40 @@ async def test_crud_missing_branches():
     )
 
     # Invalid invite code branch
-    mock_res_invite = MagicMock()
-    mock_res_invite.scalar_one_or_none.return_value = None
-    db.execute.side_effect = [mock_res_invite]
-    with pytest.raises(ValueError) as exc:
-        await crud.create_user(db, user_in)
+    from app.core.exceptions.domain import BusinessRuleViolation, EntityAlreadyExists
+
+    repo.get_invite_code.return_value = None
+    with patch("app.services.user_service.resolve_locale", return_value="en"):
+        with pytest.raises(BusinessRuleViolation) as exc:
+            await service.register_user(user_in)
     assert any(x in str(exc.value).lower() for x in ["инвайт", "invite"])
 
     # Email in use branch
-    user_in_simple = schemas.UserCreate(
-        email="test@e.com", password="password123", full_name="Test"
+    repo.get_invite_code.return_value = MagicMock(
+        role="admin", is_active=True, is_used=False
     )
-    mock_res_exists = MagicMock()
-    mock_res_exists.scalar_one_or_none.return_value = models.User()
-    db.execute.side_effect = [mock_res_exists]
-    with pytest.raises(ValueError) as exc:
-        await crud.create_user(db, user_in_simple)
+    repo.check_email_exists.return_value = True
+    with patch("app.services.user_service.resolve_locale", return_value="en"):
+        with pytest.raises(EntityAlreadyExists) as exc:
+            await service.register_user(user_in)
     assert any(
         x in str(exc.value).lower() for x in ["используется", "already", "in use"]
     )
 
     # 4. create_news
+    from app.services.news_service import NewsService
+    from app.services.vector_service import VectorService
+
+    n_repo = AsyncMock()
+    n_service = NewsService(n_repo, VectorService(db))
     news_in = schemas.NewsCreate(title="T", content="C")
-    db.execute.side_effect = None
-    await crud.create_news(db, news_in)
-    db.add.assert_called()
-    db.commit.assert_called()
 
-    # 5. _is_postgres_session Variations
-    db.bind = MagicMock()
-    db.bind.dialect.name = "postgresql"
-    assert await crud._is_postgres_session(db) is True
+    # Mock the repo.create to return a news object
+    mock_news = models.News(id=1, title="T")
+    n_repo.create.return_value = mock_news
 
-    db.bind = None
-    # Use wrapping to make it awaitable if needed, or just AsyncMock correctly
-    mock_engine = MagicMock()
-    mock_engine.dialect.name = "sqlite"
-    db.get_bind = MagicMock(return_value=mock_engine)
-    assert await crud._is_postgres_session(db) is False
+    await n_service.create_news(news_in)
+    n_repo.create.assert_called()
 
 
 @pytest.mark.asyncio
@@ -119,15 +114,33 @@ async def test_auth_missing_branches():
 
     # Locked out
     db.execute.return_value = make_mock_res()
-    with patch(
-        "app.auth.auth._active_lockout", new_callable=AsyncMock, return_value=lock_until
+    mock_user_service = AsyncMock()
+    mock_user_service.get_user_by_email.return_value = None
+    with (
+        patch(
+            "app.auth.auth._active_lockout",
+            new_callable=AsyncMock,
+            return_value=lock_until,
+        ),
+        patch("app.auth.auth.send_lockout_alert.kiq", new_callable=AsyncMock),
     ):
         with pytest.raises(auth.HTTPException) as exc:
-            await auth._perform_login("a@b.com", "p", request, response, db, audit)
+            await auth._perform_login(
+                "a@b.com",
+                "p",
+                request,
+                response,
+                db,
+                audit,
+                bg_tasks=MagicMock(),
+                user_service=mock_user_service,
+            )
         assert exc.value.status_code == 423
 
     # User not found (and triggers lockout)
     db.execute.side_effect = [make_mock_res(None), MagicMock()]
+    mock_user_service = AsyncMock()
+    mock_user_service.get_user_by_email.return_value = None
     with (
         patch(
             "app.auth.auth._active_lockout", new_callable=AsyncMock, return_value=None
@@ -137,10 +150,18 @@ async def test_auth_missing_branches():
             new_callable=AsyncMock,
             return_value=(lock_until, True, 5),
         ),
+        patch("app.auth.auth.send_lockout_alert.kiq", new_callable=AsyncMock),
     ):
         with pytest.raises(auth.HTTPException) as exc:
             await auth._perform_login(
-                "not@found.com", "p", request, response, db, audit
+                "not@found.com",
+                "p",
+                request,
+                response,
+                db,
+                audit,
+                bg_tasks=MagicMock(),
+                user_service=mock_user_service,
             )
         assert exc.value.status_code == 423
 
@@ -149,14 +170,26 @@ async def test_auth_missing_branches():
         id=1, email="a@b.com", is_active=False, hashed_password="hash"
     )
     db.execute.side_effect = [make_mock_res(user_inactive), MagicMock()]
+    mock_user_service = AsyncMock()
+    mock_user_service.get_user_by_email.return_value = user_inactive
     with (
         patch(
             "app.auth.auth._active_lockout", new_callable=AsyncMock, return_value=None
         ),
         patch("app.auth.auth.verify_and_update_password", return_value=(True, None)),
+        patch("app.auth.auth.send_lockout_alert.kiq", new_callable=AsyncMock),
     ):
         with pytest.raises(auth.HTTPException) as exc:
-            await auth._perform_login("a@b.com", "p", request, response, db, audit)
+            await auth._perform_login(
+                "a@b.com",
+                "p",
+                request,
+                response,
+                db,
+                audit,
+                bg_tasks=MagicMock(),
+                user_service=mock_user_service,
+            )
         assert exc.value.status_code == 401
 
     # MFA Missing (user requires MFA but has no methods)
@@ -167,6 +200,8 @@ async def test_auth_missing_branches():
     mock_res_del = MagicMock()
     mock_res_del.rowcount = 0
     db.execute.side_effect = [mock_res_mfa, mock_res_del, MagicMock()]
+    mock_user_service = AsyncMock()
+    mock_user_service.get_user_by_email.return_value = user_mfa
     with (
         patch(
             "app.auth.auth._active_lockout", new_callable=AsyncMock, return_value=None
@@ -182,7 +217,17 @@ async def test_auth_missing_branches():
             new_callable=AsyncMock,
             return_value={},
         ),
+        patch("app.auth.auth.send_lockout_alert.kiq", new_callable=AsyncMock),
     ):
         with pytest.raises(auth.HTTPException) as exc:
-            await auth._perform_login("a@b.com", "p", request, response, db, audit)
+            await auth._perform_login(
+                "a@b.com",
+                "p",
+                request,
+                response,
+                db,
+                audit,
+                bg_tasks=MagicMock(),
+                user_service=mock_user_service,
+            )
         assert exc.value.status_code == 400

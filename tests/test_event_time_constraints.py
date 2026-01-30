@@ -5,11 +5,13 @@ import pytest
 from sqlalchemy import event
 from sqlalchemy.exc import IntegrityError
 
-from app import crud
 from app.auth.security import get_password_hash
 from app.core.localization import translate
 from app.models import models
+from app.repositories.event_repository import EventRepository
 from app.schemas import schemas
+from app.services.event_service import EventService
+from app.services.vector_service import VectorService
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -61,11 +63,12 @@ async def test_create_event_guard(db_session, user_factory):
         image_url=None,
         about=None,
     )
+    e_service = EventService(EventRepository(db_session), VectorService(db_session))
     with pytest.raises(
         ValueError,
         match=translate("validation.events.end_after_start"),
     ):
-        await crud.create_event(db_session, payload, user_id=user.id)
+        await e_service.create_event(payload, user_id=user.id)
 
 
 async def test_update_event_guard(db_session, user_factory):
@@ -77,7 +80,8 @@ async def test_update_event_guard(db_session, user_factory):
         starts_at=starts,
         ends_at=ends,
     )
-    record = await crud.create_event(db_session, valid, user_id=user.id)
+    e_service = EventService(EventRepository(db_session), VectorService(db_session))
+    record = await e_service.create_event(valid, user_id=user.id)
     invalid_update = schemas.EventUpdate.model_construct(
         starts_at=starts,
         ends_at=starts,
@@ -87,7 +91,7 @@ async def test_update_event_guard(db_session, user_factory):
         ValueError,
         match=translate("validation.events.end_after_start"),
     ):
-        await crud.update_event(db_session, record, invalid_update)
+        await e_service.update_event(record.id, invalid_update)
 
 
 async def test_event_model_check_constraint(db_session, user_factory):
@@ -128,8 +132,9 @@ async def test_get_all_events_respects_locale(db_session, user_factory):
     await db_session.commit()
     await db_session.refresh(event)
 
-    ru_events = await crud.get_all_events(db_session, user_id=student.id, locale="ru")
-    en_events = await crud.get_all_events(db_session, user_id=student.id, locale="en")
+    e_service = EventService(EventRepository(db_session), VectorService(db_session))
+    ru_events = await e_service.get_events(user_id=student.id, locale="ru")
+    en_events = await e_service.get_events(user_id=student.id, locale="en")
 
     # Find the specific event by ID to avoid test isolation issues
     ru_event = next((e for e in ru_events.items if e.id == event.id), None)
@@ -182,8 +187,8 @@ async def test_get_all_events_cursor_respects_ordering_and_gaps(
     # Get test event IDs to filter results
     test_event_ids = {e.id for e in initial_events}
 
-    first_page = await crud.get_all_events(
-        db_session,
+    e_service = EventService(EventRepository(db_session), VectorService(db_session))
+    first_page = await e_service.get_events(
         user_id=student.id,
         locale="en",
         limit=100,  # Get more items to filter
@@ -198,8 +203,7 @@ async def test_get_all_events_cursor_respects_ordering_and_gaps(
     await db_session.refresh(inserted)
     test_event_ids.add(inserted.id)
 
-    second_page = await crud.get_all_events(
-        db_session,
+    second_page = await e_service.get_events(
         user_id=student.id,
         locale="en",
         limit=100,
@@ -238,8 +242,8 @@ async def test_get_all_events_cursor_skips_total_on_followup_pages(
     for event_record in events:
         await db_session.refresh(event_record)
 
-    first_page = await crud.get_all_events(
-        db_session,
+    e_service = EventService(EventRepository(db_session), VectorService(db_session))
+    first_page = await e_service.get_events(
         user_id=student.id,
         locale="en",
         limit=2,
@@ -249,8 +253,7 @@ async def test_get_all_events_cursor_skips_total_on_followup_pages(
     assert first_page.next_cursor is not None
 
     with _capture_statements(db_session) as statements:
-        second_page = await crud.get_all_events(
-            db_session,
+        second_page = await e_service.get_events(
             user_id=student.id,
             locale="en",
             limit=2,

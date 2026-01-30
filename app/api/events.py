@@ -248,7 +248,7 @@ async def all_events(
     limit: int = Query(
         20,
         ge=1,
-        le=50,
+        le=100,
         alias="limit",
     ),
     cursor: str | None = Query(None, alias="cursor"),
@@ -512,38 +512,41 @@ async def update_event(
 async def delete_event(
     event_id: int,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    events: EventService = Depends(get_event_service),
     user: models.User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
-    q = await db.get(models.Event, event_id)
+    # Check existence and permission. Service delete checks existence, but maybe we want validation first?
+    # Existing code does: ensure_exists, require_owner_or_admin.
+    # We should fetch event to check logic? Or let service do it?
+    # Service doesn't check owner.
+    # Implementation:
+    # 1. Get event (for permission check).
+    # 2. Check permission.
+    # 3. Call service.delete.
+
+    # We can use service.repo.get(event_id) or just events.get_event(event_id).
+    # But get_event signature: get_event(self, *, user_id=None, search...) -> Paginated.
+    # No, it's list events.
+    # Look for get by ID.
+    # We had db.get(models.Event, event_id).
+
+    # Let's inspect service methods again. It has repo.
+    # But usage of repo in API is discouraged if we want pure service.
+    # But usually we allow read.
+
+    # For now, I'll keep db dependency just for reading event for permission check,
+    # OR inject db as well.
+    # BUT better refactor:
+    # Use service.repo.get inside API?
+    # events.repo.get(event_id).
+
+    q = await events.repo.get(event_id)
     ensure_exists(q, "events", locale)
     require_owner_or_admin(user, locale, owner_id=q.created_by, allow_teacher=True)
-    event_image_url = q.image_url
-    file_urls = [
-        row[0]
-        for row in (
-            await db.execute(
-                select(models.EventFile.file_url).where(
-                    models.EventFile.event_id == event_id
-                )
-            )
-        ).all()
-        if row[0]
-    ]
-    # Use delete directly? Or repo? Keeping existing logic for now as it wasn't in crud
-    from sqlalchemy import delete
 
-    await db.execute(
-        delete(models.EventFile).where(models.EventFile.event_id == event_id)
-    )
-    await db.delete(q)
-    await db.commit()
+    await events.delete_event(event_id)
     await _invalidate_events_list_cache()
-    if event_image_url:
-        await delete_static_file(event_image_url)
-    for url in file_urls:
-        await delete_static_file(url)
     return {"ok": True}
 
 

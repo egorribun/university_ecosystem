@@ -14,7 +14,7 @@ def mock_repo():
     repo.db.commit = AsyncMock()
     repo.db.refresh = AsyncMock()
     # Mock return values for methods to avoid awaiting None
-    repo.list_news.return_value = schemas.PaginatedNews(items=[], has_more=False)
+    repo.list_news.return_value = []
     repo.create.return_value = MagicMock(spec=models.News)
     return repo
 
