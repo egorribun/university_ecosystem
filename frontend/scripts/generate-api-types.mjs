@@ -60,7 +60,6 @@ async function loadSchema(input) {
   return JSON.parse(contents)
 }
 
-
 function sortKeys(obj) {
   if (Array.isArray(obj)) {
     return obj.map(sortKeys)
