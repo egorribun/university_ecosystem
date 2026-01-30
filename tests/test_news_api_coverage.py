@@ -97,10 +97,6 @@ async def test_create_comment(
     user_factory,
 ):
     # Need to be authenticated
-    # Assuming async_client fixture handles auth or we mock get_current_user
-    # But usually simpler to use dependency override for user if possible, or just login
-    # Let's try mocking get_current_user in the test if needed, or rely on conftest login helpers if available.
-    # But for coverage, maybe we can just mock get_current_user
 
     from app.api.deps import get_current_user
 
