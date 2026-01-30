@@ -1,0 +1,12 @@
+uv.lock
+package-lock.json
+go.sum
+node_modules/
+.venv/
+.venv313/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+alembic/
+dist/
+build/

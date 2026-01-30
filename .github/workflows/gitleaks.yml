@@ -31,4 +31,4 @@ jobs:
         with:
           path: .
           base: ""
-          extra_args: --exclude-detectors=Codeclimate
+          extra_args: --exclude-detectors=Codeclimate --exclude-secrets=.trufflehog-exclude-secrets.txt --exclude-paths=.trufflehog-exclude-paths.txt
