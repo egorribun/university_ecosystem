@@ -59,7 +59,7 @@ jobs:
 
       - name: Run Chromatic
         if: steps.check_storybook.outputs.has_storybook == 'true'
-        uses: chromaui/action@24d6731d279930722363ee6a0fc432ac30e7161e # v11
+        uses: chromaui/action@v11
         with:
           workingDir: frontend
           projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}

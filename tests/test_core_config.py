@@ -194,6 +194,9 @@ def test_auto_create_schema_default_false_in_production(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///./{db_name}")
     monkeypatch.setenv("SECRET_KEY", "production-secret-must-be-at-least-32-chars-long")
     monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv(
+        "AUDIT_LOG_SECRET", "audit-secret-must-be-at-least-32-chars-long-too"
+    )
     monkeypatch.delenv("AUTO_CREATE_SCHEMA", raising=False)
 
     with _temporary_env_file(None):
@@ -211,6 +214,9 @@ def test_auto_create_schema_warns_when_enabled_in_production(monkeypatch, caplog
     monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///./{db_name}")
     monkeypatch.setenv("SECRET_KEY", "production-secret-must-be-at-least-32-chars-long")
     monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv(
+        "AUDIT_LOG_SECRET", "audit-secret-must-be-at-least-32-chars-long-too"
+    )
     monkeypatch.setenv("AUTO_CREATE_SCHEMA", "true")
 
     with _temporary_env_file(None):

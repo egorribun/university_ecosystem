@@ -23,6 +23,9 @@ async def test_security_headers_production_mode(monkeypatch):
     monkeypatch.setenv("ENABLE_CORP", "true")
     monkeypatch.setenv("CORP_VALUE", "same-site")
     monkeypatch.setenv("SECURITY_CSP_REPORT_ONLY", "false")
+    monkeypatch.setenv(
+        "AUDIT_LOG_SECRET", "audit-secret-must-be-at-least-32-chars-long-too"
+    )
     settings = Settings()
     assert settings.strict_security_headers_enabled
     spec = importlib_util.find_spec("app.core.security_headers")
@@ -225,6 +228,9 @@ async def test_security_headers_credentialless_coep(monkeypatch):
     monkeypatch.setenv("COEP_VALUE", "credentialless")
     monkeypatch.setenv("ENABLE_CORP", "true")
     monkeypatch.setenv("CORP_VALUE", "cross-origin")
+    monkeypatch.setenv(
+        "AUDIT_LOG_SECRET", "audit-secret-must-be-at-least-32-chars-long-too"
+    )
     settings = Settings()
     spec = importlib_util.find_spec("app.core.security_headers")
     assert spec and spec.origin
@@ -315,6 +321,9 @@ def _reset_security_env(monkeypatch):
     # Force production environment to avoid localhost fallback
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("SECRET_KEY", "production-secret-key-at-least-32-chars")
+    monkeypatch.setenv(
+        "AUDIT_LOG_SECRET", "audit-secret-must-be-at-least-32-chars-long-too"
+    )
 
 
 def test_cors_hardening_filters_insecure_origins(monkeypatch):

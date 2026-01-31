@@ -7,7 +7,6 @@ import time
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import crud
 from app.api.schedule import _SCHEDULE_CACHE_TTL_SECONDS
 from app.core.config import settings
 from app.core.database import async_session
@@ -40,7 +39,16 @@ async def _warm_schedule_group(
     if cached and _is_entry_fresh(cached):
         return
 
-    rows = await crud.get_schedule_by_group(db, group_id)
+    from app.repositories.schedule_repository import GroupRepository, ScheduleRepository
+    from app.services.schedule_optimizer import ScheduleOptimizerService
+    from app.services.schedule_service import ScheduleService
+
+    repo = ScheduleRepository(db)
+    group_repo = GroupRepository(db)
+    optimizer = ScheduleOptimizerService()
+    service = ScheduleService(repo, group_repo, optimizer)
+
+    rows = await service.get_schedule(group_id)
     if not rows:
         return
 
@@ -95,25 +103,31 @@ async def _warm_stats_for_user(
         return
 
     days = _period_days_from_key(resolved_period) or 30
+    from app.repositories.user_repository import UserRepository
+    from app.services.audit_service import audit_service
+    from app.services.notification_service import NotificationService
+    from app.services.user_service import UserService
+
+    repo = UserRepository(db)
+    notifications = NotificationService(db)
+    service = UserService(db, repo, audit_service, notifications)
+
     tasks = [
-        crud.get_attendance_stats(
-            db,
+        service.get_attendance_stats(
             user_id=user_id,
             period_days=days,
             period_key=resolved_period,
             cache=cache,
             skip_cache=skip_cache,
         ),
-        crud.get_grade_stats(
-            db,
+        service.get_grade_stats(
             user_id=user_id,
             period_days=days,
             cache=cache,
             period_key=resolved_period,
             skip_cache=skip_cache,
         ),
-        crud.get_participation_stats(
-            db,
+        service.get_participation_stats(
             user_id=user_id,
             period_days=days,
             cache=cache,
@@ -146,20 +160,36 @@ async def _warm_news(cache: BaseCache, db: AsyncSession) -> None:
     )
 
     version = await _get_news_list_version()
+
+    from app.core.container import get_vector_service
+    from app.repositories.news_repository import NewsRepository
+    from app.services.news_service import NewsService
+
+    # We need vector service for NewsService init
+    vector_service = get_vector_service(db)
+    repo = NewsRepository(db)
+    service = NewsService(repo, vector_service)
+
     for locale in ["ru", "en"]:
         cache_key = _news_list_cache_key(locale, 20, None, version)
         cached = await cache.get(cache_key)
         if cached and _is_entry_fresh(cached):
             continue
 
-        rows = await crud.get_news_list(db, limit=21, cursor=None)
+        results = await service.list_news(limit=21, cursor=None)
+
+        rows = []
+        for news_obj, l_count, c_count, liked in results:
+            news_obj.likes_count = l_count or 0
+            news_obj.comments_count = c_count or 0
+            news_obj.is_liked = bool(liked)
+            rows.append(news_obj)
+
         has_more = len(rows) > 20
         if has_more:
             rows = rows[:20]
 
-        from app.api.news import _serialize_news
-
-        items = [_serialize_news(item, locale) for item in rows]
+        items = [service.serialize_news(item, locale) for item in rows]
         payload = {
             "items": items,
             "has_more": has_more,
@@ -190,18 +220,31 @@ async def _warm_events(cache: BaseCache, db: AsyncSession) -> None:
         if cached and _is_entry_fresh(cached):
             continue
 
-        payload = await crud.get_all_events(
-            db,
-            user_id=0,  # System-level warmup
-            search="",
-            type="",
-            location="",
-            is_active=True,
-            locale=locale,
-            limit=20,
-            cursor=None,
-        )
-        await cache.set(cache_key, jsonable_encoder(payload))
+    from app.repositories.event_repository import EventRepository
+    from app.services.event_service import EventService
+    from app.services.vector_service import VectorService
+
+    # We need a vector service instance, but for warmup of *list* we probably don't
+    # need actual embeddings if the search query is empty. However, EventService
+    # requires it. We can rely on DI container or construct it manually.
+    # Since this is a background task, manual construction is safer/easier.
+    # VectorService needs settings.
+
+    vector_service = VectorService()
+    repo = EventRepository(db)
+    service = EventService(repo, vector_service)
+
+    payload = await service.get_events(
+        user_id=0,  # System-level warmup
+        search="",
+        type="",
+        location="",
+        is_active=True,
+        locale=locale,
+        limit=20,
+        cursor=None,
+    )
+    await cache.set(cache_key, jsonable_encoder(payload))
 
 
 async def warm_cache() -> None:

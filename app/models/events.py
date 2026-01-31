@@ -63,6 +63,13 @@ class Event(Base, EventEmitterMixin):
 
     __table_args__ = (
         CheckConstraint("ends_at > starts_at", name="ck_event_time_order"),
+        Index(
+            "ix_events_embedding",
+            embedding,
+            postgresql_using="hnsw",
+            postgresql_with={"m": 16, "ef_construction": 64},
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
     )
     files = relationship(
         "EventFile", cascade="all, delete-orphan", passive_deletes=True

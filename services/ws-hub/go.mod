@@ -3,7 +3,6 @@ module github.com/university-ecosystem/ws-hub
 go 1.24.0
 
 require (
-	github.com/bytedance/gopkg v0.1.3
 	github.com/getsentry/sentry-go v0.42.0
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/gorilla/websocket v1.5.3

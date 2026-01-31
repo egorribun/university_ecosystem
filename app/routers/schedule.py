@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import crud
+from app.api.deps import get_schedule_service
 from app.api.validation import raise_not_found
 from app.core.database import get_db
 from app.core.localization import resolve_locale, translate
@@ -28,6 +29,7 @@ def _build_filename(group: models.Group) -> str:
 @router.get("/ics", response_class=Response)
 async def download_schedule_ics(
     request: Request,
+    schedule_service: Annotated[Any, Depends(get_schedule_service)],
     group: int = Query(
         ..., description=translate("schedule.query.group_id_description")
     ),
@@ -38,7 +40,7 @@ async def download_schedule_ics(
     if not group_obj:
         raise_not_found("Group", group, locale)
 
-    lessons: Sequence[models.Schedule] = await crud.get_schedule_by_group(db, group)
+    lessons: Sequence[models.Schedule] = await schedule_service.get_schedule(group)
     ics_body = generate_schedule_ics(group_obj, lessons, locale=locale)
     filename = _build_filename(group_obj)
 

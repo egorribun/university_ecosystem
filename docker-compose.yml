@@ -16,11 +16,11 @@ services:
       ENABLE_METRICS_ENDPOINT: "false"
       METRICS_ALLOWLIST: 127.0.0.1,::1
       CACHE_ENABLED: "true"
-      CACHE_REDIS_URL: redis://redis:6379/0
+      CACHE_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       RATE_LIMIT_STORAGE_BACKEND: redis
-      RATE_LIMIT_STORAGE_URI: redis://redis:6379/1
+      RATE_LIMIT_STORAGE_URI: redis://:${REDIS_PASSWORD}@redis:6379/1
       RATE_LIMIT_HEADERS_ENABLED: "true"
-      TASKIQ_BROKER_URL: redis://redis:6379/2
+      TASKIQ_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/2
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required - set in .env file}
       # Push notifications
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
@@ -89,10 +89,10 @@ services:
       NOTIFICATIONS_WORKER_METRICS_HOST: 0.0.0.0
       NOTIFICATIONS_WORKER_METRICS_PORT: "9101"
       CACHE_ENABLED: "true"
-      CACHE_REDIS_URL: redis://redis:6379/0
+      CACHE_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       RATE_LIMIT_STORAGE_BACKEND: redis
-      RATE_LIMIT_STORAGE_URI: redis://redis:6379/1
-      TASKIQ_BROKER_URL: redis://redis:6379/2
+      RATE_LIMIT_STORAGE_URI: redis://:${REDIS_PASSWORD}@redis:6379/1
+      TASKIQ_BROKER_URL: redis://:${REDIS_PASSWORD}@redis:6379/2
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required - set in .env file}
       # Push notifications
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
@@ -140,9 +140,11 @@ services:
 
   redis:
     image: redis:7-alpine
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--save", "", "--appendonly", "no"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a $REDIS_PASSWORD ping"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -226,7 +228,7 @@ services:
   spicedb:
     image: authzed/spicedb:latest
     container_name: spicedb
-    command: serve --grpc-preshared-key "${SPICEDB_PRESHARED_KEY:?SPICEDB_PRESHARED_KEY is required}" --datastore-engine memory
+    command: serve --grpc-preshared-key "${SPICEDB_PRESHARED_KEY:?SPICEDB_PRESHARED_KEY is required}" --datastore-engine postgres --datastore-conn-uri "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/spicedb?sslmode=disable"
     # Internal only - accessed by backend services
     expose:
       - "50051"
@@ -235,6 +237,9 @@ services:
       SPICEDB_GRPC_PRESHARED_KEY: ${SPICEDB_PRESHARED_KEY:?SPICEDB_PRESHARED_KEY is required - set in .env file}
     networks:
       - internal
+    depends_on:
+        postgres:
+          condition: service_healthy
     healthcheck:
       test: ["CMD", "grpc_health_probe", "-addr=:50051"]
       interval: 10s

@@ -186,11 +186,22 @@ class SecuritySettings(BaseAppSettings):
 
     @field_validator("audit_log_secret")
     @classmethod
-    def _validate_audit_log_secret(cls, value: str) -> str:
+    def _validate_audit_log_secret(cls, value: str, info: ValidationInfo) -> str:
         normalized = _validate_non_empty(value, label="AUDIT_LOG_SECRET")
         secrets = _coerce_str_list(normalized)
         if not secrets:
             raise ValueError("AUDIT_LOG_SECRET must not be empty")
+
+        # Prevent usage of default value in non-dev environments
+        env = (
+            info.data.get("environment") or os.environ.get("ENVIRONMENT", "development")
+        ).lower()
+        if (
+            env not in _DEVELOPMENT_ENVIRONMENTS
+            and "development-audit-secret-change-me" in secrets
+        ):
+            raise ValueError("Default AUDIT_LOG_SECRET cannot be used in production")
+
         min_length = 32
         for secret in secrets:
             if len(secret) < min_length:

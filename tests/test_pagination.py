@@ -8,7 +8,6 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import crud
 from app.models import models
 from app.utils.pagination import (
     CursorParams,
@@ -51,18 +50,22 @@ def test_chat_decode_cursor_rejects_invalid(value: str) -> None:
 
 @settings(max_examples=25)
 @given(
-    timestamp_ms=st.integers(min_value=0, max_value=4_102_444_800_000),
+    timestamp_us=st.integers(min_value=0, max_value=4_102_444_800_000_000),
     news_id=st.integers(min_value=1, max_value=1_000_000),
 )
-def test_news_cursor_round_trip(timestamp_ms: int, news_id: int) -> None:
-    cursor = f"{timestamp_ms}:{news_id}"
-    decoded = crud._decode_news_cursor(cursor)  # noqa: SLF001
+def test_news_cursor_round_trip(timestamp_us: int, news_id: int) -> None:
+    cursor = f"{timestamp_us}:{news_id}"
+    decoded = decode_datetime_cursor(cursor)
 
     assert decoded is not None
-    decoded_ts, decoded_id = decoded
-    assert decoded_id == news_id
-    decoded_ms = int(decoded_ts.timestamp() * 1000)
-    assert abs(decoded_ms - timestamp_ms) <= 1
+    decoded_ts, decoded_id_str = decoded
+    assert int(decoded_id_str) == news_id
+    decoded_us = int(
+        (decoded_ts - datetime(1970, 1, 1, tzinfo=UTC)) // timedelta(microseconds=1)
+    )
+    # Allow small tolerance for timestamp() float conversion if needed,
+    # but since we construct carefully, it should be close.
+    assert abs(decoded_us - timestamp_us) <= 1
 
 
 @pytest.fixture
@@ -240,70 +243,74 @@ class TestEventsPagination:
             assert len(data["items"]) <= 2
 
 
-class TestCrudNewsPagination:
-    """Tests for CRUD news pagination functions."""
+class TestNewsServicePagination:
+    """Tests for NewsService pagination functions."""
+
+    @pytest.fixture
+    def news_service(self, db_session: AsyncSession):
+        from app.repositories.news_repository import NewsRepository
+        from app.services.news_service import NewsService
+        from app.services.vector_service import VectorService
+
+        repo = NewsRepository(db_session)
+        service = NewsService(repo, VectorService(db_session))
+        return service
 
     @pytest.mark.asyncio
-    async def test_get_news_list_with_limit(
-        self, db_session: AsyncSession, news_factory
+    async def test_list_news_with_limit(
+        self, db_session: AsyncSession, news_factory, news_service
     ):
-        """Test get_news_list respects limit."""
+        """Test list_news respects limit."""
         await news_factory(count=5)
 
-        result = await crud.get_news_list(db_session, limit=2)
+        result = await news_service.list_news(limit=2)
 
-        assert len(result) == 2
+        assert len(result.items) == 2
 
     @pytest.mark.asyncio
-    async def test_get_news_list_with_cursor(
-        self, db_session: AsyncSession, news_factory
+    async def test_list_news_with_cursor(
+        self, db_session: AsyncSession, news_factory, news_service
     ):
-        """Test get_news_list with cursor returns subsequent items."""
+        """Test list_news with cursor returns subsequent items."""
         await news_factory(count=5)
 
         # Get first page
-        first_page = await crud.get_news_list(db_session, limit=2)
-        assert len(first_page) == 2
+        first_page = await news_service.list_news(limit=2)
+        assert len(first_page.items) == 2
 
-        # Create cursor from last item
-        last_item = first_page[-1]
-        ts = int(last_item.created_at.timestamp() * 1000)
-        cursor = f"{ts}:{last_item.id}"
+        # Use cursor from result
+        cursor = first_page.next_cursor
 
         # Get second page
-        second_page = await crud.get_news_list(db_session, limit=2, cursor=cursor)
+        second_page = await news_service.list_news(limit=2, cursor=cursor)
 
         # Verify no overlap
-        first_ids = {item.id for item in first_page}
-        second_ids = {item.id for item in second_page}
+        first_ids = {item.id for item in first_page.items}
+        second_ids = {item.id for item in second_page.items}
         assert first_ids.isdisjoint(second_ids)
 
     @pytest.mark.asyncio
     async def test_decode_news_cursor_valid(self):
         """Test news cursor decoding with valid format."""
-        from app.crud import _decode_news_cursor
-
         ts = 1702000000000  # timestamp in ms
         id = 42
         cursor = f"{ts}:{id}"
 
-        result = _decode_news_cursor(cursor)
+        result = decode_datetime_cursor(cursor)
 
         assert result is not None
         decoded_ts, decoded_id = result
-        assert decoded_id == 42
+        assert int(decoded_id) == 42
         assert isinstance(decoded_ts, datetime)
 
     @pytest.mark.asyncio
     async def test_decode_news_cursor_invalid(self):
         """Test news cursor decoding with invalid format returns None."""
-        from app.crud import _decode_news_cursor
-
-        assert _decode_news_cursor(None) is None
-        assert _decode_news_cursor("") is None
-        assert _decode_news_cursor("invalid") is None
-        assert _decode_news_cursor("not:a:valid:cursor") is None
-        assert _decode_news_cursor("abc:123") is None
+        assert decode_datetime_cursor(None) is None
+        assert decode_datetime_cursor("") is None
+        assert decode_datetime_cursor("invalid") is None
+        assert decode_datetime_cursor("not:a:valid:cursor") is None
+        assert decode_datetime_cursor("abc:123") is None
 
 
 class TestPaginatedNewsSchema:
@@ -439,7 +446,7 @@ class TestGenericPagination:
         assert decode_datetime_cursor(None) is None
         assert decode_datetime_cursor("not-a-timestamp:42") is None
         assert decode_datetime_cursor("12345678:not-an-id:too-many-parts") == (
-            datetime.fromtimestamp(12345678 / 1000.0, tz=UTC),
+            datetime(1970, 1, 1, 0, 0, 12, 345678, tzinfo=UTC),
             "not-an-id:too-many-parts",
         )
         # Overflow/Invalid - Windows has smaller range for fromtimestamp

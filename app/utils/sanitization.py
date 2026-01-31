@@ -11,6 +11,7 @@ import html
 import re
 import unicodedata
 from pathlib import Path
+from typing import Any
 
 
 def sanitize_html(text: str, allow_basic_tags: bool = False) -> str:
@@ -349,6 +350,22 @@ def truncate(text: str, max_length: int, suffix: str = "...") -> str:
     return text[: max_length - len(suffix)] + suffix
 
 
+def sanitize_optional_text(value: Any) -> str | None:
+    """Normalize optional text values to strings."""
+    if value is None:
+        return None
+    if isinstance(value, bytes | bytearray):
+        try:
+            decoded = value.decode("utf-8")
+        except Exception:
+            decoded = value.decode("utf-8", "ignore")
+        return decoded if decoded.strip() else None
+    if isinstance(value, str):
+        return value if value.strip() else None
+    text = str(value)
+    return text if text.strip() else None
+
+
 __all__ = [
     "sanitize_html",
     "sanitize_rich_text",
@@ -358,4 +375,5 @@ __all__ = [
     "sanitize_url",
     "strip_control_chars",
     "truncate",
+    "sanitize_optional_text",
 ]

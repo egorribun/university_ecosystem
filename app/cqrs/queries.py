@@ -5,7 +5,6 @@ from typing import Any
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import crud
 from app.core.localization import translate_lesson_type
 from app.cqrs.base import Query, QueryHandler
 from app.deps.cache import BaseCache, format_etag
@@ -64,8 +63,12 @@ class GetScheduleHandler(QueryHandler[GetScheduleQuery, QueryResult]):
                 )
                 return QueryResult(payload=localized, etag=format_etag(cached.etag))
 
-        # Fetch from DB
-        rows = await crud.get_schedule_by_group(self.db, query.group_id)
+        # Fetch from DB using Repository
+        from app.repositories.schedule_repository import ScheduleRepository
+
+        repo = ScheduleRepository(self.db)
+        rows = await repo.get_by_group(query.group_id)
+
         models_out = [schemas.ScheduleOut.model_validate(item) for item in rows]
         payload = jsonable_encoder(models_out)
         localized_payload = self._localize_schedule_payload(
@@ -94,9 +97,10 @@ class GetStatsQuery(Query):
 
 
 class GetStatsHandler(QueryHandler[GetStatsQuery, QueryResult]):
-    def __init__(self, db: AsyncSession, cache: BaseCache) -> None:
+    def __init__(self, db: AsyncSession, cache: BaseCache, user_service: Any) -> None:
         self.db = db
         self.cache = cache
+        self.user_service = user_service
 
     async def handle(self, query: GetStatsQuery) -> QueryResult:
         from app.services import stats_cache
@@ -121,47 +125,29 @@ class GetStatsHandler(QueryHandler[GetStatsQuery, QueryResult]):
                 payload = self._enrich_stats(cached.payload, query)
                 return QueryResult(payload=payload, etag=format_etag(cached.etag))
 
-        # 2. Compute stats
+        # 2. Compute stats via UserService
         compute_map = {
-            "attendance": crud.get_attendance_stats,
-            "grades": crud.get_grade_stats,
-            "participation": crud.get_participation_stats,
+            "attendance": self.user_service.get_attendance_stats,
+            "grades": self.user_service.get_grade_stats,
+            "participation": self.user_service.get_participation_stats,
         }
 
         compute_fn = compute_map.get(query.kind)
         if not compute_fn:
             raise ValueError(f"Unknown stats kind: {query.kind}")
 
-        # The crud functions have different signatures (some take period_days,
-        # some just days?)
-        # Let's check crud.py if possible, but based on stats.py:
-        # attendance: db, user_id, period_days, period_key, cache, skip_cache
-        # grades: db, user_id, period_days, cache, period_key, skip_cache
-        # participation: db, user_id, period_days, cache, period_key, skip_cache
-
-        if query.kind == "attendance":
-            stats = await compute_fn(
-                self.db,
-                user_id=query.user_id,
-                period_days=query.period_days,
-                period_key=query.period_key,
-                cache=self.cache,
-                skip_cache=query.skip_cache,
-            )
-        else:
-            stats = await compute_fn(
-                self.db,
-                user_id=query.user_id,
-                period_days=query.period_days,
-                cache=self.cache,
-                period_key=query.period_key,
-                skip_cache=query.skip_cache,
-            )
+        # They all share the same signature now thanks to UserService unification
+        stats = await compute_fn(
+            user_id=query.user_id,
+            period_days=query.period_days,
+            period_key=query.period_key,
+            cache=self.cache,
+            skip_cache=query.skip_cache,
+        )
 
         payload = self._enrich_stats(stats, query)
         etag = self._compute_etag(payload)
 
-        # Handle race condition/consistency if needed, but for now just return
         return QueryResult(payload=payload, etag=format_etag(etag))
 
     def _enrich_stats(

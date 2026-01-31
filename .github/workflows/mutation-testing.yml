@@ -48,16 +48,17 @@ jobs:
               uses: actions/setup-python@v6
               with:
                   python-version: "3.13"
-                  cache: pip
-                  cache-dependency-path: |
-                      requirements.txt
-                      requirements-dev.txt
+
+            - name: Install uv
+              uses: astral-sh/setup-uv@v5
+              with:
+                  enable-cache: true
+                  cache-dependency-glob: "uv.lock"
 
             - name: Install dependencies
               run: |
-                  python -m pip install --upgrade pip
-                  pip install -r requirements.txt -r requirements-dev.txt
-                  pip install mutmut
+                  uv sync --frozen
+                  uv pip install mutmut
 
             - name: Run mutation testing
               id: mutmut
@@ -67,7 +68,7 @@ jobs:
                   echo "Running mutation testing on: $TARGET"
 
                   # Run mutmut with limited scope for CI efficiency
-                  mutmut run \
+                  uv run mutmut run \
                     --paths-to-mutate="$TARGET" \
                     --tests-dir=tests \
                     --no-progress \
@@ -75,11 +76,11 @@ jobs:
                     2>&1 | tee mutmut-output.txt || true
 
                   # Generate HTML report
-                  mutmut html || true
+                  uv run mutmut html || true
 
             - name: Generate mutation score
               run: |
-                  python3 << 'PYSCRIPT'
+                  uv run python - << 'PYSCRIPT'
                   import subprocess
                   import json
                   import sys

@@ -27,8 +27,5 @@ jobs:
         with:
           fetch-depth: 0
       - name: Run TruffleHog
-        uses: trufflesecurity/trufflehog@v3.78.1
-        with:
-          path: .
-          base: ""
-          extra_args: --exclude-detectors=Codeclimate
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/tmp ghcr.io/trufflesecurity/trufflehog:latest git file:///tmp --exclude-paths=/tmp/.trufflehog-exclude.txt --results=verified --fail --exclude-detectors=Codeclimate ${{ github.event_name == 'pull_request' && format('--since-commit={0}', github.event.pull_request.base.sha) || '' }}

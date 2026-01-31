@@ -25,6 +25,11 @@ from app.workers.outbox import OutboxWorker
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Configure database adapters (remove global side effects)
+    from app.core.database import configure_database
+
+    configure_database()
+
     from app.api.websocket import start_presence_pubsub, stop_presence_pubsub
     from app.core.feature_flags import feature_flags
 

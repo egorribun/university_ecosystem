@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
-async def batch_load_ids(
+async def batch_load_ids[T](
     session: AsyncSession,
     model: type[T],
     ids: Sequence[int | str],
@@ -79,7 +79,7 @@ def eager_load_options(
     return [loader_fn(rel) for rel in relationships]
 
 
-def apply_eager_loading(
+def apply_eager_loading[T](
     stmt: Select[tuple[T]],
     *relationships: RelationshipProperty | InstrumentedAttribute,
     strategy: str = "selectin",
@@ -142,7 +142,7 @@ class QueryBatcher:
         items = await batch_load_ids(
             self._session,
             self._model,
-            self._pending_ids,
+            self._pending_ids[:],
             id_column=self._id_column,
         )
 

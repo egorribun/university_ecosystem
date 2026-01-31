@@ -1,11 +1,32 @@
 definition user {}
 
+definition semester {
+    relation admin: user
+}
+
+definition course {
+    relation semester: semester
+    relation teacher: user
+    relation student: user
+
+    permission view = student + teacher + semester->admin
+    permission manage = teacher + semester->admin
+}
+
+definition group {
+    relation course: course
+    relation participant: user
+
+    permission view = participant + course->view
+}
+
 definition document {
+    relation folder: folder
     relation viewer: user
     relation editor: user
     relation owner: user
 
-    permission view = viewer + editor + owner
+    permission view = viewer + editor + owner + folder->view
     permission edit = editor + owner
     permission delete = owner
 }

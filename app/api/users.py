@@ -26,14 +26,16 @@ from app.core.container import (
     get_audit_service,
     get_auth_service,
     get_group_service,
-    get_user_service,
+    get_user_admin_service,
+    get_user_data_service,
+    get_user_profile_service,
 )
 from app.core.database import get_db
 from app.core.localization import resolve_locale
 from app.models import models
 from app.schemas import schemas
 from app.services.audit_service import AuditService
-from app.services.auth_service import AuthService, attach_pending_email
+from app.services.auth_service import AuthService
 from app.services.data_access import (
     batch_log_data_access,
     export_access_logs,
@@ -42,7 +44,9 @@ from app.services.data_access import (
 )
 from app.services.group_service import GroupService
 from app.services.notifications import create_notifications_for_users
-from app.services.user_service import UserService
+from app.services.user.admin_service import UserAdminService
+from app.services.user.data_service import UserDataService
+from app.services.user.profile_service import UserProfileService
 from app.utils.ratelimit import sensitive_route_limit
 
 # Export for test compatibility
@@ -132,14 +136,15 @@ async def reset_password(
     return {"ok": True}
 
 
-@users_router.get("/me", response_model=schemas.UserOut)
+@users_router.get("/me", response_model=schemas.UserOut, summary="Me")
 async def me(
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
+    auth_service: AuthService = Depends(get_auth_service),
 ):
     _enforce_profile_cache_integrity(request)
-    await attach_pending_email(db, user)
+    await auth_service.refresh_pending_email(user)
     await log_data_access(
         db,
         actor_user_id=user.id,
@@ -152,12 +157,12 @@ async def me(
     return user
 
 
-@users_router.put("/me", response_model=schemas.UserOut)
+@users_router.put("/me", response_model=schemas.UserOut, summary="Update Me")
 async def update_me(
     data: schemas.UserProfileUpdate,
     request: Request,
     user: models.User = Depends(get_current_user),
-    service: UserService = Depends(get_user_service),
+    service: UserProfileService = Depends(get_user_profile_service),
 ):
     return await service.update_user_profile(user, data, request)
 
@@ -166,6 +171,7 @@ async def update_me(
     "/me/email",
     response_model=schemas.UserOut,
     dependencies=[Depends(sensitive_route_limit())],
+    summary="Change Email",
 )
 async def change_email(
     payload: schemas.UserEmailChangeIn,
@@ -182,8 +188,9 @@ async def change_email(
     "/me/email/confirm",
     response_model=schemas.UserOut,
     dependencies=[Depends(sensitive_route_limit())],
+    summary="Confirm Email Change",
 )
-async def confirm_email_change(
+async def verify_email_change(
     payload: schemas.UserEmailConfirmIn,
     request: Request,
     user: models.User = Depends(get_current_user),
@@ -213,11 +220,11 @@ async def change_password(
     response_model=schemas.DataExportOut,
     dependencies=[Depends(sensitive_route_limit())],
 )
-async def export_me(
+async def export_current_user_data(
     request: Request,
     _: None = Depends(require_fresh_mfa),
     user: models.User = Depends(get_current_user),
-    service: UserService = Depends(get_user_service),
+    service: UserDataService = Depends(get_user_data_service),
 ):
     return await service.export_user_data(user, request)
 
@@ -227,12 +234,12 @@ async def export_me(
     response_model=schemas.DataDeletionOut,
     dependencies=[Depends(sensitive_route_limit())],
 )
-async def delete_me(
+async def delete_current_user_account(
     payload: schemas.DataDeletionRequest,
     request: Request,
     _: None = Depends(require_fresh_mfa),
     user: models.User = Depends(get_current_user),
-    service: UserService = Depends(get_user_service),
+    service: UserDataService = Depends(get_user_data_service),
 ):
     return await service.delete_user_data(user, request, confirm=payload.confirm)
 
@@ -243,7 +250,7 @@ async def upload_avatar(
     *,
     request: Request,
     user: models.User = Depends(get_current_user),
-    service: UserService = Depends(get_user_service),
+    service: UserProfileService = Depends(get_user_profile_service),
 ):
     return await service.upload_avatar(user, file)
 
@@ -254,7 +261,7 @@ async def upload_cover(
     *,
     request: Request,
     user: models.User = Depends(get_current_user),
-    service: UserService = Depends(get_user_service),
+    service: UserProfileService = Depends(get_user_profile_service),
 ):
     return await service.upload_cover(user, file)
 
@@ -263,7 +270,7 @@ async def upload_cover(
 async def delete_avatar(
     request: Request,
     user: models.User = Depends(get_current_user),
-    service: UserService = Depends(get_user_service),
+    service: UserProfileService = Depends(get_user_profile_service),
 ):
     return await service.delete_avatar(user)
 
@@ -272,7 +279,7 @@ async def delete_avatar(
 async def delete_cover(
     request: Request,
     user: models.User = Depends(get_current_user),
-    service: UserService = Depends(get_user_service),
+    service: UserProfileService = Depends(get_user_profile_service),
 ):
     return await service.delete_cover(user)
 
@@ -282,7 +289,7 @@ async def create_user(
     data: schemas.UserCreate,
     request: Request,
     user: models.User = Depends(get_current_user),
-    service: UserService = Depends(get_user_service),
+    service: UserAdminService = Depends(get_user_admin_service),
 ):
     return await service.create_user(data, request, user)
 
@@ -290,24 +297,14 @@ async def create_user(
 @users_router.get("", response_model=list[schemas.UserOut])
 async def get_users(
     request: Request,
-    full_name: str | None = Query(None),
-    search: str | None = Query(None),
-    group_id: int | None = Query(None),
-    role: str | None = Query(None),
-    limit: int | None = Query(None, ge=1, le=100),
-    offset: int | None = Query(None, ge=0),
+    filters: schemas.UserSearchFilter = Depends(),
     user: models.User = Depends(get_current_user),
-    service: UserService = Depends(get_user_service),
+    service: UserAdminService = Depends(get_user_admin_service),
 ):
     users = await service.get_users(
         request,
         user,
-        full_name=full_name,
-        search=search,
-        group_id=group_id,
-        role=role,
-        limit=limit,
-        offset=offset,
+        filters=filters,
     )
     log_entries = [
         {
@@ -350,7 +347,7 @@ async def update_user_admin(
     data: schemas.UserAdminUpdate,
     request: Request,
     user: models.User = Depends(get_current_user),
-    service: UserService = Depends(get_user_service),
+    service: UserAdminService = Depends(get_user_admin_service),
 ):
     return await service.admin_update_user(user_id, data, request, user)
 
@@ -360,7 +357,7 @@ async def delete_user_admin(
     user_id: int,
     request: Request,
     user: models.User = Depends(get_current_user),
-    service: UserService = Depends(get_user_service),
+    service: UserAdminService = Depends(get_user_admin_service),
 ):
     return await service.admin_delete_user(user_id, request, user)
 

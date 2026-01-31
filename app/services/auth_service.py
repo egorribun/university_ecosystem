@@ -468,3 +468,15 @@ class AuthService:
             extra={"revoked_sessions": revoked},
         )
         return True, revoked
+
+    async def refresh_pending_email(
+        self, user: models.User | None
+    ) -> models.User | None:
+        """
+        Refresh the pending_email field on the user model.
+        """
+        if user is None:
+            return None
+        pending = await _get_active_email_change_request(self.db, user.id)
+        user.pending_email = pending.new_email if pending else None
+        return user

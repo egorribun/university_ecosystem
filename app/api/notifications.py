@@ -24,7 +24,6 @@ from app.api.deps import get_current_user
 from app.api.validation import ensure_exists, raise_not_found, raise_validation_error
 from app.core.database import get_db
 from app.core.localization import localized_text, resolve_locale, translate
-from app.crud import sanitize_optional_text
 from app.models.models import Notification, Schedule, User
 from app.schemas.schemas import (
     NotificationOut,
@@ -35,6 +34,7 @@ from app.services.notifications import (
     create_notifications_for_users,
 )
 from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
+from app.utils.sanitization import sanitize_optional_text
 
 logger = logging.getLogger(__name__)
 

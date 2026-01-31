@@ -24,10 +24,22 @@ async def test_update_news_removes_replaced_image(
 
     monkeypatch.setattr(settings, "static_dir", str(tmp_path))
 
+    from unittest.mock import MagicMock
+
+    from app.repositories.news_repository import NewsRepository
+    from app.services.news_service import NewsService
+
+    # Mock vector service as we don't need embeddings here
+    vector_service = MagicMock()
+    vector_service.get_embedding = MagicMock()
+
+    repo = NewsRepository(db_session)
+    service = NewsService(repo, vector_service)
+
     payload = schemas.NewsUpdate(image_url="/static/news_images/new.png")
 
     updated = await news.update_news(
-        record.id, request=None, data=payload, db=db_session, user=admin
+        record.id, request=None, data=payload, service=service, user=admin
     )
 
     assert updated.image_url == "/static/news_images/new.png"
@@ -52,7 +64,19 @@ async def test_delete_news_removes_image_file(
 
     monkeypatch.setattr(settings, "static_dir", str(tmp_path))
 
-    result = await news.delete_news(record.id, request=None, db=db_session, user=admin)
+    from unittest.mock import MagicMock
+
+    from app.repositories.news_repository import NewsRepository
+    from app.services.news_service import NewsService
+
+    # Mock vector service
+    vector_service = MagicMock()
+    repo = NewsRepository(db_session)
+    service = NewsService(repo, vector_service)
+
+    result = await news.delete_news(
+        record.id, request=None, service=service, user=admin
+    )
 
     assert result == {"ok": True}
     assert await db_session.get(models.News, record.id) is None

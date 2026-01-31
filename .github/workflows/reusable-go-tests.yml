@@ -45,10 +45,10 @@ jobs:
 
       - name: Generate artifact name
         id: artifact-name
+        shell: pwsh
         run: |
-          sanitized_name="${{ inputs.service-directory }}"
-          sanitized_name="${sanitized_name//\//-}"
-          echo "name=go-coverage-${sanitized_name}" >> "$GITHUB_OUTPUT"
+          $sanitized = "${{ inputs.service-directory }}".Replace("/", "-").Replace("\", "-")
+          echo "name=go-coverage-$sanitized" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Upload coverage artifacts
         uses: actions/upload-artifact@v4

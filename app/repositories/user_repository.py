@@ -12,10 +12,10 @@ from app.models import models
 from app.models.models import User
 from app.models.user_loaders import USER_MFA_LOAD_OPTIONS
 from app.repositories.base import BaseRepository
-from app.schemas.schemas import UserCreate
+from app.schemas import schemas
 
 
-class UserRepository(BaseRepository[User, UserCreate, dict]):
+class UserRepository(BaseRepository[User, schemas.UserCreate, dict]):
     """Repository for User model operations."""
 
     @property
@@ -61,26 +61,22 @@ class UserRepository(BaseRepository[User, UserCreate, dict]):
 
     async def list_users(
         self,
-        *,
-        group_id: int | None = None,
-        full_name: str | None = None,
-        role: str | None = None,
-        limit: int = 100,
-        offset: int = 0,
+        filters: schemas.UserSearchFilter | None = None,
     ) -> list[User]:
+        filters = filters or schemas.UserSearchFilter()
         stmt = (
             select(User)
             .where(User.status != "deleted")
             .options(*USER_MFA_LOAD_OPTIONS, selectinload(User.group))
         )
-        if group_id:
-            stmt = stmt.where(User.group_id == group_id)
-        if full_name:
-            stmt = stmt.where(User.full_name.ilike(f"%{full_name}%"))
-        if role:
-            stmt = stmt.where(User.role == role)
+        if filters.group_id:
+            stmt = stmt.where(User.group_id == filters.group_id)
+        if filters.full_name:
+            stmt = stmt.where(User.full_name.ilike(f"%{filters.full_name}%"))
+        if filters.role:
+            stmt = stmt.where(User.role == filters.role)
 
-        stmt = stmt.limit(limit).offset(offset)
+        stmt = stmt.limit(filters.limit).offset(filters.offset)
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
@@ -124,6 +120,20 @@ class UserRepository(BaseRepository[User, UserCreate, dict]):
         )
         return list(result.scalars().all())
 
+    async def get_full_user_data(self, id: int) -> User | None:
+        """Get user by ID with ALL related data for export."""
+        stmt = (
+            select(User)
+            .where(User.id == id)
+            .options(
+                *USER_MFA_LOAD_OPTIONS,
+                selectinload(User.sessions),
+                selectinload(User.notifications),
+            )
+        )
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
+
     async def check_email_exists(
         self, email: str, exclude_user_id: int | None = None
     ) -> bool:
@@ -132,6 +142,13 @@ class UserRepository(BaseRepository[User, UserCreate, dict]):
             stmt = stmt.where(User.id != exclude_user_id)
         result = await self.db.execute(stmt)
         return bool(result.scalar())
+
+    async def get_invite_code(self, code: str) -> models.InviteCode | None:
+        """Get invite code by value."""
+        result = await self.db.execute(
+            select(models.InviteCode).where(models.InviteCode.code == code)
+        )
+        return result.scalars().first()
 
     async def delete_sensitive_data(self, user_id: int):
         """Cleanup user-related transient records (sessions, challenges, etc)."""

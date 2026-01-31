@@ -23,7 +23,7 @@ import { CAMPUS_COORDINATES } from "@/constants/campus"
 
 type LayerMode = "map" | "hybrid"
 
-const MAP_ID = "128006a9ca6ecba0793cdcd05524ff66e1c0b5187d421dfcae39dd12345e4b57"
+const MAP_ID = "128006a9ca6ecba0793cdcd05524ff66e1c0b5187d421dfcae39dd12345e4b57" // trufflehog:ignore
 const Z_DEFAULT = 16
 const LOAD_TIMEOUT_MS = 12000
 

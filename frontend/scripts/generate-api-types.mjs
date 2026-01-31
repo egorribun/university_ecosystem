@@ -60,9 +60,24 @@ async function loadSchema(input) {
   return JSON.parse(contents)
 }
 
+function sortKeys(obj) {
+  if (Array.isArray(obj)) {
+    return obj.map(sortKeys)
+  } else if (obj !== null && typeof obj === "object") {
+    return Object.keys(obj)
+      .sort()
+      .reduce((acc, key) => {
+        acc[key] = sortKeys(obj[key])
+        return acc
+      }, {})
+  }
+  return obj
+}
+
 async function main() {
   const schema = await loadSchema(source)
-  const ast = await openapiTS(schema)
+  const sortedSchema = sortKeys(schema)
+  const ast = await openapiTS(sortedSchema)
   const output = astToString(ast)
 
   const outputDir = path.resolve(__dirname, "..", "src", "api", "generated")

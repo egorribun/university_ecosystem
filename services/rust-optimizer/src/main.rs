@@ -43,7 +43,7 @@ impl OptimizerService for MyOptimizer {
 
         let conflicts = req.existing
             .into_iter()
-            .filter(|item| has_conflict_proto(&target, item))
+            .filter(|item| check_conflict_proto(&target, item))
             .collect();
 
         Ok(Response::new(DetectConflictsResponse { conflicts }))
@@ -63,7 +63,7 @@ impl OptimizerService for MyOptimizer {
             .flat_map(|(i, a)| {
                 items[i + 1..]
                     .par_iter()
-                    .filter(move |b| has_conflict_proto(a, b))
+                    .filter(move |b| check_conflict_proto(a, b))
                     .map(move |b| optimizer::batch_detect_conflicts_response::ConflictPair {
                         item_a: Some(a.clone()),
                         item_b: Some(b.clone()),
@@ -110,7 +110,7 @@ impl OptimizerService for MyOptimizer {
                     teacher: "Auto".to_string(),
                 };
 
-                if !existing.iter().any(|item| has_conflict_proto(&candidate, item)) {
+                if !existing.iter().any(|item| check_conflict_proto(&candidate, item)) {
                     return Ok(Response::new(FindOptimalSlotResponse {
                         suggested_slot: Some(candidate),
                         status: "FOUND".to_string(),
@@ -127,7 +127,7 @@ impl OptimizerService for MyOptimizer {
 }
 
 // Helper to convert proto ScheduleItem to internal logic
-fn has_conflict_proto(a: &ScheduleItem, b: &ScheduleItem) -> bool {
+fn check_conflict_proto(a: &ScheduleItem, b: &ScheduleItem) -> bool {
     if a.weekday != b.weekday {
         return false;
     }

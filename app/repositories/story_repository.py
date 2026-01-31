@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.stories import Story
@@ -26,11 +26,9 @@ class StoryRepository(BaseRepository[Story, dict, dict]):
         result = await self.db.execute(
             select(Story)
             .where(
-                and_(
-                    Story.is_active.is_(True),
-                    Story.expires_at > now,
-                    Story.published_at <= now,
-                )
+                Story.is_active.is_(True),
+                Story.expires_at > now,
+                Story.published_at <= now,
             )
             .order_by(Story.published_at.desc())
             .offset(skip)
@@ -56,10 +54,8 @@ class StoryRepository(BaseRepository[Story, dict, dict]):
         now = datetime.now(UTC)
         result = await self.db.execute(
             select(func.count(Story.id)).where(
-                and_(
-                    Story.is_active.is_(True),
-                    Story.expires_at > now,
-                )
+                Story.is_active.is_(True),
+                Story.expires_at > now,
             )
         )
         return result.scalar() or 0

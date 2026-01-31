@@ -11,23 +11,16 @@ from fastapi import (
     Response,
     status,
 )
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import crud
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, get_schedule_service
 from app.api.validation import ensure_exists, require_teacher_or_admin
 from app.core.container import get_schedule_handler
-from app.core.database import get_db
 from app.core.localization import resolve_locale
 from app.cqrs.queries import GetScheduleHandler, GetScheduleQuery
 from app.deps.cache import get_cache
 from app.models import models
 from app.schemas import schemas
-from app.services.schedule_optimizer import (
-    ScheduleItemInternal,
-    ScheduleOptimizerService,
-)
+from app.services.schedule_service import ScheduleService
 
 
 @lru_cache(maxsize=1)
@@ -58,56 +51,21 @@ def _set_schedule_cache_headers(response: Response) -> None:
 async def add_schedule(
     data: schemas.ScheduleCreate,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    service: ScheduleService = Depends(get_schedule_service),
     user: models.User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
     require_teacher_or_admin(user, locale)
 
-    # Conflict check
-    optimizer = ScheduleOptimizerService()
-    existing_group = await crud.get_schedule_by_group(db, data.group_id)
+    from app.api.validation import raise_conflict
+    from app.core.exceptions.domain import BusinessRuleViolation
 
-    # We also need to check by teacher if provided
-    existing_teacher = []
-    if data.teacher:
-        existing_teacher = (
-            (
-                await db.execute(
-                    select(models.Schedule).where(
-                        models.Schedule.teacher == data.teacher
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
+    try:
+        result = await service.create_schedule(data, locale=locale)
+    except BusinessRuleViolation as e:
+        # Map domain exception to API conflict error
+        raise_conflict(str(e), locale, exact_key="errors.schedule.conflict")
 
-    all_existing = list(existing_group) + list(existing_teacher)
-    target = ScheduleItemInternal(
-        weekday=data.weekday,
-        start_time=data.start_time,
-        end_time=data.end_time,
-        parity=data.parity or "both",
-    )
-    existing_items = [
-        ScheduleItemInternal(
-            id=s.id,
-            weekday=s.weekday,
-            start_time=s.start_time,
-            end_time=s.end_time,
-            parity=s.parity,
-        )
-        for s in all_existing
-    ]
-
-    conflicts = await optimizer.detect_conflicts(target, existing_items)
-    if conflicts:
-        from app.api.validation import raise_conflict
-
-        raise_conflict("errors.schedule.conflict", locale)
-
-    result = await crud.create_schedule(db, data)
     cache = get_cache()
     await cache.invalidate(_schedule_cache_key(result.group_id))
     return result
@@ -149,40 +107,48 @@ async def update_schedule(
     schedule_id: int,
     data: schemas.ScheduleUpdate,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    service: ScheduleService = Depends(get_schedule_service),
     user: models.User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
     require_teacher_or_admin(user, locale)
-    sched = await db.get(models.Schedule, schedule_id)
+
+    # We need previous group ID for cache invalidation
+    sched = await service.get_by_id(schedule_id)
     ensure_exists(sched, "schedule", locale)
     previous_group = sched.group_id
-    for field, value in data.model_dump(exclude_unset=True).items():
-        setattr(sched, field, value)
-    await db.commit()
-    await db.refresh(sched)
+
+    try:
+        updated = await service.update_schedule(schedule_id, data)
+    except ValueError:
+        ensure_exists(None, "schedule", locale)  # Will raise 404
+
     cache = get_cache()
     await cache.invalidate(
         _schedule_cache_key(previous_group),
-        _schedule_cache_key(sched.group_id),
+        _schedule_cache_key(updated.group_id),
     )
-    return sched
+    return updated
 
 
 @router.delete("/{schedule_id}", response_model=dict)
 async def delete_schedule(
     schedule_id: int,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    service: ScheduleService = Depends(get_schedule_service),
     user: models.User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
     require_teacher_or_admin(user, locale)
-    sched = await db.get(models.Schedule, schedule_id)
+
+    sched = await service.get_by_id(schedule_id)
     ensure_exists(sched, "schedule", locale)
     group_id = sched.group_id
-    await db.delete(sched)
-    await db.commit()
+
+    deleted = await service.delete_schedule(schedule_id)
+    if not deleted:
+        ensure_exists(None, "schedule", locale)
+
     cache = get_cache()
     await cache.invalidate(_schedule_cache_key(group_id))
     return {"ok": True}

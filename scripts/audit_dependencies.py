@@ -136,10 +136,11 @@ def audit_npm(args: argparse.Namespace, allowlist: dict[str, Any]) -> None:
     check_allowances(advisories, allowed, ecosystem="npm")
 
 
-def collect_pip_advisories(requirements: list[str]) -> set[str]:
+def collect_pip_advisories(requirements: list[str] | None) -> set[str]:
     cmd = ["pip-audit", "--format=json"]
-    for req_file in requirements:
-        cmd.extend(["-r", req_file])
+    if requirements:
+        for req_file in requirements:
+            cmd.extend(["-r", req_file])
 
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode not in (0, 1):
