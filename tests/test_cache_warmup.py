@@ -47,9 +47,10 @@ async def test_warm_schedule_group():
         patch("app.services.schedule_optimizer.ScheduleOptimizerService"),
     ):
         mock_service_instance = MockService.return_value
-        # Mock objects often behave like dicts if configured, but model_validate expects obj or dict.
-        # If model_validate(obj), it tries getattr.
+        # Mock objects often behave like dicts if configured, but model_validate
+        # expects obj or dict. If model_validate(obj), it tries getattr.
         # Let's return a Mock that has these attributes.
+
         mock_item = MagicMock()
         mock_item.subject = "Math"
         mock_item.teacher = "Doe"
