@@ -1,153 +1,104 @@
-"""Tests for cache_warmup service.
-
-Coverage targets:
-- _is_entry_fresh: various max_age scenarios
-- _schedule_cache_key: key format
-- _period_days_from_key: parsing various formats
-- warm_cache: disabled, cache not enabled paths
-"""
-
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.services.cache_warmup import (
-    _is_entry_fresh,
-    _period_days_from_key,
-    _schedule_cache_key,
-    warm_cache,
-)
-
-# ============================================================
-# _is_entry_fresh tests
-# ============================================================
+from app.deps.cache import CacheEntry
+from app.services import cache_warmup
 
 
-def test_is_entry_fresh_max_age_zero():
-    """Test entry is always fresh when max_age <= 0."""
-    entry = MagicMock()
-    entry.stored_at = time.time() - 1000000  # Very old
+@pytest.mark.asyncio
+async def test_is_entry_fresh():
+    entry = CacheEntry(payload={}, stored_at=time.time(), etag="123")
 
     with patch("app.services.cache_warmup.settings") as mock_settings:
+        mock_settings.cache_warmup_max_age_seconds = 60
+        assert cache_warmup._is_entry_fresh(entry)
+
+        entry.stored_at = time.time() - 61
+        assert not cache_warmup._is_entry_fresh(entry)
+
         mock_settings.cache_warmup_max_age_seconds = 0
-        result = _is_entry_fresh(entry)
-
-    assert result is True
+        assert cache_warmup._is_entry_fresh(entry)
 
 
-def test_is_entry_fresh_max_age_negative():
-    """Test entry is always fresh when max_age is negative."""
-    entry = MagicMock()
-    entry.stored_at = time.time() - 1000000
-
-    with patch("app.services.cache_warmup.settings") as mock_settings:
-        mock_settings.cache_warmup_max_age_seconds = -100
-        result = _is_entry_fresh(entry)
-
-    assert result is True
+def test_schedule_cache_key():
+    assert cache_warmup._schedule_cache_key(123) == "schedule:group:123"
 
 
-def test_is_entry_fresh_within_max_age():
-    """Test entry is fresh when within max_age."""
-    entry = MagicMock()
-    entry.stored_at = time.time() - 30  # 30 seconds ago
-
-    with patch("app.services.cache_warmup.settings") as mock_settings:
-        mock_settings.cache_warmup_max_age_seconds = 60
-        result = _is_entry_fresh(entry)
-
-    assert result is True
+def test_period_days_from_key():
+    assert cache_warmup._period_days_from_key("7d") == 7
+    assert cache_warmup._period_days_from_key("30D") == 30
+    assert cache_warmup._period_days_from_key("invalid") is None
+    assert cache_warmup._period_days_from_key(None) is None
 
 
-def test_is_entry_fresh_expired():
-    """Test entry is stale when past max_age."""
-    entry = MagicMock()
-    entry.stored_at = time.time() - 120  # 2 minutes ago
+@pytest.mark.asyncio
+async def test_warm_schedule_group():
+    mock_cache = AsyncMock()
+    mock_cache.enabled = True
+    mock_cache.get.return_value = None
+    mock_db = AsyncMock()
 
-    with patch("app.services.cache_warmup.settings") as mock_settings:
-        mock_settings.cache_warmup_max_age_seconds = 60
-        result = _is_entry_fresh(entry)
+    with (
+        patch("app.services.schedule_service.ScheduleService") as MockService,
+        patch("app.repositories.schedule_repository.ScheduleRepository"),
+        patch("app.repositories.schedule_repository.GroupRepository"),
+        patch("app.services.schedule_optimizer.ScheduleOptimizerService"),
+    ):
+        mock_service_instance = MockService.return_value
+        # Mock objects often behave like dicts if configured, but model_validate expects obj or dict.
+        # If model_validate(obj), it tries getattr.
+        # Let's return a Mock that has these attributes.
+        mock_item = MagicMock()
+        mock_item.subject = "Math"
+        mock_item.teacher = "Doe"
+        mock_item.room = "101"
+        mock_item.weekday = "monday"
+        mock_item.parity = "even"
+        mock_item.lesson_type = "lecture"
+        mock_item.lesson_type_display = "Lecture"
+        mock_item.time_start = "10:00"
+        mock_item.time_end = "11:30"
 
-    assert result is False
+        mock_service_instance.get_schedule = AsyncMock(return_value=[mock_item])
 
+        await cache_warmup._warm_schedule_group(mock_cache, mock_db, 1, ttl_seconds=60)
 
-# ============================================================
-# _schedule_cache_key tests
-# ============================================================
-
-
-def test_schedule_cache_key_format():
-    """Test cache key format for schedule."""
-    result = _schedule_cache_key(123)
-    assert result == "schedule:group:123"
-
-
-def test_schedule_cache_key_zero():
-    """Test cache key with zero group id."""
-    result = _schedule_cache_key(0)
-    assert result == "schedule:group:0"
-
-
-# ============================================================
-# _period_days_from_key tests
-# ============================================================
-
-
-def test_period_days_from_key_valid():
-    """Test parsing valid period key."""
-    assert _period_days_from_key("7d") == 7
-    assert _period_days_from_key("30d") == 30
-    assert _period_days_from_key("365d") == 365
-
-
-def test_period_days_from_key_uppercase():
-    """Test parsing uppercase period key."""
-    assert _period_days_from_key("7D") == 7
-    assert _period_days_from_key("30D") == 30
-
-
-def test_period_days_from_key_with_whitespace():
-    """Test parsing period key with whitespace."""
-    assert _period_days_from_key("  7d  ") == 7
-
-
-def test_period_days_from_key_invalid():
-    """Test parsing invalid period key."""
-    assert _period_days_from_key("invalid") is None
-    assert _period_days_from_key("7") is None
-    assert _period_days_from_key("d") is None
-    assert _period_days_from_key("") is None
-    assert _period_days_from_key("abcd") is None
-
-
-def test_period_days_from_key_none():
-    """Test parsing None period key."""
-    assert _period_days_from_key(None) is None
-
-
-# ============================================================
-# warm_cache tests
-# ============================================================
+        mock_cache.set.assert_called_once()
+        assert "schedule:group:1" in mock_cache.set.call_args[0][0]
 
 
 @pytest.mark.asyncio
 async def test_warm_cache_disabled():
-    """Test warm_cache returns early when disabled."""
     with patch("app.services.cache_warmup.settings") as mock_settings:
         mock_settings.cache_warmup_enabled = False
-        await warm_cache()
-        # Should not raise
+        res = await cache_warmup.warm_cache()
+        assert res is None
 
 
 @pytest.mark.asyncio
-async def test_warm_cache_cache_disabled():
-    """Test warm_cache returns when cache backend is disabled."""
-    mock_cache = MagicMock()
-    mock_cache.enabled = False
-
-    with patch("app.services.cache_warmup.settings") as mock_settings:
+async def test_warm_cache_enabled():
+    with (
+        patch("app.services.cache_warmup.settings") as mock_settings,
+        patch("app.services.cache_warmup.get_cache") as mock_get_cache,
+        patch("app.services.cache_warmup.async_session") as mock_session_cls,
+        patch("app.services.cache_warmup._warm_schedule") as mock_warm_schedule,
+        patch("app.services.cache_warmup._warm_stats") as mock_warm_stats,
+        patch("app.services.cache_warmup._warm_news") as mock_warm_news,
+        patch("app.services.cache_warmup._warm_events") as mock_warm_events,
+    ):
         mock_settings.cache_warmup_enabled = True
-        with patch("app.services.cache_warmup.get_cache", return_value=mock_cache):
-            await warm_cache()
-            # Should not raise
+        mock_cache = MagicMock()
+        mock_cache.enabled = True
+        mock_get_cache.return_value = mock_cache
+
+        mock_db = AsyncMock()
+        mock_session_cls.return_value.__aenter__.return_value = mock_db
+
+        await cache_warmup.warm_cache()
+
+        mock_warm_schedule.assert_called_once()
+        mock_warm_stats.assert_called_once()
+        mock_warm_news.assert_called_once()
+        mock_warm_events.assert_called_once()

@@ -50,41 +50,9 @@ class UserProfileService:
                 raise EntityAlreadyExists("User", validated_email)
             update_fields["email"] = validated_email
 
-        preferences_fields = {"dnd_enabled", "dnd_start", "dnd_end", "timezone"}
-        profile_fields = {
-            "about",
-            "telegram",
-            "status",
-            "achievements",
-            "position",
-            "department",
-        }
-        education_fields = {
-            "institute",
-            "course",
-            "education_level",
-            "track",
-            "program",
-            "record_book_number",
-        }
+        from app.services.user.logic import update_user_attributes
 
-        for field, value in update_fields.items():
-            if field in preferences_fields:
-                if not db_user.preferences:
-                    db_user.preferences = models.UserPreferences(user_id=db_user.id)
-                setattr(db_user.preferences, field, value)
-            elif field in profile_fields:
-                if not db_user.profile_detail:
-                    db_user.profile_detail = models.UserProfileDetail(
-                        user_id=db_user.id
-                    )
-                setattr(db_user.profile_detail, field, value)
-            elif field in education_fields:
-                if not db_user.education_path:
-                    db_user.education_path = models.EducationPath(user_id=db_user.id)
-                setattr(db_user.education_path, field, value)
-            else:
-                setattr(db_user, field, value)
+        update_user_attributes(db_user, update_fields)
 
         await self.db.commit()
         await self.db.refresh(db_user)

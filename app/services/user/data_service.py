@@ -13,7 +13,6 @@ from app.schemas import schemas
 from app.services.audit_service import AuditService
 from app.services.auth_service import attach_pending_email
 from app.services.data_access import export_access_logs, log_data_access
-from app.utils.files import delete_static_file
 
 logger = logging.getLogger(__name__)
 
@@ -140,30 +139,11 @@ class UserDataService:
         db_user = await self.repo.get(user.id)
         if not db_user:
             raise EntityNotFound("User", user.id)
-        anonymized_email = f"deleted+{user.id}@deleted.example.com"
 
-        await delete_static_file(db_user.avatar_url) if db_user.avatar_url else None
-        await delete_static_file(db_user.cover_url) if db_user.cover_url else None
+        from app.services.user.logic import anonymize_user_data
 
-        db_user.full_name = None
-        db_user.email = anonymized_email
-        db_user.avatar_url = None
-        db_user.cover_url = None
-        db_user.about = None
-        db_user.telegram = None
-        db_user.achievements = None
-        db_user.record_book_number = None
-        db_user.hashed_password = "deleted"
-        db_user.is_active = False
-        db_user.status = "deleted"
-        db_user.mfa_required = False
-        db_user.mfa_default_method = None
-        db_user.mfa_last_verified_at = None
-
+        anonymized_email = await anonymize_user_data(db_user)
         await self.repo.delete_sensitive_data(user.id)
-
-        db_user.preferences = None
-        db_user.spotify = None
 
         self.audit.log("users.data_delete", request, user_id=user.id)
         await log_data_access(

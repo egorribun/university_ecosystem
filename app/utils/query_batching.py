@@ -142,7 +142,7 @@ class QueryBatcher:
         items = await batch_load_ids(
             self._session,
             self._model,
-            self._pending_ids,
+            self._pending_ids[:],
             id_column=self._id_column,
         )
 

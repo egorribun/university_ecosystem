@@ -18,7 +18,6 @@ from app.schemas import schemas
 from app.services.audit_service import AuditService
 from app.services.auth_service import attach_pending_email
 from app.services.notification_service import NotificationService
-from app.utils.files import delete_static_file
 
 logger = logging.getLogger(__name__)
 
@@ -75,15 +74,9 @@ class UserAdminService:
             payload["email"] = str(payload["email"]).strip().lower()
 
         # Update fields
-        preferences_fields = {"dnd_enabled", "dnd_start", "dnd_end", "timezone"}
+        from app.services.user.logic import update_user_attributes
 
-        for field, value in payload.items():
-            if field in preferences_fields:
-                if not db_user.preferences:
-                    db_user.preferences = models.UserPreferences(user_id=db_user.id)
-                setattr(db_user.preferences, field, value)
-            else:
-                setattr(db_user, field, value)
+        update_user_attributes(db_user, payload)
 
         reset_stats = None
         if reset_requested:
@@ -136,30 +129,11 @@ class UserAdminService:
         if db_user.id == current_user.id:
             raise BusinessRuleViolation("errors.users.cannot_delete_self")
 
-        anonymized_email = f"deleted+{db_user.id}@deleted.example.com"
+        from app.services.user.logic import anonymize_user_data
 
-        await delete_static_file(db_user.avatar_url) if db_user.avatar_url else None
-        await delete_static_file(db_user.cover_url) if db_user.cover_url else None
-
-        db_user.full_name = None
-        db_user.email = anonymized_email
-        db_user.avatar_url = None
-        db_user.cover_url = None
-        db_user.about = None
-        db_user.telegram = None
-        db_user.achievements = None
-        db_user.record_book_number = None
-        db_user.hashed_password = "deleted"
-        db_user.is_active = False
-        db_user.status = "deleted"
-        db_user.mfa_required = False
-        db_user.mfa_default_method = None
-        db_user.mfa_last_verified_at = None
+        await anonymize_user_data(db_user)
 
         await self.repo.delete_sensitive_data(user_id)
-
-        db_user.preferences = None
-        db_user.spotify = None
 
         self.audit.log(
             "users.admin_delete", request, user_id=user_id, reason="admin_delete"

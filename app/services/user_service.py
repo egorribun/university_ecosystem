@@ -29,6 +29,7 @@ from app.services.audit_service import AuditService
 from app.services.auth_service import attach_pending_email
 from app.services.data_access import export_access_logs, log_data_access
 from app.services.notification_service import NotificationService
+from app.services.user.logic import anonymize_user_data, update_user_attributes
 from app.utils.files import delete_static_file
 
 logger = logging.getLogger(__name__)
@@ -72,41 +73,8 @@ class UserService:
             update_fields["email"] = validated_email
 
         # ... (keeping complex mapping logic in service for now as it's business-heavy)
-        preferences_fields = {"dnd_enabled", "dnd_start", "dnd_end", "timezone"}
-        profile_fields = {
-            "about",
-            "telegram",
-            "status",
-            "achievements",
-            "position",
-            "department",
-        }
-        education_fields = {
-            "institute",
-            "course",
-            "education_level",
-            "track",
-            "program",
-            "record_book_number",
-        }
 
-        for field, value in update_fields.items():
-            if field in preferences_fields:
-                if not db_user.preferences:
-                    db_user.preferences = models.UserPreferences(user_id=db_user.id)
-                setattr(db_user.preferences, field, value)
-            elif field in profile_fields:
-                if not db_user.profile_detail:
-                    db_user.profile_detail = models.UserProfileDetail(
-                        user_id=db_user.id
-                    )
-                setattr(db_user.profile_detail, field, value)
-            elif field in education_fields:
-                if not db_user.education_path:
-                    db_user.education_path = models.EducationPath(user_id=db_user.id)
-                setattr(db_user.education_path, field, value)
-            else:
-                setattr(db_user, field, value)
+        update_user_attributes(db_user, update_fields)
 
         await self.db.commit()
         await self.db.refresh(db_user)
@@ -154,15 +122,8 @@ class UserService:
             payload["email"] = str(payload["email"]).strip().lower()
 
         # Update fields logic matching crud
-        preferences_fields = {"dnd_enabled", "dnd_start", "dnd_end", "timezone"}
 
-        for field, value in payload.items():
-            if field in preferences_fields:
-                if not db_user.preferences:
-                    db_user.preferences = models.UserPreferences(user_id=db_user.id)
-                setattr(db_user.preferences, field, value)
-            else:
-                setattr(db_user, field, value)
+        update_user_attributes(db_user, payload)
 
         reset_stats = None
         if reset_requested:
@@ -220,30 +181,7 @@ class UserService:
         if db_user.id == current_user.id:
             raise BusinessRuleViolation("errors.users.cannot_delete_self")
 
-        anonymized_email = f"deleted+{db_user.id}@deleted.example.com"
-
-        await delete_static_file(db_user.avatar_url) if db_user.avatar_url else None
-        await delete_static_file(db_user.cover_url) if db_user.cover_url else None
-
-        db_user.full_name = None
-        db_user.email = anonymized_email
-        db_user.avatar_url = None
-        db_user.cover_url = None
-        db_user.about = None
-        db_user.telegram = None
-        db_user.achievements = None
-        db_user.record_book_number = None
-        db_user.hashed_password = "deleted"
-        db_user.is_active = False
-        db_user.status = "deleted"
-        db_user.mfa_required = False
-        db_user.mfa_default_method = None
-        db_user.mfa_last_verified_at = None
-
-        await self.repo.delete_sensitive_data(user_id)
-
-        db_user.preferences = None
-        db_user.spotify = None
+        await anonymize_user_data(db_user)
 
         self.audit.log(
             "users.admin_delete", request, user_id=user_id, reason="admin_delete"
@@ -396,30 +334,9 @@ class UserService:
         db_user = await self.repo.get(user.id)
         if not db_user:
             raise EntityNotFound("User", user.id)
-        anonymized_email = f"deleted+{user.id}@deleted.example.com"
 
-        await delete_static_file(db_user.avatar_url) if db_user.avatar_url else None
-        await delete_static_file(db_user.cover_url) if db_user.cover_url else None
-
-        db_user.full_name = None
-        db_user.email = anonymized_email
-        db_user.avatar_url = None
-        db_user.cover_url = None
-        db_user.about = None
-        db_user.telegram = None
-        db_user.achievements = None
-        db_user.record_book_number = None
-        db_user.hashed_password = "deleted"
-        db_user.is_active = False
-        db_user.status = "deleted"
-        db_user.mfa_required = False
-        db_user.mfa_default_method = None
-        db_user.mfa_last_verified_at = None
-
+        await anonymize_user_data(db_user)
         await self.repo.delete_sensitive_data(user.id)
-
-        db_user.preferences = None
-        db_user.spotify = None
 
         self.audit.log("users.data_delete", request, user_id=user.id)
         await log_data_access(
@@ -434,7 +351,7 @@ class UserService:
 
         await self.db.commit()
         await self.db.refresh(db_user)
-        return schemas.DataDeletionOut(deleted=True, anonymized_email=anonymized_email)
+        return schemas.DataDeletionOut(deleted=True, anonymized_email=db_user.email)
 
     async def register_user(
         self,
