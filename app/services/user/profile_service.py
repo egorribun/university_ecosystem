@@ -41,14 +41,11 @@ class UserProfileService:
         update_fields = data.model_dump(exclude_unset=True)
 
         if "email" in update_fields and update_fields["email"] is not None:
-            validated_email = str(update_fields["email"]).strip().lower()
-            if await self.repo.check_email_exists(
-                validated_email, exclude_user_id=user.id
-            ):
-                from app.core.exceptions.domain import EntityAlreadyExists
+            from app.services.user.logic import validate_user_email
 
-                raise EntityAlreadyExists("User", validated_email)
-            update_fields["email"] = validated_email
+            update_fields["email"] = await validate_user_email(
+                self.repo, update_fields["email"], exclude_user_id=user.id
+            )
 
         from app.services.user.logic import update_user_attributes
 
@@ -85,40 +82,36 @@ class UserProfileService:
         user: models.User,
         file: UploadFile,
     ) -> models.User:
-        db_user = await self.repo.get(user.id)
-        if not db_user:
-            raise EntityNotFound("User", user.id)
-
-        file_url = await save_upload(file, "avatars", f"user_{user.id}_avatar")
-
-        if db_user.avatar_url:
-            await delete_static_file(db_user.avatar_url)
-
-        db_user.avatar_url = file_url
-        try:
-            await self.db.commit()
-            await self.db.refresh(db_user)
-        except Exception:
-            await self.db.rollback()
-            await delete_static_file(file_url)
-            raise
-        return db_user
+        return await self._upload_image(
+            user.id, file, "avatars", "avatar", "avatar_url"
+        )
 
     async def upload_cover(
         self,
         user: models.User,
         file: UploadFile,
     ) -> models.User:
-        db_user = await self.repo.get(user.id)
+        return await self._upload_image(user.id, file, "covers", "cover", "cover_url")
+
+    async def _upload_image(
+        self,
+        user_id: int,
+        file: UploadFile,
+        folder: str,
+        suffix: str,
+        attr_name: str,
+    ) -> models.User:
+        db_user = await self.repo.get(user_id)
         if not db_user:
-            raise EntityNotFound("User", user.id)
+            raise EntityNotFound("User", user_id)
 
-        file_url = await save_upload(file, "covers", f"user_{user.id}_cover")
+        file_url = await save_upload(file, folder, f"user_{user_id}_{suffix}")
 
-        if db_user.cover_url:
-            await delete_static_file(db_user.cover_url)
+        old_url = getattr(db_user, attr_name)
+        if old_url:
+            await delete_static_file(old_url)
 
-        db_user.cover_url = file_url
+        setattr(db_user, attr_name, file_url)
         try:
             await self.db.commit()
             await self.db.refresh(db_user)

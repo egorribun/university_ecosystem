@@ -71,7 +71,11 @@ class UserAdminService:
         reset_requested = bool(payload.pop("reset_mfa", False))
 
         if "email" in payload and payload["email"] is not None:
-            payload["email"] = str(payload["email"]).strip().lower()
+            from app.services.user.logic import validate_user_email
+
+            payload["email"] = await validate_user_email(
+                self.repo, payload["email"], exclude_user_id=user_id
+            )
 
         # Update fields
         from app.services.user.logic import update_user_attributes
@@ -129,11 +133,9 @@ class UserAdminService:
         if db_user.id == current_user.id:
             raise BusinessRuleViolation("errors.users.cannot_delete_self")
 
-        from app.services.user.logic import anonymize_user_data
+        from app.services.user.logic import execute_user_anonymization
 
-        await anonymize_user_data(db_user)
-
-        await self.repo.delete_sensitive_data(user_id)
+        await execute_user_anonymization(self.repo, db_user)
 
         self.audit.log(
             "users.admin_delete", request, user_id=user_id, reason="admin_delete"

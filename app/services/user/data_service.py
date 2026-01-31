@@ -140,10 +140,9 @@ class UserDataService:
         if not db_user:
             raise EntityNotFound("User", user.id)
 
-        from app.services.user.logic import anonymize_user_data
+        from app.services.user.logic import execute_user_anonymization
 
-        anonymized_email = await anonymize_user_data(db_user)
-        await self.repo.delete_sensitive_data(user.id)
+        anonymized_email = await execute_user_anonymization(self.repo, db_user)
 
         self.audit.log("users.data_delete", request, user_id=user.id)
         await log_data_access(

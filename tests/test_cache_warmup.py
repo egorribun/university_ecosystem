@@ -103,3 +103,57 @@ async def test_warm_cache_enabled():
         mock_warm_stats.assert_called_once()
         mock_warm_news.assert_called_once()
         mock_warm_events.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_warm_stats_for_user():
+    mock_cache = AsyncMock()
+    mock_cache.enabled = True
+    mock_cache.get.return_value = None
+    mock_db = AsyncMock()
+
+    with (
+        patch(
+            "app.services.cache_warmup.stats_cache.get_cached_stats", return_value=None
+        ),
+        patch("app.services.user_service.UserService") as MockUserService,
+        patch("app.repositories.user_repository.UserRepository"),
+        patch("app.services.notification_service.NotificationService"),
+    ):
+        mock_service = MockUserService.return_value
+        mock_service.get_attendance_stats = AsyncMock()
+        mock_service.get_grade_stats = AsyncMock()
+        mock_service.get_participation_stats = AsyncMock()
+
+        await cache_warmup._warm_stats_for_user(mock_cache, mock_db, 1, "7d")
+
+        mock_service.get_attendance_stats.assert_called_once()
+        mock_service.get_grade_stats.assert_called_once()
+        mock_service.get_participation_stats.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_warm_news():
+    mock_cache = AsyncMock()
+    mock_cache.enabled = True
+    mock_cache.get.return_value = None
+    mock_db = AsyncMock()
+
+    with (
+        patch(
+            "app.api.news._get_news_list_version",
+            AsyncMock(return_value="v1"),
+        ),
+        patch("app.core.container.get_vector_service"),
+        patch("app.repositories.news_repository.NewsRepository"),
+        patch("app.services.news_service.NewsService") as MockNewsService,
+    ):
+        mock_service = MockNewsService.return_value
+        # results: list of (news_obj, l_count, c_count, liked)
+        mock_news = MagicMock()
+        mock_service.list_news = AsyncMock(return_value=[(mock_news, 1, 1, False)])
+        mock_service.serialize_news = MagicMock(return_value={})
+
+        await cache_warmup._warm_news(mock_cache, mock_db)
+
+        assert mock_cache.set.call_count >= 1

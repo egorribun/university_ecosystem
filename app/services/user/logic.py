@@ -1,5 +1,7 @@
-from app.core.constants import DELETED_PASSWORD_HASH
+from app.core.constants import ANONYMIZED_USER_CREDENTIAL
+from app.core.exceptions.domain import EntityAlreadyExists
 from app.models import models
+from app.repositories.user_repository import UserRepository
 from app.utils.files import delete_static_file
 
 
@@ -56,7 +58,7 @@ async def anonymize_user_data(user: models.User) -> str:
     user.email = anonymized_email
     user.avatar_url = None
     user.cover_url = None
-    user.hashed_password = DELETED_PASSWORD_HASH
+    user.hashed_password = ANONYMIZED_USER_CREDENTIAL
     user.is_active = False
     user.status = "deleted"
     user.mfa_required = False
@@ -73,4 +75,21 @@ async def anonymize_user_data(user: models.User) -> str:
     user.achievements = None
     user.record_book_number = None
 
+    return anonymized_email
+
+
+async def validate_user_email(
+    repo: UserRepository, email: str, exclude_user_id: int | None = None
+) -> str:
+    """Validate email and check for uniqueness."""
+    validated_email = str(email).strip().lower()
+    if await repo.check_email_exists(validated_email, exclude_user_id=exclude_user_id):
+        raise EntityAlreadyExists("User", validated_email)
+    return validated_email
+
+
+async def execute_user_anonymization(repo: UserRepository, user: models.User) -> str:
+    """Perform full anonymization and sensitive data deletion."""
+    anonymized_email = await anonymize_user_data(user)
+    await repo.delete_sensitive_data(user.id)
     return anonymized_email
