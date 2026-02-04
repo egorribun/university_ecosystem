@@ -23,8 +23,7 @@ export function createStory(payload: StoryCreatePayload) {
 export const updateStory = (id: string, data: Partial<StoryCreatePayload>) =>
   axios.patch<StoryResponse>(`/stories/${id}`, data)
 
-export const deleteStory = (id: string) =>
-  axios.delete<DeleteStoryResponse>(`/stories/${id}`)
+export const deleteStory = (id: string) => axios.delete<DeleteStoryResponse>(`/stories/${id}`)
 
 export function uploadStoryCover(file: File) {
   const data = new FormData()

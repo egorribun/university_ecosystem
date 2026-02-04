@@ -492,7 +492,8 @@ const EventDetail = () => {
                 </h3>
                 <div className="space-y-2">
                   {optimisticFiles.map((f) => {
-                    const isPendingFile = f.pending === true || f.id.toString().startsWith("pending-")
+                    const isPendingFile =
+                      f.pending === true || f.id.toString().startsWith("pending-")
                     const fallbackName = f.file_url.split("/").pop() || f.file_url
                     const fileLabel = f.description || fallbackName
                     return (
@@ -722,7 +723,8 @@ const EventDetail = () => {
                 </h3>
                 <div className="space-y-2">
                   {optimisticFiles.map((f) => {
-                    const isPendingFile = f.pending === true || f.id.toString().startsWith("pending-")
+                    const isPendingFile =
+                      f.pending === true || f.id.toString().startsWith("pending-")
                     const fallbackName = f.file_url.split("/").pop() || f.file_url
                     const fileLabel = f.description || fallbackName
                     return (

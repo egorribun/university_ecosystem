@@ -140,7 +140,7 @@ const createMfaChallenge = ({
   return {
     status: "mfa_required",
     user_id: testUser.id,
-    session_id: typeof sessionId === 'number' ? `session-${sessionId}` : sessionId,
+    session_id: typeof sessionId === "number" ? `session-${sessionId}` : sessionId,
     default_method: defaultMethod,
     methods,
     challenges: methods,
