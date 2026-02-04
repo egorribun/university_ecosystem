@@ -106,7 +106,7 @@ func (m *JWTMiddleware) ListenForRevocations(ctx context.Context) {
 	ch := pubsub.Channel()
 
 	go func() {
-		defer pubsub.Close()
+		defer func() { _ = pubsub.Close() }()
 		for {
 			select {
 			case <-ctx.Done():

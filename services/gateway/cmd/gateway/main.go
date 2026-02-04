@@ -112,7 +112,7 @@ func main() {
 			if err != nil {
 				return err
 			}
-			r.Body.Close()
+			_ = r.Body.Close()
 
 			var data map[string]interface{}
 			if err := json.Unmarshal(body, &data); err != nil {
