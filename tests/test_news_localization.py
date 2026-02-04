@@ -48,18 +48,18 @@ async def test_news_localization_preference(async_client, db_session):
     response_ru = await async_client.get("/news", headers={"Accept-Language": "ru"})
     assert response_ru.status_code == 200
     data_ru = {item["id"]: item for item in response_ru.json()["items"]}
-    assert data_ru[primary.id]["title"] == "Новость дня"
-    assert data_ru[primary.id]["content"] == "Русский текст"
-    assert data_ru[primary.id]["title_en"] == "Daily News"
-    assert data_ru[primary.id]["content_en"] == "English text"
+    assert data_ru[str(primary.id)]["title"] == "Новость дня"
+    assert data_ru[str(primary.id)]["content"] == "Русский текст"
+    assert data_ru[str(primary.id)]["title_en"] == "Daily News"
+    assert data_ru[str(primary.id)]["content_en"] == "English text"
 
     response_en = await async_client.get("/news", headers={"Accept-Language": "en"})
     assert response_en.status_code == 200
     data_en = {item["id"]: item for item in response_en.json()["items"]}
-    assert data_en[primary.id]["title"] == "Daily News"
-    assert data_en[primary.id]["content"] == "English text"
-    assert data_en[fallback.id]["title"] == "Только русский"
-    assert data_en[fallback.id]["content"] == "Контент без перевода"
+    assert data_en[str(primary.id)]["title"] == "Daily News"
+    assert data_en[str(primary.id)]["content"] == "English text"
+    assert data_en[str(fallback.id)]["title"] == "Только русский"
+    assert data_en[str(fallback.id)]["content"] == "Контент без перевода"
 
     detail_en = await async_client.get(
         f"/news/{primary.id}", headers={"Accept-Language": "en"}

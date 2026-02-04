@@ -1,7 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -15,8 +19,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redis/go-redis/extra/redisprometheus/v9"
+	"github.com/redis/go-redis/v9"
 	ginprometheus "github.com/zsais/go-gin-prometheus"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/getsentry/sentry-go"
 	sentrygin "github.com/getsentry/sentry-go/gin"
@@ -37,8 +43,16 @@ import (
 )
 
 func main() {
-	// Initialize logger
-	logger, _ := zap.NewProduction()
+	// Initialize standardized logger
+	encoderConfig := zap.NewProductionEncoderConfig()
+	encoderConfig.TimeKey = "timestamp"
+	encoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	encoderConfig.MessageKey = "message"
+
+	zapConfig := zap.NewProductionConfig()
+	zapConfig.EncoderConfig = encoderConfig
+
+	logger, _ := zapConfig.Build(zap.Fields(zap.String("service", "gateway")))
 	defer func() {
 		_ = logger.Sync()
 	}()
@@ -88,6 +102,51 @@ func main() {
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		logger.Error("Proxy error", zap.Error(err), zap.String("path", r.URL.Path))
 		w.WriteHeader(http.StatusBadGateway)
+	}
+
+	// BFF Logic: Intercept login/refresh to set cookies
+	proxy.ModifyResponse = func(r *http.Response) error {
+		if (r.Request.URL.Path == "/api/v1/auth/login" || r.Request.URL.Path == "/api/v1/auth/refresh") && r.StatusCode == http.StatusOK {
+			// Read body
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				return err
+			}
+			r.Body.Close()
+
+			var data map[string]interface{}
+			if err := json.Unmarshal(body, &data); err != nil {
+				// Restore body and return if not JSON
+				r.Body = io.NopCloser(bytes.NewBuffer(body))
+				return nil
+			}
+
+			if token, ok := data["access_token"].(string); ok {
+				// Set cookie
+				cookie := &http.Cookie{
+					Name:     "access_token",
+					Value:    token,
+					Path:     "/",
+					HttpOnly: true,
+					Secure:   cfg.Environment != "development", // Use Secure in production
+					SameSite: http.SameSiteStrictMode,
+					MaxAge:   3600, // 1 hour (align with Python token TTL)
+				}
+				r.Header.Add("Set-Cookie", cookie.String())
+
+				// Security Hardening: Strip access_token from JSON to protect against XSS
+				// if the frontend is fully transitioned to cookies.
+				delete(data, "access_token")
+				newBody, _ := json.Marshal(data)
+				r.Body = io.NopCloser(bytes.NewBuffer(newBody))
+				r.ContentLength = int64(len(newBody))
+				r.Header.Set("Content-Length", fmt.Sprint(len(newBody)))
+			} else {
+				// Restore body
+				r.Body = io.NopCloser(bytes.NewBuffer(body))
+			}
+		}
+		return nil
 	}
 
 	// Connect to File Processor gRPC
@@ -160,12 +219,18 @@ func main() {
 		public.Any("/graphql", handlers.ProxyHandler(proxy))
 	}
 
-	// Protected routes (JWT required)
+	// Initialize JWT Middleware
 	if cfg.JWTSecret == "" {
 		logger.Fatal("JWT_SECRET is mandatory for non-public routes. Gateway cannot start securely without it.")
 	}
 
-	jwtMiddleware := middleware.NewJWTMiddleware(cfg.JWTSecret)
+	var redisClient *redis.Client
+	if rateLimiter != nil {
+		redisClient = rateLimiter.GetClient()
+	}
+
+	jwtMiddleware := middleware.NewJWTMiddleware(cfg.JWTSecret, redisClient)
+	jwtMiddleware.ListenForRevocations(ctx)
 	protected := router.Group("/")
 	protected.Use(jwtMiddleware.Validate())
 	{

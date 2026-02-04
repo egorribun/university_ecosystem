@@ -1,5 +1,6 @@
 import asyncio
 import datetime as dt
+import uuid
 from datetime import UTC, datetime, timedelta
 
 import pyotp
@@ -108,7 +109,7 @@ async def test_list_sessions_includes_current_session_metadata(
     assert isinstance(sessions, list)
     assert len(sessions) == 1
     entry = sessions[0]
-    assert entry["user_id"] == user.id
+    assert entry["user_id"] == str(user.id)
     assert entry["is_current"] is True
     assert entry["ip_address"] == "198.51.100.5"
     assert entry["user_agent"] == "pytest-agent/2.0"
@@ -346,7 +347,7 @@ async def test_revoke_session_requires_step_up(
     # same identifier when everything happens within a single second.
     await asyncio.sleep(1.1)
     payload = await _complete_step_up(async_client, headers, secret)
-    assert payload["session_id"] == current_session.id
+    assert payload["session_id"] == str(current_session.id)
 
     success = await async_client.delete(
         f"/auth/sessions/{other_session.id}", headers=headers
@@ -395,6 +396,9 @@ async def test_revoke_missing_session_returns_404(
     )
     headers = await _login(async_client, email=user.email, password=password)
 
-    response = await async_client.delete("/auth/sessions/9999", headers=headers)
+    non_existent_id = uuid.uuid4()
+    response = await async_client.delete(
+        f"/auth/sessions/{non_existent_id}", headers=headers
+    )
     assert response.status_code == 404
     assert response.json()["detail"] == "Session not found"

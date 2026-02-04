@@ -36,7 +36,7 @@ class NewsService:
             if decoded:
                 dt, id_str = decoded
                 try:
-                    decoded_cursor = (dt, int(id_str))
+                    decoded_cursor = (dt, id_str)
                 except (ValueError, TypeError):
                     pass
 

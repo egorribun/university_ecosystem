@@ -1,3 +1,4 @@
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -58,7 +59,8 @@ async def test_spotify_callback_success(mock_db, mock_request, mock_user):
         patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post,
         patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get,
     ):
-        mock_decode.return_value = {"sub": "1"}
+        fixed_uuid = str(uuid.uuid4())
+        mock_decode.return_value = {"sub": fixed_uuid}
         mock_db.get.return_value = mock_user
 
         # Token response

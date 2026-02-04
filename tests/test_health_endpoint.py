@@ -235,6 +235,8 @@ async def test_healthcheck_reports_migration_versions_on_drift(
         return False, {"current"}, {"expected"}
 
     monkeypatch.setattr(health, "migrations_are_current", _mock_migrations_are_current)
+    # Drift only causes 503 if NOT in testing environment
+    monkeypatch.setattr(health.settings, "environment", "production")
 
     response = await async_client.get("http://testserver/healthz")
     data = response.json()

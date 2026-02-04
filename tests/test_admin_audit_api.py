@@ -47,7 +47,7 @@ async def test_list_audit_logs_as_admin(root_client, user_factory, db_session):
     assert "items" in data
     assert "total" in data
     assert data["total"] >= 1
-    assert any(item["actor_user_id"] == admin.id for item in data["items"])
+    assert any(item["actor_user_id"] == str(admin.id) for item in data["items"])
 
 
 async def test_list_audit_logs_forbidden_for_student(root_client, user_factory):
@@ -119,7 +119,8 @@ async def test_list_audit_logs_filtering(root_client, user_factory, db_session):
     )
     assert response.status_code == 200
     assert all(
-        item["subject_user_id"] == user_subject.id for item in response.json()["items"]
+        item["subject_user_id"] == str(user_subject.id)
+        for item in response.json()["items"]
     )
 
 
@@ -200,6 +201,6 @@ async def test_list_audit_logs_actor_filtering(root_client, user_factory, db_ses
     assert response.status_code == 200
     data = response.json()
     assert len(data["items"]) >= 1
-    assert all(item["actor_user_id"] == actor_user.id for item in data["items"])
+    assert all(item["actor_user_id"] == str(actor_user.id) for item in data["items"])
     # This also covers the verify_integrity call in the loop
     assert "is_valid" in data["items"][0]

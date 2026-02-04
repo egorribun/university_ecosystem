@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import logging
+import uuid
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC
 from typing import Any
@@ -90,13 +91,13 @@ async def create_notifications_for_users(
     dedupe_key: str | None = None,
     actions: Sequence[Mapping[str, Any]] | None = None,
     payload_data: Mapping[str, Any] | None = None,
-    user_ids: Sequence[int],
+    user_ids: Sequence[uuid.UUID],
     topic: str | None = None,
     user_filter: Callable[[Select], Select] | None = None,
 ) -> int:
     """Create notifications for multiple users and send push notifications."""
     now = dt.datetime.now(UTC)
-    uids = list({int(uid) for uid in user_ids})
+    uids = list({uuid.UUID(str(uid)) for uid in user_ids})
     if not uids:
         return 0
 
@@ -105,9 +106,7 @@ async def create_notifications_for_users(
         filtered_stmt = user_filter(filtered_stmt)
         filtered_rows = await db.execute(filtered_stmt)
         allowed_ids = {
-            int(user_id)
-            for user_id in filtered_rows.scalars().all()
-            if user_id is not None
+            user_id for user_id in filtered_rows.scalars().all() if user_id is not None
         }
         uids = [uid for uid in uids if uid in allowed_ids]
         if not uids:
@@ -137,7 +136,7 @@ async def create_notifications_for_users(
     db.add_all(notifications)
     await db.flush()
     notification_ids_by_user = {
-        int(notification.user_id): int(notification.id)
+        notification.user_id: notification.id
         for notification in notifications
         if notification.id is not None
     }
@@ -250,7 +249,7 @@ async def create_notifications_for_users(
                     return await asyncio.to_thread(_send_func, subscription, payload)
 
             for sub in subs:
-                user_id = int(getattr(sub, "user_id", 0) or 0)
+                user_id = getattr(sub, "user_id", None)
                 notification_id = notification_ids_by_user.get(user_id)
                 if not notification_id:
                     continue

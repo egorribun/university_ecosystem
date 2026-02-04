@@ -66,6 +66,8 @@ class RedisSessionBackend(SessionBackend):
     async def revoke_session(self, jti: str) -> None:
         key = f"{self._prefix}{jti}"
         await self._redis.delete(key)
+        # Notify Gateway to invalidate its L1 cache
+        await self._redis.publish("session:revocations", jti)
 
 
 async def get_session_backend() -> SessionBackend:

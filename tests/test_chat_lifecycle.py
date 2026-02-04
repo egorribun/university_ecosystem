@@ -28,7 +28,7 @@ async def test_chat_full_lifecycle(
     headers = await _login(async_client, user.email, password)
 
     create_resp = await async_client.post(
-        "/chats", json={"participant_id": other.id}, headers=headers
+        "/chats", json={"participant_id": str(other.id)}, headers=headers
     )
     assert create_resp.status_code == 200
     chat_id = create_resp.json()["id"]
@@ -77,7 +77,7 @@ async def test_get_chats_list(async_client, user_factory):
 
     # Create a chat
     create_resp = await async_client.post(
-        "/chats", json={"participant_id": other.id}, headers=headers
+        "/chats", json={"participant_id": str(other.id)}, headers=headers
     )
     assert create_resp.status_code == 200
 

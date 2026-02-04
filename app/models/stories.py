@@ -1,34 +1,37 @@
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import (
+    UUID,
     Boolean,
     Column,
     DateTime,
     ForeignKey,
     Index,
-    Integer,
     String,
     Text,
     event,
     func,
     text,
 )
-from sqlalchemy.orm import relationship
+
+# Removed postgresql UUID import
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.models.mixins import UUID7PrimaryKeyMixin
 
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
-class Story(Base):
+class Story(Base, UUID7PrimaryKeyMixin):
     __tablename__ = "stories"
     __table_args__ = (
         Index("ix_stories_expires_at_is_active", "expires_at", "is_active"),
     )
 
-    id = Column(Integer, primary_key=True)
     title = Column(String, nullable=False)
     title_en = Column(String)
     short_text = Column(Text, nullable=False)
@@ -49,10 +52,9 @@ class Story(Base):
         server_default=text("true"),
         index=True,
     )
-    created_by = Column(
-        Integer,
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=True,
         index=True,
     )
     created_at = Column(

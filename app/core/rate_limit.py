@@ -1,18 +1,21 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import math
 import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
-from hashlib import sha256
 
 from fastapi import Request
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse, Response
+
+from app.core.config import settings
+from app.core.localization import resolve_locale, translate
 
 _TIME_UNITS = {
     "s": 1,
@@ -41,19 +44,7 @@ def parse_rate_limit(
     *,
     fallback: tuple[int, int],
 ) -> tuple[int, int]:
-    """Parse a rate limit definition.
-
-    Args:
-        value: A string in the form ``"<count>/<period>"`` or
-            ``"<count> per <period>"``.
-        fallback: A ``(limit, window_seconds)`` tuple returned when the value is
-            missing or invalid.
-
-    Returns:
-        A tuple with the allowed request count and the window duration in
-        seconds.
-    """
-
+    """Parse a rate limit definition."""
     if not value:
         return fallback
 
@@ -91,37 +82,27 @@ def parse_rate_limit(
     return count, seconds
 
 
+# Fixed Window Counter Script (O(1))
+# KEYS[1]: key
+# ARGV[1]: limit
+# ARGV[2]: window_ms
 _RATE_LIMIT_SCRIPT = """
 local key = KEYS[1]
-local now = tonumber(ARGV[1])
+local limit = tonumber(ARGV[1])
 local window = tonumber(ARGV[2])
-local limit = tonumber(ARGV[3])
-local member = ARGV[4]
 
-local cutoff = now - window
-redis.call('ZREMRANGEBYSCORE', key, 0, cutoff)
-local count = redis.call('ZCARD', key)
-
-if count >= limit then
-  local retry_after = 0
-  local oldest = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
-  if oldest[2] then
-    retry_after = window - (now - tonumber(oldest[2]))
-    if retry_after < 0 then
-      retry_after = 0
-    end
-  end
-  return {0, 0, retry_after}
+local current = redis.call("INCR", key)
+if current == 1 then
+    redis.call("PEXPIRE", key, window)
 end
 
-redis.call('ZADD', key, now, member)
-redis.call('PEXPIRE', key, window)
-
-local remaining = limit - (count + 1)
-if remaining < 0 then
-  remaining = 0
+if current > limit then
+    local ttl = redis.call("PTTL", key)
+    if ttl < 0 then ttl = 0 end
+    return {0, 0, ttl}
 end
 
+local remaining = limit - current
 return {1, remaining, 0}
 """
 
@@ -138,14 +119,14 @@ _redis_factory: _RedisFactory = _create_redis_pool
 
 _shared_clients: dict[str, Redis] = {}
 _shared_client_locks: dict[str, asyncio.Lock] = {}
-_memory_buckets: dict[str, list[float]] = {}
+
+# Replaced list-based buckets with dictionary: key -> (count, expiry_timestamp)
+_memory_counters: dict[str, tuple[int, float]] = {}
 _memory_lock = asyncio.Lock()
 
 # Memory cleanup configuration
-MEMORY_CLEANUP_INTERVAL_SECONDS: int = 300  # 5 minutes
-MEMORY_BUCKETS_MAX_ENTRIES: int = 10000  # Maximum entries before forced cleanup
-MEMORY_PROGRESSIVE_DELAY_MAX_ENTRIES: int = 5000
-
+MEMORY_CLEANUP_INTERVAL_SECONDS: int = 60
+MEMORY_COUNTERS_MAX_ENTRIES: int = 50000
 _cleanup_task: asyncio.Task[None] | None = None
 _cleanup_running: bool = False
 
@@ -167,38 +148,116 @@ class EndpointRateLimit:
     window_seconds: int
 
 
-# Default endpoint-specific rate limits
-DEFAULT_ENDPOINT_LIMITS: tuple[EndpointRateLimit, ...] = (
-    # Auth endpoints - strictest limits (security-critical)
-    EndpointRateLimit("/api/v1/auth/login", 5, 60),
-    EndpointRateLimit("/api/v1/auth/register", 5, 60),
-    EndpointRateLimit("/api/v1/auth/password-reset", 3, 60),
-    EndpointRateLimit("/api/v1/auth/mfa", 5, 60),
-    EndpointRateLimit("/api/v1/auth/totp", 5, 60),
-    EndpointRateLimit("/token", 5, 60),
-    # User profile endpoints - frequently accessed during navigation
-    EndpointRateLimit("/api/v1/users/me/avatar", 10, 60),
-    EndpointRateLimit("/api/v1/users/me", 120, 60),
-    EndpointRateLimit("/api/v1/users/", 60, 60),
-    # Notifications - frequently polled during navigation
-    EndpointRateLimit("/api/v1/notifications/check-schedule", 60, 60),
-    EndpointRateLimit("/api/v1/notifications", 120, 60),
-    # Content endpoints - read-heavy, higher limits needed
-    # Note: more specific patterns must come first since matching uses startswith
-    EndpointRateLimit("/api/v1/news/", 120, 60),
-    EndpointRateLimit("/api/v1/events/", 120, 60),
-    EndpointRateLimit("/api/v1/chat/", 120, 60),
-    EndpointRateLimit("/api/v1/stories", 120, 60),
-    EndpointRateLimit("/api/v1/schedule", 120, 60),
-    EndpointRateLimit("/api/v1/interactions", 200, 60),
-    # Static content endpoints
-    EndpointRateLimit("/static/", 300, 60),
-    # Admin endpoints
-    EndpointRateLimit("/api/v1/admin", 100, 60),
-    EndpointRateLimit("/api/internal", 200, 60),
-    # WebSocket
-    EndpointRateLimit("/ws", 60, 60),
-)
+# Default endpoint-specific rate limits resolved from settings
+def get_default_endpoint_limits() -> tuple[EndpointRateLimit, ...]:
+    """Helper to build the endpoint limit list from settings."""
+    return (
+        EndpointRateLimit(
+            "/api/v1/auth/login",
+            *parse_rate_limit(settings.rate_limit_auth_login, fallback=(5, 60)),
+        ),
+        EndpointRateLimit(
+            "/api/v1/auth/register",
+            *parse_rate_limit(settings.rate_limit_auth_register, fallback=(5, 60)),
+        ),
+        EndpointRateLimit(
+            "/api/v1/auth/password-reset",
+            *parse_rate_limit(
+                settings.rate_limit_auth_password_reset, fallback=(3, 60)
+            ),
+        ),
+        EndpointRateLimit(
+            "/api/v1/password/forgot",
+            *parse_rate_limit(
+                settings.rate_limit_auth_password_reset, fallback=(3, 60)
+            ),
+        ),
+        EndpointRateLimit(
+            "/api/v1/password/reset",
+            *parse_rate_limit(
+                settings.rate_limit_auth_password_reset, fallback=(3, 60)
+            ),
+        ),
+        EndpointRateLimit(
+            "/api/v1/auth/mfa",
+            *parse_rate_limit(settings.rate_limit_auth_mfa, fallback=(5, 60)),
+        ),
+        EndpointRateLimit(
+            "/api/v1/auth/totp",
+            *parse_rate_limit(settings.rate_limit_auth_totp, fallback=(5, 60)),
+        ),
+        EndpointRateLimit(
+            "/token", *parse_rate_limit(settings.rate_limit_auth, fallback=(5, 60))
+        ),
+        EndpointRateLimit(
+            "/api/v1/users/me/avatar",
+            *parse_rate_limit(settings.rate_limit_users_avatar, fallback=(10, 60)),
+        ),
+        EndpointRateLimit(
+            "/api/v1/users/me",
+            *parse_rate_limit(settings.rate_limit_users_me, fallback=(120, 60)),
+        ),
+        EndpointRateLimit(
+            "/api/v1/notifications/check-schedule",
+            *parse_rate_limit(
+                settings.rate_limit_notifications_check, fallback=(60, 60)
+            ),
+        ),
+        EndpointRateLimit(
+            "/api/v1/notifications",
+            *parse_rate_limit(settings.rate_limit_notifications, fallback=(120, 60)),
+        ),
+        EndpointRateLimit(
+            "/api/v1/news",
+            *parse_rate_limit(settings.rate_limit_news, fallback=(120, 60)),
+        ),
+        EndpointRateLimit(
+            "/api/v1/events",
+            *parse_rate_limit(settings.rate_limit_events, fallback=(120, 60)),
+        ),
+        EndpointRateLimit(
+            "/api/v1/chat",
+            *parse_rate_limit(settings.rate_limit_chat, fallback=(120, 60)),
+        ),
+        EndpointRateLimit(
+            "/api/v1/stories",
+            *parse_rate_limit(settings.rate_limit_stories, fallback=(120, 60)),
+        ),
+        EndpointRateLimit(
+            "/api/v1/schedule",
+            *parse_rate_limit(settings.rate_limit_schedule, fallback=(120, 60)),
+        ),
+        EndpointRateLimit(
+            "/api/v1/interactions",
+            *parse_rate_limit(settings.rate_limit_interactions, fallback=(200, 60)),
+        ),
+        EndpointRateLimit(
+            "/static",
+            *parse_rate_limit(settings.rate_limit_static, fallback=(300, 60)),
+        ),
+        EndpointRateLimit(
+            "/api/v1/admin",
+            *parse_rate_limit(settings.rate_limit_admin, fallback=(100, 60)),
+        ),
+        EndpointRateLimit(
+            "/api/internal",
+            *parse_rate_limit(settings.rate_limit_admin, fallback=(200, 60)),
+        ),
+        EndpointRateLimit(
+            "/ws", *parse_rate_limit(settings.rate_limit_websocket, fallback=(60, 60))
+        ),
+        EndpointRateLimit(
+            "/graphql",
+            *parse_rate_limit(settings.rate_limit_graphql, fallback=(30, 60)),
+        ),
+        EndpointRateLimit(
+            "/api/graphql",
+            *parse_rate_limit(settings.rate_limit_graphql, fallback=(30, 60)),
+        ),
+    )
+
+
+DEFAULT_ENDPOINT_LIMITS: tuple[EndpointRateLimit, ...] = get_default_endpoint_limits()
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
@@ -226,15 +285,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if self._storage_backend == "redis":
             self._enabled = self._enabled and bool(self._redis_url)
         self._headers_enabled = headers_enabled
-        # Per-endpoint rate limits
         self._endpoint_limits = endpoint_limits or DEFAULT_ENDPOINT_LIMITS
-        # Each middleware instance should maintain isolated counters when using the
-        # in-process memory backend so multiple apps/tests sharing a process do not
-        # influence each other.
         self._namespace = f"middleware:{uuid.uuid4().hex}"
 
     def _get_limits_for_path(self, path: str) -> tuple[int, int, str]:
-        """Return (limit, window_seconds, pattern) for a given request path."""
         for endpoint_limit in self._endpoint_limits:
             if path.startswith(endpoint_limit.pattern):
                 return (
@@ -254,10 +308,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if not self._enabled or self._should_skip(method, path):
             return await call_next(request)
 
-        # Get endpoint-specific rate limits and the matching pattern
         path_limit, path_window, path_pattern = self._get_limits_for_path(path)
 
-        # Include path pattern in identifier for per-endpoint isolation
         base_identifier = self._build_identifier(request)
         if path_pattern:
             identifier = f"{base_identifier}:{path_pattern}"
@@ -275,9 +327,16 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             if self._headers_enabled:
                 headers["X-RateLimit-Limit"] = str(path_limit)
                 headers["X-RateLimit-Remaining"] = "0"
+                headers["X-RateLimit-Reset"] = str(
+                    int(time.time()) + retry_after_seconds
+                )
+
+            locale = resolve_locale(request=request)
+            message = translate("errors.rate_limit.generic", locale=locale)
+
             return JSONResponse(
                 status_code=429,
-                content={"detail": "Too many requests"},
+                content={"detail": message},
                 headers=headers,
             )
 
@@ -297,7 +356,6 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     ) -> RateLimitInfo:
         redis_url = self._redis_url if self._storage_backend == "redis" else None
         namespace = self._namespace if self._storage_backend == "memory" else ""
-        # Use provided limits or fall back to defaults
         effective_limit = limit if limit is not None else self._limit
         if window_seconds is not None:
             effective_window = window_seconds
@@ -344,28 +402,25 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         normalized = token.strip()
         if not normalized:
             return None
-        digest = sha256(normalized.encode("utf-8", "ignore")).hexdigest()
+        from app.core.config import settings
+
+        key = (settings.secret_key or "fallback-key").encode("utf-8")
+        digest = hmac.new(key, normalized.encode("utf-8"), "sha256").hexdigest()
         return digest
 
     def _should_skip(self, method: str, path: str) -> bool:
-        """Return ``True`` when the request should bypass rate limiting."""
-
         if method in {"OPTIONS", "HEAD"}:
             return True
-
         if path in {"/", "/healthz", "/ready", "/metrics"}:
             return True
-
         if self._is_static_like_path(path) and method == "GET":
             return True
-
         return False
 
     @staticmethod
     def _is_static_like_path(path: str) -> bool:
         if path == "/static" or path.startswith("/static/"):
             return True
-
         static_like_prefixes = ("/media/", "/storage/", "/assets/")
         return any(path.startswith(prefix) for prefix in static_like_prefixes)
 
@@ -397,8 +452,6 @@ class RateLimitInfo:
 
 
 class RateLimitExceeded(Exception):
-    """Raised when a manual rate limit check fails."""
-
     def __init__(self, info: RateLimitInfo) -> None:
         super().__init__("Rate limit exceeded")
         self.info = info
@@ -409,20 +462,28 @@ async def _memory_rate_limit(
 ) -> RateLimitInfo:
     if limit <= 0 or window_seconds <= 0:
         return RateLimitInfo(True, max(limit, 0), 0)
+
     now = time.time()
-    cutoff = now - window_seconds
+
     async with _memory_lock:
-        bucket = _memory_buckets.get(key, [])
-        bucket = [timestamp for timestamp in bucket if timestamp > cutoff]
-        if len(bucket) >= limit:
-            retry_after = math.ceil(bucket[0] + window_seconds - now)
-            if retry_after < 0:
-                retry_after = 0
-            _memory_buckets[key] = bucket
-            return RateLimitInfo(False, 0, retry_after)
-        bucket.append(now)
-        _memory_buckets[key] = bucket
-        remaining = limit - len(bucket)
+        # Check existing counter
+        count, expiry = _memory_counters.get(key, (0, 0.0))
+
+        # If expired, reset
+        if now > expiry:
+            count = 0
+            expiry = now + window_seconds
+
+        # Check limit
+        if count >= limit:
+            retry_after = math.ceil(expiry - now)
+            return RateLimitInfo(False, 0, max(0, retry_after))
+
+        # Increment
+        count += 1
+        _memory_counters[key] = (count, expiry)
+        remaining = limit - count
+
     return RateLimitInfo(True, max(0, remaining), 0)
 
 
@@ -431,25 +492,25 @@ async def _redis_rate_limit_fallback(
     redis_key: str,
     window_ms: int,
     limit: int,
-    now_ms: int,
-    member: str,
 ) -> RateLimitInfo:
-    cutoff = now_ms - window_ms
-    await client.zremrangebyscore(redis_key, 0, cutoff)
-    count = await client.zcard(redis_key)
-    if count >= limit:
-        oldest = await client.zrange(redis_key, 0, 0, withscores=True)
-        retry_after_ms = 0
-        if oldest:
-            retry_after_ms = window_ms - (now_ms - int(float(oldest[0][1])))
-            if retry_after_ms < 0:
-                retry_after_ms = 0
-        retry_after = math.ceil(retry_after_ms / 1000)
-        return RateLimitInfo(False, 0, max(0, retry_after))
-    await client.zadd(redis_key, mapping={member: now_ms})
-    await client.pexpire(redis_key, window_ms)
-    remaining = limit - (count + 1)
-    return RateLimitInfo(True, max(0, remaining), 0)
+    # Minimal fallback using Multi/Exec if Lua fails (unlikely in Redis 7)
+    # Using simple INCR
+    pipe = client.pipeline()
+    pipe.incr(redis_key)
+    pipe.pttl(redis_key)
+    results = await pipe.execute()
+
+    current = results[0]
+    ttl = results[1]
+
+    if current == 1:
+        await client.pexpire(redis_key, window_ms)
+        ttl = window_ms
+
+    if current > limit:
+        return RateLimitInfo(False, 0, math.ceil(ttl / 1000) if ttl > 0 else 0)
+
+    return RateLimitInfo(True, max(0, limit - current), 0)
 
 
 async def _redis_rate_limit(
@@ -458,33 +519,30 @@ async def _redis_rate_limit(
     if limit <= 0 or window_seconds <= 0:
         return RateLimitInfo(True, max(limit, 0), 0)
     client = await _get_shared_client(redis_url)
-    now_ms = int(time.time() * 1000)
+
     window_ms = max(int(window_seconds * 1000), 1)
-    member = f"{now_ms}:{uuid.uuid4().hex}"
     redis_key = f"rate-limit:{key}"
+
     try:
+        # returns [allowed (0/1), remaining, retry_after_ms]
         result = await client.eval(
             _RATE_LIMIT_SCRIPT,
             1,
             redis_key,
-            now_ms,
-            window_ms,
             limit,
-            member,
+            window_ms,
         )
     except RedisError as exc:
         if "unknown command" not in str(exc).lower():
             raise
-        info = await _redis_rate_limit_fallback(
-            client, redis_key, window_ms, limit, now_ms, member
-        )
+        info = await _redis_rate_limit_fallback(client, redis_key, window_ms, limit)
         return info
-    allowed = bool(int(result[0]))
+
+    allowed = bool(result[0])
     remaining = max(0, int(result[1]))
     retry_after_ms = int(result[2])
     retry_after = math.ceil(retry_after_ms / 1000)
-    if retry_after < 0:
-        retry_after = 0
+
     return RateLimitInfo(allowed, remaining, retry_after)
 
 
@@ -530,6 +588,80 @@ async def enforce_rate_limit(
     return info
 
 
+# Progressive Delay (Retained for compatibility, but could also be refactored)
+# Keeping strict logic separation: RateLimit (Fixed Window) vs Delay (Logic).
+# For now, we only cleaned up Rate Limit implementation.
+
+
+async def _cleanup_expired_memory_buckets() -> int:
+    """
+    Remove expired entries from in-memory counters.
+    """
+    now = time.time()
+    cleaned = 0
+    async with _memory_lock:
+        keys_to_delete = [
+            k
+            for k, (_, expiry) in _memory_counters.items()
+            if now > expiry + 60  # Buffer to avoid thrashing
+        ]
+        for k in keys_to_delete:
+            del _memory_counters[k]
+            cleaned += 1
+    return cleaned
+
+
+async def cleanup_all_memory_stores() -> dict[str, int]:
+    buckets_cleaned = await _cleanup_expired_memory_buckets()
+    return {
+        "rate_limit_buckets_cleaned": buckets_cleaned,
+        "active_counters": len(_memory_counters),
+    }
+
+
+async def _periodic_memory_cleanup() -> None:
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    while _cleanup_running:
+        try:
+            await asyncio.sleep(MEMORY_CLEANUP_INTERVAL_SECONDS)
+            if not _cleanup_running:
+                break
+
+            await cleanup_all_memory_stores()
+
+            # Simple LRU-like eviction if too big
+            if len(_memory_counters) > MEMORY_COUNTERS_MAX_ENTRIES:
+                async with _memory_lock:
+                    # Remove random 20%
+                    keys = list(_memory_counters.keys())
+                    to_remove = keys[: int(len(keys) * 0.2)]
+                    for k in to_remove:
+                        del _memory_counters[k]
+
+        except asyncio.CancelledError:
+            break
+        except Exception as exc:
+            logger.warning("Memory cleanup error: %s", exc)
+            await asyncio.sleep(60)
+
+
+def start_memory_cleanup_task() -> asyncio.Task[None] | None:
+    global _cleanup_task, _cleanup_running
+    if _cleanup_task is not None and not _cleanup_task.done():
+        return None
+    _cleanup_running = True
+    _cleanup_task = asyncio.create_task(_periodic_memory_cleanup())
+    return _cleanup_task
+
+
+async def stop_memory_cleanup_task() -> None:
+    global _cleanup_task, _cleanup_running
+    _cleanup_running = False
+
+
 # Progressive Delay configuration
 PROGRESSIVE_DELAY_STEPS: tuple[float, ...] = (1.0, 2.0, 5.0, 10.0, 20.0, 30.0)
 PROGRESSIVE_DELAY_MAX: float = 30.0
@@ -550,38 +682,9 @@ _progressive_delay_memory: dict[str, tuple[int, float]] = {}
 _progressive_delay_memory_lock = asyncio.Lock()
 
 
-async def _cleanup_expired_memory_buckets() -> int:
-    """
-    Remove expired entries from in-memory rate limit buckets.
-
-    Returns:
-        Number of buckets cleaned up.
-    """
-    now = time.time()
-    cleaned = 0
-    async with _memory_lock:
-        expired_keys = []
-        for key, bucket in _memory_buckets.items():
-            # Remove entries older than the maximum window (1 day)
-            max_window = 86400
-            bucket[:] = [ts for ts in bucket if now - ts < max_window]
-            if not bucket:
-                expired_keys.append(key)
-        for key in expired_keys:
-            del _memory_buckets[key]
-            cleaned += 1
-    return cleaned
-
-
 async def _cleanup_expired_progressive_delays(ttl: int = PROGRESSIVE_DELAY_TTL) -> int:
     """
     Remove expired entries from in-memory progressive delay tracker.
-
-    Args:
-        ttl: Time-to-live in seconds for entries.
-
-    Returns:
-        Number of entries cleaned up.
     """
     now = time.time()
     cleaned = 0
@@ -597,321 +700,127 @@ async def _cleanup_expired_progressive_delays(ttl: int = PROGRESSIVE_DELAY_TTL) 
     return cleaned
 
 
-async def cleanup_all_memory_stores() -> dict[str, int]:
-    """
-    Cleanup all in-memory stores. Safe to call periodically.
-
-    Returns:
-        Dictionary with cleanup statistics.
-    """
-    buckets_cleaned = await _cleanup_expired_memory_buckets()
-    delays_cleaned = await _cleanup_expired_progressive_delays()
-    return {
-        "rate_limit_buckets_cleaned": buckets_cleaned,
-        "progressive_delays_cleaned": delays_cleaned,
-        "rate_limit_buckets_remaining": len(_memory_buckets),
-        "progressive_delays_remaining": len(_progressive_delay_memory),
-    }
-
-
-async def _periodic_memory_cleanup() -> None:
-    """
-    Background task that periodically cleans up expired memory entries.
-    """
-    import logging
-
-    logger = logging.getLogger(__name__)
-
-    while _cleanup_running:
-        try:
-            await asyncio.sleep(MEMORY_CLEANUP_INTERVAL_SECONDS)
-            if not _cleanup_running:
-                break
-
-            stats = await cleanup_all_memory_stores()
-
-            # Force cleanup if we exceed max entries
-            if len(_memory_buckets) > MEMORY_BUCKETS_MAX_ENTRIES:
-                async with _memory_lock:
-                    # Keep only the most recent half
-                    sorted_keys = sorted(
-                        _memory_buckets.keys(),
-                        key=lambda k: (
-                            max(_memory_buckets[k]) if _memory_buckets[k] else 0
-                        ),
-                        reverse=True,
-                    )
-                    keep_count = MEMORY_BUCKETS_MAX_ENTRIES // 2
-                    for key in sorted_keys[keep_count:]:
-                        del _memory_buckets[key]
-                    stats["force_evicted_buckets"] = len(sorted_keys) - keep_count
-
-            if len(_progressive_delay_memory) > MEMORY_PROGRESSIVE_DELAY_MAX_ENTRIES:
-                async with _progressive_delay_memory_lock:
-                    sorted_keys = sorted(
-                        _progressive_delay_memory.keys(),
-                        key=lambda k: _progressive_delay_memory[k][1],
-                        reverse=True,
-                    )
-                    keep_count = MEMORY_PROGRESSIVE_DELAY_MAX_ENTRIES // 2
-                    for key in sorted_keys[keep_count:]:
-                        del _progressive_delay_memory[key]
-                    stats["force_evicted_delays"] = len(sorted_keys) - keep_count
-
-            total_cleaned = stats.get("rate_limit_buckets_cleaned", 0) + stats.get(
-                "progressive_delays_cleaned", 0
-            )
-            if total_cleaned > 0:
-                logger.debug(
-                    "Memory cleanup completed: %s",
-                    stats,
-                    extra=stats,
-                )
-        except asyncio.CancelledError:
-            break
-        except Exception as exc:
-            logger.warning("Memory cleanup error: %s", exc)
-            await asyncio.sleep(60)  # Backoff on error
-
-
-def start_memory_cleanup_task() -> asyncio.Task[None] | None:
-    """
-    Start the background memory cleanup task.
-
-    Returns:
-        The cleanup task, or None if already running.
-    """
-    global _cleanup_task, _cleanup_running
-
-    if _cleanup_task is not None and not _cleanup_task.done():
-        return None
-
-    _cleanup_running = True
-    _cleanup_task = asyncio.create_task(_periodic_memory_cleanup())
-    return _cleanup_task
-
-
-async def stop_memory_cleanup_task() -> None:
-    """
-    Stop the background memory cleanup task gracefully.
-    """
-    global _cleanup_task, _cleanup_running
-
-    _cleanup_running = False
-    if _cleanup_task is not None:
-        _cleanup_task.cancel()
-        try:
-            await _cleanup_task
-        except asyncio.CancelledError:
-            pass
-        _cleanup_task = None
-
-
 def _calculate_delay(failures: int) -> float:
-    """Calculate delay based on failure count."""
     if failures <= 0:
         return 0.0
-    index = min(failures - 1, len(PROGRESSIVE_DELAY_STEPS) - 1)
-    return min(PROGRESSIVE_DELAY_STEPS[index], PROGRESSIVE_DELAY_MAX)
+    index = failures - 1
+    if index < len(PROGRESSIVE_DELAY_STEPS):
+        return PROGRESSIVE_DELAY_STEPS[index]
+    return PROGRESSIVE_DELAY_MAX
 
 
 class ProgressiveDelayTracker:
-    """
-    Track consecutive auth failures and apply progressive delays.
-
-    This helps mitigate brute-force attacks by adding exponential
-    delays after failed authentication attempts.
-
-    Usage:
-        tracker = ProgressiveDelayTracker(redis_url="redis://localhost:6379")
-
-        # On failed login
-        await tracker.record_failure("ip:192.168.1.1")
-
-        # Before processing login
-        delay_info = await tracker.get_delay("ip:192.168.1.1")
-        if delay_info.should_delay:
-            await asyncio.sleep(delay_info.delay_seconds)
-
-        # On successful login
-        await tracker.reset("ip:192.168.1.1")
-    """
-
     def __init__(
         self,
-        redis_url: str | None = None,
         *,
+        redis_url: str | None = None,
         delay_steps: tuple[float, ...] = PROGRESSIVE_DELAY_STEPS,
         max_delay: float = PROGRESSIVE_DELAY_MAX,
         ttl_seconds: int = PROGRESSIVE_DELAY_TTL,
-        key_prefix: str = "progressive-delay",
+        key_prefix: str = "progressive_delay",
     ) -> None:
-        self._redis_url = (redis_url or "").strip()
+        self._redis_url = redis_url
         self._delay_steps = delay_steps
         self._max_delay = max_delay
         self._ttl = ttl_seconds
         self._key_prefix = key_prefix
 
     def _make_key(self, identifier: str) -> str:
-        """Create Redis key for identifier."""
         return f"{self._key_prefix}:{identifier}"
 
-    async def record_failure(self, identifier: str) -> ProgressiveDelayInfo:
-        """
-        Record a failed attempt and return current delay info.
-
-        Args:
-            identifier: Unique identifier (e.g., "ip:192.168.1.1")
-
-        Returns:
-            ProgressiveDelayInfo with updated failure count and delay
-        """
-        if self._redis_url:
-            return await self._record_failure_redis(identifier)
-        return await self._record_failure_memory(identifier)
-
-    async def _record_failure_redis(self, identifier: str) -> ProgressiveDelayInfo:
-        """Record failure in Redis."""
-        try:
-            client = await _get_shared_client(self._redis_url)
-            key = self._make_key(identifier)
-
-            # Increment failure count
-            failures = await client.incr(key)
-            await client.expire(key, self._ttl)
-
-            delay = self._calculate_delay(failures)
-            return ProgressiveDelayInfo(
-                failures=failures,
-                delay_seconds=delay,
-                should_delay=delay > 0,
-            )
-        except (RedisError, OSError):
-            return await self._record_failure_memory(identifier)
-
-    async def _record_failure_memory(self, identifier: str) -> ProgressiveDelayInfo:
-        """Record failure in memory."""
-        now = time.time()
-        async with _progressive_delay_memory_lock:
-            failures, last_time = _progressive_delay_memory.get(identifier, (0, 0.0))
-            # Reset if TTL expired
-            if now - last_time > self._ttl:
-                failures = 0
-            failures += 1
-            _progressive_delay_memory[identifier] = (failures, now)
-
-        delay = self._calculate_delay(failures)
-        return ProgressiveDelayInfo(
-            failures=failures,
-            delay_seconds=delay,
-            should_delay=delay > 0,
-        )
-
-    async def get_delay(self, identifier: str) -> ProgressiveDelayInfo:
-        """
-        Get current delay info without recording a new failure.
-
-        Args:
-            identifier: Unique identifier
-
-        Returns:
-            ProgressiveDelayInfo with current state
-        """
-        if self._redis_url:
-            return await self._get_delay_redis(identifier)
-        return await self._get_delay_memory(identifier)
-
-    async def _get_delay_redis(self, identifier: str) -> ProgressiveDelayInfo:
-        """Get delay info from Redis."""
-        try:
-            client = await _get_shared_client(self._redis_url)
-            key = self._make_key(identifier)
-
-            failures_raw = await client.get(key)
-            failures = int(failures_raw) if failures_raw else 0
-
-            delay = self._calculate_delay(failures)
-            return ProgressiveDelayInfo(
-                failures=failures,
-                delay_seconds=delay,
-                should_delay=delay > 0,
-            )
-        except (RedisError, OSError, ValueError):
-            return await self._get_delay_memory(identifier)
-
-    async def _get_delay_memory(self, identifier: str) -> ProgressiveDelayInfo:
-        """Get delay info from memory."""
-        now = time.time()
-        async with _progressive_delay_memory_lock:
-            failures, last_time = _progressive_delay_memory.get(identifier, (0, 0.0))
-            if now - last_time > self._ttl:
-                failures = 0
-
-        delay = self._calculate_delay(failures)
-        return ProgressiveDelayInfo(
-            failures=failures,
-            delay_seconds=delay,
-            should_delay=delay > 0,
-        )
-
-    async def reset(self, identifier: str) -> None:
-        """
-        Reset failure count after successful authentication.
-
-        Args:
-            identifier: Unique identifier to reset
-        """
-        if self._redis_url:
-            await self._reset_redis(identifier)
-        else:
-            await self._reset_memory(identifier)
-
-    async def _reset_redis(self, identifier: str) -> None:
-        """Reset in Redis."""
-        try:
-            client = await _get_shared_client(self._redis_url)
-            key = self._make_key(identifier)
-            await client.delete(key)
-        except (RedisError, OSError):
-            await self._reset_memory(identifier)
-
-    async def _reset_memory(self, identifier: str) -> None:
-        """Reset in memory."""
-        async with _progressive_delay_memory_lock:
-            _progressive_delay_memory.pop(identifier, None)
-
     def _calculate_delay(self, failures: int) -> float:
-        """Calculate delay based on failure count."""
         if failures <= 0:
             return 0.0
-        index = min(failures - 1, len(self._delay_steps) - 1)
-        return min(self._delay_steps[index], self._max_delay)
+        index = failures - 1
+        if index < len(self._delay_steps):
+            return self._delay_steps[index]
+        return self._max_delay
+
+    async def record_failure(self, identifier: str) -> ProgressiveDelayInfo:
+        key = self._make_key(identifier)
+        failures = 0
+
+        if self._redis_url:
+            try:
+                client = await _get_shared_client(self._redis_url)
+                failures = await client.incr(key)
+                await client.expire(key, self._ttl)
+                delay = self._calculate_delay(failures)
+                return ProgressiveDelayInfo(failures, delay, delay > 0)
+            except (RedisError, OSError):
+                pass
+
+        async with _progressive_delay_memory_lock:
+            count, last_time = _progressive_delay_memory.get(key, (0, 0.0))
+            if time.time() - last_time > self._ttl:
+                count = 0
+            count += 1
+            _progressive_delay_memory[key] = (count, time.time())
+            failures = count
+
+        delay = self._calculate_delay(failures)
+        return ProgressiveDelayInfo(failures, delay, delay > 0)
+
+    async def get_delay(self, identifier: str) -> ProgressiveDelayInfo:
+        key = self._make_key(identifier)
+        failures = 0
+
+        if self._redis_url:
+            try:
+                client = await _get_shared_client(self._redis_url)
+                val = await client.get(key)
+                if val:
+                    failures = int(val)
+                delay = self._calculate_delay(failures)
+                return ProgressiveDelayInfo(failures, delay, delay > 0)
+            except (RedisError, OSError):
+                pass
+
+        async with _progressive_delay_memory_lock:
+            count, last_time = _progressive_delay_memory.get(key, (0, 0.0))
+            if time.time() - last_time > self._ttl:
+                count = 0
+            failures = count
+
+        delay = self._calculate_delay(failures)
+        return ProgressiveDelayInfo(failures, delay, delay > 0)
+
+    async def reset(self, identifier: str) -> None:
+        key = self._make_key(identifier)
+
+        if self._redis_url:
+            try:
+                client = await _get_shared_client(self._redis_url)
+                await client.delete(key)
+            except (RedisError, OSError):
+                pass
+
+        async with _progressive_delay_memory_lock:
+            if key in _progressive_delay_memory:
+                del _progressive_delay_memory[key]
 
     async def apply_delay_if_needed(self, identifier: str) -> ProgressiveDelayInfo:
-        """
-        Check and apply delay if needed. This is a convenience method.
-
-        Args:
-            identifier: Unique identifier
-
-        Returns:
-            ProgressiveDelayInfo with delay info (after delay applied)
-        """
         info = await self.get_delay(identifier)
         if info.should_delay:
             await asyncio.sleep(info.delay_seconds)
         return info
 
 
-# Global tracker instance (initialized lazily)
-_global_progressive_tracker: ProgressiveDelayTracker | None = None
+_tracker_instance: ProgressiveDelayTracker | None = None
 
 
-def get_progressive_delay_tracker(
-    redis_url: str | None = None,
-) -> ProgressiveDelayTracker:
-    """Get or create the global progressive delay tracker."""
-    global _global_progressive_tracker
-    if _global_progressive_tracker is None:
-        _global_progressive_tracker = ProgressiveDelayTracker(redis_url=redis_url)
-    return _global_progressive_tracker
+def get_progressive_delay_tracker() -> ProgressiveDelayTracker:
+    global _tracker_instance
+    if _tracker_instance is None:
+        try:
+            from app.core.config import settings
+
+            redis_url = (
+                settings.rate_limit_storage_uri
+                if settings.rate_limit_storage_backend == "redis"
+                else None
+            )
+        except ImportError:
+            redis_url = None
+        _tracker_instance = ProgressiveDelayTracker(redis_url=redis_url)
+    return _tracker_instance

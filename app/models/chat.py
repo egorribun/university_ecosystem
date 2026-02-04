@@ -1,10 +1,20 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Table
+from sqlalchemy import (
+    UUID,
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Table,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.models.mixins import UUID7PrimaryKeyMixin
 
 
 def utc_now():
@@ -15,17 +25,23 @@ def utc_now():
 chat_participants = Table(
     "chat_participants",
     Base.metadata,
-    Column("chat_id", ForeignKey("chats.id", ondelete="CASCADE"), primary_key=True),
-    Column("user_id", ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    Column(
+        "chat_id",
+        UUID(as_uuid=True),
+        ForeignKey("chats.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "user_id",
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
 )
 
 
-class Chat(Base):
+class Chat(Base, UUID7PrimaryKeyMixin):
     __tablename__ = "chats"
-
-    id: Mapped[str] = mapped_column(
-        String, primary_key=True, default=lambda: str(uuid.uuid4())
-    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )
@@ -44,17 +60,14 @@ class Chat(Base):
     )
 
 
-class Message(Base):
+class Message(Base, UUID7PrimaryKeyMixin):
     __tablename__ = "messages"
 
-    id: Mapped[str] = mapped_column(
-        String, primary_key=True, default=lambda: str(uuid.uuid4())
+    chat_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("chats.id", ondelete="CASCADE"), nullable=False
     )
-    chat_id: Mapped[str] = mapped_column(
-        ForeignKey("chats.id", ondelete="CASCADE"), nullable=False
-    )
-    sender_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    sender_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     content: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
@@ -73,14 +86,13 @@ class Message(Base):
     )
 
 
-class Attachment(Base):
+class Attachment(Base, UUID7PrimaryKeyMixin):
     __tablename__ = "attachments"
 
-    id: Mapped[str] = mapped_column(
-        String, primary_key=True, default=lambda: str(uuid.uuid4())
-    )
-    message_id: Mapped[str] = mapped_column(
-        ForeignKey("messages.id", ondelete="CASCADE"), nullable=False
+    message_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("messages.id", ondelete="CASCADE"),
+        nullable=False,
     )
     url: Mapped[str] = mapped_column(String, nullable=False)
     file_type: Mapped[str] = mapped_column(

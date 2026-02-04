@@ -1,4 +1,6 @@
 import asyncio
+import logging
+import time
 from typing import Any
 
 import taskiq_fastapi
@@ -8,6 +10,8 @@ from taskiq.message import TaskiqMessage
 from taskiq_redis import RedisAsyncResultBackend, RedisScheduleSource, RedisStreamBroker
 
 from app.core.config import settings
+
+logger = logging.getLogger("app.tasks")
 
 
 class TaskiqTrackingMiddleware(TaskiqMiddleware):
@@ -46,13 +50,61 @@ class TaskiqTrackingMiddleware(TaskiqMiddleware):
             print(f"Warning: Timed out waiting for taskiq tasks: {self.active_tasks}")
 
 
+class TaskiqObservabilityMiddleware(TaskiqMiddleware):
+    """Middleware for task logging and performance tracking."""
+
+    def pre_execute(self, message: TaskiqMessage) -> TaskiqMessage:
+        message.labels["_start_time"] = time.perf_counter()
+        logger.info(
+            "Task started: %s (id: %s)",
+            message.task_name,
+            message.task_id,
+        )
+        return message
+
+    def post_execute(self, message: TaskiqMessage, result: Any) -> None:
+        start_time = message.labels.get("_start_time")
+        duration = 0.0
+        if start_time:
+            duration = (time.perf_counter() - start_time) * 1000.0
+
+        logger.info(
+            "Task completed: %s (id: %s) in %.2fms",
+            message.task_name,
+            message.task_id,
+            duration,
+        )
+
+    def on_error(
+        self,
+        message: TaskiqMessage,
+        result: Any,
+        exception: Exception,
+    ) -> None:
+        start_time = message.labels.get("_start_time")
+        duration = 0.0
+        if start_time:
+            duration = (time.perf_counter() - start_time) * 1000.0
+
+        logger.error(
+            "Task failed: %s (id: %s) after %.2fms - %s: %s",
+            message.task_name,
+            message.task_id,
+            duration,
+            type(exception).__name__,
+            str(exception),
+            exc_info=True,
+        )
+
+
 tracking_middleware = TaskiqTrackingMiddleware()
+observability_middleware = TaskiqObservabilityMiddleware()
 
 if settings.environment.lower() in ("test", "testing"):
     from taskiq import InMemoryBroker
 
     broker = InMemoryBroker()
-    broker.add_middlewares(tracking_middleware)
+    broker.add_middlewares(tracking_middleware, observability_middleware)
     schedule_source = None
     scheduler = TaskiqScheduler(broker, sources=[])
 else:
@@ -62,7 +114,12 @@ else:
 
     broker = RedisStreamBroker(
         url=settings.taskiq_broker_url,
+        # Optimize Redis Stream parameters for better performance
+        # heartbeat is not directly a param of RedisStreamBroker, but we can tune others
     ).with_result_backend(result_backend)
+
+    # Global middlewares
+    broker.add_middlewares(observability_middleware)
 
     schedule_source = RedisScheduleSource(url=settings.taskiq_broker_url)
     scheduler = TaskiqScheduler(broker, sources=[schedule_source])

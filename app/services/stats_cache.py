@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import uuid
 from collections.abc import Iterable, Sequence
 
 from app.core.config import settings
@@ -29,17 +30,17 @@ def resolve_period_key(period_key: str | None, period_days: int | None) -> str:
     return "default"
 
 
-def _make_cache_key(kind: str, user_id: int, period_key: str) -> str:
+def _make_cache_key(kind: str, user_id: uuid.UUID | int, period_key: str) -> str:
     normalized_kind = kind.strip().lower()
     normalized_period = _normalize_period_key(period_key)
-    return f"{_STATS_CACHE_PREFIX}:{normalized_kind}:{int(user_id)}:{normalized_period}"
+    return f"{_STATS_CACHE_PREFIX}:{normalized_kind}:{str(user_id)}:{normalized_period}"
 
 
 async def get_cached_stats(
     *,
     cache: BaseCache | None,
     kind: str,
-    user_id: int,
+    user_id: uuid.UUID | int,
     period_key: str,
     skip_cache: bool = False,
 ) -> CacheEntry | None:
@@ -60,7 +61,7 @@ async def set_cached_stats(
     *,
     cache: BaseCache | None,
     kind: str,
-    user_id: int,
+    user_id: uuid.UUID | int,
     period_key: str,
     payload: dict[str, object],
     skip_cache: bool = False,
@@ -79,7 +80,7 @@ async def set_cached_stats(
 
 async def invalidate_user_stats_cache(
     *,
-    user_ids: Sequence[int] | int,
+    user_ids: Sequence[uuid.UUID | int] | uuid.UUID | int,
     cache: BaseCache | None = None,
     kinds: Iterable[str] | None = None,
     period_keys: Iterable[str] | None = None,
@@ -87,9 +88,9 @@ async def invalidate_user_stats_cache(
     backend = _ensure_cache(cache)
     if not backend.enabled:
         return
-    if isinstance(user_ids, int):
+    if isinstance(user_ids, (int, uuid.UUID)):
         user_ids = [user_ids]
-    unique_users = {int(uid) for uid in user_ids if uid is not None}
+    unique_users = {str(uid) for uid in user_ids if uid is not None}
     if not unique_users:
         return
     selected_kinds = tuple(

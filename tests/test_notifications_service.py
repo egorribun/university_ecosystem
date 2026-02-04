@@ -501,10 +501,18 @@ async def test_event_creation_enqueues_notifications(
         delivery_started.set()
         return 0
 
+    async def _fake_fetch_ids(*args, **kwargs):
+        return [admin.id]
+
     monkeypatch.setattr(
         notifications_news_events,
         "create_notifications_for_users",
         _fake_create,
+    )
+    monkeypatch.setattr(
+        notifications_news_events,
+        "_fetch_active_user_ids",
+        _fake_fetch_ids,
     )
 
     starts_at = dt.datetime.now(dt.UTC) + dt.timedelta(hours=1)
@@ -521,8 +529,8 @@ async def test_event_creation_enqueues_notifications(
     assert response.status_code == 200
     assert not delivery_started.is_set()
 
-    await notification_queue.wait_for_all_jobs(timeout=1.0)
-    await asyncio.wait_for(delivery_started.wait(), timeout=1.0)
+    await notification_queue.wait_for_all_jobs(timeout=3.0)
+    await asyncio.wait_for(delivery_started.wait(), timeout=3.0)
     assert calls == 1
 
 

@@ -4,6 +4,7 @@ Story repository for story data access operations.
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import func, select
@@ -37,7 +38,7 @@ class StoryRepository(BaseRepository[Story, dict, dict]):
         return list(result.scalars().all())
 
     async def get_by_user(
-        self, user_id: int, *, skip: int = 0, limit: int = 20
+        self, user_id: uuid.UUID, *, skip: int = 0, limit: int = 20
     ) -> list[Story]:
         """Get stories created by a specific user."""
         result = await self.db.execute(
@@ -71,7 +72,7 @@ class StoryRepository(BaseRepository[Story, dict, dict]):
         )
         return list(result.scalars().all())
 
-    async def deactivate(self, story_id: int) -> bool:
+    async def deactivate(self, story_id: uuid.UUID) -> bool:
         """Deactivate a story by ID."""
         story = await self.get(story_id)
         if story is None:

@@ -1,6 +1,7 @@
 import base64
 import logging
 import os
+import uuid
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
 
@@ -23,7 +24,7 @@ from app.core.circuit_breaker import (
     CircuitBreakerOpenError,
 )
 from app.core.config import settings
-from app.core.database import get_db
+from app.core.database import get_db, get_read_db
 from app.core.localization import resolve_locale, translate
 from app.models.models import SpotifyIntegration, User
 from app.schemas.schemas import SpotifyAuthURL, SpotifyNowPlayingOut
@@ -262,7 +263,7 @@ async def spotify_callback(
     payload = decode_token(state) or {}
     if not payload.get("sub"):
         raise_validation_error("errors.spotify.invalid_state", locale)
-    user = await db.get(User, int(payload["sub"]))
+    user = await db.get(User, uuid.UUID(payload["sub"]))
     ensure_exists(user, "spotify.user_not_found", locale)
     locale = resolve_locale(request=request, user=user)
     try:
@@ -318,7 +319,7 @@ async def spotify_callback(
 @router.get("/now-playing", response_model=SpotifyNowPlayingOut)
 async def now_playing(
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_read_db),
     user: User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
@@ -439,3 +440,37 @@ async def disconnect(
     _disconnect_user(user, clear_refresh=True, clear_profile=True)
     await db.commit()
     return {"ok": True}
+
+
+@router.get("/playlists")
+async def list_playlists(
+    request: Request,
+    db: AsyncSession = Depends(get_read_db),
+    user: User = Depends(get_current_user),
+):
+    locale = resolve_locale(request=request, user=user)
+    token = await _ensure_access_token(db, user, locale=locale)
+    if not token:
+        raise_unauthorized(locale, "errors.spotify.reconnect_required")
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.get(
+            "https://api.spotify.com/v1/me/playlists",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        if r.status_code != 200:
+            raise_http_error(r.status_code, "errors.spotify.api_error", locale)
+        return r.json()
+
+
+@router.post("/sync-playlists")
+async def sync_playlists(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Synchronize Spotify playlists metadata to the local database.
+    """
+    # Placeholder implementation
+    return {"status": "success", "synced_count": 0}

@@ -1,5 +1,6 @@
 import csv
 import io
+import uuid
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 
@@ -22,13 +23,14 @@ def _normalize_time(value: datetime | None) -> datetime | None:
 async def log_data_access(
     db: AsyncSession,
     *,
-    actor_user_id: int | None,
-    subject_user_id: int | None,
+    actor_user_id: uuid.UUID | int | None,
+    subject_user_id: uuid.UUID | int | None,
     resource_type: str,
     action: str,
     request: Request,
     resource_id: str | None = None,
     context: dict | None = None,
+    commit: bool = True,
 ) -> DataAccessLog:
     created_at = datetime.now(UTC)
 
@@ -60,8 +62,9 @@ async def log_data_access(
         signature=signature,
     )
     db.add(log_entry)
-    await db.commit()
-    await db.refresh(log_entry)
+    if commit:
+        await db.commit()
+        await db.refresh(log_entry)
     return log_entry
 
 
@@ -70,6 +73,7 @@ async def batch_log_data_access(
     *,
     entries: list[dict],
     request: Request,
+    commit: bool = True,
 ) -> None:
     if not entries:
         return
@@ -117,7 +121,8 @@ async def batch_log_data_access(
         )
 
     db.add_all(log_entries)
-    await db.commit()
+    if commit:
+        await db.commit()
 
 
 async def cleanup_access_logs(

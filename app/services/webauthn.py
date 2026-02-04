@@ -138,6 +138,29 @@ class WebAuthnService:
 
         return json_to_dict(options_to_json(options))
 
+    def get_dummy_authentication_options(self) -> dict[str, Any]:
+        """Generate fake authentication options to prevent user enumeration."""
+        import secrets
+
+        # Create a dummy challenge and a random fake credential ID
+        dummy_credential_id = secrets.token_bytes(32)
+        allow_credentials = [
+            PublicKeyCredentialDescriptor(
+                id=dummy_credential_id,
+                type=PublicKeyCredentialType.PUBLIC_KEY,
+            )
+        ]
+
+        # Use a random RP ID if needed, but usually we use the real one
+        # to make the timing and behavior look standard.
+        options = generate_authentication_options(
+            rp_id=self._get_rp_id(),
+            allow_credentials=allow_credentials,
+            user_verification=UserVerificationRequirement.PREFERRED,
+        )
+
+        return json_to_dict(options_to_json(options))
+
     async def verify_authentication(
         self, user: User, challenge: str, response: dict[str, Any]
     ) -> WebAuthnCredential:

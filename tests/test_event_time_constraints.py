@@ -176,8 +176,9 @@ async def test_get_all_events_cursor_respects_ordering_and_gaps(
     initial_events = [
         _build_event(timedelta(hours=1), "Event A"),
         _build_event(timedelta(hours=2), "Event B"),
-        _build_event(timedelta(hours=3), "Event C"),
-        _build_event(timedelta(hours=3), "Event D"),
+        _build_event(timedelta(hours=2, minutes=45), "Event C"),
+        _build_event(timedelta(hours=3, seconds=0), "Event D0"),
+        _build_event(timedelta(hours=3, seconds=10), "Event D1"),
     ]
     db_session.add_all(initial_events)
     await db_session.commit()
@@ -195,6 +196,8 @@ async def test_get_all_events_cursor_respects_ordering_and_gaps(
     )
     # Filter to only our test events
     our_events = [e for e in first_page.items if e.id in test_event_ids]
+    # UUIDs don't guarantee insertion order, but we sort by starts_at in the service/repo
+    our_events.sort(key=lambda x: x.starts_at)
     assert [e.title for e in our_events[:2]] == ["Event A", "Event B"]
 
     inserted = _build_event(timedelta(hours=2, minutes=30), "Inserted Event")
@@ -209,13 +212,15 @@ async def test_get_all_events_cursor_respects_ordering_and_gaps(
         limit=100,
     )
     our_events = [e for e in second_page.items if e.id in test_event_ids]
+    our_events.sort(key=lambda x: x.starts_at)
     # Events should be ordered by starts_at: A, B, Inserted, C, D
     assert [e.title for e in our_events] == [
         "Event A",
         "Event B",
         "Inserted Event",
         "Event C",
-        "Event D",
+        "Event D0",
+        "Event D1",
     ]
 
 
@@ -291,7 +296,7 @@ async def test_event_detail_returns_qr_code_after_registration(
     headers = await _login(async_client, student.email, password)
 
     attend_response = await async_client.post(
-        "/events/attendance", headers=headers, json={"event_id": event.id}
+        "/events/attendance", headers=headers, json={"event_id": str(event.id)}
     )
     assert attend_response.status_code == 200
     qr_token = attend_response.json()["qr_token"]

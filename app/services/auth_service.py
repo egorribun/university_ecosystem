@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import logging
 import secrets
+import time
 from datetime import UTC, datetime, timedelta
 
 from fastapi import BackgroundTasks, Request
@@ -143,8 +144,31 @@ async def attach_pending_email(
 ) -> models.User | None:
     if user is None:
         return None
-    pending = await _get_active_email_change_request(db, user.id)
-    user.pending_email = pending.new_email if pending else None
+
+    # Performance optimization: check if relationship is already loaded
+    from sqlalchemy import inspect
+
+    insp = inspect(user)
+    if "email_change_tokens" in insp.unloaded:
+        pending = await _get_active_email_change_request(db, user.id)
+        user.pending_email = pending.new_email if pending else None
+    else:
+        # Relationship is already loaded (e.g. via selectinload), find latest active one
+        now = datetime.now(UTC)
+        tokens = [
+            t
+            for t in user.email_change_tokens
+            if not t.used
+            and (
+                t.expires_at.replace(tzinfo=UTC)
+                if t.expires_at.tzinfo is None
+                else t.expires_at
+            )
+            > now
+        ]
+        tokens.sort(key=lambda x: x.created_at, reverse=True)
+        user.pending_email = tokens[0].new_email if tokens else None
+
     return user
 
 
@@ -164,6 +188,9 @@ class AuthService:
             select(models.User).where(func.lower(models.User.email) == normalized_email)
         )
         user = result.scalar_one_or_none()
+        start = time.perf_counter()
+        from app.core.timing import ensure_minimum_time
+
         if user:
             token = secrets.token_urlsafe(32)
             token_hash = _hash_token(token)
@@ -198,6 +225,8 @@ class AuthService:
                 reason="user_not_found",
             )
 
+        await ensure_minimum_time(start, settings.auth_min_response_time)
+
     async def perform_password_reset(
         self,
         token: str,
@@ -207,10 +236,12 @@ class AuthService:
         locale = resolve_locale(request=request)
         token_hash = _hash_token(token)
         result = await self.db.execute(
-            select(models.PasswordResetToken).where(
+            select(models.PasswordResetToken)
+            .where(
                 models.PasswordResetToken.token_hash == token_hash,
                 models.PasswordResetToken.used.is_(False),
             )
+            .with_for_update()  # Locks the token row
         )
         rec = result.scalar_one_or_none()
         now = datetime.now(UTC)
@@ -327,7 +358,6 @@ class AuthService:
             request,
             user_id=user.id,
             reason="pending_confirmation",
-            extra={"email": validated_email},
         )
         return db_user
 
@@ -342,9 +372,9 @@ class AuthService:
         now = datetime.now(UTC)
 
         result = await self.db.execute(
-            select(models.EmailChangeToken).where(
-                models.EmailChangeToken.token_hash == token_hash
-            )
+            select(models.EmailChangeToken)
+            .where(models.EmailChangeToken.token_hash == token_hash)
+            .with_for_update()  # Ensure atomicity
         )
         record = result.scalar_one_or_none()
         if record is None or record.user_id != user.id or record.used:
@@ -416,7 +446,6 @@ class AuthService:
             request,
             user_id=user.id,
             reason="confirmed",
-            extra={"email": record.new_email},
         )
         return db_user
 

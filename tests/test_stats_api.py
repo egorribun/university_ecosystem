@@ -1,4 +1,5 @@
 import json
+import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -336,7 +337,7 @@ async def test_set_cached_stats_uses_settings_ttl(fake_cache, monkeypatch):
         await stats_cache.set_cached_stats(
             cache=fake_cache,
             kind="attendance",
-            user_id=1,
+            user_id=uuid.uuid4(),
             period_key="30d",
             payload={"value": 1},
         )
@@ -362,7 +363,7 @@ async def test_set_cached_stats_prefers_override_ttl(fake_cache, monkeypatch):
         await stats_cache.set_cached_stats(
             cache=fake_cache,
             kind="grades",
-            user_id=7,
+            user_id=uuid.uuid4(),
             period_key="default",
             payload={"value": 2},
             ttl=12,
@@ -413,7 +414,7 @@ async def test_registering_for_event_invalidates_stats_cache(
 
     response = await async_client.post(
         "/events/attendance",
-        json={"event_id": event.id},
+        json={"event_id": str(event.id)},
         headers=headers,
     )
     assert response.status_code == 200

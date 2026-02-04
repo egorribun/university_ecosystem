@@ -22,7 +22,7 @@ def calculate_log_signature(
     """
     # Canonical string representation
     # Sort context keys to ensure deterministic serialization
-    context_json = json.dumps(context, sort_keys=True)
+    context_json = json.dumps(context, sort_keys=True, default=str)
 
     # Use ISO format for timestamp to ensure consistency
     timestamp_str = created_at.isoformat()

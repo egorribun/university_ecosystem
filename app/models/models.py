@@ -1,3 +1,5 @@
+from sqlalchemy.ext.associationproxy import association_proxy
+
 from app.core.database import Base as Base
 from app.models.auth import (
     ActiveSession as ActiveSession,
@@ -94,4 +96,16 @@ from app.models.users import (
 )
 from app.models.users import (
     UserProfileDetail as UserProfileDetail,
+)
+
+# Late-binding association proxies to avoid cyclic imports in individual model files
+User.spotify_is_connected = association_proxy(
+    "spotify",
+    "is_connected",
+    creator=lambda value: SpotifyIntegration(is_connected=value),
+)
+User.spotify_display_name = association_proxy(
+    "spotify",
+    "display_name",
+    creator=lambda value: SpotifyIntegration(display_name=value),
 )

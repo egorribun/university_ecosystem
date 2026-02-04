@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import secrets
+import uuid
 from datetime import UTC, datetime
 from typing import Annotated
 
@@ -11,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_current_user, require_fresh_mfa
 from app.api.validation import ensure_exists, require_admin, require_owner_or_admin
 from app.auth.security import decode_token
-from app.core.database import get_db
+from app.core.database import get_db, get_read_db
 from app.core.localization import resolve_locale
 from app.models.models import ActiveSession, User
 from app.schemas import schemas
@@ -51,9 +52,9 @@ async def _resolve_target_user(
     *,
     db: AsyncSession,
     current_user: User,
-    requested_user_id: int | None,
+    requested_user_id: uuid.UUID | None,
     locale: str,
-) -> tuple[int, User]:
+) -> tuple[uuid.UUID, User]:
     if requested_user_id is None or requested_user_id == current_user.id:
         return current_user.id, current_user
     require_admin(current_user, locale)
@@ -66,8 +67,8 @@ async def _resolve_target_user(
 async def list_sessions(
     request: Request,
     current_user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
-    user_id: int | None = None,
+    db: Annotated[AsyncSession, Depends(get_read_db)],
+    user_id: uuid.UUID | None = None,
 ) -> list[schemas.ActiveSessionOut]:
     locale = resolve_locale(request=request, user=current_user)
     target_user_id, _ = await _resolve_target_user(
@@ -94,7 +95,7 @@ async def list_sessions(
 
 @router.delete("/{session_id}", response_model=schemas.ActiveSessionOut)
 async def revoke_session(
-    session_id: int,
+    session_id: uuid.UUID,
     request: Request,
     _: Annotated[None, Depends(require_fresh_mfa)],
     current_user: Annotated[User, Depends(get_current_user)],
@@ -123,7 +124,7 @@ async def revoke_other_sessions(
     _: Annotated[None, Depends(require_fresh_mfa)],
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
-    user_id: int | None = None,
+    user_id: uuid.UUID | None = None,
 ) -> schemas.SessionBulkRevokeOut:
     locale = resolve_locale(request=request, user=current_user)
     target_user_id, _ = await _resolve_target_user(

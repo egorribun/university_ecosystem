@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import traceback
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -66,10 +67,19 @@ class OutboxWorker:
                     # In a real system, we'd have a factory to reconstruct the event.
                     await self._dispatch_event(se)
                     se.processed_at = datetime.now(UTC)
-                except Exception as exc:
-                    logger.error(f"Failed to process outbox event {se.id}: {exc}")
+                except Exception:
+                    logger.error(
+                        "Failed to process outbox event",
+                        exc_info=True,
+                        extra={
+                            "event_id": str(se.id),
+                            "event_type": se.event_type,
+                            "error_count": se.error_count + 1,
+                        },
+                    )
                     se.error_count += 1
-                    se.last_error = str(exc)
+                    # Store first 500 chars of error for audit trail
+                    se.last_error = traceback.format_exc()[:500]
 
             await db.commit()
             return len(events)

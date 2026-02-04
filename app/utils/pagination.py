@@ -127,10 +127,21 @@ async def paginate_cursor[T](
     if params.cursor:
         cursor_value = decode_cursor(params.cursor)
         if cursor_value:
+            import uuid
+
+            try:
+                # Try to cast to UUID if it looks like one, needed for SQLAlchemy 2.0+
+                # with sqlite/pgvector when the column is typed as UUID
+                target_value = (
+                    uuid.UUID(cursor_value) if len(cursor_value) >= 32 else cursor_value
+                )
+            except (ValueError, TypeError):
+                target_value = cursor_value
+
             if descending:
-                stmt = stmt.where(cursor_column < cursor_value)
+                stmt = stmt.where(cursor_column < target_value)
             else:
-                stmt = stmt.where(cursor_column > cursor_value)
+                stmt = stmt.where(cursor_column > target_value)
 
     # Apply ordering
     if descending:

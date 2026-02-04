@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_admin_user
 from app.api.validation import raise_not_found, raise_validation_error
-from app.core.database import get_db
+from app.core.database import get_db, get_read_db
 from app.models import models
 from app.workers.dead_letter_queue import DeadLetterQueue, JobStatus
 
@@ -65,7 +65,7 @@ class DLQJobsListResponse(BaseModel):
     ),
 )
 async def get_dlq_stats(
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_read_db),
     _: models.User = Depends(get_current_admin_user),
 ) -> DLQStatsResponse:
     """
@@ -98,7 +98,7 @@ async def get_dlq_stats(
 async def list_dlq_jobs(
     status: str | None = None,
     limit: int = 20,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_read_db),
     _: models.User = Depends(get_current_admin_user),
 ) -> DLQJobsListResponse:
     """

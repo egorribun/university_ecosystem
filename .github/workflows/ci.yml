@@ -87,8 +87,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Validate docker compose configuration
+        shell: pwsh
         run: |
-          cp .env.example .env
+          Copy-Item .env.example .env
           docker compose -f docker-compose.yml config
 
   backend-tests:
@@ -206,6 +207,7 @@ jobs:
           cache-dependency-glob: "uv.lock"
 
       - name: Install dependencies
+        shell: pwsh
         run: |
           uv sync --frozen
 
@@ -214,19 +216,20 @@ jobs:
         run: |
           $timeout = 30
           $elapsed = 0
-          while ($elapsed -lt $timeout) {
+          do {
             if (pg_isready -h localhost -p 5432 -U test) {
               return
             }
             Start-Sleep -Seconds 1
             $elapsed++
-          }
+          } while ($elapsed -lt $timeout)
           throw "PostgreSQL was not ready in $timeout seconds"
 
       - name: Create database tables
         env:
           SECRET_KEY: "ci-test-secret-key-at-least-32-chars"
           ENVIRONMENT: testing
+        shell: pwsh
         run: |
           uv run python3 <<'PY'
           import asyncio
@@ -245,6 +248,7 @@ jobs:
         env:
           SECRET_KEY: "ci-test-secret-key-at-least-32-chars"
           ENVIRONMENT: testing
+        shell: pwsh
         run: |
           uv run alembic -c alembic.ini upgrade head
           uv run alembic -c alembic.ini downgrade base
@@ -275,16 +279,19 @@ jobs:
           cache-dependency-glob: "uv.lock"
 
       - name: Install backend dependencies
+        shell: pwsh
         run: |
           uv sync --frozen --no-dev
 
       - name: Install frontend dependencies
         working-directory: frontend
+        shell: pwsh
         run: npm ci
 
       - name: Generate OpenAPI schema
         env:
           DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+        shell: pwsh
         run: |
           uv run python3 - <<'PY'
           import json

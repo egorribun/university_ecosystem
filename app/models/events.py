@@ -1,5 +1,8 @@
+import uuid
+
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
+    UUID,
     Boolean,
     CheckConstraint,
     Column,
@@ -7,24 +10,23 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
-    Integer,
     String,
     Text,
     UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import TSVECTOR
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.core.events import EventEmitterMixin
+from app.models.mixins import UserFK, UUID7PrimaryKeyMixin
 
 
-class Event(Base, EventEmitterMixin):
+class Event(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     __tablename__ = "events"
 
-    id = Column(Integer, primary_key=True)
-    title = Column(String, nullable=False)
+    title = Column(String, nullable=False, index=True)
     title_en = Column(String)
     description = Column(Text)
     description_en = Column(Text)
@@ -34,8 +36,10 @@ class Event(Base, EventEmitterMixin):
     event_type_en = Column(String)
     starts_at = Column(DateTime(timezone=True), nullable=False, index=True)
     ends_at = Column(DateTime(timezone=True), nullable=False, index=True)
-    created_by = Column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    created_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
     )
     search_vector = Column(
         Text().with_variant(TSVECTOR(), "postgresql"),
@@ -86,15 +90,11 @@ class Event(Base, EventEmitterMixin):
         )
 
 
-class EventAttendance(Base, EventEmitterMixin):
+class EventAttendance(Base, EventEmitterMixin, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "event_attendance"
 
-    id = Column(Integer, primary_key=True)
-    user_id = Column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
-    )
-    event_id = Column(
-        Integer,
+    event_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("events.id", ondelete="CASCADE"),
         index=True,
         nullable=False,
@@ -117,12 +117,14 @@ class EventAttendance(Base, EventEmitterMixin):
         )
 
 
-class EventFile(Base):
+class EventFile(Base, UUID7PrimaryKeyMixin):
     __tablename__ = "event_files"
 
-    id = Column(Integer, primary_key=True)
-    event_id = Column(
-        Integer, ForeignKey("events.id", ondelete="CASCADE"), index=True, nullable=False
+    event_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("events.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
     )
     file_url = Column(String, nullable=False)
     description = Column(String)

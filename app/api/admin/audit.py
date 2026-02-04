@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,8 +20,8 @@ router = APIRouter(prefix="/audit", tags=["admin-audit"])
 async def list_audit_logs(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    actor_id: int | None = None,
-    subject_id: int | None = None,
+    actor_id: UUID | None = None,
+    subject_id: UUID | None = None,
     resource_type: str | None = None,
     action: str | None = None,
     db: AsyncSession = Depends(get_db),

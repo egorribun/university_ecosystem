@@ -1,43 +1,67 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
+from uuid import uuid4
 
 import pytest
-
-from app.auth.redis_session import RedisSessionBackend
 from fakeredis.aioredis import FakeRedis
 
-
-@pytest.mark.asyncio
-async def test_redis_session_lifecycle():
-    redis_client = FakeRedis(encoding="utf-8", decode_responses=True)
-    backend = RedisSessionBackend(redis_client)
-
-    user_id = 1
-    jti = "test-jti"
-    expires_at = datetime.now(UTC) + timedelta(minutes=30)
-
-    # Register session
-    await backend.register_session(user_id, jti, expires_at, {"ip": "127.0.0.1"})
-
-    # Check validity
-    assert await backend.is_session_valid(jti) is True
-    assert await backend.is_session_valid("wrong-jti") is False
-
-    # Revoke session
-    await backend.revoke_session(jti)
-    assert await backend.is_session_valid(jti) is False
+from app.auth.fingerprint import SessionFingerprint
+from app.core.config import settings
+from app.services.auth import redis_session
+from app.services.auth.redis_session import RedisSessionService
 
 
 @pytest.mark.asyncio
-async def test_redis_session_expiration():
-    redis_client = FakeRedis(encoding="utf-8", decode_responses=True)
-    backend = RedisSessionBackend(redis_client)
+async def test_redis_session_lifecycle_v2(monkeypatch):
+    # 1. Mock parameters
+    monkeypatch.setattr(settings, "access_token_expire_minutes", 30)
+    monkeypatch.setattr(settings, "rate_limit_storage_uri", "redis://localhost")
 
-    user_id = 1
-    jti = "expiring-jti"
-    # Set expiration in the past (already expired)
-    expires_at = datetime.now(UTC) - timedelta(minutes=1)
+    # 2. Mock Redis client
+    fake_client = FakeRedis(decode_responses=True)
 
-    await backend.register_session(user_id, jti, expires_at)
+    async def mock_get_client(url):
+        return fake_client
 
-    # Should not be valid
-    assert await backend.is_session_valid(jti) is False
+    monkeypatch.setattr(redis_session, "_get_shared_client", mock_get_client)
+
+    # 3. Initialize Service
+    service = RedisSessionService()  # Should pick up mocked settings values
+
+    user_id = uuid4()
+    jti = "test-jti-v2"
+    fingerprint = SessionFingerprint(
+        user_agent="test-agent",
+        ip_address="127.0.0.1",
+        accept_language="en",
+        fingerprint_hash="hash123",
+    )
+    now = datetime.now(UTC)
+
+    print(f"DEBUG: Service TTL: {service.ttl_seconds}")
+
+    # 4. Create
+    await service.create_session(jti, user_id, fingerprint, now)
+
+    # Check raw redis
+    raw_exists = await fake_client.exists(f"session:{jti}")
+    print(f"DEBUG: Raw Exists after create: {raw_exists}")
+    assert raw_exists
+
+    # 5. Get
+    session = await service.get_session(jti)
+    print(f"DEBUG: Session retrieved: {session}")
+    assert session is not None
+    assert session["user_id"] == str(user_id)
+
+    # 6. Update Activity
+    await service.update_last_seen(jti)
+    raw_exists_2 = await fake_client.exists(f"session:{jti}")
+    print(f"DEBUG: Raw Exists after update: {raw_exists_2}")
+    assert raw_exists_2
+
+    # 7. Revoke
+    await service.revoke_session(jti)
+    session_gone = await service.get_session(jti)
+    assert session_gone is None
+    raw_exists_3 = await fake_client.exists(f"session:{jti}")
+    assert not raw_exists_3

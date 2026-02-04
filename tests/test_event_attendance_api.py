@@ -1,3 +1,4 @@
+import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -48,12 +49,12 @@ async def test_attend_registers_event(async_client, db_session, user_factory):
     response = await async_client.post(
         "/events/attendance",
         headers=base_headers,
-        json={"event_id": event.id},
+        json={"event_id": str(event.id)},
     )
     assert response.status_code == status.HTTP_200_OK
     payload = response.json()
-    assert payload["event_id"] == event.id
-    assert payload["user_id"] == student.id
+    assert payload["event_id"] == str(event.id)
+    assert payload["user_id"] == str(student.id)
     assert payload["qr_token"]
 
 
@@ -73,7 +74,7 @@ async def test_attend_missing_event_returns_not_found(
     response = await async_client.post(
         "/events/attendance",
         headers=base_headers,
-        json={"event_id": 999999},
+        json={"event_id": str(uuid.uuid4())},
     )
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert response.json()["detail"] == translate(
@@ -110,7 +111,7 @@ async def test_attend_registration_closed_returns_conflict(
     response = await async_client.post(
         "/events/attendance",
         headers=base_headers,
-        json={"event_id": event.id},
+        json={"event_id": str(event.id)},
     )
     assert response.status_code == status.HTTP_409_CONFLICT
     assert response.json()["detail"] == translate(
@@ -159,12 +160,12 @@ async def test_attend_restores_missing_registration_timestamp(
     response = await async_client.post(
         "/events/attendance",
         headers=base_headers,
-        json={"event_id": event.id},
+        json={"event_id": str(event.id)},
     )
     assert response.status_code == status.HTTP_200_OK
     payload = response.json()
-    assert payload["event_id"] == event.id
-    assert payload["user_id"] == student.id
+    assert payload["event_id"] == str(event.id)
+    assert payload["user_id"] == str(student.id)
     assert payload["qr_token"]
     assert payload["registered_at"] is not None
 
@@ -205,7 +206,7 @@ async def _register_for_event(
     response = await async_client.post(
         "/events/attendance",
         headers=base_headers,
-        json={"event_id": event.id},
+        json={"event_id": str(event.id)},
     )
     assert response.status_code == status.HTTP_200_OK
     token = response.json()["qr_token"]
@@ -228,8 +229,8 @@ async def test_attendance_token_can_be_verified(async_client, db_session, user_f
         async_client, db_session, user_factory
     )
     payload = attendance_tokens.verify_token(token, attendance)
-    assert payload.event_id == event.id
-    assert payload.user_id == student.id
+    assert str(payload.event_id) == str(event.id)
+    assert str(payload.user_id) == str(student.id)
 
 
 @pytest.mark.asyncio

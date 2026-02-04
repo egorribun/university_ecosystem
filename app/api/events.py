@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+import uuid
 from datetime import UTC, datetime
 from functools import lru_cache
 from typing import Any
@@ -19,11 +20,14 @@ from fastapi import (
     status,
 )
 from fastapi.encoders import jsonable_encoder
-from redis.exceptions import RedisError
-from sqlalchemy import and_, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user, get_event_service
+from app.api.deps import (
+    get_current_user,
+    get_event_service,
+    get_read_event_service,
+)
 from app.api.utils import save_upload
 from app.api.validation import (
     ensure_exists,
@@ -33,13 +37,14 @@ from app.api.validation import (
     require_owner_or_admin,
     require_teacher_or_admin,
 )
+from app.auth.rbac import PermissionChecker
+from app.core.cache_versioning import events_cache_version
 from app.core.container import get_notification_service, get_vector_service
-from app.core.database import get_db
+from app.core.database import get_db, get_read_db
 from app.core.localization import normalize_locale, resolve_locale
-from app.deps.cache import RedisCache, etag_matches, format_etag, get_cache
+from app.deps.cache import etag_matches, format_etag, get_cache
 from app.models import models
 from app.schemas import schemas
-from app.services import attendance_tokens
 from app.services.event_service import EventService
 from app.services.notification_service import NotificationService
 from app.utils.files import delete_static_file, save_attachment
@@ -49,98 +54,16 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/events", tags=["events"])
 
-_EVENTS_LIST_CACHE_PREFIX = "events:list"
-_EVENTS_LIST_VERSION_KEY = f"{_EVENTS_LIST_CACHE_PREFIX}:version"
-_LOCAL_EVENTS_LIST_VERSION = 0
 _EVENTS_CACHE_CONTROL = "private, max-age=180"
-
-
-async def _reset_events_list_cache_version() -> None:
-    global _LOCAL_EVENTS_LIST_VERSION
-    _LOCAL_EVENTS_LIST_VERSION = 0
-    cache = get_cache()
-    if isinstance(cache, RedisCache):
-        try:
-            client = await cache._get_client()
-            await client.delete(_EVENTS_LIST_VERSION_KEY)
-        except (RedisError, OSError):
-            logger.debug("Failed to reset events cache version in Redis", exc_info=True)
+_EVENTS_LIST_CACHE_PREFIX = events_cache_version.prefix
 
 
 async def _get_events_list_version(cache) -> str:
-    if not cache.enabled:
-        return str(_LOCAL_EVENTS_LIST_VERSION)
-    if isinstance(cache, RedisCache):
-        try:
-            client = await cache._get_client()
-            raw = await client.get(_EVENTS_LIST_VERSION_KEY)
-        except (RedisError, OSError):
-            logger.warning(
-                "Failed to read events cache version from Redis", exc_info=True
-            )
-            return "0"
-        try:
-            return str(int(raw)) if raw is not None else "0"
-        except (TypeError, ValueError):
-            logger.debug(
-                "Invalid events cache version %s, using zero", raw, exc_info=True
-            )
-            return "0"
-    return "0"
-
-
-async def _read_events_list_version(cache) -> int:
-    if not cache.enabled:
-        return _LOCAL_EVENTS_LIST_VERSION
-    if isinstance(cache, RedisCache):
-        try:
-            client = await cache._get_client()
-            raw = await client.get(_EVENTS_LIST_VERSION_KEY)
-        except (RedisError, OSError):
-            logger.debug(
-                "Failed to read events cache version for inspection", exc_info=True
-            )
-            return 0
-        try:
-            return int(raw) if raw is not None else 0
-        except (TypeError, ValueError):
-            logger.debug(
-                "Invalid cached events version %s during inspection",
-                raw,
-                exc_info=True,
-            )
-            return 0
-    return 0
+    return await events_cache_version.get_version()
 
 
 async def _increment_events_list_version(cache) -> None:
-    global _LOCAL_EVENTS_LIST_VERSION
-    if not cache.enabled:
-        _LOCAL_EVENTS_LIST_VERSION += 1
-        return
-    if isinstance(cache, RedisCache):
-        try:
-            client = await cache._get_client()
-            increment = getattr(client, "incr", None)
-            if callable(increment):
-                await increment(_EVENTS_LIST_VERSION_KEY)
-            else:
-                await _manual_increment_events_version(client)
-        except (RedisError, OSError):
-            logger.warning(
-                "Failed to increment events cache version in Redis", exc_info=True
-            )
-        return
-    _LOCAL_EVENTS_LIST_VERSION += 1
-
-
-async def _manual_increment_events_version(client) -> None:
-    raw = await client.get(_EVENTS_LIST_VERSION_KEY)
-    try:
-        current = int(raw) if raw is not None else 0
-    except (TypeError, ValueError):
-        current = 0
-    await client.set(_EVENTS_LIST_VERSION_KEY, current + 1)
+    await events_cache_version.increment()
 
 
 def _events_list_cache_key(
@@ -253,7 +176,7 @@ async def all_events(
     ),
     cursor: str | None = Query(None, alias="cursor"),
     if_none_match: str | None = Header(default=None),
-    events: EventService = Depends(get_event_service),
+    events: EventService = Depends(get_read_event_service),
 ):
     """
     Get paginated list of events.
@@ -389,7 +312,7 @@ async def my_events(
     response: Response,
     user: models.User = Depends(get_current_user),
     if_none_match: str | None = Header(default=None),
-    events: EventService = Depends(get_event_service),
+    events: EventService = Depends(get_read_event_service),
 ):
     locale = resolve_locale(request=request, user=user)
     _set_language_headers(response, locale)
@@ -408,7 +331,7 @@ async def my_events(
 
 @router.post("/{id}/upload_file", response_model=schemas.EventFileOut)
 async def upload_event_file(
-    id: int,
+    id: uuid.UUID | int,
     file: UploadFile = File(...),
     *,
     request: Request,
@@ -437,7 +360,7 @@ async def upload_event_file(
 
 
 @router.get("/{id}/files", response_model=list[schemas.EventFileOut])
-async def get_event_files(id: int, db: AsyncSession = Depends(get_db)):
+async def get_event_files(id: uuid.UUID | int, db: AsyncSession = Depends(get_read_db)):
     files = (
         (
             await db.execute(
@@ -465,17 +388,27 @@ async def upload_event_image(
 
 @router.patch("/{event_id}", response_model=schemas.EventOut)
 async def update_event(
-    event_id: int,
+    event_id: uuid.UUID | int,
     data: schemas.EventUpdate,
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
     events: EventService = Depends(get_event_service),
+    checker: PermissionChecker = Depends(),
 ):
     locale = resolve_locale(request=request, user=user)
     q = await db.get(models.Event, event_id)
     ensure_exists(q, "events", locale)
-    require_owner_or_admin(user, locale, owner_id=q.created_by, allow_teacher=True)
+
+    # ReBAC: Migrated from require_owner_or_admin
+    if not await checker.check_permission(
+        resource_type="event",
+        resource_id=str(event_id),
+        permission="edit",
+        user_id=str(user.id),
+    ):
+        raise_forbidden(locale)
+
     old_image_url = q.image_url
     try:
         q = await events.update_event(event_id, data)
@@ -510,7 +443,7 @@ async def update_event(
 
 @router.delete("/{event_id}", response_model=dict)
 async def delete_event(
-    event_id: int,
+    event_id: uuid.UUID | int,
     request: Request,
     events: EventService = Depends(get_event_service),
     user: models.User = Depends(get_current_user),
@@ -553,79 +486,20 @@ async def delete_event(
 
 @router.get("/{id}", response_model=schemas.EventOut)
 async def get_event(
-    id: int,
+    id: uuid.UUID | int,
     request: Request,
     response: Response,
-    db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
     if_none_match: str | None = Header(default=None),
-    events: EventService = Depends(get_event_service),
+    events: EventService = Depends(get_read_event_service),
 ):
     locale = resolve_locale(request=request, user=user)
     _set_language_headers(response, locale)
 
-    # Single query for event with files eagerly loaded
-    from sqlalchemy.orm import selectinload as load_files
+    payload = await events.get_event_detail(id, user.id, locale=locale)
+    if not payload:
+        raise_not_found("events", locale)
 
-    result = await db.execute(
-        select(models.Event)
-        .where(models.Event.id == id)
-        .options(load_files(models.Event.files))
-    )
-    q = result.scalar_one_or_none()
-    ensure_exists(q, "events", locale)
-
-    # Fetch attendance and participant count in parallel using a single query
-    attendance_and_count_result = await db.execute(
-        select(
-            models.EventAttendance,
-            (
-                select(func.count())
-                .select_from(models.EventAttendance)
-                .where(models.EventAttendance.event_id == id)
-                .correlate(None)
-                .scalar_subquery()
-            ).label("participant_count"),
-        ).where(
-            and_(
-                models.EventAttendance.event_id == id,
-                models.EventAttendance.user_id == user.id,
-            )
-        )
-    )
-    row = attendance_and_count_result.first()
-
-    attendance = row[0] if row else None
-    participant_count = row[1] if row else 0
-
-    # If no attendance row, still get participant count
-    if row is None:
-        count_result = await db.execute(
-            select(func.count())
-            .select_from(models.EventAttendance)
-            .where(models.EventAttendance.event_id == id)
-        )
-        participant_count = count_result.scalar() or 0
-
-    attendance_token: str | None = None
-    if attendance:
-        if attendance_tokens.ensure_secret_material(attendance):
-            db.add(attendance)
-            await db.commit()
-            await db.refresh(attendance)
-        attendance_token = attendance_tokens.issue_token(attendance)
-
-    # Files are already loaded via selectinload
-    files = getattr(q, "files", []) or []
-
-    payload = events.serialize_event(
-        q,
-        locale,
-        participant_count=participant_count,
-        files=files,
-        is_registered=attendance is not None,
-        my_qr_token=attendance_token,
-    )
     encoded, digest, weak_header = _encode_payload_with_etag(payload)
     if etag_matches(digest, if_none_match):
         not_modified = Response(status_code=status.HTTP_304_NOT_MODIFIED)
@@ -638,7 +512,7 @@ async def get_event(
 
 @router.delete("/file/{file_id}", response_model=dict)
 async def delete_event_file(
-    file_id: int,
+    file_id: uuid.UUID | int,
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: models.User = Depends(get_current_user),
@@ -667,9 +541,9 @@ async def semantic_search(
     limit: int = Query(5, ge=1, le=20),
     min_score: float = Query(0.7, ge=0.0, le=1.0),
     if_none_match: str | None = Header(default=None),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_read_db),
     vector_service: Any = Depends(get_vector_service),
-    events: EventService = Depends(get_event_service),
+    events: EventService = Depends(get_read_event_service),
 ):
     """
     Semantic search for events using embeddings.

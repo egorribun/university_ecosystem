@@ -185,7 +185,7 @@ async def test_login_migrates_legacy_hash(async_client, user_factory, db_session
     body = response.json()
     assert body["token_type"] == "bearer"
     assert body["access_token"]
-    assert body["user"]["id"] == user.id
+    assert body["user"]["id"] == str(user.id)
     session = body.get("session")
     assert session is not None
     assert isinstance(session.get("signing_key"), str)
@@ -242,7 +242,11 @@ async def test_create_user_forbidden_for_non_admin(async_client, user_factory):
     )
 
     assert response.status_code == status.HTTP_403_FORBIDDEN
-    assert response.json() == {"detail": "Access denied"}
+    body = response.json()
+    # RFC 7807 format
+    assert body["status"] == 403
+    assert body["title"] == "Permission Denied"
+    assert "detail" in body
 
 
 @pytest.mark.asyncio
@@ -298,7 +302,7 @@ async def test_register_normalizes_email(async_client, db_session):
     body = response.json()
     assert body["status"] == "ok"
 
-    user = await db_session.get(models.User, body["id"])
+    user = await db_session.get(models.User, uuid.UUID(body["id"]))
     assert user is not None
     assert user.email == raw_email.lower()
 
@@ -322,7 +326,7 @@ async def test_login_accepts_mixed_case_username(async_client, user_factory):
     body = response.json()
     assert body["token_type"] == "bearer"
     assert body["access_token"]
-    assert body["user"]["id"] == user.id
+    assert body["user"]["id"] == str(user.id)
     session = body.get("session")
     assert session is not None
     assert isinstance(session.get("signing_key"), str)

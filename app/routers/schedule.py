@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import re
+import uuid
 from collections.abc import Sequence
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_schedule_service
+from app.api.deps import get_read_schedule_service
 from app.api.validation import raise_not_found
-from app.core.database import get_db
+from app.core.database import get_read_db
 from app.core.localization import resolve_locale, translate
 from app.models import models
 from app.services.ical import generate_schedule_ics
@@ -29,12 +30,12 @@ def _build_filename(group: models.Group) -> str:
 @router.get("/ics", response_class=Response)
 async def download_schedule_ics(
     request: Request,
-    schedule_service: Annotated[Any, Depends(get_schedule_service)],
-    group: int = Query(
+    schedule_service: Annotated[Any, Depends(get_read_schedule_service)],
+    group: uuid.UUID = Query(
         ..., description=translate("schedule.query.group_id_description")
     ),
-    db: AsyncSession = Depends(get_db),
-) -> Response:
+    db: AsyncSession = Depends(get_read_db),
+):
     locale = resolve_locale(request=request)
     group_obj = await db.get(models.Group, group)
     if not group_obj:

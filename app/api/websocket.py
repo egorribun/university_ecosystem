@@ -22,14 +22,14 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from redis.asyncio import Redis
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.core import metrics
 from app.core.config import settings
 from app.core.database import async_session
 from app.core.feature_flags import feature_flags
 from app.core.metrics import record_presence_event, record_presence_throttled
-from app.models.chat import Chat, Message, chat_participants
+from app.deps.cache import get_cache, versioned_key
+from app.models.chat import Message, chat_participants
 from app.models.enums import UserRole
 from app.models.models import ActiveSession, User
 from app.schemas.chat import ChatParticipant, PresenceStatus
@@ -49,8 +49,16 @@ PRESENCE_SOURCE_PUBSUB = "pubsub"
 _PRESENCE_INSTANCE_ID = uuid.uuid4().hex
 
 
-async def _get_presence_audience(user_id: int) -> set[int]:
+async def _get_presence_audience(user_id: uuid.UUID) -> set[uuid.UUID]:
     """Resolve user IDs that should receive presence updates for user_id."""
+    cache = get_cache()
+    cache_key = versioned_key(f"user:{user_id}:presence_audience")
+
+    if cache.enabled:
+        entry = await cache.get(cache_key)
+        if entry:
+            return set(entry.payload)
+
     async with async_session() as session:
         chat_ids = select(chat_participants.c.chat_id).where(
             chat_participants.c.user_id == user_id
@@ -61,11 +69,33 @@ async def _get_presence_audience(user_id: int) -> set[int]:
             .where(chat_participants.c.chat_id.in_(chat_ids))
         )
         audience = {row[0] for row in result.all()}
+
     audience.discard(user_id)
+
+    if cache.enabled:
+        await cache.set(cache_key, list(audience), ttl=3600)
+
     return audience
 
 
-async def _get_online_users_for_user(user_id: int) -> list[int]:
+async def invalidate_presence_audience_cache(*user_ids: uuid.UUID) -> None:
+    """Invalidate presence audience cache for one or more users."""
+    cache = get_cache()
+    if not cache.enabled or not user_ids:
+        return
+    keys = [versioned_key(f"user:{uid}:presence_audience") for uid in user_ids]
+    await cache.invalidate(*keys)
+
+
+async def invalidate_chat_participants_cache(chat_id: uuid.UUID) -> None:
+    """Invalidate participants cache for a specific chat."""
+    cache = get_cache()
+    if not cache.enabled:
+        return
+    await cache.invalidate(versioned_key(f"chat:{chat_id}:participants"))
+
+
+async def _get_online_users_for_user(user_id: uuid.UUID) -> list[uuid.UUID]:
     """Return online user IDs limited to the current user's chat participants."""
     audience = await _get_presence_audience(user_id)
     return [target_id for target_id in audience if manager.is_online(target_id)]
@@ -113,7 +143,7 @@ class PresencePubSub:
         envelope = dict(payload)
         envelope["instance_id"] = _PRESENCE_INSTANCE_ID
         await self._redis.publish(
-            settings.presence_pubsub_channel, json.dumps(envelope)
+            settings.presence_pubsub_channel, json.dumps(envelope, default=str)
         )
 
     async def _listen_for_updates(self) -> None:
@@ -149,13 +179,17 @@ class ConnectionManager:
 
     def __init__(self) -> None:
         # user_id -> set of WebSocket connections (user can have multiple tabs/devices)
-        self.active_connections: dict[int, set[WebSocket]] = {}
+        self.active_connections: dict[uuid.UUID, set[WebSocket]] = {}
         # websocket -> user_id (for reverse lookup on disconnect)
-        self.connection_users: dict[WebSocket, int] = {}
-        self._last_presence_sent_at: dict[int, datetime] = {}
+        self.connection_users: dict[WebSocket, uuid.UUID] = {}
+        self._last_presence_sent_at: dict[uuid.UUID, datetime] = {}
 
     async def connect(
-        self, websocket: WebSocket, user_id: int, *, subprotocol: str | None = None
+        self,
+        websocket: WebSocket,
+        user_id: uuid.UUID,
+        *,
+        subprotocol: str | None = None,
     ) -> None:
         """Accept a WebSocket connection and register it for the user."""
         if subprotocol:
@@ -168,7 +202,7 @@ class ConnectionManager:
         self.connection_users[websocket] = user_id
         logger.info(f"WebSocket connected: user_id={user_id}")
 
-    def disconnect(self, websocket: WebSocket) -> int | None:
+    def disconnect(self, websocket: WebSocket) -> uuid.UUID | None:
         """Remove a WebSocket connection and return the user_id if found."""
         user_id = self.connection_users.pop(websocket, None)
         if user_id is not None and user_id in self.active_connections:
@@ -178,14 +212,14 @@ class ConnectionManager:
             logger.info(f"WebSocket disconnected: user_id={user_id}")
         return user_id
 
-    def is_online(self, user_id: int) -> bool:
+    def is_online(self, user_id: uuid.UUID) -> bool:
         """Check if a user has any active connections."""
         return (
             user_id in self.active_connections
             and len(self.active_connections[user_id]) > 0
         )
 
-    async def send_to_user(self, user_id: int, message: dict[str, Any]) -> int:
+    async def send_to_user(self, user_id: uuid.UUID, message: dict[str, Any]) -> int:
         """
         Send a message to all connections of a user.
         Returns number of successful sends.
@@ -210,24 +244,49 @@ class ConnectionManager:
 
         return sent
 
+    async def _get_chat_participants_cached(
+        self, chat_id: uuid.UUID
+    ) -> list[uuid.UUID]:
+        """Fetch participant IDs for a chat, using Redis cache if available."""
+        cache = get_cache()
+        cache_key = versioned_key(f"chat:{chat_id}:participants")
+
+        if cache.enabled:
+            entry = await cache.get(cache_key)
+            if entry:
+                return [uuid.UUID(uid) for uid in entry.payload]
+
+        async with async_session() as session:
+            stmt = select(chat_participants.c.user_id).where(
+                chat_participants.c.chat_id == chat_id
+            )
+            result = await session.execute(stmt)
+            participants = [row[0] for row in result.all()]
+
+        if cache.enabled:
+            await cache.set(cache_key, participants, ttl=3600)
+
+        return participants
+
     async def broadcast_to_chat(
-        self, chat_id: str, message: dict[str, Any], exclude_user_id: int | None = None
+        self,
+        chat_id: uuid.UUID,
+        message: dict[str, Any],
+        exclude_user_id: uuid.UUID | None = None,
     ) -> int:
         """Broadcast a message to all participants of a chat. Returns total sends."""
         total_sent = 0
-        async with async_session() as session:
-            chat = await session.get(
-                Chat, chat_id, options=[selectinload(Chat.participants)]
-            )
-            if chat:
-                for participant in chat.participants:
-                    if exclude_user_id and participant.id == exclude_user_id:
-                        continue
-                    total_sent += await self.send_to_user(participant.id, message)
+        participant_ids = await self._get_chat_participants_cached(chat_id)
+
+        for p_id in participant_ids:
+            if exclude_user_id and p_id == exclude_user_id:
+                continue
+            total_sent += await self.send_to_user(p_id, message)
+
         return total_sent
 
     def _should_broadcast_presence(
-        self, user_id: int, now: datetime, *, force: bool
+        self, user_id: uuid.UUID, now: datetime, *, force: bool
     ) -> bool:
         min_interval = max(settings.presence_ping_min_interval_seconds, 0)
         if force or min_interval <= 0:
@@ -240,7 +299,7 @@ class ConnectionManager:
 
     async def broadcast_presence(
         self,
-        user_id: int,
+        user_id: uuid.UUID,
         active: bool,
         last_seen: datetime | None,
         *,
@@ -273,7 +332,7 @@ class ConnectionManager:
             total_sent += await self.send_to_user(target_user, payload)
         return total_sent
 
-    def get_online_users(self) -> list[int]:
+    def get_online_users(self) -> list[uuid.UUID]:
         """Get list of all online user IDs."""
         return list(self.active_connections.keys())
 
@@ -295,7 +354,7 @@ async def _handle_presence_pubsub(payload: dict[str, Any]) -> None:
         except ValueError:
             logger.warning("Invalid last_seen value in presence payload")
     await manager.broadcast_presence(
-        int(user_id),
+        uuid.UUID(str(user_id)),
         active,
         last_seen,
         source=PRESENCE_SOURCE_PUBSUB,
@@ -327,7 +386,7 @@ async def get_user_from_token(token: str) -> tuple[User | None, str | None]:
             return None, None
 
         async with async_session() as session:
-            user = await session.get(User, int(user_id))
+            user = await session.get(User, uuid.UUID(user_id))
             if not user or not user.is_active:
                 return None, None
 
@@ -427,8 +486,8 @@ async def _update_last_seen(session_jti: str | None) -> datetime:
 
 
 async def build_presence_map(
-    user_ids: Iterable[int], session: AsyncSession | None = None
-) -> dict[int, PresenceStatus]:
+    user_ids: Iterable[uuid.UUID], session: AsyncSession | None = None
+) -> dict[uuid.UUID, PresenceStatus]:
     """Return presence info for a set of users."""
 
     ids = {uid for uid in user_ids if uid is not None}
@@ -453,7 +512,7 @@ async def build_presence_map(
             )
             last_seen_map = {row[0]: row[1] for row in result.all()}
 
-    presence: dict[int, PresenceStatus] = {}
+    presence: dict[uuid.UUID, PresenceStatus] = {}
     for uid in ids:
         presence[uid] = PresenceStatus(
             active=manager.is_online(uid),
@@ -463,7 +522,7 @@ async def build_presence_map(
 
 
 def serialize_message(
-    message: Message, presence: dict[int, PresenceStatus] | None = None
+    message: Message, presence: dict[uuid.UUID, PresenceStatus] | None = None
 ) -> dict[str, Any]:
     """Serialize a Message object for WebSocket transmission."""
     sender_data = None
@@ -647,6 +706,24 @@ async def websocket_chat(websocket: WebSocket):
                 if chat_id and message_id:
                     # Update message read status in DB
                     async with async_session() as session:
+                        # Verify that the user is a participant of the chat (Fix IDOR)
+                        is_participant_stmt = select(chat_participants).where(
+                            chat_participants.c.chat_id == chat_id,
+                            chat_participants.c.user_id == user.id,
+                        )
+                        is_participant = (
+                            await session.execute(is_participant_stmt)
+                        ).first()
+                        if not is_participant:
+                            logger.warning(
+                                f"User {user.id} tried to mark message {message_id} "
+                                f"as read in chat {chat_id} without being a participant"
+                            )
+                            await websocket.send_json(
+                                {"type": "error", "message": "Access denied"}
+                            )
+                            continue
+
                         msg = await session.get(Message, message_id)
                         if msg and msg.chat_id == chat_id and msg.sender_id != user.id:
                             msg.read_status = True
@@ -721,7 +798,7 @@ async def websocket_chat(websocket: WebSocket):
 
 
 async def notify_new_message(
-    message: Message, exclude_user_id: int | None = None
+    message: Message, exclude_user_id: uuid.UUID | None = None
 ) -> int:
     """
     Notify chat participants about a new message via WebSocket.

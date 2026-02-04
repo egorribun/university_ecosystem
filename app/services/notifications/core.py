@@ -9,6 +9,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import re
+import uuid
 from collections.abc import Mapping, Sequence
 from datetime import UTC
 from html import unescape
@@ -113,7 +114,7 @@ def _normalize_translation_map(
 
 
 def _build_delivery_row(
-    notification_id: int,
+    notification_id: uuid.UUID,
     notification_created_at: dt.datetime,
     *,
     status: str,
@@ -126,7 +127,7 @@ def _build_delivery_row(
     """Build a notification delivery row for database insertion."""
     attempt_ts = attempted_at or dt.datetime.now(UTC)
     row: dict[str, Any] = {
-        "notification_id": int(notification_id),
+        "notification_id": notification_id,
         "notification_created_at": notification_created_at,
         "channel": channel,
         "status": status,
@@ -141,16 +142,16 @@ def _build_delivery_row(
 
 
 async def _fetch_active_user_ids(
-    db: AsyncSession, *, exclude: Sequence[int] | None = None
-) -> list[int]:
+    db: AsyncSession, *, exclude: Sequence[uuid.UUID] | None = None
+) -> list[uuid.UUID]:
     """Fetch IDs of all active users, optionally excluding some."""
     stmt = select(User.id).where(User.is_active.is_(True))
     if exclude:
-        excluded = {int(uid) for uid in exclude if uid is not None}
+        excluded = {uid for uid in exclude if uid is not None}
         if excluded:
             stmt = stmt.where(User.id.notin_(excluded))
     rows = await db.execute(stmt)
-    return [int(uid) for uid in rows.scalars().all()]
+    return list(rows.scalars().all())
 
 
 def _ensure_aware(value: dt.datetime | None) -> dt.datetime:

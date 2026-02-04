@@ -1,4 +1,5 @@
 import logging
+import uuid
 from typing import Any
 
 from fastapi import (
@@ -15,7 +16,6 @@ from fastapi import (
     status,
 )
 from fastapi.encoders import jsonable_encoder
-from redis.exceptions import RedisError
 from sqlalchemy import exists, func, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,6 +23,7 @@ from app.api.deps import (
     get_current_user,
     get_current_user_optional,
     get_news_service,
+    get_read_news_service,
 )
 from app.api.utils import save_upload
 from app.api.validation import (
@@ -31,8 +32,9 @@ from app.api.validation import (
     raise_validation_error,
     require_admin,
 )
+from app.core.cache_versioning import news_cache_version
 from app.core.container import get_notification_service, get_vector_service
-from app.core.database import get_db
+from app.core.database import get_read_db
 from app.core.localization import (
     DEFAULT_LOCALE,
     SUPPORTED_LOCALES,
@@ -49,11 +51,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/news", tags=["news"])
 
-_NEWS_LIST_CACHE_PREFIX = "news:list"
-_NEWS_LIST_VERSION_KEY = f"{_NEWS_LIST_CACHE_PREFIX}:version"
-_LOCAL_NEWS_LIST_VERSION = 0
-
 _NEWS_CACHE_CONTROL = "public, max-age=60, stale-while-revalidate=120"
+_NEWS_LIST_CACHE_PREFIX = news_cache_version.prefix
 _LEGACY_NEWS_LIST_CACHE_KEY = "news:list"
 _LEGACY_NEWS_ITEM_PREFIX = "news:item"
 _CACHE_LOCALES = frozenset(SUPPORTED_LOCALES)
@@ -69,55 +68,30 @@ def _normalized_cache_locale(locale: str | None) -> str:
 
 
 async def _get_news_list_version() -> str:
-    cache = get_cache()
-    if not cache.enabled:
-        return str(_LOCAL_NEWS_LIST_VERSION)
-    from app.deps.cache import RedisCache
-
-    if isinstance(cache, RedisCache):
-        try:
-            client = await cache._get_client()
-            raw = await client.get(_NEWS_LIST_VERSION_KEY)
-            return str(int(raw)) if raw is not None else "0"
-        except (RedisError, OSError, TypeError, ValueError):
-            return "0"
-    return "0"
+    return await news_cache_version.get_version()
 
 
 async def _increment_news_list_version() -> None:
-    global _LOCAL_NEWS_LIST_VERSION
-    cache = get_cache()
-    if not cache.enabled:
-        _LOCAL_NEWS_LIST_VERSION += 1
-        return
-    from app.deps.cache import RedisCache
-
-    if isinstance(cache, RedisCache):
-        try:
-            client = await cache._get_client()
-            await client.incr(_NEWS_LIST_VERSION_KEY)
-        except (RedisError, OSError):
-            logger.warning("Failed to increment news cache version")
-        return
-    _LOCAL_NEWS_LIST_VERSION += 1
+    await news_cache_version.increment()
 
 
 def _news_list_cache_key(
     locale: str | None, limit: int, cursor: str | None, version: str
 ) -> str:
-    normalized = _normalized_cache_locale(locale)
-    return (
-        f"{_NEWS_LIST_CACHE_PREFIX}:{version}:{normalized}:"
-        f"limit={limit}:cursor={cursor or ''}"
+    return news_cache_version.build_cache_key(
+        locale=locale or "",
+        version=version,
+        limit=limit,
+        cursor=cursor,
     )
 
 
-def _news_item_cache_key(news_id: int, locale: str | None) -> str:
+def _news_item_cache_key(news_id: uuid.UUID, locale: str | None) -> str:
     normalized = _normalized_cache_locale(locale)
     return f"news:item:{news_id}:{normalized}"
 
 
-def _legacy_news_item_cache_key(news_id: int) -> str:
+def _legacy_news_item_cache_key(news_id: uuid.UUID) -> str:
     return f"{_LEGACY_NEWS_ITEM_PREFIX}:{news_id}"
 
 
@@ -137,7 +111,7 @@ def _set_language_headers(response: Response, locale: str) -> None:
     ensure_vary_header(response, "Accept-Language")
 
 
-def _news_cache_keys(news_id: int | None = None) -> list[str]:
+def _news_cache_keys(news_id: uuid.UUID | None = None) -> list[str]:
     keys: list[str] = [_LEGACY_NEWS_LIST_CACHE_KEY]
     keys.extend(f"{_NEWS_LIST_CACHE_PREFIX}:{locale}:*" for locale in _CACHE_LOCALES)
     if news_id is not None:
@@ -176,7 +150,7 @@ async def news_list(
     limit: int = Query(20, ge=1, le=100, description="Number of items to return"),
     cursor: str | None = Query(None, description="Pagination cursor"),
     if_none_match: str | None = Header(default=None),
-    service: NewsService = Depends(get_news_service),
+    service: NewsService = Depends(get_read_news_service),
     user: models.User | None = Depends(get_current_user_optional),
 ):
     """
@@ -238,13 +212,13 @@ async def news_list(
     description="Get a specific news article by ID.",
 )
 async def get_news(
-    id: int,
+    id: uuid.UUID,
     request: Request,
     response: Response,
     if_none_match: str | None = Header(default=None),
-    db: AsyncSession = Depends(get_db),
-    service: NewsService = Depends(get_news_service),
     user: models.User | None = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_read_db),
+    service: NewsService = Depends(get_read_news_service),
 ):
     """
     Get a specific news article by ID.
@@ -333,7 +307,7 @@ async def get_news(
 
 @router.patch("/{id}", response_model=schemas.NewsOut)
 async def update_news(
-    id: int,
+    id: uuid.UUID,
     request: Request,
     data: schemas.NewsUpdate | None = Body(default=None),
     service: NewsService = Depends(get_news_service),
@@ -359,7 +333,7 @@ async def update_news(
 
 @router.delete("/{id}", response_model=dict)
 async def delete_news(
-    id: int,
+    id: uuid.UUID,
     request: Request,
     service: NewsService = Depends(get_news_service),
     user: models.User = Depends(get_current_user),
@@ -382,7 +356,7 @@ async def delete_news(
 
 @router.post("/{id}/like")
 async def like_news(
-    id: int,
+    id: uuid.UUID,
     request: Request,
     service: NewsService = Depends(get_news_service),
     user: models.User = Depends(get_current_user),
@@ -397,7 +371,7 @@ async def like_news(
 
 @router.post("/{id}/comment", response_model=schemas.NewsCommentOut)
 async def comment_on_news(
-    id: int,
+    id: uuid.UUID,
     request: Request,
     background: BackgroundTasks,
     content: str = Body(..., embed=True),
@@ -430,11 +404,11 @@ async def comment_on_news(
 
 @router.get("/{id}/interactions", response_model=schemas.NewsInteractionsOut)
 async def get_news_interact(
-    id: int,
+    id: uuid.UUID,
     request: Request,
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    service: NewsService = Depends(get_news_service),
+    service: NewsService = Depends(get_read_news_service),
     user: models.User | None = Depends(get_current_user_optional),
 ):
     locale = resolve_locale(request=request)
@@ -450,7 +424,7 @@ async def get_news_interact(
 
 @router.patch("/comments/{comment_id}", response_model=schemas.NewsCommentOut)
 async def update_comment(
-    comment_id: int,
+    comment_id: uuid.UUID,
     request: Request,
     data: schemas.NewsCommentUpdate,
     service: NewsService = Depends(get_news_service),
@@ -474,7 +448,7 @@ async def update_comment(
 
 @router.delete("/comments/{comment_id}")
 async def delete_comment(
-    comment_id: int,
+    comment_id: uuid.UUID,
     request: Request,
     service: NewsService = Depends(get_news_service),
     user: models.User = Depends(get_current_user),
@@ -512,9 +486,9 @@ async def semantic_search(
     limit: int = Query(5, ge=1, le=20),
     min_score: float = Query(0.7, ge=0.0, le=1.0),
     if_none_match: str | None = Header(default=None),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_read_db),
     vector_service: Any = Depends(get_vector_service),
-    service: NewsService = Depends(get_news_service),
+    service: NewsService = Depends(get_read_news_service),
 ):
     """
     Semantic search for news articles using embeddings.

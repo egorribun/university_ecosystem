@@ -1,4 +1,5 @@
 import logging
+import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
@@ -113,7 +114,7 @@ class EventService:
     async def get_events(
         self,
         *,
-        user_id: int | None = None,
+        user_id: uuid.UUID | int | None = None,
         search: str = "",
         type: str = "",
         location: str = "",
@@ -193,7 +194,7 @@ class EventService:
         )
 
     async def create_event(
-        self, data: schemas.EventCreate, user_id: int
+        self, data: schemas.EventCreate, user_id: uuid.UUID | int
     ) -> models.Event:
         if data.starts_at >= data.ends_at:
             from app.core.localization import translate
@@ -209,7 +210,7 @@ class EventService:
         return event
 
     async def update_event(
-        self, event_id: int, data: schemas.EventUpdate
+        self, event_id: uuid.UUID | int, data: schemas.EventUpdate
     ) -> models.Event:
         event = await self.repo.get(event_id)
         if not event:
@@ -240,7 +241,7 @@ class EventService:
         await self.repo.db.refresh(updated_event)
         return updated_event
 
-    async def delete_event(self, event_id: int) -> bool:
+    async def delete_event(self, event_id: uuid.UUID | int) -> bool:
         event = await self.repo.get(event_id)
         if not event:
             return False
@@ -279,7 +280,7 @@ class EventService:
         return True
 
     async def register_attendance(
-        self, data: schemas.EventAttendanceCreate, user_id: int
+        self, data: schemas.EventAttendanceCreate, user_id: uuid.UUID | int
     ) -> models.EventAttendance:
         cache_kinds = ("attendance", "participation")
 
@@ -362,7 +363,7 @@ class EventService:
         return record
 
     async def unregister_attendance(
-        self, data: schemas.EventAttendanceCreate, user_id: int
+        self, data: schemas.EventAttendanceCreate, user_id: uuid.UUID | int
     ) -> dict[str, bool]:
         stmt = (
             select(models.EventAttendance)
@@ -382,7 +383,7 @@ class EventService:
         return {"ok": True}
 
     async def get_my_events(
-        self, user_id: int, *, locale: str | None = None
+        self, user_id: uuid.UUID | int, *, locale: str | None = None
     ) -> list[schemas.EventOut]:
         # Logic from get_my_events in crud
         stmt = (
@@ -398,7 +399,7 @@ class EventService:
         result: list[schemas.EventOut] = []
         for event in events:
             user_attendance = next(
-                (a for a in event.attendance if a.user_id == user_id), None
+                (a for a in event.attendance if str(a.user_id) == str(user_id)), None
             )
             qr_token = (
                 attendance_tokens.issue_token(user_attendance)
@@ -417,3 +418,56 @@ class EventService:
                 )
             )
         return result
+
+    async def get_event_detail(
+        self, event_id: Any, user_id: Any, *, locale: str | None = None
+    ) -> schemas.EventOut | None:
+        """Fetch event details with optimized loading (JOIN instead of N+1)."""
+        from sqlalchemy import and_, func
+
+        stmt = (
+            select(
+                models.Event,
+                (
+                    select(func.count())
+                    .select_from(models.EventAttendance)
+                    .where(models.EventAttendance.event_id == event_id)
+                    .scalar_subquery()
+                ).label("participant_count"),
+                models.EventAttendance,
+            )
+            .outerjoin(
+                models.EventAttendance,
+                and_(
+                    models.EventAttendance.event_id == event_id,
+                    models.EventAttendance.user_id == user_id,
+                ),
+            )
+            .where(models.Event.id == event_id)
+            .options(selectinload(models.Event.files))
+        )
+
+        result = await self.repo.db.execute(stmt)
+        row = result.first()
+        if not row:
+            return None
+
+        event_record, p_count, attendance = row
+
+        qr_token = None
+        if attendance:
+            # Ensure QR secret material exists before issuing token
+            if attendance_tokens.ensure_secret_material(attendance):
+                self.repo.db.add(attendance)
+                await self.repo.db.commit()
+                await self.repo.db.refresh(attendance)
+            qr_token = attendance_tokens.issue_token(attendance)
+
+        return self.serialize_event(
+            event_record,
+            locale,
+            participant_count=p_count,
+            files=getattr(event_record, "files", []),
+            is_registered=attendance is not None,
+            my_qr_token=qr_token,
+        )

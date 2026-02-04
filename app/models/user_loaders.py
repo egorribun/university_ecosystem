@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from sqlalchemy import inspect
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 
 from .models import User
 
@@ -9,14 +10,22 @@ USER_MFA_RELATIONSHIP_NAMES: tuple[str, ...] = (
     "totp_enrollments",
     "mfa_challenges",
     "webauthn_credentials",
+    "preferences",
+    "spotify",
+    "email_change_tokens",
+    "profile_detail",
+    "education_path",
 )
 
 USER_MFA_LOAD_OPTIONS: tuple = (
     selectinload(User.totp_enrollments),
     selectinload(User.mfa_challenges),
     selectinload(User.webauthn_credentials),
-    selectinload(User.preferences),
-    selectinload(User.spotify),
+    selectinload(User.email_change_tokens),
+    joinedload(User.preferences),
+    joinedload(User.spotify),
+    joinedload(User.profile_detail),
+    joinedload(User.education_path),
 )
 
 
@@ -27,5 +36,14 @@ async def ensure_mfa_relationships_loaded(
 
     if user is None:
         return None
-    await db.refresh(user, attribute_names=list(USER_MFA_RELATIONSHIP_NAMES))
+
+    state = inspect(user)
+    if state is None:
+        return user
+
+    to_refresh = [
+        name for name in USER_MFA_RELATIONSHIP_NAMES if name in state.unloaded
+    ]
+    if to_refresh:
+        await db.refresh(user, attribute_names=to_refresh)
     return user

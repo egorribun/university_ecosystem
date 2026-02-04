@@ -7,6 +7,7 @@
 
 import { create } from "zustand"
 import { devtools, persist } from "zustand/middleware"
+import { useShallow } from "zustand/react/shallow"
 
 import type { ThemeMode } from "./types"
 
@@ -102,12 +103,14 @@ export const useMobileDrawerOpen = () => useAppShellStore((state) => state.mobil
 export const useThemeMode = () => useAppShellStore((state) => state.themeMode)
 
 export const useAppShellActions = () =>
-  useAppShellStore((state) => ({
-    toggleSidebar: state.toggleSidebar,
-    setSidebarCollapsed: state.setSidebarCollapsed,
-    openMobileDrawer: state.openMobileDrawer,
-    closeMobileDrawer: state.closeMobileDrawer,
-    toggleMobileDrawer: state.toggleMobileDrawer,
-    setThemeMode: state.setThemeMode,
-    cycleThemeMode: state.cycleThemeMode,
-  }))
+  useAppShellStore(
+    useShallow((state) => ({
+      toggleSidebar: state.toggleSidebar,
+      setSidebarCollapsed: state.setSidebarCollapsed,
+      openMobileDrawer: state.openMobileDrawer,
+      closeMobileDrawer: state.closeMobileDrawer,
+      toggleMobileDrawer: state.toggleMobileDrawer,
+      setThemeMode: state.setThemeMode,
+      cycleThemeMode: state.cycleThemeMode,
+    }))
+  )

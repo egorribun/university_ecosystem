@@ -33,6 +33,7 @@ services:
       SPOTIFY_SCOPES: ${SPOTIFY_SCOPES}
     volumes:
       - static-data:/app/app/static
+      - .:/app
     depends_on:
       redis:
         condition: service_healthy
@@ -162,6 +163,8 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required - set in .env file}
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required - set in .env file}
+    volumes:
+      - .:/app
     depends_on:
       postgres:
         condition: service_healthy
@@ -254,6 +257,14 @@ services:
     networks:
       - internal
       - public
+
+  pyroscope:
+    image: grafana/pyroscope:latest
+    container_name: pyroscope
+    ports:
+      - "4040:4040"
+    networks:
+      - internal
 
 networks:
   public:

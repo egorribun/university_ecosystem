@@ -11,6 +11,7 @@ from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from uuid import UUID
 
 import pyotp
 from fastapi import status
@@ -18,6 +19,14 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.validation import raise_http_error, raise_validation_error
+from app.auth.constants import (
+    CHALLENGE_TYPE_RECOVERY_CODE,
+    CHALLENGE_TYPE_TOTP_VERIFY,
+    CHALLENGE_TYPE_WEBAUTHN_AUTH,
+    MFA_METHOD_RECOVERY_CODE,
+    MFA_METHOD_TOTP,
+    MFA_METHOD_WEBAUTHN,
+)
 from app.auth.security import get_password_hash, verify_password
 from app.core.config import settings
 from app.core.localization import translate
@@ -31,6 +40,7 @@ from app.models.models import (
     User,
     WebAuthnCredential,
 )
+from app.services.session_cleanup import revoke_sessions_matching
 from app.utils import ratelimit as ratelimit_utils
 
 _TOTP_SECRET_LENGTH = 32
@@ -47,13 +57,7 @@ TOTP_ENROLLMENT_LIMIT_ERROR = (
     "Remove the existing app before starting a new setup."
 )
 
-CHALLENGE_TYPE_TOTP_ENROLL = "totp-enroll"
-CHALLENGE_TYPE_TOTP_VERIFY = "totp-verify"
-CHALLENGE_TYPE_WEBAUTHN_REG = "webauthn-registration"
-CHALLENGE_TYPE_WEBAUTHN_AUTH = "webauthn-authentication"
-MFA_METHOD_TOTP = "totp"
-MFA_METHOD_WEBAUTHN = "webauthn"
-MFA_METHOD_RECOVERY_CODE = "recovery_code"
+CHALLENGE_TYPE_TOTP_AUTH = CHALLENGE_TYPE_TOTP_VERIFY
 
 
 logger = logging.getLogger(__name__)
@@ -100,6 +104,77 @@ def user_has_confirmed_interactive_factor(user: User) -> bool:
     for enrollment in enrollments:
         if enrollment.revoked_at is None and enrollment.confirmed_at is not None:
             return True
+    return False
+
+
+async def has_totp_enabled(db: AsyncSession, user: User) -> bool:
+    """Return True if the user has at least one active TOTP enrollment."""
+    # Use relationship if loaded, or query DB
+    enrollments = getattr(user, "totp_enrollments", None)
+    if enrollments is not None:
+        for e in enrollments:
+            if e.confirmed_at is not None and e.revoked_at is None:
+                return True
+        return False
+
+    # Fallback to DB query
+    stmt = select(func.count(MfaTotpEnrollment.id)).where(
+        MfaTotpEnrollment.user_id == user.id,
+        MfaTotpEnrollment.confirmed_at.is_not(None),
+        MfaTotpEnrollment.revoked_at.is_(None),
+    )
+    res = await db.execute(stmt)
+    return bool(res.scalar())
+
+
+async def has_webauthn_enabled(db: AsyncSession, user: User) -> bool:
+    """Return True if the user has at least one WebAuthn credential."""
+    credentials = getattr(user, "webauthn_credentials", None)
+    if credentials is not None:
+        return len(credentials) > 0
+
+    stmt = select(func.count(WebAuthnCredential.id)).where(
+        WebAuthnCredential.user_id == user.id
+    )
+    res = await db.execute(stmt)
+    return bool(res.scalar())
+
+
+async def user_has_active_factor(db: AsyncSession, user: User) -> bool:
+    """Return True if the user has any active MFA factor.
+
+    This includes unconfirmed legacy ones.
+    """
+    # Check loaded TOTP enrollments
+    enrollments = getattr(user, "totp_enrollments", None)
+    if enrollments is not None:
+        for e in enrollments:
+            if e.is_active and e.revoked_at is None:
+                return True
+    else:
+        # DB check
+        stmt = select(func.count(MfaTotpEnrollment.id)).where(
+            MfaTotpEnrollment.user_id == user.id,
+            MfaTotpEnrollment.is_active.is_(True),
+            MfaTotpEnrollment.revoked_at.is_(None),
+        )
+        res = await db.execute(stmt)
+        if res.scalar() > 0:
+            return True
+
+    # Check WebAuthn
+    credentials = getattr(user, "webauthn_credentials", None)
+    if credentials is not None:
+        if len(credentials) > 0:
+            return True
+    else:
+        stmt = select(func.count(WebAuthnCredential.id)).where(
+            WebAuthnCredential.user_id == user.id
+        )
+        res = await db.execute(stmt)
+        if res.scalar() > 0:
+            return True
+
     return False
 
 
@@ -157,7 +232,7 @@ def _resolve_rate_limit_backend() -> str | None:
 
 async def _enforce_challenge_rate_limit(
     *,
-    user_id: int,
+    user_id: UUID,
     challenge_type: str,
     locale: str | None = None,
 ) -> None:
@@ -190,9 +265,9 @@ async def _enforce_challenge_rate_limit(
 async def issue_challenge(
     db: AsyncSession,
     *,
-    user_id: int,
+    user_id: UUID,
     challenge_type: str,
-    session_id: int | None = None,
+    session_id: UUID | None = None,
     payload: MutableMapping[str, Any] | None = None,
     ttl_seconds: int | None = None,
     locale: str | None = None,
@@ -266,7 +341,8 @@ async def _lock_challenge(
     locale: str | None,
     status_code: int = status.HTTP_429_TOO_MANY_REQUESTS,
 ) -> None:
-    await consume_challenge(db, challenge)
+    challenge.consumed_at = _utcnow()
+    await db.commit()
     audit_logger.warning(
         json.dumps(
             {
@@ -275,7 +351,7 @@ async def _lock_challenge(
                 # Redacted metadata for CodeQL check
                 "challenge_id": challenge.id,
             },
-            ensure_ascii=False,
+            default=str,
         )
     )  # Log only non-sensitive metadata. No secrets are logged.
 
@@ -322,7 +398,12 @@ async def _register_failed_attempt(
         return
     current = int(getattr(challenge, "attempt_count", 0) or 0)
     challenge.attempt_count = current + 1
-    await db.flush()
+    await db.commit()  # Ensure persistence even on exception
+    # Re-acquire challenge after commit (to bind to new transaction)
+    stmt = select(MfaChallenge).where(MfaChallenge.id == challenge.id)
+    challenge = (await db.execute(stmt)).scalars().first()
+    if challenge is None:
+        return  # Should not happen
     if limit is not None and challenge.attempt_count >= limit:
         await _lock_challenge(
             db,
@@ -338,13 +419,17 @@ async def get_challenge(
     db: AsyncSession,
     *,
     token: str,
-    challenge_type: str,
-    user_id: int | None = None,
-    session_id: int | None = None,
+    challenge_type: str | list[str],
+    user_id: UUID | None = None,
+    session_id: UUID | None = None,
     consume: bool = False,
+    locale: str = "en",
 ) -> MfaChallenge:
-    stmt = select(MfaChallenge).where(MfaChallenge.token == token)
-    stmt = stmt.where(MfaChallenge.challenge_type == challenge_type)
+    stmt = select(MfaChallenge).where(MfaChallenge.token == token).with_for_update()
+    if isinstance(challenge_type, list):
+        stmt = stmt.where(MfaChallenge.challenge_type.in_(challenge_type))
+    else:
+        stmt = stmt.where(MfaChallenge.challenge_type == challenge_type)
     if user_id is not None:
         stmt = stmt.where(MfaChallenge.user_id == user_id)
     if session_id is not None:
@@ -352,18 +437,9 @@ async def get_challenge(
     result = await db.execute(stmt)
     challenge = result.scalars().first()
     if not challenge:
-        # We don't have locale here easily without passing it down, but context
-        # usually implies one. However, for security, generic error is fine.
-        # Assuming 'en' fallback or we should update signature to require locale.
-        # Updating signature is invasive, let's use a generic validation error
-        # for now or raise status.
-        # But wait, get_challenge is often called with locale context up stack?
-        # No, mostly internally. Actually verify_totp_for_user has locale.
-        # Let's check callers.
-        # For now, let's just raise a 400 with a key.
         raise_http_error(
-            status.HTTP_400_BAD_REQUEST, "errors.common.bad_request", "en"
-        )  # Fallback
+            status.HTTP_400_BAD_REQUEST, "errors.mfa.invalid_challenge", locale
+        )
     now = _utcnow()
     expires_at = challenge.expires_at
     if expires_at is not None and expires_at.tzinfo is None:
@@ -372,17 +448,160 @@ async def get_challenge(
     if consumed_at is not None and consumed_at.tzinfo is None:
         consumed_at = consumed_at.replace(tzinfo=UTC)
     if consumed_at is not None or (expires_at is not None and expires_at <= now):
-        raise_http_error(status.HTTP_400_BAD_REQUEST, "errors.common.bad_request", "en")
+        raise_http_error(
+            status.HTTP_400_BAD_REQUEST, "errors.mfa.invalid_challenge", locale
+        )
     if consume:
         challenge.consumed_at = now
         await db.flush()
     return challenge
 
 
-async def consume_challenge(db: AsyncSession, challenge: MfaChallenge) -> None:
-    if challenge.consumed_at is None:
-        challenge.consumed_at = _utcnow()
-        await db.flush()
+async def consume_challenge(
+    db: AsyncSession,
+    *,
+    challenge_token: str,
+    challenge_type: str | list[str],
+    user_id: UUID | None = None,
+    session_id: UUID | None = None,
+    provided_code: str | None = None,
+    provided_webauthn_response: dict[str, Any] | None = None,
+    provided_recovery_code: str | None = None,
+    provided_method: str | None = None,
+    locale: str = "en",
+) -> tuple[MfaChallenge, ActiveSession | None]:
+    challenge = await get_challenge(
+        db,
+        token=challenge_token,
+        challenge_type=challenge_type,
+        user_id=user_id,
+        session_id=session_id,
+        consume=False,  # Don't consume yet
+        locale=locale,
+    )
+
+    # Initial lock and attempt check
+    limit = _extract_attempt_limit(challenge, settings.mfa_challenge_max_attempts)
+    await _ensure_challenge_not_locked(
+        db,
+        challenge,
+        method=provided_method or "unknown",
+        limit=limit,
+        locale=locale,
+    )
+
+    mfa_session = None
+    if challenge.session_id:
+        mfa_session = await db.get(ActiveSession, challenge.session_id)
+        if mfa_session and mfa_session.revoked_at:
+            raise_http_error(
+                status.HTTP_400_BAD_REQUEST,
+                "Associated session has been revoked",
+                locale,
+            )
+
+    # Verification logic based on method or type
+    v_method = provided_method
+    if v_method is None:
+        if challenge.challenge_type in [
+            CHALLENGE_TYPE_TOTP_VERIFY,
+            CHALLENGE_TYPE_TOTP_AUTH,
+        ]:
+            v_method = MFA_METHOD_TOTP
+        elif challenge.challenge_type == CHALLENGE_TYPE_WEBAUTHN_AUTH:
+            v_method = MFA_METHOD_WEBAUTHN
+        elif challenge.challenge_type == CHALLENGE_TYPE_RECOVERY_CODE:
+            v_method = MFA_METHOD_RECOVERY_CODE
+
+    if v_method == MFA_METHOD_TOTP:
+        if not provided_code:
+            raise_http_error(
+                status.HTTP_400_BAD_REQUEST, "errors.mfa.code_required", locale
+            )
+
+        user = await db.get(User, challenge.user_id)
+        # Verify TOTP code
+        enrollments_stmt = select(MfaTotpEnrollment).where(
+            MfaTotpEnrollment.user_id == user.id,
+            MfaTotpEnrollment.is_active.is_(True),
+            MfaTotpEnrollment.revoked_at.is_(None),
+        )
+        result = await db.execute(enrollments_stmt)
+        enrollments = result.scalars().all()
+
+        valid = False
+        for enrollment in enrollments:
+            if not enrollment.secret:
+                continue
+            totp = pyotp.TOTP(enrollment.secret)
+            if totp.verify(provided_code, valid_window=1):
+                valid = True
+                break
+
+        if not valid:
+            await _register_failed_attempt(
+                db,
+                challenge,
+                method=MFA_METHOD_TOTP,
+                limit=settings.mfa_totp_attempt_limit,
+                locale=locale,
+            )
+            raise_http_error(
+                status.HTTP_400_BAD_REQUEST, "errors.mfa.invalid_code", locale
+            )
+
+    elif v_method == MFA_METHOD_RECOVERY_CODE:
+        # For recovery code, we use provided_code
+        if not provided_code:
+            raise_http_error(
+                status.HTTP_400_BAD_REQUEST, "errors.mfa.code_required", locale
+            )
+        user = await db.get(User, challenge.user_id)
+        if not await verify_recovery_code(db, user=user, code=provided_code):
+            await _register_failed_attempt(
+                db,
+                challenge,
+                method=MFA_METHOD_RECOVERY_CODE,
+                limit=settings.mfa_challenge_max_attempts,
+                locale=locale,
+            )
+            raise_http_error(
+                status.HTTP_400_BAD_REQUEST, "errors.mfa.invalid_code", locale
+            )
+
+    elif v_method == MFA_METHOD_WEBAUTHN:
+        from app.services.webauthn import WebAuthnService
+
+        if not provided_webauthn_response:
+            raise_http_error(
+                status.HTTP_400_BAD_REQUEST, "errors.mfa.code_required", locale
+            )
+
+        service = WebAuthnService(db)
+        user = await db.get(User, challenge.user_id)
+        try:
+            await service.verify_authentication(
+                user,
+                challenge.payload["options"]["challenge"],
+                provided_webauthn_response,
+            )
+        except Exception:
+            await _register_failed_attempt(
+                db,
+                challenge,
+                method=MFA_METHOD_WEBAUTHN,
+                limit=settings.mfa_challenge_max_attempts,
+                locale=locale,
+            )
+            raise_http_error(
+                status.HTTP_400_BAD_REQUEST, "errors.mfa.invalid_code", locale
+            )
+
+    # If we reached here, verification was successful.
+    challenge.consumed_at = _utcnow()
+    await db.commit()
+
+    return challenge, mfa_session
 
 
 async def purge_expired_challenges(
@@ -423,6 +642,7 @@ async def start_totp_enrollment(
         .where(MfaTotpEnrollment.confirmed_at.is_(None))
         .where(MfaTotpEnrollment.revoked_at.is_(None))
         .order_by(MfaTotpEnrollment.created_at.desc())
+        .with_for_update()
     )
     result = await db.execute(pending_stmt)
     pending = result.scalars().first()
@@ -491,7 +711,7 @@ async def disable_totp(
     db: AsyncSession,
     *,
     user: User,
-    enrollment_id: int | None = None,
+    enrollment_id: UUID | None = None,
 ) -> int:
     stmt = select(MfaTotpEnrollment).where(MfaTotpEnrollment.user_id == user.id)
     if enrollment_id is not None:
@@ -504,6 +724,12 @@ async def disable_totp(
             record.is_active = False
             record.revoked_at = now
             count += 1
+
+    if count > 0:
+        await revoke_sessions_matching(
+            db=db,
+            whereclause=(ActiveSession.user_id == user.id),
+        )
     await db.flush()
     return count
 
@@ -535,7 +761,7 @@ async def verify_totp_for_user(
     code: str,
     challenge_token: str | None = None,
     challenge: MfaChallenge | None = None,
-    session_id: int | None = None,
+    session_id: UUID | None = None,
     locale: str | None = None,
 ) -> tuple[MfaTotpEnrollment, MfaChallenge | None]:
     stmt = (
@@ -567,6 +793,7 @@ async def verify_totp_for_user(
             challenge_type=CHALLENGE_TYPE_TOTP_VERIFY,
             user_id=user.id,
             session_id=session_id,
+            locale=locale or "en",
         )
     if loaded_challenge is not None:
         if loaded_challenge.challenge_type != CHALLENGE_TYPE_TOTP_VERIFY:
@@ -690,6 +917,13 @@ async def reset_user_mfa(db: AsyncSession, *, user: User) -> MfaResetStats:
         stats.fields_cleared = True
 
     await db.flush()
+
+    # Revoke all sessions globally on MFA reset
+    await revoke_sessions_matching(
+        db=db,
+        whereclause=(ActiveSession.user_id == user.id),
+    )
+
     return stats
 
 

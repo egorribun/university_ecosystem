@@ -1,3 +1,4 @@
+import uuid
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
@@ -5,7 +6,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.api.deps import get_current_user
-from app.core.container import get_schedule_handler
+from app.core.container import get_read_schedule_handler
 from app.core.database import get_db
 from app.main import app
 from app.models import models
@@ -14,7 +15,7 @@ from app.models import models
 @pytest.fixture
 def mock_user():
     user = MagicMock(spec=models.User)
-    user.id = 1
+    user.id = uuid.uuid4()
     user.role = "admin"
     return user
 
@@ -24,8 +25,8 @@ def mock_db():
     db = AsyncMock()
     # Mock for sched = await db.get(models.Schedule, schedule_id)
     mock_sched = MagicMock(spec=models.Schedule)
-    mock_sched.id = 1
-    mock_sched.group_id = 101
+    mock_sched.id = uuid.uuid4()
+    mock_sched.group_id = uuid.uuid4()
     mock_sched.subject = "Test Subject"
     mock_sched.weekday = "1"
     mock_sched.start_time = datetime(2026, 1, 1, 9, 0, tzinfo=UTC)
@@ -44,8 +45,8 @@ def mock_schedule_handler():
     result = MagicMock()
     result.payload = [
         {
-            "id": 1,
-            "group_id": 101,
+            "id": str(uuid.uuid4()),
+            "group_id": str(uuid.uuid4()),
             "subject": "Test Subject",
             "weekday": "1",
             "start_time": datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
@@ -68,8 +69,8 @@ def mock_schedule_service():
 
     # Mock create
     mock_created = MagicMock(spec=models.Schedule)
-    mock_created.id = 1
-    mock_created.group_id = 101
+    mock_created.id = uuid.uuid4()
+    mock_created.group_id = uuid.uuid4()
     mock_created.subject = "Test Subject"
     mock_created.weekday = "1"
     mock_created.start_time = datetime(2026, 1, 1, 9, 0, tzinfo=UTC)
@@ -83,8 +84,8 @@ def mock_schedule_service():
 
     # Mock update
     mock_updated = MagicMock(spec=models.Schedule)
-    mock_updated.id = 1
-    mock_updated.group_id = 101
+    mock_updated.id = uuid.uuid4()
+    mock_updated.group_id = uuid.uuid4()
     mock_updated.subject = "Test Subject"
     mock_updated.weekday = "1"
     mock_updated.start_time = datetime(2026, 1, 1, 9, 0, tzinfo=UTC)
@@ -112,7 +113,7 @@ async def test_schedule_api_coverage(
 
     app.dependency_overrides[get_current_user] = lambda: mock_user
     app.dependency_overrides[get_schedule_service] = lambda: mock_schedule_service
-    app.dependency_overrides[get_schedule_handler] = lambda: mock_schedule_handler
+    app.dependency_overrides[get_read_schedule_handler] = lambda: mock_schedule_handler
     # We also keep get_db override if needed by other deps,
     # but schedule endpoints now use service
     app.dependency_overrides[get_db] = lambda: mock_db
@@ -121,25 +122,30 @@ async def test_schedule_api_coverage(
         async with AsyncClient(
             transport=ASGITransport(app=app), base_url="http://testserver"
         ) as ac:
+            gid = str(uuid.uuid4())
             # Test get schedule (uses handler)
-            res = await ac.get("/api/v1/schedule/101")
+            res = await ac.get(f"/api/v1/schedule/{gid}")
             assert res.status_code == 200
             assert res.headers["ETag"] == "sched-etag"
 
             # Test get schedule 304 Not Modified
             mock_schedule_handler.handle.return_value.not_modified = True
             res = await ac.get(
-                "/api/v1/schedule/101", headers={"If-None-Match": "sched-etag"}
+                f"/api/v1/schedule/{gid}", headers={"If-None-Match": "sched-etag"}
             )
             assert res.status_code == 304
 
+            sid = str(uuid.uuid4())
             # Test update schedule
-            res = await ac.patch("/api/v1/schedule/1", json={"teacher": "New Teacher"})
+            res = await ac.patch(
+                f"/api/v1/schedule/{sid}",
+                json={"teacher": "New Teacher", "group_id": str(gid)},
+            )
             assert res.status_code == 200
             assert mock_schedule_service.update_schedule.called
 
             # Test delete schedule
-            res = await ac.delete("/api/v1/schedule/1")
+            res = await ac.delete(f"/api/v1/schedule/{sid}")
             assert res.status_code == 200
             assert res.json() == {"ok": True}
     finally:

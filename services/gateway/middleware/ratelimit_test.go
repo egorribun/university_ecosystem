@@ -64,7 +64,9 @@ func TestRateLimiter_GetClientKey_UsesXForwardedFor(t *testing.T) {
 	}
 
 	router := gin.New()
-	router.TrustedPlatform = "X-Forwarded-For"
+	router.ForwardedByClientIP = true
+	_ = router.SetTrustedProxies([]string{"127.0.0.1"})
+
 	var capturedKey string
 	router.GET("/test", func(c *gin.Context) {
 		capturedKey = rateLimiter.getClientKey(c)
@@ -72,7 +74,8 @@ func TestRateLimiter_GetClientKey_UsesXForwardedFor(t *testing.T) {
 	})
 
 	request := httptest.NewRequest(http.MethodGet, "/test", nil)
-	request.Header.Set("X-Forwarded-For", "10.0.0.1, 10.0.0.2, 10.0.0.3")
+	request.RemoteAddr = "127.0.0.1:1234"
+	request.Header.Set("X-Forwarded-For", "10.0.0.1")
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, request)
 
@@ -88,7 +91,9 @@ func TestRateLimiter_GetClientKey_TrimsWhitespaceFromForwardedIP(t *testing.T) {
 	}
 
 	router := gin.New()
-	router.TrustedPlatform = "X-Forwarded-For"
+	router.ForwardedByClientIP = true
+	_ = router.SetTrustedProxies([]string{"127.0.0.1"})
+
 	var capturedKey string
 	router.GET("/test", func(c *gin.Context) {
 		capturedKey = rateLimiter.getClientKey(c)
@@ -96,7 +101,8 @@ func TestRateLimiter_GetClientKey_TrimsWhitespaceFromForwardedIP(t *testing.T) {
 	})
 
 	request := httptest.NewRequest(http.MethodGet, "/test", nil)
-	request.Header.Set("X-Forwarded-For", "  172.16.0.1  ")
+	request.RemoteAddr = "127.0.0.1:1234"
+	request.Header.Set("X-Forwarded-For", " 172.16.0.1 ")
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, request)
 

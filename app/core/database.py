@@ -3,11 +3,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import sqlite3
-import threading
 import time
 from collections.abc import AsyncGenerator
 from contextvars import ContextVar
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -52,7 +51,12 @@ _query_start_time: ContextVar[float | None] = ContextVar(
 
 @dataclass
 class PoolHealthMetrics:
-    """Thread-safe connection pool health metrics."""
+    """
+    Connection pool health metrics.
+
+    Note: accessing these metrics is safe without locks in a single-threaded
+    asyncio event loop environment (standard for asyncpg/uvicorn).
+    """
 
     total_checkouts: int = 0
     total_checkins: int = 0
@@ -60,39 +64,33 @@ class PoolHealthMetrics:
     active_connections: int = 0
     peak_active_connections: int = 0
     failed_checkouts: int = 0
-    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def record_checkout(self) -> None:
-        with self._lock:
-            self.total_checkouts += 1
-            self.active_connections += 1
-            if self.active_connections > self.peak_active_connections:
-                self.peak_active_connections = self.active_connections
+        self.total_checkouts += 1
+        self.active_connections += 1
+        if self.active_connections > self.peak_active_connections:
+            self.peak_active_connections = self.active_connections
 
     def record_checkin(self) -> None:
-        with self._lock:
-            self.total_checkins += 1
-            self.active_connections = max(0, self.active_connections - 1)
+        self.total_checkins += 1
+        self.active_connections = max(0, self.active_connections - 1)
 
     def record_invalidation(self) -> None:
-        with self._lock:
-            self.total_invalidations += 1
-            self.active_connections = max(0, self.active_connections - 1)
+        self.total_invalidations += 1
+        self.active_connections = max(0, self.active_connections - 1)
 
     def record_failed_checkout(self) -> None:
-        with self._lock:
-            self.failed_checkouts += 1
+        self.failed_checkouts += 1
 
     def get_snapshot(self) -> dict[str, int]:
-        with self._lock:
-            return {
-                "total_checkouts": self.total_checkouts,
-                "total_checkins": self.total_checkins,
-                "total_invalidations": self.total_invalidations,
-                "active_connections": self.active_connections,
-                "peak_active_connections": self.peak_active_connections,
-                "failed_checkouts": self.failed_checkouts,
-            }
+        return {
+            "total_checkouts": self.total_checkouts,
+            "total_checkins": self.total_checkins,
+            "total_invalidations": self.total_invalidations,
+            "active_connections": self.active_connections,
+            "peak_active_connections": self.peak_active_connections,
+            "failed_checkouts": self.failed_checkouts,
+        }
 
 
 # Global pool metrics instance
@@ -148,17 +146,9 @@ def _after_cursor_execute(
             statement[:500] + "..." if len(statement) > 500 else statement
         )
 
-        # Capture query plan for SELECT statements
-        query_plan: str | None = None
-        if getattr(
-            settings, "slow_query_explain_enabled", False
-        ) and statement.strip().upper().startswith("SELECT"):
-            try:
-                cursor.execute(f"EXPLAIN (FORMAT TEXT) {statement}", parameters)
-                plan_rows = cursor.fetchall()
-                query_plan = "\n".join(row[0] for row in plan_rows)
-            except Exception:
-                query_plan = "EXPLAIN failed"
+        # Removed: Capture query plan synchronously. This adds significant overhead.
+        # Instead, log the statement and params for manual investigation
+        # or use specialized APM tools.
 
         slow_query_logger.warning(
             "Slow query detected: %.2fms - %s",
@@ -169,7 +159,6 @@ def _after_cursor_execute(
                 "statement_length": len(statement),
                 "executemany": executemany,
                 "threshold_ms": threshold,
-                "query_plan": query_plan,
             },
         )
 
@@ -256,6 +245,8 @@ def create_session_factory(
     current_settings: Settings = settings,
 ) -> tuple[AsyncEngine, async_sessionmaker[AsyncSession], AsyncEngine | None]:
     engine_kwargs = _build_engine_kwargs(current_settings)
+    logger.debug("Creating engine for URL: %s", current_settings.database_url)
+    print(f"\nDEBUG: Creating engine for URL: {current_settings.database_url}")
     engine = create_async_engine(current_settings.database_url, **engine_kwargs)
 
     # Enable slow query logging
@@ -281,6 +272,23 @@ def create_session_factory(
 
 
 engine, async_session, read_replica_engine = create_session_factory()
+
+# Specialized sessionmaker for read operations to avoid allocation overhead in
+# get_read_db
+read_session_factory: async_sessionmaker[AsyncSession] | None = None
+if read_replica_engine:
+    read_session_factory = async_sessionmaker(
+        read_replica_engine,
+        expire_on_commit=False,
+        class_=AsyncSession,
+    )
+else:
+    # Fallback to primary if no replica is configured
+    read_session_factory = async_sessionmaker(
+        engine,
+        expire_on_commit=False,
+        class_=AsyncSession,
+    )
 
 
 def get_read_engine() -> AsyncEngine:
@@ -309,12 +317,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 async def get_read_db() -> AsyncGenerator[AsyncSession, None]:
     """Get a read-only session (uses replica if configured, otherwise primary)."""
-    read_engine = get_read_engine()
-    read_session_factory = async_sessionmaker(
-        read_engine,
-        expire_on_commit=False,
-        class_=AsyncSession,
-    )
+    # Use the pre-allocated read_session_factory for efficiency
     async with read_session_factory() as session:
         yield session
 

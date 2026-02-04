@@ -38,3 +38,13 @@ definition folder {
 
     permission view = viewer + editor + parent->view
 }
+
+definition event {
+    relation creator: user
+    relation semester: semester
+    relation attendee: user
+
+    permission view = attendee + creator + semester->admin
+    permission edit = creator + semester->admin
+    permission delete = creator + semester->admin
+}

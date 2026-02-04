@@ -15,6 +15,9 @@ async def test_api_v1_prefix(async_client: AsyncClient):
 async def test_root_endpoints(async_client: AsyncClient):
     """Test that root endpoints are available."""
     response = await async_client.get("http://testserver/healthz")
+    if response.status_code != 200:
+        print(f"\nHEALTHZ FAILED: {response.status_code}")
+        print(f"BODY: {response.text}")
     assert response.status_code == 200
     assert response.json()["db"] == "ok"
 

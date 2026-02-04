@@ -1,5 +1,8 @@
 """Tests for modular configuration settings."""
 
+import os
+from unittest import mock
+
 from app.config import DatabaseSettings, NotificationsSettings, SecuritySettings
 from app.config.database import DatabaseSettings as DBSettings
 from app.config.notifications import NotificationsSettings as NotifSettings
@@ -82,8 +85,9 @@ class TestNotificationsSettings:
 
     def test_has_vapid_keys_false(self):
         """Test has_vapid_keys without keys."""
-        settings = NotificationsSettings()
-        assert settings.has_vapid_keys is False
+        with mock.patch.dict(os.environ, {}, clear=True):
+            settings = NotificationsSettings()
+            assert settings.has_vapid_keys is False
 
     def test_has_vapid_keys_true(self):
         """Test has_vapid_keys with keys configured."""

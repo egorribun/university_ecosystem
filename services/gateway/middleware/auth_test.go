@@ -31,14 +31,14 @@ func createTestRouter(handler gin.HandlerFunc) *gin.Engine {
 }
 
 func TestNewJWTMiddleware_CreatesMiddlewareWithSecret(t *testing.T) {
-	middleware := NewJWTMiddleware(testSecret)
+	middleware := NewJWTMiddleware(testSecret, nil)
 
 	assert.NotNil(t, middleware)
 	assert.Equal(t, []byte(testSecret), middleware.secret)
 }
 
 func TestValidate_RejectsMissingAuthorizationHeader(t *testing.T) {
-	middleware := NewJWTMiddleware(testSecret)
+	middleware := NewJWTMiddleware(testSecret, nil)
 	router := createTestRouter(middleware.Validate())
 
 	request := httptest.NewRequest(http.MethodGet, "/test", nil)
@@ -51,7 +51,7 @@ func TestValidate_RejectsMissingAuthorizationHeader(t *testing.T) {
 }
 
 func TestValidate_RejectsInvalidAuthorizationFormat(t *testing.T) {
-	middleware := NewJWTMiddleware(testSecret)
+	middleware := NewJWTMiddleware(testSecret, nil)
 	router := createTestRouter(middleware.Validate())
 
 	testCases := []struct {
@@ -78,7 +78,7 @@ func TestValidate_RejectsInvalidAuthorizationFormat(t *testing.T) {
 }
 
 func TestValidate_RejectsInvalidToken(t *testing.T) {
-	middleware := NewJWTMiddleware(testSecret)
+	middleware := NewJWTMiddleware(testSecret, nil)
 	router := createTestRouter(middleware.Validate())
 
 	request := httptest.NewRequest(http.MethodGet, "/test", nil)
@@ -92,7 +92,7 @@ func TestValidate_RejectsInvalidToken(t *testing.T) {
 }
 
 func TestValidate_RejectsTokenSignedWithWrongSecret(t *testing.T) {
-	middleware := NewJWTMiddleware(testSecret)
+	middleware := NewJWTMiddleware(testSecret, nil)
 	router := createTestRouter(middleware.Validate())
 
 	claims := Claims{
@@ -114,7 +114,7 @@ func TestValidate_RejectsTokenSignedWithWrongSecret(t *testing.T) {
 }
 
 func TestValidate_RejectsInactiveUser(t *testing.T) {
-	middleware := NewJWTMiddleware(testSecret)
+	middleware := NewJWTMiddleware(testSecret, nil)
 	router := createTestRouter(middleware.Validate())
 
 	claims := Claims{
@@ -137,7 +137,7 @@ func TestValidate_RejectsInactiveUser(t *testing.T) {
 }
 
 func TestValidate_AcceptsValidTokenAndSetsContext(t *testing.T) {
-	middleware := NewJWTMiddleware(testSecret)
+	middleware := NewJWTMiddleware(testSecret, nil)
 
 	var capturedUserID interface{}
 	var capturedEmail interface{}
@@ -175,7 +175,7 @@ func TestValidate_AcceptsValidTokenAndSetsContext(t *testing.T) {
 }
 
 func TestOptional_AllowsRequestWithoutToken(t *testing.T) {
-	middleware := NewJWTMiddleware(testSecret)
+	middleware := NewJWTMiddleware(testSecret, nil)
 
 	handlerCalled := false
 	router := gin.New()
@@ -194,7 +194,7 @@ func TestOptional_AllowsRequestWithoutToken(t *testing.T) {
 }
 
 func TestOptional_ExtractsClaimsWhenTokenProvided(t *testing.T) {
-	middleware := NewJWTMiddleware(testSecret)
+	middleware := NewJWTMiddleware(testSecret, nil)
 
 	var capturedUserID interface{}
 	router := gin.New()

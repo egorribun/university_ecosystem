@@ -7,6 +7,7 @@ for upcoming lessons.
 from __future__ import annotations
 
 import datetime as dt
+import uuid
 from collections import defaultdict
 from collections.abc import Mapping
 from datetime import UTC
@@ -219,9 +220,9 @@ async def generate_schedule_reminders(
     if not schedules:
         return 0
 
-    schedules_by_group: dict[int, list[Schedule]] = defaultdict(list)
+    schedules_by_group: dict[uuid.UUID, list[Schedule]] = defaultdict(list)
     message_payloads: dict[
-        int,
+        uuid.UUID,
         tuple[
             str,
             str,
@@ -233,9 +234,9 @@ async def generate_schedule_reminders(
         ],
     ] = {}
     for schedule in schedules:
-        schedules_by_group[int(schedule.group_id)].append(schedule)
+        schedules_by_group[schedule.group_id].append(schedule)
         payload = build_schedule_reminder_message(schedule)
-        message_payloads[int(schedule.id)] = payload
+        message_payloads[schedule.id] = payload
     dedupe_keys: set[str] = {
         str(key)
         for key in (
@@ -255,11 +256,11 @@ async def generate_schedule_reminders(
         .where(User.is_active.is_(True))
     )
     user_rows = await db.execute(users_stmt)
-    group_users: dict[int, set[int]] = defaultdict(set)
+    group_users: dict[uuid.UUID, set[uuid.UUID]] = defaultdict(set)
     for user_id, group_id in user_rows:
         if user_id is None or group_id is None:
             continue
-        group_users[int(group_id)].add(int(user_id))
+        group_users[group_id].add(user_id)
 
     if not any(group_users.values()):
         return 0
@@ -282,7 +283,7 @@ async def generate_schedule_reminders(
         for user_id, dedupe_key in existing_rows:
             if user_id is None or dedupe_key is None:
                 continue
-            existing_by_dedupe[str(dedupe_key)].add(int(user_id))
+            existing_by_dedupe[str(dedupe_key)].add(user_id)
 
     action_title = translate("notifications.actions.open_schedule", locale=None)
     total_created = 0
@@ -299,7 +300,7 @@ async def generate_schedule_reminders(
                 title_translations,
                 body_translations,
                 dedupe_key,
-            ) = message_payloads[int(schedule.id)]
+            ) = message_payloads[schedule.id]
             key_for_dedupe = dedupe_key or tag or title
             already_notified = existing_by_dedupe.get(key_for_dedupe, set())
             to_notify = [uid for uid in user_ids if uid not in already_notified]

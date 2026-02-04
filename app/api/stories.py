@@ -1,4 +1,5 @@
 import logging
+import uuid
 
 from fastapi import (
     APIRouter,
@@ -15,6 +16,7 @@ from fastapi.encoders import jsonable_encoder
 
 from app.api.deps import (
     get_current_user,
+    get_read_story_service,
     get_story_service,
 )
 from app.api.utils import save_upload
@@ -68,7 +70,7 @@ async def list_stories(
     request: Request,
     response: Response,
     if_none_match: str | None = Header(default=None),
-    service: StoryService = Depends(get_story_service),
+    service: StoryService = Depends(get_read_story_service),
 ):
     locale = resolve_locale(request=request)
     normalized_locale = _normalized_cache_locale(locale)
@@ -124,7 +126,7 @@ async def create_story(
 
 @router.patch("/{story_id}", response_model=schemas.StoryOut)
 async def update_story(
-    story_id: int,
+    story_id: uuid.UUID,
     request: Request,
     data: schemas.StoryUpdate | None = Body(default=None),
     service: StoryService = Depends(get_story_service),
@@ -145,7 +147,7 @@ async def update_story(
 
 @router.delete("/{story_id}", response_model=dict)
 async def delete_story(
-    story_id: int,
+    story_id: uuid.UUID,
     request: Request,
     service: StoryService = Depends(get_story_service),
     user: models.User = Depends(get_current_user),

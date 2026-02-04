@@ -38,7 +38,7 @@ async def test_security_headers_production_mode(monkeypatch):
     app = FastAPI()
 
     @app.get("/")
-    async def root():
+    async def get_root():
         return {"status": "ok"}
 
     app.add_middleware(middleware_cls, settings=settings)
@@ -151,7 +151,7 @@ async def test_security_headers_development_report_only(monkeypatch):
     app = FastAPI()
 
     @app.get("/")
-    async def root():
+    async def get_root():
         return {"status": "ok"}
 
     app.add_middleware(middleware_cls, settings=settings)
@@ -242,7 +242,7 @@ async def test_security_headers_credentialless_coep(monkeypatch):
     app = FastAPI()
 
     @app.get("/")
-    async def root():
+    async def get_root():
         return {"status": "ok"}
 
     app.add_middleware(middleware_cls, settings=settings)

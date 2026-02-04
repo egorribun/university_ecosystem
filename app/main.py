@@ -7,7 +7,8 @@ configure_uvloop()
 
 import logging
 
-from fastapi import FastAPI
+# import pyroscope
+from fastapi import FastAPI, HTTPException
 
 try:
     from fastapi.responses import JSONResponse, ORJSONResponse
@@ -26,7 +27,10 @@ from app.core.config import settings
 from app.core.database import engine
 from app.core.exceptions import AppException, app_exception_handler
 from app.core.exceptions.domain import DomainException
-from app.core.exceptions.handlers import domain_exception_handler
+from app.core.exceptions.handlers import (
+    domain_exception_handler,
+    http_exception_handler,
+)
 from app.core.lifespan import lifespan
 from app.core.metrics import configure_metrics
 from app.core.middleware import (
@@ -43,6 +47,13 @@ from app.services.file_scanner import (
 
 # Re-exports for test compatibility and internal use
 scan_for_malware = _scan_for_malware
+
+# # Initialize Pyroscope
+# if os.getenv("ENABLE_PROFILING", "false").lower() == "true":
+#     pyroscope.configure(
+#         application_name="university-backend",
+#         server_address="http://pyroscope:4040",
+#     )
 
 app = FastAPI(
     title="University Ecosystem API",
@@ -61,6 +72,7 @@ app = FastAPI(
 # Exception handlers
 app.add_exception_handler(AppException, app_exception_handler)
 app.add_exception_handler(DomainException, domain_exception_handler)
+app.add_exception_handler(HTTPException, http_exception_handler)
 
 # Observability & Metrics
 configure_observability(app, engine=engine)
@@ -78,7 +90,7 @@ _logger = logging.getLogger(__name__)
 
 
 @app.get("/", response_class=JSONResponse, summary="Root")
-async def root():
+async def get_root():
     return JSONResponse(status_code=200, content={"status": "ok"})
 
 
