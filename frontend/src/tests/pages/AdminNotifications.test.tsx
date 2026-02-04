@@ -13,7 +13,7 @@ import { resetAdminDeadLetterJobs } from "../mocks/handlers"
 import { server } from "../mocks/server"
 
 const adminUser: User = {
-  id: 1,
+  id: "uuid-1",
   email: "admin@example.com",
   full_name: "Admin User",
   role: "admin",

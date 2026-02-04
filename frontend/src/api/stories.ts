@@ -20,13 +20,11 @@ export function createStory(payload: StoryCreatePayload) {
   return axios.post<StoryResponse>("/stories", payload)
 }
 
-export function updateStory(storyId: number, payload: StoryUpdatePayload) {
-  return axios.patch<StoryResponse>(`/stories/${storyId}`, payload)
-}
+export const updateStory = (id: string, data: Partial<StoryCreatePayload>) =>
+  axios.patch<StoryResponse>(`/stories/${id}`, data)
 
-export function deleteStory(storyId: number) {
-  return axios.delete<DeleteStoryResponse>(`/stories/${storyId}`)
-}
+export const deleteStory = (id: string) =>
+  axios.delete<DeleteStoryResponse>(`/stories/${id}`)
 
 export function uploadStoryCover(file: File) {
   const data = new FormData()

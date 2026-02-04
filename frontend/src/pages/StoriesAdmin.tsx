@@ -211,12 +211,12 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
     }
   }
 
-  const handleDelete = async () => {
+  const handleDeleteStory = async (id: string) => {
     if (!window.confirm(t("stories:list.confirmDelete"))) return
     setActionError(null)
     setDeleting(true)
     try {
-      await deleteStory(story.id)
+      await deleteStory(id)
       onRefresh()
     } catch (error: unknown) {
       setActionError(getErrorMessage(error, t("stories:errors.deleteFailed")))
