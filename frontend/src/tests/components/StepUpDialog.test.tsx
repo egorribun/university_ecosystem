@@ -33,7 +33,7 @@ const createChallenge = (remaining: number): PendingMfaState => {
   return {
     status: "mfa_required",
     reason: "step-up",
-    user_id: 1,
+    user_id: "0194d2e7-9b84-7f04-b2ff-c087ea96a257",
     session_id: "session-1",
     default_method: "totp",
     methods,
