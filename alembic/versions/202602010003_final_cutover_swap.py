@@ -335,12 +335,25 @@ def downgrade():
                 if t == table:
                     # Current: legacy_col is UUID, legacy_{legacy_col} is Int
                     legacy_int_col = f"legacy_{legacy_col}"
-                    if legacy_col in columns and legacy_int_col in columns:
-                        logger.info(f"Reversing FK swap for {table}.{legacy_col}...")
-                        batch_op.alter_column(legacy_col, new_column_name=shadow_col)
-                        batch_op.alter_column(
-                            legacy_int_col, new_column_name=legacy_col
-                        )
+                    if legacy_col in columns:
+                        if legacy_int_col in columns:
+                            logger.info(
+                                f"Reversing FK swap for {table}.{legacy_col}..."
+                            )
+                            batch_op.alter_column(
+                                legacy_col, new_column_name=shadow_col
+                            )
+                            batch_op.alter_column(
+                                legacy_int_col, new_column_name=legacy_col
+                            )
+                        else:
+                            # Only shadow column exists as legacy_col, rename it back
+                            logger.info(
+                                f"Reversing single FK for {table}.{legacy_col}..."
+                            )
+                            batch_op.alter_column(
+                                legacy_col, new_column_name=shadow_col
+                            )
 
     # 4. Reverse PK Swap Phase
     for table in [t for t in TABLES_TO_SWAP if t not in partitions]:
@@ -369,18 +382,29 @@ def downgrade():
                 batch_op.create_primary_key(f"{table}_pkey", ["id"])
 
     # 5. Restore Original FKs Phase: Recreate FKs pointing back to the Integer 'id'
+    # We refresh the inspector to see renamed columns
+    refreshed_inspector = sa.inspect(bind)
     for table in all_affected_tables:
         fks = fks_to_restore.get(table, [])
         if fks:
+            current_columns = {
+                c["name"] for c in refreshed_inspector.get_columns(table)
+            }
             logger.info(f"Restoring original FKs for {table}...")
             with op.batch_alter_table(table) as batch_op:
                 for fk in fks:
-                    # After reverse swap, we want to point to 'id' (which is now Int)
-                    batch_op.create_foreign_key(
-                        fk["name"] or f"fk_{table}_{fk['column']}_original",
-                        fk["ref_table"],
-                        [fk["column"]],
-                        ["id"],
-                        ondelete=fk["ondelete"],
-                        onupdate=fk["onupdate"],
-                    )
+                    # Point back to 'id' (restored Int) only if column still exists
+                    if fk["column"] in current_columns:
+                        batch_op.create_foreign_key(
+                            fk["name"] or f"fk_{table}_{fk['column']}_original",
+                            fk["ref_table"],
+                            [fk["column"]],
+                            ["id"],
+                            ondelete=fk["ondelete"],
+                            onupdate=fk["onupdate"],
+                        )
+                    else:
+                        logger.info(
+                            f"Skipping FK restoration for {table}.{fk['column']} "
+                            "(column no longer exists after downgrade)"
+                        )
