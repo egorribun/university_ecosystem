@@ -113,9 +113,18 @@ def upgrade():
                 with op.batch_alter_table(table) as batch_op:
                     # Drop the unique constraint we created in previous step
                     if dialect != "sqlite":
-                        batch_op.drop_constraint(
-                            f"uq_{table}_legacy_id", type_="unique"
-                        )
+                        # For active_sessions, we might have dependent FKs
+                        # (e.g. mfa_challenges) that persist if not cleaned up
+                        # correctly. Use CASCADE for Postgres.
+                        if table == "active_sessions" and dialect == "postgresql":
+                            batch_op.execute(
+                                f"ALTER TABLE {table} DROP CONSTRAINT IF EXISTS "
+                                f"uq_{table}_legacy_id CASCADE"
+                            )
+                        else:
+                            batch_op.drop_constraint(
+                                f"uq_{table}_legacy_id", type_="unique"
+                            )
                     batch_op.drop_column("legacy_id")
                 logger.info(f"Dropped legacy_id from {table}")
             except Exception as e:
@@ -125,17 +134,31 @@ def upgrade():
 
     # 2. Drop the legacy foreign key columns
     for table, legacy_col in FK_TO_CLEANUP:
+        if not inspector.has_table(table):
+            continue
+
+        columns = {c["name"] for c in inspector.get_columns(table)}
+        if legacy_col not in columns:
+            logger.info(
+                f"Skipping {legacy_col} in {table} - already dropped or missing"
+            )
+            continue
+
         try:
             with op.batch_alter_table(table) as batch_op:
                 batch_op.drop_column(legacy_col)
             logger.info(f"Dropped {legacy_col} from {table}")
         except Exception as e:
             logger.warning(f"Could not drop {legacy_col} for {table}: {e}")
+            # Try to make it nullable if we can't drop it (last resort)
             try:
                 with op.batch_alter_table(table) as batch_op:
                     batch_op.alter_column(legacy_col, nullable=True)
             except Exception as e2:
-                logger.error(f"Could not make {legacy_col} nullable for {table}: {e2}")
+                # If column doesn't exist (race condition?), ignore
+                logger.warning(
+                    f"Could not make {legacy_col} nullable for {table}: {e2}"
+                )
 
 
 def downgrade():
