@@ -111,7 +111,7 @@ jobs:
       python-version: ${{ matrix.python-version }}
       coverage-threshold: ${{ matrix.coverage-check && 72 || 0 }}
       run-integration-tests: ${{ matrix.python-version == '3.13' }}
-      parallel-workers: 0 # auto-detect CPU count
+      parallel-workers: -1 # disable parallel execution for SQLite stability
     secrets: inherit
 
   backend-type-check:
