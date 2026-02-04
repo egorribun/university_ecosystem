@@ -9,8 +9,11 @@ export type UploadState = UploadIdleState | UploadSuccessState | UploadErrorStat
 export const isUploadErrorState = (state: UploadState): state is UploadErrorState =>
   state.status === "error"
 
-export type OptimisticEventFile = Omit<EventFile, "id"> & {
-  id: EventFile["id"] | string
+export type OptimisticEventFile = {
+  id: string
+  event_id: string
+  description?: string | null
+  file_url: string
   pending?: boolean
 }
 

@@ -11,7 +11,7 @@ import type { PendingMfaState, SetUserArg, UserState } from "@/types/Auth"
 import { clearAccessToken } from "./tokenStorage"
 
 const PROFILE_CACHE_BASE_KEY = "ecosystem.profile.cache"
-const PROFILE_CACHE_SCHEMA_VERSION = 6
+const PROFILE_CACHE_SCHEMA_VERSION = 7
 export const PROFILE_CACHE_STORAGE_KEY = `${PROFILE_CACHE_BASE_KEY}.v${PROFILE_CACHE_SCHEMA_VERSION}`
 const PROFILE_CACHE_VERSION_KEY = `${PROFILE_CACHE_BASE_KEY}.version`
 const LEGACY_PROFILE_CACHE_KEYS = [
@@ -339,7 +339,7 @@ const readCachedUserAsync = async (signingKey: string | null): Promise<User | un
     snapshotData = null
   }
 
-  if (!snapshotData || typeof snapshotData.id !== "number") {
+  if (!snapshotData || typeof snapshotData.id !== "string") {
     clearProfileCacheStorage()
     return undefined
   }
@@ -508,7 +508,7 @@ export const useProfileSync = (
       // The async init useEffect will replace this with the fully decrypted user
       // We set a marker ID of -1 to indicate this is a placeholder pending async restore
       return {
-        id: -1, // Placeholder ID, will be replaced by async init
+        id: "-1", // Placeholder ID, will be replaced by async init
         email: "",
         full_name: "",
         role: "student",

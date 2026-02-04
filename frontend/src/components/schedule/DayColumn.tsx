@@ -16,10 +16,10 @@ interface DayColumnProps {
   isOnline: boolean
   hasSchedule: boolean
   userRole?: string
-  conflictedIds: Set<number>
+  conflictedIds: Set<string>
   onAdd: () => void
   onLessonOpen: (lesson: Lesson) => void
-  onLessonDelete: (id: number) => void
+  onLessonDelete: (id: string) => void
   onRetry: () => void
   getLessonTypeColor: (val?: string | null) => string
   getLessonTypeLabel: (val?: string | null) => string

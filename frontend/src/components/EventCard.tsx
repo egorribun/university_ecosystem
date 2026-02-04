@@ -40,7 +40,7 @@ dayjs.extend(utc)
 dayjs.extend(timezone)
 
 type EventCardProps = {
-  id: number
+  id: string
   title: string
   description?: string | null
   title_en?: string | null
@@ -51,7 +51,7 @@ type EventCardProps = {
   location_en?: string | null
   starts_at: string
   ends_at: string
-  created_by: number
+  created_by: string
   participant_count: number
   files?: Event["files"]
   is_active: boolean
@@ -102,9 +102,9 @@ const getTimeStatus = (
   return { status: "upcoming" }
 }
 
-const qrKey = (eventId: number, user: any) => `qr:${eventId}:${user?.id ?? user?.user_id ?? "me"}`
-const qrOpenKey = (eventId: number) => `qr:open:${eventId}`
-const regKey = (eventId: number, userId: number | string | undefined) =>
+const qrKey = (eventId: string, user: any) => `qr:${eventId}:${user?.id ?? user?.user_id ?? "me"}`
+const qrOpenKey = (eventId: string) => `qr:open:${eventId}`
+const regKey = (eventId: string, userId: number | string | undefined) =>
   `event:reg:${eventId}:${userId ?? "anon"}`
 
 function Snackbar({

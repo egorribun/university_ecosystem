@@ -148,7 +148,7 @@ describe("NotificationsBell", () => {
     const state = baseState()
     state.data = [
       {
-        id: 1,
+        id: "uuid-1",
         title: "Welcome",
         body: "",
         created_at: "2024-01-01T00:00:00Z",
@@ -177,7 +177,7 @@ describe("NotificationsBell", () => {
     const state = baseState()
     state.data = [
       {
-        id: 1,
+        id: "uuid-1",
         title: "Welcome",
         body: "",
         created_at: "2024-01-01T00:00:00Z",
@@ -203,7 +203,7 @@ describe("NotificationsBell", () => {
     const state = baseState()
     state.data = [
       {
-        id: 1,
+        id: "uuid-1",
         title: "Welcome",
         body: "",
         created_at: "2024-01-01T00:00:00Z",

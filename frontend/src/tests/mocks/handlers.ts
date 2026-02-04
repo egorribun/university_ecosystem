@@ -23,9 +23,9 @@ type ResetPasswordPayload = {
 }
 
 type AdminDeadLetterJob = {
-  id: number
+  id: string
   kind: "event" | "news"
-  record_id: number
+  record_id: string
   locale: string | null
   enqueued_at: string
   claimed_at: string | null
@@ -35,7 +35,7 @@ type AdminDeadLetterJob = {
 }
 
 export const testUser: User = {
-  id: 1,
+  id: "uuid-1",
   email: "user@example.com",
   full_name: "Тестовый Пользователь",
   role: "student",
@@ -76,7 +76,7 @@ const nowIso = () => new Date().toISOString()
 const createTotpEnrollment = (overrides: Partial<MfaTotpEnrollment> = {}): MfaTotpEnrollment => {
   const createdAt = overrides.created_at ?? nowIso()
   return {
-    id: overrides.id ?? Math.floor(Math.random() * 10_000) + 1,
+    id: overrides.id ?? `uuid-${Math.floor(Math.random() * 10_000) + 1}`,
     user_id: overrides.user_id ?? testUser.id,
     label: overrides.label ?? null,
     is_active: overrides.is_active ?? false,
@@ -140,7 +140,7 @@ const createMfaChallenge = ({
   return {
     status: "mfa_required",
     user_id: testUser.id,
-    session_id: sessionId,
+    session_id: typeof sessionId === 'number' ? `session-${sessionId}` : sessionId,
     default_method: defaultMethod,
     methods,
     challenges: methods,
@@ -152,7 +152,7 @@ let totpEnrollmentCounter = 1
 let loginChallenge: PendingMfaResponse | null = null
 let stepUpChallenge: PendingMfaResponse | null = createMfaChallenge({
   includeTotp: true,
-  sessionId: 42,
+  sessionId: "session-42",
 })
 
 const resetUserEnrollments = () => {
@@ -166,7 +166,7 @@ export const resetTestMfa = () => {
   loginChallenge = null
   stepUpChallenge = createMfaChallenge({
     includeTotp: true,
-    sessionId: 42,
+    sessionId: "session-42",
   })
   testUser.mfa_required = false
   testUser.mfa_default_method = null
@@ -179,8 +179,8 @@ const createBaseSessions = (): ActiveSession[] => {
   const currentIso = new Date(now).toISOString()
   return [
     {
-      id: 1,
-      user_id: 1,
+      id: "session-1",
+      user_id: "uuid-1",
       jti: "session-current",
       created_at: currentIso,
       expires_at: new Date(now + 60 * 60 * 1000).toISOString(),
@@ -195,8 +195,8 @@ const createBaseSessions = (): ActiveSession[] => {
       is_current: true,
     },
     {
-      id: 2,
-      user_id: 1,
+      id: "session-2",
+      user_id: "uuid-1",
       jti: "session-secondary",
       created_at: new Date(now - 2 * 60 * 60 * 1000).toISOString(),
       expires_at: new Date(now + 2 * 60 * 60 * 1000).toISOString(),
@@ -227,7 +227,7 @@ const createBaseEvents = (): Event[] => {
     const end = new Date(start.getTime() + 90 * 60 * 1000)
     const isoStart = start.toISOString()
     const isoEnd = end.toISOString()
-    const id = index + 1
+    const id = `uuid-${index + 1}`
     return {
       id,
       title: `Sample event ${id}`,
@@ -240,7 +240,7 @@ const createBaseEvents = (): Event[] => {
       event_type_en: null,
       starts_at: isoStart,
       ends_at: isoEnd,
-      created_by: 1,
+      created_by: "uuid-1",
       created_at: new Date(now - 60 * 60 * 1000).toISOString(),
       is_active: true,
       speaker: null,
@@ -269,7 +269,7 @@ export const resetTestEvents = () => {
 const createTestStories = (): StoryItem[] => {
   const now = new Date()
   return Array.from({ length: 4 }, (_, index) => {
-    const id = index + 1
+    const id = `uuid-${index + 1}`
     const publishedAt = new Date(now.getTime() - index * 60 * 60 * 1000).toISOString()
     const expiresAt = new Date(now.getTime() + (index + 1) * 60 * 60 * 1000).toISOString()
     return {
@@ -295,7 +295,7 @@ const createTestNews = (): NewsItem[] => {
   return Array.from({ length: 5 }, (_, index) => {
     const id = index + 1
     return {
-      id,
+      id: `uuid-${id}`,
       title: `News item ${id}`,
       content: `News content ${id}`,
       title_en: `News item ${id}`,
@@ -325,9 +325,9 @@ export const resetTestNews = () => {
 
 const createAdminDeadLetterJobs = (): AdminDeadLetterJob[] => [
   {
-    id: 1,
+    id: "uuid-1",
     kind: "event",
-    record_id: 1001,
+    record_id: "record-1001",
     locale: "ru",
     enqueued_at: nowIso(),
     claimed_at: null,
@@ -336,9 +336,9 @@ const createAdminDeadLetterJobs = (): AdminDeadLetterJob[] => [
     next_retry_at: null,
   },
   {
-    id: 2,
+    id: "uuid-2",
     kind: "news",
-    record_id: 2002,
+    record_id: "record-2002",
     locale: "en",
     enqueued_at: nowIso(),
     claimed_at: null,
@@ -351,7 +351,7 @@ const createAdminDeadLetterJobs = (): AdminDeadLetterJob[] => [
 const adminDeadLetterJobs: AdminDeadLetterJob[] = createAdminDeadLetterJobs()
 
 const applyAdminQueueMutation = (jobIds: unknown) => {
-  const ids = Array.isArray(jobIds) ? new Set(jobIds.map((id) => Number(id))) : new Set<number>()
+  const ids = Array.isArray(jobIds) ? new Set(jobIds.map((id) => String(id))) : new Set<string>()
   let removed = 0
   for (let index = adminDeadLetterJobs.length - 1; index >= 0; index -= 1) {
     const job = adminDeadLetterJobs[index]
@@ -417,7 +417,7 @@ export const handlers = [
         : null
 
     const enrollment = createTotpEnrollment({
-      id: totpEnrollmentCounter++,
+      id: `uuid-${totpEnrollmentCounter++}`,
       label,
       created_at: nowIso(),
     })
@@ -432,7 +432,7 @@ export const handlers = [
     }
 
     const body = (await request.json().catch(() => null)) as {
-      enrollment_id?: number
+      enrollment_id?: string
       code?: string
     } | null
 
@@ -458,7 +458,7 @@ export const handlers = [
     return HttpResponse.json(confirmed)
   }),
   http.delete("*/auth/mfa/totp/pending/:id", ({ params }) => {
-    const id = Number(params.id)
+    const id = params.id as string
     if (!totpDraft || totpDraft.enrollment.id !== id) {
       return HttpResponse.json({ detail: "Enrollment not found" }, { status: 404 })
     }
@@ -466,7 +466,7 @@ export const handlers = [
     return HttpResponse.json(null, { status: 204 })
   }),
   http.delete("*/auth/mfa/totp/:id", ({ params }) => {
-    const id = Number(params.id)
+    const id = params.id as string
     const index = testUser.totp_enrollments!.findIndex((entry) => entry.id === id)
     if (index === -1) {
       return HttpResponse.json({ detail: "Enrollment not found" }, { status: 404 })
@@ -484,7 +484,7 @@ export const handlers = [
     if (!stepUpChallenge) {
       stepUpChallenge = createMfaChallenge({
         includeTotp: true,
-        sessionId: 42,
+        sessionId: "session-42",
       })
     }
     return HttpResponse.json(stepUpChallenge, { status: 202 })
@@ -525,7 +525,7 @@ export const handlers = [
     if (matchedStepUp) {
       stepUpChallenge = createMfaChallenge({
         includeTotp: true,
-        sessionId: 42,
+        sessionId: "session-42",
       })
     }
 
@@ -537,7 +537,7 @@ export const handlers = [
     })
   }),
   http.delete("*/auth/sessions/:id", ({ params }) => {
-    const id = Number(params.id)
+    const id = params.id as string
     const session = testSessions.find((item) => item.id === id)
     if (!session) {
       return HttpResponse.json({ detail: "Session not found" }, { status: 404 })
@@ -561,8 +561,8 @@ export const handlers = [
     const decodeCursor = (value: string | null) => {
       if (!value) return null
       try {
-        const payload = JSON.parse(value) as { id?: number; starts_at?: string }
-        if (typeof payload?.id !== "number") return null
+        const payload = JSON.parse(value) as { id?: string; starts_at?: string }
+        if (typeof payload?.id !== "string") return null
         if (payload.starts_at != null && typeof payload.starts_at !== "string") {
           return null
         }
@@ -582,7 +582,7 @@ export const handlers = [
       const startsB = String(b.starts_at ?? "")
       const compareStarts = startsA.localeCompare(startsB)
       if (compareStarts !== 0) return compareStarts
-      return a.id - b.id
+      return a.id.localeCompare(b.id)
     })
 
     const startIndex = decodedCursor
@@ -640,7 +640,7 @@ export const handlers = [
     if (body.email === "taken@example.com") {
       return HttpResponse.json({ detail: "Email already used" }, { status: 400 })
     }
-    return HttpResponse.json({ status: "ok", id: 2, ...body })
+    return HttpResponse.json({ status: "ok", id: "uuid-2", ...body })
   }),
   http.post("*/auth/login", async ({ request }) => {
     const raw = await request.text()
@@ -656,7 +656,7 @@ export const handlers = [
       loginChallenge = createMfaChallenge({
         includeTotp: true,
         defaultMethod: "totp",
-        sessionId: 84,
+        sessionId: "session-84",
       })
       testUser.mfa_required = true
       testUser.mfa_default_method = "totp"

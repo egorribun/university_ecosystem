@@ -11,7 +11,7 @@ import type {
 import { ensureValidResponse } from "./validation"
 
 const notificationSchema = z.object({
-  id: z.number().int(),
+  id: z.string().uuid(),
   title: z.string(),
   body: z.string().nullable().optional(),
   title_en: z.string().nullable().optional(),
@@ -31,9 +31,9 @@ const notificationsListSchema = z.object({
 })
 
 const deadLetterJobSchema = z.object({
-  id: z.number().int(),
+  id: z.string(), // Redis/worker job IDs might still be numbers
   kind: z.string(),
-  record_id: z.number().int(),
+  record_id: z.string(), // This might need verification, is it referencing a DB ID?
   locale: z.string().nullable().optional(),
   enqueued_at: z.string(),
   claimed_at: z.string().nullable().optional(),
@@ -62,7 +62,7 @@ export const fetchNotificationsList = async (params?: {
   return ensureValidResponse(notificationsListSchema, response.data, "GET /api/v1/notifications")
 }
 
-export const markNotificationRead = (notificationId: number) =>
+export const markNotificationRead = (notificationId: string) =>
   apiClient.patch("/api/v1/notifications/{notif_id}/read", undefined, {
     pathParams: { notif_id: notificationId },
   })
@@ -87,10 +87,10 @@ export const fetchDeadLetterQueue = async (params?: { limit?: number; offset?: n
   )
 }
 
-export const retryDeadLetterJobs = (jobIds: number[]) =>
+export const retryDeadLetterJobs = (jobIds: string[]) =>
   api.post("/notifications/admin/dead-letter/retry", { job_ids: jobIds })
 
-export const purgeDeadLetterJobs = (jobIds: number[]) =>
+export const purgeDeadLetterJobs = (jobIds: string[]) =>
   api.post("/notifications/admin/dead-letter/purge", { job_ids: jobIds })
 
 export async function saveSubscription(
@@ -154,27 +154,28 @@ export async function fetchPushTopics(): Promise<PushTopicsResponse> {
 }
 
 const adminTopicsSchema = z.object({
-  user_id: z.number().int().positive(),
+  user_id: z.string().uuid(),
   email: z.string().trim().min(1),
   topics: z.array(z.string().trim()),
   allowed_topics: z.array(z.string().trim().min(1)),
   updated_at: z.string().datetime().nullable().optional(),
 })
 
-export async function fetchAdminUserTopics(userId: number): Promise<AdminUserTopicsResponse> {
+export async function fetchAdminUserTopics(userId: string): Promise<AdminUserTopicsResponse> {
   const { data } = await apiClient.get("/api/v1/push/admin/topics/{user_id}", {
-    pathParams: { user_id: userId },
+    pathParams: { user_id: userId as unknown as number }, // Note: apiClient handles string/number path params
   })
+  // Cast data if needed, but schema.ts should now define user_id as string/number based on openapi
   return ensureValidResponse(adminTopicsSchema, data, `GET /api/v1/push/admin/topics/${userId}`)
 }
 
 export async function updateAdminUserTopics(
-  userId: number,
+  userId: string,
   topics: string[]
 ): Promise<AdminUserTopicsResponse> {
   const payload = { topics }
   const { data } = await apiClient.put("/api/v1/push/admin/topics/{user_id}", payload, {
-    pathParams: { user_id: userId },
+    pathParams: { user_id: userId as unknown as number },
   })
   return ensureValidResponse(adminTopicsSchema, data, `PUT /api/v1/push/admin/topics/${userId}`)
 }

@@ -2351,7 +2351,7 @@ export interface components {
        */
       created_at: string
       /** Created By */
-      created_by: string | unknown
+      created_by: string
       /** Description */
       description?: string | null
       /** Description En */

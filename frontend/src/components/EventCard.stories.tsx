@@ -14,7 +14,7 @@ export default meta
 type Story = StoryObj<typeof EventCard>
 
 const mockEvent = {
-  id: 1,
+  id: "uuid-1",
   title: "Modern Web Development Workshop",
   title_en: "Modern Web Development Workshop",
   description: "Join us for an intensive workshop on React 19, Vite, and tailwind CSS.",
@@ -25,7 +25,7 @@ const mockEvent = {
   location_en: "Computer Lab 404",
   starts_at: new Date().toISOString(),
   ends_at: new Date(Date.now() + 7200000).toISOString(),
-  created_by: 1,
+  created_by: "uuid-1",
   speaker: "Dr. Jane Smith",
   photo_url:
     "https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800&auto=format&fit=crop",

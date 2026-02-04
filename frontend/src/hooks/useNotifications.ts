@@ -51,7 +51,7 @@ export function useNotifications() {
   }, [])
 
   const markRead = useMutation({
-    mutationFn: async (id: number) => {
+    mutationFn: async (id: string) => {
       await markNotificationReadRequest(id)
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
@@ -120,7 +120,7 @@ export function useNotifications() {
     error: list.error,
     isRefetching: list.isRefetching,
     refetch: list.refetch,
-    markRead: (id: number) => markRead.mutate(id),
+    markRead: (id: string) => markRead.mutate(id),
     markAll: () => markAll.mutate(),
     clearAll: clearAll.mutate,
     isMarkingAll: markAll.isPending,

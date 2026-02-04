@@ -188,7 +188,7 @@ export default function Messenger() {
   // Memoize transformed messages to prevent infinite re-renders in ChatWindow
   const transformedMessages = useMemo(() => {
     return messages.map((m) => {
-      const isMe = Number(m.sender_id) === Number(user?.id)
+      const isMe = m.sender_id === user?.id
       return {
         id: m.id,
         senderId: String(m.sender_id),
@@ -602,7 +602,7 @@ export default function Messenger() {
                               alt={getOtherParticipant(activeChat)?.full_name || ""}
                               className="w-11 h-11 rounded-full object-cover border-2 border-white/10"
                             />
-                            {presenceMap[getOtherParticipant(activeChat)?.id ?? 0]?.active && (
+                            {presenceMap[getOtherParticipant(activeChat)?.id ?? ""]?.active && (
                               <span className="msg-online-indicator absolute bottom-0 right-0 w-3.5 h-3.5"></span>
                             )}
                           </div>
@@ -611,7 +611,7 @@ export default function Messenger() {
                               {getOtherParticipant(activeChat)?.full_name}
                             </h2>
                             <AnimatePresence mode="wait">
-                              {presenceMap[getOtherParticipant(activeChat)?.id ?? 0]?.active ? (
+                              {presenceMap[getOtherParticipant(activeChat)?.id ?? ""]?.active ? (
                                 <motion.p
                                   key="online"
                                   initial={{ opacity: 0, y: 5 }}

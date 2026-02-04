@@ -30,15 +30,15 @@ import { buildAvatarUrl } from "../utils/avatar"
 type UserRole = "student" | "teacher" | "admin"
 
 type AdminUser = {
-  id: number
+  id: string
   full_name: string
   email: string
   role: UserRole
-  group_id: number | null
+  group_id: string | null
   avatar_url?: string | null
 }
 
-type Group = { id: number; name: string }
+type Group = { id: string; name: string }
 
 type UserFilters = {
   full_name: string
@@ -82,13 +82,13 @@ export default function AdminUsers() {
     void fetchGroups()
   }, [fetchGroups])
 
-  const handleGroupChange = async (userId: number, groupId: string) => {
-    const nextGroup = groupId ? Number(groupId) : null
+  const handleGroupChange = async (userId: string, groupId: string) => {
+    const nextGroup = groupId || null
     await api.patch(`/users/${userId}`, { group_id: nextGroup })
     void fetchUsers()
   }
 
-  const handleDelete = async (userId: number) => {
+  const handleDelete = async (userId: string) => {
     if (!window.confirm(t("users.confirmDelete"))) return
     await api.delete(`/users/${userId}`)
     void fetchUsers()
@@ -107,7 +107,7 @@ export default function AdminUsers() {
     setFilters((prev) => ({ ...prev, group_id: event.target.value }))
   }
 
-  const handleGroupSelectChange = (userId: number) => (event: SelectChangeEvent<string>) => {
+  const handleGroupSelectChange = (userId: string) => (event: SelectChangeEvent<string>) => {
     void handleGroupChange(userId, event.target.value)
   }
 

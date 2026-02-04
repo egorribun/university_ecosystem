@@ -35,11 +35,11 @@ export interface WebSocketMessage {
   type: WebSocketMessageType
   chat_id?: string
   message_id?: string
-  user_id?: number
+  user_id?: string
   user_name?: string
   message?: Message
   status?: boolean
-  users?: number[]
+  users?: string[]
   active?: boolean
   last_seen?: string | null
 }
@@ -47,14 +47,14 @@ export interface WebSocketMessage {
 export interface UseChatWebSocketOptions {
   enabled?: boolean
   onNewMessage?: (message: Message, chatId: string) => void
-  onTyping?: (chatId: string, userId: number, userName: string) => void
-  onRead?: (chatId: string, messageId: string, userId: number) => void
-  onOnlineStatus?: (userId: number, status: boolean) => void
-  onPresenceUpdate?: (userId: number, active: boolean, lastSeen: string | null) => void
+  onTyping?: (chatId: string, userId: string, userName: string) => void
+  onRead?: (chatId: string, messageId: string, userId: string) => void
+  onOnlineStatus?: (userId: string, status: boolean) => void
+  onPresenceUpdate?: (userId: string, active: boolean, lastSeen: string | null) => void
 }
 
 interface TypingUser {
-  userId: number
+  userId: string
   userName: string
   timeout: ReturnType<typeof setTimeout>
 }
@@ -318,7 +318,7 @@ export function useChatWebSocket({
   // Get typing users for a specific chat
   const getTypingUsersForChat = useCallback(
     (chatId: string) => {
-      const users: { userId: number; userName: string }[] = []
+      const users: { userId: string; userName: string }[] = []
       typingUsers.forEach((value, key) => {
         if (key.startsWith(`${chatId}:`)) {
           users.push({ userId: value.userId, userName: value.userName })

@@ -6,11 +6,11 @@ import { chatApi, type PresenceStatus, type ChatsListResponse } from "../api/cha
 
 interface MessengerContextType {
   unreadCount: number
-  presenceMap: Record<number, PresenceStatus>
+  presenceMap: Record<string, PresenceStatus>
   isConnected: boolean
   sendTyping: (chatId: string) => void
   sendRead: (chatId: string, messageId: string) => void
-  getTypingUsersForChat: (chatId: string) => { userId: number; userName: string }[]
+  getTypingUsersForChat: (chatId: string) => { userId: string; userName: string }[]
 }
 
 const MessengerContext = createContext<MessengerContextType | undefined>(undefined)
@@ -26,7 +26,7 @@ export const useMessenger = () => {
 export const MessengerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isAuth } = useAuth()
   const queryClient = useQueryClient()
-  const [presenceMap, setPresenceMap] = useState<Record<number, PresenceStatus>>({})
+  const [presenceMap, setPresenceMap] = useState<Record<string, PresenceStatus>>({})
 
   const { isConnected, sendTyping, sendRead, getTypingUsersForChat } = useChatWebSocket({
     enabled: isAuth,
@@ -70,7 +70,7 @@ export const MessengerProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         const next = { ...prev }
         chatsData.items.forEach((chat) => {
           Object.entries(chat.presence || {}).forEach(([id, status]) => {
-            const userId = Number(id)
+            const userId = id
             next[userId] = status
           })
         })

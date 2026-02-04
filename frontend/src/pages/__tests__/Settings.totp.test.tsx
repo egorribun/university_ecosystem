@@ -45,7 +45,7 @@ const createBaseUser = (): User => ({
 const createPendingEnrollment = (
   overrides: Partial<MfaTotpEnrollment> = {}
 ): MfaTotpEnrollment => ({
-  id: overrides.id ?? Math.floor(Math.random() * 10_000) + 1,
+  id: overrides.id ?? `uuid-${Math.floor(Math.random() * 10_000) + 1}`,
   user_id: overrides.user_id ?? testUser.id,
   label: overrides.label ?? "Pending authenticator",
   is_active: overrides.is_active ?? false,

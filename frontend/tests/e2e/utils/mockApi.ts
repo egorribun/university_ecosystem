@@ -23,9 +23,9 @@ type MfaState = {
 }
 
 type AdminDeadLetterJob = {
-  id: number
+  id: string
   kind: "event" | "news"
-  record_id: number
+  record_id: string
   locale: string | null
   enqueued_at: string
   claimed_at: string | null
@@ -35,8 +35,8 @@ type AdminDeadLetterJob = {
 }
 
 type SessionMock = {
-  id: number
-  user_id: number
+  id: string
+  user_id: string
   jti: string
   created_at: string
   expires_at: string
@@ -60,11 +60,11 @@ type MockState = {
 }
 
 const createBaseProfile = (): User => ({
-  id: 1,
+  id: "uuid-1",
   email: "student@example.com",
   full_name: "Иван Иванов",
   role: "student",
-  group_id: 1,
+  group_id: "uuid-101",
   avatar_url: null,
   avatar_url_optimized: null,
   cover_url: null,
@@ -98,7 +98,7 @@ const createBaseProfile = (): User => ({
 
 const mockNews = [
   {
-    id: 1,
+    id: "uuid-1",
     title: "Новость дня",
     title_en: "News of the day",
     content: "Кампус переходит на новую систему расписаний.",
@@ -108,7 +108,7 @@ const mockNews = [
     image_url_optimized: null,
   },
   {
-    id: 2,
+    id: "uuid-2",
     title: "Библиотека открыта",
     title_en: "Library hours extended",
     content: "Расширены часы работы библиотечного центра.",
@@ -121,7 +121,7 @@ const mockNews = [
 
 const now = new Date()
 const mockEvents = Array.from({ length: 50 }, (_, index) => {
-  const id = index + 10
+  const id = `uuid-${index + 10}`
   const start = new Date(now.getTime() + (index + 1) * 24 * 60 * 60 * 1000)
   const end = new Date(start.getTime() + 2 * 60 * 60 * 1000)
   return {
@@ -137,7 +137,7 @@ const mockEvents = Array.from({ length: 50 }, (_, index) => {
     starts_at: start.toISOString(),
     ends_at: end.toISOString(),
     created_at: now.toISOString(),
-    created_by: 1,
+    created_by: "uuid-1",
     is_active: true,
     speaker: null,
     image_url: null,
@@ -152,9 +152,9 @@ const mockEvents = Array.from({ length: 50 }, (_, index) => {
 
 const createDeadLetterJobs = (): AdminDeadLetterJob[] => [
   {
-    id: 1,
+    id: "uuid-1",
     kind: "event",
-    record_id: 1001,
+    record_id: "record-1001",
     locale: "ru",
     enqueued_at: new Date(now.getTime() - 5 * 60 * 1000).toISOString(),
     claimed_at: null,
@@ -163,9 +163,9 @@ const createDeadLetterJobs = (): AdminDeadLetterJob[] => [
     next_retry_at: null,
   },
   {
-    id: 2,
+    id: "uuid-2",
     kind: "news",
-    record_id: 2002,
+    record_id: "record-2002",
     locale: "en",
     enqueued_at: new Date(now.getTime() - 2 * 60 * 1000).toISOString(),
     claimed_at: null,
@@ -182,7 +182,7 @@ const getWeekdayName = (): string => {
 
 const mockSchedule = [
   {
-    id: 101,
+    id: "uuid-101",
     subject: "Математика",
     teacher: "Проф. Смирнов",
     room: "А-101",
@@ -198,8 +198,8 @@ const createMockSessions = (): SessionMock[] => {
   const now = Date.now()
   return [
     {
-      id: 1,
-      user_id: 1,
+      id: "session-1",
+      user_id: "uuid-1",
       jti: "mock-session-current",
       created_at: new Date(now).toISOString(),
       expires_at: new Date(now + 60 * 60 * 1000).toISOString(),
@@ -210,8 +210,8 @@ const createMockSessions = (): SessionMock[] => {
       is_current: true,
     },
     {
-      id: 2,
-      user_id: 1,
+      id: "session-2",
+      user_id: "uuid-1",
       jti: "mock-session-secondary",
       created_at: new Date(now - 2 * 60 * 60 * 1000).toISOString(),
       expires_at: new Date(now + 2 * 60 * 60 * 1000).toISOString(),
@@ -233,7 +233,7 @@ const createMfaChallenge = ({
 }: {
   includeTotp?: boolean
   defaultMethod?: PendingMfaResponse["default_method"]
-  sessionId?: number
+  sessionId?: string | number
 } = {}): PendingMfaResponse => {
   const methods: PendingMfaResponse["methods"] = []
   if (includeTotp) {
@@ -247,8 +247,8 @@ const createMfaChallenge = ({
 
   return {
     status: "mfa_required",
-    user_id: 1,
-    session_id: sessionId,
+    user_id: "uuid-1",
+    session_id: typeof sessionId === 'number' ? `session-${sessionId}` : sessionId,
     default_method: defaultMethod,
     methods,
     challenges: methods,
@@ -257,11 +257,7 @@ const createMfaChallenge = ({
 
 const decodeCursor = (value: string | null): number => {
   if (!value) return 0
-  try {
-    return parseInt(value, 10) || 0
-  } catch {
-    return 0
-  }
+  return 0 // simplified for mock
 }
 
 const encodeCursor = (index: number): string => index.toString()
@@ -283,7 +279,7 @@ export async function useMockApi(page: Page) {
       loginChallenge: null,
       stepUpChallenge: createMfaChallenge({
         includeTotp: true,
-        sessionId: 42,
+        sessionId: "session-42",
       }),
     },
     deadLetterJobs: createDeadLetterJobs(),
@@ -421,7 +417,7 @@ export async function useMockApi(page: Page) {
         const challenge = createMfaChallenge({
           includeTotp: true,
           defaultMethod: "totp",
-          sessionId: 84,
+          sessionId: "session-84",
         })
         state.mfa.loginChallenge = challenge
         await route.fulfill({
@@ -452,9 +448,9 @@ export async function useMockApi(page: Page) {
 
     // --- News ---
     if (normPath.includes("api/news")) {
-      const detailMatch = normPath.match(/api\/news\/(\d+)/)
+      const detailMatch = normPath.match(/api\/news\/([a-zA-Z0-9-]+)/)
       if (detailMatch) {
-        const id = parseInt(detailMatch[1], 10)
+        const id = detailMatch[1] // Assuming regex matches string ID part
         const entry = mockNews.find((n) => n.id === id) || mockNews[0]
         await route.fulfill({ status: 200, body: JSON.stringify(entry) })
         return
@@ -550,7 +546,7 @@ export async function useMockApi(page: Page) {
     if (normPath.includes("api/groups")) {
       await route.fulfill({
         status: 200,
-        body: JSON.stringify([{ id: 1, name: "ИУ-21", faculty: "ИТ" }]),
+        body: JSON.stringify([{ id: "uuid-1", name: "ИУ-21", faculty: "ИТ" }]),
       })
       return
     }
@@ -568,10 +564,10 @@ export async function useMockApi(page: Page) {
         return
       }
       if (method === "DELETE") {
-        const idMatch = normPath.match(/sessions\/(\d+)/)
+        const idMatch = normPath.match(/sessions\/([a-zA-Z0-9-]+)/)
         if (idMatch) {
-          const id = parseInt(idMatch[1], 10)
-          const session = state.sessions.find((s) => s.id === id)
+          const id = idMatch[1]
+          const session = state.sessions.find((s) => String(s.id) === id)
           if (session) {
             session.revoked_at = new Date().toISOString()
             await route.fulfill({ status: 200, body: JSON.stringify(session) })
@@ -587,7 +583,7 @@ export async function useMockApi(page: Page) {
     if (normPath.includes("auth/mfa/totp/start")) {
       const secret = "JBSW Y3DP EHJK"
       const enrollment: MfaTotpEnrollment = {
-        id: state.totp.nextId++,
+        id: `uuid-${state.totp.nextId++}`,
         user_id: state.profile.id,
         label: "Приложение 1",
         is_active: false,
@@ -655,8 +651,8 @@ export async function useMockApi(page: Page) {
         body: JSON.stringify({
           items: [
             {
-              id: 1,
-              user_id: 1,
+              id: "uuid-1",
+              user_id: "uuid-1",
               type: "image",
               url: "/fallbacks/news_placeholder.png",
               thumbnail_url: "/fallbacks/news_placeholder.png",

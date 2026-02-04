@@ -64,11 +64,7 @@ function Field({ label, htmlFor, children, required = false }: FieldProps) {
 }
 
 async function fetchNews(id: string): Promise<NewsItem> {
-  const numericId = Number(id)
-  if (!Number.isFinite(numericId)) {
-    throw new Error("Invalid news id")
-  }
-  const response = await fetchNewsItem(numericId)
+  const response = await fetchNewsItem(id)
   if (response.status === 304) {
     throw new Error("Not modified")
   }
@@ -116,7 +112,7 @@ export default function NewsDetail() {
   const { data: newsItem } = useQuery<NewsItem>({ queryKey: ["news", id, language] })
 
   const { interactions, toggleLike, addComment, isCommenting, updateComment, deleteComment } =
-    useNewsInteraction(Number(id), {
+    useNewsInteraction(id, {
       initialData: newsItem
         ? {
             likes_count: newsItem.likes_count,
