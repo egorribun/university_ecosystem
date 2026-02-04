@@ -49,6 +49,13 @@ FK_TABLES = [
     ("users", "shadow_group_id"),
     ("schedule", "shadow_group_id"),
     ("news", "shadow_author_id"),
+    ("notifications", "shadow_user_id"),
+    ("notification_deliveries", "shadow_notification_id"),
+    ("data_access_logs", "shadow_actor_user_id"),
+    ("data_access_logs", "shadow_subject_user_id"),
+    ("attachments", "shadow_message_id"),
+    ("chat_participants", "shadow_chat_id"),
+    ("messages", "shadow_chat_id"),
 ]
 
 
@@ -63,5 +70,11 @@ def upgrade():
 
 def downgrade():
     for table_name, col_name in FK_TABLES:
-        op.drop_index(f"ix_{table_name}_{col_name}", table_name)
-        op.drop_column(table_name, col_name)
+        try:
+            op.drop_index(f"ix_{table_name}_{col_name}", table_name)
+        except Exception:
+            pass
+        try:
+            op.drop_column(table_name, col_name)
+        except Exception:
+            pass

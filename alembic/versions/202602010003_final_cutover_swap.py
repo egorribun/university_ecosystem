@@ -45,6 +45,11 @@ TABLES_TO_SWAP = [
     "user_preferences",
     "user_profile_details",
     "user_push_topics",
+    "chats",
+    "attachments",
+    "notifications",
+    "notification_deliveries",
+    "data_access_logs",
 ]
 
 # (Table, Legacy FK Col, Shadow FK Col, Referenced Table)
@@ -80,6 +85,18 @@ FK_TO_SWAP = [
     ("users", "group_id", "shadow_group_id", "groups"),
     ("schedule", "group_id", "shadow_group_id", "groups"),
     ("news", "author_id", "shadow_author_id", "users"),
+    ("notifications", "user_id", "shadow_user_id", "users"),
+    (
+        "notification_deliveries",
+        "notification_id",
+        "shadow_notification_id",
+        "notifications",
+    ),
+    ("data_access_logs", "actor_user_id", "shadow_actor_user_id", "users"),
+    ("data_access_logs", "subject_user_id", "shadow_subject_user_id", "users"),
+    ("attachments", "message_id", "shadow_message_id", "messages"),
+    ("chat_participants", "chat_id", "shadow_chat_id", "chats"),
+    ("messages", "chat_id", "shadow_chat_id", "chats"),
 ]
 
 
@@ -380,8 +397,8 @@ def downgrade():
                         f"DROP CONSTRAINT IF EXISTS uq_{table}_legacy_id CASCADE"
                     )
                 else:
-                    batch_op.drop_constraint(f"{table}_pkey", type_="primary")
                     if bind.dialect.name != "sqlite":
+                        batch_op.drop_constraint(f"{table}_pkey", type_="primary")
                         batch_op.drop_constraint(
                             f"uq_{table}_legacy_id", type_="unique"
                         )

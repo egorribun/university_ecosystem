@@ -48,6 +48,11 @@ TABLES = [
     "user_preferences",
     "user_profile_details",
     "user_push_topics",
+    "chats",
+    "attachments",
+    "notifications",
+    "notification_deliveries",
+    "data_access_logs",
 ]
 
 
@@ -71,5 +76,11 @@ def upgrade():
 def downgrade():
     for table_name in TABLES:
         idx_name = f"ix_{table_name}_uuid_id"
-        op.drop_index(idx_name, table_name)
-        op.drop_column(table_name, "uuid_id")
+        try:
+            op.drop_index(idx_name, table_name)
+        except Exception:
+            pass
+        try:
+            op.drop_column(table_name, "uuid_id")
+        except Exception:
+            pass

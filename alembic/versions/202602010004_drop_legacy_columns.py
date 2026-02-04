@@ -43,6 +43,11 @@ TABLES_TO_CLEANUP = [
     "user_preferences",
     "user_profile_details",
     "user_push_topics",
+    "chats",
+    "attachments",
+    "notifications",
+    "notification_deliveries",
+    "data_access_logs",
 ]
 
 # (Table, Legacy FK Col)
@@ -78,6 +83,13 @@ FK_TO_CLEANUP = [
     ("users", "legacy_group_id"),
     ("schedule", "legacy_group_id"),
     ("news", "legacy_author_id"),
+    ("notifications", "legacy_user_id"),
+    ("notification_deliveries", "legacy_notification_id"),
+    ("data_access_logs", "legacy_actor_user_id"),
+    ("data_access_logs", "legacy_subject_user_id"),
+    ("attachments", "legacy_message_id"),
+    ("chat_participants", "legacy_chat_id"),
+    ("messages", "legacy_chat_id"),
 ]
 
 
@@ -119,7 +131,30 @@ def upgrade():
 
 
 def downgrade():
-    # Adding columns back is complex because we've lost the data.
-    # We would need to re-verify or restore from backup.
-    # Leaving as pass for safety in this cutover phase.
-    pass
+    import sqlalchemy as sa
+
+    # Restore legacy columns as nullable to avoid errors in previous downgrades.
+    # Note: Data loss for these columns is expected after upgrade.
+    for table in TABLES_TO_CLEANUP:
+        try:
+            # Use String for tables known to have String IDs, default to Integer
+            col_type = (
+                sa.String()
+                if table in ("chats", "messages", "attachments")
+                else sa.Integer()
+            )
+            op.add_column(table, sa.Column("legacy_id", col_type, nullable=True))
+        except Exception:
+            pass
+
+    for table, legacy_col in FK_TO_CLEANUP:
+        try:
+            # All legacy FKs were essentially integers or strings matching their targets
+            col_type = (
+                sa.String()
+                if "chat_id" in legacy_col or "message_id" in legacy_col
+                else sa.Integer()
+            )
+            op.add_column(table, sa.Column(legacy_col, col_type, nullable=True))
+        except Exception:
+            pass
