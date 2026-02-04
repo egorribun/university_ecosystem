@@ -65,12 +65,9 @@ async def ensure_partitions_exist():
                             f"""
                         CREATE TABLE IF NOT EXISTS {safe_partition}
                         PARTITION OF {safe_table}
-                        FOR VALUES FROM (:start)
-                        TO (:end);
+                        FOR VALUES FROM ('{start_date.isoformat()}')
+                        TO ('{next_month_start.isoformat()}');
                     """
-                        ).bindparams(
-                            start=start_date.isoformat(),
-                            end=next_month_start.isoformat(),
                         )
                     )
                     await conn.commit()
