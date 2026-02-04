@@ -271,5 +271,104 @@ def upgrade():
 
 
 def downgrade():
-    # Inverse logic
-    pass
+    logger = logging.getLogger("alembic")
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+
+    # Detect partitions to avoid direct manipulation
+    partitions = set()
+    if bind.dialect.name == "postgresql":
+        partitions = {
+            r[0]
+            for r in bind.execute(
+                sa.text(
+                    """
+                SELECT child.relname
+                FROM pg_inherits
+                JOIN pg_class child ON pg_inherits.inhrelid = child.oid
+            """
+                )
+            ).fetchall()
+        }
+
+    all_affected_tables_set = set(TABLES_TO_SWAP) | {t for t, _, _, _ in FK_TO_SWAP}
+    all_affected_tables = [t for t in all_affected_tables_set if t not in partitions]
+
+    # 1. Reverse FK Swap
+    for table in all_affected_tables:
+        columns = {c["name"] for c in inspector.get_columns(table)}
+        fks = inspector.get_foreign_keys(table)
+
+        with op.batch_alter_table(table) as batch_op:
+            for t, legacy_col, shadow_col, ref_table in FK_TO_SWAP:
+                if t == table:
+                    # Current: legacy_col is UUID, legacy_{legacy_col} is Int
+                    legacy_int_col = f"legacy_{legacy_col}"
+
+                    if legacy_col in columns and legacy_int_col in columns:
+                        logger.info(f"Reversing FK swap for {table}.{legacy_col}...")
+
+                        # Find actual FK name to drop
+                        target_fk_name = None
+                        # Candidates: explicit name first, then definition search
+                        candidates = [f"fk_{table}_{legacy_col}_uuid"]
+
+                        for fk in fks:
+                            if (
+                                legacy_col in fk["constrained_columns"]
+                                and fk["referred_table"] == ref_table
+                            ):
+                                if fk["name"]:
+                                    candidates.append(fk["name"])
+
+                        existing_names = {fk["name"] for fk in fks if fk["name"]}
+                        for name in candidates:
+                            if name in existing_names:
+                                target_fk_name = name
+                                break
+
+                        # Drop UUID FK only if name found or if not SQLite
+                        # (where names are required)
+                        if target_fk_name:
+                            batch_op.drop_constraint(target_fk_name, type_="foreignkey")
+                        elif bind.dialect.name != "sqlite":
+                            # Fallback for non-SQLite where we expect named constraints
+                            batch_op.drop_constraint(
+                                f"fk_{table}_{legacy_col}_uuid", type_="foreignkey"
+                            )
+
+                        # Resize columns
+                        batch_op.alter_column(legacy_col, new_column_name=shadow_col)
+                        batch_op.alter_column(
+                            legacy_int_col, new_column_name=legacy_col
+                        )
+
+    # 2. Reverse PK Swap
+    for table in [t for t in TABLES_TO_SWAP if t not in partitions]:
+        columns = [c["name"] for c in inspector.get_columns(table)]
+
+        if "id" in columns and "legacy_id" in columns:
+            logger.info(f"Reversing PK swap for {table}...")
+
+            # For SQLite, we rely on batch reflection to handle the PK/UQ removal
+            # unless we have a definitive name.
+            with op.batch_alter_table(table) as batch_op:
+                # Drop current PK
+                if bind.dialect.name == "postgresql":
+                    batch_op.execute(
+                        f"ALTER TABLE {table} "
+                        f"DROP CONSTRAINT IF EXISTS {table}_pkey CASCADE"
+                    )
+                elif bind.dialect.name != "sqlite":
+                    batch_op.drop_constraint(f"{table}_pkey", type_="primary")
+
+                # Drop unique constraint on legacy_id (named in upgrade)
+                if bind.dialect.name != "sqlite":
+                    batch_op.drop_constraint(f"uq_{table}_legacy_id", type_="unique")
+
+                # Rename columns
+                batch_op.alter_column("id", new_column_name="uuid_id")
+                batch_op.alter_column("legacy_id", new_column_name="id", nullable=False)
+
+                # Restore PK on Int id
+                batch_op.create_primary_key(f"{table}_pkey", ["id"])

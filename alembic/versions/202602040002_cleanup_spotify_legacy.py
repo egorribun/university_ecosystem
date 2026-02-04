@@ -23,7 +23,8 @@ def upgrade():
     columns = [c["name"] for c in inspector.get_columns("spotify_integrations")]
 
     if "legacy_user_id" in columns:
-        op.drop_column("spotify_integrations", "legacy_user_id")
+        with op.batch_alter_table("spotify_integrations") as batch_op:
+            batch_op.drop_column("legacy_user_id")
 
 
 def downgrade():
