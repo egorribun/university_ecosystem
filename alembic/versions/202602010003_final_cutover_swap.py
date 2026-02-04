@@ -214,6 +214,8 @@ def upgrade():
                 batch_op.drop_constraint(f"{table}_pkey", type_="primary")
 
             batch_op.create_primary_key(f"{table}_pkey", ["id"])
+
+            # Keep both unique for transition
             batch_op.create_unique_constraint(f"uq_{table}_legacy_id", ["legacy_id"])
 
     # 3.3 FK Swap Phase: Swap FK columns and Recreate ALL constraints
