@@ -109,6 +109,12 @@ def upgrade():
                 fks_to_drop.setdefault(table_name, []).append(fk_def)
                 referenced_elsewhere.setdefault(fk["referred_table"], []).append(fk_def)
 
+    # 1.1 Create name map for name preservation
+    fk_name_map = {}  # {(table_name, column_name): original_name}
+    for t_name, fks_list in fks_to_drop.items():
+        for f in fks_list:
+            fk_name_map[(t_name, f["column"])] = f["name"]
+
     # 2. Data Migration: Populate uuid_id and shadow FKs (Raw SQL)
     # 2.1 uuid_id
     for table in TABLES_TO_SWAP:
@@ -244,8 +250,9 @@ def upgrade():
                     if is_pk:
                         batch_op.create_primary_key(f"{table}_pkey", [legacy_col])
 
+                    original_name = fk_name_map.get((table, legacy_col))
                     batch_op.create_foreign_key(
-                        f"fk_{table}_{legacy_col}_uuid",
+                        original_name or f"fk_{table}_{legacy_col}_uuid",
                         ref_table,
                         [legacy_col],
                         ["id"],
