@@ -819,7 +819,7 @@ export default function Schedule() {
     }
   }
 
-  async function handleDeleteLesson(id: number) {
+  async function handleDeleteLesson(id: string) {
     const backup = groupSchedule.map((l) => ({ ...l }))
     applyScheduleUpdate((prev) => prev.filter((l) => l.id !== id))
     try {

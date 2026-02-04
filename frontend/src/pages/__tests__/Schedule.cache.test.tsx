@@ -26,11 +26,11 @@ const apiMocks = vi.hoisted(() => ({
 }))
 
 const baseUser: User = {
-  id: 1,
+  id: "uuid-1",
   email: "student@example.com",
   full_name: "Test Student",
   role: "student",
-  group_id: 1,
+  group_id: "group-1",
   avatar_url: null,
   avatar_url_optimized: null,
   cover_url: null,
@@ -143,15 +143,15 @@ describe("Schedule cache handling", () => {
     }
     localStorage.setItem(
       "sched:groups",
-      JSON.stringify({ ...stalePayload, data: [{ id: 1, name: "Stale Group" }] })
+      JSON.stringify({ ...stalePayload, data: [{ id: "group-1", name: "Stale Group" }] })
     )
     localStorage.setItem(
-      "sched:1",
+      "sched:group-1",
       JSON.stringify({
         ...stalePayload,
         data: [
           {
-            id: 100,
+            id: "lesson-100",
             weekday: "Monday",
             parity: "odd",
             start_time: "2024-03-25T08:00:00",
@@ -160,7 +160,7 @@ describe("Schedule cache handling", () => {
             teacher: "Ada",
             room: "101",
             lesson_type: "Lecture",
-            group_id: 1,
+            group_id: "group-1",
           },
         ],
       })
@@ -168,13 +168,13 @@ describe("Schedule cache handling", () => {
 
     apiGetMock.mockImplementation(async (url: string) => {
       if (url === "/groups") {
-        return { data: [{ id: 1, name: "Fresh Group" }] }
+        return { data: [{ id: "group-1", name: "Fresh Group" }] }
       }
-      if (url === "/schedule/1") {
+      if (url === "/schedule/group-1") {
         return {
           data: [
             {
-              id: 101,
+              id: "lesson-101",
               weekday: "Monday",
               parity: "odd",
               start_time: "2024-03-25T08:00:00",
@@ -183,7 +183,7 @@ describe("Schedule cache handling", () => {
               teacher: "Alan",
               room: "202",
               lesson_type: "Lecture",
-              group_id: 1,
+              group_id: "group-1",
             },
           ],
         }
@@ -196,7 +196,7 @@ describe("Schedule cache handling", () => {
     try {
       await waitFor(() => {
         expect(apiGetMock).toHaveBeenCalledWith("/groups")
-        expect(apiGetMock).toHaveBeenCalledWith("/schedule/1")
+        expect(apiGetMock).toHaveBeenCalledWith("/schedule/group-1")
       })
 
       expect(await screen.findByText("Fresh Subject")).toBeInTheDocument()

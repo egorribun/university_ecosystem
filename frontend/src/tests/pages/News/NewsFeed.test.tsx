@@ -8,7 +8,7 @@ import type { User } from "@/types/User"
 import { server } from "../../mocks/server"
 
 const baseUser: User = {
-  id: 1,
+  id: "uuid-1",
   email: "user@example.com",
   full_name: "Test User",
   role: "student",
@@ -115,14 +115,14 @@ describe.skip("News page interaction", () => {
         return HttpResponse.json({
           items: [
             {
-              id: 1,
+              id: "news-1",
               title: "Headline 1",
               content: "Content 1",
               created_at: new Date().toISOString(),
               image_url: null,
             },
             {
-              id: 2,
+              id: "news-2",
               title: "Headline 2",
               content: "Content 2",
               created_at: new Date().toISOString(),
