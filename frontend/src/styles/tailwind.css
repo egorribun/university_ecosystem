@@ -108,10 +108,8 @@
   --font-display: var(--font-display);
 
   /* Animations & Keyframes */
-  --animate-fade-in: fade-in var(--anim-med, 0.3s cubic-bezier(0.42, 0, 0.58, 1))
-    both;
-  --animate-card-hover: card-hover
-    var(--anim-card, 0.42s cubic-bezier(0.22, 0.61, 0.36, 1)) both;
+  --animate-fade-in: fade-in var(--anim-med, 0.3s cubic-bezier(0.42, 0, 0.58, 1)) both;
+  --animate-card-hover: card-hover var(--anim-card, 0.42s cubic-bezier(0.22, 0.61, 0.36, 1)) both;
   --animate-skeleton-wave: skeleton-wave 1.6s ease-in-out infinite;
   --animate-aura-pulse: aura-pulse 14s ease-in-out infinite;
   --animate-chip-highlight: chip-highlight 12s ease-in-out infinite;
@@ -251,13 +249,13 @@
 
   /* Shadows - Deep & Ambient (Layered for realism) */
   --shadow-1: 0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 3px 1px rgba(0, 0, 0, 0.02);
-  --shadow-2: 0 4px 6px -1px rgba(0, 0, 0, 0.05),
-    0 10px 15px -3px rgba(0, 0, 0, 0.03), 0 20px 25px -5px rgba(0, 0, 0, 0.02);
+  --shadow-2:
+    0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 10px 15px -3px rgba(0, 0, 0, 0.03),
+    0 20px 25px -5px rgba(0, 0, 0, 0.02);
   --shadow-up: 0 -4px 20px -5px rgba(0, 0, 0, 0.04);
   --shadow-focus: 0 0 0 4px rgba(59, 130, 246, 0.12);
   --shadow-glass: 0 8px 32px 0 rgba(31, 38, 135, 0.06);
-  --shadow-premium-lift: 0 20px 40px -12px rgba(0, 0, 0, 0.1),
-    0 10px 20px -6px rgba(0, 0, 0, 0.05);
+  --shadow-premium-lift: 0 20px 40px -12px rgba(0, 0, 0, 0.1), 0 10px 20px -6px rgba(0, 0, 0, 0.05);
 
   /* Easing Functions - Kinetic & Organic */
   --ease-premium: cubic-bezier(0.22, 1, 0.36, 1);
@@ -319,8 +317,7 @@
   /* Shadows - Deep & Luminous */
   --shadow-1: 0 4px 12px -2px rgba(0, 0, 0, 0.5);
   --shadow-2: 0 20px 40px -12px rgba(0, 0, 0, 0.7);
-  --shadow-premium-lift: 0 30px 60px -12px rgba(0, 0, 0, 0.8),
-    0 18px 36px -18px rgba(0, 0, 0, 0.5);
+  --shadow-premium-lift: 0 30px 60px -12px rgba(0, 0, 0, 0.8), 0 18px 36px -18px rgba(0, 0, 0, 0.5);
 
   --dash-header-grad-start: rgba(3, 7, 18, 0.92);
   --dash-header-grad-end: rgba(15, 23, 42, 0.85);
@@ -349,7 +346,8 @@
   body {
     @apply min-h-screen text-page-foreground font-ui antialiased overflow-x-hidden;
     background: var(--page-bg);
-    transition: background-color 0.6s var(--ease-premium),
+    transition:
+      background-color 0.6s var(--ease-premium),
       color 0.6s var(--ease-premium);
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
