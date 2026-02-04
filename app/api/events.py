@@ -59,11 +59,11 @@ _EVENTS_LIST_CACHE_PREFIX = events_cache_version.prefix
 
 
 async def _get_events_list_version(cache) -> str:
-    return await events_cache_version.get_version()
+    return await events_cache_version.get_version(cache)
 
 
 async def _increment_events_list_version(cache) -> None:
-    await events_cache_version.increment()
+    await events_cache_version.increment(cache)
 
 
 def _events_list_cache_key(

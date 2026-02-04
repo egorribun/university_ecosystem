@@ -38,9 +38,10 @@ class CacheVersionManager:
     def version_key(self) -> str:
         return f"{self.prefix}:version"
 
-    async def get_version(self) -> str:
+    async def get_version(self, cache: RedisCache | None = None) -> str:
         """Retrieve current version from cache or local fallback."""
-        cache = get_cache()
+        if cache is None:
+            cache = get_cache()
         if not cache.enabled:
             # Use a global-ish state or an attribute if we can
             # For simplicity in this refactor, we'll keep the caller's local global
@@ -61,9 +62,10 @@ class CacheVersionManager:
                 logger.debug("Cache version read failed, returning zero")
         return "0"
 
-    async def increment(self) -> None:
+    async def increment(self, cache: RedisCache | None = None) -> None:
         """Atomically increment version."""
-        cache = get_cache()
+        if cache is None:
+            cache = get_cache()
         if not cache.enabled:
             return
 
@@ -79,6 +81,20 @@ class CacheVersionManager:
                     await client.set(self.version_key, str(val + 1))
             except (RedisError, OSError):
                 logger.warning("Failed to increment cache version")
+
+    async def reset(self, cache: RedisCache | None = None) -> None:
+        """Reset version to zero."""
+        if cache is None:
+            cache = get_cache()
+        if not cache.enabled:
+            return
+
+        if isinstance(cache, RedisCache):
+            try:
+                client = await cache._get_client()
+                await client.set(self.version_key, "0")
+            except (RedisError, OSError):
+                logger.warning("Failed to reset cache version")
 
     def build_cache_key(self, *, locale: str, version: str, **params: Any) -> str:
         """Build a deterministic cache key including version and params."""

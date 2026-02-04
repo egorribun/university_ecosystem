@@ -264,7 +264,7 @@ class ChatService:
         chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
 
-        if user not in chat.participants:
+        if user.id not in {p.id for p in chat.participants}:
             raise_forbidden(locale, "errors.chat.not_participant")
 
         unread_count = await self.repository.get_unread_count(chat_id, user.id)
@@ -319,7 +319,7 @@ class ChatService:
         chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
 
-        if user not in chat.participants:
+        if user.id not in {p.id for p in chat.participants}:
             raise_forbidden(locale, "errors.chat.not_participant")
 
         messages, has_more, next_cursor = await self.repository.get_messages(
@@ -378,7 +378,7 @@ class ChatService:
         chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
 
-        if user not in chat.participants:
+        if user.id not in {p.id for p in chat.participants}:
             raise_forbidden(locale, "errors.chat.not_participant")
 
         uploads = files or []
@@ -473,7 +473,7 @@ class ChatService:
         chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
 
-        if user not in chat.participants:
+        if user.id not in {p.id for p in chat.participants}:
             raise_forbidden(locale, "errors.chat.not_participant")
 
         await self.repository.mark_messages_read(chat_id, user.id)
@@ -497,7 +497,7 @@ class ChatService:
         chat = await self.repository.get_by_id(chat_id, load_messages=True)
         ensure_exists(chat, "chat", locale)
 
-        if user not in chat.participants:
+        if user.id not in {p.id for p in chat.participants}:
             raise_forbidden(locale, "errors.chat.not_participant")
 
         attachment_urls = await self._collect_attachment_urls(chat)
@@ -542,7 +542,7 @@ class ChatService:
         chat = await self.repository.get_by_id(chat_id, load_messages=True)
         ensure_exists(chat, "chat", locale)
 
-        if user not in chat.participants:
+        if user.id not in {p.id for p in chat.participants}:
             raise_forbidden(locale, "errors.chat.not_participant")
 
         attachment_urls = await self._collect_attachment_urls(chat)

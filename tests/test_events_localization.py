@@ -196,7 +196,7 @@ async def test_create_event_records_enqueue_failure(
 async def test_events_etag_and_not_modified(
     async_client, db_session, user_factory, fake_cache
 ):
-    await events._reset_events_list_cache_version()
+    await events.events_cache_version.reset(fake_cache)
     assert fake_cache is not None
     password = "TestEvent456!"
     hashed = get_password_hash(password)
@@ -472,7 +472,7 @@ async def test_events_pagination_semantics(async_client, db_session, user_factor
 async def test_events_cache_invalidation_on_mutations(
     async_client, db_session, user_factory, fake_cache
 ):
-    await events._reset_events_list_cache_version()
+    await events.events_cache_version.reset(fake_cache)
 
     admin_password = "CacheAdmin123!"
     student_password = "CacheStudent123!"
@@ -502,7 +502,7 @@ async def test_events_cache_invalidation_on_mutations(
 
     first_response = await async_client.get("/events", headers=list_headers)
     assert first_response.status_code == status.HTTP_200_OK
-    version_after_first = await events._read_events_list_version(fake_cache)
+    version_after_first = int(await events.events_cache_version.get_version(fake_cache))
     tracked_key = events._events_list_cache_key(
         locale="en",
         search="",
@@ -540,7 +540,9 @@ async def test_events_cache_invalidation_on_mutations(
     assert create_response.status_code == status.HTTP_200_OK
     created_event_id = create_response.json()["id"]
 
-    version_after_create = await events._read_events_list_version(fake_cache)
+    version_after_create = int(
+        await events.events_cache_version.get_version(fake_cache)
+    )
     assert version_after_create == version_after_first + 1
     assert await fake_cache.get(tracked_key) is not None
 
@@ -564,7 +566,9 @@ async def test_events_cache_invalidation_on_mutations(
         json={"title": "Updated cached event"},
     )
     assert update_response.status_code == status.HTTP_200_OK
-    version_after_update = await events._read_events_list_version(fake_cache)
+    version_after_update = int(
+        await events.events_cache_version.get_version(fake_cache)
+    )
     assert version_after_update == version_after_create + 1
     assert await fake_cache.get(active_key) is not None
 
@@ -586,7 +590,9 @@ async def test_events_cache_invalidation_on_mutations(
         f"/events/{created_event_id}", headers=admin_headers
     )
     assert delete_response.status_code == status.HTTP_200_OK
-    version_after_delete = await events._read_events_list_version(fake_cache)
+    version_after_delete = int(
+        await events.events_cache_version.get_version(fake_cache)
+    )
     assert version_after_delete == version_after_update + 1
     assert await fake_cache.get(post_update_key) is not None
 
@@ -595,7 +601,7 @@ async def test_events_cache_invalidation_on_mutations(
 async def test_events_cache_uses_version_from_redis(
     async_client, db_session, user_factory, fake_cache
 ):
-    await events._reset_events_list_cache_version()
+    await events.events_cache_version.reset(fake_cache)
 
     password = "VersionPass123!"
     hashed = get_password_hash(password)
@@ -625,7 +631,7 @@ async def test_events_cache_uses_version_from_redis(
     initial_items = {item["id"]: item for item in initial_data["items"]}
     assert initial_items[str(event.id)]["title"] == "Original title"
 
-    initial_version = await events._read_events_list_version(fake_cache)
+    initial_version = int(await events.events_cache_version.get_version(fake_cache))
     initial_key = events._events_list_cache_key(
         locale="en",
         search="",
@@ -651,7 +657,7 @@ async def test_events_cache_uses_version_from_redis(
     refreshed_items = {item["id"]: item for item in refreshed_data["items"]}
     assert refreshed_items[str(event.id)]["title"] == "Updated title"
 
-    refreshed_version = await events._read_events_list_version(fake_cache)
+    refreshed_version = int(await events.events_cache_version.get_version(fake_cache))
     assert refreshed_version == initial_version + 1
     refreshed_key = events._events_list_cache_key(
         locale="en",

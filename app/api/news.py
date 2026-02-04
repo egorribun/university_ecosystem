@@ -78,8 +78,9 @@ async def _increment_news_list_version() -> None:
 def _news_list_cache_key(
     locale: str | None, limit: int, cursor: str | None, version: str
 ) -> str:
+    normalized = _normalized_cache_locale(locale)
     return news_cache_version.build_cache_key(
-        locale=locale or "",
+        locale=normalized,
         version=version,
         limit=limit,
         cursor=cursor,

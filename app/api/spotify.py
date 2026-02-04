@@ -24,7 +24,7 @@ from app.core.circuit_breaker import (
     CircuitBreakerOpenError,
 )
 from app.core.config import settings
-from app.core.database import get_db, get_read_db
+from app.core.database import get_db
 from app.core.localization import resolve_locale, translate
 from app.models.models import SpotifyIntegration, User
 from app.schemas.schemas import SpotifyAuthURL, SpotifyNowPlayingOut
@@ -175,8 +175,6 @@ async def _ensure_access_token(
             return None
         _disconnect_user(user, clear_refresh=True)
         await db.commit()
-        _disconnect_user(user, clear_refresh=True)
-        await db.commit()
         raise_unauthorized(locale, "errors.spotify.reconnect_required")
     try:
         async with _spotify_circuit_breaker:
@@ -203,15 +201,9 @@ async def _ensure_access_token(
     if r.status_code != 200:
         _disconnect_user(user, clear_refresh=True)
         await db.commit()
-    if r.status_code != 200:
-        _disconnect_user(user, clear_refresh=True)
-        await db.commit()
         raise_unauthorized(locale, "errors.spotify.reconnect_required")
     data = r.json()
     access_token = data.get("access_token")
-    if not access_token:
-        _disconnect_user(user, clear_refresh=True)
-        await db.commit()
     if not access_token:
         _disconnect_user(user, clear_refresh=True)
         await db.commit()
@@ -319,7 +311,7 @@ async def spotify_callback(
 @router.get("/now-playing", response_model=SpotifyNowPlayingOut)
 async def now_playing(
     request: Request,
-    db: AsyncSession = Depends(get_read_db),
+    db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
@@ -368,18 +360,12 @@ async def now_playing(
         if r.status_code == 401:
             _disconnect_user(user, clear_refresh=True)
             await db.commit()
-        if r.status_code == 401:
-            _disconnect_user(user, clear_refresh=True)
-            await db.commit()
             raise_unauthorized(locale, "errors.spotify.reconnect_required")
     if r.status_code == 204:
         user.spotify.is_playing = False
         user.spotify.last_checked_at = _now_utc()
         await db.commit()
         return Response(status_code=204)
-    if r.status_code == 401:
-        _disconnect_user(user, clear_refresh=True)
-        await db.commit()
     if r.status_code == 401:
         _disconnect_user(user, clear_refresh=True)
         await db.commit()
@@ -445,7 +431,7 @@ async def disconnect(
 @router.get("/playlists")
 async def list_playlists(
     request: Request,
-    db: AsyncSession = Depends(get_read_db),
+    db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
