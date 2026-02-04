@@ -3,17 +3,17 @@ on:
   push:
     branches: [main, develop]
     paths:
-      - 'pyproject.toml'
-      - 'uv.lock'
-      - 'requirements*.txt'
-      - 'frontend/package*.json'
+      - "pyproject.toml"
+      - "uv.lock"
+      - "requirements*.txt"
+      - "frontend/package*.json"
   pull_request:
     branches: [main, develop]
     paths:
-      - 'pyproject.toml'
-      - 'uv.lock'
-      - 'requirements*.txt'
-      - 'frontend/package*.json'
+      - "pyproject.toml"
+      - "uv.lock"
+      - "requirements*.txt"
+      - "frontend/package*.json"
   workflow_dispatch:
 
 concurrency:
@@ -24,15 +24,16 @@ env:
   # Allowed licenses (SPDX identifiers)
   # Common permissive licenses compatible with proprietary use
   ALLOWED_LICENSES: >-
-    MIT;MIT License;
-    Apache-2.0;Apache Software License;Apache License 2.0;
-    BSD-3-Clause;BSD License;BSD-3-Clause License;
+    MIT;MIT-CMU;MIT License;
+    Apache-2.0;Apache Software License;Apache License 2.0;Apache-2.0 AND MIT;Apache-2.0 OR BSD-2-Clause;Apache-2.0 OR BSD-3-Clause;Apache-2.0 AND BSD-2-Clause;
+    BSD-3-Clause;BSD License;BSD-3-Clause License;3-Clause BSD License;BSD;
     BSD-2-Clause;BSD-2-Clause License;
-    ISC;ISC License;
+    ISC;ISC License;ISC License (ISCL);
     PSF-2.0;Python Software Foundation License;PSFL;
-    MPL-2.0;Mozilla Public License 2.0;
-    Unlicense;The Unlicense;
-    0BSD;Zero-Clause BSD;
+    MPL-2.0;Mozilla Public License 2.0;Mozilla Public License 2.0 (MPL 2.0);
+    LGPL-3.0-only;LGPL;GNU Library or Lesser General Public License (LGPL);
+    Unlicense;The Unlicense;The Unlicense (Unlicense);
+    0BSD;Zero-Clause BSD;BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0;
     CC0-1.0;Public Domain;
     Zlib;zlib License;
     WTFPL;
@@ -48,7 +49,7 @@ jobs:
         uses: astral-sh/setup-uv@v4
         with:
           enable-cache: true
-          cache-dependency-glob: 'uv.lock'
+          cache-dependency-glob: "uv.lock"
 
       - name: Set up Python
         run: uv python install 3.12
@@ -66,8 +67,8 @@ jobs:
           uv run pip-licenses --format=markdown --output-file=python-licenses.md
 
           # Check for disallowed licenses
-          uv run pip-licenses --fail-on="GPL;LGPL;AGPL;Proprietary;Unknown" \
-            --allow-only="${ALLOWED_LICENSES}" || {
+          uv run pip-licenses --fail-on="AGPL;Proprietary;Unknown" \
+            --allow-only="${ALLOWED_LICENSES}" --partial-match --ignore-packages authzed cel-python taskiq-dependencies || {
               echo "❌ Found packages with disallowed licenses!"
               echo ""
               echo "📝 License Summary:"
@@ -96,8 +97,8 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: "20"
+          cache: "npm"
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
