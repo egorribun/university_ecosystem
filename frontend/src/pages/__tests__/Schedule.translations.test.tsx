@@ -26,11 +26,11 @@ const apiMocks = vi.hoisted(() => ({
 }))
 
 const baseUser: User = {
-  id: 1,
+  id: "uuid-1",
   email: "student@example.com",
   full_name: "Test Student",
   role: "student",
-  group_id: 1,
+  group_id: "group-1",
   avatar_url: null,
   avatar_url_optimized: null,
   cover_url: null,
@@ -75,7 +75,7 @@ const authState: AuthState = {
 
 const { scheduleDataMock } = vi.hoisted(() => {
   const lesson = {
-    id: 42,
+    id: "lesson-42",
     weekday: "Monday",
     parity: "odd",
     start_time: "08:00",
@@ -84,13 +84,13 @@ const { scheduleDataMock } = vi.hoisted(() => {
     teacher: "Ada Lovelace",
     room: "101",
     lesson_type: "lecture",
-    group_id: 1,
+    group_id: "group-1",
   }
 
   const scheduleDataMock = {
     user: { role: "student" },
-    groups: [{ id: 1, name: "CS-101" }],
-    selectedGroup: 1,
+    groups: [{ id: "group-1", name: "CS-101" }],
+    selectedGroup: "group-1",
     setSelectedGroup: () => {},
     currentParity: "odd",
     setCurrentParity: () => {},
@@ -118,7 +118,7 @@ const { scheduleDataMock } = vi.hoisted(() => {
     todayLessons: [],
     currentLesson: null,
     nextLesson: null,
-    conflictedIds: new Set<number>(),
+    conflictedIds: new Set<string>(),
     timeLeftText: "",
     currentProgress: 0,
   }
@@ -198,13 +198,13 @@ describe("Schedule translations", () => {
   it("renders English weekday headers and lesson labels", async () => {
     apiGetMock.mockImplementation(async (url: string) => {
       if (url === "/groups") {
-        return { data: [{ id: 1, name: "CS-101" }] }
+        return { data: [{ id: "group-1", name: "CS-101" }] }
       }
-      if (url === "/schedule/1") {
+      if (url === "/schedule/group-1") {
         return {
           data: [
             {
-              id: 42,
+              id: "lesson-42",
               weekday: "Понедельник",
               parity: "odd",
               start_time: "2024-03-25T08:00:00",
@@ -213,7 +213,7 @@ describe("Schedule translations", () => {
               teacher: "Ada Lovelace",
               room: "101",
               lesson_type: "Лекция",
-              group_id: 1,
+              group_id: "group-1",
             },
           ],
         }

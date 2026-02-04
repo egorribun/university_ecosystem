@@ -957,7 +957,7 @@ export default function Settings() {
   }, [pendingTotpId, refreshMe, resolveDetailMessage, setSnack, t, totpBusy, totpDraft])
 
   const handleDisableTotp = useCallback(
-    (enrollmentId: number) => {
+    (enrollmentId: string) => {
       const action = async () => {
         try {
           const { data } = await deleteTotpEnrollment(enrollmentId)
