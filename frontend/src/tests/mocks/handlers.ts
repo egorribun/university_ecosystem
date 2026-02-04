@@ -96,7 +96,7 @@ type ChallengeAttemptOverrides = {
 type ChallengeOptions = {
   includeTotp?: boolean
   defaultMethod?: MfaMethod | null
-  sessionId?: number | null
+  sessionId?: number | string | null
   attempts?: Partial<Record<MfaMethod, ChallengeAttemptOverrides>>
 }
 
@@ -123,7 +123,7 @@ const resolveAttemptMeta = (
 const createMfaChallenge = ({
   includeTotp = true,
   defaultMethod = includeTotp ? "totp" : null,
-  sessionId = 1,
+  sessionId = "session-1",
   attempts,
 }: ChallengeOptions = {}): PendingMfaResponse => {
   const methods: PendingMfaResponse["methods"] = []
