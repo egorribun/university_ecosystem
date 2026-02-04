@@ -46,6 +46,9 @@ FK_TABLES = [
     ("user_preferences", "shadow_user_id"),
     ("user_profile_details", "shadow_user_id"),
     ("user_push_topics", "shadow_user_id"),
+    ("users", "shadow_group_id"),
+    ("schedule", "shadow_group_id"),
+    ("news", "shadow_author_id"),
 ]
 
 

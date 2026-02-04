@@ -40,6 +40,11 @@ TABLES_TO_SWAP = [
     "invite_codes",
     "messages",
     "stories",
+    "spotify_integrations",
+    "user_education_paths",
+    "user_preferences",
+    "user_profile_details",
+    "user_push_topics",
 ]
 
 # (Table, Legacy FK Col, Shadow FK Col, Referenced Table)
@@ -72,6 +77,9 @@ FK_TO_SWAP = [
     ("event_files", "event_id", "shadow_event_id", "events"),
     ("news_comments", "news_id", "shadow_news_id", "news"),
     ("news_likes", "news_id", "shadow_news_id", "news"),
+    ("users", "group_id", "shadow_group_id", "groups"),
+    ("schedule", "group_id", "shadow_group_id", "groups"),
+    ("news", "author_id", "shadow_author_id", "users"),
 ]
 
 
@@ -104,8 +112,11 @@ def upgrade():
     # 2. Data Migration: Populate uuid_id and shadow FKs (Raw SQL)
     # 2.1 uuid_id
     for table in TABLES_TO_SWAP:
-        logger.info(f"Populating uuid_id for {table}...")
         columns = [c["name"] for c in inspector.get_columns(table)]
+        if "id" not in columns:
+            continue
+
+        logger.info(f"Populating uuid_id for {table}...")
         has_created_at = "created_at" in columns
         rows = bind.execute(
             sa.text(
@@ -122,6 +133,13 @@ def upgrade():
 
     # 2.2 Shadow FKs
     for table, legacy_col, shadow_col, ref_table in FK_TO_SWAP:
+        columns = [c["name"] for c in inspector.get_columns(table)]
+        if legacy_col not in columns or shadow_col not in columns:
+            logger.info(
+                f"Skipping population for {shadow_col} in {table} (column missing)..."
+            )
+            continue
+
         logger.info(f"Populating {shadow_col} for {table}...")
         stmt = sa.text(f"""
             UPDATE {table}
@@ -171,6 +189,11 @@ def upgrade():
 
     # 3.2 PK Swap Phase: Swap all Primary Keys to UUID
     for table in [t for t in TABLES_TO_SWAP if t not in partitions]:
+        columns = [c["name"] for c in inspector.get_columns(table)]
+        if "id" not in columns:
+            logger.info(f"Skipping PK swap for {table} (no 'id' column)...")
+            continue
+
         logger.info(f"Swapping PK for {table}...")
         with op.batch_alter_table(table) as batch_op:
             batch_op.alter_column("id", new_column_name="legacy_id")
@@ -178,7 +201,8 @@ def upgrade():
 
             if bind.dialect.name == "postgresql":
                 batch_op.execute(
-                    f"ALTER TABLE {table} DROP CONSTRAINT {table}_pkey CASCADE"
+                    f"ALTER TABLE {table} DROP CONSTRAINT IF EXISTS "
+                    f"{table}_pkey CASCADE"
                 )
             elif bind.dialect.name != "sqlite":
                 batch_op.drop_constraint(f"{table}_pkey", type_="primary")
@@ -189,21 +213,44 @@ def upgrade():
     # 3.3 FK Swap Phase: Swap FK columns and Recreate ALL constraints
     for table in all_affected_tables:
         logger.info(f"Finalizing FKs for {table}...")
+        pk_constraint = inspector.get_pk_constraint(table)
+        pk_columns = (
+            pk_constraint.get("constrained_columns", []) if pk_constraint else []
+        )
+        columns = {c["name"] for c in inspector.get_columns(table)}
+
         with op.batch_alter_table(table) as batch_op:
             # A. Swap Columns for FK_TO_SWAP (Migrated FKs)
             for t, legacy_col, shadow_col, ref_table in FK_TO_SWAP:
                 if t == table:
-                    batch_op.alter_column(
-                        legacy_col, new_column_name=f"legacy_{legacy_col}"
-                    )
-                    batch_op.alter_column(shadow_col, new_column_name=legacy_col)
+                    is_pk = legacy_col in pk_columns
+                    if is_pk:
+                        if bind.dialect.name == "postgresql":
+                            batch_op.execute(
+                                f"ALTER TABLE {table} DROP CONSTRAINT IF EXISTS "
+                                f"{table}_pkey CASCADE"
+                            )
+                        elif bind.dialect.name != "sqlite":
+                            batch_op.drop_constraint(f"{table}_pkey", type_="primary")
+
+                    if legacy_col in columns:
+                        batch_op.alter_column(
+                            legacy_col, new_column_name=f"legacy_{legacy_col}"
+                        )
+
+                    if shadow_col in columns:
+                        batch_op.alter_column(shadow_col, new_column_name=legacy_col)
+
+                    if is_pk:
+                        batch_op.create_primary_key(f"{table}_pkey", [legacy_col])
+
                     batch_op.create_foreign_key(
                         f"fk_{table}_{legacy_col}_uuid",
                         ref_table,
                         [legacy_col],
                         ["id"],
                         ondelete="CASCADE"
-                        if "delivery" in table or "attendance" in table
+                        if t in ("notification_deliveries", "event_attendance")
                         else "SET NULL",
                     )
 
