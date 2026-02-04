@@ -67,7 +67,8 @@ class PermissionChecker:
             )
         except Exception as e:
             logger.error(
-                f"SpiceDB permission check failed ({resource_type}:{resource_id}#{permission} for {user_id}): {e}"
+                f"SpiceDB permission check failed "
+                f"({resource_type}:{resource_id}#{permission} for {user_id}): {e}"
             )
             return False
 

@@ -79,9 +79,11 @@ async def get_current_user(
             fail_auth()
 
         # Reconstruct minimal Session object for compatibility
-        # We don't fetch the full ActiveSession from DB unless needed (e.g. fingerprint mismatch)
+        # We don't fetch the full ActiveSession from DB unless needed
+        # (e.g. fingerprint mismatch)
         # However, legacy code expects `session` object.
-        # For now, we fetch DB session primarily if we suspect issues or for rigorous consistency,
+        # For now, we fetch DB session primarily if we suspect issues
+        # or for rigorous consistency,
         # OR we construct a transient implementation.
         # To maintain strict compatibility with `session.fingerprint_hash` checks below,
         # we will skip the DB session load IF fingerprint matches.
@@ -89,7 +91,8 @@ async def get_current_user(
         # Validate Fingerprint from Redis data
         cached_fp_hash = cached_session.get("fingerprint_hash")
 
-        # If we need the full DB object to respect logic below (which commits MFA state),
+        # If we need the full DB object to respect logic below
+        # (which commits MFA state),
         # we might still need it. But let's try to avoid the JOIN.
         pass
 
@@ -124,9 +127,11 @@ async def get_current_user(
             mfa_verified_at=session_obj.mfa_verified_at,
         )
 
-    # If we hit Redis, we still need `session_obj` for the logic below (fingerprint check etc).
+    # If we hit Redis, we still need `session_obj` for the logic below
+    # (fingerprint check etc).
     # Optimally, we construct it from checking the current request matches Redis data.
-    # If we are here and `session_obj` is None, it means we hit Redis but haven't loaded DB session.
+    # If we are here and `session_obj` is None, it means we hit Redis
+    # but haven't loaded DB session.
 
     if not session_obj and cached_session:
         # Check constraints without DB
@@ -140,11 +145,13 @@ async def get_current_user(
             if current_fp.fingerprint_hash != cached_fp_hash:
                 # Suspicious! Fallback to DB to run full logic
                 pass  # Logic continues below requires real session object
-                # To simplify migration phase: If Redis hit, we basically trust it unless we implement
-                # full logic here.
+                # To simplify migration phase: If Redis hit, we basically trust it
+                # unless we implement full logic here.
                 # For safety in Phase 1: We will fetch the DB session even on Redis hit
-                # BUT using a simpler query (SELECT * FROM active_sessions WHERE id = ...),
-                # avoiding the JOIN if possible, or accept that we simply optimized user loading.
+                # BUT using a simpler query
+                # (SELECT * FROM active_sessions WHERE id = ...),
+                # avoiding the JOIN if possible, or accept that we simply
+                # optimized user loading.
 
                 # REVISED STRATEGY:
                 # The big cost is the JOIN.
@@ -167,13 +174,16 @@ async def get_current_user(
 
     # --- Standard Validation Logic (from DB object) ---
     # Now that we have session_obj, we run standard checks.
-    # The optimization is that we avoided the JOIN for every request by splitting queries
+    # The optimization is that we avoided the JOIN for every request
+    # by splitting queries
     # (if using Redis) or we accept that we double-check DB for now.
 
     # Actually, for true performance, we should NOT load session_obj if Redis is valid.
-    # Let's trust Redis for validity (revocation check) and only load DB if we need to write to it.
-
-    # Current implementation limitation: The existing logic heavily relies on `session` attributes.
+    # Let's trust Redis for validity (revocation check) and only load DB
+    # if we need to write to it.
+    #
+    # Current implementation limitation: The existing logic heavily relies
+    # on `session` attributes.
     # Preserving behavior:
     session = session_obj
     now = datetime.now(UTC)
@@ -232,9 +242,11 @@ async def get_current_user(
             await db.commit()
 
     # DB UPDATE OPTIMIZATION:
-    # If we are using Redis and verified it was fresh, we can SKIP the DB `last_seen_at` update entirely!
+    # If we are using Redis and verified it was fresh, we can SKIP the DB
+    # `last_seen_at` update entirely!
     # The Redis `update_last_seen` handles the hot path.
-    # We only update DB occasionally (e.g. every 5-10 mins) to keep audit logs roughly accurate.
+    # We only update DB occasionally (e.g. every 5-10 mins) to keep audit logs
+    # roughly accurate.
 
     last_seen_at = session.last_seen_at
     if last_seen_at is not None and last_seen_at.tzinfo is None:

@@ -132,9 +132,12 @@ async def test_list_notifications_handles_invalid_data(
 
     assert first["title"] == "Странное уведомление"
     assert first["body"] == "Странное тело"
-    # The localized_text helper might fall back to ru if en matches a placeholder or is missing
-    # In this test we forced raw SQL updates, so we check if the values were actually committed/read
-    # Since we updated title_en manually, it should be returned as is or None if it's considered a placeholder
+    # The localized_text helper might fall back to ru if en matches a placeholder
+    # or is missing
+    # In this test we forced raw SQL updates, so we check if the values were
+    # actually committed/read
+    # Since we updated title_en manually, it should be returned as is or None
+    # if it's considered a placeholder
     assert first.get("title_en") is None or first.get("title_en") == "123"
     assert first.get("body_en") is None or first.get("body_en") == "bytes"
     assert first.get("type") in {None, "{'kind': 'system'}"}

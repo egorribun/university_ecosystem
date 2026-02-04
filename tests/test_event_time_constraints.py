@@ -196,7 +196,8 @@ async def test_get_all_events_cursor_respects_ordering_and_gaps(
     )
     # Filter to only our test events
     our_events = [e for e in first_page.items if e.id in test_event_ids]
-    # UUIDs don't guarantee insertion order, but we sort by starts_at in the service/repo
+    # UUIDs don't guarantee insertion order,
+    # but we sort by starts_at in the service/repo
     our_events.sort(key=lambda x: x.starts_at)
     assert [e.title for e in our_events[:2]] == ["Event A", "Event B"]
 

@@ -291,7 +291,8 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         if education_data:
             self.education_path = EducationPath(**education_data)
         if spotify_data:
-            # Note: self.spotify assignment will be handled or requires late initialization
+            # Note: self.spotify assignment will be handled or requires
+            # late initialization
             # To strictly avoid the crutch, we ensure self.spotify is set elsewhere
             # or the model is already available in the registry.
             pass

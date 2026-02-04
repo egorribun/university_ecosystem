@@ -390,7 +390,8 @@ async def test_get_current_admin_user_success(mock_request):
     user.role = "admin"
     from app.api.deps import get_current_admin_user
 
-    # Mock PermissionChecker that returns True for admin check (SpiceDB unavailable fallback)
+    # Mock PermissionChecker that returns True for admin check
+    # (SpiceDB unavailable fallback)
     mock_checker = MagicMock()
     mock_checker.check_admin = AsyncMock(return_value=True)
     returned_user = await get_current_admin_user(mock_request, user, mock_checker)

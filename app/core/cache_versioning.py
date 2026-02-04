@@ -23,7 +23,8 @@ class CacheVersionManager:
     _local_version_key: str = "_local_version"
     _lock_key: str = "_lock"
 
-    # We use a shared dictionary for local state to avoid issues with @dataclass(frozen=True)
+    # We use a shared dictionary for local state to avoid issues
+    # with @dataclass(frozen=True)
     # and to maintain state across instances if needed (though usually held globally)
     _local_state: dict[str, Any] = None
 

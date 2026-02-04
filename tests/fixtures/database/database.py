@@ -42,7 +42,8 @@ async def prepare_database() -> AsyncIterator[None]:
                 pass
 
     # Tables with composite PKs or PostgreSQL-specific features
-    # We exclude them from create_all and create them separately with SQLite-compatible schema
+    # We exclude them from create_all and create them separately
+    # with SQLite-compatible schema
     excluded_tables = {
         models.DataAccessLog.__table__.name,
         models.Notification.__table__.name,
@@ -104,13 +105,16 @@ async def prepare_database() -> AsyncIterator[None]:
         """
         )
         await conn.exec_driver_sql(
-            "CREATE INDEX IF NOT EXISTS ix_notifications_user_created ON notifications(user_id, created_at)"
+            "CREATE INDEX IF NOT EXISTS ix_notifications_user_created ON "
+            "notifications(user_id, created_at)"
         )
         await conn.exec_driver_sql(
-            "CREATE INDEX IF NOT EXISTS ix_notifications_dupe_check ON notifications(user_id, title, url, created_at)"
+            "CREATE INDEX IF NOT EXISTS ix_notifications_dupe_check ON "
+            "notifications(user_id, title, url, created_at)"
         )
         await conn.exec_driver_sql(
-            "CREATE INDEX IF NOT EXISTS ix_notifications_user_dedupe ON notifications(user_id, dedupe_key)"
+            "CREATE INDEX IF NOT EXISTS ix_notifications_user_dedupe ON "
+            "notifications(user_id, dedupe_key)"
         )
 
         # NotificationDelivery
@@ -132,7 +136,8 @@ async def prepare_database() -> AsyncIterator[None]:
         """
         )
         await conn.exec_driver_sql(
-            "CREATE INDEX IF NOT EXISTS ix_notification_deliveries_notif_channel ON notification_deliveries(notification_id, channel)"
+            "CREATE INDEX IF NOT EXISTS ix_notification_deliveries_notif_channel ON "
+            "notification_deliveries(notification_id, channel)"
         )
 
         # Events table
@@ -184,10 +189,12 @@ async def prepare_database() -> AsyncIterator[None]:
         )
         for idx in ("user_id", "event_id", "registered_at"):
             await conn.exec_driver_sql(
-                f"CREATE INDEX IF NOT EXISTS ix_event_attendance_{idx} ON event_attendance({idx})"
+                f"CREATE INDEX IF NOT EXISTS ix_event_attendance_{idx} ON "
+                f"event_attendance({idx})"
             )
         await conn.exec_driver_sql(
-            "CREATE INDEX IF NOT EXISTS ix_event_attendance_event_user ON event_attendance(event_id, user_id)"
+            "CREATE INDEX IF NOT EXISTS ix_event_attendance_event_user ON "
+            "event_attendance(event_id, user_id)"
         )
 
         # EventFile table
@@ -202,7 +209,8 @@ async def prepare_database() -> AsyncIterator[None]:
         """
         )
         await conn.exec_driver_sql(
-            "CREATE INDEX IF NOT EXISTS ix_event_files_event_id ON event_files(event_id)"
+            "CREATE INDEX IF NOT EXISTS ix_event_files_event_id ON "
+            "event_files(event_id)"
         )
 
     yield
@@ -266,7 +274,8 @@ async def clean_database(prepare_database: None) -> AsyncIterator[None]:
             if "database is locked" not in str(exc).lower() or attempt == attempts:
                 raise
             logging.warning(
-                "SQLite database locked during test cleanup, retrying in %.1fs (attempt %d/%d)",
+                "SQLite database locked during test cleanup, retrying in %.1fs "
+                "(attempt %d/%d)",
                 delay,
                 attempt,
                 attempts,

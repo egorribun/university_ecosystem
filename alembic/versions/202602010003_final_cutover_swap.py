@@ -83,7 +83,8 @@ def upgrade():
     bind = op.get_bind()
     referenced_tables_str = ", ".join(f"'{t}'" for t in TABLES_TO_SWAP)
 
-    # Query to find all FKs referencing our tables (excluding partitions to avoid double-dropping)
+    # Query to find all FKs referencing our tables
+    # (excluding partitions to avoid double-dropping)
     fk_query = sa.text(f"""
         SELECT
             r.relname AS table_name,
@@ -98,7 +99,8 @@ def upgrade():
             JOIN pg_class r ON c.conrelid = r.oid
             JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
             JOIN pg_class fr ON c.confrelid = fr.oid
-            JOIN pg_attribute fa ON fa.attrelid = c.confrelid AND fa.attnum = ANY(c.confkey)
+            JOIN pg_attribute fa ON fa.attrelid = c.confrelid
+            AND fa.attnum = ANY(c.confkey)
             JOIN pg_namespace n ON n.oid = r.relnamespace
         WHERE c.contype = 'f'
           AND fr.relname IN ({referenced_tables_str})
@@ -147,13 +149,15 @@ def upgrade():
         # Check if table has created_at for better UUID v7
         has_created_at = bind.execute(
             sa.text(
-                f"SELECT column_name FROM information_schema.columns WHERE table_name='{table}' AND column_name='created_at'"
+                f"SELECT column_name FROM information_schema.columns "
+                f"WHERE table_name='{table}' AND column_name='created_at'"
             )
         ).scalar()
 
         rows = bind.execute(
             sa.text(
-                f"SELECT id{(', created_at' if has_created_at else '')} FROM {table} WHERE uuid_id IS NULL"
+                f"SELECT id{(', created_at' if has_created_at else '')} FROM {table} "
+                "WHERE uuid_id IS NULL"
             )
         ).fetchall()
         for row in rows:
@@ -189,7 +193,8 @@ def upgrade():
             sa.text(f"ALTER TABLE {table} DROP CONSTRAINT {table}_pkey CASCADE")
         )
         op.create_primary_key(f"{table}_pkey", table, ["id"])
-        # Create Unique Constraint on legacy_id so it can be referenced by non-migrated FKs
+        # Create Unique Constraint on legacy_id
+        # so it can be referenced by non-migrated FKs
         op.create_unique_constraint(f"uq_{table}_legacy_id", table, ["legacy_id"])
 
     # 4. Recreate Foreign Key constraints
@@ -202,7 +207,8 @@ def upgrade():
 
         if not is_handled_by_swap:
             logger.info(
-                f"Recreating non-swapped FK {fk['name']} on {fk['table']} pointing to legacy_id"
+                f"Recreating non-swapped FK {fk['name']} on {fk['table']} "
+                "pointing to legacy_id"
             )
             op.create_foreign_key(
                 fk["name"],

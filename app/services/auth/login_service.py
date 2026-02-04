@@ -175,7 +175,8 @@ class LoginService:
             accept_language=metadata["accept_language"] or "",
             fingerprint_hash=metadata["fingerprint_hash"] or "",
         )
-        # Fire and forget Redis write (or await if critical, here await is fine as it's fast)
+        # Fire and forget Redis write
+        # (or await if critical, here await is fine as it's fast)
         await redis_service.create_session(
             jti=session.jti,
             user_id=user.id,

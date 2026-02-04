@@ -77,7 +77,8 @@ class RedisSessionService:
             if not raw:
                 return None
 
-            # Convert bytes to string if needed (redis-py decode_responses=False default in rate_limit)
+            # Convert bytes to string if needed
+            # (redis-py decode_responses=False default in rate_limit)
             # rate_limit pool uses decode_responses=False
             data = {
                 k.decode("utf-8") if isinstance(k, bytes) else k: v.decode("utf-8")

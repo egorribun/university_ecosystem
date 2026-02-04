@@ -88,7 +88,7 @@ async def invalidate_user_stats_cache(
     backend = _ensure_cache(cache)
     if not backend.enabled:
         return
-    if isinstance(user_ids, (int, uuid.UUID)):
+    if isinstance(user_ids, int | uuid.UUID):
         user_ids = [user_ids]
     unique_users = {str(uid) for uid in user_ids if uid is not None}
     if not unique_users:

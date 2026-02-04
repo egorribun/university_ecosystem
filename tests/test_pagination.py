@@ -417,7 +417,8 @@ class TestGenericPagination:
         # Ascending by ID: should be News 0, News 1
         # Factory creates News 0 (hours=5) -> News 4 (hours=1)
         # created_at: 0 > 1 > 2 > 3 > 4
-        # Our news_factory might be creating them such that 0 is oldest and has earliest ID
+        # Our news_factory might be creating them such that 0 is oldest
+        # and has earliest ID
         assert result.items[0].title in [
             "News 0",
             "News 1",

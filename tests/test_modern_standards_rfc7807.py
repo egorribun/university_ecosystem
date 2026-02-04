@@ -34,7 +34,8 @@ async def test_error_rfc7807_compliance(async_client, user_factory):
 
 @pytest.mark.asyncio
 async def test_unauthorized_rfc7807(async_client):
-    """Verify that 401 Unauthorized errors follow RFC 7807 (via custom handler if possible)."""
+    """Verify that 401 Unauthorized errors follow RFC 7807
+    (via custom handler if possible)."""
     # Simply requesting /me without token
     response = await async_client.get("/users/me")
 
