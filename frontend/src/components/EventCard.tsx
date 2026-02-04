@@ -51,7 +51,7 @@ type EventCardProps = {
   location_en?: string | null
   starts_at: string
   ends_at: string
-  created_by: string
+  created_by: string | unknown
   participant_count: number
   files?: Event["files"]
   is_active: boolean
