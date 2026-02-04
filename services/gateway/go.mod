@@ -9,7 +9,7 @@ require (
 	github.com/gin-contrib/zap v1.1.3
 	github.com/gin-gonic/gin v1.11.0
 	github.com/go-redis/redis_rate/v10 v10.0.1
-	github.com/golang-jwt/jwt/v5 v5.2.1
+	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/prometheus/client_golang v1.23.2
 	github.com/redis/go-redis/extra/redisprometheus/v9 v9.17.2
