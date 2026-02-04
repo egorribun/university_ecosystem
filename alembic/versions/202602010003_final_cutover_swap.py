@@ -325,29 +325,38 @@ def upgrade():
 
         with op.batch_alter_table(table) as batch_op:
             # A. Swap Columns for FK_TO_SWAP (Migrated FKs)
+            # A. Swap Columns for FK_TO_SWAP (Migrated FKs)
+            pk_dropped = False
+            recreate_pk = False
+
             for t, legacy_col, shadow_col, ref_table in FK_TO_SWAP:
                 if t == table:
                     is_pk = legacy_col in pk_columns
                     if is_pk:
-                        # Drop old PK
-                        # We re-fetch PK constraint here just in case,
-                        # but we have it above.
-                        # However, since we are inside a loop that might modify
-                        # the table, relying on the initial fetch is safer if we
-                        # haven't dropped it yet.
-                        if pk_constraint and pk_constraint["name"]:
-                            logger.info(
-                                f"Dropping PK {pk_constraint['name']} for {table}..."
-                            )
-                            if bind.dialect.name == "postgresql":
-                                batch_op.execute(
-                                    f"ALTER TABLE {table} DROP CONSTRAINT IF EXISTS "
-                                    f'"{pk_constraint["name"]}" CASCADE'
+                        recreate_pk = True
+                        if not pk_dropped:
+                            # Drop old PK
+                            # We re-fetch PK constraint here just in case,
+                            # but we have it above.
+                            # However, since we are inside a loop that might modify
+                            # the table, relying on the initial fetch is safer if we
+                            # haven't dropped it yet.
+                            if pk_constraint and pk_constraint["name"]:
+                                logger.info(
+                                    f"Dropping PK {pk_constraint['name']} "
+                                    f"for {table}..."
                                 )
-                            else:
-                                batch_op.drop_constraint(
-                                    pk_constraint["name"], type_="primary"
-                                )
+                                if bind.dialect.name == "postgresql":
+                                    batch_op.execute(
+                                        f"ALTER TABLE {table} "
+                                        "DROP CONSTRAINT IF EXISTS "
+                                        f'"{pk_constraint["name"]}" CASCADE'
+                                    )
+                                else:
+                                    batch_op.drop_constraint(
+                                        pk_constraint["name"], type_="primary"
+                                    )
+                            pk_dropped = True
 
                     if legacy_col in columns:
                         batch_op.alter_column(
@@ -356,15 +365,6 @@ def upgrade():
 
                     if shadow_col in columns:
                         batch_op.alter_column(shadow_col, new_column_name=legacy_col)
-
-                    if is_pk:
-                        pk_cols = [legacy_col]
-                        if (
-                            bind.dialect.name == "postgresql"
-                            and table in PARTITION_KEYS
-                        ):
-                            pk_cols.append(PARTITION_KEYS[table])
-                        batch_op.create_primary_key(f"{table}_pkey", pk_cols)
 
                     original_name = fk_name_map.get((table, legacy_col))
 
@@ -387,6 +387,18 @@ def upgrade():
                         if t in ("notification_deliveries", "event_attendance")
                         else "SET NULL",
                     )
+
+            if recreate_pk and pk_dropped:
+                # Recreate PK using original columns (which now hold UUIDs)
+                # Ensure we handle partition keys if they weren't in the original PK
+                # (though usually they should be)
+                logger.info(f"Recreating PK for {table} with columns {pk_columns}...")
+
+                # Check if we need to append partition key (if not present)
+                # strictly speaking, inspector.get_pk_constraint return ALL columns
+                # in PK. So we should just use pk_columns.
+
+                batch_op.create_primary_key(f"{table}_pkey", pk_columns)
 
             # B. Recreate non-migrated FKs to point to legacy_id
             for fk in fks_to_drop.get(table, []):
