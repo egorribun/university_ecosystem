@@ -134,38 +134,44 @@ def upgrade():
         """)
         bind.execute(stmt)
 
-    # 3. Single-Pass Structural Swap
+    # 3. Multi-Pass Structural Swap (to avoid type mismatches during FK creation)
     # Collect all tables that need any change
     all_affected_tables = (
         set(TABLES_TO_SWAP) | set(fks_to_drop.keys()) | {t for t, _, _, _ in FK_TO_SWAP}
     )
 
-    for table in all_affected_tables:
-        logger.info(f"Applying structural changes to {table}...")
+    # 3.1 Drop Phase: Drop all involved foreign keys first
+    for table_name in all_affected_tables:
+        fks = fks_to_drop.get(table_name, [])
+        if fks:
+            logger.info(f"Dropping FKs for {table_name}...")
+            with op.batch_alter_table(table_name) as batch_op:
+                for fk in fks:
+                    if fk["name"]:
+                        batch_op.drop_constraint(fk["name"], type_="foreignkey")
+
+    # 3.2 PK Swap Phase: Swap all Primary Keys to UUID
+    for table in TABLES_TO_SWAP:
+        logger.info(f"Swapping PK for {table}...")
         with op.batch_alter_table(table) as batch_op:
-            # 3.1 Drop Old FKs
-            for fk in fks_to_drop.get(table, []):
-                if fk["name"]:
-                    batch_op.drop_constraint(fk["name"], type_="foreignkey")
+            batch_op.alter_column("id", new_column_name="legacy_id")
+            batch_op.alter_column("uuid_id", new_column_name="id", nullable=False)
 
-            # 3.2 Swap Columns if in TABLES_TO_SWAP
-            if table in TABLES_TO_SWAP:
-                batch_op.alter_column("id", new_column_name="legacy_id")
-                batch_op.alter_column("uuid_id", new_column_name="id", nullable=False)
-
-                if bind.dialect.name == "postgresql":
-                    batch_op.execute(
-                        f"ALTER TABLE {table} DROP CONSTRAINT {table}_pkey CASCADE"
-                    )
-                elif bind.dialect.name != "sqlite":
-                    batch_op.drop_constraint(f"{table}_pkey", type_="primary")
-
-                batch_op.create_primary_key(f"{table}_pkey", ["id"])
-                batch_op.create_unique_constraint(
-                    f"uq_{table}_legacy_id", ["legacy_id"]
+            if bind.dialect.name == "postgresql":
+                batch_op.execute(
+                    f"ALTER TABLE {table} DROP CONSTRAINT {table}_pkey CASCADE"
                 )
+            elif bind.dialect.name != "sqlite":
+                batch_op.drop_constraint(f"{table}_pkey", type_="primary")
 
-            # 3.3 Swap FK Columns if in FK_TO_SWAP
+            batch_op.create_primary_key(f"{table}_pkey", ["id"])
+            batch_op.create_unique_constraint(f"uq_{table}_legacy_id", ["legacy_id"])
+
+    # 3.3 FK Swap Phase: Swap FK columns and Recreate ALL constraints
+    for table in all_affected_tables:
+        logger.info(f"Finalizing FKs for {table}...")
+        with op.batch_alter_table(table) as batch_op:
+            # A. Swap Columns for FK_TO_SWAP (Migrated FKs)
             for t, legacy_col, shadow_col, ref_table in FK_TO_SWAP:
                 if t == table:
                     batch_op.alter_column(
@@ -182,7 +188,7 @@ def upgrade():
                         else "SET NULL",
                     )
 
-            # 3.4 Recreate non-migrated FKs
+            # B. Recreate non-migrated FKs to point to legacy_id
             for fk in fks_to_drop.get(table, []):
                 is_swapped = any(
                     t == table and lc == fk["column"] for t, lc, sc, rt in FK_TO_SWAP
