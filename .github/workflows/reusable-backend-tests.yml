@@ -85,23 +85,23 @@ jobs:
             - name: Run pytest
               shell: pwsh
               run: |
-                  $parallelArgs = ""
+                  $parallelArgs = @()
                   if ("${{ inputs.parallel-workers }}" -ne "-1") {
                     if ("${{ inputs.parallel-workers }}" -eq "0") {
-                      $parallelArgs = "-n auto"
+                      $parallelArgs = @("-n", "auto")
                     } else {
-                      $parallelArgs = "-n ${{ inputs.parallel-workers }}"
+                      $parallelArgs = @("-n", "${{ inputs.parallel-workers }}")
                     }
                   }
 
-                  $failFast = ""
+                  $failFastArgs = @()
                   if ("${{ inputs.fail-fast }}" -eq "true") {
-                    $failFast = "-x"
+                    $failFastArgs = @("-x")
                   }
 
                   uv run pytest ${{ inputs.test-pattern }} `
                     $parallelArgs `
-                    $failFast `
+                    $failFastArgs `
                     --cov=app `
                     --cov-report=xml `
                     --cov-report=term-missing `
