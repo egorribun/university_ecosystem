@@ -56,21 +56,46 @@ TABLES = [
 ]
 
 
+PARTITION_KEYS = {
+    "notifications": "created_at",
+    "notification_deliveries": "attempted_at",
+    "data_access_logs": "created_at",
+}
+
+
 def upgrade():
+    bind = op.get_bind()
+    is_postgresql = bind.dialect.name == "postgresql"
+    inspector = sa.inspect(bind)
+
     for table_name in TABLES:
-        op.add_column(
-            table_name,
-            sa.Column(
-                "uuid_id",
-                postgresql.UUID(as_uuid=True),
-                nullable=True,
-            ),
-        )
+        existing_cols = {c["name"]: c for c in inspector.get_columns(table_name)}
+
+        # Check if already migrated (id is UUID)
+        id_col = existing_cols.get("id")
+        if id_col and isinstance(id_col["type"], postgresql.UUID):
+            continue
+
+        if "uuid_id" not in existing_cols:
+            op.add_column(
+                table_name,
+                sa.Column(
+                    "uuid_id",
+                    postgresql.UUID(as_uuid=True),
+                    nullable=True,
+                ),
+            )
+
         # Create an index explicitly since index=True might not be
         # enough for some dialects
-        op.create_index(
-            f"ix_{table_name}_uuid_id", table_name, ["uuid_id"], unique=True
-        )
+        cols = ["uuid_id"]
+        if is_postgresql and table_name in PARTITION_KEYS:
+            cols.append(PARTITION_KEYS[table_name])
+
+        idx_name = f"ix_{table_name}_uuid_id"
+        existing_indexes = {idx["name"] for idx in inspector.get_indexes(table_name)}
+        if idx_name not in existing_indexes:
+            op.create_index(idx_name, table_name, cols, unique=True)
 
 
 def downgrade():

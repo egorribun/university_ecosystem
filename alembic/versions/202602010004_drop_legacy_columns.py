@@ -8,6 +8,8 @@ Create Date: 2026-02-01 06:00:00.000000
 
 import logging
 
+import sqlalchemy as sa
+
 from alembic import op
 
 revision = "202602010004"
@@ -99,21 +101,27 @@ def upgrade():
     dialect = bind.dialect.name
 
     # 1. Drop the legacy primary key columns and their unique constraints
+    inspector = sa.inspect(bind)
+
     for table in TABLES_TO_CLEANUP:
-        try:
-            with op.batch_alter_table(table) as batch_op:
-                # Drop the unique constraint we created in previous step
-                if dialect != "sqlite":
-                    batch_op.drop_constraint(f"uq_{table}_legacy_id", type_="unique")
-                batch_op.drop_column("legacy_id")
-            logger.info(f"Dropped legacy_id from {table}")
-        except Exception as e:
-            logger.warning(f"Could not drop legacy_id for {table}: {e}")
+        if not inspector.has_table(table):
+            continue
+
+        columns = {c["name"] for c in inspector.get_columns(table)}
+        if "legacy_id" in columns:
             try:
                 with op.batch_alter_table(table) as batch_op:
-                    batch_op.alter_column("legacy_id", nullable=True)
-            except Exception as e2:
-                logger.error(f"Could not make legacy_id nullable for {table}: {e2}")
+                    # Drop the unique constraint we created in previous step
+                    if dialect != "sqlite":
+                        batch_op.drop_constraint(
+                            f"uq_{table}_legacy_id", type_="unique"
+                        )
+                    batch_op.drop_column("legacy_id")
+                logger.info(f"Dropped legacy_id from {table}")
+            except Exception as e:
+                logger.warning(f"Could not drop legacy_id for {table}: {e}")
+        else:
+            logger.info(f"Skipping {table} - legacy_id already dropped")
 
     # 2. Drop the legacy foreign key columns
     for table, legacy_col in FK_TO_CLEANUP:

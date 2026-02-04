@@ -9,6 +9,7 @@ Create Date: 2026-02-01 05:00:00.000000
 import logging
 
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
@@ -51,6 +52,12 @@ TABLES_TO_SWAP = [
     "notification_deliveries",
     "data_access_logs",
 ]
+
+PARTITION_KEYS = {
+    "notifications": "created_at",
+    "notification_deliveries": "attempted_at",
+    "data_access_logs": "created_at",
+}
 
 # (Table, Legacy FK Col, Shadow FK Col, Referenced Table)
 FK_TO_SWAP = [
@@ -107,6 +114,27 @@ def upgrade():
     from app.utils.uuid_v7 import generate_uuid7
 
     # 1. Identify all affected tables and their FKs
+
+    # Filter out tables that are already migrated (id is UUID)
+    tables_to_process = []
+
+    # Need to check columns
+    for table in TABLES_TO_SWAP:
+        if not inspector.has_table(table):
+            continue
+
+        columns = {c["name"]: c for c in inspector.get_columns(table)}
+        id_col = columns.get("id")
+
+        # If id is UUID, it's already migrated. Skip.
+        if id_col and isinstance(id_col["type"], postgresql.UUID):
+            logger.info(f"Skipping {table} - already migrated to UUID")
+            continue
+
+        tables_to_process.append(table)
+
+    TABLES_TO_SWAP[:] = tables_to_process
+
     fks_to_drop = {}  # {table_name: [fk_definitions]}
     referenced_elsewhere = {}  # {ref_table: [fk_definitions]}
 
@@ -155,12 +183,51 @@ def upgrade():
             )
 
     # 2.2 Shadow FKs
+    truncated_tables = set()
+
     for table, legacy_col, shadow_col, ref_table in FK_TO_SWAP:
+        # Check if table is being processed (it might have been filtered out
+        # if already migrated)
+        # Note: We modified TABLES_TO_SWAP list in-place previously,
+        # but FK_TO_SWAP is static.
+        # We need to check if 'table' is in the CURRENT TABLES_TO_SWAP list?
+        # Actually, simpler: check if 'shadow_col' exists. If not, we skip.
+        # But we must be careful. If 'table' IS in TABLES_TO_SWAP,
+        # we must process it.
+        # If 'table' was Removed from TABLES_TO_SWAP, it means it is
+        # already migrated, so we skip.
+
+        if table not in TABLES_TO_SWAP:
+            # Table is already done (or skipped).
+            continue
+
         columns = [c["name"] for c in inspector.get_columns(table)]
         if legacy_col not in columns or shadow_col not in columns:
             logger.info(
                 f"Skipping population for {shadow_col} in {table} (column missing)..."
             )
+            continue
+
+        # Check ref_table state
+        ref_columns = {c["name"]: c for c in inspector.get_columns(ref_table)}
+        ref_id_col = ref_columns.get("id")
+        ref_uuid_col = ref_columns.get("uuid_id")
+
+        ref_is_already_migrated = (
+            ref_id_col is not None
+            and isinstance(ref_id_col["type"], postgresql.UUID)
+            and ref_uuid_col is None
+        )
+
+        if ref_is_already_migrated:
+            if table not in truncated_tables:
+                logger.warning(
+                    f"Referenced table {ref_table} is already migrated and "
+                    "Legacy IDs are lost. "
+                    f"Cannot map records in {table}. TRUNCATING {table} to proceed."
+                )
+                bind.execute(sa.text(f"TRUNCATE TABLE {table} CASCADE"))
+                truncated_tables.add(table)
             continue
 
         logger.info(f"Populating {shadow_col} for {table}...")
@@ -222,18 +289,30 @@ def upgrade():
             batch_op.alter_column("id", new_column_name="legacy_id")
             batch_op.alter_column("uuid_id", new_column_name="id", nullable=False)
 
-            if bind.dialect.name == "postgresql":
-                batch_op.execute(
-                    f"ALTER TABLE {table} DROP CONSTRAINT IF EXISTS "
-                    f"{table}_pkey CASCADE"
-                )
-            elif bind.dialect.name != "sqlite":
-                batch_op.drop_constraint(f"{table}_pkey", type_="primary")
+            # Drop old PK
+            pk_constraint = inspector.get_pk_constraint(table)
+            if pk_constraint and pk_constraint["name"]:
+                logger.info(f"Dropping PK {pk_constraint['name']} for {table}...")
+                if bind.dialect.name == "postgresql":
+                    batch_op.execute(
+                        f"ALTER TABLE {table} DROP CONSTRAINT IF EXISTS "
+                        f'"{pk_constraint["name"]}" CASCADE'
+                    )
+                else:
+                    batch_op.drop_constraint(pk_constraint["name"], type_="primary")
 
-            batch_op.create_primary_key(f"{table}_pkey", ["id"])
+            pk_cols = ["id"]
+            if bind.dialect.name == "postgresql" and table in PARTITION_KEYS:
+                pk_cols.append(PARTITION_KEYS[table])
+
+            batch_op.create_primary_key(f"{table}_pkey", pk_cols)
 
             # Keep both unique for transition
-            batch_op.create_unique_constraint(f"uq_{table}_legacy_id", ["legacy_id"])
+            uq_cols = ["legacy_id"]
+            if bind.dialect.name == "postgresql" and table in PARTITION_KEYS:
+                uq_cols.append(PARTITION_KEYS[table])
+
+            batch_op.create_unique_constraint(f"uq_{table}_legacy_id", uq_cols)
 
     # 3.3 FK Swap Phase: Swap FK columns and Recreate ALL constraints
     for table in all_affected_tables:
@@ -267,14 +346,31 @@ def upgrade():
                         batch_op.alter_column(shadow_col, new_column_name=legacy_col)
 
                     if is_pk:
-                        batch_op.create_primary_key(f"{table}_pkey", [legacy_col])
+                        pk_cols = [legacy_col]
+                        if (
+                            bind.dialect.name == "postgresql"
+                            and table in PARTITION_KEYS
+                        ):
+                            pk_cols.append(PARTITION_KEYS[table])
+                        batch_op.create_primary_key(f"{table}_pkey", pk_cols)
 
                     original_name = fk_name_map.get((table, legacy_col))
+
+                    local_cols = [legacy_col]
+                    ref_cols = ["id"]
+                    if (
+                        bind.dialect.name == "postgresql"
+                        and table == "notification_deliveries"
+                        and ref_table == "notifications"
+                    ):
+                        local_cols.append("notification_created_at")
+                        ref_cols.append("created_at")
+
                     batch_op.create_foreign_key(
                         original_name or f"fk_{table}_{legacy_col}_uuid",
                         ref_table,
-                        [legacy_col],
-                        ["id"],
+                        local_cols,
+                        ref_cols,
                         ondelete="CASCADE"
                         if t in ("notification_deliveries", "event_attendance")
                         else "SET NULL",

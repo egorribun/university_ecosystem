@@ -60,12 +60,21 @@ FK_TABLES = [
 
 
 def upgrade():
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+
     for table_name, col_name in FK_TABLES:
-        op.add_column(
-            table_name,
-            sa.Column(col_name, postgresql.UUID(as_uuid=True), nullable=True),
-        )
-        op.create_index(f"ix_{table_name}_{col_name}", table_name, [col_name])
+        existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
+        if col_name not in existing_cols:
+            op.add_column(
+                table_name,
+                sa.Column(col_name, postgresql.UUID(as_uuid=True), nullable=True),
+            )
+
+        idx_name = f"ix_{table_name}_{col_name}"
+        existing_indexes = {idx["name"] for idx in inspector.get_indexes(table_name)}
+        if idx_name not in existing_indexes:
+            op.create_index(idx_name, table_name, [col_name])
 
 
 def downgrade():
