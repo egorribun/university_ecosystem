@@ -229,7 +229,7 @@ jobs:
         env:
           SECRET_KEY: "ci-test-secret-key-at-least-32-chars"
           ENVIRONMENT: testing
-        shell: pwsh
+        shell: bash
         run: |
           uv run python3 <<'PY'
           import asyncio
@@ -291,7 +291,7 @@ jobs:
       - name: Generate OpenAPI schema
         env:
           DATABASE_URL: "sqlite+aiosqlite:///:memory:"
-        shell: pwsh
+        shell: bash
         run: |
           uv run python3 - <<'PY'
           import json
@@ -340,6 +340,7 @@ jobs:
         run: uv sync --frozen
 
       - name: Ensure pyproject.toml excludes test-only packages from main dependencies
+        shell: bash
         run: |
           uv run python - <<'PY'
           import pathlib
