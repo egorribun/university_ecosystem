@@ -329,13 +329,25 @@ def upgrade():
                 if t == table:
                     is_pk = legacy_col in pk_columns
                     if is_pk:
-                        if bind.dialect.name == "postgresql":
-                            batch_op.execute(
-                                f"ALTER TABLE {table} DROP CONSTRAINT IF EXISTS "
-                                f"{table}_pkey CASCADE"
+                        # Drop old PK
+                        # We re-fetch PK constraint here just in case,
+                        # but we have it above.
+                        # However, since we are inside a loop that might modify
+                        # the table, relying on the initial fetch is safer if we
+                        # haven't dropped it yet.
+                        if pk_constraint and pk_constraint["name"]:
+                            logger.info(
+                                f"Dropping PK {pk_constraint['name']} for {table}..."
                             )
-                        elif bind.dialect.name != "sqlite":
-                            batch_op.drop_constraint(f"{table}_pkey", type_="primary")
+                            if bind.dialect.name == "postgresql":
+                                batch_op.execute(
+                                    f"ALTER TABLE {table} DROP CONSTRAINT IF EXISTS "
+                                    f'"{pk_constraint["name"]}" CASCADE'
+                                )
+                            else:
+                                batch_op.drop_constraint(
+                                    pk_constraint["name"], type_="primary"
+                                )
 
                     if legacy_col in columns:
                         batch_op.alter_column(
