@@ -136,9 +136,28 @@ def upgrade():
 
     # 3. Multi-Pass Structural Swap (to avoid type mismatches during FK creation)
     # Collect all tables that need any change
-    all_affected_tables = (
+    all_affected_tables_set = (
         set(TABLES_TO_SWAP) | set(fks_to_drop.keys()) | {t for t, _, _, _ in FK_TO_SWAP}
     )
+
+    # Pass 0: Detect partitions to avoid direct manipulation (must be done on parent)
+    partitions = set()
+    if bind.dialect.name == "postgresql":
+        partitions = {
+            r[0]
+            for r in bind.execute(
+                sa.text(
+                    """
+                SELECT child.relname
+                FROM pg_inherits
+                JOIN pg_class child ON pg_inherits.inhrelid = child.oid
+            """
+                )
+            ).fetchall()
+        }
+
+    # Filter out partitions from structural changes
+    all_affected_tables = [t for t in all_affected_tables_set if t not in partitions]
 
     # 3.1 Drop Phase: Drop all involved foreign keys first
     for table_name in all_affected_tables:
@@ -151,7 +170,7 @@ def upgrade():
                         batch_op.drop_constraint(fk["name"], type_="foreignkey")
 
     # 3.2 PK Swap Phase: Swap all Primary Keys to UUID
-    for table in TABLES_TO_SWAP:
+    for table in [t for t in TABLES_TO_SWAP if t not in partitions]:
         logger.info(f"Swapping PK for {table}...")
         with op.batch_alter_table(table) as batch_op:
             batch_op.alter_column("id", new_column_name="legacy_id")
