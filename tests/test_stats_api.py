@@ -180,10 +180,10 @@ async def test_grade_stats_parse_notifications(async_client, db_session, user_fa
                 "course": "History",
                 "score": 3,
                 "max": 5,
-                "date": (now - timedelta(days=10)).isoformat(),
+                "date": (now - timedelta(days=3)).isoformat(),
             }
         ),
-        created_at=now - timedelta(days=10),
+        created_at=now - timedelta(days=3),
     )
 
     db_session.add_all([current_grade_one, current_grade_two, third_grade])

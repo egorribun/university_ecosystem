@@ -6256,7 +6256,8 @@
       "AdminUserTopicsResponse": {
         "properties": {
           "user_id": {
-            "type": "integer",
+            "type": "string",
+            "format": "uuid",
             "title": "User Id"
           },
           "email": {
@@ -6953,8 +6954,8 @@
       "DisableUserPushRequest": {
         "properties": {
           "user_id": {
-            "type": "integer",
-            "minimum": 1.0,
+            "type": "string",
+            "format": "uuid",
             "title": "User Id",
             "description": "User ID for which push notifications should be disabled"
           }
@@ -9094,11 +9095,13 @@
       "PushSubscriptionOut": {
         "properties": {
           "id": {
-            "type": "integer",
+            "type": "string",
+            "format": "uuid",
             "title": "Id"
           },
           "user_id": {
-            "type": "integer",
+            "type": "string",
+            "format": "uuid",
             "title": "User Id"
           },
           "endpoint": {
@@ -9321,8 +9324,8 @@
           "user_id": {
             "anyOf": [
               {
-                "type": "integer",
-                "minimum": 1.0
+                "type": "string",
+                "format": "uuid"
               },
               {
                 "type": "null"

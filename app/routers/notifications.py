@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
@@ -109,8 +110,8 @@ class PushSubscriptionIn(BaseModel):
 
 
 class PushSubscriptionOut(BaseModel):
-    id: int
-    user_id: int
+    id: uuid.UUID
+    user_id: uuid.UUID
     endpoint: str
     p256dh: str
     auth: str
@@ -183,9 +184,8 @@ class PushSubscriptionDelete(BaseModel):
 
 
 class DisableUserPushRequest(BaseModel):
-    user_id: int = Field(
+    user_id: uuid.UUID = Field(
         ...,
-        ge=1,
         description=translate("notifications.push.disable_user.description"),
     )
 
@@ -209,7 +209,7 @@ class AdminUserTopicsUpdate(BaseModel):
 
 
 class AdminUserTopicsResponse(BaseModel):
-    user_id: int
+    user_id: uuid.UUID
     email: str
     topics: list[str]
     allowed_topics: list[str]
@@ -225,8 +225,8 @@ class SendTestResponse(BaseModel):
 
 
 class PushTestRequest(NotifyBody):
-    user_id: int | None = Field(
-        default=None, description="Target user id for testing", ge=1
+    user_id: uuid.UUID | None = Field(
+        default=None, description="Target user id for testing"
     )
     title: str = Field(
         default=translate("notifications.push.test.title_default"),
@@ -265,7 +265,9 @@ def _aggregate_results(
     )
 
 
-async def _refresh_user_topic_preferences(db: AsyncSession, *, user_id: int) -> None:
+async def _refresh_user_topic_preferences(
+    db: AsyncSession, *, user_id: uuid.UUID
+) -> None:
     """
     Synchronize stored user topic preferences with subscription data
     with robust upsert.

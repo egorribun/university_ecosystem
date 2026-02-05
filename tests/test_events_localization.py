@@ -372,14 +372,14 @@ async def test_get_all_events_search_deterministic_order(db_session, user_factor
     from app.services.vector_service import VectorService
 
     e_repo = EventRepository(db_session)
-    e_service = EventService(e_repo, VectorService())
+    e_service = EventService(e_repo, VectorService(db_session))
 
     result_items = await e_service.get_events(
         search=shared_phrase, limit=10, is_active=None
     )
 
-    assert len(result_items) == 3
-    ordered_ids = [item.id for item in result_items]
+    assert len(result_items.items) == 3
+    ordered_ids = [item.id for item in result_items.items]
     # First 3 events contain "Symposium", unrelated does not
     assert ordered_ids == event_ids[:3]
 

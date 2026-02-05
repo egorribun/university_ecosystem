@@ -35,12 +35,19 @@ from app.services.webpush import (
 # Mock models
 @pytest.fixture
 def mock_user():
-    return models.User(id=1, email="test@e.com", role="student", dnd_enabled=False)
+    return models.User(
+        id="019c2e75-f095-7929-9c79-261cedfe7a77",
+        email="test@e.com",
+        role="student",
+        dnd_enabled=False,
+    )
 
 
 @pytest.fixture
 def mock_admin():
-    return models.User(id=2, email="admin@e.com", role="admin")
+    return models.User(
+        id="019c2e75-f095-7929-9c79-261cedfe7a78", email="admin@e.com", role="admin"
+    )
 
 
 @pytest.fixture
@@ -100,7 +107,7 @@ async def test_subscribe_flow(mock_db, mock_user, mock_request):
     # Ensure the subscription added to db has an ID and keys for serialization
     def add_id(obj):
         if isinstance(obj, models.PushSubscription):
-            obj.id = 123
+            obj.id = "019c2e75-f095-7929-9c79-261cedfe7a79"
             obj.p256dh = payload.keys.p256dh
             obj.auth = payload.keys.auth
 
@@ -121,8 +128,8 @@ async def test_subscribe_flow(mock_db, mock_user, mock_request):
     # 2. Existing subscription from different user - now transfers
     # ownership (no conflict)
     existing = models.PushSubscription(
-        id=1,
-        user_id=99,
+        id="019c2e75-f095-7929-9c79-261cedfe7a80",
+        user_id="019c2e75-f095-7929-9c79-261cedfe7a81",
         endpoint="https://push.com/123",
         p256dh="old_key",
         auth="old_secret",
@@ -159,7 +166,9 @@ async def test_unsubscribe(mock_db, mock_user, mock_request):
 
     # Found and removed
     existing = models.PushSubscription(
-        id=1, user_id=mock_user.id, endpoint="https://push.com/123"
+        id="019c2e75-f095-7929-9c79-261cedfe7a82",
+        user_id=mock_user.id,
+        endpoint="https://push.com/123",
     )
     mock_db.execute.return_value = MagicMock(
         scalar_one_or_none=MagicMock(return_value=existing)
@@ -189,7 +198,7 @@ async def test_update_topics(mock_db, mock_user, mock_request):
 
     # Success
     existing = models.PushSubscription(
-        id=1,
+        id="019c2e75-f095-7929-9c79-261cedfe7a83",
         user_id=mock_user.id,
         endpoint="https://push.com/123",
         topics=["news"],
@@ -249,7 +258,10 @@ async def test_send_test_push(mock_db, mock_admin, mock_user, mock_request):
 
     mock_db.get.return_value = mock_user
     sub = models.PushSubscription(
-        id=1, user_id=mock_user.id, endpoint="https://push.com/123", topics=["system"]
+        id="019c2e75-f095-7929-9c79-261cedfe7a84",
+        user_id=mock_user.id,
+        endpoint="https://push.com/123",
+        topics=["system"],
     )
 
     mock_scalars = MagicMock()
@@ -274,7 +286,7 @@ async def test_send_test_push(mock_db, mock_admin, mock_user, mock_request):
 
 @pytest.mark.asyncio
 async def test_refresh_user_topic_preferences(mock_db):
-    user_id = 1
+    user_id = "019c2e75-f095-7929-9c79-261cedfe7a77"
     # Mock multiple subscriptions with different topics
     topics_mock = MagicMock()
     topics_mock.scalars.return_value = [["news"], ["sports", "news"]]
@@ -372,7 +384,7 @@ async def test_prepare_delivery_payload_quiet(mock_user):
 @pytest.mark.asyncio
 async def test_delivery_to_user(mock_db, mock_user):
     sub = models.PushSubscription(
-        id=1,
+        id="019c2e75-f095-7929-9c79-261cedfe7a85",
         user_id=mock_user.id,
         endpoint="url",
         p256dh="k",
@@ -404,7 +416,7 @@ async def test_delivery_to_user(mock_db, mock_user):
 @pytest.mark.asyncio
 async def test_broadcast_to_topic(mock_db, mock_user):
     sub = models.PushSubscription(
-        id=1,
+        id="019c2e75-f095-7929-9c79-261cedfe7a86",
         user_id=mock_user.id,
         endpoint="url",
         p256dh="k",
@@ -498,7 +510,9 @@ async def test_send_web_push_gone(mock_db):
 
     from app.services.webpush import send_web_push
 
-    sub = models.PushSubscription(id=1, endpoint="url", p256dh="k", auth="s")
+    sub = models.PushSubscription(
+        id="019c2e75-f095-7929-9c79-261cedfe7a87", endpoint="url", p256dh="k", auth="s"
+    )
 
     # Mocking WebPushException with 410 Gone
     mock_response = MagicMock()
@@ -526,12 +540,17 @@ async def test_admin_topic_routes(mock_db, mock_admin, mock_request):
         scalar_one_or_none=MagicMock(return_value=None)
     )
     with pytest.raises(HTTPException) as exc:
-        await admin_get_user_topics(999, mock_request, mock_db, mock_admin)
+        await admin_get_user_topics(
+            "019c2e75-f095-7929-9c79-261cedf99999", mock_request, mock_db, mock_admin
+        )
     assert exc.value.status_code == 404
 
     # 2. Get topics (Success)
-    target = models.User(id=999, email="target@e.com", role="student")
-    target.push_topic_preferences = models.UserPushTopic(user_id=999, topics=["news"])
+    target_id = "019c2e75-f095-7929-9c79-261cedfe7a8f"
+    target = models.User(id=target_id, email="target@e.com", role="student")
+    target.push_topic_preferences = models.UserPushTopic(
+        user_id=target_id, topics=["news"]
+    )
     mock_db.execute.return_value = MagicMock(
         scalar_one_or_none=MagicMock(return_value=target)
     )
@@ -543,8 +562,8 @@ async def test_admin_topic_routes(mock_db, mock_admin, mock_request):
         ),
         patch("app.routers.notifications.sort_topics", return_value=["news"]),
     ):
-        res = await admin_get_user_topics(999, mock_request, mock_db, mock_admin)
-        assert res.user_id == 999
+        res = await admin_get_user_topics(target_id, mock_request, mock_db, mock_admin)
+        assert str(res.user_id) == target_id
         assert "news" in res.topics
 
     # 3. Update topics
@@ -555,9 +574,9 @@ async def test_admin_topic_routes(mock_db, mock_admin, mock_request):
 
     with patch("app.routers.notifications.translate", return_value="Error"):
         res = await admin_update_user_topics(
-            999, payload, mock_request, mock_db, mock_admin
+            target_id, payload, mock_request, mock_db, mock_admin
         )
-        assert res.user_id == 999
+        assert str(res.user_id) == target_id
         # Assuming admin_update_user_topics updates the record in DB
         # The actual logic in notifications.py for update is missing
         # from my view but I'll assume standard flow
@@ -582,7 +601,9 @@ async def test_send_web_push_error(mock_db):
 
     from app.services.webpush import send_web_push
 
-    sub = models.PushSubscription(id=1, endpoint="url", p256dh="k", auth="s")
+    sub = models.PushSubscription(
+        id="019c2e75-f095-7929-9c79-261cedfe7a88", endpoint="url", p256dh="k", auth="s"
+    )
 
     # Mocking generic error with status that doesn't trigger "gone" cleanup
     mock_response = MagicMock()
@@ -663,7 +684,9 @@ async def test_refresh_user_topic_preferences_variants(mock_db):
         MagicMock(scalar_one_or_none=MagicMock(return_value=None)),
     ]
     with patch("app.routers.notifications.sort_topics", return_value=["news"]):
-        await _refresh_user_topic_preferences(mock_db, user_id=1)
+        await _refresh_user_topic_preferences(
+            mock_db, user_id="019c2e75-f095-7929-9c79-261cedfe7a77"
+        )
         mock_db.add.assert_called()
 
 
@@ -704,12 +727,14 @@ async def test_send_to_user_error_paths(mock_db):
         "app.services.webpush._check_rate_limit",
         return_value=MagicMock(allowed=False, retry_after=60),
     ):
-        res = await send_to_user(1, {"title": "T"})
+        res = await send_to_user("019c2e75-f095-7929-9c79-261cedfe7a77", {"title": "T"})
         assert res == []
 
     # Invalid topic
     with patch("app.services.webpush.normalize_topic", return_value=None):
-        res = await send_to_user(1, {"title": "T"}, topic="!!!")
+        res = await send_to_user(
+            "019c2e75-f095-7929-9c79-261cedfe7a77", {"title": "T"}, topic="!!!"
+        )
         assert res == []
 
 

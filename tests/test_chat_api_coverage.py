@@ -11,7 +11,7 @@ from app.main import app
 @pytest.fixture
 def mock_user():
     user = MagicMock()
-    user.id = 1
+    user.id = "00000000-0000-0000-0000-000000000000"
     user.role = "admin"
     return user
 
@@ -37,22 +37,25 @@ async def test_chat_api_exhaustive(mock_user, mock_db):
             await ac.get("/api/v1/chats")
 
             # get messages
-            await ac.get("/api/v1/chats/1/messages")
+            await ac.get("/api/v1/chats/00000000-0000-0000-0000-000000000000/messages")
 
             # send message - using data since it has Form fields
             # send_message(chat_id: str, content: str = Form(""), ...)
-            await ac.post("/api/v1/chats/1/messages", data={"content": "hello"})
+            await ac.post(
+                "/api/v1/chats/00000000-0000-0000-0000-000000000000/messages",
+                data={"content": "hello"},
+            )
 
             # get chat details
-            await ac.get("/api/v1/chats/1")
+            await ac.get("/api/v1/chats/00000000-0000-0000-0000-000000000000")
 
             # mark read
-            await ac.post("/api/v1/chats/1/read")
+            await ac.post("/api/v1/chats/00000000-0000-0000-0000-000000000000/read")
 
             # clear history
-            await ac.post("/api/v1/chats/1/clear")
+            await ac.post("/api/v1/chats/00000000-0000-0000-0000-000000000000/clear")
 
             # delete chat
-            await ac.delete("/api/v1/chats/1")
+            await ac.delete("/api/v1/chats/00000000-0000-0000-0000-000000000000")
     finally:
         app.dependency_overrides.clear()
