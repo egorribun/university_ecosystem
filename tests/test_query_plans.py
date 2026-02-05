@@ -103,7 +103,7 @@ class TestCriticalQueryPlans:
         async with async_session() as session:
             query = """
                 SELECT * FROM notifications
-                WHERE user_id = 1
+                WHERE user_id = '00000000-0000-0000-0000-000000000000'
                 ORDER BY created_at DESC
                 LIMIT 20
             """
@@ -120,7 +120,8 @@ class TestCriticalQueryPlans:
         async with async_session() as session:
             # Use actual table name 'messages'
             query = (
-                "SELECT * FROM messages WHERE chat_id = 'test-chat' "
+                "SELECT * FROM messages "
+                "WHERE chat_id = '00000000-0000-0000-0000-000000000000' "
                 "ORDER BY created_at DESC LIMIT 50"
             )
             plan = await analyze_query_plan(session, query)
@@ -152,7 +153,7 @@ class TestCriticalQueryPlans:
             # Use actual table name 'schedule' and column 'start_time'
             query = """
                 SELECT * FROM schedule
-                WHERE group_id = 1
+                WHERE group_id = '00000000-0000-0000-0000-000000000000'
                 AND start_time BETWEEN '2024-01-01' AND '2024-01-07'
             """
             plan = await analyze_query_plan(session, query)
