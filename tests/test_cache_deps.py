@@ -182,8 +182,8 @@ async def test_swr_decorator():
         assert res == "stale"
         # Since it's stale, a background task should be created to refresh
         await asyncio.sleep(0.1)
-        # Note: We can't easily assert the background task results without more complex mocks,
-        # but the flow is covered.
+        # Note: We can't easily assert the background task results
+        # without more complex mocks, but the flow is covered.
 
 
 # 7. Utilities

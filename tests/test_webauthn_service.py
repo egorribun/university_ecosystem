@@ -32,7 +32,7 @@ async def test_get_registration_options_new_user(service, mock_db, user):
     mock_db.execute.return_value = mock_result
 
     with (
-        patch("app.services.webauthn.generate_registration_options") as mock_gen,
+        patch("app.services.webauthn.generate_registration_options"),
         patch("app.services.webauthn.options_to_json", return_value='{"foo": "bar"}'),
     ):
         options = await service.get_registration_options(user)
@@ -86,7 +86,7 @@ async def test_get_authentication_options(service, mock_db, user):
 
 def test_get_dummy_authentication_options(service):
     with (
-        patch("app.services.webauthn.generate_authentication_options") as mock_gen,
+        patch("app.services.webauthn.generate_authentication_options"),
         patch(
             "app.services.webauthn.options_to_json", return_value='{"dummy": "options"}'
         ),
