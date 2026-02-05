@@ -228,19 +228,21 @@ def upgrade():
                     "Legacy IDs are lost. "
                     f"Cannot map records in {table}. TRUNCATING {table} to proceed."
                 )
-                bind.execute(sa.text(f"TRUNCATE TABLE {table} CASCADE"))
+                bind.execute(sa.text(f'TRUNCATE TABLE "{table}" CASCADE'))
                 truncated_tables.add(table)
             continue
 
         logger.info(f"Populating {shadow_col} for {table}...")
         stmt = sa.text(f"""
-            UPDATE {table}
-            SET {shadow_col} = (
-                SELECT r.uuid_id FROM {ref_table} r WHERE r.id = {table}.{legacy_col}
+            UPDATE "{table}"
+            SET "{shadow_col}" = (
+                SELECT r.uuid_id FROM "{ref_table}" r
+                WHERE r.id = "{table}"."{legacy_col}"
             )
             WHERE EXISTS (
-                SELECT 1 FROM {ref_table} r WHERE r.id = {table}.{legacy_col}
-            ) AND {shadow_col} IS NULL
+                SELECT 1 FROM "{ref_table}" r
+                WHERE r.id = "{table}"."{legacy_col}"
+            ) AND "{shadow_col}" IS NULL
         """)
         bind.execute(stmt)
 
@@ -299,7 +301,7 @@ def upgrade():
                 logger.info(f"Dropping PK {pk_constraint['name']} for {table}...")
                 if bind.dialect.name == "postgresql":
                     batch_op.execute(
-                        f"ALTER TABLE {table} DROP CONSTRAINT IF EXISTS "
+                        f'ALTER TABLE "{table}" DROP CONSTRAINT IF EXISTS '
                         f'"{pk_constraint["name"]}" CASCADE'
                     )
                 else:
@@ -676,12 +678,12 @@ def downgrade():
             with op.batch_alter_table(table) as batch_op:
                 if bind.dialect.name == "postgresql":
                     batch_op.execute(
-                        f"ALTER TABLE {table} "
-                        f"DROP CONSTRAINT IF EXISTS {table}_pkey CASCADE"
+                        f'ALTER TABLE "{table}" '
+                        f'DROP CONSTRAINT IF EXISTS "{table}_pkey" CASCADE'
                     )
                     batch_op.execute(
-                        f"ALTER TABLE {table} "
-                        f"DROP CONSTRAINT IF EXISTS uq_{table}_legacy_id CASCADE"
+                        f'ALTER TABLE "{table}" '
+                        f'DROP CONSTRAINT IF EXISTS "uq_{table}_legacy_id" CASCADE'
                     )
                 else:
                     if bind.dialect.name != "sqlite":
@@ -692,7 +694,15 @@ def downgrade():
 
                 batch_op.alter_column("id", new_column_name="uuid_id")
                 batch_op.alter_column("legacy_id", new_column_name="id", nullable=False)
-                batch_op.create_primary_key(f"{table}_pkey", ["id"])
+
+                # Partition-aware PK restoration
+                pk_cols = ["id"]
+                if bind.dialect.name == "postgresql" and table in PARTITION_KEYS:
+                    pk_part = PARTITION_KEYS[table]
+                    if pk_part not in pk_cols:
+                        pk_cols.append(pk_part)
+
+                batch_op.create_primary_key(f"{table}_pkey", pk_cols)
 
     # 5. Restore Original FKs Phase: Recreate FKs pointing back to the Integer 'id'
     # We refresh the inspector to see renamed columns
