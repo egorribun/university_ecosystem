@@ -51,6 +51,7 @@ TABLES_TO_SWAP = [
     "notifications",
     "notification_deliveries",
     "data_access_logs",
+    "schedule",
 ]
 
 PARTITION_KEYS = {

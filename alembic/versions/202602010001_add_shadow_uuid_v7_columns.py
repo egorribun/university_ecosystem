@@ -53,6 +53,7 @@ TABLES = [
     "notifications",
     "notification_deliveries",
     "data_access_logs",
+    "schedule",
 ]
 
 

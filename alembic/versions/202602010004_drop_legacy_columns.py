@@ -50,6 +50,7 @@ TABLES_TO_CLEANUP = [
     "notifications",
     "notification_deliveries",
     "data_access_logs",
+    "schedule",
 ]
 
 # (Table, Legacy FK Col)
