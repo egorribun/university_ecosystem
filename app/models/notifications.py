@@ -42,6 +42,7 @@ class Notification(Base, UUID7PrimaryKeyMixin, UserFK):
         server_default=func.now(),
         index=True,
         nullable=False,
+        primary_key=True,
     )
 
     __table_args__ = (
@@ -126,6 +127,7 @@ class NotificationDelivery(Base, UUID7PrimaryKeyMixin):
         server_default=func.now(),
         nullable=False,
         index=True,
+        primary_key=True,
     )
     delivered_at = Column(DateTime(timezone=True), index=True)
     status_code = Column(Integer)
@@ -135,8 +137,8 @@ class NotificationDelivery(Base, UUID7PrimaryKeyMixin):
 
     __table_args__ = (
         ForeignKeyConstraint(
-            ["notification_id"],
-            ["notifications.id"],
+            ["notification_id", "notification_created_at"],
+            ["notifications.id", "notifications.created_at"],
             ondelete="CASCADE",
         ),
         Index("ix_notification_deliveries_notif_channel", "notification_id", "channel"),
