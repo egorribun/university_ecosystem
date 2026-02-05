@@ -1,0 +1,129 @@
+import argparse
+import os
+import subprocess
+import sys
+
+
+def get_alembic_cmd():
+    # If UV_PROJECT_ENVIRONMENT is set or we are in a container,
+    # we might not want/need 'uv run'
+    if os.environ.get("UV_PROJECT_ENVIRONMENT") or os.environ.get("DOCKER_CONTAINER"):
+        return "python -m alembic"
+
+    # Try to see if 'uv' is present
+    try:
+        subprocess.run(["uv", "--version"], capture_output=True, check=True)
+        return "uv run alembic"
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return "python -m alembic"
+
+
+ALEMBIC_BASE_CMD = get_alembic_cmd()
+
+
+def run_command(cmd, env=None):
+    print(f"Executing: {cmd}")
+    result = subprocess.run(cmd, shell=True, env=env)
+    if result.returncode != 0:
+        print(f"Error: Command failed with exit code {result.returncode}")
+        return False
+    return True
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Migration Stress Test")
+    parser.add_argument(
+        "--db-url",
+        help=(
+            "Database URL to test against. "
+            "Default: uses DATABASE_URL env or temp SQLite."
+        ),
+    )
+    parser.add_argument(
+        "--full",
+        action="store_true",
+        help="Perform a full downgrade to 'base' (GitHub CI style).",
+    )
+    args = parser.parse_args()
+
+    # Use SQLite for a quick syntax check if no DATABASE_URL is provided
+    # Using aiosqlite to match project's async nature
+    db_url = (
+        args.db_url
+        or os.getenv("DATABASE_URL")
+        or "sqlite+aiosqlite:///./temp_test_db.db"
+    )
+
+    # Ensure PostgreSQL URLs use the async driver (asyncpg) required by the project
+    is_postgres = db_url.startswith("postgresql://") or db_url.startswith(
+        "postgresql+asyncpg://"
+    )
+    if is_postgres:
+        if "+asyncpg" not in db_url:
+            db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+        # On Windows, asyncpg with SSL can sometimes cause ConnectionResetError (WinError 64)
+        # if the server doesn't support it or during handshake quirks.
+        if "ssl=" not in db_url:
+            separator = "&" if "?" in db_url else "?"
+            db_url += f"{separator}ssl=disable"
+
+        print(f"INFO: Normalized PostgreSQL URL: {db_url}")
+
+    env = os.environ.copy()
+    env["DATABASE_URL"] = db_url
+
+    print(f"--- Starting Migration Stress Test on {db_url} ---")
+    if args.full:
+        print("NOTE: Running FULL downgrade-to-base cycle.")
+
+    # 1. Clean start for SQLite
+    if "sqlite" in db_url:
+        db_file = db_url.split("///")[-1]
+        if os.path.exists(db_file):
+            try:
+                os.remove(db_file)
+                print(f"Removed old test database: {db_file}")
+            except Exception as e:
+                print(f"Warning: Could not remove {db_file}: {e}")
+
+    # 2. Upgrade to Head
+    print("\n--- Phase 1: Upgrade to Head ---")
+    if not run_command(f"{ALEMBIC_BASE_CMD} -c alembic.ini upgrade head", env):
+        sys.exit(1)
+
+    # 3. Test Downgrade
+    print("\n--- Phase 2: Testing Downgrade ---")
+    downgrade_target = "base" if args.full else "-1"
+    print(f"Downgrading to: {downgrade_target}")
+
+    if not run_command(
+        f"{ALEMBIC_BASE_CMD} -c alembic.ini downgrade {downgrade_target}", env
+    ):
+        print(
+            "\n[!] Downgrade failed! This usually means a migration in the chain "
+            "cannot be reversed cleanly (e.g. missing IF EXISTS, or doomed "
+            "transaction)."
+        )
+        sys.exit(1)
+
+    # 4. Final Upgrade back to Head
+    print("\n--- Phase 3: Final Upgrade back to Head ---")
+    if not run_command(f"{ALEMBIC_BASE_CMD} -c alembic.ini upgrade head", env):
+        print(
+            "\n[!] Final upgrade failed! The downgrade left the DB in a broken state."
+        )
+        sys.exit(1)
+
+    print("\nSUCCESS: Migration cycle completed successfully!")
+    if "sqlite" in db_url:
+        print(
+            "\nNote: SQLite check passed. To check for PostgreSQL-specific issues, "
+            "run with local Postgres: \n"
+            '$env:DATABASE_URL="postgresql://..." ; '
+            "python scripts/test_migrations.py --full"
+        )
+
+
+if __name__ == "__main__":
+    main()

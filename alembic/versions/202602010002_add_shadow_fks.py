@@ -78,12 +78,21 @@ def upgrade():
 
 
 def downgrade():
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+
+    # Cache tables to avoid repeated lookups
+    tables_in_db = set(inspector.get_table_names())
+
     for table_name, col_name in FK_TABLES:
-        try:
-            op.drop_index(f"ix_{table_name}_{col_name}", table_name)
-        except Exception:
-            pass
-        try:
+        if table_name not in tables_in_db:
+            continue
+
+        existing_indexes = {idx["name"] for idx in inspector.get_indexes(table_name)}
+        idx_name = f"ix_{table_name}_{col_name}"
+        if idx_name in existing_indexes:
+            op.drop_index(idx_name, table_name)
+
+        existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
+        if col_name in existing_cols:
             op.drop_column(table_name, col_name)
-        except Exception:
-            pass

@@ -99,13 +99,28 @@ def upgrade():
 
 
 def downgrade():
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+
     for table_name in TABLES:
+        # Check if table still exists (might have been dropped in earlier downgrade steps)
+        if table_name not in inspector.get_table_names():
+            continue
+
+        # On PostgreSQL, a UNIQUE index created with unique=True
+        # also creates a UNIQUE CONSTRAINT with the same name.
+        existing_constraints = {
+            c["name"] for c in inspector.get_unique_constraints(table_name)
+        }
         idx_name = f"ix_{table_name}_uuid_id"
-        try:
+
+        if idx_name in existing_constraints:
+            op.drop_constraint(idx_name, table_name, type_="unique")
+
+        existing_indexes = {idx["name"] for idx in inspector.get_indexes(table_name)}
+        if idx_name in existing_indexes:
             op.drop_index(idx_name, table_name)
-        except Exception:
-            pass
-        try:
+
+        existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
+        if "uuid_id" in existing_cols:
             op.drop_column(table_name, "uuid_id")
-        except Exception:
-            pass
