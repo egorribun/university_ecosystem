@@ -1025,6 +1025,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  "/api/v1/notifications/{notif_id}": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** Delete Notification */
+    delete: operations["delete_notification_api_v1_notifications__notif_id__delete"]
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   "/api/v1/notifications/{notif_id}/read": {
     parameters: {
       query?: never
@@ -5733,6 +5750,37 @@ export interface operations {
         }
         content: {
           "application/json": unknown
+        }
+      }
+    }
+  }
+  delete_notification_api_v1_notifications__notif_id__delete: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        notif_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": unknown
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
         }
       }
     }
