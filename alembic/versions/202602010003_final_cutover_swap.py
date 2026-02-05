@@ -111,6 +111,8 @@ def upgrade():
     logger = logging.getLogger("alembic")
     bind = op.get_bind()
     inspector = sa.inspect(bind)
+    is_postgresql = bind.dialect.name == "postgresql"
+    index_cascade = " CASCADE" if is_postgresql else ""
     from app.utils.uuid_v7 import generate_uuid7
 
     # 1. Identify all affected tables and their FKs
@@ -351,7 +353,9 @@ def upgrade():
         for t_name in tables_to_purge:
             # 2. explicit legacy names from previous failed runs
             for col in swapped_cols:
-                op.execute(f"DROP INDEX IF EXISTS ix_{t_name}_legacy_{col} CASCADE")
+                op.execute(
+                    f"DROP INDEX IF EXISTS ix_{t_name}_legacy_{col}{index_cascade}"
+                )
 
             if swapped_cols:
                 # 3. Existing unique constraints on these columns
@@ -404,7 +408,9 @@ def upgrade():
                         )
                         print(msg)
                         logger.info(msg)
-                        op.execute(f'DROP INDEX IF EXISTS "{idx["name"]}" CASCADE')
+                        op.execute(
+                            f'DROP INDEX IF EXISTS "{idx["name"]}"{index_cascade}'
+                        )
 
                         # Store for recreation (only for the parent table)
                         if t_name == table:
