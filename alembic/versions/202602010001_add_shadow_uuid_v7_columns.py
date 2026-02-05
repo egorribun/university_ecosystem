@@ -103,7 +103,7 @@ def downgrade():
     inspector = sa.inspect(bind)
 
     for table_name in TABLES:
-        # Check if table still exists (might have been dropped in earlier downgrade steps)
+        # Check if table still exists (might have been dropped in earlier steps)
         if table_name not in inspector.get_table_names():
             continue
 

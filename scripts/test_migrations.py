@@ -62,7 +62,7 @@ def main():
         if "+asyncpg" not in db_url:
             db_url = db_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-        # On Windows, asyncpg with SSL can sometimes cause ConnectionResetError (WinError 64)
+        # On Windows, asyncpg with SSL can sometimes cause ConnectionResetError
         # if the server doesn't support it or during handshake quirks.
         if "ssl=" not in db_url:
             separator = "&" if "?" in db_url else "?"
