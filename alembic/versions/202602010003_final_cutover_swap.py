@@ -344,15 +344,59 @@ def upgrade():
         if "parent_map" in locals() and table in parent_map:
             tables_to_purge.extend(parent_map[table])
 
+        # Data structures to hold objects for recreation
+        uqs_to_recreate = []  # List of (parent_table, name, columns)
+        indexes_to_recreate = []  # List of (parent_table, name, columns, unique)
+
         for t_name in tables_to_purge:
             # 2. explicit legacy names from previous failed runs
             for col in swapped_cols:
                 op.execute(f"DROP INDEX IF EXISTS ix_{t_name}_legacy_{col} CASCADE")
 
-            # 3. Existing indexes on these columns
             if swapped_cols:
-                existing_indexes = inspector.get_indexes(t_name)
+                # 3. Existing unique constraints on these columns
+                try:
+                    existing_uq = inspector.get_unique_constraints(t_name)
+                except Exception:
+                    existing_uq = []
+
+                dropped_uq_names = set()
+                for uq in existing_uq:
+                    if set(uq["column_names"]) & swapped_cols:
+                        msg = (
+                            f"Dropping unique constraint {uq['name']} on {t_name} "
+                            "involved in swap"
+                        )
+                        print(msg)
+                        logger.info(msg)
+                        if bind.dialect.name == "postgresql":
+                            op.execute(
+                                f'ALTER TABLE "{t_name}" DROP CONSTRAINT IF EXISTS '
+                                f'"{uq["name"]}" CASCADE'
+                            )
+                        else:
+                            with op.batch_alter_table(t_name) as batch_op:
+                                batch_op.drop_constraint(uq["name"], type_="unique")
+
+                        # Store for recreation (only for the parent table)
+                        if t_name == table:
+                            uqs_to_recreate.append(
+                                (table, uq["name"], uq["column_names"])
+                            )
+                        dropped_uq_names.add(uq["name"])
+
+                # 4. Existing indexes on these columns
+                try:
+                    existing_indexes = inspector.get_indexes(t_name)
+                except Exception:
+                    existing_indexes = []
+
                 for idx in existing_indexes:
+                    # Skip if this is a primary key index (handled elsewhere)
+                    # or already dropped via constraint
+                    if idx["name"].endswith("_pkey") or idx["name"] in dropped_uq_names:
+                        continue
+
                     # If index uses any of the swapped columns, drop it
                     if set(idx["column_names"]) & swapped_cols:
                         msg = (
@@ -361,6 +405,17 @@ def upgrade():
                         print(msg)
                         logger.info(msg)
                         op.execute(f'DROP INDEX IF EXISTS "{idx["name"]}" CASCADE')
+
+                        # Store for recreation (only for the parent table)
+                        if t_name == table:
+                            indexes_to_recreate.append(
+                                (
+                                    table,
+                                    idx["name"],
+                                    idx["column_names"],
+                                    idx.get("unique", False),
+                                )
+                            )
         with op.batch_alter_table(table) as batch_op:
             # A. Swap Columns for FK_TO_SWAP (Migrated FKs)
             # A. Swap Columns for FK_TO_SWAP (Migrated FKs)
@@ -458,14 +513,6 @@ def upgrade():
                             if efk["name"] == target_name:
                                 fk_exists = True
                                 break
-                            # Check content match (columns)
-                            # Note: efk['constrained_columns'] might be old name if
-                            # fetched before rename? No, inspector reflects DB state
-                            # at fetch time. At fetch time (before batch), 'user_id'
-                            # was the OLD column (int). We are creating FK on the NEW
-                            # column (which was shadow, renamed to user_id).
-                            # So the existing FK would be on the NEW column?
-                            # Use name check as primary.
 
                     if not fk_exists:
                         batch_op.create_foreign_key(
@@ -477,6 +524,28 @@ def upgrade():
                             if t in ("notification_deliveries", "event_attendance")
                             else "SET NULL",
                         )
+
+            # C. Recreate collected UniqueConstraints and Indices
+            for _, uq_name, uq_cols in uqs_to_recreate:
+                # For partitioned tables, ensure partition key is included
+                # in unique constraint
+                target_uq_cols = list(uq_cols)
+                if bind.dialect.name == "postgresql" and table in PARTITION_KEYS:
+                    pk_part = PARTITION_KEYS[table]
+                    if pk_part not in target_uq_cols:
+                        target_uq_cols.append(pk_part)
+                batch_op.create_unique_constraint(uq_name, target_uq_cols)
+
+            for _, idx_name, idx_cols, idx_unique in indexes_to_recreate:
+                if idx_unique:
+                    target_idx_cols = list(idx_cols)
+                    if bind.dialect.name == "postgresql" and table in PARTITION_KEYS:
+                        pk_part = PARTITION_KEYS[table]
+                        if pk_part not in target_idx_cols:
+                            target_idx_cols.append(pk_part)
+                    batch_op.create_unique_constraint(idx_name, target_idx_cols)
+                else:
+                    batch_op.create_index(idx_name, idx_cols)
 
             if recreate_pk and pk_dropped:
                 # Recreate PK using original columns (which now hold UUIDs)
