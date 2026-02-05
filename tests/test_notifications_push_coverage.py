@@ -1,3 +1,4 @@
+import uuid
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -727,13 +728,17 @@ async def test_send_to_user_error_paths(mock_db):
         "app.services.webpush._check_rate_limit",
         return_value=MagicMock(allowed=False, retry_after=60),
     ):
-        res = await send_to_user("019c2e75-f095-7929-9c79-261cedfe7a77", {"title": "T"})
+        res = await send_to_user(
+            uuid.UUID("019c2e75-f095-7929-9c79-261cedfe7a77"), {"title": "T"}
+        )
         assert res == []
 
     # Invalid topic
     with patch("app.services.webpush.normalize_topic", return_value=None):
         res = await send_to_user(
-            "019c2e75-f095-7929-9c79-261cedfe7a77", {"title": "T"}, topic="!!!"
+            uuid.UUID("019c2e75-f095-7929-9c79-261cedfe7a77"),
+            {"title": "T"},
+            topic="!!!",
         )
         assert res == []
 

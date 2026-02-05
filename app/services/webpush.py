@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import uuid
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
@@ -207,9 +208,9 @@ def _sanitize_vibrate(raw: Any) -> list[int]:
 
 @dataclass(slots=True)
 class WebPushResult:
-    subscription_id: int
+    subscription_id: uuid.UUID
     endpoint: str
-    user_id: int
+    user_id: uuid.UUID
     status: Literal["sent", "gone", "error"]
     status_code: int | None = None
     error: str | None = None
@@ -580,7 +581,7 @@ def send_web_push(sub: PushSubscription, data: dict) -> WebPushResult:
         "endpoint": sub.endpoint,
         "keys": {"p256dh": sub.p256dh, "auth": sub.auth},
     }
-    user_id = getattr(sub, "user_id", None) or 0
+    user_id = getattr(sub, "user_id", None)
     try:
         webpush(
             subscription_info=subscription_info,
@@ -683,7 +684,7 @@ async def process_push_results(results: list[WebPushResult]) -> None:
 
 
 async def send_to_user(
-    user_id: int,
+    user_id: uuid.UUID,
     payload: Mapping[str, Any] | None,
     topic: str | None = None,
 ) -> list[WebPushResult]:

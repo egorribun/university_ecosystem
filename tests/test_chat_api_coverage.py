@@ -1,3 +1,4 @@
+import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -11,7 +12,7 @@ from app.main import app
 @pytest.fixture
 def mock_user():
     user = MagicMock()
-    user.id = "00000000-0000-0000-0000-000000000000"
+    user.id = uuid.UUID("00000000-0000-0000-0000-000000000000")
     user.role = "admin"
     return user
 
