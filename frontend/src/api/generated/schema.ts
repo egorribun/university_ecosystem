@@ -1964,8 +1964,11 @@ export interface components {
       topics: string[]
       /** Updated At */
       updated_at?: string | null
-      /** User Id */
-      user_id: number
+      /**
+       * User Id
+       * Format: uuid
+       */
+      user_id: string
     }
     /** AdminUserTopicsUpdate */
     AdminUserTopicsUpdate: {
@@ -2268,9 +2271,10 @@ export interface components {
     DisableUserPushRequest: {
       /**
        * User Id
+       * Format: uuid
        * @description User ID for which push notifications should be disabled
        */
-      user_id: number
+      user_id: string
     }
     /** EventAttendanceCreate */
     EventAttendanceCreate: {
@@ -3033,8 +3037,11 @@ export interface components {
       created_at: string
       /** Endpoint */
       endpoint: string
-      /** Id */
-      id: number
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string
       /** Last Seen At */
       last_seen_at?: string | null
       /** P256Dh */
@@ -3045,8 +3052,11 @@ export interface components {
       updated_at?: string | null
       /** User Agent */
       user_agent?: string | null
-      /** User Id */
-      user_id: number
+      /**
+       * User Id
+       * Format: uuid
+       */
+      user_id: string
     }
     /** PushSubscriptionTopicsUpdate */
     PushSubscriptionTopicsUpdate: {
@@ -3099,7 +3109,7 @@ export interface components {
        * User Id
        * @description Target user id for testing
        */
-      user_id?: number | null
+      user_id?: string | null
     }
     /** PushTopicsResponse */
     PushTopicsResponse: {
