@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from functools import lru_cache
 
-from authzed.api.v1 import Client
+from authzed.api.v1 import Client, InsecureClient
 
 from app.core.config import settings
 
@@ -30,12 +30,21 @@ class SpiceDBClient:
                 "SPICEDB_PRESHARED_KEY is not set. SpiceDB integration will fail."
             )
 
-        # In production, we should use TLS. For this ecosystem, we assume internal gRPC.
-        # But we align with 2026 best practices: support for secure channels.
-        use_ssl = self._endpoint.startswith("https://") or "443" in self._endpoint
+        from urllib.parse import urlparse
 
-        # Clean endpoint
-        endpoint = self._endpoint.replace("http://", "").replace("https://", "")
+        raw_endpoint = self._endpoint
+        if "://" not in raw_endpoint:
+            p = urlparse(f"grpc://{raw_endpoint}")
+            endpoint = p.netloc
+            scheme = ""
+            port = p.port
+        else:
+            p = urlparse(raw_endpoint)
+            endpoint = p.netloc
+            scheme = p.scheme.lower()
+            port = p.port
+
+        use_ssl = scheme == "https" or port == 443
 
         if use_ssl:
             from grpcutil import bearer_token_credentials
@@ -45,8 +54,6 @@ class SpiceDBClient:
                 credentials=bearer_token_credentials(self._token),
             )
         else:
-            from authzed.api.v1 import InsecureClient
-
             self.client = InsecureClient(
                 target=endpoint,
                 token=self._token,

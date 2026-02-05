@@ -94,12 +94,12 @@ def _extract_client_info(request: Request) -> tuple[str | None, str | None]:
 async def _build_token_response(
     db: AsyncSession, user: User, token: str, session: ActiveSession
 ) -> TokenWithProfile:
-    from app.schemas.schemas import UserProfile
+    from app.schemas.schemas import UserOut
 
     return TokenWithProfile(
         access_token=token,
         token_type="bearer",
-        user=UserProfile.model_validate(user),
+        user=UserOut.model_validate(user),
     )
 
 
@@ -119,12 +119,15 @@ async def _collect_mfa_challenges(
     capabilities: dict[str, bool],
     session: ActiveSession | None = None,
 ) -> list[auth_schemas.MfaChallengeEntry]:
+    from datetime import timedelta
+
     methods = []
     if capabilities.get(mfa.MFA_METHOD_TOTP):
         methods.append(
             auth_schemas.MfaChallengeEntry(
                 method=mfa.MFA_METHOD_TOTP,
                 challenge_token=secrets.token_urlsafe(32),  # Simplified for now
+                challenge_expires_at=datetime.now(UTC) + timedelta(minutes=10),
             )
         )
     # Add other methods as needed
