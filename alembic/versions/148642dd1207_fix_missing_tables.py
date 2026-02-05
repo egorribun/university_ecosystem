@@ -1361,14 +1361,25 @@ def downgrade() -> None:
         batch_op.drop_column("webauthn_id")
         batch_op.drop_column("group_id")
 
+    existing_push_topics_indexes = {
+        i["name"] for i in inspector.get_indexes("user_push_topics")
+    }
     with safe_batch_alter_table("user_push_topics", schema=None) as batch_op:
-        batch_op.drop_index(batch_op.f("ix_user_push_topics_user_id"))
-        batch_op.create_index(
-            batch_op.f("ix_user_push_topics_updated_at"), ["updated_at"], unique=False
-        )
+        if "ix_user_push_topics_user_id" in existing_push_topics_indexes:
+            batch_op.drop_index(batch_op.f("ix_user_push_topics_user_id"))
+        if "ix_user_push_topics_updated_at" not in existing_push_topics_indexes:
+            batch_op.create_index(
+                batch_op.f("ix_user_push_topics_updated_at"),
+                ["updated_at"],
+                unique=False,
+            )
 
+    existing_jobs_indexes = {
+        i["name"] for i in inspector.get_indexes("notification_queue_jobs")
+    }
     with safe_batch_alter_table("notification_queue_jobs", schema=None) as batch_op:
-        batch_op.drop_index(batch_op.f("ix_notification_queue_jobs_kind"))
+        if "ix_notification_queue_jobs_kind" in existing_jobs_indexes:
+            batch_op.drop_index(batch_op.f("ix_notification_queue_jobs_kind"))
 
     with safe_batch_alter_table("mfa_challenges", schema=None) as batch_op:
         batch_op.create_index(
