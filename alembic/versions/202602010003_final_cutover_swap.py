@@ -633,6 +633,9 @@ def downgrade():
     all_affected_tables = [t for t in all_affected_tables_set if t not in partitions]
 
     # 2. Drop Phase: Drop all current foreign keys first
+    is_postgresql = bind.dialect.name == "postgresql"
+    index_cascade = " CASCADE" if is_postgresql else ""
+
     for table_name in all_affected_tables:
         fks = fks_to_restore.get(table_name, [])
         if fks:
@@ -642,13 +645,80 @@ def downgrade():
                     if fk["name"]:
                         batch_op.drop_constraint(fk["name"], type_="foreignkey")
 
-    # 3. Reverse FK Swap Phase: Column Renames
+    # 3. Dynamic Index/UQ Restoration Preparation
+    # We must drop indexes/UQs on swapped columns before renaming,
+    # then recreate them after renaming.
     for table in all_affected_tables:
-        columns = {c["name"] for c in inspector.get_columns(table)}
+        swapped_cols = {legacy_col for t, legacy_col, _, _ in FK_TO_SWAP if t == table}
+        if table in TABLES_TO_SWAP:
+            swapped_cols.add("id")
+
+        if not swapped_cols:
+            continue
+
+        tables_to_purge = [table]
+        if table in parent_map:
+            tables_to_purge.extend(parent_map[table])
+
+        uqs_to_recreate = []
+        indexes_to_recreate = []
+
+        for t_name in tables_to_purge:
+            # Drop explicit legacy indexes if any exist from failed runs
+            for col in swapped_cols:
+                op.execute(
+                    f'DROP INDEX IF EXISTS "ix_{t_name}_legacy_{col}"{index_cascade}'
+                )
+
+            # Collect and drop existing UQs and Indexes on swapped columns
+            try:
+                existing_uq = inspector.get_unique_constraints(t_name)
+            except Exception:
+                existing_uq = []
+
+            dropped_uq_names = set()
+            for uq in existing_uq:
+                if set(uq["column_names"]) & swapped_cols:
+                    logger.info(f"Dropping UQ {uq['name']} on {t_name} for swap")
+                    if is_postgresql:
+                        op.execute(
+                            f'ALTER TABLE "{t_name}" DROP CONSTRAINT IF EXISTS '
+                            f'"{uq["name"]}" CASCADE'
+                        )
+                    else:
+                        with op.batch_alter_table(t_name) as batch_op:
+                            batch_op.drop_constraint(uq["name"], type_="unique")
+                    if t_name == table:
+                        uqs_to_recreate.append((table, uq["name"], uq["column_names"]))
+                    dropped_uq_names.add(uq["name"])
+
+            try:
+                existing_indexes = inspector.get_indexes(t_name)
+            except Exception:
+                existing_indexes = []
+
+            for idx in existing_indexes:
+                if idx["name"].endswith("_pkey") or idx["name"] in dropped_uq_names:
+                    continue
+                if set(idx["column_names"]) & swapped_cols:
+                    logger.info(f"Dropping index {idx['name']} on {t_name} for swap")
+                    op.execute(f'DROP INDEX IF EXISTS "{idx["name"]}"{index_cascade}')
+                    if t_name == table:
+                        indexes_to_recreate.append(
+                            (
+                                table,
+                                idx["name"],
+                                idx["column_names"],
+                                idx.get("unique", False),
+                            )
+                        )
+
+        # 4. Reverse Column Swap Phase
         with op.batch_alter_table(table) as batch_op:
+            # A. FK Column Renames
             for t, legacy_col, shadow_col, ref_table in FK_TO_SWAP:
                 if t == table:
-                    # Current: legacy_col is UUID, legacy_{legacy_col} is Int
+                    columns = {c["name"] for c in inspector.get_columns(table)}
                     legacy_int_col = f"legacy_{legacy_col}"
                     if legacy_col in columns:
                         if legacy_int_col in columns:
@@ -662,7 +732,6 @@ def downgrade():
                                 legacy_int_col, new_column_name=legacy_col
                             )
                         else:
-                            # Only shadow column exists as legacy_col, rename it back
                             logger.info(
                                 f"Reversing single FK for {table}.{legacy_col}..."
                             )
@@ -670,39 +739,48 @@ def downgrade():
                                 legacy_col, new_column_name=shadow_col
                             )
 
-    # 4. Reverse PK Swap Phase
-    for table in [t for t in TABLES_TO_SWAP if t not in partitions]:
-        columns = {c["name"] for c in inspector.get_columns(table)}
-        if "id" in columns and "legacy_id" in columns:
-            logger.info(f"Reversing PK swap for {table}...")
-            with op.batch_alter_table(table) as batch_op:
-                if bind.dialect.name == "postgresql":
-                    batch_op.execute(
-                        f'ALTER TABLE "{table}" '
-                        f'DROP CONSTRAINT IF EXISTS "{table}_pkey" CASCADE'
-                    )
-                    batch_op.execute(
-                        f'ALTER TABLE "{table}" '
-                        f'DROP CONSTRAINT IF EXISTS "uq_{table}_legacy_id" CASCADE'
-                    )
-                else:
-                    if bind.dialect.name != "sqlite":
-                        batch_op.drop_constraint(f"{table}_pkey", type_="primary")
-                        batch_op.drop_constraint(
-                            f"uq_{table}_legacy_id", type_="unique"
+            # B. PK Column Renames (if table is in TABLES_TO_SWAP)
+            if table in TABLES_TO_SWAP and table not in partitions:
+                columns = {c["name"] for c in inspector.get_columns(table)}
+                if "id" in columns and "legacy_id" in columns:
+                    logger.info(f"Reversing PK swap for {table}...")
+                    if is_postgresql:
+                        batch_op.execute(
+                            f'ALTER TABLE "{table}" '
+                            f'DROP CONSTRAINT IF EXISTS "{table}_pkey" CASCADE'
                         )
+                        batch_op.execute(
+                            f'ALTER TABLE "{table}" '
+                            f'DROP CONSTRAINT IF EXISTS "uq_{table}_legacy_id" CASCADE'
+                        )
+                    else:
+                        if bind.dialect.name != "sqlite":
+                            batch_op.drop_constraint(f"{table}_pkey", type_="primary")
+                            batch_op.drop_constraint(
+                                f"uq_{table}_legacy_id", type_="unique"
+                            )
 
-                batch_op.alter_column("id", new_column_name="uuid_id")
-                batch_op.alter_column("legacy_id", new_column_name="id", nullable=False)
+                    batch_op.alter_column("id", new_column_name="uuid_id")
+                    batch_op.alter_column(
+                        "legacy_id", new_column_name="id", nullable=False
+                    )
 
-                # Partition-aware PK restoration
-                pk_cols = ["id"]
-                if bind.dialect.name == "postgresql" and table in PARTITION_KEYS:
-                    pk_part = PARTITION_KEYS[table]
-                    if pk_part not in pk_cols:
-                        pk_cols.append(pk_part)
+                    pk_cols = ["id"]
+                    if is_postgresql and table in PARTITION_KEYS:
+                        pk_part = PARTITION_KEYS[table]
+                        if pk_part not in pk_cols:
+                            pk_cols.append(pk_part)
+                    batch_op.create_primary_key(f"{table}_pkey", pk_cols)
 
-                batch_op.create_primary_key(f"{table}_pkey", pk_cols)
+            # C. Recreate UQs and Indexes
+            for _, uq_name, uq_cols in uqs_to_recreate:
+                batch_op.create_unique_constraint(uq_name, uq_cols)
+
+            for _, idx_name, idx_cols, idx_unique in indexes_to_recreate:
+                if idx_unique:
+                    batch_op.create_unique_constraint(idx_name, idx_cols)
+                else:
+                    batch_op.create_index(idx_name, idx_cols)
 
     # 5. Restore Original FKs Phase: Recreate FKs pointing back to the Integer 'id'
     # We refresh the inspector to see renamed columns
