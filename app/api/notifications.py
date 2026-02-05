@@ -452,7 +452,9 @@ async def mark_read_single(
     user: User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
-    notif = await db.get(Notification, notif_id)
+    notif = (
+        await db.execute(select(Notification).where(Notification.id == notif_id))
+    ).scalar_one_or_none()
     ensure_exists(notif, "notifications", locale)
 
     if notif.user_id != user.id:
@@ -482,6 +484,28 @@ async def mark_all_read(
     await db.commit()
     updated = result.rowcount or 0
     return {"ok": True, "updated": int(updated)}
+
+
+@router.delete("/{notif_id}")
+async def delete_notification(
+    notif_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    locale = resolve_locale(request=request, user=user)
+    notif = (
+        await db.execute(select(Notification).where(Notification.id == notif_id))
+    ).scalar_one_or_none()
+    ensure_exists(notif, "notifications", locale)
+
+    if notif.user_id != user.id:
+        raise_not_found("notifications", locale)
+
+    await db.delete(notif)
+    await db.commit()
+
+    return {"ok": True}
 
 
 @router.delete("")
