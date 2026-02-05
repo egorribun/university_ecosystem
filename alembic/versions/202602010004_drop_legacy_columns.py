@@ -113,12 +113,12 @@ def upgrade():
                 # Drop constraint if exists (CASCADE handles it usually)
                 if table == "active_sessions":
                     op.execute(
-                        f"ALTER TABLE {table} "
-                        f"DROP CONSTRAINT IF EXISTS uq_{table}_legacy_id CASCADE"
+                        f'ALTER TABLE "{table}" '
+                        f'DROP CONSTRAINT IF EXISTS "uq_{table}_legacy_id" CASCADE'
                     )
 
                 op.execute(
-                    f"ALTER TABLE {table} DROP COLUMN IF EXISTS legacy_id CASCADE"
+                    f'ALTER TABLE "{table}" DROP COLUMN IF EXISTS "legacy_id" CASCADE'
                 )
                 logger.info(f"Dropped legacy_id from {table} (Postgres)")
             else:
@@ -141,7 +141,8 @@ def upgrade():
         try:
             if dialect == "postgresql":
                 op.execute(
-                    f"ALTER TABLE {table} DROP COLUMN IF EXISTS {legacy_col} CASCADE"
+                    f'ALTER TABLE "{table}" DROP COLUMN IF EXISTS '
+                    f'"{legacy_col}" CASCADE'
                 )
                 logger.info(f"Dropped {legacy_col} from {table} (Postgres)")
             else:
@@ -153,28 +154,53 @@ def upgrade():
 
 
 def downgrade():
+    logger = logging.getLogger("alembic")
+    bind = op.get_bind()
+    dialect = bind.dialect.name
+
     # Restore legacy columns as nullable to avoid errors in previous downgrades.
     # Note: Data loss for these columns is expected after upgrade.
     for table in TABLES_TO_CLEANUP:
-        try:
-            # Use String for tables known to have String IDs, default to Integer
-            col_type = (
-                sa.String()
-                if table in ("chats", "messages", "attachments")
-                else sa.Integer()
+        # Use String for tables known to have String IDs, default to Integer
+        col_type_str = (
+            "VARCHAR" if table in ("chats", "messages", "attachments") else "INTEGER"
+        )
+        if dialect == "postgresql":
+            op.execute(
+                f'ALTER TABLE "{table}" ADD COLUMN IF NOT EXISTS '
+                f'"legacy_id" {col_type_str}'
             )
-            op.add_column(table, sa.Column("legacy_id", col_type, nullable=True))
-        except Exception:
-            pass
+        else:
+            try:
+                with op.batch_alter_table(table) as batch_op:
+                    col_type = (
+                        sa.String()
+                        if table in ("chats", "messages", "attachments")
+                        else sa.Integer()
+                    )
+                    batch_op.add_column(sa.Column("legacy_id", col_type, nullable=True))
+            except Exception as e:
+                logger.warning(f"Could not restore legacy_id for {table}: {e}")
 
     for table, legacy_col in FK_TO_CLEANUP:
-        try:
-            # All legacy FKs were essentially integers or strings matching their targets
-            col_type = (
-                sa.String()
-                if "chat_id" in legacy_col or "message_id" in legacy_col
-                else sa.Integer()
+        col_type_str = (
+            "VARCHAR"
+            if "chat_id" in legacy_col or "message_id" in legacy_col
+            else "INTEGER"
+        )
+        if dialect == "postgresql":
+            op.execute(
+                f'ALTER TABLE "{table}" ADD COLUMN IF NOT EXISTS '
+                f'"{legacy_col}" {col_type_str}'
             )
-            op.add_column(table, sa.Column(legacy_col, col_type, nullable=True))
-        except Exception:
-            pass
+        else:
+            try:
+                with op.batch_alter_table(table) as batch_op:
+                    col_type = (
+                        sa.String()
+                        if "chat_id" in legacy_col or "message_id" in legacy_col
+                        else sa.Integer()
+                    )
+                    batch_op.add_column(sa.Column(legacy_col, col_type, nullable=True))
+            except Exception as e:
+                logger.warning(f"Could not restore {legacy_col} for {table}: {e}")

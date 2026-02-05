@@ -354,7 +354,7 @@ def upgrade():
             # 2. explicit legacy names from previous failed runs
             for col in swapped_cols:
                 op.execute(
-                    f"DROP INDEX IF EXISTS ix_{t_name}_legacy_{col}{index_cascade}"
+                    f'DROP INDEX IF EXISTS "ix_{t_name}_legacy_{col}"{index_cascade}'
                 )
 
             if swapped_cols:
