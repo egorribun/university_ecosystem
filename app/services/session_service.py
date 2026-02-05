@@ -104,7 +104,8 @@ class SessionService:
 
         # Fallback to Postgres Advisory Lock if Redis is unavailable or fails
         if not lock_acquired and self.db.bind.dialect.name == "postgresql":
-            uid_int = int(user_id.int) % (2**63 - 1)
+            # pg_advisory_xact_lock(int, int) requires 32-bit integers
+            uid_int = int(user_id.int) % (2**31 - 1)
             await self.db.execute(
                 text("SELECT pg_advisory_xact_lock(1, :uid)"), {"uid": uid_int}
             )
