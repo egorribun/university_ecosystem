@@ -100,70 +100,59 @@ def upgrade():
     bind = op.get_bind()
     dialect = bind.dialect.name
 
+    # We do NOT use inspector here because heavy DDL in previous steps
+    # causes asyncpg generic cache to fail with "pg_namespace.nspname != $7"
+    # referencing stale types/tables when inspecting.
+    # Instead, we just try to drop the columns and ignore missing errors.
+
     # 1. Drop the legacy primary key columns and their unique constraints
-    inspector = sa.inspect(bind)
-
     for table in TABLES_TO_CLEANUP:
-        if not inspector.has_table(table):
-            continue
+        print(f"Cleaning legacy_id {table}...")
+        try:
+            if dialect == "postgresql":
+                # Drop constraint if exists (CASCADE handles it usually)
+                if table == "active_sessions":
+                    op.execute(
+                        f"ALTER TABLE {table} "
+                        f"DROP CONSTRAINT IF EXISTS uq_{table}_legacy_id CASCADE"
+                    )
 
-        columns = {c["name"] for c in inspector.get_columns(table)}
-        if "legacy_id" in columns:
-            try:
+                op.execute(
+                    f"ALTER TABLE {table} DROP COLUMN IF EXISTS legacy_id CASCADE"
+                )
+                logger.info(f"Dropped legacy_id from {table} (Postgres)")
+            else:
                 with op.batch_alter_table(table) as batch_op:
-                    # Drop the unique constraint we created in previous step
                     if dialect != "sqlite":
-                        # For active_sessions, we might have dependent FKs
-                        # (e.g. mfa_challenges) that persist if not cleaned up
-                        # correctly. Use CASCADE for Postgres.
-                        if table == "active_sessions" and dialect == "postgresql":
-                            batch_op.execute(
-                                f"ALTER TABLE {table} DROP CONSTRAINT IF EXISTS "
-                                f"uq_{table}_legacy_id CASCADE"
-                            )
-                        else:
+                        try:
                             batch_op.drop_constraint(
                                 f"uq_{table}_legacy_id", type_="unique"
                             )
+                        except Exception:
+                            pass
                     batch_op.drop_column("legacy_id")
                 logger.info(f"Dropped legacy_id from {table}")
-            except Exception as e:
-                logger.warning(f"Could not drop legacy_id for {table}: {e}")
-        else:
-            logger.info(f"Skipping {table} - legacy_id already dropped")
+        except Exception as e:
+            logger.info(f"Skipping legacy_id drop for {table}: {e}")
 
     # 2. Drop the legacy foreign key columns
     for table, legacy_col in FK_TO_CLEANUP:
-        if not inspector.has_table(table):
-            continue
-
-        columns = {c["name"] for c in inspector.get_columns(table)}
-        if legacy_col not in columns:
-            logger.info(
-                f"Skipping {legacy_col} in {table} - already dropped or missing"
-            )
-            continue
-
+        print(f"Cleaning FK {legacy_col} in {table}...")
         try:
-            with op.batch_alter_table(table) as batch_op:
-                batch_op.drop_column(legacy_col)
-            logger.info(f"Dropped {legacy_col} from {table}")
-        except Exception as e:
-            logger.warning(f"Could not drop {legacy_col} for {table}: {e}")
-            # Try to make it nullable if we can't drop it (last resort)
-            try:
-                with op.batch_alter_table(table) as batch_op:
-                    batch_op.alter_column(legacy_col, nullable=True)
-            except Exception as e2:
-                # If column doesn't exist (race condition?), ignore
-                logger.warning(
-                    f"Could not make {legacy_col} nullable for {table}: {e2}"
+            if dialect == "postgresql":
+                op.execute(
+                    f"ALTER TABLE {table} DROP COLUMN IF EXISTS {legacy_col} CASCADE"
                 )
+                logger.info(f"Dropped {legacy_col} from {table} (Postgres)")
+            else:
+                with op.batch_alter_table(table) as batch_op:
+                    batch_op.drop_column(legacy_col)
+                logger.info(f"Dropped {legacy_col} from {table}")
+        except Exception as e:
+            logger.info(f"Skipping {legacy_col} drop for {table}: {e}")
 
 
 def downgrade():
-    import sqlalchemy as sa
-
     # Restore legacy columns as nullable to avoid errors in previous downgrades.
     # Note: Data loss for these columns is expected after upgrade.
     for table in TABLES_TO_CLEANUP:

@@ -250,19 +250,21 @@ def upgrade():
 
     # Pass 0: Detect partitions to avoid direct manipulation (must be done on parent)
     partitions = set()
+    parent_map = {}
     if bind.dialect.name == "postgresql":
-        partitions = {
-            r[0]
-            for r in bind.execute(
-                sa.text(
-                    """
-                SELECT child.relname
+        results = bind.execute(
+            sa.text(
+                """
+                SELECT parent.relname, child.relname
                 FROM pg_inherits
                 JOIN pg_class child ON pg_inherits.inhrelid = child.oid
-            """
-                )
-            ).fetchall()
-        }
+                JOIN pg_class parent ON pg_inherits.inhparent = parent.oid
+                """
+            )
+        ).fetchall()
+        for parent, child in results:
+            partitions.add(child)
+            parent_map.setdefault(parent, []).append(child)
 
     # Filter out partitions from structural changes
     all_affected_tables = [t for t in all_affected_tables_set if t not in partitions]
@@ -307,12 +309,15 @@ def upgrade():
 
             batch_op.create_primary_key(f"{table}_pkey", pk_cols)
 
-            # Keep both unique for transition
-            uq_cols = ["legacy_id"]
-            if bind.dialect.name == "postgresql" and table in PARTITION_KEYS:
-                uq_cols.append(PARTITION_KEYS[table])
-
-            batch_op.create_unique_constraint(f"uq_{table}_legacy_id", uq_cols)
+            # Check if UQ exists
+            uq_name = f"uq_{table}_legacy_id"
+            existing_constraints = inspector.get_unique_constraints(table)
+            if not any(c["name"] == uq_name for c in existing_constraints):
+                # Keep both unique for transition
+                uq_cols = ["legacy_id"]
+                if bind.dialect.name == "postgresql" and table in PARTITION_KEYS:
+                    uq_cols.append(PARTITION_KEYS[table])
+                batch_op.create_unique_constraint(uq_name, uq_cols)
 
     # 3.3 FK Swap Phase: Swap FK columns and Recreate ALL constraints
     for table in all_affected_tables:
@@ -322,7 +327,40 @@ def upgrade():
             pk_constraint.get("constrained_columns", []) if pk_constraint else []
         )
         columns = {c["name"] for c in inspector.get_columns(table)}
+        try:
+            existing_fks = inspector.get_foreign_keys(table)
+        except Exception:
+            existing_fks = []
+            logger.warning(f"Could not fetch FKs for {table}")
 
+        # and drop them. They are on data that will become
+        # legacy/dropped, so we don't need them.
+
+        # 1. Identify columns being swapped for this table
+        swapped_cols = {legacy_col for t, legacy_col, _, _ in FK_TO_SWAP if t == table}
+
+        # Expand tables to verify: table itself + any children (partitions)
+        tables_to_purge = [table]
+        if "parent_map" in locals() and table in parent_map:
+            tables_to_purge.extend(parent_map[table])
+
+        for t_name in tables_to_purge:
+            # 2. explicit legacy names from previous failed runs
+            for col in swapped_cols:
+                op.execute(f"DROP INDEX IF EXISTS ix_{t_name}_legacy_{col} CASCADE")
+
+            # 3. Existing indexes on these columns
+            if swapped_cols:
+                existing_indexes = inspector.get_indexes(t_name)
+                for idx in existing_indexes:
+                    # If index uses any of the swapped columns, drop it
+                    if set(idx["column_names"]) & swapped_cols:
+                        msg = (
+                            f"Dropping index {idx['name']} on {t_name} involved in swap"
+                        )
+                        print(msg)
+                        logger.info(msg)
+                        op.execute(f'DROP INDEX IF EXISTS "{idx["name"]}" CASCADE')
         with op.batch_alter_table(table) as batch_op:
             # A. Swap Columns for FK_TO_SWAP (Migrated FKs)
             # A. Swap Columns for FK_TO_SWAP (Migrated FKs)
@@ -359,8 +397,29 @@ def upgrade():
                             pk_dropped = True
 
                     if legacy_col in columns:
+                        # Safety check: if legacy_{legacy_col} already exists
+                        # (from failed run), we must drop it first to allow rename.
+                        target_legacy_name = f"legacy_{legacy_col}"
+                        if target_legacy_name in columns:
+                            logger.info(
+                                f"Dropping stale column {target_legacy_name} "
+                                f"from {table}"
+                            )
+                            # We use execute to ensure CASCADE works if needed
+                            # (though drop_column might be enough)
+                            # batch_op doesn't strictly support CASCADE flag easily
+                            # in all backends, but on Postgres we explicitly want to
+                            # kill indexes.
+                            if bind.dialect.name == "postgresql":
+                                batch_op.execute(
+                                    f"ALTER TABLE {table} DROP COLUMN "
+                                    f"IF EXISTS {target_legacy_name} CASCADE"
+                                )
+                            else:
+                                batch_op.drop_column(target_legacy_name)
+
                         batch_op.alter_column(
-                            legacy_col, new_column_name=f"legacy_{legacy_col}"
+                            legacy_col, new_column_name=target_legacy_name
                         )
 
                     if shadow_col in columns:
@@ -378,15 +437,46 @@ def upgrade():
                         local_cols.append("notification_created_at")
                         ref_cols.append("created_at")
 
-                    batch_op.create_foreign_key(
-                        original_name or f"fk_{table}_{legacy_col}_uuid",
-                        ref_table,
-                        local_cols,
-                        ref_cols,
-                        ondelete="CASCADE"
-                        if t in ("notification_deliveries", "event_attendance")
-                        else "SET NULL",
-                    )
+                    # Check if FK already exists to prevent duplication error
+                    fk_exists = False
+                    # We need to refresh FKs if possible, or use pre-fetched.
+                    # Since we are in batch block, we rely on pre-fetched `existing_fks`
+                    # (which we need to fetch before batch block)
+                    # BUT wait, we just renamed columns. The inspector results from
+                    # start of loop (before batch) reflect old state?
+                    # "legacy_col" was renamed to "legacy_..."
+                    # "shadow_col" was renamed to "legacy_col" (which is now user_id)
+                    # So current "user_id" (legacy_col) IS the one we want to put FK on.
+
+                    # If FK exists on 'user_id' pointing to 'users.id', we skip.
+                    if "existing_fks" in locals():
+                        for efk in existing_fks:
+                            # Check exact name match
+                            target_name = (
+                                original_name or f"fk_{table}_{legacy_col}_uuid"
+                            )
+                            if efk["name"] == target_name:
+                                fk_exists = True
+                                break
+                            # Check content match (columns)
+                            # Note: efk['constrained_columns'] might be old name if
+                            # fetched before rename? No, inspector reflects DB state
+                            # at fetch time. At fetch time (before batch), 'user_id'
+                            # was the OLD column (int). We are creating FK on the NEW
+                            # column (which was shadow, renamed to user_id).
+                            # So the existing FK would be on the NEW column?
+                            # Use name check as primary.
+
+                    if not fk_exists:
+                        batch_op.create_foreign_key(
+                            original_name or f"fk_{table}_{legacy_col}_uuid",
+                            ref_table,
+                            local_cols,
+                            ref_cols,
+                            ondelete="CASCADE"
+                            if t in ("notification_deliveries", "event_attendance")
+                            else "SET NULL",
+                        )
 
             if recreate_pk and pk_dropped:
                 # Recreate PK using original columns (which now hold UUIDs)
@@ -442,19 +532,21 @@ def downgrade():
 
     # Pass 0: Detect partitions
     partitions = set()
+    parent_map = {}
     if bind.dialect.name == "postgresql":
-        partitions = {
-            r[0]
-            for r in bind.execute(
-                sa.text(
-                    """
-                SELECT child.relname
+        results = bind.execute(
+            sa.text(
+                """
+                SELECT parent.relname, child.relname
                 FROM pg_inherits
                 JOIN pg_class child ON pg_inherits.inhrelid = child.oid
-            """
-                )
-            ).fetchall()
-        }
+                JOIN pg_class parent ON pg_inherits.inhparent = parent.oid
+                """
+            )
+        ).fetchall()
+        for parent, child in results:
+            partitions.add(child)
+            parent_map.setdefault(parent, []).append(child)
 
     all_affected_tables_set = (
         set(TABLES_TO_SWAP)
