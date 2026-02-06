@@ -36,7 +36,7 @@ async def test_login_json_endpoint(async_client: AsyncClient, user_factory):
     user = await user_factory(hashed_password=get_password_hash(password))
 
     payload = {"email": user.email, "password": password, "trust_device": False}
-    response = await async_client.post("/auth/login-json", json=payload)
+    response = await async_client.post("/auth/login/json", json=payload)
     assert response.status_code == 200
     data = response.json()
     assert "access_token" in data
@@ -44,8 +44,8 @@ async def test_login_json_endpoint(async_client: AsyncClient, user_factory):
 
     # Wrong password
     payload["password"] = "wrong"
-    response = await async_client.post("/auth/login-json", json=payload)
-    assert response.status_code == 400
+    response = await async_client.post("/auth/login/json", json=payload)
+    assert response.status_code == 401
 
 
 async def test_login_form_endpoint(async_client: AsyncClient, user_factory):
