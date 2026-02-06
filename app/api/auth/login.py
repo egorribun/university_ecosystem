@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import secrets
 import time
-from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import (
@@ -28,6 +27,7 @@ from app.api.deps import (
     get_user_service,
 )
 from app.auth import constants, mfa
+from app.auth.handlers.logout import router as logout_router
 from app.auth.schemas import (
     LoginIn,
     LoginPasskeyStartIn,
@@ -35,10 +35,9 @@ from app.auth.schemas import (
     MfaVerifyIn,
     PendingMfaResponse,
 )
-from app.auth.security import decode_token
 from app.core.config import settings
 from app.core.localization import resolve_locale, translate
-from app.models.models import ActiveSession, User
+from app.models.models import User
 from app.schemas.schemas import (
     SessionSigningKeyOut,
     TokenWithProfile,
@@ -51,7 +50,9 @@ from app.utils.ratelimit import sensitive_route_limit
 
 logger = logging.getLogger("app.auth.login")
 
+
 router = APIRouter(tags=["auth"])
+router.include_router(logout_router)
 
 
 @router.post(
@@ -66,7 +67,7 @@ async def login_passkey_start(
     audit: AuditService = Depends(get_audit_service),
 ):
     normalized_email = payload.email.strip().lower()
-    from sqlalchemy import func, select
+    from sqlalchemy import func
 
     res = await db.execute(
         select(User).where(func.lower(User.email) == normalized_email)
@@ -273,49 +274,6 @@ async def register(
         ) from exc
 
     return {"status": "ok", "id": new_user.id}
-
-
-@router.post("/logout", status_code=status.HTTP_200_OK)
-async def logout(
-    response: Response,
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    audit: AuditService = Depends(get_audit_service),
-):
-    """Terminate the client session."""
-    raw_token = request.cookies.get("access_token_v2")
-    if not raw_token:
-        auth_header = request.headers.get("Authorization")
-        if auth_header and auth_header.startswith("Bearer "):
-            raw_token = auth_header[7:].strip()
-
-    payload = decode_token(raw_token) if raw_token else None
-    jti = payload.get("jti") if payload else None
-    if jti:
-        res = await db.execute(select(ActiveSession).where(ActiveSession.jti == jti))
-        session = res.scalars().first()
-        if session:
-            now = datetime.now(UTC)
-            session.revoked_at = session.revoked_at or now
-            session.signing_key = secrets.token_urlsafe(32)
-            await db.commit()
-
-            audit.log(
-                "auth.logout.revoked",
-                request,
-                user_id=session.user_id,
-                reason="user_initiated",
-            )
-
-        # Revoke from Redis (Cache-Aside)
-        from app.services.auth.redis_session import RedisSessionService
-
-        redis_service = RedisSessionService()
-        await redis_service.revoke_session(jti)
-
-    LoginService.clear_access_token_cookie(response)
-    response.headers["Clear-Site-Data"] = '"cache", "cookies", "storage"'
-    return {"message": "Logged out successfully"}
 
 
 @router.get("/session/signing-key", response_model=SessionSigningKeyOut)

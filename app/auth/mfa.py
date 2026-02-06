@@ -821,7 +821,14 @@ async def verify_totp_for_user(
             continue
         if verify_totp(enrollment.secret, code):
             if loaded_challenge is not None:
-                await consume_challenge(db, loaded_challenge)
+                await consume_challenge(
+                    db,
+                    challenge_token=loaded_challenge.token,
+                    challenge_type=CHALLENGE_TYPE_TOTP_VERIFY,
+                    provided_code=code,
+                    provided_method=MFA_METHOD_TOTP,
+                    locale=locale,
+                )
             return enrollment, loaded_challenge
     await _register_failed_attempt(
         db,

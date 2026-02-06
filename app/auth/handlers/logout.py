@@ -61,6 +61,12 @@ async def logout(
                 reason="user_initiated",
             )
 
+        # Revoke from Redis (Cache-Aside)
+        from app.services.auth.redis_session import RedisSessionService
+
+        redis_service = RedisSessionService()
+        await redis_service.revoke_session(jti)
+
     LoginService.clear_access_token_cookie(response)
     response.headers["Clear-Site-Data"] = '"cache", "cookies", "storage"'
     return {"message": "Logged out successfully"}
