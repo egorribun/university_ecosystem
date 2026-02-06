@@ -48,24 +48,34 @@
   --color-placeholder: var(--placeholder-fg);
 
   /* Background Images */
-  --image-hero-gradient: linear-gradient(100deg,
-      var(--hero-grad-start) 40%,
-      var(--hero-grad-end) 100%);
-  --image-hero-gradient-strong: linear-gradient(100deg,
-      var(--hero-grad-start) 50%,
-      var(--hero-grad-end) 100%);
-  --image-btn-gradient: linear-gradient(98deg,
-      var(--fed-blue-60v) 10%,
-      var(--fed-blue-70v) 55%,
-      var(--fed-blue-80v) 100%);
-  --image-btn-gradient-hover: linear-gradient(98deg,
-      var(--fed-blue-70v) 8%,
-      #3e78b2 55%,
-      #69a9dc 100%);
-  --image-skeleton: linear-gradient(180deg,
-      var(--slate-05) 0%,
-      var(--slate-10) 50%,
-      var(--slate-05) 100%);
+  --image-hero-gradient: linear-gradient(
+    100deg,
+    var(--hero-grad-start) 40%,
+    var(--hero-grad-end) 100%
+  );
+  --image-hero-gradient-strong: linear-gradient(
+    100deg,
+    var(--hero-grad-start) 50%,
+    var(--hero-grad-end) 100%
+  );
+  --image-btn-gradient: linear-gradient(
+    98deg,
+    var(--fed-blue-60v) 10%,
+    var(--fed-blue-70v) 55%,
+    var(--fed-blue-80v) 100%
+  );
+  --image-btn-gradient-hover: linear-gradient(
+    98deg,
+    var(--fed-blue-70v) 8%,
+    #3e78b2 55%,
+    #69a9dc 100%
+  );
+  --image-skeleton: linear-gradient(
+    180deg,
+    var(--slate-05) 0%,
+    var(--slate-10) 50%,
+    var(--slate-05) 100%
+  );
 
   /* Shadows */
   --shadow-surface: var(--shadow-1);
@@ -189,7 +199,6 @@
   }
 
   @keyframes msg-online-pulse {
-
     0%,
     100% {
       box-shadow: 0 0 0 0 var(--msg-online-pulse);
@@ -201,7 +210,6 @@
   }
 
   @keyframes msg-typing {
-
     0%,
     60%,
     100% {
@@ -359,7 +367,6 @@
   }
 }
 
-
 @layer base {
   body {
     @apply min-h-screen text-page-foreground font-ui antialiased overflow-x-hidden;
@@ -383,7 +390,6 @@
 }
 
 @layer components {
-
   /* Premium Glass Card - Elevated */
   .card-glass {
     @apply relative overflow-hidden rounded-4xl border border-glass-border bg-glass backdrop-blur-2xl shadow-glass transition-all;
@@ -424,18 +430,22 @@
   .skeleton::after {
     content: "";
     @apply absolute inset-0;
-    background: linear-gradient(90deg,
-        transparent 0%,
-        rgba(255, 255, 255, 0.25) 50%,
-        transparent 100%);
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.25) 50%,
+      transparent 100%
+    );
     animation: skeleton-shimmer 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
   }
 
   .dark .skeleton::after {
-    background: linear-gradient(90deg,
-        transparent 0%,
-        rgba(255, 255, 255, 0.05) 50%,
-        transparent 100%);
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.05) 50%,
+      transparent 100%
+    );
   }
 }
 
@@ -488,7 +498,6 @@
   }
 
   @keyframes dash-colon-blink {
-
     0%,
     100% {
       opacity: 1;

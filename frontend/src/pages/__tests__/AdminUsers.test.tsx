@@ -14,8 +14,24 @@ import type { User } from "@/types/User"
 import { server } from "@/tests/mocks/server"
 
 const mockUsers = [
-  { id: "1", full_name: "John Doe", email: "john@example.org", role: "student", group_id: "g1", is_active: true, avatar_url: null },
-  { id: "2", full_name: "Jane Smith", email: "jane@example.org", role: "teacher", group_id: null, is_active: true, avatar_url: null },
+  {
+    id: "1",
+    full_name: "John Doe",
+    email: "john@example.org",
+    role: "student",
+    group_id: "g1",
+    is_active: true,
+    avatar_url: null,
+  },
+  {
+    id: "2",
+    full_name: "Jane Smith",
+    email: "jane@example.org",
+    role: "teacher",
+    group_id: null,
+    is_active: true,
+    avatar_url: null,
+  },
 ]
 
 const mockGroups = [
@@ -29,7 +45,7 @@ const handlers = [
     const fullName = url.searchParams.get("full_name")
     let filtered = [...mockUsers]
     if (fullName) {
-      filtered = filtered.filter(u => u.full_name.toLowerCase().includes(fullName.toLowerCase()))
+      filtered = filtered.filter((u) => u.full_name.toLowerCase().includes(fullName.toLowerCase()))
     }
     return HttpResponse.json(filtered)
   }),
@@ -145,7 +161,7 @@ describe("AdminUsers page", () => {
     const selects = await screen.findAllByRole("combobox")
     // The first select is for filters, others are for users
     // Let's find the one for John Doe (it has value g1)
-    const johnSelect = selects.find(s => (s as HTMLSelectElement).value === "g1")
+    const johnSelect = selects.find((s) => (s as HTMLSelectElement).value === "g1")
     if (johnSelect) {
       fireEvent.change(johnSelect, { target: { value: "g2" } })
     }

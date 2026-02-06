@@ -123,9 +123,7 @@ const renderPage = () => {
 
 describe("AdminAudit page", () => {
   beforeEach(() => {
-    server.use(
-      http.get("*/admin/audit", () => HttpResponse.json(mockLogs))
-    )
+    server.use(http.get("*/admin/audit", () => HttpResponse.json(mockLogs)))
   })
 
   it("renders audit logs", async () => {

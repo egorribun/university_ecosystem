@@ -206,7 +206,9 @@ describe("Accessibility checks", () => {
 
     await waitFor(() => expect(api.get).toHaveBeenCalled())
     // Wait for internal components to finish loading (e.g. ScheduleCard)
-    await waitFor(() => expect(screen.queryByRole("progressbar")).not.toBeInTheDocument(), { timeout: 2000 })
+    await waitFor(() => expect(screen.queryByRole("progressbar")).not.toBeInTheDocument(), {
+      timeout: 2000,
+    })
 
     await checkA11y(container)
     getSpy.mockRestore()
