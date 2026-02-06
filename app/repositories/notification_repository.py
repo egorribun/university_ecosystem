@@ -4,6 +4,7 @@ Notification repository for notification data access operations.
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import and_, func, select, update
@@ -22,7 +23,7 @@ class NotificationRepository(BaseRepository[Notification, dict, dict]):
 
     async def get_for_user(
         self,
-        user_id: int,
+        user_id: uuid.UUID | str | int,
         *,
         skip: int = 0,
         limit: int = 50,
@@ -39,12 +40,12 @@ class NotificationRepository(BaseRepository[Notification, dict, dict]):
         return list(result.scalars().all())
 
     async def get_unread_for_user(
-        self, user_id: int, *, limit: int = 50
+        self, user_id: uuid.UUID | str | int, *, limit: int = 50
     ) -> list[Notification]:
         """Get unread notifications for a user."""
         return await self.get_for_user(user_id, limit=limit, unread_only=True)
 
-    async def count_unread(self, user_id: int) -> int:
+    async def count_unread(self, user_id: uuid.UUID | str | int) -> int:
         """Count unread notifications for a user."""
         result = await self.db.execute(
             select(func.count(Notification.id)).where(
@@ -56,7 +57,11 @@ class NotificationRepository(BaseRepository[Notification, dict, dict]):
         )
         return result.scalar() or 0
 
-    async def mark_as_read(self, notification_ids: list[int], user_id: int) -> int:
+    async def mark_as_read(
+        self,
+        notification_ids: list[uuid.UUID | str | int],
+        user_id: uuid.UUID | str | int,
+    ) -> int:
         """Mark notifications as read. Returns count of updated records."""
         if not notification_ids:
             return 0
@@ -76,7 +81,7 @@ class NotificationRepository(BaseRepository[Notification, dict, dict]):
         await self.db.flush()
         return result.rowcount or 0
 
-    async def mark_all_as_read(self, user_id: int) -> int:
+    async def mark_all_as_read(self, user_id: uuid.UUID | str | int) -> int:
         """Mark all notifications as read for a user."""
         now = datetime.now(UTC)
         result = await self.db.execute(
@@ -93,7 +98,7 @@ class NotificationRepository(BaseRepository[Notification, dict, dict]):
         return result.rowcount or 0
 
     async def get_by_dedupe_key(
-        self, user_id: int, dedupe_key: str
+        self, user_id: uuid.UUID | str | int, dedupe_key: str
     ) -> Notification | None:
         """Get notification by deduplication key."""
         result = await self.db.execute(
@@ -106,7 +111,7 @@ class NotificationRepository(BaseRepository[Notification, dict, dict]):
         )
         return result.scalars().first()
 
-    async def count_by_type(self, user_id: int) -> dict[str, int]:
+    async def count_by_type(self, user_id: uuid.UUID | str | int) -> dict[str, int]:
         """Count notifications by type for a user."""
         result = await self.db.execute(
             select(Notification.type, func.count(Notification.id))

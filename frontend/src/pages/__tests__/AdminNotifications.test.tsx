@@ -9,8 +9,8 @@ import AdminNotifications from "@/pages/AdminNotifications"
 import { AuthContext } from "@/contexts/AuthContext"
 import { LanguageProvider } from "@/contexts/LanguageContext"
 import type { User } from "@/types/User"
-import { resetAdminDeadLetterJobs } from "../mocks/handlers"
-import { server } from "../mocks/server"
+import { resetAdminDeadLetterJobs } from "@/tests/mocks/handlers"
+import { server } from "@/tests/mocks/server"
 
 const adminUser: User = {
   id: "uuid-1",

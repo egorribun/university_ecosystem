@@ -254,8 +254,17 @@ async def clean_database(prepare_database: None) -> AsyncIterator[None]:
         try:
             async with engine.begin() as conn:
                 if is_postgresql:
+                    # Get existing tables to avoid UndefinedTableError
+                    result = await conn.exec_driver_sql(
+                        "SELECT tablename FROM pg_catalog.pg_tables "
+                        "WHERE schemaname = 'public'"
+                    )
+                    existing_tables = {row[0] for row in result.all()}
+
                     table_names = [
-                        f'"{table.name}"' for table in Base.metadata.sorted_tables
+                        f'"{table.name}"'
+                        for table in Base.metadata.sorted_tables
+                        if table.name in existing_tables
                     ]
                     if table_names:
                         await conn.exec_driver_sql(

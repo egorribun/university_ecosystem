@@ -270,6 +270,9 @@ describe("Login page", () => {
 
   it("meets basic accessibility requirements", async () => {
     const { container } = renderLogin()
+    // Wait for AuthProvider and Login component to settle (initial check/loading)
+    await waitFor(() => expect(screen.queryByRole("progressbar")).not.toBeInTheDocument())
+
     const results = await axe(container)
     expect(results).toHaveNoViolations()
   })

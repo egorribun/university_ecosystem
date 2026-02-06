@@ -42,8 +42,8 @@ class EventRepository(BaseRepository[Event, dict, dict]):
         now = datetime.now(UTC)
         result = await self.db.execute(
             select(Event)
-            .where(Event.start_date >= now)
-            .order_by(Event.start_date.asc())
+            .where(Event.starts_at >= now)
+            .order_by(Event.starts_at.asc())
             .offset(skip)
             .limit(limit)
         )
@@ -60,7 +60,7 @@ class EventRepository(BaseRepository[Event, dict, dict]):
                 pass
         result = await self.db.execute(
             select(Event)
-            .where(Event.organizer_id == organizer_id)
+            .where(Event.created_by == organizer_id)
             .order_by(Event.created_at.desc())
             .offset(skip)
             .limit(limit)
@@ -83,7 +83,7 @@ class EventRepository(BaseRepository[Event, dict, dict]):
         result = await self.db.execute(
             select(Event)
             .where(func.lower(Event.title).like(pattern))
-            .order_by(Event.start_date.desc())
+            .order_by(Event.starts_at.desc())
             .offset(skip)
             .limit(limit)
         )
