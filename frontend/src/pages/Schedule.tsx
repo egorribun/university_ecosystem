@@ -473,7 +473,7 @@ export default function Schedule() {
                 </label>
                 <select
                   value={selectedGroup ?? ""}
-                  onChange={(e) => setSelectedGroup(Number(e.target.value))}
+                  onChange={(e) => setSelectedGroup(e.target.value || null)}
                   className={inputClass}
                 >
                   {groups.map((g) => (
@@ -786,7 +786,7 @@ export default function Schedule() {
     }
     const backendLessonType = toBackendLessonType(lessonType)
     const optimistic: Lesson = {
-      id: Date.now(),
+      id: `temp-${Date.now()}`,
       group_id: selectedGroup,
       subject,
       teacher,
@@ -819,7 +819,7 @@ export default function Schedule() {
     }
   }
 
-  async function handleDeleteLesson(id: number) {
+  async function handleDeleteLesson(id: string) {
     const backup = groupSchedule.map((l) => ({ ...l }))
     applyScheduleUpdate((prev) => prev.filter((l) => l.id !== id))
     try {

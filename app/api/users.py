@@ -4,6 +4,7 @@ import hmac
 import json
 import logging
 from datetime import datetime
+from uuid import UUID
 
 from fastapi import (
     APIRouter,
@@ -30,7 +31,7 @@ from app.core.container import (
     get_user_data_service,
     get_user_profile_service,
 )
-from app.core.database import get_db
+from app.core.database import get_read_db
 from app.core.localization import resolve_locale
 from app.models import models
 from app.schemas import schemas
@@ -139,7 +140,7 @@ async def reset_password(
 @users_router.get("/me", response_model=schemas.UserOut, summary="Me")
 async def me(
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_read_db),
     user: models.User = Depends(get_current_user),
     auth_service: AuthService = Depends(get_auth_service),
 ):
@@ -294,21 +295,31 @@ async def create_user(
     return await service.create_user(data, request, user)
 
 
-@users_router.get("", response_model=list[schemas.UserOut])
+@users_router.get(
+    "",
+    response_model=list[schemas.UserPublicOut | schemas.UserOut],
+    summary="Search Users",
+)
 async def get_users(
     request: Request,
     filters: schemas.UserSearchFilter = Depends(),
-    user: models.User = Depends(get_current_user),
+    current_user: models.User = Depends(get_current_user),
     service: UserAdminService = Depends(get_user_admin_service),
 ):
+    """
+    Search for users.
+    Admins see full profiles (UserOut), others see only public info (UserPublicOut).
+    """
     users = await service.get_users(
         request,
-        user,
+        current_user,
         filters=filters,
     )
+
+    # Log data access for each fetched user
     log_entries = [
         {
-            "actor_user_id": user.id,
+            "actor_user_id": current_user.id,
             "subject_user_id": item.id,
             "resource_type": "profile",
             "resource_id": str(item.id),
@@ -317,6 +328,14 @@ async def get_users(
         for item in users
     ]
     await batch_log_data_access(service.db, entries=log_entries, request=request)
+
+    if current_user.role != "admin":
+        # Force strict serialization to public schema for non-admins
+        return [
+            schemas.UserPublicOut.model_validate(u, from_attributes=True) for u in users
+        ]
+
+    # Admins get full objects
     return users
 
 
@@ -325,7 +344,7 @@ async def export_access_audit(
     request: Request,
     start_at: datetime | None = Query(None),
     end_at: datetime | None = Query(None),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_read_db),
     user: models.User = Depends(get_current_user),
     audit: AuditService = Depends(get_audit_service),
 ):
@@ -343,7 +362,7 @@ async def export_access_audit(
 
 @users_router.patch("/{user_id}", response_model=schemas.UserOut)
 async def update_user_admin(
-    user_id: int,
+    user_id: UUID,
     data: schemas.UserAdminUpdate,
     request: Request,
     user: models.User = Depends(get_current_user),
@@ -354,7 +373,7 @@ async def update_user_admin(
 
 @users_router.delete("/{user_id}", response_model=dict)
 async def delete_user_admin(
-    user_id: int,
+    user_id: UUID,
     request: Request,
     user: models.User = Depends(get_current_user),
     service: UserAdminService = Depends(get_user_admin_service),

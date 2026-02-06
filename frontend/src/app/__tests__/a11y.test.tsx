@@ -62,11 +62,11 @@ vi.mock("@/hooks/useNowPlaying", async () => {
 })
 
 const baseUser: User = {
-  id: 1,
+  id: "uuid-1",
   email: "user@example.com",
   full_name: "Тестовый Пользователь",
   role: "student",
-  group_id: 1,
+  group_id: "uuid-101",
   avatar_url: "",
   avatar_url_optimized: null,
   cover_url: "",
@@ -172,7 +172,7 @@ describe("Accessibility checks", () => {
   it("Dashboard page has no axe violations", async () => {
     const stories = [
       {
-        id: 1,
+        id: "uuid-1",
         title: "Orientation",
         short_text: "Welcome week",
         cover_url: null,
@@ -184,7 +184,7 @@ describe("Accessibility checks", () => {
         created_at: new Date().toISOString(),
         title_en: "Orientation",
         short_text_en: "Welcome week",
-        created_by: 1,
+        created_by: "uuid-1",
       },
     ]
 
@@ -205,6 +205,10 @@ describe("Accessibility checks", () => {
     const { container } = render(<Dashboard />, { wrapper: Wrapper })
 
     await waitFor(() => expect(api.get).toHaveBeenCalled())
+    // Wait for internal components to finish loading (e.g. ScheduleCard)
+    await waitFor(() => expect(screen.queryByRole("progressbar")).not.toBeInTheDocument(), {
+      timeout: 2000,
+    })
 
     await checkA11y(container)
     getSpy.mockRestore()

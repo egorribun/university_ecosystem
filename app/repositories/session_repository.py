@@ -4,6 +4,7 @@ Session repository for session data access operations.
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import and_, delete, func, select, update
@@ -28,7 +29,7 @@ class SessionRepository(BaseRepository[ActiveSession, dict, dict]):
         return result.scalars().first()
 
     async def get_active_for_user(
-        self, user_id: int, *, skip: int = 0, limit: int = 50
+        self, user_id: uuid.UUID | str | int, *, skip: int = 0, limit: int = 50
     ) -> list[ActiveSession]:
         """Get active sessions for a user, ordered by last_seen_at descending."""
         result = await self.db.execute(
@@ -45,7 +46,7 @@ class SessionRepository(BaseRepository[ActiveSession, dict, dict]):
         )
         return list(result.scalars().all())
 
-    async def count_active_for_user(self, user_id: int) -> int:
+    async def count_active_for_user(self, user_id: uuid.UUID | str | int) -> int:
         """Count active sessions for a user."""
         result = await self.db.execute(
             select(func.count(ActiveSession.id)).where(
@@ -57,7 +58,9 @@ class SessionRepository(BaseRepository[ActiveSession, dict, dict]):
         )
         return result.scalar() or 0
 
-    async def revoke(self, session_id: int, user_id: int) -> bool:
+    async def revoke(
+        self, session_id: uuid.UUID | str | int, user_id: uuid.UUID | str | int
+    ) -> bool:
         """Revoke a specific session. Returns True if session was revoked."""
         now = datetime.now(UTC)
         result = await self.db.execute(
@@ -90,7 +93,9 @@ class SessionRepository(BaseRepository[ActiveSession, dict, dict]):
         await self.db.flush()
         return (result.rowcount or 0) > 0
 
-    async def revoke_all_except(self, user_id: int, current_session_id: int) -> int:
+    async def revoke_all_except(
+        self, user_id: uuid.UUID | str | int, current_session_id: uuid.UUID | str | int
+    ) -> int:
         """Revoke all sessions except the current one. Returns count of revoked."""
         now = datetime.now(UTC)
         result = await self.db.execute(
@@ -107,7 +112,7 @@ class SessionRepository(BaseRepository[ActiveSession, dict, dict]):
         await self.db.flush()
         return result.rowcount or 0
 
-    async def revoke_all_for_user(self, user_id: int) -> int:
+    async def revoke_all_for_user(self, user_id: uuid.UUID | str | int) -> int:
         """Revoke all sessions for a user. Returns count of revoked."""
         now = datetime.now(UTC)
         result = await self.db.execute(
@@ -137,7 +142,7 @@ class SessionRepository(BaseRepository[ActiveSession, dict, dict]):
         await self.db.flush()
         return result.rowcount or 0
 
-    async def touch(self, session_id: int) -> None:
+    async def touch(self, session_id: uuid.UUID | str | int) -> None:
         """Update last_seen_at timestamp for a session."""
         now = datetime.now(UTC)
         await self.db.execute(

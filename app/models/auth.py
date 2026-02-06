@@ -1,8 +1,10 @@
 import secrets
+import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import (
     JSON,
+    UUID,
     Boolean,
     Column,
     DateTime,
@@ -13,9 +15,12 @@ from sqlalchemy import (
     Text,
     func,
 )
-from sqlalchemy.orm import relationship
+
+# Removed postgresql UUID import
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.models.mixins import UserFK, UUID7PrimaryKeyMixin
 from app.utils.encryption import EncryptedString
 
 
@@ -23,16 +28,9 @@ def _generate_session_signing_key() -> str:
     return secrets.token_urlsafe(32)
 
 
-class ActiveSession(Base):
+class ActiveSession(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "active_sessions"
 
-    id = Column(Integer, primary_key=True)
-    user_id = Column(
-        Integer,
-        ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
     jti = Column(String, nullable=False, unique=True, index=True)
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -60,13 +58,9 @@ class ActiveSession(Base):
     )
 
 
-class MfaTotpEnrollment(Base):
+class MfaTotpEnrollment(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "mfa_totp_enrollments"
 
-    id = Column(Integer, primary_key=True)
-    user_id = Column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
     secret = Column(EncryptedString(), nullable=False)
     label = Column(String(255))
     is_active = Column(Boolean, nullable=False, default=False, index=True)
@@ -81,15 +75,13 @@ class MfaTotpEnrollment(Base):
     __table_args__ = (Index("ix_mfa_totp_enrollments_active", "user_id", "is_active"),)
 
 
-class MfaChallenge(Base):
+class MfaChallenge(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "mfa_challenges"
 
-    id = Column(Integer, primary_key=True)
-    user_id = Column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    session_id = Column(
-        Integer, ForeignKey("active_sessions.id", ondelete="CASCADE"), nullable=True
+    session_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("active_sessions.id", ondelete="CASCADE"),
+        index=True,
     )
     challenge_type = Column(String(64), nullable=False, index=True)
     token = Column(String(255), nullable=False, unique=True)
@@ -110,16 +102,9 @@ class MfaChallenge(Base):
     )
 
 
-class FailedLoginAttempt(Base):
+class FailedLoginAttempt(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "failed_login_attempts"
 
-    id = Column(Integer, primary_key=True)
-    user_id = Column(
-        Integer,
-        ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
     email = Column(String, nullable=False, index=True)
     attempted_at = Column(
         DateTime(timezone=True),
@@ -137,13 +122,9 @@ class FailedLoginAttempt(Base):
     )
 
 
-class PasswordResetToken(Base):
+class PasswordResetToken(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "password_reset_tokens"
 
-    id = Column(Integer, primary_key=True)
-    user_id = Column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
     token_hash = Column(String, unique=True, index=True, nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
     used = Column(Boolean, nullable=False, default=False, index=True)
@@ -156,13 +137,9 @@ class PasswordResetToken(Base):
         return secrets.token_urlsafe(32)
 
 
-class EmailChangeToken(Base):
+class EmailChangeToken(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "email_change_tokens"
 
-    id = Column(Integer, primary_key=True)
-    user_id = Column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
     new_email = Column(String, nullable=False, index=True)
     token_hash = Column(String, unique=True, index=True, nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
@@ -178,13 +155,9 @@ class EmailChangeToken(Base):
         )
 
 
-class TrustedDevice(Base):
+class TrustedDevice(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "trusted_devices"
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
     token_hash = Column(String(128), unique=True, index=True, nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
     last_used_at = Column(DateTime(timezone=True), nullable=True, index=True)
@@ -197,13 +170,9 @@ class TrustedDevice(Base):
     user = relationship("User", back_populates="trusted_devices")
 
 
-class WebAuthnCredential(Base):
+class WebAuthnCredential(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "webauthn_credentials"
 
-    id = Column(Integer, primary_key=True)
-    user_id = Column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
     credential_id = Column(String, unique=True, index=True, nullable=False)
     public_key = Column(Text, nullable=False)  # Base64 encoded public key
     sign_count = Column(Integer, default=0, nullable=False)
@@ -219,13 +188,9 @@ class WebAuthnCredential(Base):
     user = relationship("User", back_populates="webauthn_credentials")
 
 
-class RecoveryCode(Base):
+class RecoveryCode(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "recovery_codes"
 
-    id = Column(Integer, primary_key=True)
-    user_id = Column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
     code_hash = Column(String(255), nullable=False)  # Argon2 hash of the code
     is_used = Column(Boolean, default=False, nullable=False, index=True)
     created_at = Column(
@@ -236,13 +201,9 @@ class RecoveryCode(Base):
     user = relationship("User", back_populates="recovery_codes")
 
 
-class LoginHistory(Base):
+class LoginHistory(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "login_history"
 
-    id = Column(Integer, primary_key=True)
-    user_id = Column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
     ip_address = Column(String(45), nullable=False)
     user_agent = Column(String(512), nullable=True)
     country = Column(String(2))  # ISO 3166-1 alpha-2

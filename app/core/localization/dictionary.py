@@ -160,6 +160,32 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Требуется дополнительное подтверждение входа.",
         "en": "Additional verification is required to continue.",
     },
+    "errors.mfa.invalid_challenge": {
+        "ru": "Недействительный или просроченный запрос проверки.",
+        "en": "Invalid or expired verification challenge.",
+    },
+    "errors.mfa.code_required": {
+        "ru": "Введите код подтверждения.",
+        "en": "Confirmation code is required.",
+    },
+    "errors.mfa.invalid_code": {
+        "ru": "Неверный код подтверждения.",
+        "en": "Invalid confirmation code.",
+    },
+    "errors.mfa.totp_limit_reached": {
+        "ru": "У вас уже подключено приложение-аутентификатор.",
+        "en": (
+            "Only one authenticator app can be connected at a time. "
+            "Remove the existing app before starting a new setup."
+        ),
+    },
+    "errors.mfa.enrollment_pending": {
+        "ru": "У вас уже есть незавершенная настройка MFA.",
+        "en": (
+            "A TOTP enrollment is already pending. "
+            "Confirm or reuse it before starting a new one."
+        ),
+    },
     "errors.auth.user_deactivated": {
         "ru": "Пользователь деактивирован",
         "en": "User account is deactivated",

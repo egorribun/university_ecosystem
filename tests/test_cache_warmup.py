@@ -1,4 +1,5 @@
 import time
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -23,7 +24,8 @@ async def test_is_entry_fresh():
 
 
 def test_schedule_cache_key():
-    assert cache_warmup._schedule_cache_key(123) == "schedule:group:123"
+    uid = str(uuid.uuid4())
+    assert cache_warmup._schedule_cache_key(uid) == f"schedule:group:{uid}"
 
 
 def test_period_days_from_key():
@@ -52,11 +54,13 @@ async def test_warm_schedule_group():
         # Let's return a Mock that has these attributes.
 
         mock_item = MagicMock()
+        mock_item.id = uuid.uuid4()
+        mock_item.group_id = uuid.uuid4()
         mock_item.subject = "Math"
         mock_item.teacher = "Doe"
         mock_item.room = "101"
         mock_item.weekday = "monday"
-        mock_item.parity = "even"
+        mock_item.parity = "both"
         mock_item.lesson_type = "lecture"
         mock_item.lesson_type_display = "Lecture"
         mock_item.time_start = "10:00"
@@ -64,10 +68,13 @@ async def test_warm_schedule_group():
 
         mock_service_instance.get_schedule = AsyncMock(return_value=[mock_item])
 
-        await cache_warmup._warm_schedule_group(mock_cache, mock_db, 1, ttl_seconds=60)
+        group_id = uuid.uuid4()
+        await cache_warmup._warm_schedule_group(
+            mock_cache, mock_db, group_id, ttl_seconds=60
+        )
 
         mock_cache.set.assert_called_once()
-        assert "schedule:group:1" in mock_cache.set.call_args[0][0]
+        assert f"schedule:group:{group_id}" in mock_cache.set.call_args[0][0]
 
 
 @pytest.mark.asyncio
@@ -125,7 +132,8 @@ async def test_warm_stats_for_user():
         mock_service.get_grade_stats = AsyncMock()
         mock_service.get_participation_stats = AsyncMock()
 
-        await cache_warmup._warm_stats_for_user(mock_cache, mock_db, 1, "7d")
+        user_id = uuid.uuid4()
+        await cache_warmup._warm_stats_for_user(mock_cache, mock_db, user_id, "7d")
 
         mock_service.get_attendance_stats.assert_called_once()
         mock_service.get_grade_stats.assert_called_once()

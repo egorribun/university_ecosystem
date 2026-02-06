@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
@@ -29,13 +30,15 @@ class DeadLetterCleanupConfig:
 
 
 async def enqueue_event_notification(
-    event_id: int, *, locale: str | None = None
+    event_id: uuid.UUID | int, *, locale: str | None = None
 ) -> None:
     """Enqueue an event notification job using TaskIQ."""
     await enqueue_event_notification_task.kiq(event_id, locale=locale)
 
 
-async def enqueue_news_notification(news_id: int, *, locale: str | None = None) -> None:
+async def enqueue_news_notification(
+    news_id: uuid.UUID | int, *, locale: str | None = None
+) -> None:
     """Enqueue a news notification job using TaskIQ."""
     await enqueue_news_notification_task.kiq(news_id, locale=locale)
 
@@ -68,7 +71,7 @@ class NotificationJob:
     """Legacy dataclass for notification context."""
 
     kind: str
-    record_id: int
+    record_id: uuid.UUID | int
     locale: str | None = None
 
 

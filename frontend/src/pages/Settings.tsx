@@ -220,7 +220,7 @@ export default function Settings() {
   }, [sessions])
 
   const revokeSessionMutation = useMutation({
-    mutationFn: async (sessionId: number) => {
+    mutationFn: async (sessionId: string) => {
       console.log(`[settings] mutationFn: deleting session ${sessionId}`)
       const { data } = await api.delete<ActiveSession>(`/auth/sessions/${sessionId}`)
       console.log(`[settings] mutationFn: session ${sessionId} deleted, returning data`, data)
@@ -625,7 +625,7 @@ export default function Settings() {
   }, [t])
 
   const handleRevokeSession = useCallback(
-    async (sessionId: number, options?: { skipStepUp?: boolean }) => {
+    async (sessionId: string, options?: { skipStepUp?: boolean }) => {
       try {
         console.log(`[settings] Revoking session ${sessionId}...`)
         const result = await revokeSessionMutation.mutateAsync(sessionId)
@@ -957,7 +957,7 @@ export default function Settings() {
   }, [pendingTotpId, refreshMe, resolveDetailMessage, setSnack, t, totpBusy, totpDraft])
 
   const handleDisableTotp = useCallback(
-    (enrollmentId: number) => {
+    (enrollmentId: string) => {
       const action = async () => {
         try {
           const { data } = await deleteTotpEnrollment(enrollmentId)
@@ -1059,7 +1059,7 @@ export default function Settings() {
   )
 
   const handleDeleteWebAuthn = useCallback(
-    (credentialId: number) => {
+    (credentialId: string) => {
       const action = async () => {
         try {
           await deleteWebAuthnCredential(credentialId)

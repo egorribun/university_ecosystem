@@ -1,0 +1,131 @@
+name: License Audit
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "pyproject.toml"
+      - "uv.lock"
+      - "requirements*.txt"
+      - "frontend/package*.json"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "pyproject.toml"
+      - "uv.lock"
+      - "requirements*.txt"
+      - "frontend/package*.json"
+  workflow_dispatch:
+
+concurrency:
+  group: license-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  # Allowed licenses (SPDX identifiers)
+  # Common permissive licenses compatible with proprietary use
+  ALLOWED_LICENSES: >-
+    MIT;MIT-CMU;MIT License;
+    Apache-2.0;Apache Software License;Apache License 2.0;Apache-2.0 AND MIT;Apache-2.0 OR BSD-2-Clause;Apache-2.0 OR BSD-3-Clause;Apache-2.0 AND BSD-2-Clause;
+    BSD-3-Clause;BSD License;BSD-3-Clause License;3-Clause BSD License;BSD;
+    BSD-2-Clause;BSD-2-Clause License;
+    ISC;ISC License;ISC License (ISCL);
+    PSF-2.0;Python Software Foundation License;PSFL;
+    MPL-2.0;Mozilla Public License 2.0;Mozilla Public License 2.0 (MPL 2.0);
+    LGPL-3.0-only;LGPL;GNU Library or Lesser General Public License (LGPL);
+    Unlicense;The Unlicense;The Unlicense (Unlicense);
+    0BSD;Zero-Clause BSD;BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0;
+    CC0-1.0;Public Domain;
+    Zlib;zlib License;
+    WTFPL;
+
+jobs:
+  python-licenses:
+    name: Python License Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: |
+          uv sync --frozen
+          uv pip install pip-licenses
+
+      - name: Check Python licenses
+        run: |
+          echo "📋 Checking Python package licenses..."
+
+          # Generate license report
+          uv run pip-licenses --format=markdown --output-file=python-licenses.md
+
+          # Check for disallowed licenses
+          uv run pip-licenses --fail-on="AGPL;Proprietary;Unknown" \
+            --allow-only="${ALLOWED_LICENSES}" --partial-match --ignore-packages authzed cel-python taskiq-dependencies || {
+              echo "❌ Found packages with disallowed licenses!"
+              echo ""
+              echo "📝 License Summary:"
+              uv run pip-licenses --summary
+              exit 1
+            }
+
+          echo "✅ All Python packages have approved licenses"
+
+      - name: Upload license report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-license-report
+          path: python-licenses.md
+
+  frontend-licenses:
+    name: Frontend License Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check frontend licenses
+        run: |
+          echo "📋 Checking frontend package licenses..."
+          npx license-checker --summary --production
+
+          # Check for copyleft licenses
+          npx license-checker --production --onlyAllow "MIT;ISC;BSD-2-Clause;BSD-3-Clause;Apache-2.0;0BSD;Unlicense;CC0-1.0;Python-2.0;MPL-2.0" || {
+            echo "❌ Found packages with disallowed licenses!"
+            npx license-checker --production --csv > frontend-licenses.csv
+            exit 1
+          }
+
+          echo "✅ All frontend packages have approved licenses"
+
+      - name: Generate license report
+        if: always()
+        run: |
+          npx license-checker --production --markdown > frontend-licenses.md || true
+
+      - name: Upload license report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-license-report
+          path: frontend/frontend-licenses.md

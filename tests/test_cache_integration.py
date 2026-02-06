@@ -5,6 +5,32 @@ import pytest
 from app.models import models
 
 
+async def _robust_invalidate(cache, *patterns):
+    """Helper to invalidate cache keys handling both Wrapper and Client objects.
+
+    Also clears L1 memory cache for multi-layer caches to ensure
+    proper cache invalidation during tests.
+    """
+    from app.core import cache as core_cache
+
+    # Clear L1 memory caches for relevant patterns
+    for pattern in patterns:
+        if pattern.startswith("schedule:"):
+            core_cache.schedule_cache.l1.invalidate_prefix("schedule:")
+        if pattern.startswith("news:"):
+            core_cache.news_cache.l1.invalidate_prefix("news:")
+
+    if hasattr(cache, "invalidate"):
+        # Wrapper object (e.g. _TestingRedisCache)
+        await cache.invalidate(*patterns)
+    else:
+        # Raw client (e.g. FakeRedis)
+        for pattern in patterns:
+            keys = await cache.keys(pattern)
+            if keys:
+                await cache.delete(*keys)
+
+
 @pytest.mark.asyncio
 async def test_schedule_cache_supports_etag(async_client, db_session, fake_cache):
     group = models.Group(name="Test Group", course=1, faculty="IT")
@@ -53,7 +79,7 @@ async def test_schedule_cache_supports_etag(async_client, db_session, fake_cache
     db_session.add(second_lesson)
     await db_session.commit()
 
-    await fake_cache.invalidate(f"schedule:group:{group.id}")
+    await _robust_invalidate(fake_cache, f"schedule:group:{group.id}")
 
     refreshed = await async_client.get(
         f"/schedule/{group.id}", headers={"If-None-Match": first_etag}
@@ -99,14 +125,7 @@ async def test_news_list_and_detail_cache(async_client, db_session, fake_cache):
     await db_session.commit()
     await db_session.refresh(news)
 
-    await fake_cache.invalidate(
-        "news:list*",
-        "news:list:en*",
-        "news:list:ru*",
-        f"news:item:{news.id}",
-        f"news:item:{news.id}:en",
-        f"news:item:{news.id}:ru",
-    )
+    await _robust_invalidate(fake_cache, "news:list*", f"news:item:{news.id}*")
 
     list_after_update = await async_client.get(
         "/news", headers={"If-None-Match": list_etag}
@@ -126,7 +145,7 @@ async def test_news_list_and_detail_cache(async_client, db_session, fake_cache):
     db_session.add(another_news)
     await db_session.commit()
 
-    await fake_cache.invalidate("news:list*", "news:list:en*", "news:list:ru*")
+    await _robust_invalidate(fake_cache, "news:list*")
 
     list_with_two = await async_client.get("/news")
     assert list_with_two.status_code == 200

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
+from app.core.database import get_db, get_read_db
 from app.deps.cache import BaseCache, get_cache
 from app.repositories.event_repository import get_event_repository
 from app.repositories.news_repository import get_news_repository
@@ -117,8 +117,27 @@ def get_schedule_handler(
     return GetScheduleHandler(db=db, cache=cache)
 
 
+def get_read_schedule_handler(
+    db: AsyncSession = Depends(get_read_db),
+    cache: BaseCache = Depends(get_cache),
+) -> GetScheduleHandler:
+    from app.cqrs.queries import GetScheduleHandler
+
+    return GetScheduleHandler(db=db, cache=cache)
+
+
 def get_stats_handler(
     db: AsyncSession = Depends(get_db),
+    cache: BaseCache = Depends(get_cache),
+    user_service: UserService = Depends(get_user_service),
+) -> GetStatsHandler:
+    from app.cqrs.queries import GetStatsHandler
+
+    return GetStatsHandler(db=db, cache=cache, user_service=user_service)
+
+
+def get_read_stats_handler(
+    db: AsyncSession = Depends(get_read_db),
     cache: BaseCache = Depends(get_cache),
     user_service: UserService = Depends(get_user_service),
 ) -> GetStatsHandler:

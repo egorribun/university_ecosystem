@@ -125,7 +125,7 @@ def test_decode_cursor():
     res = _decode_cursor(cursor_str)
     assert res is not None
     assert res[0] == dt
-    assert res[1] == 123
+    assert res[1] == "123"
 
     assert _decode_cursor(None) is None
     assert _decode_cursor("invalid") is None

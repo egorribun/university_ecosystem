@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from hashlib import sha256
 from typing import Any
+from uuid import UUID
 
 from fastapi import Request
 from sqlalchemy import select
@@ -88,7 +89,7 @@ class AuditService:
 
     def _redact_sensitive(self, data: dict[str, Any]) -> dict[str, Any]:
         """Return a copy of data with sensitive fields redacted."""
-        # Define keys that are likely to contain secrets.
+        # Define keys that are likely to contain secrets or PII.
         sensitive_keys = {
             "password",
             "new_password",
@@ -100,12 +101,33 @@ class AuditService:
             "access_token",
             "refresh_token",
             "secret",
+            "email",
+            "phone",
+            "phone_number",
+            "address",
+            "full_name",
+            "credit_card",
+            "cvv",
+            "ssn",
         }
+        sensitive_suffixes = ("_token", "_secret", "_key", "_pwd", "_password")
+
         redacted = {}
         for key, value in data.items():
             key_lower = key.lower()
-            if key_lower in sensitive_keys:
+            should_redact = key_lower in sensitive_keys or any(
+                key_lower.endswith(suffix) for suffix in sensitive_suffixes
+            )
+
+            if should_redact:
                 redacted[key] = "***REDACTED***"
+            elif isinstance(value, dict):
+                redacted[key] = self._redact_sensitive(value)
+            elif isinstance(value, list):
+                redacted[key] = [
+                    self._redact_sensitive(item) if isinstance(item, dict) else item
+                    for item in value
+                ]
             else:
                 redacted[key] = value
         return redacted
@@ -114,7 +136,7 @@ class AuditService:
         self,
         event: str | SecurityEvent,
         request: Request | None = None,
-        user_id: int | None = None,
+        user_id: UUID | None = None,
         level: int = logging.INFO,
         reason: str | None = None,
         **kwargs: Any,
@@ -144,11 +166,13 @@ class AuditService:
         redacted_payload = self._redact_sensitive(payload)
 
         target_logger = self._select_logger(event_str)
-        target_logger.log(level, json.dumps(redacted_payload), extra=redacted_payload)
+        target_logger.log(
+            level, json.dumps(redacted_payload, default=str), extra=redacted_payload
+        )
 
     # Convenience methods for common security events
 
-    def login_success(self, request: Request, user_id: int) -> None:
+    def login_success(self, request: Request, user_id: UUID) -> None:
         """Log successful login."""
         self.log(
             SecurityEvent.AUTH_LOGIN_SUCCESS, request, user_id, reason="authenticated"
@@ -165,12 +189,12 @@ class AuditService:
             level=logging.WARNING,
         )
 
-    def logout(self, request: Request, user_id: int) -> None:
+    def logout(self, request: Request, user_id: UUID) -> None:
         """Log user logout."""
         self.log(SecurityEvent.AUTH_LOGOUT, request, user_id)
 
     def mfa_failure(
-        self, request: Request, user_id: int, reason: str = "invalid_code"
+        self, request: Request, user_id: UUID, reason: str = "invalid_code"
     ) -> None:
         """Log MFA verification failure."""
         self.log(
@@ -181,7 +205,9 @@ class AuditService:
             level=logging.WARNING,
         )
 
-    def access_denied(self, request: Request, user_id: int | None, reason: str) -> None:
+    def access_denied(
+        self, request: Request, user_id: UUID | None, reason: str
+    ) -> None:
         """Log access denial."""
         self.log(
             SecurityEvent.ACCESS_DENIED,
@@ -191,7 +217,9 @@ class AuditService:
             level=logging.WARNING,
         )
 
-    def rate_limit_exceeded(self, request: Request, user_id: int | None = None) -> None:
+    def rate_limit_exceeded(
+        self, request: Request, user_id: UUID | None = None
+    ) -> None:
         """Log rate limit exceeded event."""
         self.log(
             SecurityEvent.RATE_LIMIT_EXCEEDED,
@@ -273,8 +301,8 @@ class SecureAuditService:
         self,
         db: AsyncSession,
         *,
-        actor_user_id: int | None = None,
-        subject_user_id: int | None = None,
+        actor_user_id: UUID | None = None,
+        subject_user_id: UUID | None = None,
         resource_type: str,
         resource_id: str | None = None,
         action: str,

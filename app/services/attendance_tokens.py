@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import json
 import secrets
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -79,8 +80,8 @@ def ensure_secret_material(attendance: Any) -> bool:
 @dataclass(slots=True)
 class AttendanceTokenPayload:
     purpose: str
-    event_id: int
-    user_id: int
+    event_id: uuid.UUID | int
+    user_id: uuid.UUID | int
     secret: str
     issued_at: int
     expires_at: int
@@ -88,8 +89,8 @@ class AttendanceTokenPayload:
     def encode(self) -> bytes:
         payload = {
             "sub": self.purpose,
-            "eid": self.event_id,
-            "uid": self.user_id,
+            "eid": str(self.event_id),
+            "uid": str(self.user_id),
             "sec": self.secret,
             "iat": self.issued_at,
             "exp": self.expires_at,
@@ -103,8 +104,8 @@ class AttendanceTokenPayload:
         payload = json.loads(data.decode("utf-8"))
         return cls(
             purpose=payload["sub"],
-            event_id=int(payload["eid"]),
-            user_id=int(payload["uid"]),
+            event_id=uuid.UUID(payload["eid"]),
+            user_id=uuid.UUID(payload["uid"]),
             secret=str(payload["sec"]),
             issued_at=int(payload["iat"]),
             expires_at=int(payload["exp"]),
@@ -126,8 +127,8 @@ def issue_token(
     expires_at = issued_at + ttl
     payload = AttendanceTokenPayload(
         purpose=TOKEN_PURPOSE,
-        event_id=int(attendance.event_id),
-        user_id=int(attendance.user_id),
+        event_id=attendance.event_id,
+        user_id=attendance.user_id,
         secret=secret,
         issued_at=issued_at,
         expires_at=expires_at,
@@ -170,9 +171,9 @@ def verify_token(
         raise AttendanceTokenInvalid("Token payload is invalid") from exc
     if payload.purpose != TOKEN_PURPOSE:
         raise AttendanceTokenInvalid("Token purpose mismatch")
-    if payload.event_id != attendance.event_id:
+    if str(payload.event_id) != str(attendance.event_id):
         raise AttendanceTokenInvalid("Token event mismatch")
-    if payload.user_id != attendance.user_id:
+    if str(payload.user_id) != str(attendance.user_id):
         raise AttendanceTokenInvalid("Token user mismatch")
     expected_hmac = getattr(attendance, "qr_hmac", None)
     if not expected_hmac:

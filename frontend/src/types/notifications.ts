@@ -11,7 +11,7 @@ export type PushTopicsResponse = {
 }
 
 export type AdminUserTopicsResponse = {
-  user_id: number
+  user_id: string
   email: string
   topics: string[]
   allowed_topics: string[]

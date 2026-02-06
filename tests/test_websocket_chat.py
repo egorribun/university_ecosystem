@@ -1,5 +1,4 @@
-"""Tests for WebSocket chat functionality."""
-
+import uuid
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
@@ -26,7 +25,7 @@ class TestConnectionManager:
     async def test_connect_registers_user(self, connection_manager: ConnectionManager):
         """Test that connect properly registers user connection."""
         mock_ws = AsyncMock(spec=WebSocket)
-        user_id = 1
+        user_id = uuid.uuid4()
 
         await connection_manager.connect(mock_ws, user_id)
 
@@ -42,7 +41,7 @@ class TestConnectionManager:
         """Test that user can have multiple connections (tabs/devices)."""
         mock_ws1 = AsyncMock(spec=WebSocket)
         mock_ws2 = AsyncMock(spec=WebSocket)
-        user_id = 1
+        user_id = uuid.uuid4()
 
         await connection_manager.connect(mock_ws1, user_id)
         await connection_manager.connect(mock_ws2, user_id)
@@ -54,7 +53,7 @@ class TestConnectionManager:
     def test_disconnect_removes_connection(self, connection_manager: ConnectionManager):
         """Test that disconnect properly removes user connection."""
         mock_ws = AsyncMock(spec=WebSocket)
-        user_id = 1
+        user_id = uuid.uuid4()
 
         # Manually add connection
         connection_manager.active_connections[user_id] = {mock_ws}
@@ -72,7 +71,7 @@ class TestConnectionManager:
         """Test that disconnect only removes the specific connection."""
         mock_ws1 = AsyncMock(spec=WebSocket)
         mock_ws2 = AsyncMock(spec=WebSocket)
-        user_id = 1
+        user_id = uuid.uuid4()
 
         connection_manager.active_connections[user_id] = {mock_ws1, mock_ws2}
         connection_manager.connection_users[mock_ws1] = user_id
@@ -89,7 +88,7 @@ class TestConnectionManager:
     ):
         """Test is_online returns True when user has connections."""
         mock_ws = AsyncMock(spec=WebSocket)
-        user_id = 1
+        user_id = uuid.uuid4()
         connection_manager.active_connections[user_id] = {mock_ws}
 
         assert connection_manager.is_online(user_id) is True
@@ -98,7 +97,7 @@ class TestConnectionManager:
         self, connection_manager: ConnectionManager
     ):
         """Test is_online returns False when user has no connections."""
-        assert connection_manager.is_online(999) is False
+        assert connection_manager.is_online(uuid.uuid4()) is False
 
     @pytest.mark.asyncio
     async def test_send_to_user_delivers_message(
@@ -107,7 +106,7 @@ class TestConnectionManager:
         """Test that send_to_user delivers message to all user connections."""
         mock_ws1 = AsyncMock(spec=WebSocket)
         mock_ws2 = AsyncMock(spec=WebSocket)
-        user_id = 1
+        user_id = uuid.uuid4()
         message = {"type": "test", "data": "hello"}
 
         connection_manager.active_connections[user_id] = {mock_ws1, mock_ws2}
@@ -128,7 +127,7 @@ class TestConnectionManager:
         mock_ws1 = AsyncMock(spec=WebSocket)
         mock_ws2 = AsyncMock(spec=WebSocket)
         mock_ws1.send_json.side_effect = Exception("Connection closed")
-        user_id = 1
+        user_id = uuid.uuid4()
         message = {"type": "test"}
 
         connection_manager.active_connections[user_id] = {mock_ws1, mock_ws2}
@@ -144,15 +143,17 @@ class TestConnectionManager:
         """Test get_online_users returns all connected user IDs."""
         mock_ws1 = AsyncMock(spec=WebSocket)
         mock_ws2 = AsyncMock(spec=WebSocket)
+        uid1 = uuid.uuid4()
+        uid2 = uuid.uuid4()
 
         connection_manager.active_connections = {
-            1: {mock_ws1},
-            2: {mock_ws2},
+            uid1: {mock_ws1},
+            uid2: {mock_ws2},
         }
 
         online = connection_manager.get_online_users()
 
-        assert set(online) == {1, 2}
+        assert set(online) == {uid1, uid2}
 
     @pytest.mark.asyncio
     async def test_broadcast_presence_targets_chat_participants_only(
@@ -196,24 +197,25 @@ class TestConnectionManager:
         send_mock = AsyncMock(return_value=1)
         connection_manager.send_to_user = send_mock
 
-        async def _audience(_user_id: int) -> set[int]:
-            return {2}
+        async def _audience(_user_id: uuid.UUID) -> set[uuid.UUID]:
+            return {uuid.uuid4()}
 
         monkeypatch.setattr("app.api.websocket._get_presence_audience", _audience)
         monkeypatch.setattr(
             settings, "presence_ping_min_interval_seconds", 60, raising=False
         )
 
+        curr_user_id = uuid.uuid4()
         last_seen = datetime.now(UTC)
         await connection_manager.broadcast_presence(
-            1,
+            curr_user_id,
             True,
             last_seen,
             source="ping",
             publish=False,
         )
         await connection_manager.broadcast_presence(
-            1,
+            curr_user_id,
             True,
             last_seen,
             source="ping",
@@ -282,12 +284,12 @@ class TestMessageSerialization:
 
         user = await user_factory(full_name="Test User")
 
-        chat = Chat(id="test-chat")
+        chat = Chat(id=uuid.uuid4())
         db_session.add(chat)
         await db_session.commit()
 
         message = Message(
-            id="msg-1",
+            id=uuid.uuid4(),
             chat_id=chat.id,
             sender_id=user.id,
             content="Hello!",
@@ -303,7 +305,7 @@ class TestMessageSerialization:
 
         result = serialize_message(message)
 
-        assert result["id"] == "msg-1"
+        assert result["id"] == message.id
         assert result["chat_id"] == chat.id
         assert result["sender_id"] == user.id
         assert result["content"] == "Hello!"

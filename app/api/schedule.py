@@ -1,3 +1,4 @@
+import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
@@ -14,7 +15,7 @@ from fastapi import (
 
 from app.api.deps import get_current_user, get_schedule_service
 from app.api.validation import ensure_exists, require_teacher_or_admin
-from app.core.container import get_schedule_handler
+from app.core.container import get_read_schedule_handler
 from app.core.localization import resolve_locale
 from app.cqrs.queries import GetScheduleHandler, GetScheduleQuery
 from app.deps.cache import get_cache
@@ -37,7 +38,7 @@ _SCHEDULE_CACHE_CONTROL = f"private, max-age={_SCHEDULE_CACHE_TTL_SECONDS}"
 router = APIRouter(prefix="/schedule", tags=["schedule"])
 
 
-def _schedule_cache_key(group_id: int) -> str:
+def _schedule_cache_key(group_id: uuid.UUID) -> str:
     return f"schedule:group:{group_id}"
 
 
@@ -73,11 +74,11 @@ async def add_schedule(
 
 @router.get("/{group_id}", response_model=list[schemas.ScheduleOut])
 async def get_schedule(
-    group_id: int,
+    group_id: uuid.UUID,
     request: Request,
     response: Response,
     if_none_match: str | None = Header(default=None),
-    handler: GetScheduleHandler = Depends(get_schedule_handler),
+    handler: GetScheduleHandler = Depends(get_read_schedule_handler),
 ):
     locale = resolve_locale(request=request)
     _get_vary_helper()(response, "Accept-Language")
@@ -104,7 +105,7 @@ async def get_schedule(
 
 @router.patch("/{schedule_id}", response_model=schemas.ScheduleOut)
 async def update_schedule(
-    schedule_id: int,
+    schedule_id: uuid.UUID,
     data: schemas.ScheduleUpdate,
     request: Request,
     service: ScheduleService = Depends(get_schedule_service),
@@ -133,7 +134,7 @@ async def update_schedule(
 
 @router.delete("/{schedule_id}", response_model=dict)
 async def delete_schedule(
-    schedule_id: int,
+    schedule_id: uuid.UUID,
     request: Request,
     service: ScheduleService = Depends(get_schedule_service),
     user: models.User = Depends(get_current_user),

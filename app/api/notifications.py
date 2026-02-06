@@ -1,4 +1,5 @@
 import logging
+import uuid
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -22,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.api.validation import ensure_exists, raise_not_found, raise_validation_error
-from app.core.database import get_db
+from app.core.database import get_db, get_read_db
 from app.core.localization import localized_text, resolve_locale, translate
 from app.models.models import Notification, Schedule, User
 from app.schemas.schemas import (
@@ -150,20 +151,17 @@ def _coerce_int(value: Any, default: int = 0) -> int:
             return default
 
 
-def _encode_cursor(dt: datetime, nid: int) -> str:
+def _encode_cursor(dt: datetime, nid: uuid.UUID | int | str) -> str:
     aware = _ensure_utc(dt)
-    return encode_datetime_cursor(aware, nid)
+    return encode_datetime_cursor(aware, str(nid))
 
 
-def _decode_cursor(value: str | None) -> tuple[datetime, int] | None:
+def _decode_cursor(value: str | None) -> tuple[datetime, str] | None:
     result = decode_datetime_cursor(value)
     if result is None:
         return None
     dt, id_str = result
-    try:
-        return dt, int(id_str)
-    except (ValueError, TypeError):
-        return None
+    return dt, id_str
 
 
 def _localized_notification_field(
@@ -204,19 +202,25 @@ async def _existing_notification_columns(db: AsyncSession) -> set[str]:
 
 async def _fetch_notification_rows(
     db: AsyncSession,
-    user_id: int,
+    user_id: uuid.UUID | int | str,
     limit: int,
-    cursor_info: tuple[datetime, int] | None,
+    cursor_info: tuple[datetime, str] | None,
 ) -> tuple[list[Mapping[str, Any]], set[str] | None]:
     table = Notification.__table__
     cols = table.c
     where = [cols.user_id == user_id]
     if cursor_info:
         cursor_dt, cursor_id = cursor_info
+        try:
+            target_id = (
+                uuid.UUID(cursor_id) if isinstance(cursor_id, str) else cursor_id
+            )
+        except (ValueError, TypeError):
+            target_id = cursor_id
         where.append(
             or_(
                 cols.created_at < cursor_dt,
-                and_(cols.created_at == cursor_dt, cols.id < cursor_id),
+                and_(cols.created_at == cursor_dt, cols.id < target_id),
             )
         )
     stmt = (
@@ -249,9 +253,9 @@ async def _fetch_notification_rows(
 
 async def _fetch_notification_rows_fallback(
     db: AsyncSession,
-    user_id: int,
+    user_id: uuid.UUID | int | str,
     limit: int,
-    cursor_info: tuple[datetime, int] | None,
+    cursor_info: tuple[datetime, str] | None,
 ) -> tuple[list[Mapping[str, Any]], set[str]]:
     available = await _existing_notification_columns(db)
     if not available or "id" not in available or "user_id" not in available:
@@ -271,15 +275,22 @@ async def _fetch_notification_rows_fallback(
     where = [cols.user_id == user_id]
     if cursor_info:
         cursor_dt, cursor_id = cursor_info
+        try:
+            target_id = (
+                uuid.UUID(cursor_id) if isinstance(cursor_id, str) else cursor_id
+            )
+        except (ValueError, TypeError):
+            target_id = cursor_id
+
         if "created_at" in available:
             where.append(
                 or_(
                     cols.created_at < cursor_dt,
-                    and_(cols.created_at == cursor_dt, cols.id < cursor_id),
+                    and_(cols.created_at == cursor_dt, cols.id < target_id),
                 )
             )
         else:
-            where.append(cols.id < cursor_id)
+            where.append(cols.id < target_id)
 
     order_by_clauses = []
     if "created_at" in available:
@@ -326,7 +337,10 @@ def _serialize_notification(
     read_at = _parse_datetime(read_at_raw) if read_at_raw else None
     type_raw = getter("type", None)
     url_raw = getter("url", None)
-    identifier = _coerce_int(getter("id"), default=0)
+    identifier = getter("id")
+    if isinstance(identifier, str):
+        identifier = identifier.strip()
+
     data = {
         "id": identifier,
         "title": _localized_notification_field(
@@ -363,7 +377,7 @@ async def list_notifications(
     response: Response,
     cursor: str | None = Query(None),
     limit: int = Query(20, ge=1, le=100),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_read_db),
     user: User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
@@ -371,7 +385,7 @@ async def list_notifications(
     _ensure_vary_header(response, "Accept-Language")
     response.headers["Cache-Control"] = "no-store, max-age=0"
     response.headers["Pragma"] = "no-cache"
-    cursor_info: tuple[datetime, int] | None = None
+    cursor_info: tuple[datetime, str] | None = None
     if cursor:
         parsed = _decode_cursor(cursor)
         if not parsed:
@@ -397,6 +411,10 @@ async def list_notifications(
         except SQLAlchemyError as exc:  # pragma: no cover - defensive fallback
             if not _is_missing_column_error(exc):
                 raise
+            logger.warning(
+                "Falling back to row-based unread count due to schema mismatch",
+                extra={"error": str(exc), "user_id": str(user.id)},
+            )
             unread = sum(1 for row in rows if not _coerce_bool(row.get("read", False)))
     else:
         count_stmt = select(func.count(Notification.id)).where(
@@ -404,7 +422,11 @@ async def list_notifications(
         )
         try:
             unread = (await db.execute(count_stmt)).scalar_one() or 0
-        except SQLAlchemyError:  # pragma: no cover - defensive fallback
+        except SQLAlchemyError as exc:  # pragma: no cover - defensive fallback
+            logger.warning(
+                "Falling back to row-based total count due to SQLAlchemy error",
+                extra={"error": str(exc), "user_id": str(user.id)},
+            )
             unread = sum(1 for row in rows if not _coerce_bool(row.get("read", False)))
 
     next_cursor = None
@@ -424,13 +446,15 @@ async def list_notifications(
 
 @router.patch("/{notif_id}/read")
 async def mark_read_single(
-    notif_id: int,
+    notif_id: uuid.UUID,
     request: Request,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)
-    notif = await db.get(Notification, notif_id)
+    notif = (
+        await db.execute(select(Notification).where(Notification.id == notif_id))
+    ).scalar_one_or_none()
     ensure_exists(notif, "notifications", locale)
 
     if notif.user_id != user.id:
@@ -462,6 +486,28 @@ async def mark_all_read(
     return {"ok": True, "updated": int(updated)}
 
 
+@router.delete("/{notif_id}")
+async def delete_notification(
+    notif_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    locale = resolve_locale(request=request, user=user)
+    notif = (
+        await db.execute(select(Notification).where(Notification.id == notif_id))
+    ).scalar_one_or_none()
+    ensure_exists(notif, "notifications", locale)
+
+    if notif.user_id != user.id:
+        raise_not_found("notifications", locale)
+
+    await db.delete(notif)
+    await db.commit()
+
+    return {"ok": True}
+
+
 @router.delete("")
 async def clear_notifications(
     db: AsyncSession = Depends(get_db),
@@ -480,7 +526,7 @@ async def check_schedule_and_generate(
     request: Request,
     response: Response,
     lookahead_minutes: int = Query(15, ge=1, le=180),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_read_db),
     user: User = Depends(get_current_user),
 ):
     locale = resolve_locale(request=request, user=user)

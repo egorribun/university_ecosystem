@@ -4,6 +4,8 @@ User repository for user data access operations.
 
 from __future__ import annotations
 
+import uuid
+
 from sqlalchemy import delete, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -22,8 +24,13 @@ class UserRepository(BaseRepository[User, schemas.UserCreate, dict]):
     def model(self) -> type[User]:
         return User
 
-    async def get(self, id: int) -> User | None:
+    async def get(self, id: uuid.UUID | str) -> User | None:
         """Get user by ID with MFA options loaded."""
+        if isinstance(id, str):
+            try:
+                id = uuid.UUID(id)
+            except ValueError:
+                return None
         stmt = select(User).where(User.id == id).options(*USER_MFA_LOAD_OPTIONS)
         result = await self.db.execute(stmt)
         return result.scalars().first()
@@ -120,25 +127,91 @@ class UserRepository(BaseRepository[User, schemas.UserCreate, dict]):
         )
         return list(result.scalars().all())
 
-    async def get_full_user_data(self, id: int) -> User | None:
-        """Get user by ID with ALL related data for export."""
+    async def get_user_sessions(
+        self, user_id: uuid.UUID | str, limit: int = 1000
+    ) -> list[models.ActiveSession]:
+        """Get user sessions with limit."""
+        if isinstance(user_id, str):
+            try:
+                user_id = uuid.UUID(user_id)
+            except ValueError:
+                return []
+
         stmt = (
-            select(User)
-            .where(User.id == id)
-            .options(
-                *USER_MFA_LOAD_OPTIONS,
-                selectinload(User.sessions),
-                selectinload(User.notifications),
-            )
+            select(models.ActiveSession)
+            .where(models.ActiveSession.user_id == user_id)
+            .limit(limit)
+            .order_by(models.ActiveSession.created_at.desc())
         )
         result = await self.db.execute(stmt)
-        return result.scalars().first()
+        return list(result.scalars().all())
+
+    async def get_user_notifications(
+        self, user_id: uuid.UUID | str, limit: int = 1000
+    ) -> list[models.Notification]:
+        """Get user notifications with limit."""
+        if isinstance(user_id, str):
+            try:
+                user_id = uuid.UUID(user_id)
+            except ValueError:
+                return []
+
+        stmt = (
+            select(models.Notification)
+            .where(models.Notification.user_id == user_id)
+            .limit(limit)
+            .order_by(models.Notification.created_at.desc())
+        )
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_user_mfa_challenges(
+        self, user_id: uuid.UUID | str, limit: int = 1000
+    ) -> list[models.MfaChallenge]:
+        """Get user MFA challenges."""
+        if isinstance(user_id, str):
+            try:
+                user_id = uuid.UUID(user_id)
+            except ValueError:
+                return []
+
+        stmt = (
+            select(models.MfaChallenge)
+            .where(models.MfaChallenge.user_id == user_id)
+            .limit(limit)
+            .order_by(models.MfaChallenge.created_at.desc())
+        )
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_user_totp_enrollments(
+        self, user_id: uuid.UUID | str
+    ) -> list[models.MfaTotpEnrollment]:
+        """Get user TOTP enrollments."""
+        if isinstance(user_id, str):
+            try:
+                user_id = uuid.UUID(user_id)
+            except ValueError:
+                return []
+
+        stmt = (
+            select(models.MfaTotpEnrollment)
+            .where(models.MfaTotpEnrollment.user_id == user_id)
+            .order_by(models.MfaTotpEnrollment.created_at.desc())
+        )
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
 
     async def check_email_exists(
-        self, email: str, exclude_user_id: int | None = None
+        self, email: str, exclude_user_id: uuid.UUID | str | None = None
     ) -> bool:
         stmt = select(exists().where(func.lower(User.email) == email.lower()))
         if exclude_user_id:
+            if isinstance(exclude_user_id, str):
+                try:
+                    exclude_user_id = uuid.UUID(exclude_user_id)
+                except ValueError:
+                    return False
             stmt = stmt.where(User.id != exclude_user_id)
         result = await self.db.execute(stmt)
         return bool(result.scalar())
@@ -150,7 +223,13 @@ class UserRepository(BaseRepository[User, schemas.UserCreate, dict]):
         )
         return result.scalars().first()
 
-    async def delete_sensitive_data(self, user_id: int):
+    async def delete_sensitive_data(self, user_id: uuid.UUID | str):
+        """Cleanup user-related transient records (sessions, challenges, etc)."""
+        if isinstance(user_id, str):
+            try:
+                user_id = uuid.UUID(user_id)
+            except ValueError:
+                return
         """Cleanup user-related transient records (sessions, challenges, etc)."""
         await self.db.execute(
             delete(models.ActiveSession).where(models.ActiveSession.user_id == user_id)

@@ -87,7 +87,7 @@ const mergeNewsPages = (pages: PaginatedResponse<NewsItem>[] | undefined): NewsI
     return []
   }
 
-  const positions = new Map<number, number>()
+  const positions = new Map<string, number>()
   const merged: NewsItem[] = []
 
   for (const page of pages) {

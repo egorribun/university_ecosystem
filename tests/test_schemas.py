@@ -3,6 +3,7 @@ from datetime import UTC, datetime, time, timedelta
 import pytest
 from pydantic import ValidationError
 
+from app.models import models
 from app.schemas import schemas
 
 
@@ -71,15 +72,16 @@ def test_event_update_accepts_valid_interval():
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_user_out_contract(user_factory):
-    user = await user_factory(
-        full_name="Test User", spotify_is_connected=True, spotify_display_name="DJ Test"
-    )
+    user = await user_factory(full_name="Test User")
+    if not user.spotify:
+        user.spotify = models.SpotifyIntegration()
+    user.spotify.is_connected = True
+    user.spotify.display_name = "DJ Test"
     payload = schemas.UserOut.from_orm(user)
     data = payload.model_dump()
 
     assert data["id"] == user.id
     assert data["email"] == user.email
-    assert data["spotify_connected"] is True
     assert data["spotify_is_connected"] is True
     assert data["dnd_enabled"] is False
     assert data["dnd_start"] is None

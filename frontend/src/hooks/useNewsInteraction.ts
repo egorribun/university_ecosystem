@@ -11,7 +11,7 @@ const CLICK_DB_VERSION = 3
 export type NewsComment = {
   id: number
   content: string
-  user_id: number
+  user_id: string
   user_name: string
   created_at: string
 }
@@ -69,7 +69,7 @@ interface NewsInteractionOptions {
   initialData?: Partial<NewsInteractions>
 }
 
-export function useNewsInteraction(newsId: number, options: NewsInteractionOptions = {}) {
+export function useNewsInteraction(newsId: string, options: NewsInteractionOptions = {}) {
   const queryClient = useQueryClient()
   const { user } = useAuth()
   const queryKey = ["news", newsId, "interactions"]
@@ -151,7 +151,7 @@ export function useNewsInteraction(newsId: number, options: NewsInteractionOptio
         const optimisticComment: NewsComment = {
           id: -Date.now(),
           content,
-          user_id: user?.id ?? 0,
+          user_id: user?.id ?? "",
           user_name: user?.full_name ?? "You",
           created_at: new Date().toISOString(),
         }

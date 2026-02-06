@@ -80,3 +80,28 @@ if (!windowWithScroll.scrollTo) {
 vi.mock("qrcode.react", () => ({
   QRCodeSVG: () => null,
 }))
+
+// Mock HTMLCanvasElement for tests that don't need real canvas
+if (typeof HTMLCanvasElement !== "undefined") {
+  HTMLCanvasElement.prototype.getContext = vi.fn(
+    () =>
+      ({
+        fillRect: vi.fn(),
+        clearRect: vi.fn(),
+        getImageData: vi.fn(() => ({ data: new Uint8ClampedArray() })),
+        putImageData: vi.fn(),
+        createImageData: vi.fn(),
+        setTransform: vi.fn(),
+        drawImage: vi.fn(),
+        save: vi.fn(),
+        restore: vi.fn(),
+        beginPath: vi.fn(),
+        moveTo: vi.fn(),
+        lineTo: vi.fn(),
+        stroke: vi.fn(),
+        fill: vi.fn(),
+        arc: vi.fn(),
+        closePath: vi.fn(),
+      }) as any
+  )
+}

@@ -50,7 +50,7 @@ vi.mock("react-i18next", () => ({
 
 const stories: StoryItem[] = [
   {
-    id: 1,
+    id: "uuid-1",
     title: "Orientation",
     short_text: "Welcome week",
     cover_url: null,
@@ -62,10 +62,10 @@ const stories: StoryItem[] = [
     created_at: new Date().toISOString(),
     title_en: "Orientation",
     short_text_en: "Welcome week",
-    created_by: 1,
+    created_by: "user-1",
   },
   {
-    id: 2,
+    id: "uuid-2",
     title: "Clubs fair",
     short_text: "Meet the student clubs",
     cover_url: null,
@@ -77,7 +77,7 @@ const stories: StoryItem[] = [
     created_at: new Date().toISOString(),
     title_en: "Clubs fair",
     short_text_en: "Meet the student clubs",
-    created_by: 1,
+    created_by: "user-1",
   },
 ]
 

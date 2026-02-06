@@ -1,4 +1,5 @@
 import datetime as dt
+import uuid
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -112,8 +113,9 @@ async def test_graphql_events_query(root_client: AsyncClient, db_session, user_f
 @pytest.mark.asyncio
 async def test_graphql_schedule_query(root_client: AsyncClient, db_session):
     now = dt.datetime.now(dt.UTC)
+    group_id = uuid.uuid4()
     schedule_entry = Schedule(
-        group_id=101,
+        group_id=group_id,
         weekday="Monday",
         start_time=now,
         end_time=now + dt.timedelta(hours=1, minutes=30),
@@ -123,14 +125,14 @@ async def test_graphql_schedule_query(root_client: AsyncClient, db_session):
     db_session.add(schedule_entry)
     await db_session.commit()
 
-    query = """
-    query {
-      schedule(groupId: 101) {
+    query = f"""
+    query {{
+      schedule(groupId: "{group_id}") {{
         subject
         lessonType: type
         dayOfWeek
-      }
-    }
+      }}
+    }}
     """
     response = await root_client.post("/graphql", json={"query": query})
     assert response.status_code == 200
@@ -209,7 +211,7 @@ async def test_graphql_context_user_not_found(root_client: AsyncClient, monkeypa
     # Test with valid token but non-existent user ID
     from app.auth.security import create_access_token
 
-    token = await create_access_token(sub="999999")
+    token = await create_access_token(sub=str(uuid.uuid4()))
 
     query = "{ me { email } }"
     response = await root_client.post(
@@ -226,7 +228,7 @@ async def test_graphql_context_db_error(root_client: AsyncClient, monkeypatch):
     # Test with database error during user fetching
     from app.auth.security import create_access_token
 
-    token = await create_access_token(sub="1")
+    token = await create_access_token(sub=str(uuid.uuid4()))
 
     # Mock select to raise error
 

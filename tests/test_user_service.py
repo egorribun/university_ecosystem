@@ -77,8 +77,10 @@ def mock_request():
 @pytest.fixture
 def mock_user():
     """Create mock User."""
+    import uuid
+
     user = MagicMock()
-    user.id = 1
+    user.id = uuid.uuid4()
     user.email = "test@example.com"
     user.role = "student"
     user.avatar_url = None
@@ -92,8 +94,10 @@ def mock_user():
 @pytest.fixture
 def mock_admin_user():
     """Create mock admin User."""
+    import uuid
+
     user = MagicMock()
-    user.id = 99
+    user.id = uuid.uuid4()
     user.email = "admin@example.com"
     user.role = "admin"
     return user

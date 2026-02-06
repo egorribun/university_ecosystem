@@ -30,7 +30,7 @@ const applyParsedData = <T>(response: { data: unknown }, schema: z.ZodType<T>, c
 }
 
 const newsItemSchema = z.object({
-  id: z.number(),
+  id: z.string().uuid(),
   title: z.string(),
   content: z.string(),
   created_at: z.string(),
@@ -56,7 +56,7 @@ export const fetchNews = ({ ifNoneMatch, signal }: FetchNewsOptions = {}) =>
   })
 
 export const fetchNewsItem = async (
-  id: number,
+  id: string,
   { ifNoneMatch, signal }: FetchNewsItemOptions = {}
 ) => {
   const response = await apiClient.get("/api/v1/news/{id}", {
@@ -77,7 +77,7 @@ export const createNews = async (payload: CreateNewsPayload) => {
   return response
 }
 
-export const updateNews = async (id: number, payload: UpdateNewsPayload) => {
+export const updateNews = async (id: string, payload: UpdateNewsPayload) => {
   const response = await apiClient.patch("/api/v1/news/{id}", payload ?? undefined, {
     pathParams: { id },
   })
@@ -85,7 +85,7 @@ export const updateNews = async (id: number, payload: UpdateNewsPayload) => {
   return response
 }
 
-export const deleteNews = (id: number) =>
+export const deleteNews = (id: string) =>
   apiClient.delete("/api/v1/news/{id}", {
     pathParams: { id },
   })

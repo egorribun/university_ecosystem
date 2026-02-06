@@ -1,3 +1,4 @@
+from datetime import UTC
 from unittest.mock import MagicMock
 
 import pytest
@@ -51,18 +52,24 @@ async def test_mark_read_single_forbidden(
 ):
     user1 = await user_factory()
     user2 = await user_factory()
+    from datetime import datetime
 
-    notif = models.Notification(user_id=user1.id, title="Test", body="Test")
+    from app.utils.uuid_v7 import generate_uuid7
+
+    notif_id = generate_uuid7()
+    created_at = datetime.now(UTC)
+    notif = models.Notification(
+        id=notif_id, created_at=created_at, user_id=user1.id, title="Test", body="Test"
+    )
     db_session.add(notif)
     await db_session.commit()
-    await db_session.refresh(notif)
 
     from app.auth.security import create_access_token
 
     token2, _ = await create_access_token(sub=str(user2.id), db=db_session)
 
     response = await root_client.patch(
-        f"/api/v1/notifications/{notif.id}/read",
+        f"/api/v1/notifications/{notif_id}/read",
         headers={"Authorization": f"Bearer {token2}"},
     )
     assert response.status_code == 404
@@ -73,17 +80,29 @@ async def test_mark_read_single_already_read(
     root_client: AsyncClient, db_session, user_factory
 ):
     user = await user_factory()
-    notif = models.Notification(user_id=user.id, title="Test", body="Test", read=True)
+    from datetime import datetime
+
+    from app.utils.uuid_v7 import generate_uuid7
+
+    notif_id = generate_uuid7()
+    created_at = datetime.now(UTC)
+    notif = models.Notification(
+        id=notif_id,
+        created_at=created_at,
+        user_id=user.id,
+        title="Test",
+        body="Test",
+        read=True,
+    )
     db_session.add(notif)
     await db_session.commit()
-    await db_session.refresh(notif)
 
     from app.auth.security import create_access_token
 
     token, _ = await create_access_token(sub=str(user.id), db=db_session)
 
     response = await root_client.patch(
-        f"/api/v1/notifications/{notif.id}/read",
+        f"/api/v1/notifications/{notif_id}/read",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 200

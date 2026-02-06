@@ -45,12 +45,14 @@ jobs:
                   cache-dependency-glob: "uv.lock"
 
             - name: Install dependencies
+              shell: pwsh
               run: uv sync --frozen
 
             - name: Run pip-audit with allowlist
+              shell: pwsh
               run: |
-                  uv run python scripts/audit_dependencies.py \
-                    --allowlist security/audit-allowlist.yaml \
+                  uv run python scripts/audit_dependencies.py `
+                    --allowlist security/audit-allowlist.yaml `
                     --pip
 
     npm-audit:
@@ -82,14 +84,18 @@ jobs:
                   cache-dependency-glob: "uv.lock"
 
             - name: Install dependencies
+              shell: pwsh
               run: |
                   npm ci
-                  cd .. && uv sync --frozen
+                  Set-Location ..
+                  uv sync --frozen
 
             - name: Run npm audit with allowlist
+              shell: pwsh
               run: |
-                  cd .. && uv run python scripts/audit_dependencies.py \
-                    --allowlist security/audit-allowlist.yaml \
+                  Set-Location ..
+                  uv run python scripts/audit_dependencies.py `
+                    --allowlist security/audit-allowlist.yaml `
                     --npm frontend
 
     docker-security:

@@ -72,7 +72,7 @@ export default function AdminNotifications() {
   const { t } = useTranslation(["admin", "common"])
   const { formatDate } = useLocaleFormatters()
   const queryClient = useQueryClient()
-  const [selected, setSelected] = useState<Set<number>>(new Set())
+  const [selected, setSelected] = useState<Set<string>>(new Set())
   const [actionError, setActionError] = useState<string | null>(null)
   const [topicsUserIdInput, setTopicsUserIdInput] = useState("")
   const [topicsData, setTopicsData] = useState<Awaited<
@@ -112,7 +112,7 @@ export default function AdminNotifications() {
   }
 
   const retryMutation = useMutation({
-    mutationFn: async (jobIds: number[]) => {
+    mutationFn: async (jobIds: string[]) => {
       await retryDeadLetterJobs(jobIds)
     },
     onMutate: () => {
@@ -126,7 +126,7 @@ export default function AdminNotifications() {
   })
 
   const purgeMutation = useMutation({
-    mutationFn: async (jobIds: number[]) => {
+    mutationFn: async (jobIds: string[]) => {
       await purgeDeadLetterJobs(jobIds)
     },
     onMutate: () => {
@@ -139,7 +139,7 @@ export default function AdminNotifications() {
     onError: onActionError,
   })
 
-  const toggleSelect = (jobId: number) => {
+  const toggleSelect = (jobId: string) => {
     setActionError(null)
     setSelected((prev) => {
       const next = new Set(prev)
@@ -176,8 +176,7 @@ export default function AdminNotifications() {
       setTopicsState({})
       return
     }
-    const parsed = Number.parseInt(trimmed, 10)
-    if (!Number.isFinite(parsed) || parsed < 1) {
+    if (!trimmed) {
       setTopicsError(t("admin:notifications.topics.invalidId"))
       setTopicsData(null)
       setTopicsState({})
@@ -186,7 +185,7 @@ export default function AdminNotifications() {
     resetTopicFeedback()
     setTopicsBusy(true)
     try {
-      const data = await fetchAdminUserTopics(parsed)
+      const data = await fetchAdminUserTopics(trimmed)
       setTopicsData(data)
       setTopicsState(buildTopicState(data.allowed_topics, data.topics))
       setTopicsMessage(
@@ -436,8 +435,8 @@ export default function AdminNotifications() {
                       setTopicsUserIdInput(event.target.value)
                       resetTopicFeedback()
                     }}
-                    type="number"
-                    inputProps={{ min: 1 }}
+                    type="text"
+                    // inputProps={{ min: 1 }}
                     sx={{ minWidth: { xs: "100%", sm: 200 } }}
                     disabled={topicsBusy}
                   />

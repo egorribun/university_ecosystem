@@ -1,3 +1,5 @@
+import uuid
+
 from app.core.database import async_session
 from app.core.tkq import broker
 from app.models.models import Event, News
@@ -11,7 +13,7 @@ from app.services.notifications.news_events import (
 
 @broker.task
 async def enqueue_news_notification_task(
-    news_id: int,
+    news_id: uuid.UUID,
     locale: str | None = None,
 ) -> None:
     """Distributed task for sending news notifications."""
@@ -24,7 +26,7 @@ async def enqueue_news_notification_task(
 
 @broker.task
 async def enqueue_event_notification_task(
-    event_id: int,
+    event_id: uuid.UUID,
     locale: str | None = None,
 ) -> None:
     """Distributed task for sending event notifications."""

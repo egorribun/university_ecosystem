@@ -121,10 +121,17 @@ class Query:
         info: strawberry.Info[GraphQLContext],
         id: strawberry.ID,
     ) -> NewsType | None:
+        from uuid import UUID
+
         from app.models import News
 
+        try:
+            uid = UUID(str(id))
+        except (ValueError, TypeError):
+            return None
+
         result = await info.context.session.execute(
-            select(News).where(News.id == int(id)).options(selectinload(News.author))
+            select(News).where(News.id == uid).options(selectinload(News.author))
         )
         news = result.scalar_one_or_none()
         if not news:
@@ -174,12 +181,19 @@ class Query:
     async def schedule(
         self,
         info: strawberry.Info[GraphQLContext],
-        group_id: int,
+        group_id: strawberry.ID,
     ) -> list[ScheduleEntryType]:
+        from uuid import UUID
+
         from app.models import Schedule
 
+        try:
+            uid = UUID(str(group_id))
+        except (ValueError, TypeError):
+            return []
+
         result = await info.context.session.execute(
-            select(Schedule).where(Schedule.group_id == group_id)
+            select(Schedule).where(Schedule.group_id == uid)
         )
         entries = result.scalars().all()
 

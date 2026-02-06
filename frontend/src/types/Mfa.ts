@@ -20,7 +20,7 @@ export type MfaVerifyPayload = {
 
 type StepUpPath = paths["/api/v1/auth/mfa/step-up"]["post"]
 
-export type StepUpResponse = StepUpPath["responses"]["200"]["content"]["application/json"]
+export type StepUpResponse = StepUpPath["responses"]["202"]["content"]["application/json"]
 
 export type MfaFactorStatus = {
   disabled: boolean
@@ -29,7 +29,7 @@ export type MfaFactorStatus = {
 }
 
 export type WebAuthnCredential = {
-  id: number
+  id: string
   label: string
   created_at: string
   last_used_at: string | null

@@ -1,3 +1,4 @@
+import uuid
 from typing import Annotated
 
 from fastapi import (
@@ -9,7 +10,12 @@ from fastapi import (
     UploadFile,
 )
 
-from app.api.deps import get_chat_service, get_current_user, get_locale
+from app.api.deps import (
+    get_chat_service,
+    get_current_user,
+    get_locale,
+    get_read_chat_service,
+)
 from app.models.models import User
 from app.schemas.chat import (
     ChatCreate,
@@ -28,7 +34,7 @@ router = APIRouter(prefix="/chats", tags=["chats"])
 @router.get("", response_model=ChatsListOut)
 async def get_chats(
     current_user: Annotated[User, Depends(get_current_user)],
-    chat_service: Annotated[ChatService, Depends(get_chat_service)],
+    chat_service: Annotated[ChatService, Depends(get_read_chat_service)],
     cursor: str | None = Query(None, description="Pagination cursor"),
     limit: int = Query(20, ge=1, le=100, description="Number of chats to return"),
 ):
@@ -62,9 +68,9 @@ async def create_chat(
 
 @router.get("/{chat_id}", response_model=ChatResponse)
 async def get_chat(
-    chat_id: str,
+    chat_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user)],
-    chat_service: Annotated[ChatService, Depends(get_chat_service)],
+    chat_service: Annotated[ChatService, Depends(get_read_chat_service)],
     locale: Annotated[str, Depends(get_locale)],
 ):
     """
@@ -75,9 +81,9 @@ async def get_chat(
 
 @router.get("/{chat_id}/messages", response_model=MessagesListOut)
 async def get_messages(
-    chat_id: str,
+    chat_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user)],
-    chat_service: Annotated[ChatService, Depends(get_chat_service)],
+    chat_service: Annotated[ChatService, Depends(get_read_chat_service)],
     locale: Annotated[str, Depends(get_locale)],
     cursor: str | None = Query(None, description="Pagination cursor"),
     limit: int = Query(50, ge=1, le=100, description="Number of messages to return"),
@@ -99,7 +105,7 @@ async def get_messages(
     dependencies=[Depends(sensitive_route_limit())],
 )
 async def send_message(
-    chat_id: str,
+    chat_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user)],
     chat_service: Annotated[ChatService, Depends(get_chat_service)],
     locale: Annotated[str, Depends(get_locale)],
@@ -119,7 +125,7 @@ async def send_message(
 
 @router.post("/{chat_id}/read")
 async def mark_read(
-    chat_id: str,
+    chat_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user)],
     chat_service: Annotated[ChatService, Depends(get_chat_service)],
     locale: Annotated[str, Depends(get_locale)],
@@ -137,7 +143,7 @@ async def mark_read(
     dependencies=[Depends(sensitive_route_limit())],
 )
 async def clear_chat_history(
-    chat_id: str,
+    chat_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user)],
     chat_service: Annotated[ChatService, Depends(get_chat_service)],
     locale: Annotated[str, Depends(get_locale)],
@@ -152,7 +158,7 @@ async def clear_chat_history(
     dependencies=[Depends(sensitive_route_limit())],
 )
 async def delete_chat(
-    chat_id: str,
+    chat_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user)],
     chat_service: Annotated[ChatService, Depends(get_chat_service)],
     locale: Annotated[str, Depends(get_locale)],

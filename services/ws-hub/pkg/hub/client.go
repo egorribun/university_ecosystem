@@ -91,31 +91,33 @@ func (c *Client) JoinRoom(room string) {
 		return
 	}
 
+	c.Hub.mu.Lock()
+	defer c.Hub.mu.Unlock()
+
 	c.mu.Lock()
 	c.Rooms[room] = true
 	c.mu.Unlock()
 
-	c.Hub.mu.Lock()
 	if c.Hub.Rooms[room] == nil {
 		c.Hub.Rooms[room] = make(map[*Client]bool)
 	}
 	c.Hub.Rooms[room][c] = true
-	c.Hub.mu.Unlock()
 
 	c.Hub.Logger.Debug("Client joined room", zap.String("client", c.ID), zap.String("room", room))
 }
 
 func (c *Client) LeaveRoom(room string) {
+	c.Hub.mu.Lock()
+	defer c.Hub.mu.Unlock()
+
 	c.mu.Lock()
 	delete(c.Rooms, room)
 	c.mu.Unlock()
 
-	c.Hub.mu.Lock()
 	if clients, ok := c.Hub.Rooms[room]; ok {
 		delete(clients, c)
 		if len(clients) == 0 {
 			delete(c.Hub.Rooms, room)
 		}
 	}
-	c.Hub.mu.Unlock()
 }

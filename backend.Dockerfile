@@ -17,7 +17,8 @@ RUN --mount=type=cache,id=apt-lists-builder,target=/var/lib/apt/lists \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uv/bin/uv
-ENV PATH="/uv/bin:$PATH"
+ENV PATH="/uv/bin:$PATH" \
+    UV_PROJECT_ENVIRONMENT="/opt/venv"
 
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -41,7 +42,7 @@ RUN --mount=type=cache,id=apt-lists-runtime,target=/var/lib/apt/lists \
     && groupadd --system app \
     && useradd --system --gid app --home /home/app --shell /bin/bash app
 
-COPY --from=builder /build/.venv /opt/venv
+COPY --from=builder /opt/venv /opt/venv
 COPY --chown=app:app app ./app
 COPY --chown=app:app alembic ./alembic
 COPY --chown=app:app alembic.ini ./alembic.ini

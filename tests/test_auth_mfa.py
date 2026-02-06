@@ -2,6 +2,7 @@ import base64
 import datetime as dt
 import json
 import logging
+from uuid import UUID
 
 import pyotp
 import pytest
@@ -174,7 +175,7 @@ async def test_pending_totp_enrollment_can_be_cancelled(
     assert cancel_response.status_code == status.HTTP_204_NO_CONTENT
 
     await db_session.flush()
-    assert await db_session.get(models.MfaTotpEnrollment, enrollment_id) is None
+    assert await db_session.get(models.MfaTotpEnrollment, UUID(enrollment_id)) is None
 
     restart_response = await async_client.post("/auth/mfa/totp/start", headers=headers)
     assert restart_response.status_code == status.HTTP_200_OK, restart_response.text
@@ -283,7 +284,7 @@ async def test_totp_enrollment_and_verification_flow(
     assert pending_response.status_code == status.HTTP_202_ACCEPTED
     pending = pending_response.json()
     assert pending["status"] == "mfa_required"
-    assert pending["user_id"] == user.id
+    assert pending["user_id"] == str(user.id)
     assert pending["default_method"] == mfa.MFA_METHOD_TOTP
 
     totp_method = _get_method_entry(pending, mfa.MFA_METHOD_TOTP)
@@ -320,7 +321,7 @@ async def test_totp_enrollment_and_verification_flow(
     body = success.json()
     assert body["token_type"] == "bearer"
     assert body["access_token"]
-    assert body["user"]["id"] == user.id
+    assert body["user"]["id"] == str(user.id)
     session = body.get("session")
     assert session is not None
     assert isinstance(session.get("signing_key"), str)
@@ -358,7 +359,7 @@ async def test_totp_login_requires_mfa_even_when_toggle_disabled(
     assert pending_response.status_code == status.HTTP_202_ACCEPTED
     pending = pending_response.json()
     assert pending["status"] == "mfa_required"
-    assert pending["user_id"] == user.id
+    assert pending["user_id"] == str(user.id)
     assert pending["default_method"] == mfa.MFA_METHOD_TOTP
 
 
@@ -446,7 +447,7 @@ async def test_totp_challenge_expiry_blocks_verification(
     )
     assert verify.status_code == status.HTTP_400_BAD_REQUEST
     assert verify.json()["detail"] == translate(
-        "errors.common.bad_request", locale="en"
+        "errors.mfa.invalid_challenge", locale="en"
     )
 
 

@@ -7,6 +7,7 @@
 
 import { create } from "zustand"
 import { devtools, persist } from "zustand/middleware"
+import { useShallow } from "zustand/react/shallow"
 
 import type {
   NotificationTopicKey,
@@ -56,8 +57,7 @@ interface NotificationState {
 }
 
 /** Generate unique toast ID */
-const generateToastId = (): string =>
-  `toast_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+const generateToastId = (): string => crypto.randomUUID()
 
 export const useNotificationStore = create<NotificationState>()(
   devtools(
@@ -129,12 +129,14 @@ export const useNotificationPermission = () => useNotificationStore((state) => s
 export const useToasts = () => useNotificationStore((state) => state.toasts)
 
 export const useNotificationActions = () =>
-  useNotificationStore((state) => ({
-    setTopic: state.setTopic,
-    setAllTopics: state.setAllTopics,
-    setPermission: state.setPermission,
-    addToast: state.addToast,
-    removeToast: state.removeToast,
-    clearToasts: state.clearToasts,
-    resetTopics: state.resetTopics,
-  }))
+  useNotificationStore(
+    useShallow((state) => ({
+      setTopic: state.setTopic,
+      setAllTopics: state.setAllTopics,
+      setPermission: state.setPermission,
+      addToast: state.addToast,
+      removeToast: state.removeToast,
+      clearToasts: state.clearToasts,
+      resetTopics: state.resetTopics,
+    }))
+  )

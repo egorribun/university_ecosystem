@@ -7,6 +7,7 @@ included in the FastAPI application.
 from __future__ import annotations
 
 import logging
+import uuid
 
 import strawberry
 from fastapi import Request
@@ -47,10 +48,18 @@ async def get_context(
 
                         from app.models import User
 
-                        result = await session.execute(
-                            select(User).where(User.id == int(user_id))
-                        )
-                        current_user = result.scalar_one_or_none()
+                        try:
+                            val = (
+                                uuid.UUID(user_id)
+                                if isinstance(user_id, str)
+                                else user_id
+                            )
+                            result = await session.execute(
+                                select(User).where(User.id == val)
+                            )
+                            current_user = result.scalar_one_or_none()
+                        except (ValueError, TypeError):
+                            pass
         except Exception as exc:
             # Note: Auth failures are acceptable for public queries,
             # but we should log them for debugging

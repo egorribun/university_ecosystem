@@ -15,7 +15,7 @@ export type LessonParity = "odd" | "even" | "both"
 export type LessonWeekday = string
 
 export type Lesson = {
-  id: number
+  id: string
   weekday: LessonWeekday
   parity: LessonParity
   start_time: string | null
@@ -24,7 +24,7 @@ export type Lesson = {
   teacher?: string | null
   room?: string | null
   lesson_type?: string | null
-  group_id?: number | null
+  group_id?: string | null
 }
 
 export type AddLessonFields = {
@@ -38,7 +38,7 @@ export type AddLessonFields = {
 }
 
 export type ScheduleGroup = {
-  id: number
+  id: string
   name: string
   [key: string]: unknown
 }
@@ -86,7 +86,7 @@ type StorageWriteOptions = {
 }
 
 export const groupsStorageKey = "sched:groups"
-export const scheduleStorageKey = (groupId: number) => `sched:${groupId}`
+export const scheduleStorageKey = (groupId: string) => `sched:${groupId}`
 
 export const readFromStorage = <T>(
   key: string,
@@ -223,7 +223,7 @@ export const minimalWeekdayFallback: WeekdayConfig[] = [
 // ============================================================================
 
 export const scheduleGroupsQueryKey = ["schedule", "groups"] as const
-export const scheduleQueryKey = (groupId: number) => ["schedule", "group", groupId] as const
+export const scheduleQueryKey = (groupId: string) => ["schedule", "group", groupId] as const
 
 export type ScheduleGroupsQueryKey = typeof scheduleGroupsQueryKey
 export type InactiveScheduleQueryKey = readonly ["schedule", "group", "none"]

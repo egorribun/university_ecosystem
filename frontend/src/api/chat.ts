@@ -17,7 +17,7 @@ export interface PresenceStatus {
 export interface Message {
   id: string
   chat_id: string
-  sender_id: number
+  sender_id: string
   content: string
   created_at: string
   read_status: boolean
@@ -33,7 +33,7 @@ export interface Chat {
   unread_count: number
   created_at: string
   updated_at: string
-  presence?: Record<number, PresenceStatus>
+  presence?: Record<string, PresenceStatus>
 }
 
 // Paginated response types
@@ -71,7 +71,7 @@ export const chatApi = {
   },
 
   createChat: async (participantId: string) => {
-    const response = await client.post<Chat>("/chats", { participant_id: Number(participantId) })
+    const response = await client.post<Chat>("/chats", { participant_id: participantId })
     return response.data
   },
 

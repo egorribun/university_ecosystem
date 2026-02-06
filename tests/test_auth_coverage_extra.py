@@ -253,17 +253,30 @@ async def test_get_challenge_expired_coverage(db_session: AsyncSession, user_fac
 
 @pytest.mark.asyncio
 async def test_consume_challenge_coverage(db_session: AsyncSession, user_factory):
+    """Test that challenges are properly marked as consumed.
+
+    Note: The consume_challenge function now performs full MFA verification.
+    This test verifies the basic challenge marking functionality by testing
+    the get_challenge function with consume=True parameter instead.
+    """
     user = await user_factory()
     from app.models.models import MfaChallenge
 
+    challenge_token = "test-consume-token"
     challenge = MfaChallenge(
         user_id=user.id,
         challenge_type="totp-verify",
-        token="some-token",
+        token=challenge_token,
         expires_at=datetime.now(UTC) + timedelta(minutes=10),
     )
     db_session.add(challenge)
     await db_session.commit()
 
-    await mfa.consume_challenge(db_session, challenge)
-    assert challenge.consumed_at is not None
+    # Use get_challenge with consume=True to mark it consumed
+    retrieved = await mfa.get_challenge(
+        db_session,
+        token=challenge_token,
+        challenge_type="totp-verify",
+        consume=True,
+    )
+    assert retrieved.consumed_at is not None

@@ -6,70 +6,81 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestGetIntOption_ReturnsDefaultForMissingKey(t *testing.T) {
+func TestGetValidatedDimension_ReturnsDefaultForMissingKey(t *testing.T) {
 	options := map[string]interface{}{}
 
-	result := getIntOption(options, "width", 800)
+	result, err := getValidatedDimension(options, "width", 800)
 
+	assert.NoError(t, err)
 	assert.Equal(t, 800, result)
 }
 
-func TestGetIntOption_ReturnsDefaultForNilOptions(t *testing.T) {
+func TestGetValidatedDimension_ReturnsDefaultForNilOptions(t *testing.T) {
 	var options map[string]interface{}
 
-	result := getIntOption(options, "height", 600)
+	result, err := getValidatedDimension(options, "height", 600)
 
+	assert.NoError(t, err)
 	assert.Equal(t, 600, result)
 }
 
-func TestGetIntOption_ParsesIntValue(t *testing.T) {
+func TestGetValidatedDimension_ParsesIntValue(t *testing.T) {
 	options := map[string]interface{}{
 		"width": 1024,
 	}
 
-	result := getIntOption(options, "width", 800)
+	result, err := getValidatedDimension(options, "width", 800)
 
+	assert.NoError(t, err)
 	assert.Equal(t, 1024, result)
 }
 
-func TestGetIntOption_ParsesFloat64Value(t *testing.T) {
+func TestGetValidatedDimension_ParsesFloat64Value(t *testing.T) {
 	options := map[string]interface{}{
 		"height": float64(768),
 	}
 
-	result := getIntOption(options, "height", 600)
+	result, err := getValidatedDimension(options, "height", 600)
 
+	assert.NoError(t, err)
 	assert.Equal(t, 768, result)
 }
 
-func TestGetIntOption_ParsesInt32Value(t *testing.T) {
-	options := map[string]interface{}{
-		"quality": int32(85),
-	}
-
-	result := getIntOption(options, "quality", 75)
-
-	assert.Equal(t, 85, result)
-}
-
-func TestGetIntOption_ParsesInt64Value(t *testing.T) {
-	options := map[string]interface{}{
-		"maxSize": int64(1000000),
-	}
-
-	result := getIntOption(options, "maxSize", 500000)
-
-	assert.Equal(t, 1000000, result)
-}
-
-func TestGetIntOption_ReturnsDefaultForUnsupportedType(t *testing.T) {
+func TestGetValidatedDimension_ErrorsOnInvalidType(t *testing.T) {
 	options := map[string]interface{}{
 		"width": "not-a-number",
 	}
 
-	result := getIntOption(options, "width", 800)
+	_, err := getValidatedDimension(options, "width", 800)
 
-	assert.Equal(t, 800, result)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid type")
+}
+
+func TestGetValidatedDimension_ErrorsOnNonPositive(t *testing.T) {
+	options := map[string]interface{}{
+		"width": 0,
+	}
+
+	_, err := getValidatedDimension(options, "width", 800)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "must be positive")
+
+	options["width"] = -100
+	_, err = getValidatedDimension(options, "width", 800)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "must be positive")
+}
+
+func TestGetValidatedDimension_ErrorsOnExceedingLimit(t *testing.T) {
+	options := map[string]interface{}{
+		"width": maxImageDimension + 1,
+	}
+
+	_, err := getValidatedDimension(options, "width", 800)
+
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "exceeds maximum allowed dimension")
 }
 
 func TestProcessJob_StructFieldsAreAccessible(t *testing.T) {

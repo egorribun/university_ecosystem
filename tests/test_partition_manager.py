@@ -4,59 +4,74 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.services.partition_manager import (
-    PARTITIONED_TABLES,
     ensure_partitions_exist,
     start_partition_management_scheduler,
 )
 
 
-class TestPartitionManager:
-    @pytest.mark.asyncio
-    async def test_ensure_partitions_exist_non_postgresql(self):
-        """Should skip if not PostgreSQL."""
-        mock_conn = AsyncMock()
-        mock_conn.dialect.name = "sqlite"
+@pytest.mark.asyncio
+async def test_ensure_partitions_exist_postgresql_mock(monkeypatch):
+    # Mock settings
+    with patch("app.core.config.settings") as mock_settings:
+        mock_settings.partition_warmup_months = 0
+        mock_settings.partition_retention_days = 30
 
-        with patch("app.services.partition_manager.engine") as mock_engine:
-            mock_engine.connect.return_value.__aenter__.return_value = mock_conn
-
-            await ensure_partitions_exist()
-            mock_conn.execute.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_ensure_partitions_exist_postgresql(self):
-        """Should execute CREATE TABLE on PostgreSQL."""
+        mock_engine = MagicMock()
         mock_conn = AsyncMock()
         mock_conn.dialect.name = "postgresql"
-        mock_conn.execute = AsyncMock()
-        mock_conn.commit = AsyncMock()
+        mock_engine.connect.return_value.__aenter__.return_value = mock_conn
 
-        with patch("app.services.partition_manager.engine") as mock_engine:
-            mock_engine.connect.return_value.__aenter__.return_value = mock_conn
+        # Monkeypatch the engine in the module
+        monkeypatch.setattr("app.services.partition_manager.engine", mock_engine)
 
-            mock_result = MagicMock()
-            mock_result.scalars.return_value.all.return_value = []
-            mock_conn.execute.return_value = mock_result
+        # Mock result for partition listing
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = ["notifications_y1999m01"]
+        mock_conn.execute.return_value = mock_result
 
-            await ensure_partitions_exist()
+        await ensure_partitions_exist()
 
-            # verify it tries to create tables for current month
-            assert mock_conn.execute.call_count >= len(PARTITIONED_TABLES)
-            mock_conn.commit.assert_called()
+        # Verify execute was called for CREATE TABLE
+        # We check the SQL string inside the TextClause
+        found_create = False
+        for call in mock_conn.execute.call_args_list:
+            sql = str(call[0][0])
+            if "CREATE TABLE" in sql:
+                found_create = True
+                break
+        assert found_create, "CREATE TABLE not found in execute calls"
 
-    @pytest.mark.asyncio
-    async def test_scheduler_lifecycle(self):
-        """Should start and be able to stop scheduler."""
-        with patch(
-            "app.services.partition_manager.ensure_partitions_exist",
-            new_callable=AsyncMock,
-        ) as mock_ensure:
-            # use small interval
-            stop_func = await start_partition_management_scheduler(interval_seconds=0.1)
+        # Verify DROP TABLE was attempted for old partition
+        found_drop = False
+        for call in mock_conn.execute.call_args_list:
+            sql = str(call[0][0])
+            if "DROP TABLE" in sql:
+                found_drop = True
+                break
+        assert found_drop, "DROP TABLE not found in execute calls"
 
-            # wait a bit for it to run at least once
-            await asyncio.sleep(0.2)
 
-            assert mock_ensure.called
+@pytest.mark.asyncio
+async def test_ensure_partitions_exist_skipped_on_sqlite(monkeypatch):
+    mock_engine = MagicMock()
+    mock_conn = AsyncMock()
+    mock_conn.dialect.name = "sqlite"
+    mock_engine.connect.return_value.__aenter__.return_value = mock_conn
 
-            await stop_func()
+    monkeypatch.setattr("app.services.partition_manager.engine", mock_engine)
+
+    await ensure_partitions_exist()
+    assert mock_conn.execute.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_partition_scheduler():
+    from app.services import partition_manager
+
+    with patch.object(
+        partition_manager, "ensure_partitions_exist", new_callable=AsyncMock
+    ) as mock_ensure:
+        stop_func = await start_partition_management_scheduler(interval_seconds=0.01)
+        await asyncio.sleep(0.05)
+        await stop_func()
+        assert mock_ensure.called

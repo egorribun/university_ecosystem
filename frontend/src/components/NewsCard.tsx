@@ -44,7 +44,7 @@ const menuItemClass =
   "flex w-full items-center gap-2 px-4 py-2.5 text-left text-[0.95rem] font-medium text-[color:var(--page-text)] transition hover:bg-[color:var(--glass-bg)]/80 focus-visible:outline-none focus-visible:bg-[color:var(--glass-bg)]"
 
 type NewsCardProps = {
-  id: number
+  id: string
   title: string
   content: string
   title_en?: string | null

@@ -1,6 +1,7 @@
 import base64
 import logging
 import os
+import uuid
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
 
@@ -174,8 +175,6 @@ async def _ensure_access_token(
             return None
         _disconnect_user(user, clear_refresh=True)
         await db.commit()
-        _disconnect_user(user, clear_refresh=True)
-        await db.commit()
         raise_unauthorized(locale, "errors.spotify.reconnect_required")
     try:
         async with _spotify_circuit_breaker:
@@ -202,15 +201,9 @@ async def _ensure_access_token(
     if r.status_code != 200:
         _disconnect_user(user, clear_refresh=True)
         await db.commit()
-    if r.status_code != 200:
-        _disconnect_user(user, clear_refresh=True)
-        await db.commit()
         raise_unauthorized(locale, "errors.spotify.reconnect_required")
     data = r.json()
     access_token = data.get("access_token")
-    if not access_token:
-        _disconnect_user(user, clear_refresh=True)
-        await db.commit()
     if not access_token:
         _disconnect_user(user, clear_refresh=True)
         await db.commit()
@@ -262,7 +255,7 @@ async def spotify_callback(
     payload = decode_token(state) or {}
     if not payload.get("sub"):
         raise_validation_error("errors.spotify.invalid_state", locale)
-    user = await db.get(User, int(payload["sub"]))
+    user = await db.get(User, uuid.UUID(payload["sub"]))
     ensure_exists(user, "spotify.user_not_found", locale)
     locale = resolve_locale(request=request, user=user)
     try:
@@ -367,18 +360,12 @@ async def now_playing(
         if r.status_code == 401:
             _disconnect_user(user, clear_refresh=True)
             await db.commit()
-        if r.status_code == 401:
-            _disconnect_user(user, clear_refresh=True)
-            await db.commit()
             raise_unauthorized(locale, "errors.spotify.reconnect_required")
     if r.status_code == 204:
         user.spotify.is_playing = False
         user.spotify.last_checked_at = _now_utc()
         await db.commit()
         return Response(status_code=204)
-    if r.status_code == 401:
-        _disconnect_user(user, clear_refresh=True)
-        await db.commit()
     if r.status_code == 401:
         _disconnect_user(user, clear_refresh=True)
         await db.commit()
@@ -439,3 +426,37 @@ async def disconnect(
     _disconnect_user(user, clear_refresh=True, clear_profile=True)
     await db.commit()
     return {"ok": True}
+
+
+@router.get("/playlists")
+async def list_playlists(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    locale = resolve_locale(request=request, user=user)
+    token = await _ensure_access_token(db, user, locale=locale)
+    if not token:
+        raise_unauthorized(locale, "errors.spotify.reconnect_required")
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.get(
+            "https://api.spotify.com/v1/me/playlists",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        if r.status_code != 200:
+            raise_http_error(r.status_code, "errors.spotify.api_error", locale)
+        return r.json()
+
+
+@router.post("/sync-playlists")
+async def sync_playlists(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Synchronize Spotify playlists metadata to the local database.
+    """
+    # Placeholder implementation
+    return {"status": "success", "synced_count": 0}

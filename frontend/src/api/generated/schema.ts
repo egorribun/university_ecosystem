@@ -13,7 +13,7 @@ export interface paths {
       cookie?: never
     }
     /** Root */
-    get: operations["root__get"]
+    get: operations["get_root__get"]
     put?: never
     post?: never
     delete?: never
@@ -99,7 +99,7 @@ export interface paths {
     patch?: never
     trace?: never
   }
-  "/api/v1/auth/login-json": {
+  "/api/v1/auth/login/json": {
     parameters: {
       query?: never
       header?: never
@@ -162,6 +162,10 @@ export interface paths {
     /**
      * Logout
      * @description Terminate the client session.
+     *
+     *     Revokes the current session in the database and clears all
+     *     authentication-related cookies. Also sets Clear-Site-Data header
+     *     to ensure browser removes cached data.
      */
     post: operations["logout_api_v1_auth_logout_post"]
     delete?: never
@@ -1025,6 +1029,23 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  "/api/v1/notifications/{notif_id}": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    post?: never
+    /** Delete Notification */
+    delete: operations["delete_notification_api_v1_notifications__notif_id__delete"]
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   "/api/v1/notifications/{notif_id}/read": {
     parameters: {
       query?: never
@@ -1370,6 +1391,43 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  "/api/v1/spotify/playlists": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** List Playlists */
+    get: operations["list_playlists_api_v1_spotify_playlists_get"]
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/spotify/sync-playlists": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    get?: never
+    put?: never
+    /**
+     * Sync Playlists
+     * @description Synchronize Spotify playlists metadata to the local database.
+     */
+    post: operations["sync_playlists_api_v1_spotify_sync_playlists_post"]
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   "/api/v1/stats/attendance": {
     parameters: {
       query?: never
@@ -1379,6 +1437,27 @@ export interface paths {
     }
     /** Attendance Summary */
     get: operations["attendance_summary_api_v1_stats_attendance_get"]
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  "/api/v1/stats/creation": {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * Creation Analytics
+     * @description Analytics powered by UUID v7:
+     *     Creation time distribution without DB indexes on created_at.
+     */
+    get: operations["creation_analytics_api_v1_stats_creation_get"]
     put?: never
     post?: never
     delete?: never
@@ -1481,7 +1560,11 @@ export interface paths {
       path?: never
       cookie?: never
     }
-    /** Get Users */
+    /**
+     * Search Users
+     * @description Search for users.
+     *     Admins see full profiles (UserOut), others see only public info (UserPublicOut).
+     */
     get: operations["get_users_api_v1_users_get"]
     put?: never
     /** Create User */
@@ -1838,8 +1921,11 @@ export interface components {
        * Format: date-time
        */
       expires_at: string
-      /** Id */
-      id: number
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string
       /** Ip Address */
       ip_address?: string | null
       /**
@@ -1866,8 +1952,11 @@ export interface components {
       revoked_at?: string | null
       /** User Agent */
       user_agent?: string | null
-      /** User Id */
-      user_id: number
+      /**
+       * User Id
+       * Format: uuid
+       */
+      user_id: string
     }
     /** AdminUserTopicsResponse */
     AdminUserTopicsResponse: {
@@ -1879,8 +1968,11 @@ export interface components {
       topics: string[]
       /** Updated At */
       updated_at?: string | null
-      /** User Id */
-      user_id: number
+      /**
+       * User Id
+       * Format: uuid
+       */
+      user_id: string
     }
     /** AdminUserTopicsUpdate */
     AdminUserTopicsUpdate: {
@@ -1893,7 +1985,10 @@ export interface components {
       file_type: string
       /** Filename */
       filename: string
-      /** Id */
+      /**
+       * Id
+       * Format: uuid
+       */
       id: string
       /** Size */
       size: number
@@ -1914,7 +2009,7 @@ export interface components {
       /** Actor Name */
       actor_name?: string | null
       /** Actor User Id */
-      actor_user_id?: number | null
+      actor_user_id?: string | null
       /** Context */
       context?: {
         [key: string]: unknown
@@ -1924,8 +2019,11 @@ export interface components {
        * Format: date-time
        */
       created_at: string
-      /** Id */
-      id: number
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string
       /** Ip Address */
       ip_address?: string | null
       /** Is Valid */
@@ -1937,7 +2035,7 @@ export interface components {
       /** Subject Name */
       subject_name?: string | null
       /** Subject User Id */
-      subject_user_id?: number | null
+      subject_user_id?: string | null
       /** User Agent */
       user_agent?: string | null
     }
@@ -2038,15 +2136,21 @@ export interface components {
     }
     /** ChatCreate */
     ChatCreate: {
-      /** Participant Id */
-      participant_id: number
+      /**
+       * Participant Id
+       * Format: uuid
+       */
+      participant_id: string
     }
     /**
      * ChatMaintenanceResult
      * @description Represents the result of a maintenance operation on a chat.
      */
     ChatMaintenanceResult: {
-      /** Chat Id */
+      /**
+       * Chat Id
+       * Format: uuid
+       */
       chat_id: string
       /**
        * Deleted Attachments
@@ -2069,8 +2173,11 @@ export interface components {
       email: string
       /** Full Name */
       full_name?: string | null
-      /** Id */
-      id: number
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string
       /** Is Active */
       is_active: boolean
     }
@@ -2081,7 +2188,10 @@ export interface components {
        * Format: date-time
        */
       created_at: string
-      /** Id */
+      /**
+       * Id
+       * Format: uuid
+       */
       id: string
       last_message?: components["schemas"]["MessageResponse"] | null
       /** Participants */
@@ -2165,21 +2275,28 @@ export interface components {
     DisableUserPushRequest: {
       /**
        * User Id
+       * Format: uuid
        * @description User ID for which push notifications should be disabled
        */
-      user_id: number
+      user_id: string
     }
     /** EventAttendanceCreate */
     EventAttendanceCreate: {
       /** Event Id */
-      event_id: number
+      event_id: string | number
     }
     /** EventAttendanceOut */
     EventAttendanceOut: {
-      /** Event Id */
-      event_id: number
-      /** Id */
-      id: number
+      /**
+       * Event Id
+       * Format: uuid
+       */
+      event_id: string
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string
       /** Qr Token */
       qr_token?: string | null
       /**
@@ -2187,8 +2304,11 @@ export interface components {
        * Format: date-time
        */
       registered_at: string
-      /** User Id */
-      user_id: number
+      /**
+       * User Id
+       * Format: uuid
+       */
+      user_id: string
     }
     /** EventCreate */
     EventCreate: {
@@ -2231,12 +2351,18 @@ export interface components {
     EventFileOut: {
       /** Description */
       description?: string | null
-      /** Event Id */
-      event_id: number
+      /**
+       * Event Id
+       * Format: uuid
+       */
+      event_id: string
       /** File Url */
       file_url: string
-      /** Id */
-      id: number
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string
     }
     /** EventOut */
     EventOut: {
@@ -2250,7 +2376,7 @@ export interface components {
        */
       created_at: string
       /** Created By */
-      created_by: number
+      created_by: string | unknown
       /** Description */
       description?: string | null
       /** Description En */
@@ -2266,8 +2392,11 @@ export interface components {
       event_type_en?: string | null
       /** Files */
       files?: components["schemas"]["EventFileOut"][]
-      /** Id */
-      id: number
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string
       /** Image Url */
       image_url?: string | null
       /** Image Url Optimized */
@@ -2337,7 +2466,7 @@ export interface components {
       /** Allowed Groups */
       allowed_groups: string[]
       /** Allowed Users */
-      allowed_users: number[]
+      allowed_users: (string | unknown)[]
       /** Description */
       description: string
       /** Metadata */
@@ -2374,8 +2503,11 @@ export interface components {
       course?: number | null
       /** Faculty */
       faculty?: string | null
-      /** Id */
-      id: number
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string
       /** Name */
       name: string
     }
@@ -2428,7 +2560,10 @@ export interface components {
        * @default []
        */
       attachments: components["schemas"]["AttachmentResponse"][]
-      /** Chat Id */
+      /**
+       * Chat Id
+       * Format: uuid
+       */
       chat_id: string
       /** Content */
       content: string
@@ -2437,13 +2572,19 @@ export interface components {
        * Format: date-time
        */
       created_at: string
-      /** Id */
+      /**
+       * Id
+       * Format: uuid
+       */
       id: string
       /** Read Status */
       read_status: boolean
       sender?: components["schemas"]["ChatParticipant"] | null
-      /** Sender Id */
-      sender_id: number
+      /**
+       * Sender Id
+       * Format: uuid
+       */
+      sender_id: string
       sender_presence?: components["schemas"]["PresenceStatus"] | null
     }
     /**
@@ -2482,18 +2623,24 @@ export interface components {
        * Format: date-time
        */
       expires_at: string
-      /** Id */
-      id: number
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string
       /** Payload */
       payload?: {
         [key: string]: unknown
       } | null
       /** Session Id */
-      session_id?: number | null
+      session_id?: string | null
       /** Token */
       token: string
-      /** User Id */
-      user_id: number
+      /**
+       * User Id
+       * Format: uuid
+       */
+      user_id: string
     }
     /** MfaFactorStatusOut */
     MfaFactorStatusOut: {
@@ -2541,16 +2688,22 @@ export interface components {
        * Format: date-time
        */
       created_at: string
-      /** Id */
-      id: number
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string
       /** Is Active */
       is_active: boolean
       /** Label */
       label?: string | null
       /** Revoked At */
       revoked_at?: string | null
-      /** User Id */
-      user_id: number
+      /**
+       * User Id
+       * Format: uuid
+       */
+      user_id: string
     }
     /** MfaVerifyIn */
     MfaVerifyIn: {
@@ -2582,10 +2735,16 @@ export interface components {
        * Format: date-time
        */
       created_at: string
-      /** Id */
-      id: number
-      /** User Id */
-      user_id: number
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string
+      /**
+       * User Id
+       * Format: uuid
+       */
+      user_id: string
       /** User Name */
       user_name: string
     }
@@ -2634,8 +2793,11 @@ export interface components {
        * Format: date-time
        */
       created_at: string
-      /** Id */
-      id: number
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string
       /** Image Url */
       image_url?: string | null
       /** Image Url Optimized */
@@ -2702,8 +2864,11 @@ export interface components {
        * Format: date-time
        */
       created_at: string
-      /** Id */
-      id: number
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string
       /** Read */
       read: boolean
       /** Read At */
@@ -2802,15 +2967,18 @@ export interface components {
       /** Methods */
       methods: components["schemas"]["MfaMethodChallengeOut"][]
       /** Session Id */
-      session_id?: number | null
+      session_id?: string | null
       /**
        * Status
        * @default mfa_required
        * @constant
        */
       status: "mfa_required"
-      /** User Id */
-      user_id: number
+      /**
+       * User Id
+       * Format: uuid
+       */
+      user_id: string
     }
     /**
      * PresenceStatus
@@ -2873,8 +3041,11 @@ export interface components {
       created_at: string
       /** Endpoint */
       endpoint: string
-      /** Id */
-      id: number
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string
       /** Last Seen At */
       last_seen_at?: string | null
       /** P256Dh */
@@ -2885,8 +3056,11 @@ export interface components {
       updated_at?: string | null
       /** User Agent */
       user_agent?: string | null
-      /** User Id */
-      user_id: number
+      /**
+       * User Id
+       * Format: uuid
+       */
+      user_id: string
     }
     /** PushSubscriptionTopicsUpdate */
     PushSubscriptionTopicsUpdate: {
@@ -2939,7 +3113,7 @@ export interface components {
        * User Id
        * @description Target user id for testing
        */
-      user_id?: number | null
+      user_id?: string | null
     }
     /** PushTopicsResponse */
     PushTopicsResponse: {
@@ -2979,8 +3153,11 @@ export interface components {
        * Format: date-time
        */
       end_time: string
-      /** Group Id */
-      group_id: number
+      /**
+       * Group Id
+       * Format: uuid
+       */
+      group_id: string
       /** Lesson Type */
       lesson_type?: string | null
       /**
@@ -3009,10 +3186,16 @@ export interface components {
        * Format: date-time
        */
       end_time: string
-      /** Group Id */
-      group_id: number
-      /** Id */
-      id: number
+      /**
+       * Group Id
+       * Format: uuid
+       */
+      group_id: string
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string
       /** Lesson Type */
       lesson_type?: string | null
       /** Lesson Type Display */
@@ -3041,7 +3224,7 @@ export interface components {
       /** End Time */
       end_time?: string | null
       /** Group Id */
-      group_id?: number | null
+      group_id?: string | null
       /** Lesson Type */
       lesson_type?: string | null
       /** Parity */
@@ -3155,7 +3338,7 @@ export interface components {
        */
       created_at: string
       /** Created By */
-      created_by?: number | null
+      created_by?: string | unknown | null
       /** Cta Url */
       cta_url?: string | null
       /**
@@ -3163,8 +3346,11 @@ export interface components {
        * Format: date-time
        */
       expires_at: string
-      /** Id */
-      id: number
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string
       /** Is Active */
       is_active: boolean
       /**
@@ -3218,8 +3404,11 @@ export interface components {
     TotpEnrollmentConfirmIn: {
       /** Code */
       code: string
-      /** Enrollment Id */
-      enrollment_id: number
+      /**
+       * Enrollment Id
+       * Format: uuid
+       */
+      enrollment_id: string
     }
     /** TotpEnrollmentStartIn */
     TotpEnrollmentStartIn: {
@@ -3246,7 +3435,7 @@ export interface components {
       /** Full Name */
       full_name?: string | null
       /** Group Id */
-      group_id?: number | null
+      group_id?: string | null
       /** Reset Mfa */
       reset_mfa?: boolean | null
       role?: components["schemas"]["UserRole"] | null
@@ -3284,7 +3473,7 @@ export interface components {
       /** Full Name */
       full_name?: string | null
       /** Group Id */
-      group_id?: number | null
+      group_id?: string | null
       /** Institute */
       institute?: string | null
       /** Invite Code */
@@ -3367,9 +3556,12 @@ export interface components {
       /** Full Name */
       full_name?: string | null
       /** Group Id */
-      group_id?: number | null
-      /** Id */
-      id: number
+      group_id?: string | null
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string
       /** Institute */
       institute?: string | null
       /** Is Active */
@@ -3467,6 +3659,43 @@ export interface components {
       track?: string | null
     }
     /**
+     * UserPublicOut
+     * @description Publicly visible user profile information (PII-safe).
+     */
+    UserPublicOut: {
+      /** About */
+      about?: string | null
+      /** Avatar Url */
+      avatar_url?: string | null
+      /** Avatar Url Optimized */
+      readonly avatar_url_optimized: string | null
+      /** Course */
+      course?: string | null
+      /** Cover Url */
+      cover_url?: string | null
+      /** Department */
+      department?: string | null
+      /** Full Name */
+      full_name?: string | null
+      /** Group Id */
+      group_id?: string | null
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string
+      /** Institute */
+      institute?: string | null
+      /** Is Active */
+      is_active: boolean
+      /** Position */
+      position?: string | null
+      /** @default student */
+      role: components["schemas"]["UserRole"]
+      /** Status */
+      status?: string | null
+    }
+    /**
      * UserRole
      * @description Available roles for users within the system.
      * @enum {string}
@@ -3519,7 +3748,7 @@ export interface components {
 }
 export type $defs = Record<string, never>
 export interface operations {
-  root__get: {
+  get_root__get: {
     parameters: {
       query?: never
       header?: never
@@ -3544,8 +3773,8 @@ export interface operations {
       query?: {
         limit?: number
         offset?: number
-        actor_id?: number | null
-        subject_id?: number | null
+        actor_id?: string | null
+        subject_id?: string | null
         resource_type?: string | null
         action?: string | null
       }
@@ -3649,16 +3878,9 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          "application/json": components["schemas"]["TokenWithProfile"]
-        }
-      }
-      /** @description Accepted */
-      202: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["PendingMfaResponse"]
+          "application/json":
+            | components["schemas"]["TokenWithProfile"]
+            | components["schemas"]["PendingMfaResponse"]
         }
       }
       /** @description Validation Error */
@@ -3691,16 +3913,9 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          "application/json": components["schemas"]["TokenWithProfile"]
-        }
-      }
-      /** @description Accepted */
-      202: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["PendingMfaResponse"]
+          "application/json":
+            | components["schemas"]["TokenWithProfile"]
+            | components["schemas"]["PendingMfaResponse"]
         }
       }
       /** @description Validation Error */
@@ -3766,7 +3981,9 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          "application/json": components["schemas"]["TokenWithProfile"]
+          "application/json":
+            | components["schemas"]["TokenWithProfile"]
+            | components["schemas"]["PendingMfaResponse"]
         }
       }
       /** @description Validation Error */
@@ -3830,15 +4047,6 @@ export interface operations {
     requestBody?: never
     responses: {
       /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown
-        }
-        content: {
-          "application/json": components["schemas"]["PendingMfaResponse"]
-        }
-      }
-      /** @description Accepted */
       202: {
         headers: {
           [name: string]: unknown
@@ -3907,7 +4115,7 @@ export interface operations {
       query?: never
       header?: never
       path: {
-        enrollment_id: number
+        enrollment_id: string
       }
       cookie?: never
     }
@@ -3969,7 +4177,7 @@ export interface operations {
       query?: never
       header?: never
       path: {
-        enrollment_id: number
+        enrollment_id: string
       }
       cookie?: never
     }
@@ -4108,7 +4316,7 @@ export interface operations {
       query?: never
       header?: never
       path: {
-        credential_id: number
+        credential_id: string
       }
       cookie?: never
     }
@@ -4190,7 +4398,7 @@ export interface operations {
   list_sessions_api_v1_auth_sessions_get: {
     parameters: {
       query?: {
-        user_id?: number | null
+        user_id?: string | null
       }
       header?: never
       path?: never
@@ -4221,7 +4429,7 @@ export interface operations {
   revoke_other_sessions_api_v1_auth_sessions_revoke_others_post: {
     parameters: {
       query?: {
-        user_id?: number | null
+        user_id?: string | null
       }
       header?: never
       path?: never
@@ -4254,7 +4462,7 @@ export interface operations {
       query?: never
       header?: never
       path: {
-        session_id: number
+        session_id: string
       }
       cookie?: never
     }
@@ -4704,7 +4912,7 @@ export interface operations {
       query?: never
       header?: never
       path: {
-        file_id: number
+        file_id: string | number
       }
       cookie?: never
     }
@@ -4836,7 +5044,7 @@ export interface operations {
       query?: never
       header?: never
       path: {
-        event_id: number
+        event_id: string | number
       }
       cookie?: never
     }
@@ -4869,7 +5077,7 @@ export interface operations {
       query?: never
       header?: never
       path: {
-        event_id: number
+        event_id: string | number
       }
       cookie?: never
     }
@@ -4906,7 +5114,7 @@ export interface operations {
         "if-none-match"?: string | null
       }
       path: {
-        id: number
+        id: string | number
       }
       cookie?: never
     }
@@ -4937,7 +5145,7 @@ export interface operations {
       query?: never
       header?: never
       path: {
-        id: number
+        id: string | number
       }
       cookie?: never
     }
@@ -4968,7 +5176,7 @@ export interface operations {
       query?: never
       header?: never
       path: {
-        id: number
+        id: string | number
       }
       cookie?: never
     }
@@ -5127,7 +5335,7 @@ export interface operations {
       query?: never
       header?: never
       path: {
-        comment_id: number
+        comment_id: string
       }
       cookie?: never
     }
@@ -5158,7 +5366,7 @@ export interface operations {
       query?: never
       header?: never
       path: {
-        comment_id: number
+        comment_id: string
       }
       cookie?: never
     }
@@ -5263,7 +5471,7 @@ export interface operations {
         "if-none-match"?: string | null
       }
       path: {
-        id: number
+        id: string
       }
       cookie?: never
     }
@@ -5294,7 +5502,7 @@ export interface operations {
       query?: never
       header?: never
       path: {
-        id: number
+        id: string
       }
       cookie?: never
     }
@@ -5327,7 +5535,7 @@ export interface operations {
       query?: never
       header?: never
       path: {
-        id: number
+        id: string
       }
       cookie?: never
     }
@@ -5362,7 +5570,7 @@ export interface operations {
       query?: never
       header?: never
       path: {
-        id: number
+        id: string
       }
       cookie?: never
     }
@@ -5400,7 +5608,7 @@ export interface operations {
       }
       header?: never
       path: {
-        id: number
+        id: string
       }
       cookie?: never
     }
@@ -5431,7 +5639,7 @@ export interface operations {
       query?: never
       header?: never
       path: {
-        id: number
+        id: string
       }
       cookie?: never
     }
@@ -5560,12 +5768,43 @@ export interface operations {
       }
     }
   }
+  delete_notification_api_v1_notifications__notif_id__delete: {
+    parameters: {
+      query?: never
+      header?: never
+      path: {
+        notif_id: string
+      }
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": unknown
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
   mark_read_single_api_v1_notifications__notif_id__read_patch: {
     parameters: {
       query?: never
       header?: never
       path: {
-        notif_id: number
+        notif_id: string
       }
       cookie?: never
     }
@@ -6004,7 +6243,7 @@ export interface operations {
     parameters: {
       query: {
         /** @description Group identifier */
-        group: number
+        group: string
       }
       header?: never
       path?: never
@@ -6037,7 +6276,7 @@ export interface operations {
         "if-none-match"?: string | null
       }
       path: {
-        group_id: number
+        group_id: string
       }
       cookie?: never
     }
@@ -6068,7 +6307,7 @@ export interface operations {
       query?: never
       header?: never
       path: {
-        schedule_id: number
+        schedule_id: string
       }
       cookie?: never
     }
@@ -6101,7 +6340,7 @@ export interface operations {
       query?: never
       header?: never
       path: {
-        schedule_id: number
+        schedule_id: string
       }
       cookie?: never
     }
@@ -6223,6 +6462,46 @@ export interface operations {
       }
     }
   }
+  list_playlists_api_v1_spotify_playlists_get: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": unknown
+        }
+      }
+    }
+  }
+  sync_playlists_api_v1_spotify_sync_playlists_post: {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": unknown
+        }
+      }
+    }
+  }
   attendance_summary_api_v1_stats_attendance_get: {
     parameters: {
       query?: {
@@ -6232,6 +6511,39 @@ export interface operations {
       header?: {
         "if-none-match"?: string | null
       }
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": unknown
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"]
+        }
+      }
+    }
+  }
+  creation_analytics_api_v1_stats_creation_get: {
+    parameters: {
+      query: {
+        /** @description Type of object to analyze (users, news, events) */
+        object_type: string
+        period?: string
+      }
+      header?: never
       path?: never
       cookie?: never
     }
@@ -6427,7 +6739,7 @@ export interface operations {
       query?: never
       header?: never
       path: {
-        story_id: number
+        story_id: string
       }
       cookie?: never
     }
@@ -6460,7 +6772,7 @@ export interface operations {
       query?: never
       header?: never
       path: {
-        story_id: number
+        story_id: string
       }
       cookie?: never
     }
@@ -6495,7 +6807,7 @@ export interface operations {
       query?: {
         full_name?: string | null
         search?: string | null
-        group_id?: number | null
+        group_id?: string | null
         role?: components["schemas"]["UserRole"] | null
         limit?: number
         offset?: number
@@ -6512,7 +6824,10 @@ export interface operations {
           [name: string]: unknown
         }
         content: {
-          "application/json": components["schemas"]["UserOut"][]
+          "application/json": (
+            | components["schemas"]["UserPublicOut"]
+            | components["schemas"]["UserOut"]
+          )[]
         }
       }
       /** @description Validation Error */
@@ -6907,7 +7222,7 @@ export interface operations {
       query?: never
       header?: never
       path: {
-        user_id: number
+        user_id: string
       }
       cookie?: never
     }
@@ -6940,7 +7255,7 @@ export interface operations {
       query?: never
       header?: never
       path: {
-        user_id: number
+        user_id: string
       }
       cookie?: never
     }

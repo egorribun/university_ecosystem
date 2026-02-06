@@ -420,15 +420,16 @@ async def test_spotify_tokens_are_encrypted_in_database(
         expires_in=3600,
     )
 
-    # Query spotify_integrations table instead of users table
-    row = await db_session.execute(
-        sa.text(
-            "SELECT access_token, refresh_token FROM spotify_integrations "
-            "WHERE user_id = :user_id"
-        ),
-        {"user_id": user.id},
+    from app.models.models import SpotifyIntegration
+
+    # Query raw columns while using ORM for filtering to ensure UUID compatibility.
+    stmt = (
+        sa.select(sa.text("access_token"), sa.text("refresh_token"))
+        .select_from(SpotifyIntegration)
+        .where(SpotifyIntegration.user_id == user.id)
     )
-    stored_access, stored_refresh = row.one()
+    result = await db_session.execute(stmt)
+    stored_access, stored_refresh = result.one()
 
     assert stored_access is not None
     assert stored_refresh is not None
@@ -457,11 +458,13 @@ async def test_ensure_access_token_returns_plaintext(db_session, user_factory) -
 
     assert token == "plaintext-token"
 
-    raw = await db_session.execute(
-        sa.text(
-            "SELECT access_token FROM spotify_integrations WHERE user_id = :user_id"
-        ),
-        {"user_id": user.id},
+    from app.models.models import SpotifyIntegration
+
+    stmt = (
+        sa.select(sa.text("access_token"))
+        .select_from(SpotifyIntegration)
+        .where(SpotifyIntegration.user_id == user.id)
     )
-    stored_token = raw.scalar_one()
+    result = await db_session.execute(stmt)
+    stored_token = result.scalar_one()
     assert stored_token != "plaintext-token"

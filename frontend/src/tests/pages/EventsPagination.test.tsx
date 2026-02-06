@@ -22,7 +22,7 @@ const buildEvent = (id: number): Event => {
   const start = new Date(Date.now() + id * 60 * 60 * 1000)
   const end = new Date(start.getTime() + 60 * 60 * 1000)
   return {
-    id,
+    id: String(id),
     title: `Paginated event ${id}`,
     description: `Description ${id}`,
     title_en: `Paginated event ${id}`,
@@ -33,7 +33,7 @@ const buildEvent = (id: number): Event => {
     event_type_en: null,
     starts_at: start.toISOString(),
     ends_at: end.toISOString(),
-    created_by: 1,
+    created_by: "uuid-1",
     created_at: new Date().toISOString(),
     is_active: true,
     speaker: null,
@@ -56,7 +56,7 @@ const authValue: AuthContextValue = {
   loginWithPasskey: vi.fn(),
   logout: vi.fn(),
   user: {
-    id: 1,
+    id: "uuid-1",
     email: "user@example.com",
     full_name: "Test User",
     role: "student",

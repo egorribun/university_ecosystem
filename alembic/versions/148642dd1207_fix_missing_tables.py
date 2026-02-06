@@ -1318,23 +1318,34 @@ def downgrade() -> None:
             sa.Column("spotify_last_track_url", sa.VARCHAR(), nullable=True)
         )
         batch_op.add_column(sa.Column("spotify_access_token", sa.TEXT(), nullable=True))
-        batch_op.drop_constraint("fk_users_group_id_groups", type_="foreignkey")
-        batch_op.drop_index(batch_op.f("ix_users_webauthn_id"))
-        batch_op.drop_index(batch_op.f("ix_users_group_id"))
-        batch_op.create_index(
-            batch_op.f("ix_users_spotify_user_id"), ["spotify_user_id"], unique=True
-        )
-        batch_op.create_index(
-            batch_op.f("ix_users_spotify_token_expires_at"),
-            ["spotify_token_expires_at"],
-            unique=False,
-        )
-        batch_op.create_index(
-            batch_op.f("ix_users_spotify_last_track_id"),
-            ["spotify_last_track_id"],
-            unique=False,
-        )
-        batch_op.create_index(batch_op.f("ix_users_id"), ["id"], unique=False)
+        existing_users_fks = {fk["name"] for fk in inspector.get_foreign_keys("users")}
+        if "fk_users_group_id_groups" in existing_users_fks:
+            batch_op.drop_constraint("fk_users_group_id_groups", type_="foreignkey")
+
+        existing_users_indexes = {i["name"] for i in inspector.get_indexes("users")}
+        if "ix_users_webauthn_id" in existing_users_indexes:
+            batch_op.drop_index(batch_op.f("ix_users_webauthn_id"))
+        if "ix_users_group_id" in existing_users_indexes:
+            batch_op.drop_index(batch_op.f("ix_users_group_id"))
+
+        if "ix_users_spotify_user_id" not in existing_users_indexes:
+            batch_op.create_index(
+                batch_op.f("ix_users_spotify_user_id"), ["spotify_user_id"], unique=True
+            )
+        if "ix_users_spotify_token_expires_at" not in existing_users_indexes:
+            batch_op.create_index(
+                batch_op.f("ix_users_spotify_token_expires_at"),
+                ["spotify_token_expires_at"],
+                unique=False,
+            )
+        if "ix_users_spotify_last_track_id" not in existing_users_indexes:
+            batch_op.create_index(
+                batch_op.f("ix_users_spotify_last_track_id"),
+                ["spotify_last_track_id"],
+                unique=False,
+            )
+        if "ix_users_id" not in existing_users_indexes:
+            batch_op.create_index(batch_op.f("ix_users_id"), ["id"], unique=False)
         batch_op.drop_column("achievements")
         batch_op.drop_column("telegram")
         batch_op.drop_column("program")
@@ -1350,14 +1361,25 @@ def downgrade() -> None:
         batch_op.drop_column("webauthn_id")
         batch_op.drop_column("group_id")
 
+    existing_push_topics_indexes = {
+        i["name"] for i in inspector.get_indexes("user_push_topics")
+    }
     with safe_batch_alter_table("user_push_topics", schema=None) as batch_op:
-        batch_op.drop_index(batch_op.f("ix_user_push_topics_user_id"))
-        batch_op.create_index(
-            batch_op.f("ix_user_push_topics_updated_at"), ["updated_at"], unique=False
-        )
+        if "ix_user_push_topics_user_id" in existing_push_topics_indexes:
+            batch_op.drop_index(batch_op.f("ix_user_push_topics_user_id"))
+        if "ix_user_push_topics_updated_at" not in existing_push_topics_indexes:
+            batch_op.create_index(
+                batch_op.f("ix_user_push_topics_updated_at"),
+                ["updated_at"],
+                unique=False,
+            )
 
+    existing_jobs_indexes = {
+        i["name"] for i in inspector.get_indexes("notification_queue_jobs")
+    }
     with safe_batch_alter_table("notification_queue_jobs", schema=None) as batch_op:
-        batch_op.drop_index(batch_op.f("ix_notification_queue_jobs_kind"))
+        if "ix_notification_queue_jobs_kind" in existing_jobs_indexes:
+            batch_op.drop_index(batch_op.f("ix_notification_queue_jobs_kind"))
 
     with safe_batch_alter_table("mfa_challenges", schema=None) as batch_op:
         batch_op.create_index(

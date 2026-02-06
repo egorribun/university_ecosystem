@@ -1,6 +1,5 @@
 import hashlib
 import logging
-import secrets
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -8,13 +7,14 @@ from uuid import uuid4
 
 import httpx
 import jwt
+from argon2 import PasswordHasher, Type
+from argon2.exceptions import VerifyMismatchError
 from fastapi import BackgroundTasks
 from jwt import PyJWTError as JWTError
 from passlib.context import CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession
 from zxcvbn import zxcvbn
 
-from app.auth.redis_session import get_session_backend
 from app.core.config import settings
 from app.core.localization import translate
 from app.models.models import ActiveSession
@@ -78,6 +78,14 @@ pwd_context = CryptContext(
     argon2__memory_cost=ARGON2_MEMORY_COST_KIB,
     argon2__time_cost=ARGON2_TIME_COST,
     argon2__parallelism=ARGON2_PARALLELISM,
+)
+
+# Native argon2-cffi hasher for primary operations (2026 performance)
+argon2_hasher = PasswordHasher(
+    time_cost=ARGON2_TIME_COST,
+    memory_cost=ARGON2_MEMORY_COST_KIB,
+    parallelism=ARGON2_PARALLELISM,
+    type=Type.ID,
 )
 
 
@@ -226,12 +234,34 @@ def _truncate_for_bcrypt(password: str) -> str:
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
+    if hashed_password.startswith("$argon2"):
+        try:
+            argon2_hasher.verify(hashed_password, plain_password)
+            return True
+        except VerifyMismatchError:
+            return False
+        except Exception:
+            # Fallback to passlib for complex cases/malformed hashes
+            pass
     return pwd_context.verify(plain_password, hashed_password)
 
 
 def verify_and_update_password(
     plain_password: str, hashed_password: str
 ) -> tuple[bool, str | None]:
+    # Check if we should upgrade/verify with native argon2 first
+    if hashed_password.startswith("$argon2"):
+        try:
+            argon2_hasher.verify(hashed_password, plain_password)
+            # Check if rehash is needed
+            if argon2_hasher.check_needs_rehash(hashed_password):
+                return True, argon2_hasher.hash(plain_password)
+            return True, None
+        except VerifyMismatchError:
+            return False, None
+        except Exception:
+            pass
+
     try:
         verified, new_hash = pwd_context.verify_and_update(
             plain_password, hashed_password
@@ -246,7 +276,7 @@ def get_password_hash(
 ) -> str:
     if validate_policy:
         _validate_password_policy(password, locale=locale)
-    return pwd_context.hash(password)
+    return argon2_hasher.hash(password)
 
 
 @dataclass(slots=True)
@@ -258,37 +288,38 @@ class AccessTokenConfig:
     session_metadata: dict[str, Any] = field(default_factory=dict)
 
 
-async def register_session_bg(
-    user_id: int,
-    jti: str,
-    expires_at: datetime,
-    ip_address: str | None,
-    user_agent: str | None,
-) -> None:
-    """Background task to register session in Redis."""
-    try:
-        from app.auth.redis_session import get_session_backend
-
-        session_backend = await get_session_backend()
-        await session_backend.register_session(
-            user_id=user_id,
-            jti=jti,
-            expires_at=expires_at,
-            metadata={
-                "ip_address": ip_address,
-                "user_agent": user_agent,
-            },
-        )
-    except Exception as e:
-        _logger.warning(f"Failed to register session in Redis (background): {e}")
-
-
 async def create_access_token(
     sub: str | Any,
     db: AsyncSession | None = None,
     config: AccessTokenConfig | None = None,
     bg_tasks: BackgroundTasks | None = None,
 ) -> str | tuple[str, ActiveSession]:
+    """
+    Create an access token.
+
+    DEPRECATED: Use SessionService.create_access_token for full session management.
+    This function remains for backward compatibility and delegates to SessionService
+    if a database session is provided.
+    """
+    if db is not None:
+        from app.repositories.active_session_repository import ActiveSessionRepository
+        from app.services.session_service import SessionService
+
+        repo = ActiveSessionRepository(db)
+        service = SessionService(db, repo)
+
+        metadata = config.session_metadata if config else {}
+        extra = config.extra if config else {}
+
+        return await service.create_access_token(
+            sub=sub,
+            expires_delta_minutes=config.expires_delta if config else None,
+            metadata=metadata,
+            bg_tasks=bg_tasks,
+            extra_claims=extra,
+        )
+
+    # Pure JWT minting (no DB/Redis registration)
     config = config or AccessTokenConfig()
     minutes = config.expires_delta or settings.access_token_expire_minutes
     now = datetime.now(UTC)
@@ -303,6 +334,7 @@ async def create_access_token(
     }
     if config.extra:
         payload.update(config.extra)
+
     kid = settings.jwt_signing_active_kid
     secret = settings.jwt_signing_active_secret
     token = jwt.encode(
@@ -311,112 +343,6 @@ async def create_access_token(
         algorithm=settings.algorithm,
         headers={"kid": kid},
     )
-    if db is not None:
-        try:
-            user_id = int(sub)
-        except (TypeError, ValueError):  # pragma: no cover - defensive guard
-            raise ValueError(
-                "sub must be an integer when persisting sessions"
-            ) from None
-        session = ActiveSession(user_id=user_id, jti=jti, expires_at=expires_at)
-        session.signing_key = secrets.token_urlsafe(32)
-        if config.session_metadata:
-            ip_address = config.session_metadata.get("ip_address")
-            user_agent = config.session_metadata.get("user_agent")
-            accept_language = config.session_metadata.get("accept_language")
-            fingerprint_hash = config.session_metadata.get("fingerprint_hash")
-            last_seen_at = config.session_metadata.get("last_seen_at")
-            mfa_required = config.session_metadata.get("mfa_required")
-            mfa_method = config.session_metadata.get("mfa_method")
-            mfa_completed_at = config.session_metadata.get("mfa_completed_at")
-            mfa_verified_at = config.session_metadata.get("mfa_verified_at")
-            if ip_address:
-                session.ip_address = str(ip_address)[:64]
-            if user_agent:
-                session.user_agent = str(user_agent)[:512]
-            if accept_language:
-                session.accept_language = str(accept_language)[:256]
-            if fingerprint_hash:
-                session.fingerprint_hash = str(fingerprint_hash)[:64]
-            if last_seen_at is not None:
-                session.last_seen_at = last_seen_at
-            if mfa_required is not None:
-                session.mfa_required = bool(mfa_required)
-            if mfa_method is not None:
-                method_text = str(mfa_method).strip()
-                session.mfa_method = method_text[:64] if method_text else None
-            if mfa_completed_at is not None:
-                session.mfa_completed_at = mfa_completed_at
-            if mfa_verified_at is not None:
-                session.mfa_verified_at = mfa_verified_at
-        db.add(session)
-
-        # Enforce concurrent session limit (revoke oldest sessions if limit exceeded)
-        max_sessions = settings.max_sessions_per_user
-        if max_sessions > 0:
-            from sqlalchemy import func, select, text
-            from sqlalchemy.orm import load_only
-
-            # Acquire advisory lock to serialize session management for this user
-            if db.bind.dialect.name == "postgresql":
-                await db.execute(
-                    text("SELECT pg_advisory_xact_lock(1, :uid)"), {"uid": user_id}
-                )
-
-            # Count current active sessions for this user (excluding just-created one)
-            count_stmt = (
-                select(func.count(ActiveSession.id))
-                .where(ActiveSession.user_id == user_id)
-                .where(ActiveSession.revoked_at.is_(None))
-                .where(ActiveSession.expires_at > now)
-            )
-            result = await db.execute(count_stmt)
-            active_count = result.scalar_one_or_none() or 0
-
-            # If limit exceeded, revoke oldest sessions
-            if active_count > max_sessions:
-                excess_count = active_count - max_sessions
-                oldest_stmt = (
-                    select(ActiveSession)
-                    .options(load_only(ActiveSession.id, ActiveSession.jti))
-                    .where(ActiveSession.user_id == user_id)
-                    .where(ActiveSession.revoked_at.is_(None))
-                    .where(ActiveSession.expires_at > now)
-                    .where(ActiveSession.jti != jti)  # Exclude current session
-                    .order_by(ActiveSession.created_at.asc())
-                    .limit(excess_count)
-                )
-                oldest_sessions = (await db.execute(oldest_stmt)).scalars().all()
-
-                session_backend = await get_session_backend()
-                for old_session in oldest_sessions:
-                    old_session.revoked_at = now
-                    # We might want to background this too, but revocation is critical
-                    await session_backend.revoke_session(old_session.jti)
-
-        await db.commit()
-        await db.refresh(session)
-
-        # Register in Redis session backend if enabled
-        if bg_tasks:
-            bg_tasks.add_task(
-                register_session_bg,
-                user_id=user_id,
-                jti=jti,
-                expires_at=expires_at,
-                ip_address=session.ip_address,
-                user_agent=session.user_agent,
-            )
-        else:
-            await register_session_bg(
-                user_id=user_id,
-                jti=jti,
-                expires_at=expires_at,
-                ip_address=session.ip_address,
-                user_agent=session.user_agent,
-            )
-
-        return token, session
     return token
 
 

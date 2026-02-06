@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 
 from sqlalchemy import and_, func, or_, select, update
@@ -13,7 +14,9 @@ class ChatRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get_by_id(self, chat_id: str, load_messages: bool = False) -> Chat | None:
+    async def get_by_id(
+        self, chat_id: uuid.UUID, load_messages: bool = False
+    ) -> Chat | None:
         """
         Fetch a chat by its ID.
 
@@ -32,7 +35,7 @@ class ChatRepository:
         return await self.session.get(Chat, chat_id, options=load_options)
 
     async def get_chats_for_user(
-        self, user_id: int, cursor: str | None, limit: int
+        self, user_id: uuid.UUID, cursor: str | None, limit: int
     ) -> tuple[list[tuple[Chat, int, str | None]], bool, str | None]:
         """
         Fetch chats for a user with pagination and metadata.
@@ -118,7 +121,9 @@ class ChatRepository:
 
         return rows, has_more, next_cursor
 
-    async def get_last_messages(self, message_ids: list[str]) -> dict[str, Message]:
+    async def get_last_messages(
+        self, message_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, Message]:
         if not message_ids:
             return {}
         result = await self.session.execute(
@@ -128,7 +133,9 @@ class ChatRepository:
         )
         return {msg.id: msg for msg in result.scalars().all()}
 
-    async def find_existing_dm(self, user1_id: int, user2_id: int) -> Chat | None:
+    async def find_existing_dm(
+        self, user1_id: uuid.UUID, user2_id: uuid.UUID
+    ) -> Chat | None:
         """
         Find an existing Direct Message (DM) chat between two users.
 
@@ -173,7 +180,7 @@ class ChatRepository:
         await self.session.flush()
         return new_chat
 
-    async def get_unread_count(self, chat_id: str, user_id: int) -> int:
+    async def get_unread_count(self, chat_id: uuid.UUID, user_id: uuid.UUID) -> int:
         """
         Count unread messages for a user in a chat.
 
@@ -195,7 +202,7 @@ class ChatRepository:
         )
         return (await self.session.execute(query)).scalar_one()
 
-    async def get_last_message(self, chat_id: str) -> Message | None:
+    async def get_last_message(self, chat_id: uuid.UUID) -> Message | None:
         """
         Get the most recent message in a chat.
 
@@ -215,7 +222,7 @@ class ChatRepository:
         return (await self.session.execute(query)).scalar_one_or_none()
 
     async def get_messages(
-        self, chat_id: str, cursor: str | None, limit: int
+        self, chat_id: uuid.UUID, cursor: str | None, limit: int
     ) -> tuple[list[Message], bool, str | None]:
         """
         Fetch messages for a specific chat with pagination.
@@ -278,7 +285,7 @@ class ChatRepository:
         await self.session.flush()
         return message
 
-    async def mark_messages_read(self, chat_id: str, user_id: int) -> None:
+    async def mark_messages_read(self, chat_id: uuid.UUID, user_id: uuid.UUID) -> None:
         """
         Mark all unread messages in a chat as read for a user.
 

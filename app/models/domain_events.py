@@ -5,9 +5,10 @@ from sqlalchemy import JSON, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
+from app.models.mixins import UUID7PrimaryKeyMixin
 
 
-class StoredEvent(Base):
+class StoredEvent(Base, UUID7PrimaryKeyMixin):
     """
     Persistent store for domain events.
     Captures state changes for auditability and asynchronous processing
@@ -16,7 +17,6 @@ class StoredEvent(Base):
 
     __tablename__ = "stored_events"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     event_type: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
     aggregate_type: Mapped[str] = mapped_column(String(50), index=True, nullable=False)
     aggregate_id: Mapped[str] = mapped_column(String(100), index=True, nullable=False)

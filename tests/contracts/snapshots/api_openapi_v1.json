@@ -14,8 +14,9 @@
             "type": "string"
           },
           "id": {
+            "format": "uuid",
             "title": "Id",
-            "type": "integer"
+            "type": "string"
           },
           "ip_address": {
             "anyOf": [
@@ -113,8 +114,9 @@
             "title": "User Agent"
           },
           "user_id": {
+            "format": "uuid",
             "title": "User Id",
-            "type": "integer"
+            "type": "string"
           }
         },
         "required": [
@@ -160,8 +162,9 @@
             "title": "Updated At"
           },
           "user_id": {
+            "format": "uuid",
             "title": "User Id",
-            "type": "integer"
+            "type": "string"
           }
         },
         "required": [
@@ -197,6 +200,7 @@
             "type": "string"
           },
           "id": {
+            "format": "uuid",
             "title": "Id",
             "type": "string"
           },
@@ -260,7 +264,8 @@
           "actor_user_id": {
             "anyOf": [
               {
-                "type": "integer"
+                "format": "uuid",
+                "type": "string"
               },
               {
                 "type": "null"
@@ -286,8 +291,9 @@
             "type": "string"
           },
           "id": {
+            "format": "uuid",
             "title": "Id",
-            "type": "integer"
+            "type": "string"
           },
           "ip_address": {
             "anyOf": [
@@ -333,7 +339,8 @@
           "subject_user_id": {
             "anyOf": [
               {
-                "type": "integer"
+                "format": "uuid",
+                "type": "string"
               },
               {
                 "type": "null"
@@ -547,8 +554,9 @@
       "ChatCreate": {
         "properties": {
           "participant_id": {
+            "format": "uuid",
             "title": "Participant Id",
-            "type": "integer"
+            "type": "string"
           }
         },
         "required": [
@@ -561,6 +569,7 @@
         "description": "Represents the result of a maintenance operation on a chat.",
         "properties": {
           "chat_id": {
+            "format": "uuid",
             "title": "Chat Id",
             "type": "string"
           },
@@ -615,8 +624,9 @@
             "title": "Full Name"
           },
           "id": {
+            "format": "uuid",
             "title": "Id",
-            "type": "integer"
+            "type": "string"
           },
           "is_active": {
             "title": "Is Active",
@@ -639,6 +649,7 @@
             "type": "string"
           },
           "id": {
+            "format": "uuid",
             "title": "Id",
             "type": "string"
           },
@@ -664,6 +675,9 @@
               {
                 "additionalProperties": {
                   "$ref": "#/components/schemas/PresenceStatus"
+                },
+                "propertyNames": {
+                  "format": "uuid"
                 },
                 "type": "object"
               },
@@ -817,9 +831,9 @@
         "properties": {
           "user_id": {
             "description": "User ID for which push notifications should be disabled",
-            "minimum": 1.0,
+            "format": "uuid",
             "title": "User Id",
-            "type": "integer"
+            "type": "string"
           }
         },
         "required": [
@@ -831,8 +845,16 @@
       "EventAttendanceCreate": {
         "properties": {
           "event_id": {
-            "title": "Event Id",
-            "type": "integer"
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Event Id"
           }
         },
         "required": [
@@ -844,12 +866,14 @@
       "EventAttendanceOut": {
         "properties": {
           "event_id": {
+            "format": "uuid",
             "title": "Event Id",
-            "type": "integer"
+            "type": "string"
           },
           "id": {
+            "format": "uuid",
             "title": "Id",
-            "type": "integer"
+            "type": "string"
           },
           "qr_token": {
             "anyOf": [
@@ -868,8 +892,9 @@
             "type": "string"
           },
           "user_id": {
+            "format": "uuid",
             "title": "User Id",
-            "type": "integer"
+            "type": "string"
           }
         },
         "required": [
@@ -1041,16 +1066,18 @@
             "title": "Description"
           },
           "event_id": {
+            "format": "uuid",
             "title": "Event Id",
-            "type": "integer"
+            "type": "string"
           },
           "file_url": {
             "title": "File Url",
             "type": "string"
           },
           "id": {
+            "format": "uuid",
             "title": "Id",
-            "type": "integer"
+            "type": "string"
           }
         },
         "required": [
@@ -1091,8 +1118,13 @@
             "type": "string"
           },
           "created_by": {
-            "title": "Created By",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {}
+            ],
+            "title": "Created By"
           },
           "description": {
             "anyOf": [
@@ -1151,8 +1183,9 @@
             "type": "array"
           },
           "id": {
+            "format": "uuid",
             "title": "Id",
-            "type": "integer"
+            "type": "string"
           },
           "image_url": {
             "anyOf": [
@@ -1459,7 +1492,12 @@
           },
           "allowed_users": {
             "items": {
-              "type": "integer"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {}
+              ]
             },
             "title": "Allowed Users",
             "type": "array"
@@ -1576,8 +1614,9 @@
             "title": "Faculty"
           },
           "id": {
+            "format": "uuid",
             "title": "Id",
-            "type": "integer"
+            "type": "string"
           },
           "name": {
             "title": "Name",
@@ -1677,6 +1716,7 @@
             "type": "array"
           },
           "chat_id": {
+            "format": "uuid",
             "title": "Chat Id",
             "type": "string"
           },
@@ -1690,6 +1730,7 @@
             "type": "string"
           },
           "id": {
+            "format": "uuid",
             "title": "Id",
             "type": "string"
           },
@@ -1708,8 +1749,9 @@
             ]
           },
           "sender_id": {
+            "format": "uuid",
             "title": "Sender Id",
-            "type": "integer"
+            "type": "string"
           },
           "sender_presence": {
             "anyOf": [
@@ -1800,8 +1842,9 @@
             "type": "string"
           },
           "id": {
+            "format": "uuid",
             "title": "Id",
-            "type": "integer"
+            "type": "string"
           },
           "payload": {
             "anyOf": [
@@ -1818,7 +1861,8 @@
           "session_id": {
             "anyOf": [
               {
-                "type": "integer"
+                "format": "uuid",
+                "type": "string"
               },
               {
                 "type": "null"
@@ -1831,8 +1875,9 @@
             "type": "string"
           },
           "user_id": {
+            "format": "uuid",
             "title": "User Id",
-            "type": "integer"
+            "type": "string"
           }
         },
         "required": [
@@ -1968,8 +2013,9 @@
             "type": "string"
           },
           "id": {
+            "format": "uuid",
             "title": "Id",
-            "type": "integer"
+            "type": "string"
           },
           "is_active": {
             "title": "Is Active",
@@ -1999,8 +2045,9 @@
             "title": "Revoked At"
           },
           "user_id": {
+            "format": "uuid",
             "title": "User Id",
-            "type": "integer"
+            "type": "string"
           }
         },
         "required": [
@@ -2075,12 +2122,14 @@
             "type": "string"
           },
           "id": {
+            "format": "uuid",
             "title": "Id",
-            "type": "integer"
+            "type": "string"
           },
           "user_id": {
+            "format": "uuid",
             "title": "User Id",
-            "type": "integer"
+            "type": "string"
           },
           "user_name": {
             "title": "User Name",
@@ -2222,8 +2271,9 @@
             "type": "string"
           },
           "id": {
+            "format": "uuid",
             "title": "Id",
-            "type": "integer"
+            "type": "string"
           },
           "image_url": {
             "anyOf": [
@@ -2419,8 +2469,9 @@
             "type": "string"
           },
           "id": {
+            "format": "uuid",
             "title": "Id",
-            "type": "integer"
+            "type": "string"
           },
           "read": {
             "title": "Read",
@@ -2787,7 +2838,8 @@
           "session_id": {
             "anyOf": [
               {
-                "type": "integer"
+                "format": "uuid",
+                "type": "string"
               },
               {
                 "type": "null"
@@ -2802,8 +2854,9 @@
             "type": "string"
           },
           "user_id": {
+            "format": "uuid",
             "title": "User Id",
-            "type": "integer"
+            "type": "string"
           }
         },
         "required": [
@@ -2931,8 +2984,9 @@
             "type": "string"
           },
           "id": {
+            "format": "uuid",
             "title": "Id",
-            "type": "integer"
+            "type": "string"
           },
           "last_seen_at": {
             "anyOf": [
@@ -2981,8 +3035,9 @@
             "title": "User Agent"
           },
           "user_id": {
+            "format": "uuid",
             "title": "User Id",
-            "type": "integer"
+            "type": "string"
           }
         },
         "required": [
@@ -3145,8 +3200,8 @@
           "user_id": {
             "anyOf": [
               {
-                "minimum": 1.0,
-                "type": "integer"
+                "format": "uuid",
+                "type": "string"
               },
               {
                 "type": "null"
@@ -3250,8 +3305,9 @@
             "type": "string"
           },
           "group_id": {
+            "format": "uuid",
             "title": "Group Id",
-            "type": "integer"
+            "type": "string"
           },
           "lesson_type": {
             "anyOf": [
@@ -3330,12 +3386,14 @@
             "type": "string"
           },
           "group_id": {
+            "format": "uuid",
             "title": "Group Id",
-            "type": "integer"
+            "type": "string"
           },
           "id": {
+            "format": "uuid",
             "title": "Id",
-            "type": "integer"
+            "type": "string"
           },
           "lesson_type": {
             "anyOf": [
@@ -3435,7 +3493,8 @@
           "group_id": {
             "anyOf": [
               {
-                "type": "integer"
+                "format": "uuid",
+                "type": "string"
               },
               {
                 "type": "null"
@@ -3839,8 +3898,9 @@
           "created_by": {
             "anyOf": [
               {
-                "type": "integer"
+                "type": "string"
               },
+              {},
               {
                 "type": "null"
               }
@@ -3864,8 +3924,9 @@
             "type": "string"
           },
           "id": {
+            "format": "uuid",
             "title": "Id",
-            "type": "integer"
+            "type": "string"
           },
           "is_active": {
             "title": "Is Active",
@@ -4066,8 +4127,9 @@
             "type": "string"
           },
           "enrollment_id": {
+            "format": "uuid",
             "title": "Enrollment Id",
-            "type": "integer"
+            "type": "string"
           }
         },
         "required": [
@@ -4156,7 +4218,8 @@
           "group_id": {
             "anyOf": [
               {
-                "type": "integer"
+                "format": "uuid",
+                "type": "string"
               },
               {
                 "type": "null"
@@ -4316,7 +4379,8 @@
           "group_id": {
             "anyOf": [
               {
-                "type": "integer"
+                "format": "uuid",
+                "type": "string"
               },
               {
                 "type": "null"
@@ -4640,7 +4704,8 @@
           "group_id": {
             "anyOf": [
               {
-                "type": "integer"
+                "format": "uuid",
+                "type": "string"
               },
               {
                 "type": "null"
@@ -4649,8 +4714,9 @@
             "title": "Group Id"
           },
           "id": {
+            "format": "uuid",
             "title": "Id",
-            "type": "integer"
+            "type": "string"
           },
           "institute": {
             "anyOf": [
@@ -5072,6 +5138,154 @@
         "title": "UserProfileUpdate",
         "type": "object"
       },
+      "UserPublicOut": {
+        "description": "Publicly visible user profile information (PII-safe).",
+        "properties": {
+          "about": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "About"
+          },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
+          "avatar_url_optimized": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "readOnly": true,
+            "title": "Avatar Url Optimized"
+          },
+          "course": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Course"
+          },
+          "cover_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Url"
+          },
+          "department": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Department"
+          },
+          "full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Full Name"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "institute": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Institute"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "role": {
+            "$ref": "#/components/schemas/UserRole",
+            "default": "student"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "required": [
+          "id",
+          "is_active",
+          "avatar_url_optimized"
+        ],
+        "title": "UserPublicOut",
+        "type": "object"
+      },
       "UserRole": {
         "description": "Available roles for users within the system.",
         "enum": [
@@ -5207,7 +5421,7 @@
   "paths": {
     "/": {
       "get": {
-        "operationId": "root__get",
+        "operationId": "get_root__get",
         "responses": {
           "200": {
             "content": {
@@ -5256,7 +5470,8 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "integer"
+                  "format": "uuid",
+                  "type": "string"
                 },
                 {
                   "type": "null"
@@ -5272,7 +5487,8 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "integer"
+                  "format": "uuid",
+                  "type": "string"
                 },
                 {
                   "type": "null"
@@ -5457,21 +5673,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TokenWithProfile"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TokenWithProfile"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PendingMfaResponse"
+                    }
+                  ],
+                  "title": "Response Login Api V1 Auth Login Post"
                 }
               }
             },
             "description": "Successful Response"
-          },
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PendingMfaResponse"
-                }
-              }
-            },
-            "description": "Accepted"
           },
           "422": {
             "content": {
@@ -5490,7 +5704,7 @@
         ]
       }
     },
-    "/api/v1/auth/login-json": {
+    "/api/v1/auth/login/json": {
       "post": {
         "operationId": "login_json_api_v1_auth_login_json_post",
         "requestBody": {
@@ -5508,21 +5722,19 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TokenWithProfile"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TokenWithProfile"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PendingMfaResponse"
+                    }
+                  ],
+                  "title": "Response Login Json Api V1 Auth Login Json Post"
                 }
               }
             },
             "description": "Successful Response"
-          },
-          "202": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PendingMfaResponse"
-                }
-              }
-            },
-            "description": "Accepted"
           },
           "422": {
             "content": {
@@ -5600,7 +5812,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/TokenWithProfile"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TokenWithProfile"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PendingMfaResponse"
+                    }
+                  ],
+                  "title": "Response Login Passkey Verify Api V1 Auth Login Passkey Verify Post"
                 }
               }
             },
@@ -5625,7 +5845,7 @@
     },
     "/api/v1/auth/logout": {
       "post": {
-        "description": "Terminate the client session.",
+        "description": "Terminate the client session.\n\nRevokes the current session in the database and clears all\nauthentication-related cookies. Also sets Clear-Site-Data header\nto ensure browser removes cached data.",
         "operationId": "logout_api_v1_auth_logout_post",
         "responses": {
           "200": {
@@ -5639,6 +5859,7 @@
         },
         "summary": "Logout",
         "tags": [
+          "auth",
           "auth"
         ]
       }
@@ -5665,7 +5886,7 @@
         ],
         "summary": "Generate Recovery Codes Endpoint",
         "tags": [
-          "auth"
+          "mfa"
         ]
       }
     },
@@ -5673,16 +5894,6 @@
       "post": {
         "operationId": "request_step_up_api_v1_auth_mfa_step_up_post",
         "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PendingMfaResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
           "202": {
             "content": {
               "application/json": {
@@ -5691,7 +5902,7 @@
                 }
               }
             },
-            "description": "Accepted"
+            "description": "Successful Response"
           }
         },
         "security": [
@@ -5701,7 +5912,7 @@
         ],
         "summary": "Request Step Up",
         "tags": [
-          "auth"
+          "mfa"
         ]
       }
     },
@@ -5731,7 +5942,7 @@
         ],
         "summary": "List Totp Enrollments",
         "tags": [
-          "auth"
+          "mfa"
         ]
       }
     },
@@ -5777,7 +5988,7 @@
         ],
         "summary": "Confirm Totp Enrollment",
         "tags": [
-          "auth"
+          "mfa"
         ]
       }
     },
@@ -5790,8 +6001,9 @@
             "name": "enrollment_id",
             "required": true,
             "schema": {
+              "format": "uuid",
               "title": "Enrollment Id",
-              "type": "integer"
+              "type": "string"
             }
           }
         ],
@@ -5817,7 +6029,7 @@
         ],
         "summary": "Delete Pending Totp Enrollment",
         "tags": [
-          "auth"
+          "mfa"
         ]
       }
     },
@@ -5870,7 +6082,7 @@
         ],
         "summary": "Start Totp Enrollment Endpoint",
         "tags": [
-          "auth"
+          "mfa"
         ]
       }
     },
@@ -5883,8 +6095,9 @@
             "name": "enrollment_id",
             "required": true,
             "schema": {
+              "format": "uuid",
               "title": "Enrollment Id",
-              "type": "integer"
+              "type": "string"
             }
           }
         ],
@@ -5917,7 +6130,7 @@
         ],
         "summary": "Delete Totp Enrollment",
         "tags": [
-          "auth"
+          "mfa"
         ]
       }
     },
@@ -5989,7 +6202,7 @@
         ],
         "summary": "List Webauthn Credentials",
         "tags": [
-          "auth"
+          "mfa"
         ]
       }
     },
@@ -6035,7 +6248,7 @@
         ],
         "summary": "Confirm Webauthn Registration",
         "tags": [
-          "auth"
+          "mfa"
         ]
       }
     },
@@ -6061,7 +6274,7 @@
         ],
         "summary": "Start Webauthn Registration",
         "tags": [
-          "auth"
+          "mfa"
         ]
       }
     },
@@ -6074,8 +6287,9 @@
             "name": "credential_id",
             "required": true,
             "schema": {
+              "format": "uuid",
               "title": "Credential Id",
-              "type": "integer"
+              "type": "string"
             }
           }
         ],
@@ -6108,7 +6322,7 @@
         ],
         "summary": "Delete Webauthn Credential",
         "tags": [
-          "auth"
+          "mfa"
         ]
       }
     },
@@ -6188,7 +6402,8 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "integer"
+                  "format": "uuid",
+                  "type": "string"
                 },
                 {
                   "type": "null"
@@ -6246,7 +6461,8 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "integer"
+                  "format": "uuid",
+                  "type": "string"
                 },
                 {
                   "type": "null"
@@ -6298,8 +6514,9 @@
             "name": "session_id",
             "required": true,
             "schema": {
+              "format": "uuid",
               "title": "Session Id",
-              "type": "integer"
+              "type": "string"
             }
           }
         ],
@@ -6462,6 +6679,7 @@
             "name": "chat_id",
             "required": true,
             "schema": {
+              "format": "uuid",
               "title": "Chat Id",
               "type": "string"
             }
@@ -6508,6 +6726,7 @@
             "name": "chat_id",
             "required": true,
             "schema": {
+              "format": "uuid",
               "title": "Chat Id",
               "type": "string"
             }
@@ -6556,6 +6775,7 @@
             "name": "chat_id",
             "required": true,
             "schema": {
+              "format": "uuid",
               "title": "Chat Id",
               "type": "string"
             }
@@ -6604,6 +6824,7 @@
             "name": "chat_id",
             "required": true,
             "schema": {
+              "format": "uuid",
               "title": "Chat Id",
               "type": "string"
             }
@@ -6682,6 +6903,7 @@
             "name": "chat_id",
             "required": true,
             "schema": {
+              "format": "uuid",
               "title": "Chat Id",
               "type": "string"
             }
@@ -6739,6 +6961,7 @@
             "name": "chat_id",
             "required": true,
             "schema": {
+              "format": "uuid",
               "title": "Chat Id",
               "type": "string"
             }
@@ -7059,8 +7282,16 @@
             "name": "file_id",
             "required": true,
             "schema": {
-              "title": "File Id",
-              "type": "integer"
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "title": "File Id"
             }
           }
         ],
@@ -7298,8 +7529,16 @@
             "name": "event_id",
             "required": true,
             "schema": {
-              "title": "Event Id",
-              "type": "integer"
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "title": "Event Id"
             }
           }
         ],
@@ -7345,8 +7584,16 @@
             "name": "event_id",
             "required": true,
             "schema": {
-              "title": "Event Id",
-              "type": "integer"
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "title": "Event Id"
             }
           }
         ],
@@ -7402,8 +7649,16 @@
             "name": "id",
             "required": true,
             "schema": {
-              "title": "Id",
-              "type": "integer"
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "title": "Id"
             }
           },
           {
@@ -7465,8 +7720,16 @@
             "name": "id",
             "required": true,
             "schema": {
-              "title": "Id",
-              "type": "integer"
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "title": "Id"
             }
           }
         ],
@@ -7511,8 +7774,16 @@
             "name": "id",
             "required": true,
             "schema": {
-              "title": "Id",
-              "type": "integer"
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "title": "Id"
             }
           }
         ],
@@ -7799,8 +8070,9 @@
             "name": "comment_id",
             "required": true,
             "schema": {
+              "format": "uuid",
               "title": "Comment Id",
-              "type": "integer"
+              "type": "string"
             }
           }
         ],
@@ -7842,8 +8114,9 @@
             "name": "comment_id",
             "required": true,
             "schema": {
+              "format": "uuid",
               "title": "Comment Id",
-              "type": "integer"
+              "type": "string"
             }
           }
         ],
@@ -8031,8 +8304,9 @@
             "name": "id",
             "required": true,
             "schema": {
+              "format": "uuid",
               "title": "Id",
-              "type": "integer"
+              "type": "string"
             }
           }
         ],
@@ -8079,8 +8353,9 @@
             "name": "id",
             "required": true,
             "schema": {
+              "format": "uuid",
               "title": "Id",
-              "type": "integer"
+              "type": "string"
             }
           },
           {
@@ -8140,8 +8415,9 @@
             "name": "id",
             "required": true,
             "schema": {
+              "format": "uuid",
               "title": "Id",
-              "type": "integer"
+              "type": "string"
             }
           }
         ],
@@ -8204,8 +8480,9 @@
             "name": "id",
             "required": true,
             "schema": {
+              "format": "uuid",
               "title": "Id",
-              "type": "integer"
+              "type": "string"
             }
           }
         ],
@@ -8261,8 +8538,9 @@
             "name": "id",
             "required": true,
             "schema": {
+              "format": "uuid",
               "title": "Id",
-              "type": "integer"
+              "type": "string"
             }
           },
           {
@@ -8331,8 +8609,9 @@
             "name": "id",
             "required": true,
             "schema": {
+              "format": "uuid",
               "title": "Id",
-              "type": "integer"
+              "type": "string"
             }
           }
         ],
@@ -8529,6 +8808,52 @@
         ]
       }
     },
+    "/api/v1/notifications/{notif_id}": {
+      "delete": {
+        "operationId": "delete_notification_api_v1_notifications__notif_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "notif_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Notif Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Delete Notification",
+        "tags": [
+          "notifications"
+        ]
+      }
+    },
     "/api/v1/notifications/{notif_id}/read": {
       "patch": {
         "operationId": "mark_read_single_api_v1_notifications__notif_id__read_patch",
@@ -8538,8 +8863,9 @@
             "name": "notif_id",
             "required": true,
             "schema": {
+              "format": "uuid",
               "title": "Notif Id",
-              "type": "integer"
+              "type": "string"
             }
           }
         ],
@@ -9168,8 +9494,9 @@
             "required": true,
             "schema": {
               "description": "Group identifier",
+              "format": "uuid",
               "title": "Group",
-              "type": "integer"
+              "type": "string"
             }
           }
         ],
@@ -9203,8 +9530,9 @@
             "name": "group_id",
             "required": true,
             "schema": {
+              "format": "uuid",
               "title": "Group Id",
-              "type": "integer"
+              "type": "string"
             }
           },
           {
@@ -9265,8 +9593,9 @@
             "name": "schedule_id",
             "required": true,
             "schema": {
+              "format": "uuid",
               "title": "Schedule Id",
-              "type": "integer"
+              "type": "string"
             }
           }
         ],
@@ -9312,8 +9641,9 @@
             "name": "schedule_id",
             "required": true,
             "schema": {
+              "format": "uuid",
               "title": "Schedule Id",
-              "type": "integer"
+              "type": "string"
             }
           }
         ],
@@ -9485,6 +9815,55 @@
         ]
       }
     },
+    "/api/v1/spotify/playlists": {
+      "get": {
+        "operationId": "list_playlists_api_v1_spotify_playlists_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List Playlists",
+        "tags": [
+          "spotify"
+        ]
+      }
+    },
+    "/api/v1/spotify/sync-playlists": {
+      "post": {
+        "description": "Synchronize Spotify playlists metadata to the local database.",
+        "operationId": "sync_playlists_api_v1_spotify_sync_playlists_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Sync Playlists",
+        "tags": [
+          "spotify"
+        ]
+      }
+    },
     "/api/v1/stats/attendance": {
       "get": {
         "operationId": "attendance_summary_api_v1_stats_attendance_get",
@@ -9552,6 +9931,64 @@
           }
         ],
         "summary": "Attendance Summary",
+        "tags": [
+          "stats"
+        ]
+      }
+    },
+    "/api/v1/stats/creation": {
+      "get": {
+        "description": "Analytics powered by UUID v7:\nCreation time distribution without DB indexes on created_at.",
+        "operationId": "creation_analytics_api_v1_stats_creation_get",
+        "parameters": [
+          {
+            "description": "Type of object to analyze (users, news, events)",
+            "in": "query",
+            "name": "object_type",
+            "required": true,
+            "schema": {
+              "description": "Type of object to analyze (users, news, events)",
+              "title": "Object Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "period",
+            "required": false,
+            "schema": {
+              "default": "30d",
+              "title": "Period",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Creation Analytics",
         "tags": [
           "stats"
         ]
@@ -9851,8 +10288,9 @@
             "name": "story_id",
             "required": true,
             "schema": {
+              "format": "uuid",
               "title": "Story Id",
-              "type": "integer"
+              "type": "string"
             }
           }
         ],
@@ -9898,8 +10336,9 @@
             "name": "story_id",
             "required": true,
             "schema": {
+              "format": "uuid",
               "title": "Story Id",
-              "type": "integer"
+              "type": "string"
             }
           }
         ],
@@ -9955,6 +10394,7 @@
     },
     "/api/v1/users": {
       "get": {
+        "description": "Search for users.\nAdmins see full profiles (UserOut), others see only public info (UserPublicOut).",
         "operationId": "get_users_api_v1_users_get",
         "parameters": [
           {
@@ -9996,7 +10436,8 @@
             "schema": {
               "anyOf": [
                 {
-                  "type": "integer"
+                  "format": "uuid",
+                  "type": "string"
                 },
                 {
                   "type": "null"
@@ -10048,7 +10489,14 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/UserOut"
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/UserPublicOut"
+                      },
+                      {
+                        "$ref": "#/components/schemas/UserOut"
+                      }
+                    ]
                   },
                   "title": "Response Get Users Api V1 Users Get",
                   "type": "array"
@@ -10073,7 +10521,7 @@
             "OAuth2PasswordBearer": []
           }
         ],
-        "summary": "Get Users",
+        "summary": "Search Users",
         "tags": [
           "users"
         ]
@@ -10622,8 +11070,9 @@
             "name": "user_id",
             "required": true,
             "schema": {
+              "format": "uuid",
               "title": "User Id",
-              "type": "integer"
+              "type": "string"
             }
           }
         ],
@@ -10669,8 +11118,9 @@
             "name": "user_id",
             "required": true,
             "schema": {
+              "format": "uuid",
               "title": "User Id",
-              "type": "integer"
+              "type": "string"
             }
           }
         ],

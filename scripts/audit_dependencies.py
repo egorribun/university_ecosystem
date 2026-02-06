@@ -50,7 +50,11 @@ def ensure_not_expired(entries: Iterable[dict[str, Any]], *, label: str) -> None
 
 def collect_npm_advisory_ids(package_dir: pathlib.Path) -> set[str]:
     cmd = ["npm", "audit", "--audit-level=high", "--json"]
-    result = subprocess.run(cmd, cwd=package_dir, capture_output=True, text=True)
+    import os
+
+    result = subprocess.run(
+        cmd, cwd=package_dir, capture_output=True, text=True, shell=os.name == "nt"
+    )
 
     if result.returncode not in (0, 1):
         raise AuditFailure(f"npm audit failed: {result.stderr or result.stdout}")
@@ -108,7 +112,7 @@ def check_allowances(
 ) -> None:
     ensure_not_expired(allowed_entries, label=f"{ecosystem} advisory allowlist")
 
-    allowed_ids = {entry.get("id") for entry in allowed_entries if entry.get("id")}
+    allowed_ids = {str(entry.get("id")) for entry in allowed_entries if entry.get("id")}
     missing = sorted(found_ids - allowed_ids)
     if missing:
         formatted = "\n".join(f"- {value}" for value in missing)

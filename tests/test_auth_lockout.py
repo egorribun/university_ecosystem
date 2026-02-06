@@ -52,14 +52,13 @@ async def test_login_lockout_enforced(
     first = await _login(async_client, user.email, "WrongPass!1")
     assert first.status_code == status.HTTP_401_UNAUTHORIZED
 
-    with patch("app.auth.auth.send_lockout_alert") as mock_alert:
-        mock_alert.kiq = AsyncMock()
-
+    with patch("app.services.auth.login_service.send_lockout_alert") as mock_alert_func:
+        mock_alert_func.kiq = AsyncMock()
         second = await _login(async_client, user.email, "WrongPass!1")
         assert second.status_code == status.HTTP_423_LOCKED
 
-        mock_alert.kiq.assert_called_once()
-        args = mock_alert.kiq.call_args[0]
+        mock_alert_func.kiq.assert_called_once()
+        args = mock_alert_func.kiq.call_args[0]
         assert args[0] == user.email
 
     detail = second.json()["detail"]

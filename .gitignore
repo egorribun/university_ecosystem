@@ -252,3 +252,36 @@ bandit_report*.json
 
 # Executables
 *.exe
+
+# Test Failures & Debug Outputs
+test_fail.txt
+test_fail_*.txt
+auth_tests_*.txt
+full_test_output*.txt
+verification_output.txt
+monster_output.txt
+check_health_output.txt
+error_traceback.txt
+healthz_debug*.txt
+pytest_results.txt
+test_summary.txt
+test_names.txt
+failure_*.txt
+cache_failure.txt
+all_tests_fail_*.txt
+audit_test_output*.txt
+partial_test_output.txt
+test_output2.txt
+
+# Databases
+test.db-shm
+test.db-wal
+cache/images/*.db-shm
+cache/images/*.db-wal
+
+# Temporary Scripts
+debug_*.py
+inspect_*.py
+
+# Test Tools
+fakeredis_shadow_backup/

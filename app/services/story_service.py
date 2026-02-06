@@ -1,3 +1,5 @@
+import uuid
+
 from app.core.localization import localized_text, normalize_locale
 from app.models import models
 from app.repositories.story_repository import StoryRepository
@@ -43,7 +45,7 @@ class StoryService:
         return [self.serialize_story(item, locale) for item in rows]
 
     async def create_story(
-        self, data: schemas.StoryCreate, created_by: int
+        self, data: schemas.StoryCreate, created_by: uuid.UUID
     ) -> models.Story:
         payload = data.model_dump()
         payload["title_en"] = sanitize_optional_text(payload.get("title_en"))
@@ -67,7 +69,7 @@ class StoryService:
         return story
 
     async def update_story(
-        self, story_id: int, data: schemas.StoryUpdate
+        self, story_id: uuid.UUID, data: schemas.StoryUpdate
     ) -> models.Story:
         story = await self.repo.get(story_id)
         if not story:
@@ -105,7 +107,7 @@ class StoryService:
         await self.repo.db.commit()
         return updated_story
 
-    async def delete_story(self, story_id: int) -> bool:
+    async def delete_story(self, story_id: uuid.UUID) -> bool:
         story = await self.repo.get(story_id)
         if not story:
             return False

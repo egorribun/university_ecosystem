@@ -1,4 +1,5 @@
 from datetime import datetime
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
@@ -7,7 +8,7 @@ from pydantic import BaseModel, ConfigDict
 class ChatParticipant(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    id: UUID
     email: str
     full_name: str | None = None
     avatar_url: str | None = None
@@ -32,7 +33,7 @@ class MessageCreate(MessageBase):
 class AttachmentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: str
+    id: UUID
     url: str
     file_type: str
     filename: str
@@ -42,9 +43,9 @@ class AttachmentResponse(BaseModel):
 class MessageResponse(MessageBase):
     model_config = ConfigDict(from_attributes=True)
 
-    id: str
-    chat_id: str
-    sender_id: int
+    id: UUID
+    chat_id: UUID
+    sender_id: UUID
     created_at: datetime
     read_status: bool
     sender: ChatParticipant | None = None
@@ -57,19 +58,19 @@ class ChatBase(BaseModel):
 
 
 class ChatCreate(ChatBase):
-    participant_id: int  # The ID of the user to start a chat with
+    participant_id: UUID  # The ID of the user to start a chat with
 
 
 class ChatResponse(ChatBase):
     model_config = ConfigDict(from_attributes=True)
 
-    id: str
+    id: UUID
     participants: list[ChatParticipant]
     last_message: MessageResponse | None = None
     unread_count: int = 0
     created_at: datetime
     updated_at: datetime
-    presence: dict[int, PresenceStatus] | None = None
+    presence: dict[UUID, PresenceStatus] | None = None
 
 
 class ChatsListOut(BaseModel):
@@ -91,7 +92,7 @@ class MessagesListOut(BaseModel):
 class ChatMaintenanceResult(BaseModel):
     """Represents the result of a maintenance operation on a chat."""
 
-    chat_id: str
+    chat_id: UUID
     status: str
     deleted_messages: int = 0
     deleted_attachments: int = 0

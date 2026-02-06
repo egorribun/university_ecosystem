@@ -128,18 +128,26 @@ class NullCache(BaseCache):
 class MemoryCache(BaseCache):
     enabled = True
 
-    def __init__(self, default_ttl: int = 0) -> None:
+    def __init__(self, default_ttl: int = 0, max_size: int = 1000) -> None:
         self._default_ttl = max(int(default_ttl or 0), 0)
-        self._entries: dict[str, tuple[CacheEntry, float]] = {}
+        self._max_size = max(int(max_size or 1000), 10)
+        from collections import OrderedDict
+
+        self._entries: OrderedDict[str, tuple[CacheEntry, float]] = OrderedDict()
 
     async def get(self, key: str) -> CacheEntry | None:
         now = time_module.time()
-        entry, expires_at = self._entries.get(key, (None, 0.0))
-        if entry is None:
+        entry_meta = self._entries.get(key)
+        if entry_meta is None:
             return None
+
+        entry, expires_at = entry_meta
         if expires_at and expires_at <= now:
-            await self.invalidate(key)
+            self._entries.pop(key, None)
             return None
+
+        # Move to end (most recently used)
+        self._entries.move_to_end(key)
         return entry
 
     async def set(self, key: str, payload: Any, ttl: int | None = None) -> CacheEntry:
@@ -154,7 +162,13 @@ class MemoryCache(BaseCache):
             stored_at=stored_at,
             ttl_seconds=float(effective_ttl),
         )
+
+        # Evict oldest if full
+        if key not in self._entries and len(self._entries) >= self._max_size:
+            self._entries.popitem(last=False)
+
         self._entries[key] = (entry, expires_at)
+        self._entries.move_to_end(key)
         return entry
 
     async def invalidate(self, *keys: str) -> None:
@@ -209,9 +223,15 @@ class RedisCache(BaseCache):
         start = time_module.perf_counter()
         success = False
         try:
-            await client.aclose()
+            if hasattr(client, "aclose") and asyncio.iscoroutinefunction(client.aclose):
+                await client.aclose()
+            elif hasattr(client, "close"):
+                if asyncio.iscoroutinefunction(client.close):
+                    await client.close()
+                else:
+                    client.close()
             success = True
-        except (RedisError, OSError):
+        except (RedisError, OSError, AttributeError):
             logger.debug("Failed to close Redis client", exc_info=True)
         finally:
             record_redis_command(
@@ -377,8 +397,11 @@ class RedisClusterCache(BaseCache):
             return
         client, self._client = self._client, None
         try:
-            await client.aclose()
-        except (RedisError, OSError):
+            if hasattr(client, "aclose"):
+                await client.aclose()
+            elif hasattr(client, "close"):
+                await client.close()
+        except (RedisError, OSError, AttributeError):
             logger.debug("Failed to close Redis cluster client", exc_info=True)
 
     async def get(self, key: str) -> CacheEntry | None:

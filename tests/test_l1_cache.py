@@ -244,7 +244,7 @@ class TestGlobalCaches:
     def test_schedule_cache_exists(self):
         """Test schedule_cache singleton."""
         assert schedule_cache is not None
-        assert isinstance(schedule_cache, LRUCache)
+        assert isinstance(schedule_cache, MultiLayerCache)
 
     def test_config_cache_exists(self):
         """Test config_cache singleton."""

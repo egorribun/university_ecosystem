@@ -77,33 +77,36 @@ jobs:
                   cache-dependency-glob: "uv.lock"
 
             - name: Install dependencies
+              shell: pwsh
               run: |
+                  uv lock --check
                   uv sync --frozen
 
             - name: Run pytest
+              shell: pwsh
               run: |
-                  PARALLEL_ARGS=""
-                  if [[ "${{ inputs.parallel-workers }}" != "-1" ]]; then
-                    if [[ "${{ inputs.parallel-workers }}" == "0" ]]; then
-                      PARALLEL_ARGS="-n auto"
-                    else
-                      PARALLEL_ARGS="-n ${{ inputs.parallel-workers }}"
-                    fi
-                  fi
+                  $parallelArgs = @()
+                  if ("${{ inputs.parallel-workers }}" -ne "-1") {
+                    if ("${{ inputs.parallel-workers }}" -eq "0") {
+                      $parallelArgs = @("-n", "auto")
+                    } else {
+                      $parallelArgs = @("-n", "${{ inputs.parallel-workers }}")
+                    }
+                  }
 
-                  FAIL_FAST=""
-                  if [[ "${{ inputs.fail-fast }}" == "true" ]]; then
-                    FAIL_FAST="-x"
-                  fi
+                  $failFastArgs = @()
+                  if ("${{ inputs.fail-fast }}" -eq "true") {
+                    $failFastArgs = @("-x")
+                  }
 
-                  uv run pytest ${{ inputs.test-pattern }} \
-                    $PARALLEL_ARGS \
-                    $FAIL_FAST \
-                    --cov=app \
-                    --cov-report=xml \
-                    --cov-report=term-missing \
-                    --cov-fail-under=${{ inputs.coverage-threshold }} \
-                    --junitxml=pytest-report.xml \
+                  uv run pytest ${{ inputs.test-pattern }} `
+                    $parallelArgs `
+                    $failFastArgs `
+                    --cov=app `
+                    --cov-report=xml `
+                    --cov-report=term-missing `
+                    --cov-fail-under=${{ inputs.coverage-threshold }} `
+                    --junitxml=pytest-report.xml `
                     --dist=loadgroup
 
             - name: Upload coverage artifact
@@ -167,19 +170,25 @@ jobs:
                   cache-dependency-glob: "uv.lock"
 
             - name: Install dependencies
+              shell: pwsh
               run: |
                   uv sync --frozen
 
             - name: Wait for PostgreSQL
+              shell: pwsh
               run: |
-                  until pg_isready -h localhost -p 5432 -U test; do
-                    sleep 1
-                  done
+                  do {
+                    pg_isready -h localhost -p 5432 -U test
+                    if ($LASTEXITCODE -eq 0) { break }
+                    Start-Sleep -Seconds 1
+                  } while ($true)
 
             - name: Run Alembic migrations
+              shell: pwsh
               run: uv run alembic upgrade head
 
             - name: Run integration tests
+              shell: pwsh
               run: uv run pytest ${{ inputs.test-pattern }} -v --tb=short -x --ignore=tests/performance
 
             - name: Upload test results

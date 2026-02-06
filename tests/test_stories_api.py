@@ -1,4 +1,5 @@
 import datetime as dt
+import uuid
 
 import pytest
 from httpx import AsyncClient
@@ -40,7 +41,7 @@ async def test_stories_list_filters_expired(async_client: AsyncClient, story_fac
     assert response.status_code == 200
     payload = response.json()
     assert len(payload) == 1
-    assert payload[0]["id"] == active.id
+    assert payload[0]["id"] == str(active.id)
     assert payload[0]["title"] == active.title
 
 
@@ -114,7 +115,7 @@ async def test_story_admin_permissions(
         f"/stories/{created_id}", json=update_payload, headers=admin_headers
     )
     assert updated.status_code == 200
-    refreshed = await db_session.get(models.Story, created_id)
+    refreshed = await db_session.get(models.Story, uuid.UUID(created_id))
     assert refreshed is not None
     await db_session.refresh(refreshed)
     assert refreshed.short_text == "Updated copy"
@@ -128,7 +129,8 @@ async def test_story_admin_permissions(
     assert deleted.status_code == 200
     assert deleted.json()["ok"] is True
     async with async_session() as verify_session:
-        assert await verify_session.get(models.Story, created_id) is None
+        # Must cast string ID to UUID for SQLAlchemy 2.0 + SQLite
+        assert await verify_session.get(models.Story, uuid.UUID(created_id)) is None
 
 
 @pytest.mark.asyncio

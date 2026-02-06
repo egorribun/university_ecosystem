@@ -4,10 +4,10 @@ Request timing middleware for API latency monitoring.
 Logs and records metrics for slow API requests.
 """
 
-from __future__ import annotations
-
+import asyncio
 import logging
 import time
+from typing import TypeVar
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -16,6 +16,19 @@ logger = logging.getLogger("app.timing")
 
 # Threshold for slow request logging (milliseconds)
 SLOW_REQUEST_THRESHOLD_MS: float = 500.0
+
+T = TypeVar("T")
+
+
+async def ensure_minimum_time(start_time: float, min_duration_seconds: float) -> None:
+    """
+    Ensures that the execution takes at least min_duration_seconds.
+    Used to mitigate timing attacks.
+    """
+    elapsed = time.perf_counter() - start_time
+    shortfall = min_duration_seconds - elapsed
+    if shortfall > 0:
+        await asyncio.sleep(shortfall)
 
 
 class RequestTimingMiddleware(BaseHTTPMiddleware):

@@ -1,4 +1,5 @@
 import logging
+import uuid
 
 from fastapi import BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,7 +15,7 @@ class NotificationService:
         self.db = db
 
     async def dispatch_event_created(
-        self, event_id: int, locale: str, background: BackgroundTasks
+        self, event_id: uuid.UUID | int, locale: str, background: BackgroundTasks
     ) -> None:
         """Enqueue event notification in background."""
         job = notification_queue.NotificationJob(
@@ -37,7 +38,7 @@ class NotificationService:
             )
 
     async def dispatch_news_created(
-        self, news_id: int, locale: str, background: BackgroundTasks
+        self, news_id: uuid.UUID | int, locale: str, background: BackgroundTasks
     ) -> None:
         """Enqueue news notification in background."""
         try:
@@ -52,7 +53,7 @@ class NotificationService:
             )
 
     async def send_security_notification(
-        self, user_ids: list[int], title: str, body: str
+        self, user_ids: list[uuid.UUID | int], title: str, body: str
     ) -> int:
         """Directly create security notifications in the database."""
         return await create_notifications_for_users(

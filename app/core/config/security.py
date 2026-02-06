@@ -60,9 +60,26 @@ class SecuritySettings(BaseAppSettings):
     rate_limit_default: str | list[str] = "200/minute"
     rate_limit_sensitive: str = "5/minute"
     rate_limit_auth: str = "5/minute"
+    rate_limit_auth_login: str = "5/minute"
+    rate_limit_auth_register: str = "5/minute"
+    rate_limit_auth_password_reset: str = "3/minute"
+    rate_limit_auth_mfa: str = "5/minute"
+    rate_limit_auth_totp: str = "5/minute"
+    rate_limit_users_me: str = "120/minute"
+    rate_limit_users_avatar: str = "10/minute"
+    rate_limit_notifications: str = "120/minute"
+    rate_limit_notifications_check: str = "60/minute"
+    rate_limit_news: str = "120/minute"
+    rate_limit_events: str = "120/minute"
+    rate_limit_chat: str = "120/minute"
+    rate_limit_stories: str = "120/minute"
+    rate_limit_schedule: str = "120/minute"
+    rate_limit_interactions: str = "200/minute"
     rate_limit_upload: str = "10/minute"
-    rate_limit_admin: str = "50/minute"
-    rate_limit_websocket: str = "30/minute"
+    rate_limit_admin: str = "100/minute"
+    rate_limit_websocket: str = "60/minute"
+    rate_limit_static: str = "300/minute"
+    rate_limit_graphql: str = "30/minute"
     rate_limit_storage_backend: str = "memory"
     rate_limit_storage_uri: str = "memory://"
     rate_limit_headers_enabled: bool = True
@@ -94,37 +111,16 @@ class SecuritySettings(BaseAppSettings):
     webauthn_origin: str = "http://localhost:5173"
     trusted_device_expire_days: int = 30
     trusted_device_cookie_name: str = "trusted_device"
+    auth_dummy_hash: str = (
+        "$argon2id$v=19$m=65536,t=3,p=4$c29tZXNhbHQ$"
+        "RytvY29SUnlxS3V5dWdyS3V5dWdyS3V5dWdyS3V5dWdyS3V5dw"
+    )
     geoip_database_path: str | None = None
+    auth_min_response_time: float = 0.5  # Seconds. Used to mitigate timing attacks.
 
     security_csp: str = ""
-    security_csp_dev: str = (
-        "default-src 'self' http://localhost:5173; "
-        "script-src 'self' 'unsafe-inline' 'unsafe-eval' "
-        "http://localhost:5173 https://accounts.google.com 'report-sample'; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        "img-src 'self' data: https: blob:; "
-        "connect-src {connect_src}; "
-        "font-src 'self' data: https://fonts.gstatic.com; "
-        "object-src 'none'; "
-        "base-uri 'self'; "
-        "frame-ancestors 'self'; "
-        "trusted-types app dompurify-news goog#html 'allow-duplicates'; "
-        "{require_trusted_types}"
-    )
-    security_csp_prod: str = (
-        "default-src 'self'; "
-        "script-src 'self' 'nonce-{nonce}' 'strict-dynamic' "
-        "https://accounts.google.com 'report-sample'; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        "img-src 'self' data: https: blob:; "
-        "connect-src {connect_src}; "
-        "font-src 'self' data: https://fonts.gstatic.com; "
-        "object-src 'none'; "
-        "base-uri 'self'; "
-        "frame-ancestors 'self'; "
-        "trusted-types app dompurify-news goog#html 'allow-duplicates'; "
-        "{require_trusted_types}"
-    )
+    # security_csp_dev/prod moved to app.core.policies.csp
+
     security_connect_src_extra: str | list[str] = (
         "https://api.spotify.com,"
         "https://fcm.googleapis.com,"
@@ -618,51 +614,43 @@ class SecuritySettings(BaseAppSettings):
 
     @cached_property
     def strict_security_csp(self) -> str:
-        policy = self.build_csp_policy(nonce="{nonce}", report_only=False)
-        return policy
+        # Late import to avoid circular dependencies if any
+        from app.core.policies.csp import ContentSecurityPolicy
 
-    def build_csp_policy(self, *, nonce: str | None, report_only: bool) -> str:
-        if "security_csp" in self.model_fields_set and self.security_csp.strip():
-            template = self.security_csp.strip()
-        else:
-            template = (
-                self.security_csp_dev
-                if getattr(self, "is_development", False)
-                else self.security_csp_prod
-            )
-        require_trusted_types = (
-            "require-trusted-types-for 'script'"
-            if self.strict_security_headers_enabled and not report_only
-            else ""
-        )
-        policy = template.replace("{require_trusted_types}", require_trusted_types)
+        # Aggregate connect sources
         connect_sources = self.security_connect_src_values + (
             self._development_connect_overrides()
             if getattr(self, "is_development", False)
             else []
         )
-        connect_value = " ".join(
-            dict.fromkeys([value for value in connect_sources if value])
-        ).strip()
-        policy = policy.replace("{connect_src}", connect_value or "'self'")
-        if nonce:
-            policy = policy.replace("{nonce}", nonce)
-        else:
-            policy = (
-                policy.replace("'nonce-{nonce}'", "")
-                .replace("{nonce}", "")
-                .replace("  ", " ")
-            )
-        directives = [part.strip() for part in policy.split(";") if part.strip()]
-        policy = "; ".join(directives)
-        policy = "; ".join(
-            part.strip() for part in policy.split(";") if part and part.strip()
+
+        policy_gen = ContentSecurityPolicy(
+            is_development=getattr(self, "is_development", False),
+            report_only=self.security_csp_report_only_effective,
+            report_uri=self.security_csp_report_uri,
+            connect_src_extra=connect_sources,
+            custom_policy=self.security_csp,
         )
-        if not policy:
-            policy = "default-src 'self'"
-        if "default-src" not in policy.lower():
-            policy = f"default-src 'self'; {policy}".strip("; ")
-        report_uri = self.security_csp_report_uri.strip()
-        if report_uri:
-            policy = f"{policy}; report-uri {report_uri}".rstrip("; ")
-        return policy
+        return policy_gen.generate(nonce="{nonce}")
+
+    def build_csp_policy(self, *, nonce: str | None, report_only: bool) -> str:
+        """
+        Backward compatibility wrapper using the new Policy engine.
+        """
+        from app.core.policies.csp import ContentSecurityPolicy
+
+        # Aggregate connect sources
+        connect_sources = self.security_connect_src_values + (
+            self._development_connect_overrides()
+            if getattr(self, "is_development", False)
+            else []
+        )
+
+        policy_gen = ContentSecurityPolicy(
+            is_development=getattr(self, "is_development", False),
+            report_only=report_only,
+            report_uri=self.security_csp_report_uri,
+            connect_src_extra=connect_sources,
+            custom_policy=self.security_csp,
+        )
+        return policy_gen.generate(nonce=nonce)

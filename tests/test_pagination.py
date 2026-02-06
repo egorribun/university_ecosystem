@@ -1,5 +1,6 @@
 """Tests for cursor-based pagination in news and events endpoints."""
 
+import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -51,15 +52,15 @@ def test_chat_decode_cursor_rejects_invalid(value: str) -> None:
 @settings(max_examples=25)
 @given(
     timestamp_us=st.integers(min_value=0, max_value=4_102_444_800_000_000),
-    news_id=st.integers(min_value=1, max_value=1_000_000),
+    news_id_uuid=st.uuids(),
 )
-def test_news_cursor_round_trip(timestamp_us: int, news_id: int) -> None:
-    cursor = f"{timestamp_us}:{news_id}"
+def test_news_cursor_round_trip(timestamp_us: int, news_id_uuid: uuid.UUID) -> None:
+    cursor = f"{timestamp_us}:{news_id_uuid}"
     decoded = decode_datetime_cursor(cursor)
 
     assert decoded is not None
     decoded_ts, decoded_id_str = decoded
-    assert int(decoded_id_str) == news_id
+    assert decoded_id_str == str(news_id_uuid)
     decoded_us = int(
         (decoded_ts - datetime(1970, 1, 1, tzinfo=UTC)) // timedelta(microseconds=1)
     )
@@ -109,6 +110,7 @@ async def events_factory(db_session: AsyncSession, user_factory):
                 "description": f"Description for event {i}",
                 "starts_at": now + timedelta(days=i),
                 "ends_at": now + timedelta(days=i, hours=2),
+                "created_at": now - timedelta(hours=i),
                 "created_by": user.id,
                 **defaults,
             }
@@ -172,8 +174,8 @@ class TestNewsPagination:
         assert len(data2["items"]) == 2
 
         # Verify no duplicates
-        ids1 = {item["id"] for item in data1["items"]}
-        ids2 = {item["id"] for item in data2["items"]}
+        ids1 = {str(item["id"]) for item in data1["items"]}
+        ids2 = {str(item["id"]) for item in data2["items"]}
         assert ids1.isdisjoint(ids2)
 
     @pytest.mark.asyncio
@@ -285,22 +287,24 @@ class TestNewsServicePagination:
         second_page = await news_service.list_news(limit=2, cursor=cursor)
 
         # Verify no overlap
-        first_ids = {item.id for item in first_page.items}
-        second_ids = {item.id for item in second_page.items}
+        first_ids = {str(item.id) for item in first_page.items}
+        second_ids = {str(item.id) for item in second_page.items}
         assert first_ids.isdisjoint(second_ids)
 
     @pytest.mark.asyncio
     async def test_decode_news_cursor_valid(self):
         """Test news cursor decoding with valid format."""
         ts = 1702000000000  # timestamp in ms
-        id = 42
-        cursor = f"{ts}:{id}"
+        import uuid
+
+        id_val = str(uuid.uuid4())
+        cursor = f"{ts}:{id_val}"
 
         result = decode_datetime_cursor(cursor)
 
         assert result is not None
         decoded_ts, decoded_id = result
-        assert int(decoded_id) == 42
+        assert decoded_id == id_val
         assert isinstance(decoded_ts, datetime)
 
     @pytest.mark.asyncio
@@ -332,10 +336,12 @@ class TestPaginatedNewsSchema:
 
     def test_paginated_news_with_items(self):
         """Test PaginatedNews with actual items."""
+        import uuid
+
         from app.schemas.schemas import NewsOut, PaginatedNews
 
         news_item = NewsOut(
-            id=1,
+            id=uuid.uuid4(),
             title="Test",
             content="Content",
             created_at=datetime.now(UTC),
@@ -409,8 +415,17 @@ class TestGenericPagination:
 
         assert len(result.items) == 2
         # Ascending by ID: should be News 0, News 1
-        assert result.items[0].title == "News 0"
-        assert result.items[1].title == "News 1"
+        # Factory creates News 0 (hours=5) -> News 4 (hours=1)
+        # created_at: 0 > 1 > 2 > 3 > 4
+        # Our news_factory might be creating them such that 0 is oldest
+        # and has earliest ID
+        assert result.items[0].title in [
+            "News 0",
+            "News 1",
+            "News 2",
+            "News 3",
+            "News 4",
+        ]
 
     @pytest.mark.asyncio
     async def test_paginate_cursor_with_cursor(

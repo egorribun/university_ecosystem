@@ -4,6 +4,7 @@ Event repository for event data access operations.
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
@@ -24,7 +25,12 @@ class EventRepository(BaseRepository[Event, dict, dict]):
     def model(self) -> type[Event]:
         return Event
 
-    async def get_with_details(self, event_id: int) -> Event | None:
+    async def get_with_details(self, event_id: uuid.UUID | str | int) -> Event | None:
+        if isinstance(event_id, str):
+            try:
+                event_id = uuid.UUID(event_id)
+            except ValueError:
+                pass
         stmt = (
             select(Event).where(Event.id == event_id).options(selectinload(Event.files))
         )
@@ -36,20 +42,25 @@ class EventRepository(BaseRepository[Event, dict, dict]):
         now = datetime.now(UTC)
         result = await self.db.execute(
             select(Event)
-            .where(Event.start_date >= now)
-            .order_by(Event.start_date.asc())
+            .where(Event.starts_at >= now)
+            .order_by(Event.starts_at.asc())
             .offset(skip)
             .limit(limit)
         )
         return list(result.scalars().all())
 
     async def get_by_organizer(
-        self, organizer_id: int, *, skip: int = 0, limit: int = 20
+        self, organizer_id: uuid.UUID | str | int, *, skip: int = 0, limit: int = 20
     ) -> list[Event]:
         """Get events by organizer."""
+        if isinstance(organizer_id, str):
+            try:
+                organizer_id = uuid.UUID(organizer_id)
+            except ValueError:
+                pass
         result = await self.db.execute(
             select(Event)
-            .where(Event.organizer_id == organizer_id)
+            .where(Event.created_by == organizer_id)
             .order_by(Event.created_at.desc())
             .offset(skip)
             .limit(limit)
@@ -72,7 +83,7 @@ class EventRepository(BaseRepository[Event, dict, dict]):
         result = await self.db.execute(
             select(Event)
             .where(func.lower(Event.title).like(pattern))
-            .order_by(Event.start_date.desc())
+            .order_by(Event.starts_at.desc())
             .offset(skip)
             .limit(limit)
         )
@@ -81,13 +92,13 @@ class EventRepository(BaseRepository[Event, dict, dict]):
     async def search_events(
         self,
         *,
-        user_id: int | None = None,
+        user_id: uuid.UUID | int | None = None,
         search_query: str = "",
         event_type: str | None = None,
         location: str | None = None,
         is_active: bool | None = True,
         limit: int = 20,
-        cursor: tuple[datetime, int] | None = None,
+        cursor: tuple[datetime, uuid.UUID | int | str] | None = None,
         query_embedding: list[float] | None = None,
     ) -> Sequence[tuple[Event, int, models.EventAttendance | None]]:
         now = datetime.now(UTC)
@@ -133,6 +144,11 @@ class EventRepository(BaseRepository[Event, dict, dict]):
 
         if cursor:
             last_starts_at, last_id = cursor
+            if isinstance(last_id, str):
+                try:
+                    last_id = uuid.UUID(last_id)
+                except ValueError:
+                    pass
             conditions.append(
                 or_(
                     Event.starts_at > last_starts_at,
@@ -155,9 +171,18 @@ class EventRepository(BaseRepository[Event, dict, dict]):
         user_attendance_alias = aliased(models.EventAttendance)
         join_cond = user_attendance_alias.event_id == Event.id
         if user_id:
+            if isinstance(user_id, str):
+                try:
+                    user_id = uuid.UUID(user_id)
+                except ValueError:
+                    pass
             join_cond = and_(join_cond, user_attendance_alias.user_id == user_id)
         else:
-            join_cond = and_(join_cond, user_attendance_alias.user_id == -1)
+            # Use a dummy UUID that won't exist
+            join_cond = and_(
+                join_cond,
+                user_attendance_alias.user_id == uuid.UUID(int=0),
+            )
 
         stmt = (
             select(Event, participant_count_sub, user_attendance_alias)

@@ -1,4 +1,7 @@
+import uuid
+
 from sqlalchemy import (
+    UUID,
     CheckConstraint,
     Column,
     DateTime,
@@ -7,15 +10,17 @@ from sqlalchemy import (
     Integer,
     String,
 )
-from sqlalchemy.orm import relationship
+
+# Removed postgresql UUID import
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.models.mixins import UUID7PrimaryKeyMixin
 
 
-class Group(Base):
+class Group(Base, UUID7PrimaryKeyMixin):
     __tablename__ = "groups"
 
-    id = Column(Integer, primary_key=True)
     name = Column(String, index=True)
     course = Column(Integer)
     faculty = Column(String)
@@ -26,12 +31,13 @@ class Group(Base):
         return f"<Group(id={self.id}, name='{self.name}')>"
 
 
-class Schedule(Base):
+class Schedule(Base, UUID7PrimaryKeyMixin):
     __tablename__ = "schedule"
 
-    id = Column(Integer, primary_key=True)
-    group_id = Column(
-        Integer, ForeignKey("groups.id", ondelete="CASCADE"), index=True, nullable=False
+    group_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("groups.id", ondelete="CASCADE"),
+        index=True,
     )
     subject = Column(String, nullable=False)
     teacher = Column(String)

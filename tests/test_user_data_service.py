@@ -15,15 +15,16 @@ async def test_export_user_data():
 
     service = UserDataService(mock_db, mock_repo, mock_audit)
 
-    # Mock user with relationships
+    # Mock user (lightweight)
     mock_user = MagicMock(spec=models.User)
     mock_user.id = 1
-    mock_user.sessions = [MagicMock(id=101)]
-    mock_user.notifications = [MagicMock(id=201)]
-    mock_user.mfa_challenges = [MagicMock(id=301)]
-    mock_user.totp_enrollments = [MagicMock(id=401)]
 
-    mock_repo.get_full_user_data.return_value = mock_user
+    # Mock granular data returns
+    mock_repo.get.return_value = mock_user
+    mock_repo.get_user_sessions.return_value = [MagicMock(id=101)]
+    mock_repo.get_user_notifications.return_value = [MagicMock(id=201)]
+    mock_repo.get_user_mfa_challenges.return_value = [MagicMock(id=301)]
+    mock_repo.get_user_totp_enrollments.return_value = [MagicMock(id=401)]
 
     mock_request = MagicMock()
 
@@ -35,6 +36,7 @@ async def test_export_user_data():
         patch(
             "app.services.user.data_service.export_access_logs",
             AsyncMock(return_value=[]),
+            # Mock log attributes to prevent AttributeError on getattr
         ),
         patch("app.services.user.data_service.log_data_access", AsyncMock()),
     ):
@@ -47,5 +49,10 @@ async def test_export_user_data():
 
         assert result.profile["id"] == 1
         assert len(result.sessions) == 1
-        mock_repo.get_full_user_data.assert_called_once_with(1)
+        assert len(result.notifications) == 1
+
+        # Verify granular calls
+        mock_repo.get.assert_called_once_with(1)
+        mock_repo.get_user_sessions.assert_called_once_with(1, limit=1000)
+        mock_repo.get_user_notifications.assert_called_once_with(1, limit=1000)
         mock_audit.log.assert_called_once()

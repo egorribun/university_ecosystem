@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, time
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -53,7 +54,7 @@ class UserBase(BaseModel):
     email: EmailStr
     full_name: str | None = None
     role: UserRole = UserRole.STUDENT
-    group_id: int | None = None
+    group_id: uuid.UUID | None = None
     avatar_url: str | None = None
     cover_url: str | None = None
     about: str | None = None
@@ -79,7 +80,7 @@ class UserBase(BaseModel):
 class UserSearchFilter(BaseModel):
     full_name: str | None = None
     search: str | None = None
-    group_id: int | None = None
+    group_id: uuid.UUID | None = None
     role: UserRole | None = None
     limit: int = 100
     offset: int = 0
@@ -91,9 +92,9 @@ class UserCreate(UserBase):
 
 
 class NewsCommentOut(BaseModel):
-    id: int
+    id: uuid.UUID
     content: str
-    user_id: int
+    user_id: uuid.UUID
     user_name: str
     created_at: datetime
 
@@ -116,8 +117,8 @@ class NewsInteractionsOut(BaseModel):
 
 
 class MfaTotpEnrollmentOut(OrmModel):
-    id: int
-    user_id: int
+    id: uuid.UUID
+    user_id: uuid.UUID
     label: str | None = None
     is_active: bool
     confirmed_at: datetime | None = None
@@ -126,9 +127,9 @@ class MfaTotpEnrollmentOut(OrmModel):
 
 
 class MfaChallengeOut(OrmModel):
-    id: int
-    user_id: int
-    session_id: int | None = None
+    id: uuid.UUID
+    user_id: uuid.UUID
+    session_id: uuid.UUID | None = None
     challenge_type: str
     token: str
     expires_at: datetime
@@ -175,7 +176,7 @@ class RecoveryCodeVerifyIn(BaseModel):
 
 
 class UserOut(OrmModel, UserBase):
-    id: int
+    id: uuid.UUID
     is_active: bool
     pending_email: EmailStr | None = None
     spotify_is_connected: bool | None = None
@@ -204,11 +205,34 @@ class UserOut(OrmModel, UserBase):
         return bool(value) if value is not None else False
 
 
+class UserPublicOut(OrmModel):
+    """Publicly visible user profile information (PII-safe)."""
+
+    id: uuid.UUID
+    full_name: str | None = None
+    role: UserRole = UserRole.STUDENT
+    group_id: uuid.UUID | None = None
+    avatar_url: str | None = None
+    cover_url: str | None = None
+    about: str | None = None
+    status: str | None = None
+    institute: str | None = None
+    course: str | None = None
+    department: str | None = None
+    position: str | None = None
+    is_active: bool
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def avatar_url_optimized(self) -> str | None:
+        return get_optimized_image_url(self.avatar_url, width=200, height=200)
+
+
 class UserAdminUpdate(BaseModel):
     full_name: str | None = None
     email: EmailStr | None = None
     role: UserRole | None = None
-    group_id: int | None = None
+    group_id: uuid.UUID | None = None
     reset_mfa: bool | None = None
 
 
@@ -309,14 +333,14 @@ class GroupUpdate(BaseModel):
 
 
 class GroupOut(OrmModel):
-    id: int
+    id: uuid.UUID
     name: str
     course: int | None = None
     faculty: str | None = None
 
 
 class ScheduleBase(BaseModel):
-    group_id: int
+    group_id: uuid.UUID
     subject: str
     teacher: str | None = None
     room: str | None = None
@@ -332,7 +356,7 @@ class ScheduleCreate(ScheduleBase):
 
 
 class ScheduleUpdate(BaseModel):
-    group_id: int | None = None
+    group_id: uuid.UUID | None = None
     subject: str | None = None
     teacher: str | None = None
     room: str | None = None
@@ -344,7 +368,7 @@ class ScheduleUpdate(BaseModel):
 
 
 class ScheduleOut(OrmModel, ScheduleBase):
-    id: int
+    id: uuid.UUID
     lesson_type_display: str | None = None
 
 
@@ -365,7 +389,7 @@ class NewsUpdate(BaseModel):
 
 
 class NewsOut(OrmModel, NewsCreate):
-    id: int
+    id: uuid.UUID
     created_at: datetime
     likes_count: int = 0
     comments_count: int = 0
@@ -451,7 +475,7 @@ class StoryUpdate(BaseModel):
 
 
 class StoryOut(OrmModel):
-    id: int
+    id: uuid.UUID
     title: str
     title_en: str | None = None
     short_text: str
@@ -461,7 +485,7 @@ class StoryOut(OrmModel):
     published_at: datetime
     expires_at: datetime
     is_active: bool
-    created_by: int | None = None
+    created_by: str | Any | None = None
     created_at: datetime
 
     @computed_field  # type: ignore[prop-decorator]
@@ -471,8 +495,8 @@ class StoryOut(OrmModel):
 
 
 class EventFileOut(OrmModel):
-    id: int
-    event_id: int
+    id: uuid.UUID
+    event_id: uuid.UUID
     file_url: str
     description: str | None = None
 
@@ -533,7 +557,7 @@ class EventUpdate(BaseModel):
 
 
 class EventOut(OrmModel):
-    id: int
+    id: uuid.UUID
     title: str
     description: str | None = None
     title_en: str | None = None
@@ -544,7 +568,7 @@ class EventOut(OrmModel):
     event_type_en: str | None = None
     starts_at: datetime
     ends_at: datetime
-    created_by: int
+    created_by: str | Any
     created_at: datetime
     is_active: bool
     speaker: str | None = None
@@ -572,13 +596,13 @@ class PaginatedEvents(BaseModel):
 
 
 class EventAttendanceCreate(BaseModel):
-    event_id: int
+    event_id: uuid.UUID | int
 
 
 class EventAttendanceOut(OrmModel):
-    id: int
-    user_id: int
-    event_id: int
+    id: uuid.UUID
+    user_id: uuid.UUID
+    event_id: uuid.UUID
     registered_at: datetime
     qr_token: str | None = None
 
@@ -598,8 +622,8 @@ class SessionSigningKeyOut(BaseModel):
 
 
 class ActiveSessionOut(OrmModel):
-    id: int
-    user_id: int
+    id: uuid.UUID
+    user_id: uuid.UUID
     jti: str
     created_at: datetime
     expires_at: datetime
@@ -633,7 +657,7 @@ class SpotifyNowPlayingOut(BaseModel):
 
 
 class NotificationCreate(BaseModel):
-    user_id: int
+    user_id: uuid.UUID
     title: str
     body: str | None = None
     title_en: str | None = None
@@ -643,7 +667,7 @@ class NotificationCreate(BaseModel):
 
 
 class NotificationOut(OrmModel):
-    id: int
+    id: uuid.UUID
     title: str
     body: str | None = None
     title_en: str | None = None
@@ -663,14 +687,14 @@ class NotificationsListOut(BaseModel):
 
 
 class NotificationMarkReadIn(BaseModel):
-    id: int | None = None
-    ids: list[int] | None = None
+    id: uuid.UUID | None = None
+    ids: list[str | Any] | None = None
 
 
 class NotificationDeadLetterJobOut(OrmModel):
-    id: int
+    id: uuid.UUID
     kind: str
-    record_id: int
+    record_id: uuid.UUID
     locale: str | None = None
     enqueued_at: datetime
     claimed_at: datetime | None = None
@@ -685,20 +709,15 @@ class NotificationDeadLetterListOut(BaseModel):
 
 
 class _NotificationDeadLetterJobIds(BaseModel):
-    job_ids: list[int] = Field(min_length=1)
+    job_ids: list[str | Any] = Field(min_length=1)
 
     @field_validator("job_ids")
     @classmethod
-    def _ensure_positive_unique(cls, value: list[int]) -> list[int]:
-        normalized: list[int] = []
-        seen: set[int] = set()
+    def _ensure_unique(cls, value: list[str | Any]) -> list[str | Any]:
+        normalized: list[str | Any] = []
+        seen: set[str | Any] = set()
         for raw in value:
-            try:
-                parsed = int(raw)
-            except (TypeError, ValueError) as exc:  # pragma: no cover - defensive guard
-                raise ValueError("job_ids must contain integers") from exc
-            if parsed <= 0:
-                raise ValueError("job_ids must be positive integers")
+            parsed = raw  # No longer forcing int
             if parsed in seen:
                 continue
             seen.add(parsed)
@@ -721,7 +740,7 @@ class FeatureFlagOut(BaseModel):
     status: str
     description: str
     percentage: int
-    allowed_users: list[int]
+    allowed_users: list[str | Any]
     allowed_groups: list[str]
     metadata: dict[str, Any]
 
@@ -733,10 +752,10 @@ class FeatureFlagUpdateIn(BaseModel):
 
 
 class AuditLogOut(BaseModel):
-    id: int
-    actor_user_id: int | None = None
+    id: uuid.UUID
+    actor_user_id: uuid.UUID | None = None
     actor_name: str | None = None
-    subject_user_id: int | None = None
+    subject_user_id: uuid.UUID | None = None
     subject_name: str | None = None
     resource_type: str
     resource_id: str | None = None

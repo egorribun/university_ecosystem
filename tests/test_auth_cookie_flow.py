@@ -192,7 +192,7 @@ async def test_profile_cache_envelope_validation(async_client, user_factory):
     payload = {
         "version": 2,
         "expiresAt": int(datetime.now(UTC).timestamp() * 1000) + 60_000,
-        "data": {"id": user.id, "full_name": user.full_name, "avatar_url": None},
+        "data": {"id": str(user.id), "full_name": user.full_name, "avatar_url": None},
     }
 
     payload_json = json.dumps(payload, separators=(",", ":"))

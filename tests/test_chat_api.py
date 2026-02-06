@@ -1,10 +1,15 @@
+import uuid
 from datetime import UTC, datetime
 
 import pytest
 from httpx import AsyncClient
 
+from app.api.deps import get_read_chat_service
 from app.auth.security import get_password_hash
+from app.core.database import get_db, get_read_db
+from app.main import app
 from app.models.chat import Chat, Message
+from app.services.chat_service import ChatService
 from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
 
 
@@ -29,7 +34,7 @@ async def test_create_chat_errors(async_client, user_factory):
 
     # 1. Create chat with self
     resp = await async_client.post(
-        "/chats", json={"participant_id": user.id}, headers=headers
+        "/chats", json={"participant_id": str(user.id)}, headers=headers
     )
     assert resp.status_code == 400
     detail = resp.json()["detail"]
@@ -37,7 +42,7 @@ async def test_create_chat_errors(async_client, user_factory):
 
     # 2. Create chat with non-existent user
     resp = await async_client.post(
-        "/chats", json={"participant_id": 999999}, headers=headers
+        "/chats", json={"participant_id": str(uuid.uuid4())}, headers=headers
     )
     assert resp.status_code == 404
     detail = resp.json()["detail"]
@@ -53,14 +58,14 @@ async def test_create_chat_idempotency(async_client, user_factory):
 
     # Create first time
     resp1 = await async_client.post(
-        "/chats", json={"participant_id": other.id}, headers=headers
+        "/chats", json={"participant_id": str(other.id)}, headers=headers
     )
     assert resp1.status_code == 200
     chat_id = resp1.json()["id"]
 
     # Create second time - should return same chat
     resp2 = await async_client.post(
-        "/chats", json={"participant_id": other.id}, headers=headers
+        "/chats", json={"participant_id": str(other.id)}, headers=headers
     )
     assert resp2.status_code == 200
     assert resp2.json()["id"] == chat_id
@@ -99,7 +104,7 @@ async def test_get_messages_errors(async_client, user_factory, db_session):
     headers = await _login(async_client, user.email, password)
 
     # 1. Non-existent chat
-    resp = await async_client.get("/chats/non-existent-id/messages", headers=headers)
+    resp = await async_client.get(f"/chats/{uuid.uuid4()}/messages", headers=headers)
     assert resp.status_code == 404
 
     # 2. Not a participant
@@ -123,7 +128,7 @@ async def test_send_message_errors(async_client, user_factory, db_session, monke
 
     # 1. Non-existent chat
     resp = await async_client.post(
-        "/chats/non-existent-id/messages", data={"content": "Hello"}, headers=headers
+        f"/chats/{uuid.uuid4()}/messages", data={"content": "Hello"}, headers=headers
     )
     assert resp.status_code == 404
 
@@ -242,26 +247,39 @@ async def test_messaging_flow_success(async_client, user_factory, db_session):
     other = await user_factory()
     headers = await _login(async_client, user.email, password)
 
-    # 1. Create chat
-    create_resp = await async_client.post(
-        "/chats", json={"participant_id": other.id}, headers=headers
-    )
-    assert create_resp.status_code == 200
-    chat_id = create_resp.json()["id"]
+    # Override read dependencies to use same session
+    app.dependency_overrides[get_read_db] = lambda: db_session
+    app.dependency_overrides[get_read_chat_service] = lambda: ChatService(db_session)
+    app.dependency_overrides[get_db] = lambda: db_session
 
-    # 2. Send message
-    send_resp = await async_client.post(
-        f"/chats/{chat_id}/messages", data={"content": "Hello World"}, headers=headers
-    )
-    assert send_resp.status_code == 200
-    msg_data = send_resp.json()
-    assert msg_data["content"] == "Hello World"
-    assert msg_data["sender_id"] == user.id
+    try:
+        # 1. Create chat
+        create_resp = await async_client.post(
+            "/chats", json={"participant_id": str(other.id)}, headers=headers
+        )
+        assert create_resp.status_code == 200
+        chat_id = create_resp.json()["id"]
 
-    # 3. Get messages
-    get_resp = await async_client.get(f"/chats/{chat_id}/messages", headers=headers)
-    assert get_resp.status_code == 200
-    data = get_resp.json()
-    assert len(data["items"]) == 1
-    assert data["items"][0]["content"] == "Hello World"
-    assert data["items"][0]["id"] == msg_data["id"]
+        # 2. Send message
+        send_resp = await async_client.post(
+            f"/chats/{chat_id}/messages",
+            data={"content": "Hello World"},
+            headers=headers,
+        )
+        assert send_resp.status_code == 200
+        msg_data = send_resp.json()
+        assert msg_data["content"] == "Hello World"
+        assert msg_data["sender_id"] == str(user.id)
+
+        # 3. Get messages
+        get_resp = await async_client.get(f"/chats/{chat_id}/messages", headers=headers)
+        assert get_resp.status_code == 200
+        data = get_resp.json()
+        assert len(data["items"]) == 1
+        assert data["items"][0]["content"] == "Hello World"
+        assert data["items"][0]["id"] == msg_data["id"]
+
+    finally:
+        app.dependency_overrides.pop(get_read_db, None)
+        app.dependency_overrides.pop(get_read_chat_service, None)
+        app.dependency_overrides.pop(get_db, None)

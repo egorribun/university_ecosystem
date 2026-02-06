@@ -1,5 +1,8 @@
+import uuid
+
 from sqlalchemy import select
 
+from app.core.cache import schedule_cache
 from app.models import models
 from app.repositories.base import BaseRepository
 from app.schemas import schemas
@@ -13,9 +16,17 @@ class GroupRepository(
         return models.Group
 
     async def list_groups(self) -> list[models.Group]:
+        """List all groups with caching."""
+        cache_key = "schedule:groups"
+        cached = await schedule_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         stmt = select(self.model).order_by(self.model.name)
         result = await self.db.execute(stmt)
-        return list(result.scalars().all())
+        groups = list(result.scalars().all())
+        await schedule_cache.set(cache_key, groups)
+        return groups
 
 
 class ScheduleRepository(
@@ -25,14 +36,22 @@ class ScheduleRepository(
     def model(self) -> type[models.Schedule]:
         return models.Schedule
 
-    async def get_by_group(self, group_id: int) -> list[models.Schedule]:
+    async def get_by_group(self, group_id: uuid.UUID) -> list[models.Schedule]:
+        """Get schedule for a group with caching."""
+        cache_key = f"schedule:group:{group_id}"
+        cached = await schedule_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         stmt = (
             select(self.model)
             .where(self.model.group_id == group_id)
             .order_by(self.model.weekday, self.model.start_time)
         )
         result = await self.db.execute(stmt)
-        return list(result.scalars().all())
+        schedule_items = list(result.scalars().all())
+        await schedule_cache.set(cache_key, schedule_items)
+        return schedule_items
 
     async def get_by_teacher(self, teacher: str) -> list[models.Schedule]:
         stmt = (

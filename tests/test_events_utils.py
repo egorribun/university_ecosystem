@@ -1,12 +1,11 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from app.api.events import (
     _encode_payload_with_etag,
     _events_list_cache_key,
-    _get_events_list_version,
-    _increment_events_list_version,
+    events_cache_version,
 )
 from app.deps.cache import RedisCache
 
@@ -43,12 +42,8 @@ async def test_get_events_list_version_no_cache():
     mock_cache = MagicMock()
     mock_cache.enabled = False
 
-    # Needs to patch the global var too if we want to test specific values,
-    # but the function reads the global if cache disabled.
-    # We can just verify it returns a string representation of the global int.
-    version = await _get_events_list_version(mock_cache)
-    assert isinstance(version, str)
-    assert version.isdigit()
+    version = await events_cache_version.get_version(mock_cache)
+    assert version == "0"
 
 
 @pytest.mark.asyncio
@@ -60,17 +55,17 @@ async def test_get_events_list_version_redis():
 
     # Case 1: Value exists
     mock_client.get.return_value = b"5"
-    version = await _get_events_list_version(mock_cache)
+    version = await events_cache_version.get_version(mock_cache)
     assert version == "5"
 
     # Case 2: Value miss (returns None)
     mock_client.get.return_value = None
-    version = await _get_events_list_version(mock_cache)
+    version = await events_cache_version.get_version(mock_cache)
     assert version == "0"
 
     # Case 3: Redis Error
     mock_cache._get_client.side_effect = OSError("Connection failed")
-    version = await _get_events_list_version(mock_cache)
+    version = await events_cache_version.get_version(mock_cache)
     assert version == "0"
 
 
@@ -79,19 +74,8 @@ async def test_increment_events_list_version_no_cache():
     mock_cache = MagicMock()
     mock_cache.enabled = False
 
-    with patch("app.api.events._LOCAL_EVENTS_LIST_VERSION", 10):
-        # We can't easily patch a global integer that's already imported/bound?
-        # Actually `app.api.events` module is where it lives.
-        # But we imported it.
-        # Let's patch it in the module.
-        with patch("app.api.events._LOCAL_EVENTS_LIST_VERSION", new=10):
-            # Wait, integers are immutable, patch might not work as expected.
-            # But the function uses `global _LOCAL_EVENTS_LIST_VERSION`.
-            # We can't verify the increment easily without inspecting the module state.
-            pass
-
     # Simpler approach: call it and ensure no error
-    await _increment_events_list_version(mock_cache)
+    await events_cache_version.increment(mock_cache)
 
 
 @pytest.mark.asyncio
@@ -103,14 +87,14 @@ async def test_increment_events_list_version_redis():
 
     # Case 1: Client has incr
     mock_client.incr = AsyncMock()
-    await _increment_events_list_version(mock_cache)
-    mock_client.incr.assert_called_once()
+    await events_cache_version.increment(mock_cache)
+    mock_client.incr.assert_called_once_with("events:list:version")
 
     # Case 2: Client has no incr (manual update)
     del mock_client.incr
     mock_client.get.return_value = b"10"
-    await _increment_events_list_version(mock_cache)
-    mock_client.set.assert_called_with("events:list:version", 11)
+    await events_cache_version.increment(mock_cache)
+    mock_client.set.assert_called_with("events:list:version", "11")
 
 
 def test_encode_payload_with_etag():

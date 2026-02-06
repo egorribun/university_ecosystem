@@ -102,11 +102,11 @@ docker compose run --rm backend alembic upgrade head
 
 ### Backend & Python
 ```bash
-# Install dependencies
-pip install -r requirements.txt -r requirements-dev.txt
+# Install dependencies using uv (fast)
+uv sync
 
 # Run tests
-pytest
+uv run pytest
 
 # Linting
 make lint

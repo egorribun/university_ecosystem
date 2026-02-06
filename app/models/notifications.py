@@ -1,5 +1,8 @@
+import uuid
+
 from sqlalchemy import (
     JSON,
+    UUID,
     Boolean,
     CheckConstraint,
     Column,
@@ -14,20 +17,18 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.orm import relationship
 
-from app.core.config import settings
+# Removed postgresql UUID import
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.core.database import Base
+from app.models.mixins import UserFK, UUID7PrimaryKeyMixin
 
 
-class Notification(Base):
+class Notification(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "notifications"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
-    )
-    title = Column(String, nullable=False)
+    title = Column(String, nullable=False, index=True)
     title_en = Column(String)
     body = Column(Text)
     body_en = Column(Text)
@@ -36,12 +37,12 @@ class Notification(Base):
     dedupe_key = Column(String(255), index=True)
     read = Column(Boolean, default=False, index=True)
     read_at = Column(DateTime(timezone=True), index=True)
-    created_at = Column(
+    created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
         index=True,
         nullable=False,
-        primary_key=not settings.database_url.startswith("sqlite"),
+        primary_key=True,
     )
 
     __table_args__ = (
@@ -66,12 +67,11 @@ class Notification(Base):
         )
 
 
-class NotificationQueueJob(Base):
+class NotificationQueueJob(Base, UUID7PrimaryKeyMixin):
     __tablename__ = "notification_queue_jobs"
 
-    id = Column(Integer, primary_key=True)
-    kind = Column(String(16), nullable=False, index=True)
-    record_id = Column(Integer, nullable=False)
+    kind = Column(String(50), nullable=False, index=True)
+    record_id = Column(UUID(as_uuid=True), nullable=False)
     locale = Column(String(16))
     enqueued_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -110,20 +110,24 @@ class NotificationQueueJob(Base):
         )
 
 
-class NotificationDelivery(Base):
+class NotificationDelivery(Base, UUID7PrimaryKeyMixin):
     __tablename__ = "notification_deliveries"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    notification_id = Column(Integer, nullable=False, index=True)
-    notification_created_at = Column(DateTime(timezone=True), nullable=False)
+    notification_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        index=True,
+    )
+    notification_created_at: Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     channel = Column(String, nullable=False, default="inapp", index=True)
     status = Column(String, nullable=False, default="delivered", index=True)
-    attempted_at = Column(
+    attempted_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
         nullable=False,
         index=True,
-        primary_key=not settings.database_url.startswith("sqlite"),
+        primary_key=True,
     )
     delivered_at = Column(DateTime(timezone=True), index=True)
     status_code = Column(Integer)
@@ -148,17 +152,10 @@ class NotificationDelivery(Base):
         )
 
 
-class PushSubscription(Base):
+class PushSubscription(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "push_subscriptions"
 
-    id = Column(Integer, primary_key=True)
-    user_id = Column(
-        Integer,
-        ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    endpoint = Column(Text, unique=True, nullable=False, index=True)
+    endpoint = Column(Text, nullable=False, index=True, unique=True)
     p256dh = Column(String(200), nullable=False)
     auth = Column(String(200), nullable=False)
     created_at = Column(
@@ -180,8 +177,8 @@ class PushSubscription(Base):
 class UserPushTopic(Base):
     __tablename__ = "user_push_topics"
 
-    user_id = Column(
-        Integer,
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         primary_key=True,
         index=True,

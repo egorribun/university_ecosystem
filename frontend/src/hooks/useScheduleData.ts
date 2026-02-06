@@ -32,7 +32,7 @@ export function useScheduleData() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
   const { t } = useTranslation(["schedule", "common"])
-  const [selectedGroup, setSelectedGroup] = useState<number | null>(null)
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
   const [currentParity, setCurrentParity] = useState<"odd" | "even">("odd")
   const [nowTick, setNowTick] = useState(dayjs())
   const [, startTransition] = useTransition()
@@ -449,7 +449,7 @@ export function useScheduleData() {
       arr.push(l)
       byDay.set(l.weekday, arr)
     }
-    const set = new Set<number>()
+    const set = new Set<string>()
     for (const [, arr] of byDay) {
       arr.sort((a, b) => getTimeStr(a).localeCompare(getTimeStr(b)))
       for (let i = 0; i < arr.length; i++) {

@@ -20,12 +20,12 @@ type ScheduleQueryKey = readonly [
   "dashboard",
   "schedule",
   User["role"] | null | undefined,
-  number | null | undefined,
+  string | number | null | undefined,
 ]
 
 const createScheduleQueryKey = (
   role: User["role"] | null | undefined,
-  groupId: number | null | undefined
+  groupId: string | number | null | undefined
 ): ScheduleQueryKey => ["dashboard", "schedule", role, groupId]
 
 const ensureLessons = (payload: unknown): DashboardLesson[] => {
@@ -38,7 +38,7 @@ const ensureLessons = (payload: unknown): DashboardLesson[] => {
 const createScheduleQueryOptions = (
   queryClient: QueryClient,
   role: User["role"] | null | undefined,
-  groupId: number | null | undefined
+  groupId: string | number | null | undefined
 ) => ({
   queryKey: createScheduleQueryKey(role, groupId),
   queryFn: async ({ signal }: { signal?: AbortSignal }) => {
@@ -81,7 +81,7 @@ const createScheduleQueryOptions = (
 
 export const useDashboardSchedule = (
   role: User["role"] | null | undefined,
-  groupId: number | null | undefined
+  groupId: string | number | null | undefined
 ) => {
   const queryClient = useQueryClient()
 
@@ -96,5 +96,5 @@ export const useDashboardSchedule = (
 export const prefetchDashboardSchedule = (
   queryClient: QueryClient,
   role: User["role"] | null | undefined,
-  groupId: number | null | undefined
+  groupId: string | number | null | undefined
 ) => queryClient.prefetchQuery(createScheduleQueryOptions(queryClient, role, groupId))

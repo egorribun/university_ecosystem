@@ -44,11 +44,11 @@ const {
   fetchCurrentUserMock,
 } = vi.hoisted(() => {
   const baseUser: User = {
-    id: 1,
+    id: "uuid-1",
     email: "test@example.com",
     full_name: "Test User",
     role: "student",
-    group_id: 1,
+    group_id: "uuid-101",
     avatar_url: null,
     avatar_url_optimized: null,
     cover_url: null,
@@ -80,10 +80,10 @@ const {
     mfa_challenges: [],
   }
 
-  const scheduleGroups = [{ id: 1, name: "IU5-21" }]
+  const scheduleGroups = [{ id: "uuid-101", name: "IU5-21" }]
   const scheduleLessons = [
     {
-      id: 1,
+      id: "uuid-1",
       // Use the localized weekday so the Tailwind dashboard resolves the lesson under
       // both English and Russian week-day mappings.
       weekday: "Понедельник",
@@ -94,12 +94,12 @@ const {
       teacher: "Dr. Matrix",
       room: "101",
       lesson_type: "lecture",
-      group_id: 1,
+      group_id: "uuid-101",
     },
   ]
   const adminUsers = [
     {
-      id: 1,
+      id: "uuid-1",
       full_name: "Alice Admin",
       email: "alice@example.com",
       role: "admin",
@@ -108,17 +108,17 @@ const {
       avatar_url_optimized: null,
     },
     {
-      id: 2,
+      id: "uuid-2",
       full_name: "Bob Student",
       email: "bob@example.com",
       role: "student",
-      group_id: 1,
+      group_id: "uuid-101",
       avatar_url: null,
       avatar_url_optimized: null,
     },
   ]
   const sampleEvent = {
-    id: 1,
+    id: "uuid-1",
     title: "Campus Hackathon",
     title_en: "Campus Hackathon",
     description: "A friendly coding event",
@@ -129,7 +129,7 @@ const {
     event_type_en: "Hackathon",
     starts_at: new Date().toISOString(),
     ends_at: new Date(Date.now() + 3600_000).toISOString(),
-    created_by: 1,
+    created_by: "uuid-1",
     created_at: new Date().toISOString(),
     is_active: true,
     speaker: "Mentor",
@@ -144,7 +144,7 @@ const {
   }
   const storiesItems = [
     {
-      id: 1,
+      id: "uuid-1",
       title: "Campus orientation",
       title_en: "Campus orientation",
       short_text: "Welcome week highlights",
@@ -156,7 +156,7 @@ const {
       expires_at: new Date(Date.now() + 86_400_000).toISOString(),
       is_active: true,
       created_at: new Date().toISOString(),
-      created_by: 1,
+      created_by: "uuid-1",
     },
   ]
 
@@ -174,7 +174,7 @@ const {
   const notificationsResponse = {
     items: [
       {
-        id: 1,
+        id: "uuid-1",
         title: "System update",
         body: "New features have been deployed.",
         created_at: new Date().toISOString(),
@@ -296,7 +296,7 @@ const authState = {
 
 const { scheduleDataMock } = vi.hoisted(() => {
   const lesson = {
-    id: 42,
+    id: "uuid-42",
     weekday: "Monday",
     parity: "odd",
     start_time: "08:00",
@@ -305,13 +305,13 @@ const { scheduleDataMock } = vi.hoisted(() => {
     teacher: "Ada Lovelace",
     room: "101",
     lesson_type: "lecture",
-    group_id: 1,
+    group_id: "uuid-101",
   }
 
   const scheduleDataMock = {
     user: { role: "student" },
-    groups: [{ id: 1, name: "CS-101" }],
-    selectedGroup: 1,
+    groups: [{ id: "uuid-101", name: "CS-101" }],
+    selectedGroup: "uuid-101",
     setSelectedGroup: () => {},
     currentParity: "odd",
     setCurrentParity: () => {},
@@ -339,7 +339,7 @@ const { scheduleDataMock } = vi.hoisted(() => {
     todayLessons: [],
     currentLesson: null,
     nextLesson: null,
-    conflictedIds: new Set<number>(),
+    conflictedIds: new Set<string>(),
     timeLeftText: "",
     currentProgress: 0,
   }

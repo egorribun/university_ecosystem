@@ -89,6 +89,12 @@ func NewFileActivities(cfg *config.Config) *FileActivities {
 	}
 }
 
+const (
+	// maxImageDimension prevents OOM by limiting the target size of processed images.
+	// 4096 * 4096 * 4 bytes (RGBA) is ~64MB, which is safe for typical worker memory.
+	maxImageDimension = 4096
+)
+
 // ResizeImageActivity performs the image resizing
 func (a *FileActivities) ResizeImageActivity(ctx context.Context, job ProcessJob) (*ProcessResult, error) {
 	result := &ProcessResult{
@@ -102,10 +108,6 @@ func (a *FileActivities) ResizeImageActivity(ctx context.Context, job ProcessJob
 	}
 	defer func() {
 		if closeErr := obj.Close(); closeErr != nil {
-			// Log the error but don't fail the activity just because of a close error on a read-only object
-			// In Temporal, we can use the logger if we have it, or just ignore if it's not critical.
-			// Since we don't have a logger here (it's passed in ctx but usually via a specific way in Temporal),
-			// for now let's just make it checked to satisfy the linter.
 			_ = closeErr
 		}
 	}()
@@ -117,8 +119,12 @@ func (a *FileActivities) ResizeImageActivity(ctx context.Context, job ProcessJob
 	}
 
 	// Get target dimensions
-	width := getIntOption(job.Options, "width", 800)
-	height := getIntOption(job.Options, "height", 600)
+	width, errW := getValidatedDimension(job.Options, "width", 800)
+	height, errH := getValidatedDimension(job.Options, "height", 600)
+
+	if errW != nil || errH != nil {
+		return nil, temporal.NewApplicationError("invalid dimensions", "InvalidInput", errW, errH)
+	}
 
 	// Resize
 	dst := image.NewRGBA(image.Rect(0, 0, width, height))
@@ -155,18 +161,28 @@ func (a *FileActivities) ResizeImageActivity(ctx context.Context, job ProcessJob
 	return result, nil
 }
 
-func getIntOption(options map[string]interface{}, key string, defaultValue int) int {
-	if val, ok := options[key]; ok {
-		switch v := val.(type) {
+func getValidatedDimension(options map[string]interface{}, key string, defaultValue int) (int, error) {
+	val := defaultValue
+	if raw, ok := options[key]; ok {
+		switch v := raw.(type) {
 		case int:
-			return v
+			val = v
 		case float64:
-			return int(v) // JSON unmarshals numbers as floats often
+			val = int(v)
 		case int32:
-			return int(v)
+			val = int(v)
 		case int64:
-			return int(v)
+			val = int(v)
+		default:
+			return 0, fmt.Errorf("invalid type for %s", key)
 		}
 	}
-	return defaultValue
+
+	if val <= 0 {
+		return 0, fmt.Errorf("%s must be positive", key)
+	}
+	if val > maxImageDimension {
+		return 0, fmt.Errorf("%s exceeds maximum allowed dimension (%d)", key, maxImageDimension)
+	}
+	return val, nil
 }

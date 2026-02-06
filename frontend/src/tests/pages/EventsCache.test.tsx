@@ -11,8 +11,8 @@ import { AuthContext } from "@/contexts/AuthContext"
 import type { Event } from "@/types/Event"
 import { server } from "../mocks/server"
 
-const buildEvent = (id: number, title: string, isActive: boolean): Event => {
-  const start = new Date(Date.now() + id * 60 * 60 * 1000)
+const buildEvent = (id: string, title: string, isActive: boolean): Event => {
+  const start = new Date(Date.now() + 60 * 60 * 1000)
   const end = new Date(start.getTime() + 60 * 60 * 1000)
   return {
     id,
@@ -26,7 +26,7 @@ const buildEvent = (id: number, title: string, isActive: boolean): Event => {
     event_type_en: null,
     starts_at: start.toISOString(),
     ends_at: end.toISOString(),
-    created_by: 1,
+    created_by: "uuid-1",
     created_at: new Date().toISOString(),
     is_active: isActive,
     speaker: null,
@@ -49,11 +49,11 @@ const authValue: AuthContextValue = {
   loginWithPasskey: vi.fn(),
   logout: vi.fn(),
   user: {
-    id: 1,
+    id: "uuid-1",
     email: "user@example.com",
     full_name: "Test User",
     role: "student",
-    group_id: null,
+    group_id: "group-1",
     avatar_url: null,
     avatar_url_optimized: null,
     cover_url: null,
@@ -96,8 +96,8 @@ const authValue: AuthContextValue = {
 describe("Events caching", () => {
   it("restores cached data when a 304 response is received after switching tabs", async () => {
     const user = userEvent.setup()
-    const activeEvents = [buildEvent(1, "Active event 1", true)]
-    const archiveEvents = [buildEvent(2, "Archived event 1", false)]
+    const activeEvents = [buildEvent("event-1", "Active event 1", true)]
+    const archiveEvents = [buildEvent("event-2", "Archived event 1", false)]
     let activeRequestCount = 0
 
     const queryClient = new QueryClient({

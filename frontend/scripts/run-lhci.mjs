@@ -11,25 +11,11 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const frontendRoot = path.resolve(__dirname, "..")
 
-const LOCAL_PREVIEW_PORT = 4174
 process.env.VITE_LHCI = "true"
 
 const base = process.env.PREVIEW_URL ?? process.env.LHCI_URL ?? ""
 const useRemotePreview = Boolean(base)
 let dependenciesEnsured = false
-
-async function ensureSystemDependencies() {
-  if (dependenciesEnsured) {
-    return
-  }
-
-  await runCommand(
-    "npx",
-    ["playwright", "install-deps", "chromium"],
-    "playwright install-deps chromium"
-  )
-  dependenciesEnsured = true
-}
 
 async function runCommand(command, args, description) {
   await new Promise((resolve, reject) => {
@@ -57,9 +43,9 @@ async function runCommand(command, args, description) {
 }
 
 async function ensureChromiumExecutable() {
-  const chromePath = process.env.LHCI_CHROME_PATH ?? chromium.executablePath()
-
   await ensureSystemDependencies()
+
+  const chromePath = process.env.LHCI_CHROME_PATH ?? chromium.executablePath()
 
   try {
     await access(chromePath)
@@ -70,10 +56,29 @@ async function ensureChromiumExecutable() {
     }
   }
 
-  await runCommand("npx", ["playwright", "install", "chromium"], "playwright install chromium")
+  await runCommand(
+    "npm",
+    ["exec", "playwright", "install", "chromium"],
+    "playwright install chromium"
+  )
 
-  await access(chromePath)
-  return chromePath
+  // Re-calculate or verify the path after install
+  const finalPath = process.env.LHCI_CHROME_PATH ?? chromium.executablePath()
+  await access(finalPath)
+  return finalPath
+}
+
+async function ensureSystemDependencies() {
+  if (dependenciesEnsured) {
+    return
+  }
+
+  await runCommand(
+    "npm",
+    ["exec", "playwright", "install-deps", "chromium"],
+    "playwright install-deps chromium"
+  )
+  dependenciesEnsured = true
 }
 
 async function createConfig() {

@@ -1,5 +1,7 @@
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String
-from sqlalchemy.orm import relationship
+import uuid
+
+from sqlalchemy import UUID, Boolean, Column, DateTime, ForeignKey, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.utils.encryption import EncryptedString
@@ -8,8 +10,8 @@ from app.utils.encryption import EncryptedString
 class SpotifyIntegration(Base):
     __tablename__ = "spotify_integrations"
 
-    user_id = Column(
-        Integer,
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         primary_key=True,
     )

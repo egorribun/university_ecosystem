@@ -1,3 +1,4 @@
+import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -21,20 +22,22 @@ def mock_news_service():
     service = AsyncMock()
     # Mock methods used in endpoints
     service.get_news_item.return_value = MagicMock(
-        spec=models.News, id=1, title="Test News"
+        spec=models.News,
+        id=uuid.UUID("019c1468-f495-7980-9ad0-d8f31705df79"),
+        title="Test News",
     )
     service.create_comment.return_value = MagicMock(
         spec=models.NewsComment,
-        id=1,
+        id=uuid.UUID("019c1468-f495-7980-9ad0-d8f31705df7a"),
         content="Test Comment",
-        user_id=1,
+        user_id=uuid.UUID("019c1468-f495-7980-9ad0-d8f31705df7b"),
         created_at="2024-01-01",
     )
     service.update_comment.return_value = MagicMock(
         spec=models.NewsComment,
-        id=1,
+        id=uuid.UUID("019c1468-f495-7980-9ad0-d8f31705df7a"),
         content="Updated Comment",
-        user_id=1,
+        user_id=uuid.UUID("019c1468-f495-7980-9ad0-d8f31705df7b"),
         created_at="2024-01-01",
     )
     service.delete_comment.return_value = None
@@ -46,7 +49,7 @@ def mock_news_service():
             title="Test News",
             content="Content",
             created_at="2024-01-01T00:00:00Z",  # ISO format string for schema
-            author_id=1,
+            author_id=uuid.UUID("019c1468-f495-7980-9ad0-d8f31705df7c"),
             author_name="Test Author",
             image_url=None,
             likes_count=0,
@@ -63,15 +66,29 @@ def mock_news_service():
 def mock_vector_service():
     vs = AsyncMock()
     vs.get_embedding.return_value = [0.1, 0.2]
-    vs.search_similar.return_value = [
-        MagicMock(spec=models.News, id=2, title="Similar News")
-    ]
+
+    # Create a proper mock News object with all required attributes
+    mock_news = MagicMock()
+    mock_news.id = uuid.UUID("019c1468-f495-7980-9ad0-d8f31705df7d")
+    mock_news.title = "Similar News"
+    mock_news.content = "Similar content"
+    mock_news.title_en = None
+    mock_news.content_en = None
+    mock_news.author_id = uuid.UUID("019c1468-f495-7980-9ad0-d8f31705df7c")
+    mock_news.image_url = None
+    mock_news.created_at = "2024-01-01T00:00:00Z"
+    mock_news.likes = []
+    mock_news.comments = []
+
+    vs.search_similar.return_value = [mock_news]
     return vs
 
 
 @pytest.mark.asyncio
 async def test_news_interactions_endpoint(async_client: AsyncClient, mock_news_service):
-    app.dependency_overrides[get_news_service] = lambda: mock_news_service
+    from app.api.deps import get_read_news_service
+
+    app.dependency_overrides[get_read_news_service] = lambda: mock_news_service
 
     mock_news_service.get_interactions.return_value = {
         "likes_count": 10,
@@ -80,7 +97,7 @@ async def test_news_interactions_endpoint(async_client: AsyncClient, mock_news_s
         "comments_count": 0,
     }
 
-    resp = await async_client.get("/news/1/interactions")
+    resp = await async_client.get(f"/news/{uuid.UUID(int=1)}/interactions")
     assert resp.status_code == 200
     data = resp.json()
     assert data["likes_count"] == 10
@@ -111,7 +128,9 @@ async def test_create_comment(
         lambda: mock_notification_service
     )
 
-    resp = await async_client.post("/news/1/comment", json={"content": "Test Comment"})
+    resp = await async_client.post(
+        f"/news/{uuid.UUID(int=1)}/comment", json={"content": "Test Comment"}
+    )
     assert resp.status_code == 200
     data = resp.json()
     assert data["content"] == "Test Comment"
@@ -134,19 +153,23 @@ async def test_update_comment(async_client: AsyncClient, mock_news_service):
     app.dependency_overrides[get_current_user] = lambda: mock_user
 
     resp = await async_client.patch(
-        "/news/comments/1", json={"content": "Updated Comment"}
+        f"/news/comments/{uuid.UUID(int=1)}", json={"content": "Updated Comment"}
     )
     assert resp.status_code == 200
     assert resp.json()["content"] == "Updated Comment"
 
     # Test failure case
     mock_news_service.update_comment.side_effect = LookupError("Not found")
-    resp = await async_client.patch("/news/comments/99", json={"content": "Fail"})
+    resp = await async_client.patch(
+        f"/news/comments/{uuid.UUID(int=99)}", json={"content": "Fail"}
+    )
     assert resp.status_code == 404
 
     # Test permission error
     mock_news_service.update_comment.side_effect = PermissionError("Forbidden")
-    resp = await async_client.patch("/news/comments/1", json={"content": "Forbidden"})
+    resp = await async_client.patch(
+        f"/news/comments/{uuid.UUID(int=1)}", json={"content": "Forbidden"}
+    )
     assert resp.status_code == 403  # raise_forbidden returns 403
 
     app.dependency_overrides = {}
@@ -164,18 +187,18 @@ async def test_delete_comment(async_client: AsyncClient, mock_news_service):
     app.dependency_overrides[get_current_user] = lambda: mock_user
 
     # Success
-    resp = await async_client.delete("/news/comments/1")
+    resp = await async_client.delete(f"/news/comments/{uuid.UUID(int=1)}")
     assert resp.status_code == 200
     assert resp.json() == {"ok": True}
 
     # Not found
     mock_news_service.delete_comment.side_effect = LookupError()
-    resp = await async_client.delete("/news/comments/99")
+    resp = await async_client.delete(f"/news/comments/{uuid.UUID(int=99)}")
     assert resp.status_code == 404
 
     # Forbidden
     mock_news_service.delete_comment.side_effect = PermissionError()
-    resp = await async_client.delete("/news/comments/1")
+    resp = await async_client.delete(f"/news/comments/{uuid.UUID(int=1)}")
     assert resp.status_code == 403
 
     app.dependency_overrides = {}
@@ -185,7 +208,9 @@ async def test_delete_comment(async_client: AsyncClient, mock_news_service):
 async def test_semantic_search(
     async_client: AsyncClient, mock_news_service, mock_vector_service
 ):
-    app.dependency_overrides[get_news_service] = lambda: mock_news_service
+    from app.api.deps import get_read_news_service
+
+    app.dependency_overrides[get_read_news_service] = lambda: mock_news_service
     app.dependency_overrides[get_vector_service] = lambda: mock_vector_service
 
     resp = await async_client.get(
@@ -195,7 +220,8 @@ async def test_semantic_search(
     assert resp.status_code == 200
     data = resp.json()
     assert len(data) == 1
-    assert data[0]["title"] == "Test News"  # helper returns Test News for any news item
+    # serialize_news returns a fixed "Test News" title for any input
+    assert data[0]["title"] == "Test News"
 
     mock_vector_service.get_embedding.assert_awaited()
     mock_vector_service.search_similar.assert_awaited()

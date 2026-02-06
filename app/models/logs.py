@@ -1,27 +1,35 @@
+import uuid
+
 from sqlalchemy import (
     JSON,
+    UUID,
     Column,
     DateTime,
     ForeignKey,
-    Integer,
     String,
     func,
 )
-from sqlalchemy.orm import relationship
+
+# Removed postgresql UUID import
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.config import settings
 from app.core.database import Base
+from app.models.mixins import UUID7PrimaryKeyMixin
 
 
-class DataAccessLog(Base):
+class DataAccessLog(Base, UUID7PrimaryKeyMixin):
     __tablename__ = "data_access_logs"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    actor_user_id = Column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        index=True,
     )
-    subject_user_id = Column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    subject_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        index=True,
     )
     resource_type = Column(String(64), nullable=False, index=True)
     resource_id = Column(String(128), nullable=True, index=True)

@@ -1,10 +1,10 @@
 import datetime
 import json
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-import app.auth.auth as auth
 import app.services.event_service as event_service
 import app.services.user_service as user_service
 from app.core.localization import normalize_locale, translate
@@ -18,12 +18,16 @@ async def test_monster_coverage_run():
     assert normalize_locale("RU") == "ru"
     assert translate("errors.forbidden", locale="ru") == "Доступ запрещён"
 
-    # 2. AUTH HELPERS
-    assert auth._pluralize_ru(1, "minutes") == "минуту"
-    assert auth._pluralize_en(2, "hour") == "hours"
+    # 2. AUTH HELPERS - _pluralize methods moved to LockoutService
+    from app.services.auth.lockout import LockoutService
+
+    mock_db = MagicMock()
+    lockout_svc = LockoutService(mock_db)
+    assert lockout_svc._pluralize_ru(1, "minutes") == "минуту"
+    assert lockout_svc._pluralize_en(2, "hour") == "hours"
 
     # 3. DATABASE MOCKING
-    mock_db = MagicMock()
+    mock_db = AsyncMock()
     mock_db.execute = AsyncMock()
     mock_db.commit = AsyncMock()
     mock_db.rollback = AsyncMock()
@@ -31,25 +35,23 @@ async def test_monster_coverage_run():
     mock_db.flush = AsyncMock()
 
     result = MagicMock()
-    # scalars().all() returns a list
     result.scalars.return_value.all.return_value = []
-    # scalar_one() returns a single value
     result.scalar_one.return_value = 0
     mock_db.execute.return_value = result
 
     # event_service.get_events branches
     from app.repositories.event_repository import EventRepository
 
-    e_repo = EventRepository(mock_db)
     e_repo = MagicMock(spec=EventRepository)
     e_repo.search_events = AsyncMock(return_value=[])
     e_repo.get_events = AsyncMock(return_value=MagicMock(items=[]))
     mock_vector = MagicMock()
     mock_vector.get_embedding = AsyncMock(return_value=[0.1])
     e_service = event_service.EventService(e_repo, mock_vector)
-    await e_service.get_events(user_id=1, search="s", locale="ru")
+    user_id = uuid.uuid4()
+    await e_service.get_events(user_id=user_id, search="s", locale="ru")
 
-    # 4. STATS (300 lines)
+    # 4. STATS
     with (
         patch(
             "app.services.stats_cache.get_cached_stats",
@@ -58,7 +60,6 @@ async def test_monster_coverage_run():
         ),
         patch("app.services.stats_cache.set_cached_stats", new_callable=AsyncMock),
     ):
-        # attendance returns result.all()
         row = MagicMock(
             current_total=1,
             current_attended=1,
@@ -80,9 +81,9 @@ async def test_monster_coverage_run():
             mock_db, u_repo, MagicMock(), u_notifications
         )
 
-        await u_service.get_attendance_stats(user_id=1, period_days=30)
+        user_id = uuid.uuid4()
+        await u_service.get_attendance_stats(user_id=user_id, period_days=30)
 
-        # grades returns result.scalars()
         notif = models.Notification(
             body=json.dumps({"score": 5, "course": "C"}),
             title="T",
@@ -91,9 +92,8 @@ async def test_monster_coverage_run():
         res_grad = MagicMock()
         res_grad.scalars.return_value.all.return_value = [notif]
         mock_db.execute.return_value = res_grad
-        await u_service.get_grade_stats(user_id=1, period_days=30)
+        await u_service.get_grade_stats(user_id=user_id, period_days=30)
 
-        # participation returns result.all()
         p_row = (
             1,
             datetime.datetime.now(datetime.UTC),
@@ -105,11 +105,10 @@ async def test_monster_coverage_run():
         res_part = MagicMock()
         res_part.all.return_value = [p_row]
         mock_db.execute.return_value = res_part
-        await u_service.get_participation_stats(user_id=1, period_days=30)
+        await u_service.get_participation_stats(user_id=user_id, period_days=30)
 
-    # 5. FILES (190 lines)
+    # 5. FILES
     assert normalize_filename_prefix("A B!") == "a-b"
-
     assert detect_mime_type(b"%PDF-1.4") == "application/pdf"
 
     mock_upload = MagicMock()
@@ -125,54 +124,76 @@ async def test_monster_coverage_run():
         ):
             await save_attachment(mock_upload, subdir="s", prefix="p")
 
-    # 6. AUTH PERFORM LOGIN (247 lines)
-    user = models.User(id=1, email="a@b.com", is_active=True, mfa_required=False)
-    # Mock for user query in _perform_login
-    res_login = MagicMock()
-    res_login.scalars.return_value.first.return_value = user
-    mock_db.execute.return_value = res_login
+    # 6. AUTH LOGIN (Refactored for LoginService)
+    from app.services.auth.login_service import LoginService
+
+    user = models.User(
+        id=uuid.uuid4(),
+        email="a@b.com",
+        is_active=True,
+        mfa_required=False,
+        role="student",
+        full_name="Test User",
+    )
+
+    mock_user_service = AsyncMock()
+    mock_user_service.get_user_by_email.return_value = user
+
+    mock_session_service = AsyncMock()
+    mock_session_service.create_access_token.return_value = (
+        "token",
+        MagicMock(signing_key=None),
+    )
+
+    mock_lockout_service = AsyncMock()
+    mock_lockout_service.get_active_lockout.return_value = None
+    mock_lockout_service.clear_failed_attempts.return_value = 0
+
+    mock_audit = MagicMock()
+
+    login_service = LoginService(
+        db=mock_db,
+        user_service=mock_user_service,
+        session_service=mock_session_service,
+        lockout_service=mock_lockout_service,
+        audit=mock_audit,
+    )
 
     with (
         patch(
-            "app.auth.auth._active_lockout", new_callable=AsyncMock, return_value=None
+            "app.services.auth.login_service.verify_and_update_password",
+            return_value=(True, None),
         ),
-        patch("app.auth.auth.verify_and_update_password", return_value=(True, None)),
         patch(
-            "app.auth.auth.ensure_mfa_relationships_loaded",
+            "app.services.auth.login_service.mfa.user_has_active_factor",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
+        patch(
+            "app.services.auth.login_service.extract_fingerprint",
+            return_value=MagicMock(accept_language="en", fingerprint_hash="h"),
+        ),
+        patch(
+            "app.services.auth.login_service.ensure_mfa_relationships_loaded",
             new_callable=AsyncMock,
             return_value=user,
         ),
         patch(
-            "app.auth.auth._resolve_mfa_capabilities",
+            "app.services.auth_service.attach_pending_email",
             new_callable=AsyncMock,
-            return_value={},
+            return_value=user,
         ),
-        patch("app.auth.auth._create_session_for_user", new_callable=AsyncMock),
-        patch(
-            "app.auth.auth.create_access_token",
-            new_callable=AsyncMock,
-            return_value=("token", None),
-        ),
-        patch(
-            "app.auth.auth._build_token_response",
-            new_callable=AsyncMock,
-            return_value=MagicMock(status_code=200),
-        ),
-        patch("app.auth.auth.send_lockout_alert.kiq", new_callable=AsyncMock),
     ):
-        from starlette.responses import Response
+        from fastapi import BackgroundTasks, Request, Response
 
-        mock_user_service = AsyncMock()
-        # Initial user fetch for lockout check
-        mock_user_service.get_user_by_email.return_value = user
+        mock_request = MagicMock(spec=Request)
+        mock_request.headers = {}
+        mock_request.client.host = "127.0.0.1"
 
-        await auth._perform_login(
-            "a@b.com",
-            "p",
-            MagicMock(),
-            Response(),
-            mock_db,
-            MagicMock(),
-            bg_tasks=MagicMock(),
-            user_service=mock_user_service,
+        await login_service.perform_login(
+            email="a@b.com",
+            password="p",
+            request=mock_request,
+            response=Response(),
+            bg_tasks=BackgroundTasks(),
         )

@@ -9,7 +9,7 @@ import { fmtTime, nowParity, parseMinutes } from "@/utils/scheduleUtils"
 
 interface ScheduleCardProps {
   userRole?: string | null
-  userGroupId?: number | null
+  userGroupId?: string | number | null
   time: Date
   className?: string
   style?: CSSProperties

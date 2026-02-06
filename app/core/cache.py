@@ -247,10 +247,13 @@ class MultiLayerCache:
         }
 
 
-# Global L1 cache instances
+# Global L1/L2 cache instances
 user_cache = LRUCache[Any](max_size=500, default_ttl=60.0)
-schedule_cache = LRUCache[Any](max_size=200, default_ttl=120.0)
 config_cache = LRUCache[Any](max_size=100, default_ttl=300.0)
+
+# Multi-layer caches (L1 + L2 Redis)
+news_cache = MultiLayerCache(l1_max_size=200, l1_ttl=60.0, l2_ttl=3600.0)
+schedule_cache = MultiLayerCache(l1_max_size=100, l1_ttl=120.0, l2_ttl=7200.0)
 
 
 __all__ = [
@@ -258,6 +261,7 @@ __all__ = [
     "LRUCache",
     "MultiLayerCache",
     "user_cache",
+    "news_cache",
     "schedule_cache",
     "config_cache",
 ]

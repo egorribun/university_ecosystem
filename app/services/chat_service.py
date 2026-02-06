@@ -1,4 +1,5 @@
 import asyncio
+import uuid
 from datetime import UTC, datetime
 
 from fastapi import UploadFile
@@ -10,7 +11,12 @@ from app.api.validation import (
     raise_http_error,
     raise_validation_error,
 )
-from app.api.websocket import build_presence_map, notify_new_message
+from app.api.websocket import (
+    build_presence_map,
+    invalidate_chat_participants_cache,
+    invalidate_presence_audience_cache,
+    notify_new_message,
+)
 from app.core.config import settings
 from app.models.chat import Attachment, Chat, Message
 from app.models.models import User
@@ -47,7 +53,7 @@ class ChatService:
         return urls
 
     async def _process_chat_upload(
-        self, upload: UploadFile, chat_id: str, *, locale: str | None
+        self, upload: UploadFile, chat_id: uuid.UUID, *, locale: str | None
     ) -> dict[str, object]:
         meta = await save_attachment(
             upload,
@@ -95,7 +101,7 @@ class ChatService:
         )
 
         # Collect participant IDs for presence
-        participant_ids: set[int] = set()
+        participant_ids: set[uuid.UUID] = set()
         chat_data_map: dict[str, dict] = {}
 
         for row in rows:
@@ -106,7 +112,7 @@ class ChatService:
             for participant in chat.participants:
                 participant_ids.add(participant.id)
 
-            chat_data_map[chat.id] = {
+            chat_data_map[str(chat.id)] = {
                 "chat": chat,
                 "unread_count": unread_count,
                 "last_message_id": last_message_id,
@@ -176,7 +182,7 @@ class ChatService:
         )
 
     async def create_chat(
-        self, user: User, participant_id: int | None, locale: str
+        self, user: User, participant_id: uuid.UUID | None, locale: str
     ) -> ChatResponse:
         """
         Create a new chat or return an existing one.
@@ -218,6 +224,11 @@ class ChatService:
         await self.session.commit()
         await self.session.refresh(new_chat)
 
+        # Invalidate caches for participants and the new chat
+        participant_ids = [p.id for p in new_chat.participants]
+        await invalidate_chat_participants_cache(new_chat.id)
+        await invalidate_presence_audience_cache(*participant_ids)
+
         presence_map = await build_presence_map(
             [p.id for p in new_chat.participants], session=self.session
         )
@@ -234,7 +245,7 @@ class ChatService:
         )
 
     async def get_chat_details(
-        self, chat_id: str, user: User, locale: str
+        self, chat_id: uuid.UUID, user: User, locale: str
     ) -> ChatResponse:
         """
         Get details for a specific chat.
@@ -253,7 +264,7 @@ class ChatService:
         chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
 
-        if user not in chat.participants:
+        if user.id not in {p.id for p in chat.participants}:
             raise_forbidden(locale, "errors.chat.not_participant")
 
         unread_count = await self.repository.get_unread_count(chat_id, user.id)
@@ -285,7 +296,12 @@ class ChatService:
         )
 
     async def get_messages(
-        self, chat_id: str, user: User, cursor: str | None, limit: int, locale: str
+        self,
+        chat_id: uuid.UUID,
+        user: User,
+        cursor: str | None,
+        limit: int,
+        locale: str,
     ) -> MessagesListOut:
         """
         Fetch messages for a chat.
@@ -303,7 +319,7 @@ class ChatService:
         chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
 
-        if user not in chat.participants:
+        if user.id not in {p.id for p in chat.participants}:
             raise_forbidden(locale, "errors.chat.not_participant")
 
         messages, has_more, next_cursor = await self.repository.get_messages(
@@ -340,7 +356,7 @@ class ChatService:
 
     async def send_message(
         self,
-        chat_id: str,
+        chat_id: uuid.UUID,
         user: User,
         content: str,
         files: list[UploadFile],
@@ -362,7 +378,7 @@ class ChatService:
         chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
 
-        if user not in chat.participants:
+        if user.id not in {p.id for p in chat.participants}:
             raise_forbidden(locale, "errors.chat.not_participant")
 
         uploads = files or []
@@ -445,7 +461,7 @@ class ChatService:
             sender_presence=presence_map.get(message.sender_id),
         )
 
-    async def mark_read(self, chat_id: str, user: User, locale: str) -> None:
+    async def mark_read(self, chat_id: uuid.UUID, user: User, locale: str) -> None:
         """
         Mark all messages in a chat as read by the user.
 
@@ -457,14 +473,14 @@ class ChatService:
         chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
 
-        if user not in chat.participants:
+        if user.id not in {p.id for p in chat.participants}:
             raise_forbidden(locale, "errors.chat.not_participant")
 
         await self.repository.mark_messages_read(chat_id, user.id)
         await self.session.commit()
 
     async def clear_history(
-        self, chat_id: str, user: User, locale: str
+        self, chat_id: uuid.UUID, user: User, locale: str
     ) -> ChatMaintenanceResult:
         """
         Delete all messages in a chat (but keep the chat).
@@ -481,7 +497,7 @@ class ChatService:
         chat = await self.repository.get_by_id(chat_id, load_messages=True)
         ensure_exists(chat, "chat", locale)
 
-        if user not in chat.participants:
+        if user.id not in {p.id for p in chat.participants}:
             raise_forbidden(locale, "errors.chat.not_participant")
 
         attachment_urls = await self._collect_attachment_urls(chat)
@@ -510,7 +526,7 @@ class ChatService:
         )
 
     async def delete_chat(
-        self, chat_id: str, user: User, locale: str
+        self, chat_id: uuid.UUID, user: User, locale: str
     ) -> ChatMaintenanceResult:
         """
         Permanently delete a chat.
@@ -526,16 +542,23 @@ class ChatService:
         chat = await self.repository.get_by_id(chat_id, load_messages=True)
         ensure_exists(chat, "chat", locale)
 
-        if user not in chat.participants:
+        if user.id not in {p.id for p in chat.participants}:
             raise_forbidden(locale, "errors.chat.not_participant")
 
         attachment_urls = await self._collect_attachment_urls(chat)
         message_count = len(chat.messages)
         attachment_count = len(attachment_urls)
 
+        # Collect participant IDs before deletion for cache invalidation
+        participant_ids = [p.id for p in chat.participants]
+
         try:
             await self.repository.delete_chat(chat)
             await self.session.commit()
+
+            # Invalidate caches
+            await invalidate_chat_participants_cache(chat_id)
+            await invalidate_presence_audience_cache(*participant_ids)
         except Exception:
             await self.session.rollback()
             raise

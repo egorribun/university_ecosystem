@@ -223,7 +223,7 @@ const EventDetail = () => {
     }
   }
 
-  const handleDeleteFile = async (fileId: number) => {
+  const handleDeleteFile = async (fileId: string) => {
     mutateFiles({ type: "remove", id: fileId })
     try {
       await api.delete(`/events/file/${fileId}`)
@@ -492,7 +492,8 @@ const EventDetail = () => {
                 </h3>
                 <div className="space-y-2">
                   {optimisticFiles.map((f) => {
-                    const isPendingFile = f.pending === true || typeof f.id !== "number"
+                    const isPendingFile =
+                      f.pending === true || f.id.toString().startsWith("pending-")
                     const fallbackName = f.file_url.split("/").pop() || f.file_url
                     const fileLabel = f.description || fallbackName
                     return (
@@ -523,7 +524,7 @@ const EventDetail = () => {
                             disabled={isPendingFile}
                             className="rounded-full p-1 text-red-500 transition-colors hover:bg-red-500/10 disabled:opacity-50"
                             onClick={async () => {
-                              if (typeof f.id === "number") {
+                              if (!isPendingFile) {
                                 await handleDeleteFile(f.id)
                               }
                             }}
@@ -722,7 +723,8 @@ const EventDetail = () => {
                 </h3>
                 <div className="space-y-2">
                   {optimisticFiles.map((f) => {
-                    const isPendingFile = f.pending === true || typeof f.id !== "number"
+                    const isPendingFile =
+                      f.pending === true || f.id.toString().startsWith("pending-")
                     const fallbackName = f.file_url.split("/").pop() || f.file_url
                     const fileLabel = f.description || fallbackName
                     return (
@@ -753,7 +755,7 @@ const EventDetail = () => {
                             disabled={isPendingFile}
                             className="ml-2 rounded-full p-1 text-red-500 transition-colors hover:bg-red-500/10 disabled:opacity-50"
                             onClick={async () => {
-                              if (typeof f.id === "number") {
+                              if (!isPendingFile) {
                                 await handleDeleteFile(f.id)
                               }
                             }}

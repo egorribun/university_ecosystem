@@ -41,11 +41,11 @@ vi.mock("@/components/WeatherWidget", () => ({
 type AuthContextValue = ContextType<typeof AuthContext>
 
 const baseUser: User = {
-  id: 1,
+  id: "0194d2e7-9b84-7f04-b2ff-c087ea96a257",
   email: "student@example.com",
   full_name: "Test User",
   role: "student",
-  group_id: 101,
+  group_id: "0194d2e7-9b84-7f04-b2ff-c087ea96a258",
   avatar_url: null,
   avatar_url_optimized: null,
   cover_url: null,

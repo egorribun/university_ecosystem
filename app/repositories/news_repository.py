@@ -4,6 +4,7 @@ News repository for news data access operations.
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
@@ -11,6 +12,7 @@ from typing import Any
 from sqlalchemy import and_, exists, false, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.cache import news_cache
 from app.core.config import settings
 from app.models import models
 from app.models.news import News
@@ -25,11 +27,18 @@ class NewsRepository(BaseRepository[News, dict, dict]):
         return News
 
     async def get_published(self, *, skip: int = 0, limit: int = 20) -> list[News]:
-        """Get published news ordered by creation date descending."""
+        """Get published news ordered by creation date descending with caching."""
+        cache_key = f"news:published:{skip}:{limit}"
+        cached = await news_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         result = await self.db.execute(
             select(News).order_by(News.created_at.desc()).offset(skip).limit(limit)
         )
-        return list(result.scalars().all())
+        news_items = list(result.scalars().all())
+        await news_cache.set(cache_key, news_items)
+        return news_items
 
     async def get_latest(self, limit: int = 5) -> list[News]:
         """Get the latest news items."""
@@ -56,8 +65,8 @@ class NewsRepository(BaseRepository[News, dict, dict]):
         self,
         *,
         limit: int = 20,
-        cursor: tuple[datetime, int] | None = None,
-        current_user_id: int | None = None,
+        cursor: tuple[datetime, uuid.UUID | str] | None = None,
+        current_user_id: uuid.UUID | str | None = None,
         search_query: str | None = None,
         query_embedding: list[float] | None = None,
     ) -> Sequence[tuple[News, int, int, bool]]:
@@ -75,6 +84,12 @@ class NewsRepository(BaseRepository[News, dict, dict]):
             .label("comments_count")
         )
 
+        if current_user_id and isinstance(current_user_id, str):
+            try:
+                current_user_id = uuid.UUID(current_user_id)
+            except ValueError:
+                pass
+
         is_liked_sub = (
             exists()
             .where(
@@ -91,6 +106,11 @@ class NewsRepository(BaseRepository[News, dict, dict]):
         # Filters
         if cursor:
             last_created_at, last_id = cursor
+            if isinstance(last_id, str):
+                try:
+                    last_id = uuid.UUID(last_id)
+                except ValueError:
+                    pass
             stmt = stmt.where(
                 or_(
                     News.created_at < last_created_at,
@@ -134,7 +154,7 @@ class NewsRepository(BaseRepository[News, dict, dict]):
         return result.all()
 
     async def get_with_interactions(
-        self, news_id: int, current_user_id: int | None = None
+        self, news_id: uuid.UUID, current_user_id: uuid.UUID | None = None
     ):
         likes_stmt = select(func.count(models.NewsLike.id)).where(
             models.NewsLike.news_id == news_id
@@ -155,7 +175,7 @@ class NewsRepository(BaseRepository[News, dict, dict]):
 
         return likes_count, is_liked
 
-    async def toggle_like(self, news_id: int, user_id: int) -> bool:
+    async def toggle_like(self, news_id: uuid.UUID, user_id: uuid.UUID) -> bool:
         stmt = select(models.NewsLike).where(
             models.NewsLike.news_id == news_id, models.NewsLike.user_id == user_id
         )
@@ -168,12 +188,12 @@ class NewsRepository(BaseRepository[News, dict, dict]):
             self.db.add(models.NewsLike(news_id=news_id, user_id=user_id))
             return True
 
-    async def get_comment(self, comment_id: int) -> models.NewsComment | None:
+    async def get_comment(self, comment_id: uuid.UUID) -> models.NewsComment | None:
         """Get a comment by ID."""
         return await self.db.get(models.NewsComment, comment_id)
 
     async def create_comment(
-        self, news_id: int, user_id: int, content: str
+        self, news_id: uuid.UUID, user_id: uuid.UUID, content: str
     ) -> models.NewsComment:
         """Create a new comment."""
         comment = models.NewsComment(news_id=news_id, user_id=user_id, content=content)
@@ -198,8 +218,8 @@ class NewsRepository(BaseRepository[News, dict, dict]):
 
     async def get_interactions(
         self,
-        news_id: int,
-        current_user_id: int | None = None,
+        news_id: uuid.UUID,
+        current_user_id: uuid.UUID | None = None,
         *,
         limit: int = 50,
         offset: int = 0,

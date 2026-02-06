@@ -9,8 +9,8 @@ import {
 
 describe("applyOptimisticFileAction", () => {
   const baseFile: OptimisticEventFile = {
-    id: 1,
-    event_id: 1,
+    id: "uuid-1",
+    event_id: "uuid-event-1",
     file_url: "https://example.com/file.pdf",
     description: "file.pdf",
   }
@@ -18,7 +18,7 @@ describe("applyOptimisticFileAction", () => {
   it("appends new files during optimistic upload", () => {
     const pendingFile: OptimisticEventFile = {
       id: "pending-1",
-      event_id: 1,
+      event_id: "uuid-event-1",
       file_url: "",
       description: "uploading.pdf",
       pending: true,
@@ -36,7 +36,7 @@ describe("applyOptimisticFileAction", () => {
     const optimisticId = "pending-2"
     const pending: OptimisticEventFile = {
       id: optimisticId,
-      event_id: 7,
+      event_id: "uuid-event-7",
       file_url: "",
       description: "processing.docx",
       pending: true,

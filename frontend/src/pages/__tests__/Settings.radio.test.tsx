@@ -38,11 +38,11 @@ vi.mock("@/hooks/usePushPreferences", () => ({
 }))
 
 const baseUser: User = {
-  id: 1,
+  id: "uuid-1",
   email: "test@example.com",
   full_name: "Test User",
   role: "student",
-  group_id: null,
+  group_id: "group-1",
   avatar_url: null,
   avatar_url_optimized: null,
   cover_url: null,

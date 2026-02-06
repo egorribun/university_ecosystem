@@ -4,7 +4,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use chrono::{DateTime, Utc, TimeZone};
+use chrono::{DateTime, Utc, TimeZone, Datelike};
 use serde::{Deserialize, Serialize};
 use opentelemetry::KeyValue;
 use opentelemetry_otlp::WithExportConfig;
@@ -32,7 +32,7 @@ use optimizer::{
 #[derive(Default)]
 pub struct MyOptimizer {}
 
-#[tonic::async_trait]
+// In Rust 2024, we can use native async fn in traits directly
 impl OptimizerService for MyOptimizer {
     async fn detect_conflicts(
         &self,
@@ -91,7 +91,13 @@ impl OptimizerService for MyOptimizer {
         for day in days {
             // Try starts at 9, 11, 13, 15 (simplified)
             for hour in [9, 11, 13, 15] {
-                let start_time = Utc.with_yml_d(2026, 1, 1).and_hms_opt(hour, 0, 0).unwrap();
+                // Fix: Use current year instead of hardcoded 2026
+                let now = Utc::now();
+                let current_year = now.year();
+
+                // Construct time for the current year
+                let start_time = Utc.with_yml_d(current_year, 1, 1).and_hms_opt(hour, 0, 0)
+                    .ok_or_else(|| Status::internal("Failed to construct start time"))?;
                 let end_time = start_time + chrono::Duration::minutes(req.duration_minutes as i64);
 
                 let candidate = ScheduleItem {
@@ -124,30 +130,6 @@ impl OptimizerService for MyOptimizer {
             status: "NOT_FOUND".to_string(),
         }))
     }
-}
-
-// Helper to convert proto ScheduleItem to internal logic
-fn check_conflict_proto(a: &ScheduleItem, b: &ScheduleItem) -> bool {
-    if a.weekday != b.weekday {
-        return false;
-    }
-
-    let parity_conflict = if a.parity == "both" || b.parity == "both" {
-        true
-    } else {
-        a.parity == b.parity
-    };
-
-    if !parity_conflict {
-        return false;
-    }
-
-    let a_start = a.start_time.as_ref().map(|t| t.seconds).unwrap_or(0);
-    let a_end = a.end_time.as_ref().map(|t| t.seconds).unwrap_or(0);
-    let b_start = b.start_time.as_ref().map(|t| t.seconds).unwrap_or(0);
-    let b_end = b.end_time.as_ref().map(|t| t.seconds).unwrap_or(0);
-
-    a_start < b_end && b_start < a_end
 }
 
 // REST models (compatible with existing Python code if needed)

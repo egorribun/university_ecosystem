@@ -1,4 +1,5 @@
 import abc
+import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
@@ -18,7 +19,8 @@ class ReadOnlyRepository[T: Base](abc.ABC):
     def model(self) -> type[T]: ...
 
     async def get(self, id: Any) -> T | None:
-        stmt = select(self.model).where(self.model.id == id)
+        target_id = self._cast_id(id)
+        stmt = select(self.model).where(self.model.id == target_id)
         result = await self.db.execute(stmt)
         return result.scalars().first()
 
@@ -31,7 +33,8 @@ class ReadOnlyRepository[T: Base](abc.ABC):
     async def get_by_ids(self, ids: list[Any]) -> Sequence[T]:
         if not ids:
             return []
-        stmt = select(self.model).where(self.model.id.in_(ids))
+        target_ids = [self._cast_id(idx) for idx in ids]
+        stmt = select(self.model).where(self.model.id.in_(target_ids))
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
@@ -50,9 +53,23 @@ class ReadOnlyRepository[T: Base](abc.ABC):
         return result.scalar() or 0
 
     async def exists(self, id: Any) -> bool:
-        stmt = select(func.count()).select_from(self.model).where(self.model.id == id)
+        target_id = self._cast_id(id)
+        stmt = (
+            select(func.count())
+            .select_from(self.model)
+            .where(self.model.id == target_id)
+        )
         result = await self.db.execute(stmt)
         return (result.scalar() or 0) > 0
+
+    def _cast_id(self, id_val: Any) -> Any:
+        """Cast input ID to UUID if applicable, preventing SQLAlchemy errors."""
+        if isinstance(id_val, str) and len(id_val) >= 32:
+            try:
+                return uuid.UUID(id_val)
+            except (ValueError, TypeError):
+                return id_val
+        return id_val
 
 
 class BaseRepository[T: Base, CreateT, UpdateT](ReadOnlyRepository[T]):
@@ -87,7 +104,8 @@ class BaseRepository[T: Base, CreateT, UpdateT](ReadOnlyRepository[T]):
         return db_obj
 
     async def delete(self, id: Any) -> bool:
-        stmt = delete(self.model).where(self.model.id == id)
+        target_id = self._cast_id(id)
+        stmt = delete(self.model).where(self.model.id == target_id)
         result = await self.db.execute(stmt)
         return (result.rowcount or 0) > 0
 

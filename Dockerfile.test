@@ -9,9 +9,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt requirements-dev.txt ./
-RUN pip install --no-cache-dir -r requirements.txt -r requirements-dev.txt
+# Install uv
+RUN pip install uv
+
+COPY pyproject.toml uv.lock ./
+
+# Install dependencies
+RUN uv sync --frozen
 
 COPY . .
+
+ENV PATH="/app/.venv/bin:$PATH"
 
 CMD ["pytest", "tests/", "-v", "--tb=short", "-x", "--ignore=tests/performance"]

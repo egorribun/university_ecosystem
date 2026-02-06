@@ -18,10 +18,10 @@ export const confirmTotpEnrollment = (payload: TotpEnrollmentConfirmPayload) =>
 
 export const listTotpEnrollments = () => api.get<MfaTotpEnrollment[]>("/auth/mfa/totp")
 
-export const deleteTotpEnrollment = (enrollmentId: number) =>
+export const deleteTotpEnrollment = (enrollmentId: string) =>
   api.delete<MfaFactorStatus>(`/auth/mfa/totp/${enrollmentId}`)
 
-export const deletePendingTotpEnrollment = (enrollmentId: number) =>
+export const deletePendingTotpEnrollment = (enrollmentId: string) =>
   api.delete<void>(`/auth/mfa/totp/pending/${enrollmentId}`)
 
 export const verifyMfaChallenge = (payload: MfaVerifyPayload) =>
@@ -40,5 +40,5 @@ export const confirmWebAuthnRegistration = (payload: {
 
 export const listWebAuthnCredentials = () => api.get<any[]>("/auth/mfa/webauthn")
 
-export const deleteWebAuthnCredential = (credentialId: number) =>
+export const deleteWebAuthnCredential = (credentialId: string) =>
   api.delete<MfaFactorStatus>(`/auth/mfa/webauthn/${credentialId}`)

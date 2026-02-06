@@ -34,7 +34,7 @@ export function resolveBackendOrigin({
   }
 }
 
-const appendUid = (relativeUrl: string, uid: number) => {
+const appendUid = (relativeUrl: string, uid: string | number) => {
   try {
     const parsed = new URL(relativeUrl, DUMMY_ORIGIN)
     parsed.searchParams.set("uid", String(uid))
@@ -49,7 +49,7 @@ type AvatarUrlOptions = ResolveOptions
 
 export function buildAvatarUrl(
   rawUrl: string | null | undefined,
-  uid: number,
+  uid: string | number,
   options: AvatarUrlOptions = {}
 ): string {
   if (!rawUrl) return ""

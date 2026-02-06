@@ -113,7 +113,7 @@ const mergeEventPages = (pages: PaginatedResponse<Event>[] | undefined): Event[]
     return []
   }
 
-  const positions = new Map<number, number>()
+  const positions = new Map<string, number>()
   const merged: Event[] = []
 
   for (const page of pages) {
@@ -245,12 +245,12 @@ export const prefetchEventsListQuery = (queryClient: QueryClient, filters: Event
 
 export type MyEventsQueryParams = {
   language: string
-  userId?: number | string | null
+  userId?: string | null
 }
 
 type NormalizedMyEventsParams = {
   language: string
-  userId: number | string | null
+  userId: string | null
 }
 
 const normalizeMyEventsParams = (params: MyEventsQueryParams): NormalizedMyEventsParams => ({

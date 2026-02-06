@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-import app.auth.auth as auth
 from app.models import models
 from app.schemas import schemas
 
@@ -86,148 +85,43 @@ async def test_service_missing_branches():
 
 
 @pytest.mark.asyncio
-async def test_auth_missing_branches():
-    # 1. _format_duration
-    assert auth._format_duration("en", 3600) == "1 hour"
-    assert auth._format_duration("ru", 3600) == "1 час"
-    assert auth._format_duration("en", 3661) == "2 hours"
-    assert auth._format_duration("ru", 3661) == "2 часа"
-    assert auth._format_duration("ru", 18000) == "5 часов"
+async def test_lockout_service_functions():
+    """Test LockoutService format_duration and get_lockout_message methods.
+
+    These functions were previously in auth.py as _format_duration and _lockout_message.
+    They were refactored into LockoutService for better separation of concerns.
+    """
+    from app.services.auth.lockout import LockoutService
+
+    db = AsyncMock()
+    lockout = LockoutService(db)
+
+    # 1. format_duration
+    assert lockout.format_duration("en", 3600) == "1 hour"
+    assert lockout.format_duration("ru", 3600) == "1 час"
+    assert lockout.format_duration("en", 3661) == "2 hours"
+    assert lockout.format_duration("ru", 3661) == "2 часа"
+    assert lockout.format_duration("ru", 18000) == "5 часов"
 
     # 2. Lockout message
     lock_until = datetime.datetime.now(datetime.UTC) + datetime.timedelta(minutes=5)
-    detail, retry = auth._lockout_message("ru", lock_until)
+    with patch("app.services.auth.lockout.translate") as mock_translate:
+        mock_translate.return_value = "Аккаунт заблокирован"
+        detail, retry = lockout.get_lockout_message("ru", lock_until)
     assert "заблокирован" in detail
     assert retry > 0
 
-    # 3. Perform login error paths
-    db = AsyncMock()
-    audit = MagicMock()
-    request = MagicMock()
-    response = MagicMock()
+    # 3. Edge cases for format_duration
+    # Less than 60 seconds
+    assert "second" in lockout.format_duration("en", 30)
+    # Less than 3600 seconds (minutes)
+    assert "minute" in lockout.format_duration("en", 120)
 
-    # Default mock result to avoid 'coroutine' object errors
-    def make_mock_res(user=None):
-        m = MagicMock()
-        m.scalars.return_value.first.return_value = user
-        return m
-
-    # Locked out
-    db.execute.return_value = make_mock_res()
-    mock_user_service = AsyncMock()
-    mock_user_service.get_user_by_email.return_value = None
-    with (
-        patch(
-            "app.auth.auth._active_lockout",
-            new_callable=AsyncMock,
-            return_value=lock_until,
-        ),
-        patch("app.auth.auth.send_lockout_alert.kiq", new_callable=AsyncMock),
-    ):
-        with pytest.raises(auth.HTTPException) as exc:
-            await auth._perform_login(
-                "a@b.com",
-                "p",
-                request,
-                response,
-                db,
-                audit,
-                bg_tasks=MagicMock(),
-                user_service=mock_user_service,
-            )
-        assert exc.value.status_code == 423
-
-    # User not found (and triggers lockout)
-    db.execute.side_effect = [make_mock_res(None), MagicMock()]
-    mock_user_service = AsyncMock()
-    mock_user_service.get_user_by_email.return_value = None
-    with (
-        patch(
-            "app.auth.auth._active_lockout", new_callable=AsyncMock, return_value=None
-        ),
-        patch(
-            "app.auth.auth._register_failed_attempt",
-            new_callable=AsyncMock,
-            return_value=(lock_until, True, 5),
-        ),
-        patch("app.auth.auth.send_lockout_alert.kiq", new_callable=AsyncMock),
-    ):
-        with pytest.raises(auth.HTTPException) as exc:
-            await auth._perform_login(
-                "not@found.com",
-                "p",
-                request,
-                response,
-                db,
-                audit,
-                bg_tasks=MagicMock(),
-                user_service=mock_user_service,
-            )
-        assert exc.value.status_code == 423
-
-    # Inactive user
-    user_inactive = models.User(
-        id=1, email="a@b.com", is_active=False, hashed_password="hash"
-    )
-    db.execute.side_effect = [make_mock_res(user_inactive), MagicMock()]
-    mock_user_service = AsyncMock()
-    mock_user_service.get_user_by_email.return_value = user_inactive
-    with (
-        patch(
-            "app.auth.auth._active_lockout", new_callable=AsyncMock, return_value=None
-        ),
-        patch("app.auth.auth.verify_and_update_password", return_value=(True, None)),
-        patch("app.auth.auth.send_lockout_alert.kiq", new_callable=AsyncMock),
-    ):
-        with pytest.raises(auth.HTTPException) as exc:
-            await auth._perform_login(
-                "a@b.com",
-                "p",
-                request,
-                response,
-                db,
-                audit,
-                bg_tasks=MagicMock(),
-                user_service=mock_user_service,
-            )
-        assert exc.value.status_code == 401
-
-    # MFA Missing (user requires MFA but has no methods)
-    user_mfa = models.User(
-        id=1, email="a@b.com", is_active=True, mfa_required=True, hashed_password="hash"
-    )
-    mock_res_mfa = make_mock_res(user_mfa)
-    mock_res_del = MagicMock()
-    mock_res_del.rowcount = 0
-    db.execute.side_effect = [mock_res_mfa, mock_res_del, MagicMock()]
-    mock_user_service = AsyncMock()
-    mock_user_service.get_user_by_email.return_value = user_mfa
-    with (
-        patch(
-            "app.auth.auth._active_lockout", new_callable=AsyncMock, return_value=None
-        ),
-        patch("app.auth.auth.verify_and_update_password", return_value=(True, None)),
-        patch(
-            "app.auth.auth.ensure_mfa_relationships_loaded",
-            new_callable=AsyncMock,
-            return_value=user_mfa,
-        ),
-        patch(
-            "app.auth.auth._resolve_mfa_capabilities",
-            new_callable=AsyncMock,
-            return_value={},
-        ),
-        patch("app.auth.auth.send_lockout_alert.kiq", new_callable=AsyncMock),
-    ):
-        with pytest.raises(auth.HTTPException) as exc:
-            await auth._perform_login(
-                "a@b.com",
-                "p",
-                request,
-                response,
-                db,
-                audit,
-                bg_tasks=MagicMock(),
-                user_service=mock_user_service,
-            )
-        assert exc.value.status_code == 400
+    # 4. Pluralization edge cases
+    assert lockout._pluralize_en(1, "hours") == "hour"
+    assert lockout._pluralize_en(2, "hours") == "hours"
+    assert lockout._pluralize_ru(1, "hours") == "час"
+    assert lockout._pluralize_ru(2, "hours") == "часа"
+    assert lockout._pluralize_ru(5, "hours") == "часов"
+    assert lockout._pluralize_ru(11, "hours") == "часов"  # 11-14 exception
+    assert lockout._pluralize_ru(21, "hours") == "час"  # 21 ends in 1

@@ -62,6 +62,20 @@ class Settings(
                 )
         return bool(value)
 
+    @field_validator("audit_log_secret")
+    @classmethod
+    def _validate_audit_log_secret(cls, value: str, info: ValidationInfo) -> str:
+        environment = str(info.data.get("environment") or "production").lower()
+        if environment not in _DEVELOPMENT_ENVIRONMENTS and (
+            not value or value == "development-audit-secret-change-me"
+        ):
+            _logger.warning(
+                "AUDIT_LOG_SECRET is using development default in %s environment. "
+                "Set a secure AUDIT_LOG_SECRET for production deployments.",
+                environment,
+            )
+        return value or "development-audit-secret-change-me"
+
     @cached_property
     def app_base_url_clean(self) -> str:
         for candidate in (self.app_base_url, self.frontend_origin):

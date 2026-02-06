@@ -4,7 +4,7 @@ package middleware
 import (
 	"context"
 	"net/http"
-	"strings"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -69,8 +69,9 @@ func (rl *RateLimiter) Middleware() gin.HandlerFunc {
 		}
 
 		// Set rate limit headers
-		c.Header("X-RateLimit-Limit", string(rune(rl.rps)))
-		c.Header("X-RateLimit-Remaining", string(rune(res.Remaining)))
+		// FIXED: Using strconv.Itoa instead of string(rune(val)) to avoid garbled headers
+		c.Header("X-RateLimit-Limit", strconv.Itoa(rl.rps))
+		c.Header("X-RateLimit-Remaining", strconv.Itoa(res.Remaining))
 		c.Header("X-RateLimit-Reset", res.ResetAfter.String())
 
 		if res.Allowed == 0 {
@@ -93,16 +94,8 @@ func (rl *RateLimiter) getClientKey(c *gin.Context) string {
 		return "user:" + userID.(string)
 	}
 
-	// Fall back to IP address
-	ip := c.ClientIP()
-
-	// Check for forwarded IP
-	if forwarded := c.GetHeader("X-Forwarded-For"); forwarded != "" {
-		parts := strings.Split(forwarded, ",")
-		if len(parts) > 0 {
-			ip = strings.TrimSpace(parts[0])
-		}
-	}
-
-	return "ip:" + ip
+	// Fall back to IP address.
+	// We rely on Gin's ClientIP() which is safer and respects TrustedProxies.
+	// Manual parsing of X-Forwarded-For is insecure as it's easily spoofable.
+	return "ip:" + c.ClientIP()
 }

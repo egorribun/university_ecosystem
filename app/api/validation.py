@@ -5,6 +5,7 @@ Consolidated validation functions to reduce code duplication across API endpoint
 Each helper raises HTTPException with appropriate status codes and localized messages.
 """
 
+import uuid
 from typing import TYPE_CHECKING, Any, TypeVar, overload
 
 from fastapi import HTTPException, status
@@ -42,7 +43,7 @@ def raise_not_found(
     resource_key: str,
     locale: str,
     *,
-    resource_id: int | str | None = None,
+    resource_id: uuid.UUID | int | str | None = None,
     exact_key: str | None = None,
 ) -> None:
     """
@@ -128,7 +129,7 @@ def require_owner_or_admin(
     user: "User",
     locale: str,
     *,
-    owner_id: int,
+    owner_id: uuid.UUID | int,
 ) -> None: ...
 
 
@@ -137,7 +138,7 @@ def require_owner_or_admin(
     user: "User",
     locale: str,
     *,
-    owner_id: int,
+    owner_id: uuid.UUID | int,
     allow_teacher: bool,
 ) -> None: ...
 
@@ -146,7 +147,7 @@ def require_owner_or_admin(
     user: "User",
     locale: str,
     *,
-    owner_id: int,
+    owner_id: uuid.UUID | int,
     allow_teacher: bool = False,
 ) -> None:
     """

@@ -1,18 +1,19 @@
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
+from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.validation import raise_forbidden, raise_unauthorized
 from app.auth import mfa
-from app.auth.redis_session import get_session_backend
+from app.auth.rbac import PermissionChecker
 from app.auth.security import decode_token
 from app.core.config import settings
 from app.core.container import get_vector_service
-from app.core.database import get_db
+from app.core.database import get_db, get_read_db
 from app.core.localization import resolve_locale, translate
 from app.models.models import ActiveSession, User
 from app.models.user_loaders import USER_MFA_LOAD_OPTIONS
@@ -42,34 +43,150 @@ async def get_current_user(
         fail_auth()
     sub = payload.get("sub")
     jti = payload.get("jti")
+    if not sub:
+        fail_auth()
     try:
-        user_id = int(sub)
+        user_id = UUID(sub)
     except (TypeError, ValueError):
         fail_auth()
-    user = await db.get(User, user_id, options=USER_MFA_LOAD_OPTIONS)
-    if not user or not user.is_active:
-        fail_auth()
-    if not jti:
-        fail_auth()
 
-    # Fast-path check in Redis session backend if enabled
-    session_backend = await get_session_backend()
-    is_valid_redis = await session_backend.is_session_valid(jti)
-    if not is_valid_redis:
-        # Even if not in Redis, we might want to check DB as a fallback
-        # but for performance we can assume if it's supposed to be in Redis,
-        # it should be there.
-        # If session_storage_backend is "redis", then we trust Redis.
-        if settings.session_storage_backend == "redis":
+    # Redis Session Check (Cache-Aside)
+    from app.services.auth.redis_session import RedisSessionService
+
+    redis_service = RedisSessionService()
+    cached_session = await redis_service.get_session(jti)
+
+    user: User | None = None
+    session_obj: ActiveSession | None = None
+
+    if cached_session:
+        # HIT: Fast path
+        # 1. Verify User ID matches (sanity check)
+        if cached_session["user_id"] != str(user_id):
             fail_auth()
 
-    res = await db.execute(select(ActiveSession).where(ActiveSession.jti == jti))
-    session = res.scalars().first()
+        # 2. Update activity in background (Redis)
+        request.state.redis_session_jti = (
+            jti  # Store for optimized access later if needed
+        )
+        # We don't await this to keep latency low, or we assume it's fast enough
+        await redis_service.update_last_seen(jti)
+
+        # 3. Load User from DB (Simple PK lookup, no joins needed for basic auth)
+        # Note: We still need user roles/options.
+        user = await db.get(User, user_id, options=USER_MFA_LOAD_OPTIONS)
+        if not user or not user.is_active:
+            fail_auth()
+
+        # Reconstruct minimal Session object for compatibility
+        # We don't fetch the full ActiveSession from DB unless needed
+        # (e.g. fingerprint mismatch)
+        # However, legacy code expects `session` object.
+        # For now, we fetch DB session primarily if we suspect issues
+        # or for rigorous consistency,
+        # OR we construct a transient implementation.
+        # To maintain strict compatibility with `session.fingerprint_hash` checks below,
+        # we will skip the DB session load IF fingerprint matches.
+
+        # Validate Fingerprint from Redis data
+        cached_fp_hash = cached_session.get("fingerprint_hash")
+
+        # If we need the full DB object to respect logic below
+        # (which commits MFA state),
+        # we might still need it. But let's try to avoid the JOIN.
+        pass
+
+    # MISS or Fallback: Full DB Validation
+    if not user:
+        res = await db.execute(
+            select(User, ActiveSession)
+            .join(ActiveSession, ActiveSession.user_id == User.id)
+            .where(User.id == user_id, User.is_active.is_(True))
+            .where(ActiveSession.jti == jti)
+            .where(ActiveSession.revoked_at.is_(None))
+            .options(*USER_MFA_LOAD_OPTIONS)
+        )
+        row = res.first()
+        if not row:
+            fail_auth()
+        user, session_obj = row
+
+        # POPULATE REDIS (Cache-Aside)
+        from app.auth.fingerprint import SessionFingerprint
+
+        fp = SessionFingerprint(
+            user_agent=session_obj.user_agent,
+            ip_address=session_obj.ip_address,
+            accept_language=session_obj.accept_language,
+            fingerprint_hash=session_obj.fingerprint_hash,
+        )
+        await redis_service.create_session(
+            jti=jti,
+            user_id=user.id,
+            fingerprint=fp,
+            mfa_verified_at=session_obj.mfa_verified_at,
+        )
+
+    # If we hit Redis, we still need `session_obj` for the logic below
+    # (fingerprint check etc).
+    # Optimally, we construct it from checking the current request matches Redis data.
+    # If we are here and `session_obj` is None, it means we hit Redis
+    # but haven't loaded DB session.
+
+    if not session_obj and cached_session:
+        # Check constraints without DB
+        cached_fp_hash = cached_session.get("fingerprint_hash")
+
+        # Fingerprint Validation (Redis Path)
+        if cached_fp_hash:
+            from app.auth.fingerprint import extract_fingerprint
+
+            current_fp = extract_fingerprint(request)
+            if current_fp.fingerprint_hash != cached_fp_hash:
+                # Suspicious! Fallback to DB to run full logic
+                pass  # Logic continues below requires real session object
+                # To simplify migration phase: If Redis hit, we basically trust it
+                # unless we implement full logic here.
+                # For safety in Phase 1: We will fetch the DB session even on Redis hit
+                # BUT using a simpler query
+                # (SELECT * FROM active_sessions WHERE id = ...),
+                # avoiding the JOIN if possible, or accept that we simply
+                # optimized user loading.
+
+                # REVISED STRATEGY:
+                # The big cost is the JOIN.
+                # We already loaded User.
+                # Let's load Session by JTI separately (fast index scan).
+                res_s = await db.execute(
+                    select(ActiveSession).where(ActiveSession.jti == jti)
+                )
+                session_obj = res_s.scalars().first()
+                if not session_obj or session_obj.revoked_at:
+                    fail_auth()
+
+    # If we still don't have session_obj (shouldn't happen if logic is correct):
+    if not session_obj:
+        # Fallback load
+        res_s = await db.execute(select(ActiveSession).where(ActiveSession.jti == jti))
+        session_obj = res_s.scalars().first()
+        if not session_obj:
+            fail_auth()
+
+    # --- Standard Validation Logic (from DB object) ---
+    # Now that we have session_obj, we run standard checks.
+    # The optimization is that we avoided the JOIN for every request
+    # by splitting queries
+    # (if using Redis) or we accept that we double-check DB for now.
+
+    # Actually, for true performance, we should NOT load session_obj if Redis is valid.
+    # Let's trust Redis for validity (revocation check) and only load DB
+    # if we need to write to it.
+    #
+    # Current implementation limitation: The existing logic heavily relies
+    # on `session` attributes.
+    # Preserving behavior:
+    session = session_obj
     now = datetime.now(UTC)
-    if not session or session.user_id != user.id:
-        fail_auth()
-    if session.revoked_at is not None:
-        fail_auth()
     expires_at = session.expires_at
     if expires_at is None:
         fail_auth()
@@ -78,7 +195,7 @@ async def get_current_user(
     if expires_at <= now:
         fail_auth()
 
-    # Fingerprint validation for session binding (logs suspicious activity)
+    # Fingerprint validation
     if session.fingerprint_hash:
         from app.auth.fingerprint import (
             SessionFingerprint,
@@ -94,7 +211,6 @@ async def get_current_user(
             fingerprint_hash=session.fingerprint_hash,
         )
 
-        # Check for fingerprint mismatch (log but don't block)
         if current_fp.fingerprint_hash != stored_fp.fingerprint_hash:
             detector = get_suspicious_activity_detector()
             event = detector.check_fingerprint_mismatch(
@@ -107,9 +223,14 @@ async def get_current_user(
                 import logging
 
                 logging.getLogger("app.auth.security").warning(
-                    "Session fingerprint mismatch detected",
+                    "Session fingerprint mismatch detected - enforcing MFA step-up",
                     extra=event.to_log_record(),
                 )
+                session.mfa_verified_at = None
+                session.mfa_required = True
+                await db.commit()
+                # Update Redis
+                # await redis_service.create_session(...) # Sync state
 
     ttl = max(0, getattr(settings, "mfa_step_up_ttl_seconds", 0))
     if ttl > 0 and session.mfa_verified_at is not None:
@@ -120,20 +241,40 @@ async def get_current_user(
             session.mfa_verified_at = None
             await db.commit()
 
-    update_last_seen = False
+    # DB UPDATE OPTIMIZATION:
+    # If we are using Redis and verified it was fresh, we can SKIP the DB
+    # `last_seen_at` update entirely!
+    # The Redis `update_last_seen` handles the hot path.
+    # We only update DB occasionally (e.g. every 5-10 mins) to keep audit logs
+    # roughly accurate.
+
     last_seen_at = session.last_seen_at
-    if last_seen_at is None:
-        update_last_seen = True
-    else:
-        if last_seen_at.tzinfo is None:
-            last_seen_at = last_seen_at.replace(tzinfo=UTC)
-        # Optimized: Throttle updates to once per 5 minutes (300s) to reduce write load
-        if now - last_seen_at >= timedelta(seconds=300):
-            update_last_seen = True
-    request.state.active_session = session
-    if update_last_seen:
-        session.last_seen_at = now
+    if last_seen_at is not None and last_seen_at.tzinfo is None:
+        last_seen_at = last_seen_at.replace(tzinfo=UTC)
+
+    # Increase sync window to 10 minutes if using Redis, else 5 mins
+    sync_window = 600 if cached_session else 300
+
+    if last_seen_at is None or (now - last_seen_at >= timedelta(seconds=sync_window)):
+        from sqlalchemy import update
+
+        stmt = (
+            update(ActiveSession)
+            .where(ActiveSession.id == session.id)
+            .where(
+                or_(
+                    ActiveSession.last_seen_at.is_(None),
+                    ActiveSession.last_seen_at < now - timedelta(seconds=sync_window),
+                )
+            )
+            .values(last_seen_at=now)
+            .execution_options(synchronize_session=False)
+        )
+        await db.execute(stmt)
         await db.commit()
+        session.last_seen_at = now
+
+    request.state.active_session = session
     return user
 
 
@@ -152,9 +293,11 @@ async def get_current_user_optional(
 async def get_current_admin_user(
     request: Request,
     user: Annotated[User, Depends(get_current_user)],
+    checker: Annotated[PermissionChecker, Depends()],
 ) -> User:
-    """Dependency that ensures the current user is an admin."""
-    if user.role != "admin":
+    """Dependency that ensures the current user is an admin via SpiceDB."""
+    is_admin_user = await checker.check_admin(str(user.id), user=user)
+    if not is_admin_user:
         locale = resolve_locale(request=request)
         raise_forbidden(locale)
     return user
@@ -178,7 +321,7 @@ def _enforce_fresh_mfa(request: Request) -> None:
             detail={
                 "error": "mfa_step_up_required",
                 "message": message,
-                "session_id": session.id,
+                "session_id": str(session.id),
             },
         )
 
@@ -193,7 +336,7 @@ def _enforce_fresh_mfa(request: Request) -> None:
             detail={
                 "error": "mfa_step_up_required",
                 "message": message,
-                "session_id": session.id,
+                "session_id": str(session.id),
             },
         )
 
@@ -249,10 +392,15 @@ def get_chat_service(
     return ChatService(session)
 
 
-def get_event_service(
-    session: Annotated[AsyncSession, Depends(get_db)],
-    vector_service: Annotated[Any, Depends(get_vector_service)],
-) -> Any:
+def get_read_chat_service(
+    session: Annotated[AsyncSession, Depends(get_read_db)],
+) -> "ChatService":  # type: ignore # noqa: F821
+    from app.services.chat_service import ChatService
+
+    return ChatService(session)
+
+
+def create_event_service(session: AsyncSession, vector_service: Any) -> Any:
     from app.repositories.event_repository import EventRepository
     from app.services.event_service import EventService
 
@@ -260,10 +408,21 @@ def get_event_service(
     return EventService(repo, vector_service)
 
 
-def get_news_service(
+def get_event_service(
     session: Annotated[AsyncSession, Depends(get_db)],
     vector_service: Annotated[Any, Depends(get_vector_service)],
 ) -> Any:
+    return create_event_service(session, vector_service)
+
+
+def get_read_event_service(
+    session: Annotated[AsyncSession, Depends(get_read_db)],
+    vector_service: Annotated[Any, Depends(get_vector_service)],
+) -> Any:
+    return create_event_service(session, vector_service)
+
+
+def create_news_service(session: AsyncSession, vector_service: Any) -> Any:
     from app.repositories.news_repository import NewsRepository
     from app.services.news_service import NewsService
 
@@ -271,9 +430,21 @@ def get_news_service(
     return NewsService(repo, vector_service)
 
 
-def get_story_service(
+def get_news_service(
     session: Annotated[AsyncSession, Depends(get_db)],
+    vector_service: Annotated[Any, Depends(get_vector_service)],
 ) -> Any:
+    return create_news_service(session, vector_service)
+
+
+def get_read_news_service(
+    session: Annotated[AsyncSession, Depends(get_read_db)],
+    vector_service: Annotated[Any, Depends(get_vector_service)],
+) -> Any:
+    return create_news_service(session, vector_service)
+
+
+def create_story_service(session: AsyncSession) -> Any:
     from app.repositories.story_repository import StoryRepository
     from app.services.story_service import StoryService
 
@@ -281,9 +452,19 @@ def get_story_service(
     return StoryService(repo)
 
 
-def get_schedule_service(
+def get_story_service(
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> Any:
+    return create_story_service(session)
+
+
+def get_read_story_service(
+    session: Annotated[AsyncSession, Depends(get_read_db)],
+) -> Any:
+    return create_story_service(session)
+
+
+def create_schedule_service(session: AsyncSession) -> Any:
     from app.repositories.schedule_repository import GroupRepository, ScheduleRepository
     from app.services.schedule_optimizer import ScheduleOptimizerService
     from app.services.schedule_service import ScheduleService
@@ -292,6 +473,37 @@ def get_schedule_service(
     group_repo = GroupRepository(session)
     optimizer = ScheduleOptimizerService()
     return ScheduleService(repo, group_repo, optimizer)
+
+
+def get_schedule_service(
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> Any:
+    return create_schedule_service(session)
+
+
+def get_read_schedule_service(
+    session: Annotated[AsyncSession, Depends(get_read_db)],
+) -> Any:
+    return create_schedule_service(session)
+
+
+def get_auth_service(
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> Any:
+    from app.services.audit_service import audit_service
+    from app.services.auth_service import AuthService
+
+    return AuthService(session, audit_service)
+
+
+def get_session_service(
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> Any:
+    from app.repositories.active_session_repository import ActiveSessionRepository
+    from app.services.session_service import SessionService
+
+    repo = ActiveSessionRepository(session)
+    return SessionService(session, repo)
 
 
 def get_user_service(
@@ -305,3 +517,22 @@ def get_user_service(
     repo = UserRepository(session)
     notifications = NotificationService(session)
     return UserService(session, repo, audit_service, notifications)
+
+
+def get_audit_service() -> Any:
+    from app.services.audit_service import audit_service
+
+    return audit_service
+
+
+def get_login_service(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    user_service: Annotated[Any, Depends(get_user_service)],
+    session_service: Annotated[Any, Depends(get_session_service)],
+    audit: Annotated[Any, Depends(get_audit_service)],
+) -> Any:
+    from app.services.auth.lockout import LockoutService
+    from app.services.auth.login_service import LoginService
+
+    lockout_service = LockoutService(db)
+    return LoginService(db, user_service, session_service, lockout_service, audit)

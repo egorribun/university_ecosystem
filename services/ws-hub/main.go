@@ -19,7 +19,10 @@ import (
 )
 
 func main() {
-	logger, _ := zap.NewProduction()
+	logger, err := zap.NewProduction()
+	if err != nil {
+		panic(err)
+	}
 	defer func() { _ = logger.Sync() }()
 
 	cfg := config.LoadConfig()
