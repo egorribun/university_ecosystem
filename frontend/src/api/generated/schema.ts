@@ -162,6 +162,10 @@ export interface paths {
     /**
      * Logout
      * @description Terminate the client session.
+     *
+     *     Revokes the current session in the database and clears all
+     *     authentication-related cookies. Also sets Clear-Site-Data header
+     *     to ensure browser removes cached data.
      */
     post: operations["logout_api_v1_auth_logout_post"]
     delete?: never
