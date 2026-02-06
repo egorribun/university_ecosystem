@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import PropertyMock, patch
 from uuid import uuid4
 
+import pyotp
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -26,8 +27,9 @@ async def test_mfa_check_helpers(db_session, user_factory):
     assert mfa.user_has_confirmed_interactive_factor(user) is False
 
     # Add unconfirmed TOTP
+    secret = pyotp.random_base32()
     enrollment = models.MfaTotpEnrollment(
-        user_id=user.id, secret="JBSWY3DPEHPK3PXP", is_active=False
+        user_id=user.id, secret=secret, is_active=False
     )
     db_session.add(enrollment)
     await db_session.commit()
@@ -314,8 +316,8 @@ async def test_refresh_preferences_edge_cases(db_session, user_factory):
 
     cred = WebAuthnCredential(
         user_id=user.id,
-        credential_id=b"cid",
-        public_key=b"pk",
+        credential_id=str(uuid4()),
+        public_key="pk",
         sign_count=0,
     )
     db_session.add(cred)
@@ -399,6 +401,17 @@ async def test_verify_totp_for_user_edge_cases(db_session, user_factory):
     # Session ID mismatch
     sid1 = uuid4()
     sid2 = uuid4()
+
+    # Create session for FK constraint
+    session_obj = models.ActiveSession(
+        id=sid1,
+        user_id=user.id,
+        jti="jti-sid1",
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
+    )
+    db_session.add(session_obj)
+    await db_session.commit()
+
     chal_with_sid = await mfa.issue_challenge(
         db_session,
         user_id=user.id,
