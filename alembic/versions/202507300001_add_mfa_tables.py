@@ -34,6 +34,10 @@ def _index_names(inspector, table: str) -> set[str]:
     return {index["name"] for index in inspector.get_indexes(table)}
 
 
+def _empty_names(inspector, table: str) -> set[str]:
+    return set()
+
+
 def upgrade() -> None:
     bind = op.get_bind()
     dialect_name = bind.dialect.name
@@ -55,8 +59,8 @@ def upgrade() -> None:
             _ACTIVE_SESSIONS_TABLE,
         }
         # Mock inspector functions for offline mode
-        get_cols = lambda inspector, table: set()
-        get_idxs = lambda inspector, table: set()
+        get_cols = _empty_names
+        get_idxs = _empty_names
         inspector = None
     else:
         tables = _table_names(inspector)
@@ -386,8 +390,8 @@ def downgrade() -> None:
 
     if inspector is None:
         tables = {}  # Skip drop checks in offline mode
-        get_idxs = lambda inspector, table: set()
-        get_cols = lambda inspector, table: set()
+        get_idxs = _empty_names
+        get_cols = _empty_names
     else:
         tables = _table_names(inspector)
 
