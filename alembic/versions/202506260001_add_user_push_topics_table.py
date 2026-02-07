@@ -80,7 +80,7 @@ def upgrade() -> None:  # noqa: D401 - Alembic migration hook.
             _TABLE_NAME,
             sa.Column(
                 "user_id",
-                sa.UUID(),
+                sa.Integer(),
                 sa.ForeignKey("users.id", ondelete="CASCADE"),
                 primary_key=True,
             ),

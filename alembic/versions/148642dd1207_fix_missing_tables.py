@@ -27,8 +27,12 @@ SKIPPED_TABLES = set()
 
 def safe_create_table(table_name: str, *args, **kwargs) -> None:
     conn = op.get_bind()
-    inspector = sa.inspect(conn)
-    if not inspector.has_table(table_name):
+    try:
+        inspector = sa.inspect(conn)
+    except (sa.exc.NoInspectionAvailable, NameError):
+        inspector = None
+
+    if inspector is None or not inspector.has_table(table_name):
         op.create_table(table_name, *args, **kwargs)
     else:
         SKIPPED_TABLES.add(table_name)
@@ -54,7 +58,14 @@ def ensure_partitioned(table_name: str, create_sql: str, partition_key: str) -> 
     if conn.dialect.name != "postgresql":
         return
 
-    inspector = sa.inspect(conn)
+    try:
+        inspector = sa.inspect(conn)
+    except (sa.exc.NoInspectionAvailable, NameError):
+        inspector = None
+
+    if inspector is None:
+        return
+
     if not inspector.has_table(table_name):
         return
 
@@ -90,9 +101,17 @@ def upgrade() -> None:
     """Upgrade schema."""
     bind = op.get_bind()
     is_postgresql = bind.dialect.name == "postgresql"
-    inspector = sa.inspect(bind)
-    existing_columns = {c["name"] for c in inspector.get_columns("groups")}
-    existing_indexes = {i["name"] for i in inspector.get_indexes("groups")}
+    try:
+        inspector = sa.inspect(bind)
+    except (sa.exc.NoInspectionAvailable, NameError):
+        inspector = None
+
+    if inspector:
+        existing_columns = {c["name"] for c in inspector.get_columns("groups")}
+        existing_indexes = {i["name"] for i in inspector.get_indexes("groups")}
+    else:
+        existing_columns = set()
+        existing_indexes = set()
 
     with safe_batch_alter_table("groups", schema=None) as batch_op:
         if "course" not in existing_columns:

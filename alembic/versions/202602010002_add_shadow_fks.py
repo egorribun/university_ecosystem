@@ -26,8 +26,6 @@ FK_TABLES = [
     ("password_reset_tokens", "shadow_user_id"),
     ("email_change_tokens", "shadow_user_id"),
     ("trusted_devices", "shadow_user_id"),
-    ("webauthn_credentials", "shadow_user_id"),
-    ("recovery_codes", "shadow_user_id"),
     ("login_history", "shadow_user_id"),
     ("event_attendance", "shadow_user_id"),
     ("event_attendance", "shadow_event_id"),
