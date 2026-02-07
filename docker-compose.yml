@@ -151,7 +151,7 @@ services:
       context: .
       dockerfile: backend.Dockerfile
       target: runtime
-    command: alembic stamp head
+    command: alembic upgrade head
     env_file:
       - ${ENV_FILE:-.env.example}
     environment:

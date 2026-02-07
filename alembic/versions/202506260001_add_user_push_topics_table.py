@@ -80,7 +80,7 @@ def upgrade() -> None:  # noqa: D401 - Alembic migration hook.
             _TABLE_NAME,
             sa.Column(
                 "user_id",
-                sa.Integer(),
+                sa.UUID(),
                 sa.ForeignKey("users.id", ondelete="CASCADE"),
                 primary_key=True,
             ),
@@ -109,8 +109,8 @@ def upgrade() -> None:  # noqa: D401 - Alembic migration hook.
                 ["updated_at"],
             )
 
-    if inspector.has_table("push_subscriptions"):
-        _populate_existing_data()
+    # if inspector.has_table("push_subscriptions"):
+    #     _populate_existing_data()
 
 
 def downgrade() -> None:  # noqa: D401 - Alembic migration hook.

@@ -304,13 +304,13 @@ def upgrade() -> None:
             sa.Column("id", sa.Integer(), primary_key=True),
             sa.Column(
                 "user_id",
-                sa.Integer(),
+                sa.UUID(),
                 sa.ForeignKey(f"{_USERS_TABLE}.id", ondelete="CASCADE"),
                 nullable=False,
             ),
             sa.Column(
                 "session_id",
-                sa.Integer(),
+                sa.UUID(),
                 sa.ForeignKey(f"{_ACTIVE_SESSIONS_TABLE}.id", ondelete="CASCADE"),
                 nullable=True,
             ),
