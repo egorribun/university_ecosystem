@@ -26,7 +26,14 @@ def upgrade() -> None:
         return
 
     # Check if tables exist (may not exist on fresh databases)
-    inspector = sa.inspect(bind)
+    try:
+        inspector = sa.inspect(bind)
+    except (sa.exc.NoInspectionAvailable, NameError):
+        inspector = None
+
+    if inspector is None:
+        return
+
     existing_tables = set(inspector.get_table_names())
 
     # Alter sender_id column type from VARCHAR to INTEGER
@@ -55,7 +62,14 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Downgrade schema."""
     bind = op.get_bind()
-    inspector = sa.inspect(bind)
+    try:
+        inspector = sa.inspect(bind)
+    except (sa.exc.NoInspectionAvailable, NameError):
+        inspector = None
+
+    if inspector is None:
+        return
+
     existing_tables = set(inspector.get_table_names())
 
     if bind.dialect.name == "sqlite":

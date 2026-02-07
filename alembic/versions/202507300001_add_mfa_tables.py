@@ -34,16 +34,40 @@ def _index_names(inspector, table: str) -> set[str]:
     return {index["name"] for index in inspector.get_indexes(table)}
 
 
+def _empty_names(inspector, table: str) -> set[str]:
+    return set()
+
+
 def upgrade() -> None:
     bind = op.get_bind()
-    inspector = sa.inspect(bind)
-    tables = _table_names(inspector)
     dialect_name = bind.dialect.name
     is_sqlite = dialect_name == "sqlite"
 
+    # Offline mode check
+    try:
+        inspector = sa.inspect(bind)
+    except (sa.exc.NoInspectionAvailable, NameError):
+        inspector = None
+
+    # Implementation helpers - default to global functions
+    get_cols = _column_names
+    get_idxs = _index_names
+
+    if inspector is None:
+        tables = {
+            _USERS_TABLE,
+            _ACTIVE_SESSIONS_TABLE,
+        }
+        # Mock inspector functions for offline mode
+        get_cols = _empty_names
+        get_idxs = _empty_names
+        inspector = None
+    else:
+        tables = _table_names(inspector)
+
     if _USERS_TABLE in tables:
-        user_columns = _column_names(inspector, _USERS_TABLE)
-        user_indexes = _index_names(inspector, _USERS_TABLE)
+        user_columns = get_cols(inspector, _USERS_TABLE)
+        user_indexes = get_idxs(inspector, _USERS_TABLE)
 
         if "mfa_required" not in user_columns:
             op.add_column(
@@ -81,14 +105,14 @@ def upgrade() -> None:
                 ),
             )
 
-        if (
-            "ix_users_mfa_required" not in user_indexes
-            and "mfa_required" in _column_names(sa.inspect(bind), _USERS_TABLE)
+        if "ix_users_mfa_required" not in user_indexes and "mfa_required" in (
+            get_cols(inspector, _USERS_TABLE) if inspector else set()
         ):
             op.create_index("ix_users_mfa_required", _USERS_TABLE, ["mfa_required"])
         if (
             "ix_users_mfa_last_verified_at" not in user_indexes
-            and "mfa_last_verified_at" in _column_names(sa.inspect(bind), _USERS_TABLE)
+            and "mfa_last_verified_at"
+            in (get_cols(inspector, _USERS_TABLE) if inspector else set())
         ):
             op.create_index(
                 "ix_users_mfa_last_verified_at",
@@ -98,7 +122,7 @@ def upgrade() -> None:
         if (
             "ix_users_mfa_recovery_codes_generated_at" not in user_indexes
             and "mfa_recovery_codes_generated_at"
-            in _column_names(sa.inspect(bind), _USERS_TABLE)
+            in (get_cols(inspector, _USERS_TABLE) if inspector else set())
         ):
             op.create_index(
                 "ix_users_mfa_recovery_codes_generated_at",
@@ -107,8 +131,8 @@ def upgrade() -> None:
             )
 
     if _ACTIVE_SESSIONS_TABLE in tables:
-        session_columns = _column_names(inspector, _ACTIVE_SESSIONS_TABLE)
-        session_indexes = _index_names(inspector, _ACTIVE_SESSIONS_TABLE)
+        session_columns = get_cols(inspector, _ACTIVE_SESSIONS_TABLE)
+        session_indexes = get_idxs(inspector, _ACTIVE_SESSIONS_TABLE)
 
         if "mfa_required" not in session_columns:
             op.add_column(
@@ -144,7 +168,7 @@ def upgrade() -> None:
         if (
             "ix_active_sessions_mfa_required" not in session_indexes
             and "mfa_required"
-            in _column_names(sa.inspect(bind), _ACTIVE_SESSIONS_TABLE)
+            in (get_cols(inspector, _ACTIVE_SESSIONS_TABLE) if inspector else set())
         ):
             op.create_index(
                 "ix_active_sessions_mfa_required",
@@ -154,7 +178,7 @@ def upgrade() -> None:
         if (
             "ix_active_sessions_mfa_completed_at" not in session_indexes
             and "mfa_completed_at"
-            in _column_names(sa.inspect(bind), _ACTIVE_SESSIONS_TABLE)
+            in (get_cols(inspector, _ACTIVE_SESSIONS_TABLE) if inspector else set())
         ):
             op.create_index(
                 "ix_active_sessions_mfa_completed_at",
@@ -162,7 +186,9 @@ def upgrade() -> None:
                 ["mfa_completed_at"],
             )
 
-    tables = _table_names(sa.inspect(bind))
+    if inspector:
+        tables = _table_names(inspector)
+    # else tables remains set from earlier
 
     if _TOTP_TABLE not in tables:
         op.create_table(
@@ -170,7 +196,7 @@ def upgrade() -> None:
             sa.Column("id", sa.Integer(), primary_key=True),
             sa.Column(
                 "user_id",
-                sa.UUID(),
+                sa.Integer(),
                 sa.ForeignKey(f"{_USERS_TABLE}.id", ondelete="CASCADE"),
                 nullable=False,
             ),
@@ -209,7 +235,7 @@ def upgrade() -> None:
             sa.Column("id", sa.Integer(), primary_key=True),
             sa.Column(
                 "user_id",
-                sa.UUID(),
+                sa.Integer(),
                 sa.ForeignKey(f"{_USERS_TABLE}.id", ondelete="CASCADE"),
                 nullable=False,
             ),
@@ -278,7 +304,7 @@ def upgrade() -> None:
             sa.Column("id", sa.Integer(), primary_key=True),
             sa.Column(
                 "user_id",
-                sa.UUID(),
+                sa.Integer(),
                 sa.ForeignKey(f"{_USERS_TABLE}.id", ondelete="CASCADE"),
                 nullable=False,
             ),
@@ -352,11 +378,25 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     bind = op.get_bind()
-    inspector = sa.inspect(bind)
-    tables = _table_names(inspector)
+
+    try:
+        inspector = sa.inspect(bind)
+    except (sa.exc.NoInspectionAvailable, NameError):
+        inspector = None
+
+    # Implementation helpers - default to global functions
+    get_cols = _column_names
+    get_idxs = _index_names
+
+    if inspector is None:
+        tables = {}  # Skip drop checks in offline mode
+        get_idxs = _empty_names
+        get_cols = _empty_names
+    else:
+        tables = _table_names(inspector)
 
     if _CHALLENGES_TABLE in tables:
-        existing_indexes = _index_names(inspector, _CHALLENGES_TABLE)
+        existing_indexes = get_idxs(inspector, _CHALLENGES_TABLE)
         for index_name in [
             f"ix_{_CHALLENGES_TABLE}_consumed_at",
             f"ix_{_CHALLENGES_TABLE}_expires_at",
@@ -370,7 +410,7 @@ def downgrade() -> None:
         op.drop_table(_CHALLENGES_TABLE)
 
     if _RECOVERY_TABLE in tables:
-        existing_indexes = _index_names(inspector, _RECOVERY_TABLE)
+        existing_indexes = get_idxs(inspector, _RECOVERY_TABLE)
         for index_name in [
             f"ix_{_RECOVERY_TABLE}_used_at",
             f"ix_{_RECOVERY_TABLE}_user_id",
@@ -380,7 +420,7 @@ def downgrade() -> None:
         op.drop_table(_RECOVERY_TABLE)
 
     if _WEBAUTHN_TABLE in tables:
-        existing_indexes = _index_names(inspector, _WEBAUTHN_TABLE)
+        existing_indexes = get_idxs(inspector, _WEBAUTHN_TABLE)
         for index_name in [
             "ix_mfa_webauthn_user_active",
             f"ix_{_WEBAUTHN_TABLE}_last_used_at",
@@ -393,7 +433,7 @@ def downgrade() -> None:
         op.drop_table(_WEBAUTHN_TABLE)
 
     if _TOTP_TABLE in tables:
-        existing_indexes = _index_names(inspector, _TOTP_TABLE)
+        existing_indexes = get_idxs(inspector, _TOTP_TABLE)
         for index_name in [
             "ix_mfa_totp_enrollments_active",
             f"ix_{_TOTP_TABLE}_revoked_at",
@@ -405,11 +445,14 @@ def downgrade() -> None:
                 op.drop_index(index_name, table_name=_TOTP_TABLE)
         op.drop_table(_TOTP_TABLE)
 
-    inspector = sa.inspect(bind)
-    tables = _table_names(inspector)
+    if inspector:
+        tables = _table_names(inspector)
+    # else use previous tables (empty or from earlier)
 
     if _ACTIVE_SESSIONS_TABLE in tables:
-        session_indexes = _index_names(inspector, _ACTIVE_SESSIONS_TABLE)
+        session_indexes = (
+            get_idxs(inspector, _ACTIVE_SESSIONS_TABLE) if inspector else set()
+        )
         if "ix_active_sessions_mfa_completed_at" in session_indexes:
             op.drop_index(
                 "ix_active_sessions_mfa_completed_at",
@@ -420,7 +463,9 @@ def downgrade() -> None:
                 "ix_active_sessions_mfa_required",
                 table_name=_ACTIVE_SESSIONS_TABLE,
             )
-        session_columns = _column_names(inspector, _ACTIVE_SESSIONS_TABLE)
+        session_columns = (
+            get_cols(inspector, _ACTIVE_SESSIONS_TABLE) if inspector else set()
+        )
         if "mfa_method" in session_columns:
             op.drop_column(_ACTIVE_SESSIONS_TABLE, "mfa_method")
         if "mfa_completed_at" in session_columns:
@@ -428,11 +473,12 @@ def downgrade() -> None:
         if "mfa_required" in session_columns:
             op.drop_column(_ACTIVE_SESSIONS_TABLE, "mfa_required")
 
-    inspector = sa.inspect(bind)
-    tables = _table_names(inspector)
+    if inspector:
+        tables = _table_names(inspector)
+    # else keep previous
 
     if _USERS_TABLE in tables:
-        user_indexes = _index_names(inspector, _USERS_TABLE)
+        user_indexes = get_idxs(inspector, _USERS_TABLE) if inspector else set()
         if "ix_users_mfa_recovery_codes_generated_at" in user_indexes:
             op.drop_index(
                 "ix_users_mfa_recovery_codes_generated_at",
@@ -442,7 +488,7 @@ def downgrade() -> None:
             op.drop_index("ix_users_mfa_last_verified_at", table_name=_USERS_TABLE)
         if "ix_users_mfa_required" in user_indexes:
             op.drop_index("ix_users_mfa_required", table_name=_USERS_TABLE)
-        user_columns = _column_names(inspector, _USERS_TABLE)
+        user_columns = get_cols(inspector, _USERS_TABLE) if inspector else set()
         if "mfa_recovery_codes_generated_at" in user_columns:
             op.drop_column(_USERS_TABLE, "mfa_recovery_codes_generated_at")
         if "mfa_last_verified_at" in user_columns:

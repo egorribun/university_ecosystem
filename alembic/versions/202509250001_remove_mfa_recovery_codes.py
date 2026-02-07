@@ -85,7 +85,7 @@ def downgrade() -> None:
             sa.Column("id", sa.Integer(), primary_key=True),
             sa.Column(
                 "user_id",
-                sa.UUID(),
+                sa.Integer(),
                 sa.ForeignKey(f"{_USERS_TABLE}.id", ondelete="CASCADE"),
                 nullable=False,
             ),
