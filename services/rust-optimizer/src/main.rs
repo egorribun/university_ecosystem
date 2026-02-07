@@ -7,8 +7,9 @@ use axum::{
 use chrono::{DateTime, Utc, TimeZone, Datelike};
 use serde::{Deserialize, Serialize};
 use opentelemetry::KeyValue;
-use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::{runtime, trace as sdktrace, Resource};
+// use opentelemetry_otlp::WithExportConfig; // Removed unused
+use opentelemetry_sdk::{trace as sdktrace, Resource};
+use opentelemetry::trace::TracerProvider; // Import trait to allow using tracer()
 use std::env;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -32,7 +33,20 @@ use optimizer::{
 #[derive(Default)]
 pub struct MyOptimizer {}
 
-// In Rust 2024, we can use native async fn in traits directly
+// Helper for conflict detection
+fn check_conflict_proto(a: &ScheduleItem, b: &ScheduleItem) -> bool {
+    if a.weekday != b.weekday { return false; }
+    if a.parity != "both" && b.parity != "both" && a.parity != b.parity { return false; }
+
+    let a_start = a.start_time.as_ref().map(|t| t.seconds).unwrap_or(0);
+    let a_end = a.end_time.as_ref().map(|t| t.seconds).unwrap_or(0);
+    let b_start = b.start_time.as_ref().map(|t| t.seconds).unwrap_or(0);
+    let b_end = b.end_time.as_ref().map(|t| t.seconds).unwrap_or(0);
+
+    a_start < b_end && b_start < a_end
+}
+
+#[tonic::async_trait]
 impl OptimizerService for MyOptimizer {
     async fn detect_conflicts(
         &self,
@@ -96,7 +110,8 @@ impl OptimizerService for MyOptimizer {
                 let current_year = now.year();
 
                 // Construct time for the current year
-                let start_time = Utc.with_yml_d(current_year, 1, 1).and_hms_opt(hour, 0, 0)
+                // Fix for Chrono deprecated with_yml_d
+                let start_time = Utc.with_ymd_and_hms(current_year, 1, 1, hour, 0, 0).single()
                     .ok_or_else(|| Status::internal("Failed to construct start time"))?;
                 let end_time = start_time + chrono::Duration::minutes(req.duration_minutes as i64);
 
@@ -192,13 +207,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Initialize OTEL
-    let tracer = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(opentelemetry_otlp::new_exporter().tonic())
-        .with_trace_config(sdktrace::config().with_resource(Resource::new(vec![
+    let exporter = opentelemetry_otlp::new_exporter()
+        .tonic()
+        .build_span_exporter()?;
+
+    let tracer_provider = sdktrace::TracerProvider::builder()
+        .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio)
+        .with_config(sdktrace::Config::default().with_resource(Resource::new(vec![
             KeyValue::new("service.name", "rust-optimizer"),
         ])))
-        .install_batch(runtime::Tokio)?;
+        .build();
+
+    let tracer = tracer_provider.tracer("rust-optimizer");
 
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
@@ -206,7 +226,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     // Start gRPC server
-    let grpc_addr = "[0.0.0.0]:50051".parse()?;
+    let grpc_addr = "0.0.0.0:50051".parse()?;
     let optimizer_service = MyOptimizer::default();
 
     info!("Starting gRPC server on {}", grpc_addr);

@@ -20,8 +20,8 @@ service OptimizerService {
 message ScheduleItem {
   optional int32 id = 1;
   string weekday = 2;
-  google.protobuf.timestamp start_time = 3;
-  google.protobuf.timestamp end_time = 4;
+  google.protobuf.Timestamp start_time = 3;
+  google.protobuf.Timestamp end_time = 4;
   string parity = 5; // "odd", "even", "both"
   string room = 6;
   string teacher = 7;
