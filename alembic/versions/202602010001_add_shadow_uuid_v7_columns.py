@@ -30,6 +30,8 @@ TABLES = [
     "password_reset_tokens",
     "email_change_tokens",
     "trusted_devices",
+    "webauthn_credentials",
+    "recovery_codes",
     "login_history",
     "events",
     "event_attendance",
