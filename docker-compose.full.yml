@@ -371,16 +371,14 @@ services:
       - "8233:8233"
     environment:
       - TEMPORAL_CLI_ADDRESS=temporal:7233
-    entrypoint: [ "/bin/bash", "-c", "temporal server start-dev --ip 0.0.0.0 --ui-port 8233 --db-filename /data/temporal.db" ]
-    volumes:
-      - temporal-data:/data
+    entrypoint: [ "/bin/bash", "-c", "temporal server start-dev --ip 0.0.0.0 --ui-port 8233 --db-filename /tmp/temporal.db" ]
     networks:
       - internal
     healthcheck:
-      test: [ "CMD-SHELL", "temporal operator cluster health" ]
+      test: [ "CMD-SHELL", "temporal operator cluster health --address 127.0.0.1:7233 || exit 1" ]
       interval: 10s
       timeout: 10s
-      retries: 5
+      retries: 10
     deploy:
       resources:
         limits:
