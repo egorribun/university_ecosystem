@@ -364,7 +364,7 @@ services:
           memory: 256M
 
   temporal:
-    image: temporalio/admin-tools:1.25.1
+    image: temporalio/admin-tools:1.26.2
     container_name: temporal
     ports:
       - "7233:7233"
