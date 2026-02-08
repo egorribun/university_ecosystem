@@ -1,21 +1,26 @@
 import { useActionState, useEffect, useRef, useState } from "react"
 import axios from "../api/client"
-import {
-  Box,
-  Paper,
-  Typography,
-  TextField,
-  Button,
-  Stack,
-  InputAdornment,
-  IconButton,
-  LinearProgress,
-  Tooltip,
-} from "@mui/material"
-import Visibility from "@mui/icons-material/Visibility"
-import VisibilityOff from "@mui/icons-material/VisibilityOff"
 import { useParams, useSearchParams, Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
+import { motion, AnimatePresence } from "framer-motion"
+import {
+  Eye as Visibility,
+  EyeOff as VisibilityOff,
+  ChevronLeft,
+  Lock as LockIcon,
+  CheckCircle2,
+  ShieldCheck,
+  AlertTriangle
+} from "lucide-react"
+
+import { cn } from "@/utils/cn"
+import {
+  Button,
+  TextField,
+  SectionCard,
+  Alert,
+} from "@/components/settings"
+import { ProgressBar } from "@/components/ui"
 
 const RESET_URL = "/password/reset"
 
@@ -33,6 +38,7 @@ async function sha1Hex(str: string) {
     .join("")
     .toUpperCase()
 }
+
 async function isPwnedPassword(pwd: string) {
   if (!pwd) return false
   const hash = await sha1Hex(pwd)
@@ -138,191 +144,200 @@ export default function ResetPassword() {
   }, [resetPending, resetStatus, resetState.field])
 
   const isSuccess = resetStatus === "success"
-  if (isSuccess) {
-    return (
-      <Box
-        sx={{
-          minHeight: "100vh",
-          bgcolor: "var(--page-bg)",
-          color: "var(--page-text)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          px: 1,
-        }}
-      >
-        <Paper
-          elevation={7}
-          sx={{
-            width: "100%",
-            maxWidth: 460,
-            p: { xs: 2, sm: 4 },
-            borderRadius: { xs: 3, sm: 5 },
-            bgcolor: "var(--card-bg)",
-          }}
-        >
-          <Typography variant="h5" fontWeight={800} align="center" mb={1.5}>
-            {t("auth:reset.successTitle")}
-          </Typography>
-          <Stack alignItems="center" spacing={1}>
-            <Typography color="text.secondary" align="center">
-              {t("auth:reset.successMessage")}
-            </Typography>
-            <Button component={Link} to="/login" variant="contained" sx={{ mt: 1 }}>
-              {t("auth:actions.goToLogin")}
-            </Button>
-          </Stack>
-        </Paper>
-      </Box>
-    )
-  }
 
   return (
-    <Box
-      sx={{
-        minHeight: "100vh",
-        bgcolor: "var(--page-bg)",
-        color: "var(--page-text)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        px: 1,
-      }}
-    >
-      <Paper
-        elevation={7}
-        sx={{
-          width: "100%",
-          maxWidth: 460,
-          p: { xs: 2, sm: 4 },
-          borderRadius: { xs: 3, sm: 5 },
-          bgcolor: "var(--card-bg)",
-        }}
-      >
-        <Typography variant="h5" fontWeight={800} align="center" mb={1.5}>
-          {t("auth:reset.title")}
-        </Typography>
-        <Typography color="text.secondary" align="center" sx={{ mb: 2 }}>
-          {t("auth:reset.subtitle")}
-        </Typography>
-        <form action={resetAction} autoComplete="off">
-          <Stack spacing={2}>
-            <TextField
-              label={t("auth:fields.password")}
-              name="password"
-              type={showPass ? "text" : "password"}
-              value={password}
-              onChange={(e) => onPass(e.target.value)}
-              onKeyUp={(e) => setCapsPass((e as any).getModifierState?.("CapsLock"))}
-              onKeyDown={(e) => setCapsPass((e as any).getModifierState?.("CapsLock"))}
-              fullWidth
-              autoFocus
-              autoComplete="new-password"
-              inputRef={passwordRef}
-              disabled={resetPending}
-              helperText={t("auth:register.passwordHint")}
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <Tooltip title={t("auth:actions.holdReveal")}>
-                      <IconButton
-                        aria-label={t("auth:actions.showPassword")}
-                        onMouseDown={() => setShowPass(true)}
-                        onMouseUp={() => setShowPass(false)}
-                        onMouseLeave={() => setShowPass(false)}
-                        onClick={() => setShowPass((v) => !v)}
-                        edge="end"
-                        tabIndex={-1}
-                      >
-                        {showPass ? <VisibilityOff /> : <Visibility />}
-                      </IconButton>
-                    </Tooltip>
-                  </InputAdornment>
-                ),
-              }}
-            />
-            {strength !== null && (
-              <LinearProgress
-                variant="determinate"
-                value={[10, 30, 55, 75, 100][strength]}
-                sx={{ mt: -0.5, height: 8, borderRadius: 1 }}
-                aria-label={t("auth:register.passwordStrength")}
-              />
-            )}
-            {!!feedback && (
-              <Typography fontSize={13} color="text.secondary">
-                {feedback}
-              </Typography>
-            )}
-            {capsPass && (
-              <Typography color="warning.main" fontSize={13}>
-                {t("auth:messages.capsLock")}
-              </Typography>
-            )}
-            {pwned && (
-              <Typography color="warning.main" fontSize={13}>
-                {t("auth:reset.pwnedWarning")}
-              </Typography>
-            )}
-            <TextField
-              label={t("auth:fields.confirmPassword")}
-              name="confirm"
-              type={showConfirm ? "text" : "password"}
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              onKeyUp={(e) => setCapsConfirm((e as any).getModifierState?.("CapsLock"))}
-              onKeyDown={(e) => setCapsConfirm((e as any).getModifierState?.("CapsLock"))}
-              fullWidth
-              autoComplete="new-password"
-              inputRef={confirmRef}
-              disabled={resetPending}
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <Tooltip title={t("auth:actions.holdReveal")}>
-                      <IconButton
-                        aria-label={t("auth:actions.showPassword")}
-                        onMouseDown={() => setShowConfirm(true)}
-                        onMouseUp={() => setShowConfirm(false)}
-                        onMouseLeave={() => setShowConfirm(false)}
-                        onClick={() => setShowConfirm((v) => !v)}
-                        edge="end"
-                        tabIndex={-1}
-                      >
-                        {showConfirm ? <VisibilityOff /> : <Visibility />}
-                      </IconButton>
-                    </Tooltip>
-                  </InputAdornment>
-                ),
-              }}
-            />
-            {capsConfirm && (
-              <Typography color="warning.main" fontSize={13}>
-                {t("auth:messages.capsLock")}
-              </Typography>
-            )}
-            <Box sx={{ minHeight: 22, textAlign: "center" }} aria-live="assertive">
-              {resetErrorMessage && (
-                <Typography color="error" fontSize={15}>
-                  {resetErrorMessage}
-                </Typography>
-              )}
-            </Box>
-            <Button
-              type="submit"
-              variant="contained"
-              size="large"
-              fullWidth
-              disabled={!canSubmit || resetPending}
-            >
-              {resetPending ? t("auth:reset.saving") : t("auth:reset.saveButton")}
-            </Button>
-            <Button component={Link} to="/forgot-password" variant="text">
-              {t("auth:reset.linkHelp")}
-            </Button>
-          </Stack>
-        </form>
-      </Paper>
-    </Box>
+    <div className="min-h-screen bg-(--page-bg) text-(--page-text) flex items-center justify-center p-6 relative overflow-hidden">
+       {/* Background decorative elements */}
+       <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-20">
+          <div className="absolute top-[-10%] right-[-5%] w-[40%] h-[40%] bg-brand/30 rounded-full blur-[120px]" />
+          <div className="absolute bottom-[-10%] left-[-5%] w-[40%] h-[40%] bg-brand/20 rounded-full blur-[120px]" />
+       </div>
+
+       <motion.div
+         initial={{ opacity: 0, y: 20 }}
+         animate={{ opacity: 1, y: 0 }}
+         className="w-full max-w-[460px] z-10"
+       >
+         <SectionCard className="p-8 sm:p-10 border-glass-border shadow-2xl backdrop-blur-2xl">
+           <div className="space-y-8">
+              <AnimatePresence mode="wait">
+                {isSuccess ? (
+                  <motion.div
+                    key="success"
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="space-y-6 pt-4 text-center"
+                  >
+                    <div className="flex justify-center">
+                       <div className="h-20 w-20 rounded-3xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+                          <CheckCircle2 className="h-10 w-10" />
+                       </div>
+                    </div>
+                    <div className="space-y-2">
+                       <h2 className="text-2xl font-black tracking-tight text-primary-text">
+                         {t("auth:reset.successTitle")}
+                       </h2>
+                       <p className="text-sm text-secondary-text font-medium leading-relaxed">
+                         {t("auth:reset.successMessage")}
+                       </p>
+                    </div>
+                    <div className="pt-4">
+                       <Button as={Link} to="/login" variant="solid" className="w-full h-12 rounded-2xl">
+                         {t("auth:actions.goToLogin")}
+                       </Button>
+                    </div>
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="form"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="space-y-6"
+                  >
+                    <div className="text-center space-y-2">
+                       <h1 className="text-3xl font-black tracking-tight text-primary-text sm:text-4xl">
+                         {t("auth:reset.title")}
+                       </h1>
+                       <p className="text-sm text-secondary-text font-medium">
+                         {t("auth:reset.subtitle")}
+                       </p>
+                    </div>
+
+                    <form action={resetAction} autoComplete="off" className="space-y-6">
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <TextField
+                            label={t("auth:fields.password")}
+                            name="password"
+                            type={showPass ? "text" : "password"}
+                            value={password}
+                            onChange={(e) => onPass(e.target.value)}
+                            onKeyUp={(e) => setCapsPass((e as any).getModifierState?.("CapsLock"))}
+                            onKeyDown={(e) => setCapsPass((e as any).getModifierState?.("CapsLock"))}
+                            autoFocus
+                            fullWidth
+                            autoComplete="new-password"
+                            ref={passwordRef}
+                            disabled={resetPending}
+                            className="rounded-2xl"
+                            trailingIcon={
+                               <button
+                                 type="button"
+                                 onClick={() => setShowPass(!showPass)}
+                                 className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded-md transition-colors"
+                                 tabIndex={-1}
+                               >
+                                 {showPass ? <VisibilityOff className="h-4 w-4" /> : <Visibility className="h-4 w-4" />}
+                               </button>
+                            }
+                          />
+
+                          {strength !== null && (
+                            <div className="px-1 space-y-1">
+                               <ProgressBar
+                                 value={[10, 30, 55, 75, 100][strength]}
+                                 color={strength < 2 ? "error" : strength < 3 ? "warning" : "success"}
+                                 className="h-1.5"
+                               />
+                               <div className="flex justify-between items-center">
+                                  <p className="text-[10px] font-bold uppercase tracking-widest text-secondary-text opacity-60">
+                                    {t("auth:register.passwordStrength")}
+                                  </p>
+                                  <p className="text-[10px] font-bold text-brand uppercase tracking-widest">
+                                    {[t("common:strength.very_weak"), t("common:strength.weak"), t("common:strength.medium"), t("common:strength.strong"), t("common:strength.very_strong")][strength]}
+                                  </p>
+                               </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {!!feedback && (
+                          <div className="flex gap-2 px-2 py-2 rounded-xl bg-blue-500/5 border border-blue-500/10">
+                             <ShieldCheck className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+                             <p className="text-xs font-medium text-blue-500/80 leading-relaxed">
+                               {feedback}
+                             </p>
+                          </div>
+                        )}
+
+                        <div className="space-y-2">
+                           <TextField
+                             label={t("auth:fields.confirmPassword")}
+                             name="confirm"
+                             type={showConfirm ? "text" : "password"}
+                             value={confirm}
+                             onChange={(e) => setConfirm(e.target.value)}
+                             onKeyUp={(e) => setCapsConfirm((e as any).getModifierState?.("CapsLock"))}
+                             onKeyDown={(e) => setCapsConfirm((e as any).getModifierState?.("CapsLock"))}
+                             fullWidth
+                             autoComplete="new-password"
+                             ref={confirmRef}
+                             disabled={resetPending}
+                             className="rounded-2xl"
+                             trailingIcon={
+                                <button
+                                  type="button"
+                                  onClick={() => setShowConfirm(!showConfirm)}
+                                  className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded-md transition-colors"
+                                  tabIndex={-1}
+                                >
+                                  {showConfirm ? <VisibilityOff className="h-4 w-4" /> : <Visibility className="h-4 w-4" />}
+                                </button>
+                             }
+                           />
+                        </div>
+
+                        {(capsPass || capsConfirm) && (
+                          <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-orange-500/5 border border-orange-500/10 text-orange-500">
+                             <AlertTriangle className="h-4 w-4" />
+                             <p className="text-xs font-bold uppercase tracking-wider">
+                               {t("auth:messages.capsLock")}
+                             </p>
+                          </div>
+                        )}
+
+                        {pwned && (
+                           <Alert severity="warning" className="rounded-xl py-2">
+                              {t("auth:reset.pwnedWarning")}
+                           </Alert>
+                        )}
+                      </div>
+
+                      {resetErrorMessage && (
+                        <p className="text-sm font-bold text-rose-500 text-center animate-bounce">
+                          {resetErrorMessage}
+                        </p>
+                      )}
+
+                      <div className="space-y-4 pt-2">
+                        <Button
+                          type="submit"
+                          variant="solid"
+                          className="w-full h-14 rounded-2xl text-base font-black shadow-lg shadow-brand/20"
+                          disabled={!canSubmit || resetPending}
+                          loading={resetPending}
+                          leadingIcon={<LockIcon className="h-5 w-5" />}
+                        >
+                          {t("auth:reset.saveButton")}
+                        </Button>
+
+                        <div className="pt-2 text-center">
+                           <Link
+                             to="/forgot-password"
+                             className="inline-flex items-center gap-2 text-sm font-bold text-secondary-text hover:text-brand transition-colors group"
+                           >
+                             <ChevronLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
+                             {t("auth:reset.linkHelp")}
+                           </Link>
+                        </div>
+                      </div>
+                    </form>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+           </div>
+         </SectionCard>
+       </motion.div>
+    </div>
   )
 }

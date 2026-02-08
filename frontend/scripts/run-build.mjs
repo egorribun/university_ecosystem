@@ -15,8 +15,13 @@ const env = {
 function run(command, commandArgs, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, commandArgs, { stdio: "inherit", env, ...options })
+    child.on("error", (err) => {
+      console.error(`Failed to start ${command}:`, err)
+      reject(err)
+    })
     child.on("close", (code) => {
       if (code !== 0) {
+        console.error(`${command} exited with code ${code}`)
         reject(new Error(`${command} exited with code ${code}`))
       } else {
         resolve(undefined)

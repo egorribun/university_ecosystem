@@ -1,4 +1,4 @@
-import { ThemeProvider, createTheme } from "@mui/material/styles"
+import { ThemeProvider } from "@/contexts/ThemeContext"
 import { render, act } from "@testing-library/react"
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
 import { NowPlayingCard } from "@/pages/Profile"
@@ -9,8 +9,6 @@ vi.mock("framer-motion", async () => {
   const actual = await vi.importActual<typeof import("framer-motion")>("framer-motion")
   return { ...actual, useReducedMotion: () => false }
 })
-
-const theme = createTheme()
 
 const baseTrack: NowPlaying = {
   is_playing: true,
@@ -27,7 +25,7 @@ const baseTrack: NowPlaying = {
 
 const renderWithTheme = (track: NowPlaying) =>
   render(
-    <ThemeProvider theme={theme}>
+    <ThemeProvider>
       <NowPlayingCard data={track} />
     </ThemeProvider>
   )
@@ -81,7 +79,7 @@ describe("NowPlayingCard", () => {
 
     act(() => {
       rerender(
-        <ThemeProvider theme={theme}>
+        <ThemeProvider>
           <NowPlayingCard data={advanced} />
         </ThemeProvider>
       )

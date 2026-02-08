@@ -2,11 +2,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import { MemoryRouter } from "react-router-dom"
 import { act, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { ThemeProvider } from "@mui/material/styles"
+import { ThemeProvider } from "@/contexts/ThemeContext"
 import type { ComponentProps } from "react"
 
 import DashboardStories from "../DashboardStories"
-import theme from "@/theme"
 import type { StoryItem } from "@/types/Story"
 
 vi.mock("@/components/SmartImage", () => ({

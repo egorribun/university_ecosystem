@@ -1,7 +1,6 @@
 import { useRef, useEffect, useState, useMemo } from "react"
 import { useTranslation } from "react-i18next"
-import EditIcon from "@mui/icons-material/Edit"
-import CloseIcon from "@mui/icons-material/Close"
+import { Pencil as EditIcon, X as CloseIcon } from "lucide-react"
 import { Button } from "@/components/ui"
 import Dialog from "@/components/Dialog"
 import SmartImage from "@/components/SmartImage"
@@ -58,7 +57,7 @@ export function EventEditDialog({
   const imageInputRef = useRef<HTMLInputElement>(null)
 
   const inputClass =
-    "w-full rounded-lg bg-[color:var(--input-bg)] border border-[color:var(--input-border)] px-3 py-2 text-sm text-[color:var(--page-text)] placeholder:text-[color:var(--input-placeholder)] focus:border-[color:var(--nav-link)] focus:outline-none focus:ring-1 focus:ring-[color:var(--nav-link)] transition-colors duration-200"
+    "w-full rounded-lg bg-(--input-bg) border border-(--input-border) px-3 py-2 text-sm text-(--page-text) placeholder:text-(--input-placeholder) focus:border-(--nav-link) focus:outline-none focus:ring-1 focus:ring-(--nav-link) transition-colors duration-200"
 
   const getLocalizedEditValue = (field: "title" | "description" | "event_type" | "location") => {
     if (language === "en") {
@@ -94,7 +93,7 @@ export function EventEditDialog({
       onClose={onClose}
       title={
         <div className="flex items-center gap-2">
-          <EditIcon className="h-5 w-5" />
+          <EditIcon size={20} />
           {t("events:card.dialogs.edit.title")}
         </div>
       }
@@ -104,7 +103,7 @@ export function EventEditDialog({
           <Button
             variant="outline"
             onClick={onClose}
-            leadingIcon={<CloseIcon />}
+            leadingIcon={<CloseIcon size={18} />}
             className="w-full sm:w-auto"
           >
             {t("common:buttons.cancel")}
@@ -125,7 +124,7 @@ export function EventEditDialog({
     >
       <div className="space-y-4">
         <div>
-          <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
+          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--secondary-text) opacity-85">
             {language === "en"
               ? t("events:form.title_en", {
                   defaultValue: `${t("events:form.title")} (English)`,
@@ -140,7 +139,7 @@ export function EventEditDialog({
           />
         </div>
         <div>
-          <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
+          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--secondary-text) opacity-85">
             {language === "en"
               ? t("events:form.description_en", {
                   defaultValue: `${t("events:form.description")} (English)`,
@@ -155,7 +154,7 @@ export function EventEditDialog({
           />
         </div>
         <div>
-          <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
+          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--secondary-text) opacity-85">
             {language === "en"
               ? t("events:form.type_en", {
                   defaultValue: `${t("events:form.type")} (English)`,
@@ -170,7 +169,7 @@ export function EventEditDialog({
           />
         </div>
         <div>
-          <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
+          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--secondary-text) opacity-85">
             {language === "en"
               ? t("events:form.location_en", {
                   defaultValue: `${t("events:form.location")} (English)`,
@@ -185,7 +184,7 @@ export function EventEditDialog({
           />
         </div>
         <div>
-          <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
+          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--secondary-text) opacity-85">
             {t("events:form.start")}
           </label>
           <input
@@ -196,7 +195,7 @@ export function EventEditDialog({
           />
         </div>
         <div>
-          <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
+          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--secondary-text) opacity-85">
             {t("events:form.end")}
           </label>
           <input
@@ -210,7 +209,7 @@ export function EventEditDialog({
           )}
         </div>
         <div>
-          <label className="mb-2 block text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]">
+          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--secondary-text) opacity-85">
             {t("events:form.speaker")}
           </label>
           <input
@@ -237,7 +236,7 @@ export function EventEditDialog({
               <SmartImage
                 srcRaw={cardImageUrl}
                 alt={t("events:alt.preview")}
-                className="h-[140px] w-[220px] rounded-ue-lg border border-[color:var(--glass-border)] object-cover shadow-surface"
+                className="h-[140px] w-[220px] rounded-ue-lg border border-(--glass-border) object-cover shadow-surface"
               />
             </div>
           )}

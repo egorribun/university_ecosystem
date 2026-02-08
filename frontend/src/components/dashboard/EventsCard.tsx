@@ -2,7 +2,7 @@ import { useMemo, useState, type CSSProperties, type KeyboardEvent } from "react
 import { motion } from "framer-motion"
 import { Link, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded"
+import { Sparkles } from "lucide-react"
 
 import { Badge, Button, Card, Skeleton } from "@/components/ui"
 import { cn } from "@/utils/cn"
@@ -77,14 +77,14 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
   const scopedEvents = eventsScope === "today" ? todayEvents : weekEvents
 
   const listActionBase =
-    "group relative isolate w-full overflow-hidden rounded-xl border border-[color:var(--dash-panel-item-divider)] bg-[color:var(--dash-panel-item-bg)] px-4 py-3 text-left transition-all duration-300 ease-out hover:bg-[color:var(--dash-panel-item-bg-hover)] hover:border-[color:var(--dash-panel-item-divider)] hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-main/50"
+    "group relative isolate w-full overflow-hidden rounded-xl border border-border-subtle bg-surface-hover/10 px-4 py-3 text-left transition-all duration-300 ease-out hover:bg-surface-hover/20 hover:border-border-strong hover:-translate-y-0.5 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus/50"
 
   return (
     <Card
       className={cn(
-        "group card-glass rounded-[2.4rem] transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
-        "hover:-translate-y-1 hover:scale-[1.02] hover:shadow-lg motion-reduce:hover:transform-none motion-reduce:hover:shadow-none",
-        "dash-panel-events",
+        "group bg-glass backdrop-blur-3xl transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
+        "hover:-translate-y-1 hover:scale-[1.01] hover:shadow-glass motion-reduce:hover:transform-none motion-reduce:hover:shadow-none",
+        "dash-panel-events border-glass-border",
         className
       )}
       padding="lg"
@@ -92,9 +92,9 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
       style={style}
       {...props}
     >
-      <div className="relative z-[1] space-y-5">
+      <div className="relative z-1 space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-[clamp(1.05rem,2vw,1.4rem)] font-extrabold text-page-foreground">
+          <h2 className="text-[clamp(1.1rem,2vw,1.5rem)] font-extrabold text-primary-text">
             {t("dashboard:events.heading")}
           </h2>
           <Button
@@ -116,7 +116,7 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
           <Button
             size="sm"
             variant={eventsScope === "today" ? "solid" : "outline"}
-            className="whitespace-nowrap transition-transform duration-300 hover:-translate-y-[1px]"
+            className="whitespace-nowrap transition-transform duration-300 hover:-translate-y-px"
             onClick={() => setEventsScope("today")}
             aria-pressed={eventsScope === "today"}
           >
@@ -125,7 +125,7 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
           <Button
             size="sm"
             variant={eventsScope === "week" ? "solid" : "outline"}
-            className="whitespace-nowrap transition-transform duration-300 hover:-translate-y-[1px]"
+            className="whitespace-nowrap transition-transform duration-300 hover:-translate-y-px"
             onClick={() => setEventsScope("week")}
             aria-pressed={eventsScope === "week"}
           >
@@ -138,7 +138,7 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
             {[1, 2, 3].map((i) => (
               <div
                 key={i}
-                className="flex flex-col gap-2 rounded-ue-lg border border-[color:var(--dash-panel-item-divider)] bg-[color:var(--dash-panel-item-bg)] px-4 py-3 opacity-60"
+                className="flex flex-col gap-2 rounded-ue-lg border border-(var(--dash-panel-item-divider)) bg-(var(--dash-panel-item-bg)) px-4 py-3 opacity-60"
               >
                 <Skeleton width="60%" height={20} />
                 <div className="flex items-center gap-2">
@@ -175,13 +175,12 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
                     aria-label={t("dashboard:aria.eventItem", { title: e.title })}
                   >
                     <span className="flex w-full items-start justify-between gap-3">
-                      <span className="text-base font-semibold leading-tight text-page-foreground line-clamp-2">
+                      <span className="text-base font-semibold leading-tight text-primary-text line-clamp-2">
                         {e.title}
                       </span>
-                      <span className="flex h-6 w-6 flex-none items-center justify-center rounded-full border border-[color:var(--dash-icon-halo-border)] bg-[color:var(--dash-icon-halo-bg)] text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--dash-icon-halo-text)] transition-colors duration-[var(--dash-hover-duration)] ease-[var(--dash-hover-ease)] group-hover:border-[color:var(--dash-icon-halo-border-active)] group-hover:text-[color:var(--dash-icon-halo-text-active)]">
-                        <AutoAwesomeRoundedIcon
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-glass-border bg-surface/20 text-brand transition-all duration-300 group-hover:bg-brand/10">
+                        <Sparkles
                           aria-hidden="true"
-                          fontSize="inherit"
                           className="h-3.5 w-3.5"
                         />
                       </span>

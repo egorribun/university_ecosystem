@@ -7,15 +7,17 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react"
-import InsertPhotoOutlinedIcon from "@mui/icons-material/InsertPhotoOutlined"
-import { Box, Fade, Skeleton, type BoxProps } from "@mui/material"
+import { Image as InsertPhotoOutlinedIcon } from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
+import { cn } from "@/utils/cn"
+import { Skeleton } from "@/components/settings"
 
 import { addVersionParam, resolveProxyImageUrl } from "@/utils/media"
 import { useIntersectionObserver } from "@/hooks/useIntersectionObserver"
 
 type Status = "idle" | "loading" | "loaded" | "error"
 
-type AsyncImageProps = Omit<BoxProps, "component" | "onError" | "onLoad"> & {
+type AsyncImageProps = ComponentProps<"div"> & {
   src?: string
   alt?: string
   fallbackSrc?: string
@@ -25,27 +27,6 @@ type AsyncImageProps = Omit<BoxProps, "component" | "onError" | "onLoad"> & {
   version?: number
   onLoad?: ComponentProps<"img">["onLoad"]
   onError?: ComponentProps<"img">["onError"]
-}
-
-const fallbackStyles = {
-  alignItems: "center",
-  backgroundColor: (theme: any) => theme.palette.action.hover,
-  color: (theme: any) => theme.palette.text.disabled,
-  display: "flex",
-  fontSize: "0.875rem",
-  fontWeight: 500,
-  inset: 0,
-  justifyContent: "center",
-  position: "absolute" as const,
-}
-
-const imageStyles = {
-  display: "block",
-  height: "100%",
-  left: 0,
-  position: "absolute" as const,
-  top: 0,
-  width: "100%",
 }
 
 const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
@@ -60,7 +41,8 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
       version,
       onLoad,
       onError,
-      sx,
+      className,
+      style,
       ...rest
     },
     ref
@@ -99,79 +81,76 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
     const hasImage = Boolean(resolvedSrc)
 
     return (
-      <Box
-        ref={containerRef}
-        position="relative"
-        sx={{
-          overflow: "hidden",
-          borderRadius: 1,
-          backgroundColor: (theme) => theme.palette.background.paper,
-          ...sx,
+      <div
+        ref={(el) => {
+          containerRef.current = el
         }}
+        className={cn(
+          "relative overflow-hidden rounded-lg bg-surface/10",
+          className
+        )}
+        style={style}
         {...rest}
       >
-        {shouldShowSkeleton && (
-          <Skeleton
-            variant="rectangular"
-            data-testid="async-image-skeleton"
-            sx={{ height: "100%", width: "100%", position: "absolute", inset: 0 }}
-          />
-        )}
+        <AnimatePresence mode="wait">
+          {shouldShowSkeleton && (
+            <motion.div
+              key="skeleton"
+              initial={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-10"
+            >
+              <Skeleton width="100%" height="100%" />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {thumbSrc && status === "loading" && (
-          <Box
-            component="img"
+          <img
             src={thumbSrc}
             alt=""
             aria-hidden
-            sx={{
-              ...imageStyles,
-              objectFit,
-              filter: "blur(8px)",
-              transform: "scale(1.05)",
-            }}
+            className="absolute inset-0 h-full w-full scale-105 blur-lg block"
+            style={{ objectFit }}
           />
         )}
 
         {hasImage && isVisible && (
-          <Fade
-            in={status === "loaded" || status === "loading"}
-            timeout={{ enter: 300, exit: 200 }}
-          >
-            <Box
-              component="img"
-              ref={ref}
-              src={resolvedSrc}
-              alt={alt}
-              loading="lazy"
-              decoding="async"
-              onLoad={handleLoad}
-              onError={handleError}
-              data-testid="async-image-img"
-              sx={{ ...imageStyles, objectFit }}
-            />
-          </Fade>
+          <motion.img
+            ref={ref}
+            key={resolvedSrc}
+            src={resolvedSrc}
+            alt={alt}
+            loading="lazy"
+            decoding="async"
+            onLoad={handleLoad}
+            onError={handleError}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: status === "loaded" ? 1 : 0 }}
+            transition={{ duration: 0.3 }}
+            className="absolute inset-0 h-full w-full block"
+            style={{ objectFit }}
+          />
         )}
 
-        {!hasImage && fallbackSrc && (
-          <Box
-            component="img"
+        {(!hasImage && fallbackSrc) && (
+          <img
             src={fallbackSrc}
             alt={alt}
             aria-hidden={alt ? undefined : true}
-            data-testid="async-image-fallback-image"
-            sx={{ ...imageStyles, objectFit }}
+            className="absolute inset-0 h-full w-full block"
+            style={{ objectFit }}
           />
         )}
 
         {((shouldShowFallback && fallback) ||
           status === "error" ||
           (!hasImage && !fallbackSrc)) && (
-          <Box sx={fallbackStyles} data-testid="async-image-fallback">
-            {fallback ?? <InsertPhotoOutlinedIcon fontSize="large" />}
-          </Box>
+          <div className="absolute inset-0 flex items-center justify-center bg-surface/20 text-secondary-text">
+            {fallback ?? <InsertPhotoOutlinedIcon className="h-10 w-10 opacity-40 shrink-0" />}
+          </div>
         )}
-      </Box>
+      </div>
     )
   }
 )

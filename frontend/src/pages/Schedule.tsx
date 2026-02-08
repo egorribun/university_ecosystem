@@ -14,13 +14,21 @@ import "dayjs/locale/ru"
 import "dayjs/locale/en"
 import { useTranslation } from "react-i18next"
 import { Button, Badge, ProgressBar, Skeleton, Card } from "@/components/ui"
-import Dialog from "@/components/Dialog"
-import Snackbar from "@/components/ui/Snackbar"
-import AccessTimeIcon from "@mui/icons-material/AccessTime"
-import SchoolIcon from "@mui/icons-material/School"
-import RoomIcon from "@mui/icons-material/Room"
-import CalendarMonthIcon from "@mui/icons-material/CalendarMonth"
-import AddIcon from "@mui/icons-material/Add"
+import {
+  Alert,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Snackbar,
+} from "@/components/settings"
+import {
+  Clock as AccessTimeIcon,
+  GraduationCap as SchoolIcon,
+  MapPin as RoomIcon,
+  Calendar as CalendarMonthIcon,
+  Plus as AddIcon,
+} from "lucide-react"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import OfflineFallback from "@/components/OfflineFallback"
@@ -179,10 +187,10 @@ export default function Schedule() {
     const gap = minutesDiff(prev.end_time, curr.start_time)
     if (gap <= 0) return null
     return (
-      <div className="absolute left-1/2 top-[-14px] z-[3] -translate-x-1/2 pointer-events-none">
+      <div className="absolute left-1/2 top-[-14px] z-3 -translate-x-1/2 pointer-events-none">
         <Badge
           size="xs"
-          className="chip-break font-medium bg-[color:color-mix(in_srgb,var(--card-bg)_92%,yellow_8%)] border-[color:color-mix(in_srgb,var(--nav-link)_22%,transparent)] text-[color:color-mix(in_srgb,var(--page-text)_88%,yellow_12%)] shadow-[0_4px_12px_rgba(0,0,0,0.1)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_88%,yellow_12%)] dark:border-[color:color-mix(in_srgb,var(--nav-link)_28%,transparent)] dark:text-[color:color-mix(in_srgb,var(--page-text)_92%,yellow_8%)] dark:shadow-[0_6px_16px_rgba(0,0,0,0.24)]"
+          className="chip-break font-medium bg-surface/80 border-glass-border shadow-glass text-secondary-text"
         >
           {t("schedule:break", { minutes: gap })}
         </Badge>
@@ -195,13 +203,13 @@ export default function Schedule() {
     return (
       <div
         ref={tableScrollRef}
-        className="mx-auto w-full max-w-[min(98vw,1920px)] overflow-x-auto rounded-2xl border border-[color:color-mix(in_srgb,white_10%,var(--nav-link)_90%)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] text-[color:var(--page-text)] shadow-[0_12px_40px_rgba(0,0,0,0.08),0_4px_16px_rgba(0,0,0,0.04)] [content-visibility:auto] [contain-intrinsic-size:600px] [scroll-behavior:smooth] dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)] dark:shadow-[0_16px_48px_rgba(0,0,0,0.16),0_6px_20px_rgba(0,0,0,0.08)] backdrop-blur-sm [-webkit-backdrop-filter:blur(12px)]"
+        className="mx-auto w-full max-w-[min(98vw,1920px)] overflow-x-auto rounded-3xl border border-glass-border bg-surface/40 text-primary-text shadow-glass backdrop-blur-md scroll-smooth"
         style={{ minHeight: 360 }}
       >
         <table className="w-full border-collapse">
-          <thead className="sticky top-0 z-[5]">
+          <thead className="sticky top-0 z-5">
             <tr>
-              <th className="sticky left-0 z-[10] w-[50px] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] px-4 py-4 text-center font-extrabold text-[color:var(--page-text)] shadow-[2px_0_6px_rgba(0,0,0,0.04)] backdrop-blur-md dark:bg-[color:color-mix(in_srgb,var(--card-bg)_92%,transparent_8%)] dark:shadow-[2px_0_8px_rgba(0,0,0,0.12)]">
+              <th className="sticky left-0 z-10 w-[50px] bg-surface/60 px-4 py-4 text-center font-extrabold text-primary-text border-r border-glass-border shadow-md backdrop-blur-md">
                 №
               </th>
               {weekdayBackend.map((day, idx) => {
@@ -214,32 +222,32 @@ export default function Schedule() {
                       headRefs.current[idx] = el
                     }}
                     className={cn(
-                      "relative px-4 py-4 text-center font-extrabold text-[color:var(--page-text)] transition-all duration-300",
+                      "relative px-4 py-4 text-center font-extrabold text-primary-text transition-all duration-300",
                       isTodayCol
-                        ? "border-l-[3px] border-r-[3px] border-solid bg-[color:color-mix(in_srgb,var(--nav-link)_6%,var(--card-bg)_94%)] border-[color:color-mix(in_srgb,var(--nav-link)_32%,transparent)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--nav-link)_8%,transparent)] dark:bg-[color:color-mix(in_srgb,var(--nav-link)_8%,var(--card-bg)_92%)] dark:border-[color:color-mix(in_srgb,var(--nav-link)_28%,transparent)] dark:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--nav-link)_12%,transparent)]"
-                        : "bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_92%,transparent_8%)]",
-                      "z-[5] backdrop-blur-md [-webkit-backdrop-filter:blur(12px)]"
+                        ? "bg-brand/10 shadow-[inset_0_0_0_1px_rgba(var(--primary-main),0.2)]"
+                        : "bg-surface/40",
+                      "z-5 backdrop-blur-md"
                     )}
                   >
                     <div className="flex items-center justify-center gap-2">
                       <span
                         className={cn(
                           "tracking-tight",
-                          isTodayCol && "text-[color:var(--nav-link)]"
+                          isTodayCol && "text-(--nav-link)"
                         )}
                       >
                         {label}
                       </span>
                       {(user?.role === "admin" || user?.role === "teacher") && (
                         <button
-                          className="ml-1 flex h-7 w-7 items-center justify-center rounded-lg border border-[color:color-mix(in_srgb,white_14%,var(--nav-link)_86%)] bg-[color:color-mix(in_srgb,var(--card-bg)_92%,var(--nav-link)_8%)] text-[color:var(--nav-link)] hover:bg-[color:var(--nav-link)] hover:text-white"
+                          className="ml-1 flex h-7 w-7 items-center justify-center rounded-lg border border-glass-border bg-surface/60 text-brand hover:bg-brand hover:text-white transition-colors"
                           onClick={(e) => {
                             e.stopPropagation()
                             setAddDay(day)
                             setAddDialogOpen(true)
                           }}
                         >
-                          <AddIcon className="text-[14px]" />
+                          <AddIcon className="h-3.5 w-3.5" />
                         </button>
                       )}
                     </div>
@@ -264,7 +272,7 @@ export default function Schedule() {
             ) : (
               visibleRows.map((row, rowIdx) => (
                 <tr key={rowIdx}>
-                  <td className="sticky left-0 z-[10] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] px-4 py-3 text-center font-bold shadow-[2px_0_6px_rgba(0,0,0,0.04)] backdrop-blur-md dark:bg-[color:color-mix(in_srgb,var(--card-bg)_92%,transparent_8%)]">
+                  <td className="sticky left-0 z-10 bg-surface/60 px-4 py-3 text-center font-bold border-r border-glass-border shadow-md backdrop-blur-md">
                     {rowIdx + 1}
                   </td>
                   {row.map((lesson, colIdx) => {
@@ -276,11 +284,11 @@ export default function Schedule() {
                           className={cn(
                             "p-3",
                             colIsToday
-                              ? "bg-[color:color-mix(in_srgb,var(--nav-link)_3%,var(--card-bg)_97%)]"
+                              ? "bg-[color-mix(in_srgb,var(--nav-link)_3%,var(--card-bg)_97%)]"
                               : ""
                           )}
                         >
-                          <div className="min-h-[148px] rounded-xl border border-dashed border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)]" />
+                          <div className="min-h-[148px] rounded-xl border border-dashed border-[color-mix(in_srgb,white_8%,var(--nav-link)_92%)]" />
                         </td>
                       )
                     }
@@ -298,9 +306,7 @@ export default function Schedule() {
                         key={lesson.id}
                         className={cn(
                           "relative overflow-visible p-3",
-                          colIsToday
-                            ? "bg-[color:color-mix(in_srgb,var(--nav-link)_3%,var(--card-bg)_97%)]"
-                            : ""
+                          colIsToday ? "bg-brand/5" : ""
                         )}
                       >
                         {renderBreakChip(rowIdx, colIdx)}
@@ -338,7 +344,7 @@ export default function Schedule() {
           as="button"
           variant={hasToday && i === todayIdx ? "solid" : "outline"}
           tone={hasToday && i === todayIdx ? "primary" : "default"}
-          className="chip-day flex-shrink-0 font-semibold transition-all duration-200 hover:scale-105"
+          className="chip-day shrink-0 font-semibold transition-all duration-200 hover:scale-105"
           onClick={() =>
             dayCardRefs.current[i]?.scrollIntoView({ behavior: "smooth", block: "start" })
           }
@@ -391,7 +397,7 @@ export default function Schedule() {
   )
 
   const inputClass =
-    "w-full rounded-xl border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] px-4 py-3 text-[0.98rem] font-medium text-[color:var(--page-text)] shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)] focus:border-[color:var(--nav-link)] focus:outline-none dark:bg-[color:color-mix(in_srgb,var(--card-bg)_90%,transparent_10%)]"
+    "w-full rounded-xl border border-glass-border bg-surface/40 px-4 py-3 text-[0.98rem] font-medium text-primary-text shadow-sm focus:border-brand focus:outline-none transition-all"
 
   const activeGroupName = groups.find((g) => g.id === selectedGroup)?.name || ""
 
@@ -408,23 +414,23 @@ export default function Schedule() {
   return (
     <Layout>
       <PageFadeIn>
-        <div className="w-screen min-h-screen bg-[color:var(--page-bg)] text-[color:var(--page-text)] py-8 sm:py-10">
+        <div className="w-full min-h-screen bg-transparent text-primary-text py-8 sm:py-10">
           <div className="mb-6 mt-0 px-2 md:px-4">
             <div
               data-fade
               style={fadeDelayStyle("80ms")}
               className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[color:color-mix(in_srgb,var(--glass-bg)_70%,var(--nav-link)_30%)] text-[color:var(--nav-link)] shadow-[0_6px_20px_color-mix(in_srgb,var(--nav-link)_24%,transparent)]">
-                <CalendarMonthIcon className="text-[2rem]" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-surface/40 border border-glass-border text-brand shadow-glass">
+                <CalendarMonthIcon className="h-7 w-7" />
               </div>
-              <h1 className="text-[clamp(1.6rem,5vw,2.75rem)] font-bold tracking-tight text-[color:var(--page-text)]">
+              <h1 className="text-[clamp(1.6rem,5vw,2.75rem)] font-bold tracking-tight text-primary-text">
                 {user?.role === "student"
                   ? t("schedule:title.student")
                   : t("schedule:title.default")}
               </h1>
               {activeGroupName && (
-                <Badge variant="outline" className="translate-y-0.5">
+                <Badge variant="outline" tone="primary" className="translate-y-0.5">
                   {t("schedule:header.groupName", { name: activeGroupName })}
                 </Badge>
               )}
@@ -438,12 +444,12 @@ export default function Schedule() {
               data-fade
               style={fadeDelayStyle("200ms")}
               className={cn(
-                "no-print group relative isolate mb-6 overflow-hidden rounded-2xl border bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] p-6 shadow-lg backdrop-blur-sm",
+                "no-print group relative isolate mb-6 overflow-hidden rounded-3xl border border-glass-border bg-surface/40 p-6 shadow-glass backdrop-blur-md transition-all hover:shadow-xl",
                 !isMobile && "max-w-4xl"
               )}
             >
               {currentLesson ? (
-                <div className="relative z-[1]">
+                <div className="relative z-1">
                   <div className="mb-4 flex flex-wrap items-center gap-3">
                     <Badge size="sm" tone="primary" className="font-semibold">
                       {t("schedule:chips.current")}
@@ -454,7 +460,7 @@ export default function Schedule() {
                   <ProgressBar value={currentProgress} className="mt-5 h-2.5 rounded-full" />
                 </div>
               ) : nextLesson ? (
-                <div className="relative z-[1] flex flex-wrap items-center gap-3">
+                <div className="relative z-1 flex flex-wrap items-center gap-3">
                   <Badge size="sm" variant="outline" tone="primary" className="font-semibold">
                     {t("schedule:chips.next")}
                   </Badge>
@@ -493,101 +499,274 @@ export default function Schedule() {
           <Dialog
             open={openDialog}
             onClose={() => setOpenDialog(false)}
-            title={dialogLesson?.subject || t("schedule:dialog.detailsFallback")}
+            maxWidth="sm"
+            fullWidth
           >
-            {dialogLesson && (
-              <div className="space-y-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span>{t("schedule:dialog.typeLabel")}:</span>
-                  <Badge
-                    style={{
-                      background: getLessonTypeColor(dialogLesson.lesson_type),
-                      color: "#fff",
-                    }}
-                  >
-                    {getLessonTypeLabel(dialogLesson.lesson_type)}
-                  </Badge>
+            <DialogTitle>
+              {dialogLesson?.subject || t("schedule:dialog.detailsFallback")}
+            </DialogTitle>
+            <DialogContent className="space-y-4 pt-2">
+              {dialogLesson && (
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-semibold opacity-70 uppercase tracking-wider">
+                      {t("schedule:dialog.typeLabel")}:
+                    </span>
+                    <Badge
+                      style={{
+                        background: getLessonTypeColor(dialogLesson.lesson_type),
+                        color: "#fff",
+                      }}
+                    >
+                      {getLessonTypeLabel(dialogLesson.lesson_type)}
+                    </Badge>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-sm font-semibold opacity-70 uppercase tracking-wider">
+                      {t("schedule:dialog.timeLabel")}:
+                    </span>
+                    <p className="font-medium">
+                      {`${getTimeStr(dialogLesson)}–${getEndTimeStr(dialogLesson)}`}
+                    </p>
+                  </div>
+                  {/* .. more details .. */}
                 </div>
-                <div className="space-y-1">
-                  <span>{t("schedule:dialog.timeLabel")}:</span>
-                  <p>{`${getTimeStr(dialogLesson)}–${getEndTimeStr(dialogLesson)}`}</p>
-                </div>
-                {/* .. more details .. */}
-                {(user?.role === "admin" || user?.role === "teacher") && (
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setEditLesson(dialogLesson)
-                      setEditing(true)
-                    }}
-                  >
-                    {t("common:buttons.edit")}
-                  </Button>
-                )}
-              </div>
-            )}
+              )}
+            </DialogContent>
+            <DialogActions>
+              {(user?.role === "admin" || user?.role === "teacher") && (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setEditLesson(dialogLesson)
+                    setEditing(true)
+                  }}
+                >
+                  {t("common:buttons.edit")}
+                </Button>
+              )}
+              <Button variant="ghost" onClick={() => setOpenDialog(false)}>
+                {t("common:buttons.close")}
+              </Button>
+            </DialogActions>
           </Dialog>
 
           <Dialog
             open={editing}
             onClose={() => setEditing(false)}
-            title={t("schedule:dialog.editTitle")}
+            maxWidth="sm"
+            fullWidth
           >
-            {editLesson && (
-              <div className="space-y-5 pt-2 min-w-[280px] sm:min-w-[360px]">
+            <DialogTitle>{t("schedule:dialog.editTitle")}</DialogTitle>
+            <DialogContent className="space-y-5 pt-4">
+              {editLesson && (
+                <div className="space-y-5">
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold opacity-70">
+                      {t("schedule:form.subject")}
+                    </label>
+                    <input
+                      type="text"
+                      value={editLesson.subject || ""}
+                      onChange={(e) =>
+                        setEditLesson((prev) => (prev ? { ...prev, subject: e.target.value } : null))
+                      }
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold opacity-70">
+                      {t("schedule:form.teacher")}
+                    </label>
+                    <input
+                      type="text"
+                      value={editLesson.teacher || ""}
+                      onChange={(e) =>
+                        setEditLesson((prev) => (prev ? { ...prev, teacher: e.target.value } : null))
+                      }
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold opacity-70">
+                      {t("schedule:form.room")}
+                    </label>
+                    <input
+                      type="text"
+                      value={editLesson.room || ""}
+                      onChange={(e) =>
+                        setEditLesson((prev) => (prev ? { ...prev, room: e.target.value } : null))
+                      }
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold opacity-70">
+                      {t("schedule:form.lessonType")}
+                    </label>
+                    <select
+                      value={editLesson.lesson_type || ""}
+                      onChange={(e) =>
+                        setEditLesson((prev) =>
+                          prev ? { ...prev, lesson_type: e.target.value } : null
+                        )
+                      }
+                      className={inputClass}
+                    >
+                      {editingLessonTypeOptions.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex gap-4">
+                    <div className="w-1/2">
+                      <label className="mb-2 block text-sm font-semibold opacity-70">
+                        {t("schedule:form.startTime")}
+                      </label>
+                      <input
+                        type="time"
+                        value={getTimeStr(editLesson)}
+                        onChange={(e) =>
+                          setEditLesson((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  start_time: dayjs().format("YYYY-MM-DDT") + e.target.value + ":00",
+                                }
+                              : null
+                          )
+                        }
+                        className={inputClass}
+                      />
+                    </div>
+                    <div className="w-1/2">
+                      <label className="mb-2 block text-sm font-semibold opacity-70">
+                        {t("schedule:form.endTime")}
+                      </label>
+                      <input
+                        type="time"
+                        value={getEndTimeStr(editLesson)}
+                        onChange={(e) =>
+                          setEditLesson((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  end_time: dayjs().format("YYYY-MM-DDT") + e.target.value + ":00",
+                                }
+                              : null
+                          )
+                        }
+                        className={inputClass}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold opacity-70">
+                      {t("schedule:form.week")}
+                    </label>
+                    <select
+                      value={editLesson.parity}
+                      onChange={(e) =>
+                        setEditLesson((prev) =>
+                          prev ? { ...prev, parity: e.target.value as LessonParity } : null
+                        )
+                      }
+                      className={inputClass}
+                    >
+                      <option value="both">{t("schedule:week.both")}</option>
+                      <option value="odd">{t("schedule:week.odd")}</option>
+                      <option value="even">{t("schedule:week.even")}</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+            </DialogContent>
+            <DialogActions>
+              <Button variant="ghost" onClick={() => setEditing(false)}>
+                {t("common:buttons.cancel")}
+              </Button>
+              <Button
+                variant="solid"
+                onClick={async () => {
+                  if (!editLesson) return
+                  const optimisticId = editLesson.id
+                  const backup = groupSchedule.map((l) => ({ ...l }))
+                  const backendLessonType = toBackendLessonType(editLesson.lesson_type)
+                  const updatedLesson = { ...editLesson, lesson_type: backendLessonType }
+                  applyScheduleUpdate((prev) =>
+                    prev.map((l) => (l.id === optimisticId ? updatedLesson : l))
+                  )
+                  try {
+                    await api.patch(`/schedule/${optimisticId}`, {
+                      ...editLesson,
+                      lesson_type: backendLessonType,
+                    })
+                    setSnack(t("schedule:snackbar.updated"))
+                    setEditing(false)
+                    setOpenDialog(false)
+                    refresh()
+                  } catch {
+                    setSnack(t("schedule:snackbar.updateError"))
+                    applyScheduleUpdate(() => backup)
+                  }
+                }}
+              >
+                {t("common:buttons.save")}
+              </Button>
+            </DialogActions>
+          </Dialog>
+
+          <Dialog
+            open={addDialogOpen}
+            onClose={() => setAddDialogOpen(false)}
+            maxWidth="sm"
+            fullWidth
+          >
+            <DialogTitle>{t("schedule:dialog.addTitle")}</DialogTitle>
+            <DialogContent className="space-y-5 pt-4">
+              <div className="space-y-5">
                 <div>
-                  <label className="mb-2 block text-sm font-semibold">
+                  <label className="mb-2 block text-sm font-semibold opacity-70">
                     {t("schedule:form.subject")}
                   </label>
                   <input
-                    type="text"
-                    value={editLesson.subject || ""}
-                    onChange={(e) =>
-                      setEditLesson((prev) => (prev ? { ...prev, subject: e.target.value } : null))
-                    }
+                    value={addFields.subject}
+                    onChange={(e) => setAddFields({ ...addFields, subject: e.target.value })}
                     className={inputClass}
                   />
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-semibold">
+                  <label className="mb-2 block text-sm font-semibold opacity-70">
                     {t("schedule:form.teacher")}
                   </label>
                   <input
-                    type="text"
-                    value={editLesson.teacher || ""}
-                    onChange={(e) =>
-                      setEditLesson((prev) => (prev ? { ...prev, teacher: e.target.value } : null))
-                    }
+                    value={addFields.teacher}
+                    onChange={(e) => setAddFields({ ...addFields, teacher: e.target.value })}
                     className={inputClass}
                   />
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-semibold">
+                  <label className="mb-2 block text-sm font-semibold opacity-70">
                     {t("schedule:form.room")}
                   </label>
                   <input
-                    type="text"
-                    value={editLesson.room || ""}
-                    onChange={(e) =>
-                      setEditLesson((prev) => (prev ? { ...prev, room: e.target.value } : null))
-                    }
+                    value={addFields.room}
+                    onChange={(e) => setAddFields({ ...addFields, room: e.target.value })}
                     className={inputClass}
                   />
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-semibold">
+                  <label className="mb-2 block text-sm font-semibold opacity-70">
                     {t("schedule:form.lessonType")}
                   </label>
                   <select
-                    value={editLesson.lesson_type || ""}
-                    onChange={(e) =>
-                      setEditLesson((prev) =>
-                        prev ? { ...prev, lesson_type: e.target.value } : null
-                      )
-                    }
+                    value={addFields.lessonType}
+                    onChange={(e) => setAddFields({ ...addFields, lessonType: e.target.value })}
                     className={inputClass}
                   >
-                    {editingLessonTypeOptions.map((o) => (
+                    {lessonTypeOptions.map((o) => (
                       <option key={o.value} value={o.value}>
                         {o.label}
                       </option>
@@ -596,56 +775,36 @@ export default function Schedule() {
                 </div>
                 <div className="flex gap-4">
                   <div className="w-1/2">
-                    <label className="mb-2 block text-sm font-semibold">
+                    <label className="mb-2 block text-sm font-semibold opacity-70">
                       {t("schedule:form.startTime")}
                     </label>
                     <input
                       type="time"
-                      value={getTimeStr(editLesson)}
-                      onChange={(e) =>
-                        setEditLesson((prev) =>
-                          prev
-                            ? {
-                                ...prev,
-                                start_time: dayjs().format("YYYY-MM-DDT") + e.target.value + ":00",
-                              }
-                            : null
-                        )
-                      }
+                      value={addFields.startTime}
+                      onChange={(e) => setAddFields({ ...addFields, startTime: e.target.value })}
                       className={inputClass}
                     />
                   </div>
                   <div className="w-1/2">
-                    <label className="mb-2 block text-sm font-semibold">
+                    <label className="mb-2 block text-sm font-semibold opacity-70">
                       {t("schedule:form.endTime")}
                     </label>
                     <input
                       type="time"
-                      value={getEndTimeStr(editLesson)}
-                      onChange={(e) =>
-                        setEditLesson((prev) =>
-                          prev
-                            ? {
-                                ...prev,
-                                end_time: dayjs().format("YYYY-MM-DDT") + e.target.value + ":00",
-                              }
-                            : null
-                        )
-                      }
+                      value={addFields.endTime}
+                      onChange={(e) => setAddFields({ ...addFields, endTime: e.target.value })}
                       className={inputClass}
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-semibold">
+                  <label className="mb-2 block text-sm font-semibold opacity-70">
                     {t("schedule:form.week")}
                   </label>
                   <select
-                    value={editLesson.parity}
+                    value={addFields.parity}
                     onChange={(e) =>
-                      setEditLesson((prev) =>
-                        prev ? { ...prev, parity: e.target.value as LessonParity } : null
-                      )
+                      setAddFields({ ...addFields, parity: e.target.value as LessonParity })
                     }
                     className={inputClass}
                   >
@@ -654,125 +813,23 @@ export default function Schedule() {
                     <option value="even">{t("schedule:week.even")}</option>
                   </select>
                 </div>
-                <div className="flex gap-4 pt-2">
-                  <Button
-                    variant="solid"
-                    onClick={async () => {
-                      if (!editLesson) return
-                      const optimisticId = editLesson.id
-                      const backup = groupSchedule.map((l) => ({ ...l }))
-                      const backendLessonType = toBackendLessonType(editLesson.lesson_type)
-                      const updatedLesson = { ...editLesson, lesson_type: backendLessonType }
-                      applyScheduleUpdate((prev) =>
-                        prev.map((l) => (l.id === optimisticId ? updatedLesson : l))
-                      )
-                      try {
-                        await api.patch(`/schedule/${optimisticId}`, {
-                          ...editLesson,
-                          lesson_type: backendLessonType,
-                        })
-                        setSnack(t("schedule:snackbar.updated"))
-                        setEditing(false)
-                        setOpenDialog(false)
-                        refresh()
-                      } catch {
-                        setSnack(t("schedule:snackbar.updateError"))
-                        applyScheduleUpdate(() => backup)
-                      }
-                    }}
-                  >
-                    {t("common:buttons.save")}
-                  </Button>
-                </div>
               </div>
-            )}
+            </DialogContent>
+            <DialogActions>
+              <Button variant="ghost" onClick={() => setAddDialogOpen(false)}>
+                {t("common:buttons.cancel")}
+              </Button>
+              <Button variant="solid" onClick={handleAddLesson}>
+                {t("schedule:buttons.add")}
+              </Button>
+            </DialogActions>
           </Dialog>
 
-          <Dialog
-            open={addDialogOpen}
-            onClose={() => setAddDialogOpen(false)}
-            title={t("schedule:dialog.addTitle")}
-          >
-            <div className="space-y-5 pt-2 min-w-[280px]">
-              <div>
-                <label>{t("schedule:form.subject")}</label>
-                <input
-                  value={addFields.subject}
-                  onChange={(e) => setAddFields({ ...addFields, subject: e.target.value })}
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label>{t("schedule:form.teacher")}</label>
-                <input
-                  value={addFields.teacher}
-                  onChange={(e) => setAddFields({ ...addFields, teacher: e.target.value })}
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label>{t("schedule:form.room")}</label>
-                <input
-                  value={addFields.room}
-                  onChange={(e) => setAddFields({ ...addFields, room: e.target.value })}
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label>{t("schedule:form.lessonType")}</label>
-                <select
-                  value={addFields.lessonType}
-                  onChange={(e) => setAddFields({ ...addFields, lessonType: e.target.value })}
-                  className={inputClass}
-                >
-                  {lessonTypeOptions.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label>{t("schedule:form.startTime")}</label>
-                <input
-                  type="time"
-                  value={addFields.startTime}
-                  onChange={(e) => setAddFields({ ...addFields, startTime: e.target.value })}
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label>{t("schedule:form.endTime")}</label>
-                <input
-                  type="time"
-                  value={addFields.endTime}
-                  onChange={(e) => setAddFields({ ...addFields, endTime: e.target.value })}
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label>{t("schedule:form.week")}</label>
-                <select
-                  value={addFields.parity}
-                  onChange={(e) =>
-                    setAddFields({ ...addFields, parity: e.target.value as LessonParity })
-                  }
-                  className={inputClass}
-                >
-                  <option value="both">{t("schedule:week.both")}</option>
-                  <option value="odd">{t("schedule:week.odd")}</option>
-                  <option value="even">{t("schedule:week.even")}</option>
-                </select>
-              </div>
-              <div className="flex gap-4 pt-2">
-                <Button variant="solid" onClick={handleAddLesson}>
-                  {t("schedule:buttons.add")}
-                </Button>
-              </div>
-            </div>
-          </Dialog>
-
-          <Snackbar open={!!snack} message={snack} onClose={() => setSnack("")} />
+          <Snackbar open={!!snack} onClose={() => setSnack("")}>
+            <Alert onClose={() => setSnack("")} severity="info">
+              {snack}
+            </Alert>
+          </Snackbar>
         </div>
       </PageFadeIn>
     </Layout>

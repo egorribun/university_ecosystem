@@ -13,13 +13,15 @@ import { useNavigate } from "react-router-dom"
 import { isAxiosError } from "axios"
 import api from "../api/client"
 import type { Event } from "@/types/Event"
-import PeopleAltIcon from "@mui/icons-material/PeopleAlt"
-import PlaceIcon from "@mui/icons-material/Place"
-import EventIcon from "@mui/icons-material/Event"
-import MoreVertIcon from "@mui/icons-material/MoreVert"
-import DeleteIcon from "@mui/icons-material/Delete"
-import EditIcon from "@mui/icons-material/Edit"
-import QrCodeIcon from "@mui/icons-material/QrCode"
+import {
+  Users as PeopleAltIcon,
+  MapPin as PlaceIcon,
+  Calendar as EventIcon,
+  MoreVertical as MoreVertIcon,
+  Trash2 as DeleteIcon,
+  Pencil as EditIcon,
+  QrCode as QrCodeIcon,
+} from "lucide-react"
 import { useAuth } from "../contexts/AuthContext"
 import SmartImage from "@/components/SmartImage"
 import { motion } from "framer-motion"
@@ -128,7 +130,7 @@ function Snackbar({
 
   return (
     <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 animate-in slide-in-from-bottom-4 fade-in">
-      <div className="rounded-[1.25rem] border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_98%,white_2%)] px-5 py-3.5 text-sm font-semibold text-[color:var(--page-text)] shadow-[0_8px_24px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.08)] backdrop-blur-md">
+      <div className="rounded-[1.25rem] border border-[color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color-mix(in_srgb,var(--card-bg)_98%,white_2%)] px-5 py-3.5 text-sm font-semibold text-[var(--page-text)] shadow-[0_8px_24px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.08)] backdrop-blur-md">
         {message}
       </div>
     </div>
@@ -575,7 +577,7 @@ const EventCardComponent: FC<EventCardProps> = ({
     >
       <div
         className={cn(
-          "card-glass group relative flex flex-col transition-[box-shadow] duration-300 ease-out w-full p-5 transform-gpu will-change-transform",
+          "card-glass group relative flex flex-col transition-shadow duration-300 ease-out w-full p-5 transform-gpu will-change-transform",
           hoveringDisabled
             ? "cursor-default"
             : "cursor-pointer hover:shadow-glass-strong active:scale-[0.985]"
@@ -605,42 +607,42 @@ const EventCardComponent: FC<EventCardProps> = ({
               aria-controls={menuAnchor ? menuId : undefined}
               aria-haspopup="true"
               aria-expanded={Boolean(menuAnchor) ? "true" : undefined}
-              className="absolute top-2.5 right-2.5 z-[2] rounded-full bg-white/82 p-1.5 text-[color:var(--page-text)] shadow-surface transition-colors hover:bg-white"
+              className="absolute top-2.5 right-2.5 z-2 rounded-full bg-white/82 p-1.5 text-(--page-text) shadow-surface transition-colors hover:bg-white"
               onClick={(e) => {
                 e.stopPropagation()
                 setMenuAnchor(e.currentTarget)
               }}
             >
-              <MoreVertIcon className="h-5 w-5" />
+              <MoreVertIcon size={20} />
             </button>
             {menuAnchor && (
               <div
                 ref={menuRef}
-                className="absolute right-0 top-12 z-50 min-w-[160px] rounded-ue-lg border border-[color:var(--glass-border)] bg-[color:var(--card-bg)] shadow-surface-strong"
+                className="absolute right-0 top-12 z-50 min-w-[160px] rounded-ue-lg border border-(--glass-border) bg-(--card-bg) shadow-surface-strong"
               >
                 <div className="py-1">
                   <button
                     type="button"
-                    className="flex w-full items-center gap-2 px-4 py-2 text-sm text-[color:var(--page-text)] transition-colors hover:bg-[color:var(--option-bg)]"
+                    className="flex w-full items-center gap-2 px-4 py-2 text-sm text-(--page-text) transition-colors hover:bg-(--glass-bg)/80"
                     onClick={(e) => {
                       e.stopPropagation()
                       setMenuAnchor(null)
                       openEditDialog()
                     }}
                   >
-                    <EditIcon className="h-4 w-4" />
+                    <EditIcon size={16} />
                     {t("common:buttons.edit")}
                   </button>
                   <button
                     type="button"
-                    className="flex w-full items-center gap-2 px-4 py-2 text-sm text-red-500 transition-colors hover:bg-[color:var(--option-bg)]"
+                    className="flex w-full items-center gap-2 px-4 py-2 text-sm text-(--page-text) transition-colors hover:bg-(--glass-bg)/80"
                     onClick={(e) => {
                       e.stopPropagation()
                       setMenuAnchor(null)
                       setConfirmDeleteOpen(true)
                     }}
                   >
-                    <DeleteIcon className="h-4 w-4" />
+                    <DeleteIcon size={16} />
                     {t("common:buttons.delete")}
                   </button>
                 </div>
@@ -654,9 +656,9 @@ const EventCardComponent: FC<EventCardProps> = ({
           <div
             className={cn(
               "relative w-full overflow-hidden rounded-[14px]",
-              "aspect-[16/9] max-h-[200px]",
-              "bg-gradient-to-br from-[color:color-mix(in_srgb,var(--nav-link)_20%,var(--card-bg)_80%)] to-[color:color-mix(in_srgb,var(--nav-link)_10%,var(--card-bg)_90%)]",
-              "border border-[color:color-mix(in_srgb,var(--nav-link)_12%,transparent_88%)]"
+              "aspect-video max-h-[200px]",
+              "bg-linear-to-br from-[color-mix(in_srgb,var(--nav-link)_20%,var(--card-bg)_80%)] to-[color-mix(in_srgb,var(--nav-link)_10%,var(--card-bg)_90%)]",
+              "border border-[color-mix(in_srgb,var(--nav-link)_12%,transparent_88%)]"
             )}
           >
             <SmartImage
@@ -673,7 +675,7 @@ const EventCardComponent: FC<EventCardProps> = ({
               onError={handleCardImageReady}
             />
             {/* Gradient overlay for depth */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-white/5 pointer-events-none" />
+            <div className="absolute inset-0 bg-linear-to-t from-black/20 via-transparent to-white/5 pointer-events-none" />
             {/* Event type badge on image */}
             {event_type && (
               <div className="absolute top-3 left-3 px-3 py-1.5 rounded-lg bg-black/50 backdrop-blur-md border border-white/20 shadow-lg">
@@ -696,19 +698,19 @@ const EventCardComponent: FC<EventCardProps> = ({
               </div>
             )}
             {!cardImageReady && (
-              <div className="absolute inset-0 bg-gradient-to-br from-[color:color-mix(in_srgb,var(--nav-link)_15%,var(--card-bg)_85%)] to-[color:var(--card-bg)] animate-pulse" />
+              <div className="absolute inset-0 bg-linear-to-br from-[color-mix(in_srgb,var(--nav-link)_15%,var(--card-bg)_85%)] to-(--card-bg) animate-pulse" />
             )}
           </div>
         </div>
 
         {/* Title */}
-        <h3 className="mb-2 text-xl font-extrabold leading-tight text-[color:var(--page-text)] sm:text-2xl">
+        <h3 className="mb-2 text-xl font-extrabold leading-tight text-(--page-text) sm:text-2xl">
           {title}
         </h3>
 
         {/* Speaker */}
         {speaker && (
-          <p className="mb-2 text-[15px] font-semibold text-[color:var(--secondary-text)]">
+          <p className="mb-2 text-[15px] font-semibold text-(--secondary-text)">
             {t("events:form.speaker")}: {speaker}
           </p>
         )}
@@ -716,9 +718,9 @@ const EventCardComponent: FC<EventCardProps> = ({
         {/* Date */}
         <div className="mb-2 flex items-center gap-2 group/date">
           <Tooltip content={t("events:form.dates")}>
-            <EventIcon className="h-5 w-5 text-[color:var(--nav-link)] transition-transform group-hover/date:scale-110" />
+            <EventIcon size={20} className="text-(--nav-link) transition-transform group-hover/date:scale-110" />
           </Tooltip>
-          <span className="text-base text-[color:var(--secondary-text)]">
+          <span className="text-base text-(--secondary-text)">
             {formatLocalDateTime(starts_at)} — {formatLocalDateTime(ends_at)}
           </span>
         </div>
@@ -726,16 +728,16 @@ const EventCardComponent: FC<EventCardProps> = ({
         {/* Location */}
         <div className="mb-2 flex items-center gap-2 group/loc">
           <Tooltip content={t("events:form.location")}>
-            <PlaceIcon className="h-5 w-5 text-[color:var(--nav-link)] transition-transform group-hover/loc:scale-110" />
+            <PlaceIcon size={20} className="text-(--nav-link) transition-transform group-hover/loc:scale-110" />
           </Tooltip>
-          <span className="text-base text-[color:var(--secondary-text)]">{location}</span>
+          <span className="text-base text-(--secondary-text)">{location}</span>
         </div>
 
         {/* Divider */}
-        <div className="my-3 h-px bg-gradient-to-r from-transparent via-[color:color-mix(in_srgb,var(--nav-link)_20%,transparent_80%)] to-transparent" />
+        <div className="my-3 h-px bg-linear-to-r from-transparent via-[color-mix(in_srgb,var(--nav-link)_20%,transparent_80%)] to-transparent" />
 
         {/* Description */}
-        <p className="mb-4 line-clamp-3 text-base text-[color:var(--page-text)] flex-grow-0">
+        <p className="mb-4 line-clamp-3 text-base text-(--page-text) grow-0">
           {description}
         </p>
 
@@ -743,9 +745,9 @@ const EventCardComponent: FC<EventCardProps> = ({
           {/* Participants */}
           <div className="mb-4 flex items-center gap-2 group/part">
             <Tooltip content={t("events:form.participants")}>
-              <PeopleAltIcon className="h-[19px] w-[19px] text-[color:var(--nav-link)] transition-transform group-hover/part:scale-110" />
+              <PeopleAltIcon size={19} className="text-(--nav-link) transition-transform group-hover/part:scale-110" />
             </Tooltip>
-            <span className="text-[15px] text-[color:var(--page-text)]">
+            <span className="text-[15px] text-(--page-text)">
               {t("events:card.participants", { count })}
             </span>
           </div>
@@ -789,10 +791,10 @@ const EventCardComponent: FC<EventCardProps> = ({
                         e.stopPropagation()
                         setQrOpen(true)
                       }}
-                      className="relative flex items-center justify-center p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-gradient-to-br from-[color:var(--nav-link)] to-[color:color-mix(in_srgb,var(--nav-link)_80%,#3b82f6_20%)] hover:from-[color:color-mix(in_srgb,var(--nav-link)_90%,white_10%)] hover:to-[color:color-mix(in_srgb,var(--nav-link)_70%,#3b82f6_30%)] border border-white/20 shadow-[0_4px_16px_-4px_color-mix(in_srgb,var(--nav-link)_50%,transparent_50%),inset_0_1px_0_rgba(255,255,255,0.15)] transition-all duration-300 hover:scale-105 hover:shadow-[0_8px_24px_-4px_color-mix(in_srgb,var(--nav-link)_60%,transparent_40%)] active:scale-95 group/qr overflow-hidden"
+                      className="relative flex items-center justify-center p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-linear-to-br from-(--nav-link) to-[color-mix(in_srgb,var(--nav-link)_80%,#3b82f6_20%)] hover:from-[color-mix(in_srgb,var(--nav-link)_90%,white_10%)] hover:to-[color-mix(in_srgb,var(--nav-link)_70%,#3b82f6_30%)] border border-white/20 shadow-[0_4px_16px_-4px_color-mix(in_srgb,var(--nav-link)_50%,transparent_50%),inset_0_1px_0_rgba(255,255,255,0.15)] transition-all duration-300 hover:scale-105 hover:shadow-[0_8px_24px_-4px_color-mix(in_srgb,var(--nav-link)_60%,transparent_40%)] active:scale-95 group/qr overflow-hidden"
                     >
                       {/* Shimmer effect */}
-                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover/qr:translate-x-full transition-transform duration-700 ease-out" />
+                      <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover/qr:translate-x-full transition-transform duration-700 ease-out" />
                       <QrCodeIcon className="w-7 h-7 sm:w-8 sm:h-8 text-white drop-shadow-sm relative z-10" />
                     </button>
                   </Tooltip>
@@ -845,7 +847,7 @@ const EventCardComponent: FC<EventCardProps> = ({
                 variant="solid"
                 onClick={handleDelete}
                 disabled={loading}
-                leadingIcon={<DeleteIcon />}
+                leadingIcon={<DeleteIcon size={18} />}
                 className="w-full bg-red-500 hover:bg-red-600 sm:w-auto"
               >
                 {t("common:buttons.delete")}
@@ -854,7 +856,7 @@ const EventCardComponent: FC<EventCardProps> = ({
           }
           footerClassName="flex-col-reverse gap-3 sm:flex-row"
         >
-          <p className="text-[color:var(--page-text)]">
+          <p className="text-(--page-text)">
             {t("events:card.dialogs.delete.description")}
           </p>
         </Dialog>

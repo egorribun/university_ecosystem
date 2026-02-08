@@ -1,10 +1,12 @@
 import { NavLink, useLocation } from "react-router-dom"
 import { useLayoutEffect, useMemo } from "react"
-import DashboardIcon from "@mui/icons-material/Dashboard"
-import ArticleIcon from "@mui/icons-material/Article"
-import EventNoteIcon from "@mui/icons-material/EventNote"
-import TodayIcon from "@mui/icons-material/Today"
-import PersonIcon from "@mui/icons-material/Person"
+import {
+  LayoutDashboard as DashboardIcon,
+  Newspaper as ArticleIcon,
+  Calendar as EventNoteIcon,
+  CalendarDays as TodayIcon,
+  User as PersonIcon,
+} from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { motion } from "framer-motion"
 import { springBouncy, springSoft, hoverScale } from "@/utils/animations"
@@ -75,11 +77,11 @@ export default function MobileBottomNav() {
 
   const items = useMemo(
     () => [
-      { to: "/dashboard", label: t("navigation:menu.dashboard"), icon: <DashboardIcon /> },
-      { to: "/news", label: t("navigation:menu.news"), icon: <ArticleIcon /> },
-      { to: "/events", label: t("navigation:menu.events"), icon: <EventNoteIcon /> },
-      { to: "/schedule", label: t("navigation:menu.schedule"), icon: <TodayIcon /> },
-      { to: "/profile", label: t("navigation:menu.profile"), icon: <PersonIcon /> },
+      { to: "/dashboard", label: t("navigation:menu.dashboard"), icon: <DashboardIcon size={22} /> },
+      { to: "/news", label: t("navigation:menu.news"), icon: <ArticleIcon size={22} /> },
+      { to: "/events", label: t("navigation:menu.events"), icon: <EventNoteIcon size={22} /> },
+      { to: "/schedule", label: t("navigation:menu.schedule"), icon: <TodayIcon size={22} /> },
+      { to: "/profile", label: t("navigation:menu.profile"), icon: <PersonIcon size={22} /> },
     ],
     [t]
   )
@@ -91,7 +93,7 @@ export default function MobileBottomNav() {
   return (
     <>
       <nav
-        className="fixed bottom-0 left-0 right-0 z-50 flex h-[calc(4rem+env(safe-area-inset-bottom))] w-full items-center justify-around border-t border-[var(--glass-border)] bg-[var(--nav-bg)] backdrop-blur-[var(--glass-blur)] pb-[env(safe-area-inset-bottom)] shadow-[var(--shadow-up)] transition-all md:hidden"
+        className="fixed bottom-0 left-0 right-0 z-50 flex h-[calc(4rem+env(safe-area-inset-bottom))] w-full items-center justify-around border-t border-(--glass-border) bg-(--nav-bg) backdrop-blur-(--glass-blur) pb-[env(safe-area-inset-bottom)] shadow-(--shadow-up) transition-all md:hidden"
         style={{
           transitionDuration: "600ms",
           transitionTimingFunction: "var(--ease-premium)",
@@ -114,9 +116,9 @@ export default function MobileBottomNav() {
                 }
               }}
               className={({ isActive }) =>
-                "group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-[var(--nav-text)] transition-all outline-none select-none " +
+                "group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--nav-text) transition-all outline-none select-none " +
                 (isActive
-                  ? "active text-[var(--nav-link)] font-bold scale-110"
+                  ? "active text-(--nav-link) font-bold scale-110"
                   : "opacity-60 hover:opacity-100")
               }
               aria-label={it.label}
@@ -125,7 +127,7 @@ export default function MobileBottomNav() {
                 {isActive && (
                   <motion.div
                     layoutId="bottom-nav-active-glow"
-                    className="absolute inset-[-14px] rounded-full bg-[var(--nav-link)] opacity-10 blur-xl -z-10"
+                    className="absolute inset-[-14px] rounded-full bg-(--nav-link) opacity-10 blur-xl -z-10"
                     transition={springBouncy}
                   />
                 )}
@@ -157,7 +159,7 @@ export default function MobileBottomNav() {
       {/* Spacer for bottom nav */}
       {!pathname.startsWith("/messenger") && (
         <div
-          className="h-[calc(4rem+env(safe-area-inset-bottom))] bg-[var(--page-bg)] transition-colors duration-500 md:hidden"
+          className="h-[calc(4rem+env(safe-area-inset-bottom))] bg-(--page-bg) transition-colors duration-500 md:hidden"
           aria-hidden="true"
         />
       )}

@@ -1,24 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react"
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
-
-dayjs.extend(utc)
+import { useTranslation } from "react-i18next"
+import { isAxiosError } from "axios"
 import {
-  Alert,
-  Box,
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CircularProgress,
-  Divider,
-  Stack,
-  TextField,
-  Typography,
-} from "@mui/material"
-import PhotoCamera from "@mui/icons-material/PhotoCamera"
-import DeleteIcon from "@mui/icons-material/Delete"
-import RestartAltIcon from "@mui/icons-material/RestartAlt"
+  Mail as EmailIcon,
+  Camera as PhotoCamera,
+  Trash2 as DeleteIcon,
+  RefreshCw as RestartAltIcon,
+  ChevronRight,
+  Plus as AddIcon,
+} from "lucide-react"
+
 import Layout from "@/components/Layout"
 import PageFadeIn from "@/components/PageFadeIn"
 import SmartImage from "@/components/SmartImage"
@@ -26,10 +19,20 @@ import { useAuth } from "@/contexts/AuthContext"
 import type { StoryItem } from "@/types/Story"
 import { createStory, deleteStory, updateStory, uploadStoryCover } from "@/api/stories"
 import apiClient from "@/api/client"
-import { isAxiosError } from "axios"
-import { useTranslation } from "react-i18next"
 import { useLocaleFormatters } from "@/i18n/formatters"
 import { sanitizeUrl } from "@/utils/media"
+import { cn } from "@/utils/cn"
+import {
+  Alert,
+  Button,
+  CircularProgress,
+  TextField,
+  SectionCard,
+  Divider,
+} from "@/components/settings"
+import { Badge, Card } from "@/components/ui"
+
+dayjs.extend(utc)
 
 function formatInputDate(value: string | dayjs.Dayjs) {
   const parsed = typeof value === "string" ? dayjs(value) : value
@@ -46,7 +49,7 @@ function toIso(date: string) {
 function formatTimeLeft(
   expiresAt: string,
   now: dayjs.Dayjs,
-  t: ReturnType<typeof useTranslation>["t"]
+  t: any
 ) {
   const expires = dayjs(expiresAt)
   if (!expires.isValid()) return t("stories:list.timeLeft.unknown")
@@ -160,13 +163,10 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
   const handleCoverChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file) return
-
-    // Validate file type
     if (!file.type.startsWith("image/")) {
       setActionError(t("stories:errors.invalidFileType"))
       return
     }
-
     setCoverFile(file)
     if (coverPreview) URL.revokeObjectURL(coverPreview)
     setCoverPreview(URL.createObjectURL(file))
@@ -226,171 +226,163 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
   }
 
   return (
-    <Card variant="outlined" sx={{ borderRadius: 3 }}>
-      <CardHeader
-        title={story.title}
-        subheader={story.short_text}
-        sx={{
-          alignItems: "flex-start",
-          "& .MuiCardHeader-title": { fontSize: "1.1rem", fontWeight: 700 },
-          "& .MuiCardHeader-subheader": { fontSize: "0.95rem" },
-        }}
-      />
-      <Divider />
-      <CardContent>
-        <Stack spacing={2}>
-          <Stack direction={{ xs: "column", md: "row" }} spacing={3} alignItems="stretch">
-            <Box flex={1} minWidth={0}>
-              <Typography variant="body2" color="text.secondary">
-                {t("stories:list.details.published", {
-                  date: formatDate(new Date(story.published_at)),
-                })}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {t("stories:list.details.expires", {
-                  date: formatDate(new Date(story.expires_at)),
-                })}
-              </Typography>
-              <Typography variant="body1" fontWeight={600} color="primary.main" mt={1}>
+    <Card className="overflow-hidden border-glass-border bg-surface/40 shadow-glass backdrop-blur-md">
+      <div className="px-6 py-5 border-b border-glass-border/30">
+        <h3 className="text-lg font-extrabold text-primary-text">{story.title}</h3>
+        <p className="text-sm text-secondary-text mt-0.5">{story.short_text}</p>
+      </div>
+      <div className="p-6">
+        <div className="flex flex-col gap-6">
+          <div className="flex flex-col md:flex-row gap-8">
+            <div className="flex-1 flex flex-col gap-3">
+              <div className="space-y-1">
+                <p className="text-[0.7rem] font-bold uppercase tracking-wider text-brand opacity-70">
+                  {t("stories:list.details.published", { date: "" }).split(":")[0]}
+                </p>
+                <p className="text-sm font-medium text-primary-text">
+                  {formatDate(new Date(story.published_at))}
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[0.7rem] font-bold uppercase tracking-wider text-brand opacity-70">
+                  {t("stories:list.details.expires", { date: "" }).split(":")[0]}
+                </p>
+                <p className="text-sm font-medium text-primary-text">
+                  {formatDate(new Date(story.expires_at))}
+                </p>
+              </div>
+              <Badge tone="primary" className="w-fit text-sm font-bold mt-2">
                 {timeLeft}
-              </Typography>
+              </Badge>
               {story.cta_url && (
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  mt={1}
-                  sx={{ wordBreak: "break-all" }}
-                >
-                  {t("stories:list.details.cta")}: {story.cta_url}
-                </Typography>
+                <div className="mt-2 p-3 rounded-xl bg-surface/20 border border-glass-border/20">
+                   <p className="text-[0.65rem] font-bold uppercase tracking-widest text-secondary-text opacity-50 mb-1">
+                     {t("stories:list.details.cta")}
+                   </p>
+                   <p className="text-xs font-mono break-all text-brand">{story.cta_url}</p>
+                </div>
               )}
-            </Box>
-            <Box
-              sx={{
-                width: { xs: "100%", md: 220 },
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: 1.5,
-              }}
-            >
-              <Box
-                sx={{
-                  width: "100%",
-                  borderRadius: 3,
-                  overflow: "hidden",
-                  background: "rgba(0,0,0,0.08)",
-                  aspectRatio: "9 / 16",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                {coverPreview ? (
-                  <img
-                    src={sanitizeUrl(coverPreview) ?? ""}
-                    alt={t("stories:list.coverAlt", { title: story.title })}
-                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                  />
-                ) : story.cover_url ? (
-                  <SmartImage
-                    srcRaw={story.cover_url}
-                    alt={story.title}
-                    style={{ width: "100%", height: "100%" }}
-                  />
-                ) : (
-                  <Typography variant="body2" color="text.secondary" textAlign="center" px={2}>
-                    {t("stories:list.noCover")}
-                  </Typography>
-                )}
-              </Box>
-              <Stack direction="row" spacing={1} width="100%" justifyContent="center">
-                <Button
-                  component="label"
-                  variant="outlined"
-                  startIcon={<PhotoCamera />}
-                  sx={{ flex: 1 }}
-                >
-                  {coverFile
-                    ? t("common:buttons.changePhoto")
-                    : t("stories:list.actions.pickCover")}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    hidden
-                    onChange={handleCoverChange}
-                    ref={fileInputRef}
-                  />
-                </Button>
-                {coverFile && (
+            </div>
+
+            <div className="w-full md:w-[220px] flex flex-col items-center gap-4">
+               <div className="relative w-full aspect-9/16 rounded-2xl overflow-hidden bg-surface/20 border border-glass-border shadow-inner group">
+                  {coverPreview ? (
+                    <img
+                      src={sanitizeUrl(coverPreview) ?? ""}
+                      alt={t("stories:list.coverAlt", { title: story.title })}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : story.cover_url ? (
+                    <SmartImage
+                      srcRaw={story.cover_url}
+                      alt={story.title}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center p-6 text-center">
+                      <p className="text-xs font-medium text-secondary-text opacity-60">
+                        {t("stories:list.noCover")}
+                      </p>
+                    </div>
+                  )}
+               </div>
+
+               <div className="w-full space-y-2">
+                  <div className="flex gap-2 w-full">
+                    <Button
+                      as="label"
+                      variant="outline"
+                      size="sm"
+                      className="flex-1"
+                      leadingIcon={<PhotoCamera className="h-4 w-4" />}
+                    >
+                      {coverFile ? t("common:buttons.changePhoto") : t("stories:list.actions.pickCover")}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        hidden
+                        onChange={handleCoverChange}
+                        ref={fileInputRef}
+                      />
+                    </Button>
+                    {coverFile && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleCoverReset}
+                        leadingIcon={<RestartAltIcon className="h-4 w-4" />}
+                        className="text-secondary-text"
+                      />
+                    )}
+                  </div>
                   <Button
-                    variant="outlined"
-                    color="secondary"
-                    onClick={handleCoverReset}
-                    startIcon={<RestartAltIcon />}
+                    variant="solid"
+                    size="sm"
+                    className="w-full"
+                    disabled={!coverFile || updatingCover}
+                    onClick={handleCoverUpdate}
+                    loading={updatingCover}
                   >
-                    {t("stories:list.actions.clearCover")}
+                    {t("stories:list.actions.updateCover")}
                   </Button>
-                )}
-              </Stack>
+               </div>
+            </div>
+          </div>
+
+          <Divider className="opacity-10" />
+
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <TextField
+                label={t("stories:form.publishedAt")}
+                type="datetime-local"
+                value={publishedAt}
+                onChange={(e) => setPublishedAt(e.target.value)}
+              />
+              <TextField
+                label={t("stories:form.expiresAt")}
+                type="datetime-local"
+                value={expiresAt}
+                onChange={(e) => setExpiresAt(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-wrap gap-3 mt-2">
               <Button
-                variant="contained"
-                disabled={!coverFile || updatingCover}
-                onClick={handleCoverUpdate}
-                fullWidth
+                variant="solid"
+                onClick={handleTimeSave}
+                disabled={savingTime}
+                loading={savingTime}
               >
-                {updatingCover
-                  ? t("common:statuses.uploading")
-                  : t("stories:list.actions.updateCover")}
+                {t("stories:list.actions.updateTimer")}
               </Button>
-            </Box>
-          </Stack>
-
-          <Divider flexItem />
-
-          <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
-            <TextField
-              label={t("stories:form.publishedAt")}
-              type="datetime-local"
-              value={publishedAt}
-              onChange={(e) => setPublishedAt(e.target.value)}
-              InputLabelProps={{ shrink: true }}
-              fullWidth
-            />
-            <TextField
-              label={t("stories:form.expiresAt")}
-              type="datetime-local"
-              value={expiresAt}
-              onChange={(e) => setExpiresAt(e.target.value)}
-              InputLabelProps={{ shrink: true }}
-              fullWidth
-            />
-          </Stack>
-          <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
-            <Button variant="contained" onClick={handleTimeSave} disabled={savingTime}>
-              {savingTime ? t("common:statuses.loading") : t("stories:list.actions.updateTimer")}
-            </Button>
-            <Button
-              variant="outlined"
-              color="warning"
-              onClick={handleUnpublish}
-              disabled={unpublishing}
-            >
-              {unpublishing ? t("common:statuses.loading") : t("stories:list.actions.unpublish")}
-            </Button>
-            <Button
-              variant="outlined"
-              color="error"
-              onClick={handleDelete}
-              startIcon={<DeleteIcon />}
-              disabled={deleting}
-            >
-              {deleting ? t("common:statuses.loading") : t("common:buttons.delete")}
-            </Button>
-          </Stack>
-          {actionError && <Alert severity="error">{actionError}</Alert>}
-        </Stack>
-      </CardContent>
+              <Button
+                variant="outline"
+                className="text-amber-500 border-amber-500/30 hover:bg-amber-500/10"
+                onClick={handleUnpublish}
+                disabled={unpublishing}
+                loading={unpublishing}
+              >
+                {t("stories:list.actions.unpublish")}
+              </Button>
+              <Button
+                variant="outline"
+                className="text-rose-500 border-rose-500/30 hover:bg-rose-500/10 ml-auto"
+                onClick={handleDelete}
+                disabled={deleting}
+                loading={deleting}
+                leadingIcon={<DeleteIcon className="h-4 w-4" />}
+              >
+                {t("common:buttons.delete")}
+              </Button>
+            </div>
+          </div>
+          {actionError && (
+             <Alert severity="error" className="shadow-sm">
+               {actionError}
+             </Alert>
+          )}
+        </div>
+      </div>
     </Card>
   )
 }
@@ -518,20 +510,9 @@ export default function StoriesAdmin() {
     return (
       <Layout>
         <PageFadeIn>
-          <Box
-            sx={{
-              width: "100%",
-              minHeight: "70vh",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              px: 2,
-            }}
-          >
-            <Typography variant="h5" textAlign="center">
-              {t("stories:notAuthorized")}
-            </Typography>
-          </Box>
+          <div className="flex min-h-[70vh] items-center justify-center px-4">
+             <h2 className="text-2xl font-bold opacity-40">{t("stories:notAuthorized")}</h2>
+          </div>
         </PageFadeIn>
       </Layout>
     )
@@ -540,172 +521,165 @@ export default function StoriesAdmin() {
   return (
     <Layout>
       <PageFadeIn>
-        <Box
-          sx={{
-            width: "100%",
-            maxWidth: 1100,
-            mx: "auto",
-            py: { xs: 4, md: 6 },
-            px: { xs: 2, sm: 3, md: 4 },
-            color: "var(--page-text)",
-          }}
-        >
-          <Typography variant="h4" component="h1" fontWeight={700} mb={3} color="primary.main">
-            {t("stories:pageTitle")}
-          </Typography>
+        <div className="mx-auto max-w-[1100px] px-4 py-8 md:py-12">
+          <div className="mb-10 flex items-center gap-4">
+             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand/10 text-brand">
+                <RestartAltIcon className="h-7 w-7" />
+             </div>
+             <h1 className="text-3xl font-extrabold tracking-tight text-primary-text">
+               {t("stories:pageTitle")}
+             </h1>
+          </div>
 
-          <Card variant="outlined" sx={{ borderRadius: 3, mb: 4 }}>
-            <CardHeader
-              title={t("stories:form.title")}
-              subheader={t("stories:form.subtitle")}
-              sx={{ "& .MuiCardHeader-title": { fontWeight: 700, fontSize: "1.2rem" } }}
-            />
-            <Divider />
-            <CardContent>
-              <Stack spacing={2}>
-                <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
+          <SectionCard className="mb-12">
+            <div className="px-6 py-5 border-b border-glass-border/30">
+               <h2 className="text-lg font-bold text-primary-text">{t("stories:form.title")}</h2>
+               <p className="text-sm text-secondary-text mt-0.5">{t("stories:form.subtitle")}</p>
+            </div>
+            <div className="p-6">
+              <div className="flex flex-col gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <TextField
                     label={t("stories:form.titleRu")}
                     value={formState.titleRu}
                     onChange={(e) => handleFormChange("titleRu")(e.target.value)}
-                    fullWidth
                   />
                   <TextField
                     label={t("stories:form.titleEn")}
                     value={formState.titleEn}
                     onChange={(e) => handleFormChange("titleEn")(e.target.value)}
-                    fullWidth
                   />
-                </Stack>
-                <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <TextField
                     label={t("stories:form.shortTextRu")}
                     value={formState.shortTextRu}
                     onChange={(e) => handleFormChange("shortTextRu")(e.target.value)}
-                    fullWidth
                     multiline
-                    minRows={2}
+                    rows={2}
                   />
                   <TextField
                     label={t("stories:form.shortTextEn")}
                     value={formState.shortTextEn}
                     onChange={(e) => handleFormChange("shortTextEn")(e.target.value)}
-                    fullWidth
                     multiline
-                    minRows={2}
+                    rows={2}
                   />
-                </Stack>
+                </div>
                 <TextField
                   label={t("stories:form.ctaUrl")}
                   value={formState.ctaUrl}
                   onChange={(e) => handleFormChange("ctaUrl")(e.target.value)}
-                  fullWidth
                 />
-                <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <TextField
                     label={t("stories:form.publishedAt")}
                     type="datetime-local"
                     value={formState.publishedAt}
                     onChange={(e) => handleFormChange("publishedAt")(e.target.value)}
-                    InputLabelProps={{ shrink: true }}
-                    fullWidth
                   />
                   <TextField
                     label={t("stories:form.expiresAt")}
                     type="datetime-local"
                     value={formState.expiresAt}
                     onChange={(e) => handleFormChange("expiresAt")(e.target.value)}
-                    InputLabelProps={{ shrink: true }}
-                    fullWidth
                   />
-                </Stack>
-                <Stack direction={{ xs: "column", md: "row" }} spacing={2} alignItems="center">
+                </div>
+
+                <div className="flex flex-col gap-4 py-2">
+                   <div className="flex items-center gap-3">
+                      <Button
+                        as="label"
+                        variant="outline"
+                        leadingIcon={<PhotoCamera className="h-4 w-4" />}
+                      >
+                        {coverFile ? t("common:buttons.changePhoto") : t("common:buttons.uploadPhoto")}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          hidden
+                          onChange={handleCoverChange}
+                          ref={fileInputRef}
+                        />
+                      </Button>
+                      {coverFile && (
+                        <Button
+                          variant="ghost"
+                          onClick={resetCoverOnly}
+                          leadingIcon={<RestartAltIcon className="h-4 w-4" />}
+                          className="text-secondary-text"
+                        >
+                          {t("stories:form.resetCover")}
+                        </Button>
+                      )}
+                   </div>
+
+                   {coverPreview && (
+                      <div className="relative w-full sm:w-[320px] aspect-9/16 rounded-3xl overflow-hidden border border-glass-border shadow-2xl mt-2 group mx-auto md:mx-0">
+                         <SmartImage
+                           srcRaw={coverPreview || ""}
+                           alt={t("stories:form.previewAlt")}
+                           className="w-full h-full object-cover"
+                         />
+                         <div className="absolute inset-x-0 bottom-0 p-6 bg-linear-to-t from-black/80 to-transparent">
+                            <h4 className="text-white font-bold text-lg">{formState.titleRu || "Title"}</h4>
+                            <p className="text-white/70 text-sm line-clamp-2">{formState.shortTextRu || "Text"}</p>
+                         </div>
+                      </div>
+                   )}
+                </div>
+
+                <div className="flex flex-wrap gap-3 pt-4 border-t border-glass-border/20">
                   <Button
-                    component="label"
-                    variant="outlined"
-                    startIcon={<PhotoCamera />}
-                    sx={{ alignSelf: "stretch" }}
+                    variant="solid"
+                    onClick={handleSubmit}
+                    disabled={submitting}
+                    loading={submitting}
+                    leadingIcon={<AddIcon className="h-4 w-4" />}
                   >
-                    {coverFile ? t("common:buttons.changePhoto") : t("common:buttons.uploadPhoto")}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      hidden
-                      onChange={handleCoverChange}
-                      ref={fileInputRef}
-                    />
+                    {t("stories:form.submit")}
                   </Button>
-                  {coverFile && (
-                    <Button
-                      variant="outlined"
-                      color="secondary"
-                      onClick={resetCoverOnly}
-                      startIcon={<RestartAltIcon />}
-                    >
-                      {t("stories:form.resetCover")}
-                    </Button>
-                  )}
-                </Stack>
-                {coverPreview && (
-                  <Box
-                    sx={{
-                      width: "100%",
-                      display: "flex",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Box
-                      sx={{
-                        width: { xs: "100%", sm: 320 },
-                        borderRadius: 3,
-                        overflow: "hidden",
-                        boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
-                      }}
-                    >
-                      <SmartImage
-                        srcRaw={coverPreview || ""}
-                        alt={t("stories:form.previewAlt")}
-                        className="w-full block"
-                      />
-                    </Box>
-                  </Box>
-                )}
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                  <Button variant="contained" onClick={handleSubmit} disabled={submitting}>
-                    {submitting ? t("common:statuses.publishing") : t("stories:form.submit")}
-                  </Button>
-                  <Button variant="outlined" onClick={resetForm} startIcon={<RestartAltIcon />}>
+                  <Button variant="outline" onClick={resetForm} leadingIcon={<RestartAltIcon className="h-4 w-4" />}>
                     {t("common:buttons.reset")}
                   </Button>
-                </Stack>
+                </div>
+
                 {formError && <Alert severity="error">{formError}</Alert>}
                 {formSuccess && <Alert severity="success">{formSuccess}</Alert>}
-              </Stack>
-            </CardContent>
-          </Card>
+              </div>
+            </div>
+          </SectionCard>
 
-          <Box>
-            <Stack direction="row" alignItems="center" spacing={2} mb={2}>
-              <Typography variant="h5" component="h2" fontWeight={600}>
-                {t("stories:list.title")}
-              </Typography>
-              <Button variant="text" onClick={() => void fetchStories()}>
+          <div className="space-y-6">
+            <div className="flex items-center justify-between px-2">
+              <h2 className="text-2xl font-extrabold text-primary-text flex items-center gap-3">
+                 {t("stories:list.title")}
+                 <span className="px-2 py-0.5 rounded-full bg-brand/10 border border-brand/20 text-xs font-bold tabular-nums text-brand">
+                    {stories.length}
+                 </span>
+              </h2>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => void fetchStories()}
+                leadingIcon={<RestartAltIcon className={cn("h-4 w-4", loading && "animate-spin")} />}
+              >
                 {t("common:buttons.refresh")}
               </Button>
-            </Stack>
-            {listError && (
-              <Alert severity="error" sx={{ mb: 2 }}>
-                {listError}
-              </Alert>
-            )}
-            {loading ? (
-              <Box display="flex" justifyContent="center" py={6}>
-                <CircularProgress size={36} />
-              </Box>
+            </div>
+
+            {listError && <Alert severity="error" className="shadow-sm">{listError}</Alert>}
+
+            {loading && stories.length === 0 ? (
+              <div className="flex justify-center py-20">
+                 <CircularProgress size={40} />
+              </div>
             ) : stories.length === 0 ? (
-              <Typography color="text.secondary">{t("stories:list.empty")}</Typography>
+              <div className="text-center py-20 bg-surface/10 rounded-3xl border border-dashed border-glass-border/30">
+                 <p className="text-secondary-text italic">{t("stories:list.empty")}</p>
+              </div>
             ) : (
-              <Stack spacing={3}>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {stories.map((story) => (
                   <StoryAdminItem
                     key={story.id}
@@ -715,10 +689,10 @@ export default function StoriesAdmin() {
                     onRefresh={() => void fetchStories()}
                   />
                 ))}
-              </Stack>
+              </div>
             )}
-          </Box>
-        </Box>
+          </div>
+        </div>
       </PageFadeIn>
     </Layout>
   )

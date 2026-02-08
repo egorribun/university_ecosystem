@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { motion, AnimatePresence } from "framer-motion"
-import ArrowUpwardIcon from "@mui/icons-material/ArrowUpward"
+import { ArrowUp } from "lucide-react"
 import Magnetic from "./Magnetic"
 import { cn } from "@/utils/cn"
 
@@ -25,7 +25,7 @@ export default function BackToTop() {
     <AnimatePresence>
       {show && (
         <div
-          className="fixed bottom-6 right-6 z-[var(--ue-z-index-floating)]"
+          className="fixed bottom-6 right-6 z-(--ue-z-index-floating)"
           style={{ pointerEvents: show ? "auto" : "none" }}
         >
           <Magnetic strength={0.3}>
@@ -41,7 +41,7 @@ export default function BackToTop() {
               aria-label={t("common:buttons.backToTop")}
               onClick={onClick}
             >
-              <ArrowUpwardIcon className="text-white transition-transform group-hover:-translate-y-1" />
+              <ArrowUp className="text-white transition-transform group-hover:-translate-y-1" />
             </motion.button>
           </Magnetic>
         </div>

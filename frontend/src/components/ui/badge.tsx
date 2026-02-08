@@ -20,24 +20,24 @@ const circleSizeMap: Record<BadgeSize, string> = {
 
 const toneVariantStyles: Record<BadgeTone, Record<BadgeVariant, string>> = {
   default: {
-    solid: "bg-surface-accent text-nav-text",
-    outline: "border border-button-border text-nav-text",
+    solid: "bg-surface-hover text-primary-text",
+    outline: "border border-border-strong text-secondary-text",
   },
   primary: {
-    solid: "bg-btn-gradient text-white shadow-surface",
-    outline: "border border-[color:rgba(37,99,235,0.65)] text-[color:rgba(37,99,235,0.95)]",
+    solid: "bg-brand text-inverse-text shadow-sm",
+    outline: "border border-brand text-brand",
   },
   success: {
-    solid: "bg-[color:rgba(16,185,129,0.18)] text-[color:rgba(6,95,70,0.95)]",
-    outline: "border border-[color:rgba(16,185,129,0.45)] text-[color:rgba(6,95,70,0.95)]",
+    solid: "bg-success-bg text-success-text",
+    outline: "border border-success-text text-success-text",
   },
   danger: {
-    solid: "bg-[color:rgba(244,63,94,0.15)] text-[color:rgba(159,18,57,0.9)]",
-    outline: "border border-[color:rgba(244,63,94,0.45)] text-[color:rgba(159,18,57,0.9)]",
+    solid: "bg-error-bg text-error-text",
+    outline: "border border-error-text text-error-text",
   },
   info: {
-    solid: "bg-[color:rgba(59,130,246,0.18)] text-[color:rgba(37,99,235,0.95)]",
-    outline: "border border-[color:rgba(59,130,246,0.4)] text-[color:rgba(37,99,235,0.95)]",
+    solid: "bg-brand-subtle text-brand",
+    outline: "border border-brand text-brand",
   },
 }
 

@@ -1,28 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import type { ChangeEvent } from "react"
-import CloseIcon from "@mui/icons-material/Close"
-import NotificationsActiveIcon from "@mui/icons-material/NotificationsActive"
-import NotificationsOffIcon from "@mui/icons-material/NotificationsOff"
-import {
-  Alert,
-  Button,
-  Divider,
-  FormControl,
-  FormControlLabel,
-  FormGroup,
-  FormHelperText,
-  IconButton,
-  Link,
-  Paper,
-  Slide,
-  Snackbar,
-  Stack,
-  Switch,
-  Typography,
-} from "@mui/material"
+import { motion, AnimatePresence } from "framer-motion"
+import { X, Bell, BellOff, Download, RefreshCw, AlertTriangle, CheckCircle2 } from "lucide-react"
 import { usePushPreferences, type NotificationToast } from "@/hooks/usePushPreferences"
 import { PWA_REFRESH_EVENT, type ServiceWorkerUpdateEventDetail } from "../app/pwaEvents"
 import { Trans, useTranslation } from "react-i18next"
+import { cn } from "@/utils/cn"
+import { Button, SwitchControl } from "@/components/settings/SettingsUI"
 
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms?: string[]
@@ -74,7 +57,7 @@ const clearDismissed = (key: string) => {
 }
 
 export default function InstallPrompt() {
-  const { t } = useTranslation(["system", "navigation", "notifications"])
+  const { t } = useTranslation(["system", "navigation", "notifications", "common"])
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
   const [installVisible, setInstallVisible] = useState(false)
   const [pushVisible, setPushVisible] = useState(false)
@@ -97,7 +80,6 @@ export default function InstallPrompt() {
     pushBusy,
     pushInitializing,
     permissionText,
-    selectedTopicsDescription,
     enableNotifications,
     disableNotifications,
     handleTopicToggle,
@@ -196,15 +178,6 @@ export default function InstallPrompt() {
     }
   }, [deferredPrompt])
 
-  const handleNotificationsToggle = useCallback(
-    (_: ChangeEvent<HTMLInputElement>, checked: boolean) => {
-      if (pushBusy || pushInitializing) return
-      if (checked) void enableNotifications()
-      else void disableNotifications()
-    },
-    [disableNotifications, enableNotifications, pushBusy, pushInitializing]
-  )
-
   const handleInstallDismiss = useCallback(() => {
     installSuppressUntilRef.current = Date.now() + DISMISS_TTL
     rememberDismiss(PWA_DISMISS_STORAGE_KEY)
@@ -237,261 +210,240 @@ export default function InstallPrompt() {
   const showPushPanel = pushVisible
   const shouldRenderPrompt = showInstallPanel || showPushPanel
 
-  if (!shouldRenderPrompt && !updateToastOpen && !feedback) return null
-
   return (
     <>
-      <Slide direction="up" in={shouldRenderPrompt} mountOnEnter unmountOnExit>
-        <Paper
-          elevation={8}
-          role="dialog"
-          aria-live="polite"
-          sx={{
-            position: "fixed",
-            bottom: { xs: 16, sm: 24 },
-            right: { xs: 12, sm: 24 },
-            left: { xs: 12, sm: "auto" },
-            zIndex: (theme) => theme.zIndex.snackbar,
-            maxWidth: 360,
-            borderRadius: 3,
-            p: 2.5,
-            boxShadow: (theme) =>
-              theme.palette.mode === "dark"
-                ? "0px 18px 45px rgba(11, 15, 22, 0.6)"
-                : "0px 18px 45px rgba(11, 99, 244, 0.16)",
-          }}
-        >
-          <Stack spacing={showInstallPanel && showPushPanel ? 2.5 : 1.5} alignItems="flex-start">
-            {showInstallPanel && (
-              <Stack spacing={2} sx={{ width: "100%" }}>
-                <Stack direction="row" spacing={1.5} alignItems="flex-start" sx={{ width: "100%" }}>
-                  <Typography component="h2" variant="h6" sx={{ flex: 1, fontWeight: 700 }}>
-                    {t("system:installPrompt.installTitle", { appName })}
-                  </Typography>
-                  <IconButton
-                    aria-label={t("system:installPrompt.closeOffer")}
-                    onClick={handleInstallDismiss}
-                    size="small"
-                  >
-                    <CloseIcon fontSize="small" />
-                  </IconButton>
-                </Stack>
-                <Typography variant="body2" sx={{ opacity: 0.85 }}>
-                  {t("system:installPrompt.description")}
-                </Typography>
-                <Stack direction="row" spacing={1.5} sx={{ width: "100%" }}>
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    onClick={handleInstall}
-                    disabled={!deferredPrompt || installing}
-                    sx={{ flexGrow: 1 }}
-                  >
-                    {t("system:installPrompt.install")}
-                  </Button>
-                  <Button variant="text" color="inherit" onClick={handleInstallDismiss}>
-                    {t("system:installPrompt.later")}
-                  </Button>
-                </Stack>
-              </Stack>
-            )}
-            {showInstallPanel && showPushPanel && <Divider sx={{ width: "100%" }} />}
-            {showPushPanel && (
-              <Stack spacing={1.2} sx={{ width: "100%" }}>
-                <Stack direction="row" spacing={1.5} alignItems="flex-start" sx={{ width: "100%" }}>
-                  <Typography component="h2" variant="h6" sx={{ flex: 1, fontWeight: 700 }}>
-                    {t("system:installPrompt.notificationsTitle")}
-                  </Typography>
-                  <IconButton
-                    aria-label={t("system:installPrompt.notificationsClose")}
-                    onClick={handlePushDismiss}
-                    size="small"
-                  >
-                    <CloseIcon fontSize="small" />
-                  </IconButton>
-                </Stack>
-                <Typography variant="body2" sx={{ opacity: 0.85 }}>
-                  {t("system:installPrompt.manageNotifications")}
-                </Typography>
-                {!pushSupported ? (
-                  <Alert severity="warning" variant="outlined">
-                    {t("system:installPrompt.unsupported")}
-                  </Alert>
-                ) : notificationPermission === "denied" ? (
-                  <Stack spacing={1}>
-                    <Alert severity="error" variant="outlined">
-                      {t("system:installPrompt.blocked", { appName })}
-                    </Alert>
-                    {safariIOS && (
-                      <Alert severity="info" variant="outlined">
-                        <Trans
-                          i18nKey="system:installPrompt.safariGuide"
-                          components={{
-                            link: (
-                              <Link
-                                href={safariGuideUrl}
-                                target="_blank"
-                                rel="noreferrer noopener"
-                              />
-                            ),
-                          }}
-                        />
-                      </Alert>
-                    )}
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <Button
-                        variant="contained"
-                        size="small"
-                        onClick={() => void enableNotifications()}
-                        disabled={pushBusy}
-                      >
-                        {t("system:installPrompt.check")}
-                      </Button>
-                      <Typography variant="caption" sx={{ color: "var(--page-text)" }}>
-                        {t("system:installPrompt.status", { status: permissionText })}
-                      </Typography>
-                    </Stack>
-                  </Stack>
-                ) : notificationPermission === "default" ? (
-                  <Stack spacing={1}>
-                    <Typography variant="body2" sx={{ color: "var(--page-text)" }}>
-                      {t("system:installPrompt.defaultPermissionDescription")}
-                    </Typography>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      <Button
-                        variant="contained"
-                        size="small"
-                        onClick={() => void enableNotifications()}
-                        disabled={pushBusy || pushInitializing}
-                      >
-                        {t("system:installPrompt.allow")}
-                      </Button>
-                      <Typography variant="caption" sx={{ color: "var(--page-text)" }}>
-                        {t("system:installPrompt.status", { status: permissionText })}
-                      </Typography>
-                    </Stack>
-                    {safariIOS && (
-                      <Alert severity="info" variant="outlined">
-                        <Trans
-                          i18nKey="system:installPrompt.safariGuide"
-                          components={{
-                            link: (
-                              <Link
-                                href={safariGuideUrl}
-                                target="_blank"
-                                rel="noreferrer noopener"
-                              />
-                            ),
-                          }}
-                        />
-                      </Alert>
-                    )}
-                  </Stack>
-                ) : (
-                  <Stack spacing={1.5}>
-                    <FormControl component="fieldset" variant="standard">
-                      <FormGroup>
-                        <FormControlLabel
-                          control={
-                            <Switch
-                              checked={notificationsEnabled}
-                              onChange={handleNotificationsToggle}
-                              disabled={pushBusy || pushInitializing}
-                            />
-                          }
-                          label={
-                            <Stack
-                              direction="row"
-                              spacing={1}
-                              alignItems="center"
-                              sx={{ color: "var(--page-text)" }}
-                            >
-                              {notificationsEnabled ? (
-                                <NotificationsActiveIcon fontSize="small" />
-                              ) : (
-                                <NotificationsOffIcon fontSize="small" />
-                              )}
-                              <span>{t("system:installPrompt.toggleLabel")}</span>
-                            </Stack>
-                          }
-                        />
-                      </FormGroup>
-                      <FormHelperText sx={{ ml: 0, color: "var(--page-text)", mt: 0.5 }}>
-                        {t("system:installPrompt.browserPermission", { status: permissionText })}
-                      </FormHelperText>
-                    </FormControl>
-                    <FormControl
-                      component="fieldset"
-                      variant="standard"
-                      disabled={!notificationsEnabled || pushBusy || pushInitializing}
-                      sx={{ opacity: notificationsEnabled ? 1 : 0.6 }}
-                    >
-                      <FormGroup>
-                        {topicKeys.map((key) => (
-                          <FormControlLabel
-                            key={key}
-                            control={
-                              <Switch
-                                checked={topicState[key]}
-                                onChange={handleTopicToggle(key)}
-                                disabled={!notificationsEnabled || pushBusy || pushInitializing}
-                              />
-                            }
-                            label={
-                              <span style={{ color: "var(--page-text)" }}>
-                                {t(`notifications:topics.${key}`)}
-                              </span>
-                            }
-                          />
-                        ))}
-                      </FormGroup>
-                      <FormHelperText sx={{ ml: 0, color: "var(--page-text)", mt: 0.5 }}>
-                        {t("system:installPrompt.activeTopics", {
-                          topics: selectedTopicsDescription,
-                        })}
-                      </FormHelperText>
-                    </FormControl>
-                  </Stack>
-                )}
-              </Stack>
-            )}
-          </Stack>
-        </Paper>
-      </Slide>
-      <Snackbar
-        open={Boolean(feedback)}
-        autoHideDuration={4000}
-        onClose={handleFeedbackClose}
-        anchorOrigin={{ vertical: "top", horizontal: "center" }}
-      >
-        <Alert
-          severity={feedback?.sev ?? "info"}
-          variant="filled"
-          onClose={handleFeedbackClose}
-          sx={{ alignItems: "center" }}
-        >
-          {feedback?.text}
-        </Alert>
-      </Snackbar>
-      <Snackbar
-        open={updateToastOpen}
-        onClose={handleCloseUpdateToast}
-        autoHideDuration={null}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-      >
-        <Alert
-          severity="info"
-          variant="filled"
-          sx={{ alignItems: "center", gap: 1 }}
-          action={
-            <Button color="inherit" size="small" onClick={handleUpdateReload}>
-              {t("system:installPrompt.reload")}
-            </Button>
-          }
-        >
-          {t("system:installPrompt.updateAvailable")}
-        </Alert>
-      </Snackbar>
+      <AnimatePresence>
+        {shouldRenderPrompt && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 50, scale: 0.95 }}
+            className="fixed bottom-24 right-4 left-4 sm:left-auto sm:right-6 z-4000 w-auto max-w-sm"
+          >
+            <div className="bg-surface/90 backdrop-blur-2xl rounded-3xl border border-glass-border shadow-2xl overflow-hidden ring-1 ring-black/5 p-6">
+               <div className={cn("flex flex-col", showInstallPanel && showPushPanel ? "gap-6" : "gap-4")}>
+                 {showInstallPanel && (
+                   <div className="space-y-4">
+                     <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                           <div className="p-2.5 rounded-2xl bg-brand/10 text-brand">
+                              <Download className="h-5 w-5" />
+                           </div>
+                           <h3 className="text-lg font-black tracking-tight text-primary-text sf-pro">
+                             {t("system:installPrompt.installTitle", { appName })}
+                           </h3>
+                        </div>
+                        <button
+                          onClick={handleInstallDismiss}
+                          className="p-1.5 rounded-xl hover:bg-surface-hover/30 text-secondary-text transition-colors"
+                        >
+                          <X className="h-5 w-5" />
+                        </button>
+                     </div>
+                     <p className="text-sm font-medium text-secondary-text leading-relaxed opacity-80">
+                       {t("system:installPrompt.description")}
+                     </p>
+                     <div className="flex gap-2 pt-2">
+                       <Button
+                         variant="solid"
+                         onClick={handleInstall}
+                         disabled={!deferredPrompt || installing}
+                         className="flex-1 h-12 rounded-2xl font-black shadow-lg shadow-brand/20"
+                         loading={installing}
+                       >
+                         {t("system:installPrompt.install")}
+                       </Button>
+                       <Button
+                         variant="plain"
+                         onClick={handleInstallDismiss}
+                         className="h-12 rounded-2xl font-black px-6"
+                       >
+                         {t("system:installPrompt.later")}
+                       </Button>
+                     </div>
+                   </div>
+                 )}
+
+                 {showInstallPanel && showPushPanel && <div className="h-px bg-glass-border/10" />}
+
+                 {showPushPanel && (
+                   <div className="space-y-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                           <div className="p-2.5 rounded-2xl bg-brand/10 text-brand">
+                              <Bell className="h-5 w-5" />
+                           </div>
+                           <h3 className="text-lg font-black tracking-tight text-primary-text sf-pro">
+                             {t("system:installPrompt.notificationsTitle")}
+                           </h3>
+                        </div>
+                        <button
+                          onClick={handlePushDismiss}
+                          className="p-1.5 rounded-xl hover:bg-surface-hover/30 text-secondary-text transition-colors"
+                        >
+                          <X className="h-5 w-5" />
+                        </button>
+                     </div>
+
+                     <p className="text-sm font-medium text-secondary-text leading-relaxed opacity-80">
+                        {t("system:installPrompt.manageNotifications")}
+                     </p>
+
+                     {!pushSupported ? (
+                       <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-xs font-bold flex gap-3">
+                          <AlertTriangle className="h-4 w-4 shrink-0" />
+                          {t("system:installPrompt.unsupported")}
+                       </div>
+                     ) : notificationPermission === "denied" ? (
+                       <div className="space-y-3">
+                          <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-bold flex gap-3">
+                             <BellOff className="h-4 w-4 shrink-0" />
+                             {t("system:installPrompt.blocked", { appName })}
+                          </div>
+                          {safariIOS && (
+                            <div className="p-4 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 text-xs font-bold">
+                               <Trans
+                                 i18nKey="system:installPrompt.safariGuide"
+                                 components={{
+                                   link: (
+                                     <a
+                                       href={safariGuideUrl}
+                                       target="_blank"
+                                       rel="noreferrer noopener"
+                                       className="underline font-black"
+                                     >
+                                       {t("navigation:safariGuide")}
+                                     </a>
+                                   ),
+                                 }}
+                               />
+                            </div>
+                          )}
+                          <div className="flex items-center gap-3">
+                             <Button
+                               variant="solid"
+                               size="sm"
+                               onClick={() => void enableNotifications()}
+                               disabled={pushBusy}
+                               className="rounded-xl font-black h-10 px-4"
+                             >
+                               {t("system:installPrompt.check")}
+                             </Button>
+                             <span className="text-[11px] font-bold text-secondary-text uppercase tracking-wider opacity-60">
+                               {t("system:installPrompt.status", { status: permissionText })}
+                             </span>
+                          </div>
+                       </div>
+                     ) : notificationPermission === "default" ? (
+                       <div className="space-y-4">
+                          <p className="text-xs font-bold text-secondary-text opacity-60 leading-relaxed px-1">
+                             {t("system:installPrompt.defaultPermissionDescription")}
+                          </p>
+                          <div className="flex items-center gap-3">
+                             <Button
+                               variant="solid"
+                               size="sm"
+                               onClick={() => void enableNotifications()}
+                               disabled={pushBusy || pushInitializing}
+                               className="rounded-xl font-black h-10 px-6 shadow-lg shadow-brand/20"
+                             >
+                               {t("system:installPrompt.allow")}
+                             </Button>
+                             <span className="text-[11px] font-bold text-secondary-text uppercase tracking-wider opacity-60">
+                               {t("system:installPrompt.status", { status: permissionText })}
+                             </span>
+                          </div>
+                       </div>
+                     ) : (
+                       <div className="space-y-4 pt-2">
+                          <div className="rounded-2xl border border-glass-border/10 bg-surface-raised/30 p-4 space-y-4">
+                            <div className="flex items-center justify-between">
+                               <span className="text-sm font-bold text-primary-text">{t("system:installPrompt.toggleLabel")}</span>
+                               <SwitchControl
+                                 checked={notificationsEnabled}
+                                 onChange={() => notificationsEnabled ? disableNotifications() : enableNotifications()}
+                                 disabled={pushBusy || pushInitializing}
+                               />
+                            </div>
+                            <div className="h-px bg-glass-border/10" />
+                            {topicKeys.map((key) => (
+                              <div key={key} className="flex items-center justify-between">
+                                 <span className="text-xs font-bold text-secondary-text">{t(`notifications:topics.${key}`)}</span>
+                                 <SwitchControl
+                                   checked={topicState[key]}
+                                   onChange={handleTopicToggle(key)}
+                                   disabled={!notificationsEnabled || pushBusy || pushInitializing}
+                                 />
+                              </div>
+                            ))}
+                          </div>
+                          <p className="text-[11px] font-bold text-secondary-text opacity-40 uppercase tracking-widest px-1">
+                             {t("system:installPrompt.browserPermission", { status: permissionText })}
+                          </p>
+                       </div>
+                     )}
+                   </div>
+                 )}
+               </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {feedback && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: -20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: -20 }}
+            className="fixed top-24 left-1/2 -translate-x-1/2 z-5000 w-full max-w-sm px-6"
+          >
+             <div className={cn(
+               "flex items-center gap-3 p-4 rounded-2xl border backdrop-blur-2xl shadow-2xl",
+               feedback.sev === "error"
+                 ? "bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400"
+                 : feedback.sev === "success"
+                   ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400"
+                   : "bg-brand/10 border-brand/20 text-brand"
+             )}>
+                {feedback.sev === "error" ? <AlertTriangle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
+                <p className="text-sm font-black tracking-tight flex-1">{feedback.text}</p>
+                <button onClick={handleFeedbackClose}>
+                   <X className="h-4 w-4" />
+                </button>
+             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {updateToastOpen && (
+          <motion.div
+             initial={{ opacity: 0, y: 50 }}
+             animate={{ opacity: 1, y: 0 }}
+             exit={{ opacity: 0, y: 50 }}
+             className="fixed bottom-24 left-1/2 -translate-x-1/2 z-5000 w-full max-w-md px-6"
+          >
+             <div className="flex items-center gap-4 p-4 rounded-2xl border border-brand/20 bg-brand/5 backdrop-blur-2xl shadow-2xl text-brand">
+                <RefreshCw className="h-6 w-6 animate-spin-slow" />
+                <div className="flex-1 min-w-0">
+                   <p className="text-sm font-black tracking-tight">{t("system:installPrompt.updateAvailable")}</p>
+                </div>
+                <Button
+                   variant="solid"
+                   size="sm"
+                   onClick={handleUpdateReload}
+                   className="rounded-xl px-4 h-9 font-black shadow-lg shadow-brand/20"
+                >
+                   {t("system:installPrompt.reload")}
+                </Button>
+                <button onClick={handleCloseUpdateToast} className="p-1 hover:bg-brand/10 rounded-lg transition-colors">
+                   <X className="h-4 w-4" />
+                </button>
+             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   )
 }

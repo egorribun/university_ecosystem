@@ -1,7 +1,7 @@
 import type { ReactNode } from "react"
 import { render, screen } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { ThemeProvider, createTheme } from "@mui/material/styles"
+import { ThemeProvider } from "@/contexts/ThemeContext"
 import { LanguageProvider } from "@/contexts/LanguageContext"
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -50,12 +50,10 @@ const buildWrapper = (mode: "light" | "dark") => {
     },
   })
 
-  const theme = createTheme({ palette: { mode } })
-
   const NewsTestWrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>
       <LanguageProvider>
-        <ThemeProvider theme={theme}>{children}</ThemeProvider>
+        <ThemeProvider>{children}</ThemeProvider>
       </LanguageProvider>
     </QueryClientProvider>
   )

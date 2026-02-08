@@ -1,9 +1,10 @@
 import { useCallback, useId, useMemo, useRef, useState, type KeyboardEvent } from "react"
-import { Box, Button, Chip, Stack, Typography } from "@mui/material"
-import { alpha, useTheme } from "@mui/material/styles"
 import { useTranslation } from "react-i18next"
-
+import { useTheme } from "@/contexts/ThemeContext"
+import { cn } from "@/utils/cn"
+import { Button, Chip } from "@/components/settings/SettingsUI"
 import { getCampusPointsForLocale } from "@/data/campusPoints"
+import { ChevronRight, MapPin, RefreshCw, AlertCircle } from "lucide-react"
 
 type MapFallbackReason = "load-error" | "preferences"
 
@@ -12,22 +13,19 @@ interface MapFallbackProps {
   onRetry?: () => void
 }
 
-const getBackground = (themeMode: "light" | "dark") =>
-  themeMode === "dark"
-    ? "linear-gradient(160deg, rgba(10,12,19,0.94), rgba(12,16,24,0.88))"
-    : "linear-gradient(160deg, rgba(244,246,252,0.94), rgba(255,255,255,0.88))"
-
 export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
-  const theme = useTheme()
+  const { theme, resolvedTheme } = useTheme()
   const { t, i18n } = useTranslation("system")
   const baseId = useId()
   const instructionsId = `${baseId}-instructions`
   const titleId = `${baseId}-title`
   const listLabelId = `${baseId}-list`
+
   const campusPointConfigs = useMemo(
     () => getCampusPointsForLocale(i18n.resolvedLanguage ?? i18n.language),
     [i18n.language, i18n.resolvedLanguage]
   )
+
   const points = useMemo(
     () =>
       campusPointConfigs.map((point) => ({
@@ -42,6 +40,7 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
       })),
     [campusPointConfigs, t]
   )
+
   const [activeIndex, setActiveIndex] = useState(0)
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
 
@@ -93,75 +92,67 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
   )
 
   return (
-    <Box
+    <div
       role="region"
       aria-labelledby={titleId}
-      sx={{
-        position: "absolute",
-        inset: 0,
-        zIndex: 45,
-        overflowY: "auto",
-        background: getBackground(theme.palette.mode),
-        px: { xs: 3, sm: 6 },
-        py: { xs: 4, sm: 6 },
-        color: theme.palette.mode === "dark" ? "#f5f7ff" : "#0b1020",
-        display: "flex",
-        justifyContent: "center",
-      }}
+      className={cn(
+        "absolute inset-0 z-40 overflow-y-auto px-6 py-8 sm:px-12 sm:py-12 flex justify-center",
+        "bg-linear-to-br from-background/95 to-background/85 backdrop-blur-3xl",
+        "text-primary-text"
+      )}
     >
-      <Stack spacing={4} sx={{ width: "min(720px, 100%)" }}>
-        <Stack spacing={2}>
-          <Typography id={titleId} component="h2" variant="h5" fontWeight={700}>
-            {t("map.fallback.title")}
-          </Typography>
-          <Typography component="p" variant="body1">
-            {t(`map.fallback.description.${reason === "load-error" ? "load" : "preferences"}`)}
-          </Typography>
-          <Typography
-            id={instructionsId}
-            component="p"
-            variant="body2"
-            color={theme.palette.mode === "dark" ? "#c9d4ff" : "text.secondary"}
-          >
-            {t("map.fallback.instructions")}
-          </Typography>
-          <Typography
-            component="p"
-            variant="body2"
-            color={theme.palette.mode === "dark" ? "#c9d4ff" : "text.secondary"}
-          >
-            {t("map.fallback.offlineNotice")}
-          </Typography>
-          {reason === "load-error" && onRetry ? (
+      <div className="w-full max-w-(--ue-max-w-content) flex flex-col gap-10">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <h2 id={titleId} className="text-2xl font-black tracking-tight sf-pro">
+              {t("map.fallback.title")}
+            </h2>
+            <p className="text-base font-bold text-secondary-text leading-relaxed">
+              {t(`map.fallback.description.${reason === "load-error" ? "load" : "preferences"}`)}
+            </p>
+          </div>
+
+          <div className="space-y-1 opacity-70">
+            <p id={instructionsId} className="text-sm font-bold text-tertiary-text">
+              {t("map.fallback.instructions")}
+            </p>
+            <div className="inline-flex items-center gap-2 rounded-xl bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 text-[11px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-wider">
+               <AlertCircle className="h-3.5 w-3.5" />
+               {t("map.fallback.offlineNotice")}
+            </div>
+          </div>
+
+          {reason === "load-error" && onRetry && (
             <Button
-              variant="outlined"
+              variant="outline"
               onClick={onRetry}
-              sx={{ alignSelf: { xs: "stretch", sm: "flex-start" } }}
+              className="mt-2 self-start rounded-2xl h-12 px-8 font-black shadow-lg shadow-brand/10"
+              startIcon={<RefreshCw className="h-4 w-4" />}
             >
               {t("map.fallback.retry")}
             </Button>
-          ) : null}
-        </Stack>
+          )}
+        </div>
 
-        <Box
+        <div
           role="listbox"
+          tabIndex={0}
           aria-labelledby={listLabelId}
           aria-describedby={instructionsId}
           onKeyDown={handleKeyDown}
-          sx={{ display: "flex", flexDirection: "column", gap: 2, pb: 2 }}
+          className="flex flex-col gap-4 pb-8 focus:outline-none"
         >
-          <Typography
+          <p
             id={listLabelId}
-            component="p"
-            variant="subtitle2"
-            sx={{ textTransform: "uppercase", letterSpacing: 1.2 }}
+            className="text-[10px] font-black uppercase tracking-[0.2em] text-tertiary-text opacity-50 px-1"
           >
             {t("map.fallback.listLabel")}
-          </Typography>
+          </p>
+
           {points.map((point, index) => {
             const isActive = index === activeIndex
             return (
-              <Box
+              <div
                 key={point.key}
                 role="option"
                 aria-selected={isActive}
@@ -171,64 +162,53 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
                 tabIndex={isActive ? 0 : -1}
                 onFocus={() => setActiveIndex(index)}
                 onClick={() => focusIndex(index)}
-                sx={{
-                  borderRadius: 2,
-                  border: `1px solid ${alpha(theme.palette.common.black, 0.08)}`,
-                  backgroundColor: isActive
-                    ? alpha(theme.palette.primary.main, theme.palette.mode === "dark" ? 0.3 : 0.12)
-                    : alpha(theme.palette.common.white, theme.palette.mode === "dark" ? 0.08 : 0.4),
-                  backdropFilter: "blur(8px)",
-                  px: { xs: 2, sm: 3 },
-                  py: { xs: 2.5, sm: 3 },
-                  outline: "none",
-                  transition: "background-color 160ms ease, transform 160ms ease",
-                  boxShadow: isActive
-                    ? theme.shadows[4]
-                    : theme.palette.mode === "dark"
-                      ? `0 8px 24px ${alpha("#02050d", 0.72)}`
-                      : `0 8px 24px ${alpha("#1f2f4b", 0.18)}`,
-                  cursor: "pointer",
-                  display: "grid",
-                  gap: 1,
-                  textAlign: "left",
-                }}
+                className={cn(
+                  "group relative flex flex-col gap-3 rounded-3xl p-6 transition-all duration-500 cursor-pointer outline-none",
+                  "border backdrop-blur-xl shadow-glass",
+                  isActive
+                    ? "border-brand/30 bg-surface-raised/40 ring-1 ring-brand/20 -translate-y-1"
+                    : "border-glass-border bg-surface/30 hover:bg-surface/50 hover:border-glass-border-hover hover:-translate-y-0.5"
+                )}
               >
-                <Typography component="h3" variant="h6" fontWeight={700}>
-                  {point.name}
-                </Typography>
-                <Typography
-                  component="p"
-                  variant="body2"
-                  color={theme.palette.mode === "dark" ? "#dde5ff" : "text.secondary"}
-                >
-                  {point.address}
-                </Typography>
-                <Typography component="p" variant="body2">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex flex-col gap-1">
+                    <h3 className="text-lg font-black tracking-tight text-primary-text sf-pro">
+                      {point.name}
+                    </h3>
+                    <div className="flex items-center gap-2 text-sm font-bold text-secondary-text opacity-80">
+                      <MapPin className="h-3.5 w-3.5 shrink-0 text-brand" />
+                      {point.address}
+                    </div>
+                  </div>
+                  <div className={cn(
+                    "p-2 rounded-2xl transition-all duration-500",
+                    isActive ? "bg-brand text-white shadow-lg shadow-brand/40" : "bg-surface-hover/20 text-tertiary-text opacity-40 group-hover:opacity-100"
+                  )}>
+                    <ChevronRight className="h-5 w-5" />
+                  </div>
+                </div>
+
+                <p className="text-sm font-medium text-secondary-text leading-relaxed opacity-90 line-clamp-2">
                   {point.description}
-                </Typography>
-                <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap", gap: 1 }}>
+                </p>
+
+                <div className="flex flex-wrap gap-2 pt-2">
                   {point.tags.map((tag) => (
                     <Chip
                       key={tag.key}
                       label={tag.label}
-                      size="small"
-                      sx={{
-                        bgcolor: alpha(
-                          theme.palette.primary.main,
-                          theme.palette.mode === "dark" ? 0.32 : 0.18
-                        ),
-                        color:
-                          theme.palette.mode === "dark" ? "#f6f8ff" : theme.palette.primary.dark,
-                        fontWeight: 600,
-                      }}
+                      className={cn(
+                        "rounded-xl border shadow-sm",
+                        isActive ? "bg-brand/10 border-brand/20 text-brand" : "bg-surface-hover/10 border-glass-border text-tertiary-text"
+                      )}
                     />
                   ))}
-                </Stack>
-              </Box>
+                </div>
+              </div>
             )
           })}
-        </Box>
-      </Stack>
-    </Box>
+        </div>
+      </div>
+    </div>
   )
 }

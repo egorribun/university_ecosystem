@@ -10,12 +10,14 @@ import {
   animate,
   useReducedMotion,
 } from "framer-motion"
-import TimelineIcon from "@mui/icons-material/Timeline"
-import TrendingUpIcon from "@mui/icons-material/TrendingUp"
-import TrendingDownIcon from "@mui/icons-material/TrendingDown"
-import EventAvailableIcon from "@mui/icons-material/EventAvailable"
-import SchoolIcon from "@mui/icons-material/School"
-import EmojiEventsIcon from "@mui/icons-material/EmojiEvents"
+import {
+  Activity as TimelineIcon,
+  TrendingUp as TrendingUpIcon,
+  TrendingDown as TrendingDownIcon,
+  CalendarCheck as EventAvailableIcon,
+  GraduationCap as SchoolIcon,
+  Award as EmojiEventsIcon
+} from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { getLocaleForLanguage, useLanguage } from "@/contexts/LanguageContext"
 import { Badge, Button, ProgressBar } from "@/components/ui"
@@ -232,7 +234,7 @@ function AnimatedRing({
   }
 
   return (
-    <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="block">
         <circle
           cx={size / 2}
@@ -254,7 +256,7 @@ function AnimatedRing({
           style={{ strokeDashoffset: dash }}
         />
       </svg>
-      <div className="absolute inset-0 grid place-items-center font-black tracking-tighter tabular-nums lining-nums text-[color:var(--page-text)]">
+      <div className="absolute inset-0 grid place-items-center font-black tracking-tighter tabular-nums lining-nums text-(--page-text)">
         {Math.round(value)}%
       </div>
     </div>
@@ -483,9 +485,9 @@ export default function Activity() {
         tone={value >= 0 ? "success" : "danger"}
         leadingIcon={
           value >= 0 ? (
-            <TrendingUpIcon className="!text-[0.7rem]" />
+            <TrendingUpIcon className="text-[0.7rem]!" />
           ) : (
-            <TrendingDownIcon className="!text-[0.7rem]" />
+            <TrendingDownIcon className="text-[0.7rem]!" />
           )
         }
         className="font-extrabold"
@@ -538,7 +540,7 @@ export default function Activity() {
         animate={{ y: 0, opacity: 1 }}
         transition={{ type: "spring", stiffness: 260, damping: 32, mass: 1 }}
         className={cn(
-          "relative flex h-full flex-col overflow-hidden rounded-2xl border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] backdrop-blur-xl [-webkit-backdrop-filter:blur(12px)]",
+          "relative flex h-full flex-col overflow-hidden rounded-2xl border border-[color-mix(in_srgb,white_12%,var(--nav-link)_88%)] backdrop-blur-xl [-webkit-backdrop-filter:blur(12px)]",
           toneClasses[tone],
           "shadow-[0_4px_16px_rgba(0,0,0,0.08),0_2px_6px_rgba(0,0,0,0.04)] dark:shadow-[0_6px_20px_rgba(0,0,0,0.16),0_2px_8px_rgba(0,0,0,0.08)]",
           "transition-all duration-180",
@@ -547,7 +549,7 @@ export default function Activity() {
             : "hover:-translate-y-0.5 hover:shadow-[0_10px_36px_rgba(0,0,0,0.12),0_4px_12px_rgba(0,0,0,0.08)] dark:hover:shadow-[0_4px_24px_rgba(0,0,0,0.36)]",
           "active:translate-y-0",
           onClick &&
-            "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--nav-link)] focus-visible:ring-offset-2"
+            "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--nav-link) focus-visible:ring-offset-2"
         )}
         style={
           reduce ? undefined : { willChange: "transform, opacity", transform: "translateZ(0)" }
@@ -612,7 +614,7 @@ export default function Activity() {
   return (
     <Layout>
       <PageFadeIn>
-        <div className="w-screen min-h-screen bg-[color:var(--page-bg)] text-[color:var(--page-text)] py-8 sm:py-10">
+        <div className="w-screen min-h-screen bg-(--page-bg) text-(--page-text) py-8 sm:py-10">
           <motion.div
             initial="hidden"
             animate="show"
@@ -627,42 +629,42 @@ export default function Activity() {
               style={fadeDelayStyle("80ms")}
               className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[color:color-mix(in_srgb,var(--glass-bg)_70%,var(--nav-link)_30%)] text-[color:var(--nav-link)] shadow-[0_6px_20px_color-mix(in_srgb,var(--nav-link)_24%,transparent)] transition-transform duration-200 hover:scale-105 dark:bg-[color:color-mix(in_srgb,var(--glass-bg)_65%,var(--nav-link)_35%)] dark:shadow-[0_8px_24px_color-mix(in_srgb,var(--nav-link)_28%,transparent)] backdrop-blur-sm [-webkit-backdrop-filter:blur(12px)]">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--glass-bg)_70%,var(--nav-link)_30%)] text-(--nav-link) shadow-[0_6px_20px_color-mix(in_srgb,var(--nav-link)_24%,transparent)] transition-transform duration-200 hover:scale-105 dark:bg-[color-mix(in_srgb,var(--glass-bg)_65%,var(--nav-link)_35%)] dark:shadow-[0_8px_24px_color-mix(in_srgb,var(--nav-link)_28%,transparent)] backdrop-blur-sm [-webkit-backdrop-filter:blur(12px)]">
                 <TimelineIcon className="text-[2rem]" />
               </div>
-              <h1 className="text-[clamp(1.6rem,5vw,2.75rem)] font-bold tracking-tight text-[color:var(--page-text)]">
+              <h1 className="text-[clamp(1.6rem,5vw,2.75rem)] font-bold tracking-tight text-(--page-text)">
                 {t("activity:title")}
               </h1>
             </div>
-            <motion.div
-              data-fade
-              initial={{ opacity: 0, y: reduce ? 0 : 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: reduce ? 0 : 0.35 }}
-              style={{
-                ...(reduce ? {} : { willChange: "transform, opacity", transform: "translateZ(0)" }),
-                ...fadeDelayStyle("140ms"),
-              }}
-              className="mb-6 inline-flex items-center gap-1 rounded-full border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] p-1 shadow-[0_4px_12px_rgba(0,0,0,0.08),0_2px_4px_rgba(0,0,0,0.04)] backdrop-blur-xl [-webkit-backdrop-filter:blur(12px)] dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)] dark:shadow-[0_12px_34px_rgba(0,0,0,0.46)]"
-            >
-              {periodOptions.map((option) => (
-                <button
-                  key={option.value}
-                  onClick={() => setPeriod(option.value)}
-                  className={cn(
-                    "relative rounded-full border-0 px-4 py-1.5 text-sm font-bold transition-colors duration-150",
-                    period === option.value
-                      ? "text-white"
-                      : "bg-transparent text-[color:var(--page-text)] hover:bg-[color:color-mix(in_srgb,var(--nav-link)_8%,transparent)] hover:text-[color:var(--nav-link)]"
-                  )}
-                >
-                  {period === option.value && (
-                    <motion.span
-                      layoutId="activity-period-indicator"
-                      className="absolute inset-0 rounded-full bg-[color:var(--nav-link)] shadow-[0_4px_12px_color-mix(in_srgb,var(--nav-link)_35%,transparent)] dark:shadow-[0_8px_24px_color-mix(in_srgb,var(--nav-link)_45%,transparent)]"
-                      transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                    />
-                  )}
+              <motion.div
+                data-fade
+                initial={{ opacity: 0, y: reduce ? 0 : 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: reduce ? 0 : 0.35 }}
+                style={{
+                  ...(reduce ? {} : { willChange: "transform, opacity", transform: "translateZ(0)" }),
+                  ...fadeDelayStyle("140ms"),
+                }}
+                className="mb-6 inline-flex items-center gap-1 rounded-full border border-[color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color-mix(in_srgb,var(--card-bg)_96%,white_4%)] p-1 shadow-[0_4px_12px_rgba(0,0,0,0.08),0_2px_4px_rgba(0,0,0,0.04)] backdrop-blur-xl [-webkit-backdrop-filter:blur(12px)] dark:border-[color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)] dark:shadow-[0_12px_34px_rgba(0,0,0,0.46)]"
+              >
+                {periodOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => setPeriod(option.value)}
+                    className={cn(
+                      "relative rounded-full border-0 px-4 py-1.5 text-sm font-bold transition-colors duration-150",
+                      period === option.value
+                        ? "text-white"
+                        : "bg-transparent text-(--page-text) hover:bg-[color-mix(in_srgb,var(--nav-link)_8%,transparent)] hover:text-(--nav-link)"
+                    )}
+                  >
+                    {period === option.value && (
+                      <motion.span
+                        layoutId="activity-period-indicator"
+                        className="absolute inset-0 rounded-full bg-(--nav-link) shadow-[0_4px_12px_color-mix(in_srgb,var(--nav-link)_35%,transparent)] dark:shadow-[0_8px_24px_color-mix(in_srgb,var(--nav-link)_45%,transparent)]"
+                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                      />
+                    )}
                   <span className="relative z-10">{option.label}</span>
                 </button>
               ))}
@@ -683,11 +685,11 @@ export default function Activity() {
                 <div className="flex items-center gap-4">
                   <AnimatedRing value={attendance?.percent ?? 0} size={ringSize} tone="success" />
                   <div className="flex min-w-0 flex-1 flex-col gap-1">
-                    <p className="text-[0.65rem] font-semibold uppercase tracking-wider text-[color:color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
+                    <p className="text-[0.65rem] font-semibold uppercase tracking-wider text-[color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
                       {t("activity:sections.attendance.title")}
                     </p>
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-[clamp(1.75rem,2vw,2.25rem)] font-black tracking-tighter tabular-nums lining-nums text-[color:var(--page-text)]">
+                      <span className="text-[clamp(1.75rem,2vw,2.25rem)] font-black tracking-tighter tabular-nums lining-nums text-(--page-text)">
                         {attendancePctAnimated}%
                       </span>
                       <TrendChip value={attendance?.trend} />
@@ -697,7 +699,7 @@ export default function Activity() {
                       className="h-2 rounded-full"
                       barClassName="bg-[#10b981] dark:bg-[#34d399] rounded-full transition-[width] duration-600"
                     />
-                    <p className="truncate text-sm text-[color:color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
+                    <p className="truncate text-sm text-[color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
                       {t("activity:sections.attendance.summary", {
                         present: attendance?.present ?? 0,
                         total: attendance?.total ?? 0,
@@ -710,11 +712,11 @@ export default function Activity() {
 
               <CardShell tone="info" onClick={() => setDetail("grades")}>
                 <div className="flex flex-col gap-1">
-                  <p className="text-[0.65rem] font-semibold uppercase tracking-wider text-[color:color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
+                  <p className="text-[0.65rem] font-semibold uppercase tracking-wider text-[color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
                     {t("activity:sections.grades.title")}
                   </p>
                   <div className="flex items-center gap-2">
-                    <span className="text-[clamp(1.75rem,2vw,2.25rem)] font-black tracking-tighter tabular-nums lining-nums text-[color:var(--page-text)]">
+                    <span className="text-[clamp(1.75rem,2vw,2.25rem)] font-black tracking-tighter tabular-nums lining-nums text-(--page-text)">
                       {grades?.scale === "gpa"
                         ? `GPA ${gradesAnimated}`
                         : grades?.scale === "100"
@@ -723,7 +725,7 @@ export default function Activity() {
                     </span>
                     <TrendChip value={grades?.trend} />
                   </div>
-                  <p className="text-sm text-[color:color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
+                  <p className="text-sm text-[color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
                     {t("activity:sections.grades.averageLabel")}
                   </p>
                 </div>
@@ -731,11 +733,11 @@ export default function Activity() {
 
               <CardShell tone="warning" onClick={() => setDetail("participation")}>
                 <div className="flex flex-col gap-1">
-                  <p className="text-[0.65rem] font-semibold uppercase tracking-wider text-[color:color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
+                  <p className="text-[0.65rem] font-semibold uppercase tracking-wider text-[color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
                     {t("activity:sections.participation.title")}
                   </p>
                   <div className="flex items-center gap-2">
-                    <span className="text-[clamp(1.75rem,2vw,2.25rem)] font-black tracking-tighter tabular-nums lining-nums text-[color:var(--page-text)]">
+                    <span className="text-[clamp(1.75rem,2vw,2.25rem)] font-black tracking-tighter tabular-nums lining-nums text-(--page-text)">
                       {t("activity:sections.participation.eventsCount", {
                         value: partEventsAnimated,
                         count: participation?.events ?? 0,
@@ -743,7 +745,7 @@ export default function Activity() {
                     </span>
                     <TrendChip value={participation?.trend} />
                   </div>
-                  <p className="text-sm text-[color:color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
+                  <p className="text-sm text-[color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
                     {[
                       participation?.hours != null
                         ? t("activity:sections.participation.summaryHours", {
@@ -763,7 +765,7 @@ export default function Activity() {
               </CardShell>
             </motion.div>
 
-            <div className="my-4 border-t border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] md:my-6 dark:border-[color:color-mix(in_srgb,white_8%,var(--nav-link)_92%)]" />
+            <div className="my-4 border-t border-[color-mix(in_srgb,white_12%,var(--nav-link)_88%)] md:my-6 dark:border-[color-mix(in_srgb,white_8%,var(--nav-link)_92%)]" />
 
             <motion.div
               variants={gridVariants}
@@ -774,8 +776,8 @@ export default function Activity() {
               <CardShell onClick={() => setDetail("attendance_recent")}>
                 <div className="flex flex-col">
                   <div className="mb-2 flex items-center gap-2">
-                    <EventAvailableIcon className="text-base text-[color:var(--nav-link)]" />
-                    <h3 className="font-black text-[color:var(--page-text)]">
+                    <EventAvailableIcon className="text-base text-(--nav-link)" />
+                    <h3 className="font-black text-(--page-text)">
                       {t("activity:sections.attendance.recent")}
                     </h3>
                   </div>
@@ -833,15 +835,15 @@ export default function Activity() {
                                 }}
                               />
                               <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-1.5">
-                                <span className="font-bold text-[color:var(--page-text)]">
+                                <span className="font-bold text-(--page-text)">
                                   {r.course || attendanceLessonFallback}
                                 </span>
-                                <span className="text-sm text-[color:color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
+                                <span className="text-sm text-[color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
                                   {attendanceStatusLabel(r.status)}
                                 </span>
                               </div>
                             </div>
-                            <p className="ml-4 text-xs text-[color:color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
+                            <p className="ml-4 text-xs text-[color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
                               {formatDate(r.date)}
                             </p>
                           </motion.div>
@@ -849,7 +851,7 @@ export default function Activity() {
                       })}
                     </AnimatePresence>
                     {!loading && (!attendance?.recent || attendance.recent.length === 0) && (
-                      <p className="px-1 py-1 text-sm text-[color:color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
+                      <p className="px-1 py-1 text-sm text-[color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
                         {noDataText}
                       </p>
                     )}
@@ -860,8 +862,8 @@ export default function Activity() {
               <CardShell onClick={() => setDetail("grades_recent")}>
                 <div className="flex flex-col">
                   <div className="mb-2 flex items-center gap-2">
-                    <SchoolIcon className="text-base text-[color:var(--nav-link)]" />
-                    <h3 className="font-black text-[color:var(--page-text)]">
+                    <SchoolIcon className="text-base text-(--nav-link)" />
+                    <h3 className="font-black text-(--page-text)">
                       {t("activity:sections.grades.recent")}
                     </h3>
                   </div>
@@ -888,16 +890,16 @@ export default function Activity() {
                             <div className="flex items-center gap-2">
                               <div className="h-2 w-2 rounded-full bg-[#3b82f6]/90 shadow-[0_0_0_3px_#3b82f618] dark:bg-[#60a5fa]/90 dark:shadow-[0_0_0_3px_#60a5fa18]" />
                               <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-1.5">
-                                <span className="font-bold text-[color:var(--page-text)]">
+                                <span className="font-bold text-(--page-text)">
                                   {r.course}
                                 </span>
-                                <span className="text-sm text-[color:color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
+                                <span className="text-sm text-[color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
                                   {r.score}
                                   {r.max ? "/" + r.max : ""}
                                 </span>
                               </div>
                             </div>
-                            <p className="ml-4 text-xs text-[color:color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
+                            <p className="ml-4 text-xs text-[color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
                               {formatDate(r.date)}
                             </p>
                           </motion.div>
@@ -905,7 +907,7 @@ export default function Activity() {
                       })}
                     </AnimatePresence>
                     {!loading && (!grades?.recent || grades.recent.length === 0) && (
-                      <p className="px-1 py-1 text-sm text-[color:color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
+                      <p className="px-1 py-1 text-sm text-[color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
                         {noDataText}
                       </p>
                     )}
@@ -916,8 +918,8 @@ export default function Activity() {
               <CardShell onClick={() => setDetail("participation_recent")}>
                 <div className="flex flex-col">
                   <div className="mb-2 flex items-center gap-2">
-                    <EmojiEventsIcon className="text-base text-[color:var(--nav-link)]" />
-                    <h3 className="font-black text-[color:var(--page-text)]">
+                    <EmojiEventsIcon className="text-base text-(--nav-link)" />
+                    <h3 className="font-black text-(--page-text)">
                       {t("activity:sections.participation.recent")}
                     </h3>
                   </div>
@@ -945,10 +947,10 @@ export default function Activity() {
                             <div className="flex items-center gap-2">
                               <div className="h-2 w-2 rounded-full bg-[#f59e0b]/90 shadow-[0_0_0_3px_#f59e0b18] dark:bg-[#fbbf24]/90 dark:shadow-[0_0_0_3px_#fbbf2418]" />
                               <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-1.5">
-                                <span className="font-bold text-[color:var(--page-text)]">
+                                <span className="font-bold text-(--page-text)">
                                   {r.title}
                                 </span>
-                                <span className="text-sm text-[color:color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
+                                <span className="text-sm text-[color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
                                   {[formatDate(r.date), r.role].filter(Boolean).join(separator)}
                                 </span>
                               </div>
@@ -958,7 +960,7 @@ export default function Activity() {
                       })}
                     </AnimatePresence>
                     {!loading && (!participation?.recent || participation.recent.length === 0) && (
-                      <p className="px-1 py-1 text-sm text-[color:color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
+                      <p className="px-1 py-1 text-sm text-[color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
                         {noDataText}
                       </p>
                     )}
@@ -976,7 +978,7 @@ export default function Activity() {
           >
             {detail === "attendance" && (
               <div className="space-y-4">
-                <p className="text-base text-[color:var(--page-text)]">
+                <p className="text-base text-(--page-text)">
                   {t("activity:sections.attendance.dialogTotal", {
                     present: attendance?.present ?? 0,
                     total: attendance?.total ?? 0,
@@ -991,10 +993,10 @@ export default function Activity() {
                 <div className="space-y-2">
                   {(attendance?.recent ?? []).map((r, i) => (
                     <div key={attendanceItemKey(r, i)} className="space-y-0.5">
-                      <p className="text-sm font-semibold text-[color:var(--page-text)]">
+                      <p className="text-sm font-semibold text-(--page-text)">
                         {`${r.course || attendanceLessonFallback} — ${attendanceStatusLabel(r.status)}`}
                       </p>
-                      <p className="text-xs text-[color:color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
+                      <p className="text-xs text-[color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
                         {formatDate(r.date)}
                       </p>
                     </div>
@@ -1004,7 +1006,7 @@ export default function Activity() {
             )}
             {detail === "grades" && (
               <div className="space-y-4">
-                <p className="text-base font-semibold text-[color:var(--page-text)]">
+                <p className="text-base font-semibold text-(--page-text)">
                   {grades?.scale === "gpa"
                     ? `GPA ${(grades?.average ?? 0).toFixed(2)}`
                     : grades?.scale === "100"
@@ -1014,10 +1016,10 @@ export default function Activity() {
                 <div className="space-y-2">
                   {(grades?.recent ?? []).map((r, i) => (
                     <div key={gradeItemKey(r, i)} className="space-y-0.5">
-                      <p className="text-sm font-semibold text-[color:var(--page-text)]">
+                      <p className="text-sm font-semibold text-(--page-text)">
                         {`${r.course} — ${r.score}${r.max ? "/" + r.max : ""}`}
                       </p>
-                      <p className="text-xs text-[color:color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
+                      <p className="text-xs text-[color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
                         {formatDate(r.date)}
                       </p>
                     </div>
@@ -1027,7 +1029,7 @@ export default function Activity() {
             )}
             {detail === "participation" && (
               <div className="space-y-4">
-                <p className="text-base text-[color:var(--page-text)]">
+                <p className="text-base text-(--page-text)">
                   {[
                     t("activity:sections.participation.eventsCount", {
                       value: String(participation?.events ?? 0),
@@ -1050,10 +1052,10 @@ export default function Activity() {
                 <div className="space-y-2">
                   {(participation?.recent ?? []).map((r, i) => (
                     <div key={participationItemKey(r, i)} className="space-y-0.5">
-                      <p className="text-sm font-semibold text-[color:var(--page-text)]">
+                      <p className="text-sm font-semibold text-(--page-text)">
                         {r.title}
                       </p>
-                      <p className="text-xs text-[color:color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
+                      <p className="text-xs text-[color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
                         {[formatDate(r.date), r.role].filter(Boolean).join(separator)}
                       </p>
                     </div>
@@ -1065,10 +1067,10 @@ export default function Activity() {
               <div className="space-y-2">
                 {(attendance?.recent ?? []).map((r, i) => (
                   <div key={attendanceItemKey(r, i)} className="space-y-0.5">
-                    <p className="text-sm font-semibold text-[color:var(--page-text)]">
+                    <p className="text-sm font-semibold text-(--page-text)">
                       {`${r.course || attendanceLessonFallback} — ${attendanceStatusLabel(r.status)}`}
                     </p>
-                    <p className="text-xs text-[color:color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
+                    <p className="text-xs text-[color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
                       {formatDate(r.date)}
                     </p>
                   </div>
@@ -1079,10 +1081,10 @@ export default function Activity() {
               <div className="space-y-2">
                 {(grades?.recent ?? []).map((r, i) => (
                   <div key={gradeItemKey(r, i)} className="space-y-0.5">
-                    <p className="text-sm font-semibold text-[color:var(--page-text)]">
+                    <p className="text-sm font-semibold text-(--page-text)">
                       {`${r.course} — ${r.score}${r.max ? "/" + r.max : ""}`}
                     </p>
-                    <p className="text-xs text-[color:color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
+                    <p className="text-xs text-[color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
                       {formatDate(r.date)}
                     </p>
                   </div>
@@ -1093,8 +1095,8 @@ export default function Activity() {
               <div className="space-y-2">
                 {(participation?.recent ?? []).map((r, i) => (
                   <div key={participationItemKey(r, i)} className="space-y-0.5">
-                    <p className="text-sm font-semibold text-[color:var(--page-text)]">{r.title}</p>
-                    <p className="text-xs text-[color:color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
+                    <p className="text-sm font-semibold text-(--page-text)">{r.title}</p>
+                    <p className="text-xs text-[color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
                       {[formatDate(r.date), r.role].filter(Boolean).join(separator)}
                     </p>
                   </div>

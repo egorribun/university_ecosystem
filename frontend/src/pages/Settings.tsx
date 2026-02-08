@@ -16,7 +16,7 @@ import { useNavigate } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { usePushPreferences } from "@/hooks/usePushPreferences"
 import { nowPlayingQueryKey } from "@/hooks/useNowPlaying"
-import { useColorScheme } from "@mui/material/styles"
+import { useTheme } from "@/contexts/ThemeContext"
 import api from "../api/client"
 import {
   startTotpEnrollment,
@@ -50,7 +50,7 @@ import { addVersionParam, resolveMediaUrl } from "@/utils/media"
 import { sanitizeSpotifyAuthorizeUrl } from "@/utils/spotify"
 import { cn } from "@/utils/cn"
 import { motion } from "framer-motion"
-import type { AlertProps } from "@mui/material/Alert"
+// Removed MUI AlertProps import
 import Layout from "../components/Layout"
 import PageFadeIn from "../components/PageFadeIn"
 
@@ -72,6 +72,7 @@ import {
   SectionCard,
   SectionSubtitle,
   SectionTitle,
+  securityStatusChipClassName,
   SessionItem,
   Snackbar,
   SwitchControl,
@@ -114,17 +115,6 @@ const toServerTime = (value: string | null): string | null => {
   return trimmed
 }
 
-const securityStatusChipClassName = cn(
-  "font-semibold tracking-tight",
-  "text-[color:color-mix(in_srgb,var(--page-text)_92%,rgba(15,79,170,0.16)_8%)]",
-  "border border-[color:color-mix(in_srgb,var(--glass-border)_86%,transparent)]",
-  "bg-[color:color-mix(in_srgb,var(--card-bg)_94%,rgba(255,255,255,0.1)_6%)]",
-  "shadow-[0_16px_40px_rgba(15,40,85,0.12)] backdrop-blur",
-  "dark:text-[color:color-mix(in_srgb,var(--page-text)_96%,rgba(148,163,184,0.45)_4%)]",
-  "dark:border-[rgba(148,163,184,0.35)]",
-  "dark:bg-[color:color-mix(in_srgb,var(--card-bg)_80%,rgba(2,6,23,0.9)_20%)]",
-  "dark:shadow-[0_20px_50px_rgba(2,6,23,0.55)]"
-)
 
 // Tailwind CSS components
 
@@ -140,21 +130,14 @@ export default function Settings() {
   const { language, setLanguage, available: availableLanguages } = useLanguage()
   const { t } = useTranslation(["settings", "common", "notifications", "profile"])
 
-  // Theme management using MUI's useColorScheme
-  const { mode, systemMode, setMode: muiSetMode } = useColorScheme()
-
-  // Map MUI mode to our ThemeMode type
-  const theme: ThemeMode = (mode as ThemeMode) || "system"
-  const resolvedColorScheme = useMemo<"light" | "dark">(
-    () => (theme === "system" ? ((systemMode as "light" | "dark" | undefined) ?? "light") : theme),
-    [systemMode, theme]
-  )
+  // Theme management using custom useTheme hook
+  const { theme, setTheme, resolvedTheme: resolvedColorScheme } = useTheme()
 
   const setMode = useCallback(
     (value: ThemeMode) => {
-      muiSetMode(value)
+      setTheme(value)
     },
-    [muiSetMode]
+    [setTheme]
   )
 
   const {
@@ -1874,9 +1857,9 @@ export default function Settings() {
                       >
                         {pendingTotpEnrollment || totpDraft ? (
                           <div className="flex flex-col gap-4">
-                            <h4 className="text-sm font-semibold text-[color:color-mix(in_srgb,var(--page-text)_86%,var(--nav-link)_14%)]">
+                            <div className="text-[11px] font-bold text-secondary-text uppercase tracking-widest opacity-60">
                               {t("settings:security.totp.pendingTitle")}
-                            </h4>
+                            </div>
                             <SectionSubtitle className="text-sm">
                               {t("settings:security.totp.pendingDescription")}
                             </SectionSubtitle>

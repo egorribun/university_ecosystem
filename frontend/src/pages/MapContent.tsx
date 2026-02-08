@@ -1,25 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import {
-  Box,
-  Paper,
-  Stack,
-  Typography,
-  IconButton,
-  Tooltip,
-  Snackbar,
-  Alert,
-  useMediaQuery,
-} from "@mui/material"
 import { motion } from "framer-motion"
-import { alpha, useTheme } from "@mui/material/styles"
-import OpenInNewIcon from "@mui/icons-material/OpenInNew"
-import MapIcon from "@mui/icons-material/Map"
-import SatelliteAltIcon from "@mui/icons-material/SatelliteAlt"
-import RestartAltIcon from "@mui/icons-material/RestartAlt"
+import {
+  ExternalLink as OpenInNewIcon,
+  Map as MapIcon,
+  Satellite as SatelliteAltIcon,
+  RefreshCw as RestartAltIcon,
+} from "lucide-react"
 import "../assets/themes.css"
 import { useTranslation } from "react-i18next"
 import MapFallback from "@/components/MapFallback"
 import { CAMPUS_COORDINATES } from "@/constants/campus"
+import useMediaQuery from "@/hooks/useMediaQuery"
+import { cn } from "@/utils/cn"
+import {
+  Alert,
+  Button,
+  Snackbar,
+} from "@/components/settings"
 
 type LayerMode = "map" | "hybrid"
 
@@ -48,7 +45,6 @@ const detectEmbedOptOut = (): boolean => {
 }
 
 export default function MapContent() {
-  const theme = useTheme()
   const isMobile = useMediaQuery("(max-width:900px)")
   const { t } = useTranslation("system")
   const [layer, setLayer] = useState<LayerMode>("map")
@@ -61,14 +57,6 @@ export default function MapContent() {
   const iframeLoadedRef = useRef(false)
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const [privacyBlocksEmbeds, setPrivacyBlocksEmbeds] = useState(() => detectEmbedOptOut())
-  // Используем цвета светлой темы для обеих тем (темный текст)
-  const lightThemeTextPrimary = "#101621" // --page-text светлой темы
-  const lightThemePrimary = "#0f4faa" // --nav-link светлой темы
-  const toggleBaseColor = alpha(lightThemeTextPrimary, 0.88)
-  const toggleSelectedColor = theme.palette.common.white
-  // Используем одинаковый фон для обеих тем (как на светлой)
-  const toggleSelectedBg = alpha(lightThemePrimary, 0.24)
-  const toggleHoverColor = lightThemePrimary
 
   useEffect(() => {
     const qs = new URLSearchParams(location.search)
@@ -183,208 +171,135 @@ export default function MapContent() {
     forceReload()
   }
 
-  const tooltipCfg = isMobile
-    ? { disableFocusListener: true, disableHoverListener: true, disableTouchListener: true }
-    : { enterDelay: 200, enterTouchDelay: 0, leaveTouchDelay: 0, disableInteractive: true }
-
   return (
-    <>
-      <Paper
-        sx={{
-          width: "100%",
-          borderRadius: 0,
-          boxShadow: 5,
-          bgcolor: "var(--card-bg,#fff)",
-          color: "var(--page-text,#222)",
-          p: 0,
-        }}
+    <div className="w-full bg-(--card-bg) text-(--page-text) rounded-none shadow-2xl overflow-hidden relative">
+      <div
+        ref={containerRef}
+        className="map-page bg-surface-alt dark:bg-[#0b0d12] transition-colors duration-300 h-full w-full relative"
       >
-        <Box
-          ref={containerRef}
-          className="map-page"
-          sx={{ background: theme.palette.mode === "dark" ? "#0b0d12" : "#f6f7fb" }}
-        >
-          <Box className="glass glass--panel glass--sheen map-head">
-            <Stack direction="row" alignItems="center" justifyContent="space-between">
-              <Stack direction="row" alignItems="center" spacing={1.5}>
-                <MapIcon sx={{ fontSize: isMobile ? 26 : 34, color: "#0f4faa" }} />
-                <Typography
-                  className="map-title"
-                  variant="h4"
-                  fontWeight={800}
-                  sx={{ letterSpacing: 0.2, fontSize: "clamp(1.1rem, 3.6vw, 2.4rem)" }}
-                >
-                  {t("map.title")}
-                </Typography>
-              </Stack>
-              <Stack direction="row" spacing={1}>
-                <Tooltip title={t("map.openInYandex") ?? undefined} {...tooltipCfg}>
-                  <IconButton
-                    aria-label={t("map.openInYandex")}
-                    className="glass glass--btn map-btn map-btn--open"
-                    onClick={openInYandex}
-                    sx={{ touchAction: "manipulation" }}
-                  >
-                    <OpenInNewIcon />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title={t("map.reset") ?? undefined} {...tooltipCfg}>
-                  <IconButton
-                    aria-label={t("map.reset")}
-                    className="glass glass--btn map-btn map-btn--reset"
-                    onClick={reset}
-                    sx={{ touchAction: "manipulation" }}
-                  >
-                    <RestartAltIcon />
-                  </IconButton>
-                </Tooltip>
-              </Stack>
-            </Stack>
-          </Box>
-
-          {!disableEmbeds && (
-            <iframe
-              key={`${frameKey}`}
-              src={mapSrc}
-              title={t("map.iframeTitle")}
-              width="100%"
-              height="calc(100% + 45px)"
-              style={{
-                border: 0,
-                position: "absolute",
-                top: "-45px",
-                left: 0,
-                right: 0,
-                bottom: "-45px",
-                display: "block",
-              }}
-              allowFullScreen
-              loading="lazy"
-              onLoad={() => {
-                iframeLoadedRef.current = true
-                setIframeLoaded(true)
-                setLoadError(false)
-                if (loadTimer.current) window.clearTimeout(loadTimer.current)
-              }}
-            />
-          )}
-
-          {(!iframeLoaded || loadError) && !disableEmbeds && (
-            <Box
-              sx={{
-                position: "absolute",
-                inset: 0,
-                zIndex: 40,
-                display: "grid",
-                placeItems: "center",
-                background: `linear-gradient(120deg, ${alpha(theme.palette.background.paper, 0.9)}, ${alpha(theme.palette.background.paper, 0.82)})`,
-              }}
+        <div className="glass glass--panel glass--sheen map-head z-50 flex items-center justify-between px-6 py-4 absolute top-0 left-0 right-0">
+          <div className="flex items-center gap-3">
+            <MapIcon className={cn("text-brand", isMobile ? "h-6 w-6" : "h-8 w-8")} />
+            <h1 className="map-title text-[clamp(1.1rem,3.6vw,2rem)] font-black tracking-tight text-primary-text">
+              {t("map.title")}
+            </h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={openInYandex}
+              className="h-10 w-10 p-0 rounded-xl bg-surface/20 border border-glass-border/20"
+              title={t("map.openInYandex") ?? ""}
             >
-              {!loadError ? (
-                <Box
-                  sx={{
-                    width: 72,
-                    height: 72,
-                    borderRadius: "50%",
-                    border: `5px solid ${alpha(theme.palette.text.primary, 0.18)}`,
-                    borderTopColor: theme.palette.primary.main,
-                    animation: "spin 900ms linear infinite",
-                    "@keyframes spin": { to: { transform: "rotate(360deg)" } },
-                  }}
-                />
-              ) : (
-                <Stack spacing={2} alignItems="center">
-                  <Typography>{t("map.loadError")}</Typography>
-                  <IconButton
-                    color="primary"
-                    onClick={() => {
-                      setLoadError(false)
-                      iframeLoadedRef.current = false
-                      setIframeLoaded(false)
-                      setFrameKey((k) => k + 1)
-                    }}
-                  >
-                    <RestartAltIcon />
-                  </IconButton>
-                </Stack>
-              )}
-            </Box>
-          )}
+              <OpenInNewIcon className="h-5 w-5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={reset}
+              className="h-10 w-10 p-0 rounded-xl bg-surface/20 border border-glass-border/20 text-brand"
+              title={t("map.reset") ?? ""}
+            >
+              <RestartAltIcon className="h-5 w-5" />
+            </Button>
+          </div>
+        </div>
 
-          {showFallback && fallbackReason && (
-            <MapFallback
-              reason={fallbackReason}
-              onRetry={fallbackReason === "load-error" ? forceReload : undefined}
-            />
-          )}
+        {!disableEmbeds && (
+          <iframe
+            key={`${frameKey}`}
+            src={mapSrc}
+            title={t("map.iframeTitle")}
+            width="100%"
+            height="calc(100% + 45px)"
+            className="absolute border-none top-[-45px] left-0 right-0 bottom-[-45px] block"
+            allowFullScreen
+            loading="lazy"
+            onLoad={() => {
+              iframeLoadedRef.current = true
+              setIframeLoaded(true)
+              setLoadError(false)
+              if (loadTimer.current) window.clearTimeout(loadTimer.current)
+            }}
+          />
+        )}
 
-          <Box className="map-controls-shield" />
+        {(!iframeLoaded || loadError) && !disableEmbeds && (
+          <div className="absolute inset-0 z-40 grid place-items-center bg-background/90 backdrop-blur-sm">
+            {!loadError ? (
+              <div className="h-16 w-16 rounded-full border-4 border-surface/20 border-t-brand animate-spin" />
+            ) : (
+              <div className="flex flex-col items-center gap-4">
+                <p className="text-sm font-medium text-secondary-text">{t("map.loadError")}</p>
+                <Button variant="outline" size="sm" onClick={() => {
+                  setLoadError(false)
+                  iframeLoadedRef.current = false
+                  setIframeLoaded(false)
+                  setFrameKey((k) => k + 1)
+                }}>
+                  <RestartAltIcon className="h-4 w-4 mr-2" />
+                  {t("common:buttons.retry")}
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
 
-          <Stack
-            spacing={1}
-            className="map-controls-glass safe-bottom"
-            sx={{ pointerEvents: "none" }}
-          >
-            <Stack direction="row" spacing={1} sx={{ pointerEvents: "auto" }}>
-              <Box className="glass glass--panel">
-                <div
-                  className="relative flex items-center gap-0.5 rounded-lg p-0.5"
-                  style={{ background: alpha(theme.palette.background.paper, 0.6) }}
-                >
-                  <button
-                    onClick={() => setLayer("map")}
-                    aria-label={t("map.layerAria.map")}
-                    className="relative flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
-                    style={{
-                      color: layer === "map" ? toggleSelectedColor : toggleBaseColor,
-                      touchAction: "manipulation",
-                    }}
-                  >
-                    {layer === "map" && (
-                      <motion.span
-                        layoutId="map-layer-indicator"
-                        className="absolute inset-0 rounded-md"
-                        style={{ background: toggleSelectedBg }}
-                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                      />
-                    )}
-                    <span className="relative z-10 flex items-center gap-1">
-                      <MapIcon fontSize="small" />
-                      {!isMobile && <span>{t("map.layer.map")}</span>}
-                    </span>
-                  </button>
-                  <button
-                    onClick={() => setLayer("hybrid")}
-                    aria-label={t("map.layerAria.hybrid")}
-                    className="relative flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors"
-                    style={{
-                      color: layer === "hybrid" ? toggleSelectedColor : toggleBaseColor,
-                      touchAction: "manipulation",
-                    }}
-                  >
-                    {layer === "hybrid" && (
-                      <motion.span
-                        layoutId="map-layer-indicator"
-                        className="absolute inset-0 rounded-md"
-                        style={{ background: toggleSelectedBg }}
-                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                      />
-                    )}
-                    <span className="relative z-10 flex items-center gap-1">
-                      <SatelliteAltIcon fontSize="small" />
-                      {!isMobile && <span>{t("map.layer.hybrid")}</span>}
-                    </span>
-                  </button>
-                </div>
-              </Box>
-            </Stack>
-          </Stack>
-        </Box>
-      </Paper>
+        {showFallback && fallbackReason && (
+          <MapFallback
+            reason={fallbackReason}
+            onRetry={fallbackReason === "load-error" ? forceReload : undefined}
+          />
+        )}
 
-      <Snackbar open={false}>
-        <Alert severity="info" sx={{ width: "100%" }} />
-      </Snackbar>
-    </>
+        <div className="map-controls-shield absolute inset-0 pointer-events-none" />
+
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 pointer-events-none flex flex-col gap-3 safe-bottom">
+          <div className="flex items-center gap-2 pointer-events-auto">
+            <div className="glass glass--panel rounded-2xl p-1 bg-surface/40 backdrop-blur-xl border border-glass-border shadow-2xl flex items-center gap-1">
+              <button
+                onClick={() => setLayer("map")}
+                className={cn(
+                  "relative flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-all",
+                  layer === "map" ? "text-white" : "text-secondary-text hover:bg-surface/20"
+                )}
+              >
+                {layer === "map" && (
+                  <motion.div
+                    layoutId="map-layer-indicator"
+                    className="absolute inset-0 bg-brand rounded-xl shadow-lg shadow-brand/20"
+                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                  />
+                )}
+                <span className="relative z-10 flex items-center gap-2">
+                  <MapIcon className="h-4 w-4" />
+                  {!isMobile && <span>{t("map.layer.map")}</span>}
+                </span>
+              </button>
+              <button
+                onClick={() => setLayer("hybrid")}
+                className={cn(
+                  "relative flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-all",
+                  layer === "hybrid" ? "text-white" : "text-secondary-text hover:bg-surface/20"
+                )}
+              >
+                {layer === "hybrid" && (
+                  <motion.div
+                    layoutId="map-layer-indicator"
+                    className="absolute inset-0 bg-brand rounded-xl shadow-lg shadow-brand/20"
+                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                  />
+                )}
+                <span className="relative z-10 flex items-center gap-2">
+                  <SatelliteAltIcon className="h-4 w-4" />
+                  {!isMobile && <span>{t("map.layer.hybrid")}</span>}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }

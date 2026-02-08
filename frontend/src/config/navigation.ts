@@ -1,14 +1,16 @@
-import DashboardIcon from "@mui/icons-material/Dashboard"
-import ArticleIcon from "@mui/icons-material/Article"
-import CalendarMonthIcon from "@mui/icons-material/CalendarMonth"
-import EventNoteIcon from "@mui/icons-material/EventNote"
-import TimelineIcon from "@mui/icons-material/Timeline"
-import MapIcon from "@mui/icons-material/Map"
-import NotificationsIcon from "@mui/icons-material/Notifications"
-import AutoStoriesIcon from "@mui/icons-material/AutoStories"
-import PeopleIcon from "@mui/icons-material/People"
-import FlagIcon from "@mui/icons-material/Flag"
-import SecurityIcon from "@mui/icons-material/Security"
+import {
+  LayoutDashboard as DashboardIcon,
+  Newspaper as ArticleIcon,
+  CalendarRange as CalendarMonthIcon,
+  Calendar as EventNoteIcon,
+  Activity as TimelineIcon,
+  Map as MapIcon,
+  Bell as NotificationsIcon,
+  BookOpen as AutoStoriesIcon,
+  Users as PeopleIcon,
+  Flag as FlagIcon,
+  ShieldCheck as SecurityIcon,
+} from "lucide-react"
 
 export const getNavigationConfig = (t: (key: string) => string, role?: string) => {
   const base = [

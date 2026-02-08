@@ -78,7 +78,7 @@ const Media = forwardRef<HTMLDivElement, MediaProps>(
       return (
         <div
           ref={ref}
-          className={cn("relative w-full bg-[color:var(--glass-bg)]", className)}
+          className={cn("relative w-full bg-glass", className)}
           style={{ aspectRatio }}
         >
           {fallback}
@@ -131,7 +131,7 @@ const Title = forwardRef<HTMLHeadingElement, TitleProps>(
   ({ as: Component = "h3", children, className, ...props }, ref) => (
     <Component
       ref={ref}
-      className={cn("line-clamp-2 text-lg font-semibold text-[color:var(--page-text)]", className)}
+      className={cn("line-clamp-2 text-lg font-semibold text-primary-text", className)}
       {...props}
     >
       {children}
@@ -162,7 +162,7 @@ interface BodyProps extends HTMLAttributes<HTMLDivElement> {
 const Body = forwardRef<HTMLDivElement, BodyProps>(({ children, className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("flex-1 px-4 py-3 text-sm text-[color:var(--page-text)]/80", className)}
+    className={cn("flex-1 px-4 py-3 text-sm text-secondary-text", className)}
     {...props}
   >
     {children}
@@ -179,7 +179,7 @@ const Footer = forwardRef<HTMLDivElement, FooterProps>(({ children, className, .
   <div
     ref={ref}
     className={cn(
-      "flex items-center gap-3 border-t border-[color:var(--page-text)]/10 px-4 py-3",
+      "flex items-center gap-3 border-t border-border-subtle px-4 py-3",
       className
     )}
     {...props}
@@ -198,7 +198,7 @@ const Meta = forwardRef<HTMLDivElement, MetaProps>(({ children, className, ...pr
   <div
     ref={ref}
     className={cn(
-      "flex flex-wrap items-center gap-2 px-4 pb-2 text-xs text-[color:var(--page-text)]/60",
+      "flex flex-wrap items-center gap-2 px-4 pb-2 text-xs text-secondary-text/80",
       className
     )}
     {...props}
@@ -215,11 +215,11 @@ interface BadgeSlotProps extends HTMLAttributes<HTMLSpanElement> {
 }
 
 const variantStyles = {
-  default: "bg-[color:var(--glass-bg)] text-[color:var(--page-text)]",
-  success: "bg-green-500/20 text-green-400",
-  warning: "bg-amber-500/20 text-amber-400",
-  error: "bg-red-500/20 text-red-400",
-  info: "bg-blue-500/20 text-blue-400",
+  default: "bg-surface-hover text-primary-text",
+  success: "bg-success-bg text-success-text",
+  warning: "bg-warning-bg text-warning-text",
+  error: "bg-error-bg text-error-text",
+  info: "bg-brand-subtle text-brand",
 }
 
 const BadgeSlot = forwardRef<HTMLSpanElement, BadgeSlotProps>(

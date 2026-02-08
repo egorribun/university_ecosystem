@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react"
 import { createPortal } from "react-dom"
-import WifiOffIcon from "@mui/icons-material/WifiOff"
+import { WifiOff, Wifi } from "lucide-react"
 import { useTranslation } from "react-i18next"
+import { cn } from "@/utils/cn"
 
 /**
  * Displays a toast notification when the user goes offline.
@@ -55,25 +56,26 @@ export function OfflineIndicator() {
     <div
       role="status"
       aria-live="polite"
-      className={`
-        fixed bottom-20 left-1/2 z-[9999] -translate-x-1/2
-        flex items-center gap-2 rounded-full px-4 py-2.5
-        text-sm font-medium shadow-lg backdrop-blur-md
-        transition-all duration-300 ease-out
-        ${
-          isOffline
-            ? "bg-amber-500/90 text-amber-950 dark:bg-amber-600/90 dark:text-amber-50"
-            : "bg-emerald-500/90 text-emerald-950 dark:bg-emerald-600/90 dark:text-emerald-50"
-        }
-      `}
+      className={cn(
+        "fixed bottom-24 left-1/2 z-[9999] -translate-x-1/2",
+        "flex items-center gap-2 rounded-2xl px-5 py-3",
+        "text-[13px] font-black uppercase tracking-widest shadow-2xl backdrop-blur-2xl border",
+        "transition-all duration-500 ease-out animate-in fade-in slide-in-from-bottom-4",
+        isOffline
+          ? "bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400"
+          : "bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400"
+      )}
     >
       {isOffline ? (
         <>
-          <WifiOffIcon className="h-4 w-4" />
+          <WifiOff className="h-4 w-4" />
           <span>{t("offlineIndicator.offline", "You're offline")}</span>
         </>
       ) : (
-        <span>{t("offlineIndicator.online", "Back online")}</span>
+        <>
+          <Wifi className="h-4 w-4" />
+          <span>{t("offlineIndicator.online", "Back online")}</span>
+        </>
       )}
     </div>
   )
