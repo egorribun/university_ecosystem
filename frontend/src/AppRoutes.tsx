@@ -1,6 +1,5 @@
 import { Suspense, lazy, useEffect, type ReactElement } from "react"
 import { Routes, Route, Navigate, useLocation } from "react-router-dom"
-import useMediaQuery from "@mui/material/useMediaQuery"
 import { useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 
@@ -18,6 +17,7 @@ import { usePushSync } from "./hooks/usePushSync"
 import { nowPlayingQueryKey } from "./hooks/useNowPlaying"
 import { prefetchRouteModules } from "./utils/prefetchRoutes"
 import { cn } from "@/utils/cn"
+import useMediaQuery from "@/hooks/useMediaQuery"
 
 import PageTransition from "./components/PageTransition"
 
@@ -193,10 +193,6 @@ export function AppRoutes() {
         role="main"
         tabIndex={-1}
         className="flex-1 min-h-0 relative"
-        style={{
-          background: "var(--page-bg, var(--initial-bg, #060B14))",
-          color: "var(--page-text)",
-        }}
       >
         <div
           className={cn(

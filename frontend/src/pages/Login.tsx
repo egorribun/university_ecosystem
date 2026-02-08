@@ -17,6 +17,7 @@ import type { PendingMfaState } from "@/types/Auth"
 import { isAxiosError } from "axios"
 import OtpEntry from "@/components/mfa/OtpEntry"
 import ParticleAuthBackground from "@/components/ui/ParticleAuthBackground"
+import { Input } from "@/components/ui/input"
 import { startAuthentication, browserSupportsWebAuthn } from "@simplewebauthn/browser"
 import { Fingerprint } from "lucide-react"
 import { useLocalStorage } from "@/hooks/useLocalStorage"
@@ -85,16 +86,10 @@ function suggestEmailDomain(email: string) {
   return best ? `${local}@${best.d}` : null
 }
 
-const inputBaseClass =
-  "w-full rounded-[1.2rem] border border-nav-link/10 bg-[var(--card-bg)] px-4 py-3 text-base font-medium " +
-  "text-page-foreground shadow-[var(--shadow-1)] transition-all duration-200 " +
-  "focus:border-nav-link focus:outline-none focus:shadow-[var(--ue-focus-ring)] " +
-  "placeholder:text-placeholder/75"
-
 const badgeClass =
-  "inline-flex min-w-[160px] items-baseline justify-center gap-2 rounded-full border border-glass-border/80 " +
-  "bg-[var(--glass-bg)] backdrop-blur-md px-4 py-2 text-sm font-semibold " +
-  "text-page-foreground/90 shadow-[var(--shadow-1)]"
+  "inline-flex min-w-[160px] items-baseline justify-center gap-2 rounded-full border border-border-subtle/80 " +
+  "bg-glass backdrop-blur-md px-4 py-2 text-sm font-semibold " +
+  "text-primary-text/90 shadow-sm"
 
 const Spinner = () => (
   <span
@@ -388,12 +383,12 @@ const Login = () => {
 
   if (loginChallenge) {
     return (
-      <div className="relative min-h-screen w-full bg-[color:var(--page-bg)] text-[color:var(--page-text)]">
+      <div className="relative min-h-screen w-full bg-page text-primary-text">
         <ParticleAuthBackground />
         <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
-          <div className="w-full max-w-2xl rounded-[2rem] border border-[color:color-mix(in_srgb,var(--glass-border)_80%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_95%,rgba(255,255,255,0.08)_5%)] p-8 shadow-[0_35px_80px_rgba(15,23,42,0.35)] backdrop-blur-2xl">
+          <div className="w-full max-w-2xl rounded-4xl glass-high-fidelity p-8">
             <div className="flex flex-col items-center gap-6 text-center">
-              <div className="inline-flex items-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--glass-border)_80%,transparent)] bg-[color:color-mix(in_srgb,var(--card-bg)_92%,rgba(255,255,255,0.14)_8%)] px-4 py-1 text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--page-text)_90%,var(--nav-link)_10%)]">
+              <div className="inline-flex items-center gap-2 rounded-full border border-glass-border bg-surface-hover/10 px-4 py-1 text-sm font-semibold tracking-wide text-primary-text">
                 <ShieldCheck className="h-4 w-4" aria-hidden="true" />
                 {t("auth:mfa.verifyTitle")}
               </div>
@@ -418,7 +413,7 @@ const Login = () => {
                       type="button"
                       onClick={handleWebAuthnVerify}
                       disabled={mfaBusy}
-                      className="inline-flex w-full items-center justify-center gap-3 rounded-[1.2rem] bg-[color:color-mix(in_srgb,var(--nav-link)_15%,transparent)] px-6 py-4 text-lg font-bold text-[color:var(--nav-link)] transition hover:bg-[color:color-mix(in_srgb,var(--nav-link)_25%,transparent)] disabled:opacity-50"
+                      className="inline-flex w-full items-center justify-center gap-3 rounded-[1.2rem] bg-brand/10 px-6 py-4 text-lg font-bold text-brand transition hover:bg-brand/20 disabled:opacity-50"
                     >
                       <Fingerprint className="h-6 w-6" />
                       {t("auth:mfa.webauthn.useSecurityKey", {
@@ -441,10 +436,10 @@ const Login = () => {
                   {webauthnChallenge && (
                     <div className="relative w-full py-2">
                       <div className="absolute inset-0 flex items-center">
-                        <div className="w-full border-t border-[color:color-mix(in_srgb,var(--glass-border)_40%,transparent)]"></div>
+                        <div className="w-full border-t border-glass-border"></div>
                       </div>
                       <div className="relative flex justify-center text-xs uppercase">
-                        <span className="bg-[color:var(--card-bg)] px-2 text-[color:var(--secondary-text)]">
+                        <span className="bg-surface px-2 text-secondary-text">
                           {t("auth:mfa.or", { defaultValue: "ИЛИ" })}
                         </span>
                       </div>
@@ -460,10 +455,10 @@ const Login = () => {
                     />
                   </div>
 
-                  <label className="flex items-center gap-3 text-sm font-medium text-[color:color-mix(in_srgb,var(--page-text)_90%,var(--secondary-text)_10%)]">
+                  <label className="flex items-center gap-3 text-sm font-medium text-primary-text">
                     <input
                       type="checkbox"
-                      className="size-5 rounded-lg border-[color:color-mix(in_srgb,var(--nav-link)_50%,transparent)] bg-transparent accent-[color:var(--nav-link)]"
+                      className="size-5 rounded-lg border-brand/50 bg-transparent accent-brand"
                       checked={trustDevice}
                       onChange={(e) => setTrustDevice(e.target.checked)}
                       disabled={mfaBusy}
@@ -482,7 +477,7 @@ const Login = () => {
               <button
                 type="button"
                 onClick={() => window.location.reload()}
-                className="inline-flex items-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--nav-link)_50%,transparent)] px-5 py-2 text-sm font-semibold text-[color:var(--nav-link)] transition hover:bg-[color:color-mix(in_srgb,var(--nav-link)_12%,transparent)]"
+                className="inline-flex items-center gap-2 rounded-full border border-brand/50 px-5 py-2 text-sm font-semibold text-brand transition hover:bg-brand/10"
               >
                 <Zap className="h-4 w-4" aria-hidden="true" />
                 {t("auth:mfa.startOver")}
@@ -573,11 +568,11 @@ const Login = () => {
               <label htmlFor="username" className="text-sm font-semibold text-page-foreground">
                 {t("auth:fields.email")}
               </label>
-              <input
+              <Input
                 id="username"
                 name="username"
                 type="email"
-                className={`${inputBaseClass} ${!emailValid ? "border-red-400 focus:border-red-400" : ""}`}
+                className={!emailValid ? "border-error-text focus:border-error-text" : ""}
                 defaultValue={savedEmail}
                 ref={emailRef}
                 onChange={(e) => setEmailMirror(e.target.value)}
@@ -595,7 +590,7 @@ const Login = () => {
                 <button
                   type="button"
                   onClick={applySuggestion}
-                  className="inline-flex items-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--nav-link)_60%,transparent)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--nav-link)] transition hover:bg-[color:color-mix(in_srgb,var(--nav-link)_12%,transparent)]"
+                  className="inline-flex items-center gap-2 rounded-full border border-border-focus/60 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-brand transition hover:bg-brand-subtle"
                 >
                   <Sparkles className="h-4 w-4" aria-hidden="true" />
                   {t("auth:messages.emailSuggestion", { suggestion: emailSuggestion })}
@@ -614,7 +609,7 @@ const Login = () => {
                   onMouseUp={() => setShowPassword(false)}
                   onMouseLeave={() => setShowPassword(false)}
                   onClick={() => setShowPassword((v) => !v)}
-                  className="inline-flex items-center gap-2 rounded-full border border-transparent px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--nav-link)] transition hover:border-[color:color-mix(in_srgb,var(--nav-link)_50%,transparent)]"
+                  className="inline-flex items-center gap-2 rounded-full border border-transparent px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-brand transition hover:border-brand/50"
                   title={t("auth:actions.holdReveal") ?? undefined}
                   aria-label={t("auth:actions.showPassword") ?? undefined}
                 >
@@ -627,11 +622,10 @@ const Login = () => {
                 </button>
               </div>
               <div className="relative">
-                <input
+                <Input
                   id="password"
                   name="password"
                   type={showPassword ? "text" : "password"}
-                  className={inputBaseClass}
                   ref={passwordRef}
                   onKeyUp={(e) => setCaps((e as any).getModifierState?.("CapsLock"))}
                   onKeyDown={(e) => setCaps((e as any).getModifierState?.("CapsLock"))}
@@ -654,10 +648,10 @@ const Login = () => {
               {submitError || passkeyError}
             </div>
 
-            <label className="flex items-center gap-3 text-sm font-medium text-[color:color-mix(in_srgb,var(--page-text)_90%,var(--secondary-text)_10%)]">
+            <label className="flex items-center gap-3 text-sm font-medium text-primary-text">
               <input
                 type="checkbox"
-                className="size-5 rounded-lg border-[color:color-mix(in_srgb,var(--nav-link)_50%,transparent)] bg-transparent accent-[color:var(--nav-link)]"
+                className="size-5 rounded-lg border-brand/50 bg-transparent accent-brand"
                 checked={trustDevice}
                 onChange={(e) => setTrustDevice(e.target.checked)}
                 disabled={isPending || submitting}
@@ -686,7 +680,7 @@ const Login = () => {
                   type="button"
                   onClick={handlePasskeyLogin}
                   disabled={submitting}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-[1.6rem] border border-[color:color-mix(in_srgb,var(--nav-link)_40%,transparent)] bg-[color:color-mix(in_srgb,var(--nav-link)_8%,transparent)] px-6 py-4 text-lg font-extrabold text-[color:var(--nav-link)] shadow-[0_10px_30px_rgba(15,23,42,0.05)] transition hover:translate-y-[-2px] hover:bg-[color:color-mix(in_srgb,var(--nav-link)_12%,transparent)] disabled:opacity-60"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-[1.6rem] border border-brand/40 bg-brand/5 px-6 py-4 text-lg font-extrabold text-brand shadow-[0_10px_30px_rgba(15,23,42,0.05)] transition hover:translate-y-[-2px] hover:bg-brand/10 disabled:opacity-60"
                 >
                   <Fingerprint className="h-6 w-6" />
                   {t("auth:login.signInWithPasskey", { defaultValue: "Войти с помощью Passkey" })}
@@ -697,7 +691,7 @@ const Login = () => {
             <div className="space-y-2 text-center text-sm">
               <Link
                 to="/forgot-password"
-                className="font-semibold text-[color:var(--nav-link)] underline-offset-4 transition hover:underline"
+                className="font-semibold text-brand underline-offset-4 transition hover:underline"
               >
                 {t("auth:login.forgot")}
               </Link>
@@ -705,7 +699,7 @@ const Login = () => {
                 {t("auth:login.noAccount")}{" "}
                 <Link
                   to="/register"
-                  className="font-semibold text-[color:var(--nav-link)] underline-offset-4 transition hover:underline"
+                  className="font-semibold text-brand underline-offset-4 transition hover:underline"
                 >
                   {t("auth:login.ctaRegister")}
                 </Link>

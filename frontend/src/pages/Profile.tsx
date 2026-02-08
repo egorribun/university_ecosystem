@@ -12,15 +12,20 @@ const DEFAULT_AVATAR = AVATAR_PLACEHOLDER_URL
 import PageFadeIn from "../components/PageFadeIn"
 import Layout from "../components/Layout"
 import SmartImage from "@/components/SmartImage"
+import { cn } from "@/utils/cn"
 import {
-  CircularProgress,
-  Snackbar,
   Alert,
+  Button,
+  CircularProgress,
   Dialog,
-  DialogTitle,
-  DialogContent,
   DialogActions,
-} from "@mui/material"
+  DialogContent,
+  DialogTitle,
+  Snackbar,
+  TextField,
+  SectionCard,
+  Divider,
+} from "@/components/settings"
 import { Badge, Card, Skeleton } from "@/components/ui"
 import { motion, useReducedMotion } from "framer-motion"
 
@@ -29,12 +34,15 @@ import { nowPlayingQueryKey, useNowPlaying } from "@/hooks/useNowPlaying"
 import type { NowPlaying } from "@/types/spotify"
 import { addVersionParam, resolveMediaUrl } from "@/utils/media"
 import { useTranslation } from "react-i18next"
-import EmailIcon from "@mui/icons-material/Email"
-import TelegramIcon from "@mui/icons-material/Telegram"
-import ContentCopyIcon from "@mui/icons-material/ContentCopy"
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore"
-import QrCodeIcon from "@mui/icons-material/QrCode"
-import OpenInNewIcon from "@mui/icons-material/OpenInNew"
+import {
+  Mail as EmailIcon,
+  Send as TelegramIcon,
+  Copy as ContentCopyIcon,
+  ChevronDown as ExpandMoreIcon,
+  QrCode as QrCodeIcon,
+  ExternalLink as OpenInNewIcon,
+  Shield,
+} from "lucide-react"
 
 import { sanitizeEmailAddress, sanitizeTelegramUrl } from "@/utils/sanitize"
 import {
@@ -207,7 +215,11 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
       className="block w-full no-underline"
     >
       <motion.div
-        className="nowplaying--spotify w-full grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 px-4 py-3.5 rounded-2xl relative overflow-hidden border border-[#1db95433] bg-[#121212] text-white shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-0.5"
+        className={cn(
+          "nowplaying--spotify w-full grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 px-4 py-3.5 rounded-2xl relative overflow-hidden",
+          "border border-glass-border bg-surface/40 backdrop-blur-md shadow-glass text-primary-text",
+          "transition-all duration-300 hover:-translate-y-0.5"
+        )}
         initial={isTest || prefersReduce || reduced ? false : { y: 12, opacity: 0.94, scale: 1 }}
         animate={{ y: 0, opacity: 1, scale: 1 }}
         whileHover={prefersReduce || reduced ? {} : { y: -1, scale: 1.002 }}
@@ -216,6 +228,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
           isTest ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 36, mass: 0.9 }
         }
       >
+        <div className="absolute inset-0 bg-linear-to-br from-brand/10 to-transparent pointer-events-none" />
         <div className="relative w-14 h-14 rounded-lg overflow-hidden shadow-[0_8px_20px_rgba(0,0,0,0.35)]">
           {data.album_image_url && !imageError ? (
             <img
@@ -231,43 +244,43 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
               } ${
                 prefersReduce || reduced
                   ? ""
-                  : "scale-[1.012] transition-transform duration-[900ms] cubic-bezier-[0.22,0.61,0.36,1] hover:scale-[1.02]"
+                  : "scale-[1.012] transition-transform duration-900 cubic-bezier-[0.22,0.61,0.36,1] hover:scale-[1.02]"
               }`}
             />
           ) : (
-            <div className="w-full h-full rounded-lg bg-[#2a2a2a] flex items-center justify-center">
-              <span className="text-[#b3b3b3] text-xs">♪</span>
+            <div className="w-full h-full rounded-lg bg-surface-hover/60 flex items-center justify-center">
+              <span className="text-text-tertiary text-xs">♪</span>
             </div>
           )}
         </div>
-        <div className="min-w-0 flex flex-col gap-1.5" aria-live="polite">
+        <div className="min-w-0 flex flex-col gap-1.5 relative z-1" aria-live="polite">
           <h3
-            className={`np-title font-extrabold leading-tight tracking-tight text-white text-base transition-opacity duration-200 ${
+            className={`np-title font-bold leading-tight tracking-tight text-primary-text text-base transition-opacity duration-200 ${
               imageLoaded || !data.album_image_url || imageError ? "opacity-100" : "opacity-0"
             }`}
           >
             {data.track_name || "—"}
           </h3>
-          <p className="np-art text-sm text-[#b3b3b3] opacity-90 truncate">
+          <p className="np-art text-sm text-secondary-text opacity-90 truncate">
             {data.artists.join(", ")}
           </p>
           {!data.is_playing && (
             <span
-              className="inline-flex self-start px-2 py-0.5 text-xs font-bold uppercase bg-gray-700 text-gray-300 rounded-full"
+              className="inline-flex self-start px-2 py-0.5 text-[10px] font-bold uppercase bg-surface-hover/80 text-secondary-text rounded-full border border-glass-border"
               aria-hidden
             >
               {t("profile:nowPlaying.paused")}
             </span>
           )}
-          <div className="flex items-center gap-2 w-full">
-            <div className="flex-1 min-w-0 h-1.5 bg-[#2a2a2a] rounded-full overflow-hidden relative">
+          <div className="flex items-center gap-2 w-full mt-0.5">
+            <div className="flex-1 min-w-0 h-1.5 bg-surface-hover/80 rounded-full overflow-hidden relative">
               <div
                 role="progressbar"
                 aria-valuenow={progress}
                 aria-valuemin={0}
                 aria-valuemax={duration}
                 aria-label={t("profile:nowPlaying.progress")}
-                className="h-full bg-[#1db954] rounded-full origin-left will-change-transform"
+                className="h-full bg-brand rounded-full origin-left will-change-transform shadow-[0_0_8px_rgba(var(--primary-main),0.4)]"
                 style={{
                   transform: `scaleX(${pct / 100})`,
                   transition: progressBarTransition,
@@ -275,7 +288,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
               />
             </div>
             <span
-              className="np-time text-xs text-[#b3b3b3] whitespace-nowrap tabular-nums flex-shrink-0"
+              className="np-time text-xs text-text-tertiary whitespace-nowrap tabular-nums shrink-0"
               style={{ width: maxTimeWidth }}
             >
               {fmt(progress)} / {fmt(duration)}
@@ -290,12 +303,13 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
 const DetailRow = ({ label, value }: { label: string; value?: React.ReactNode }) => {
   if (value == null || value === "") return null
   return (
-    <div className="profile-detail-row grid grid-cols-[12px_1fr] items-start gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 min-h-[44px] sm:min-h-[48px] rounded-lg sm:rounded-xl transition-all duration-300">
-      <div className="w-1.5 h-1.5 mt-1.5 rounded-full bg-nav-link dark:bg-nav-link shadow-[0_0_0_2px_rgba(15,79,170,0.15)] dark:shadow-[0_0_0_2px_rgba(127,182,230,0.15)] justify-self-center" />
-      <div className="text-xs sm:text-sm md:text-base leading-relaxed text-page-foreground">
-        <span className="font-extrabold text-nav-link dark:text-nav-link">{label}</span>
-        <span className="mx-1 sm:mx-1.5 text-secondary/50">·</span>
-        <span className="font-medium break-words">{value}</span>
+    <div className="profile-detail-row grid grid-cols-[12px_1fr] items-start gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 min-h-[44px] sm:min-h-[48px] rounded-2xl transition-all duration-300 border border-transparent hover:border-glass-border hover:bg-surface/20">
+      <div className="w-1.5 h-1.5 mt-2 rounded-full bg-brand shadow-[0_0_0_2px_rgba(var(--primary-main),0.15)] justify-self-center" />
+      <div className="text-xs sm:text-sm md:text-base leading-relaxed text-primary-text">
+        <span className="font-bold text-brand uppercase tracking-wider text-[10px] opacity-70 block mb-0.5">
+          {label}
+        </span>
+        <span className="font-medium wrap-break-word">{value}</span>
       </div>
     </div>
   )
@@ -701,7 +715,7 @@ export default function Profile() {
   const snackMessage = snack?.key ? t(`profile:snackbar.${snack.key}`) : snack?.message || ""
 
   return (
-    <Layout className="!bg-transparent">
+    <Layout className="bg-transparent!">
       {/* Seamless tiled background */}
       <div className="profile-background" aria-hidden>
         <div
@@ -744,7 +758,7 @@ export default function Profile() {
                     >
                       {/* Cover Image with Parallax */}
                       <div
-                        className={`absolute inset-0 bg-center bg-cover ${reduceMotion ? "" : "transition-transform duration-[1200ms] cubic-bezier-[0.33,1,0.68,1]"}`}
+                        className={`absolute inset-0 bg-center bg-cover ${reduceMotion ? "" : "transition-transform duration-1200 cubic-bezier-[0.33,1,0.68,1]"}`}
                         style={{
                           transform: `translateY(${coverParallax}px) scale(${coverScale})`,
                           filter: "saturate(1) contrast(1.02) brightness(0.98)",
@@ -758,7 +772,7 @@ export default function Profile() {
                         />
                       </div>
                       {/* Dark Matte Overlay */}
-                      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[rgba(6,9,20,0.85)] dark:to-[rgba(6,9,20,0.92)] from-35%" />
+                      <div className="absolute inset-0 bg-linear-to-b from-transparent via-transparent to-[rgba(6,9,20,0.85)] dark:to-[rgba(6,9,20,0.92)] from-35%" />
 
                       {/* Avatar Container */}
                       <div
@@ -781,7 +795,7 @@ export default function Profile() {
                         {/* Online Status Indicator */}
                         {isOnline && (
                           <div
-                            className="absolute z-[3] rounded-full bg-[#22c55e] shadow-[0_0_0_2px_rgba(0,0,0,0.18),0_4px_10px_rgba(34,197,94,0.45)] pointer-events-none"
+                            className="absolute z-3 rounded-full bg-[#22c55e] shadow-[0_0_0_2px_rgba(0,0,0,0.18),0_4px_10px_rgba(34,197,94,0.45)] pointer-events-none"
                             style={{
                               right: `${statusOffset}px`,
                               bottom: `${statusOffset}px`,
@@ -789,197 +803,107 @@ export default function Profile() {
                               height: `${statusSize}px`,
                             }}
                           >
-                            {!reduced && (
-                              <div className="absolute -inset-1.5 rounded-full border-2 border-[rgba(34,197,94,0.45)] animate-[online-pulse_1.8s_ease-in-out_infinite]" />
-                            )}
+                            <div className="absolute inset-0 animate-online-pulse rounded-full bg-[#22c55e]/60" />
                           </div>
                         )}
                       </div>
 
-                      {/* Name and Chips Section */}
-                      <div
-                        className="relative z-[2] w-full text-center md:text-left px-4 sm:px-6 md:px-8 lg:px-10 flex flex-col gap-3 sm:gap-4 md:gap-5"
-                        style={{ paddingTop: heroTextPaddingTop }}
-                      >
-                        <div className="flex items-center justify-center md:justify-start gap-3 sm:gap-4">
-                          <h1
-                            className="profile-name text-[clamp(1.5rem,4vw+0.5rem,2.5rem)] sm:text-[clamp(1.7rem,3.5vw+0.5rem,2.7rem)] md:text-[clamp(1.9rem,3.2vw+0.5rem,2.9rem)] font-black leading-[1.08] tracking-tight"
-                            data-testid="profile-name"
-                          >
-                            {user!.full_name}
+                      {/* User Headline Info */}
+                      <div className="absolute left-0 right-0 top-0 bottom-0 pointer-events-none flex items-end justify-center">
+                        <div className="w-full px-6 pb-6 text-center">
+                          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-white drop-shadow-[0_4px_8px_rgba(0,0,0,0.5)]">
+                            {user?.full_name}
                           </h1>
-                          <button
-                            onClick={openQrModal}
-                            data-testid="open-qr"
-                            className="flex-shrink-0 p-2 sm:p-2.5 rounded-lg sm:rounded-xl bg-white/20 dark:bg-white/15 hover:bg-white/30 dark:hover:bg-white/25 border border-white/30 dark:border-white/25 text-white transition-all duration-300 hover:scale-110 hover:shadow-lg active:scale-95"
-                            aria-label={t("profile:buttons.showQr")}
-                            title={t("profile:buttons.showQr")}
-                          >
-                            <QrCodeIcon className="w-5 h-5 sm:w-6 sm:h-6" />
-                          </button>
-                        </div>
-                        {!!user?.position && user?.role === "teacher" && (
-                          <p className="profile-subtitle mt-1.5 sm:mt-2 font-semibold text-base sm:text-lg text-white/90 dark:text-white/95">
-                            {user.position}
+                          <p className="text-sm sm:text-base text-white/80 font-medium drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)] mt-1">
+                            {user?.status || t("profile:placeholders.status")}
                           </p>
-                        )}
-                        <div className="flex flex-row flex-wrap gap-2 sm:gap-2.5 justify-center md:justify-start">
-                          {[
-                            user!.role === "teacher"
-                              ? t("profile:chips.teacher")
-                              : user!.role === "student"
-                                ? t("profile:chips.student")
-                                : t("profile:chips.admin"),
-                            ...(user!.role === "student" && user!.course
-                              ? [t("profile:chips.course", { value: user!.course })]
-                              : []),
-                            ...(user!.institute ? [user!.institute] : []),
-                          ].map((chip, idx) => (
-                            <motion.div
-                              key={`${chip}-${idx}`}
-                              initial={isTest || reduced ? false : { opacity: 0, scale: 0.9 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              transition={
-                                isTest || reduced
-                                  ? { duration: 0 }
-                                  : {
-                                      delay: idx * 0.09,
-                                      duration: 0.56,
-                                      ease: [0.22, 0.61, 0.36, 1],
-                                    }
-                              }
-                            >
-                              <span className="inline-flex items-center px-3 sm:px-4 py-1 sm:py-1.5 rounded-full border border-white/30 dark:border-white/25 bg-white/20 dark:bg-white/15 text-white text-xs sm:text-sm font-bold tracking-wide transition-all duration-300 hover:scale-105 hover:shadow-md hover:bg-white/28 dark:hover:bg-white/22">
-                                {chip}
-                              </span>
-                            </motion.div>
-                          ))}
                         </div>
                       </div>
                     </div>
 
-                    {/* Now Playing Section */}
-                    {showNowPlaying && nowPlaying && (
-                      <motion.div
-                        initial={isTest || reduced ? false : { opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={
-                          isTest || reduced
-                            ? { duration: 0 }
-                            : { duration: 0.72, ease: [0.22, 0.61, 0.36, 1] }
-                        }
-                        className="flex flex-col gap-3"
-                      >
-                        <div className="flex items-center gap-2">
-                          <img
-                            src={spotifyLogo}
-                            alt="Spotify"
-                            width={16}
-                            height={16}
-                            style={{ display: "block", borderRadius: "50%" }}
-                            loading="lazy"
-                            decoding="async"
-                            className="flex-shrink-0"
-                          />
-                          <h3 className="text-[10px] xs:text-xs uppercase tracking-[2.2px] font-bold text-secondary opacity-90">
-                            {t("profile:sections.nowPlaying")}
-                          </h3>
-                        </div>
-                        <NowPlayingCard data={nowPlaying} />
-                      </motion.div>
-                    )}
-
-                    {/* Contact Panel */}
-                    <div className="profile-card profile-panel profile-panel--compact p-4 sm:p-5 md:p-6 rounded-xl sm:rounded-2xl flex flex-col gap-4 sm:gap-5">
-                      {/* Contact Links */}
-                      <div className="flex flex-col gap-3 sm:gap-4 contact-links">
-                        {/* Email */}
-                        <div className="relative">
-                          <button
-                            ref={emailButtonRef}
-                            onClick={handleEmailClick}
-                            className="profile-contact-button w-full flex flex-row items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-lg sm:rounded-xl transition-all duration-200 group"
-                            data-testid="profile-email-link"
-                          >
-                            <EmailIcon
-                              className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0 text-nav-link dark:text-[#7fb6e6]"
-                              aria-hidden
-                            />
-                            <span className="font-extrabold break-words flex-1 text-left text-sm sm:text-base text-nav-link dark:text-[#7fb6e6] group-hover:text-nav-link-hover dark:group-hover:text-[#c7e1f7] transition-colors duration-200 break-all">
-                              {user!.email}
+                    <div className="profile-panel profile-panel--secondary grid grid-cols-2 gap-4 rounded-xl sm:rounded-2xl md:rounded-3xl p-4 bg-surface/30 border border-glass-border/10">
+                      <div className="flex flex-col items-center justify-center py-2 text-center border-r border-glass-border/10">
+                        <span className="text-xl font-bold text-brand">
+                          {user?.course || "—"}
+                        </span>
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-secondary-text opacity-60">
+                          {t("profile:labels.course")}
+                        </span>
+                      </div>
+                      <div className="flex flex-col items-center justify-center py-2 text-center">
+                        <div className="relative z-2">
+                          <div className="flex items-center gap-1">
+                            <span className="text-xl font-bold text-brand">
+                              {user?.record_book_number || "—"}
                             </span>
-                          </button>
-                          {emailMenuAnchor && (
-                            <div
-                              ref={emailMenuRef}
-                              data-email-menu
-                              className="profile-contact-menu absolute left-0 top-full mt-2 z-20 min-w-[200px] overflow-hidden rounded-xl"
-                            >
-                              <button
-                                onClick={handleEmailCopy}
-                                className="profile-contact-menu__item flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-page-foreground transition focus-visible:outline-none"
-                              >
-                                <ContentCopyIcon className="w-5 h-5 text-page-foreground" />
-                                {t("profile:menu.copy")}
-                              </button>
-                              <button
-                                onClick={handleEmailOpen}
-                                className="profile-contact-menu__item flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-page-foreground transition focus-visible:outline-none border-t border-transparent"
-                              >
-                                <OpenInNewIcon className="w-5 h-5 text-page-foreground" />
-                                {t("profile:menu.openEmail")}
-                              </button>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Telegram */}
-                        {!!user!.telegram && (
-                          <div className="relative">
-                            <button
-                              ref={telegramButtonRef}
-                              onClick={handleTelegramClick}
-                              className="profile-contact-button w-full flex flex-row items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-lg sm:rounded-xl transition-all duration-200 group"
-                              data-testid="profile-telegram-link"
-                            >
-                              <TelegramIcon
-                                className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0 text-nav-link dark:text-[#7fb6e6]"
-                                aria-hidden
-                              />
-                              <span className="font-extrabold break-words flex-1 text-left text-sm sm:text-base text-nav-link dark:text-[#7fb6e6] group-hover:text-nav-link-hover dark:group-hover:text-[#c7e1f7] transition-colors duration-200 break-all">
-                                {user!.telegram}
-                              </span>
-                            </button>
-                            {telegramMenuAnchor && (
-                              <div
-                                ref={telegramMenuRef}
-                                data-telegram-menu
-                                className="profile-contact-menu absolute left-0 top-full mt-2 z-20 min-w-[200px] overflow-hidden rounded-xl"
-                              >
-                                <button
-                                  onClick={handleTelegramCopy}
-                                  className="profile-contact-menu__item flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-page-foreground transition focus-visible:outline-none"
-                                >
-                                  <ContentCopyIcon className="w-5 h-5 text-page-foreground" />
-                                  {t("profile:menu.copy")}
-                                </button>
-                                <button
-                                  onClick={handleTelegramOpen}
-                                  className="profile-contact-menu__item flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-page-foreground transition focus-visible:outline-none border-t border-transparent"
-                                >
-                                  <OpenInNewIcon className="w-5 h-5 text-page-foreground" />
-                                  {t("profile:menu.openTelegram")}
-                                </button>
-                              </div>
-                            )}
                           </div>
-                        )}
+                        </div>
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-secondary-text opacity-60">
+                          {t("profile:labels.recordBook")}
+                        </span>
                       </div>
                     </div>
+
+                    <div className="flex flex-col gap-3">
+                      <Button
+                        variant="ghost"
+                        leadingIcon={<EmailIcon className="shrink-0" />}
+                        onClick={handleEmailClick}
+                        ref={emailButtonRef}
+                        className="justify-start h-12 rounded-xl bg-surface/20 border border-glass-border/10 hover:bg-surface/40 hover:border-brand/30"
+                      >
+                        <span className="truncate text-sm font-medium">
+                          {user?.email || t("profile:placeholders.email")}
+                        </span>
+                      </Button>
+                      {!!user!.telegram && (
+                        <Button
+                          variant="ghost"
+                          leadingIcon={<TelegramIcon className="shrink-0" />}
+                          onClick={handleTelegramClick}
+                          ref={telegramButtonRef}
+                          className="justify-start h-12 rounded-xl bg-surface/20 border border-glass-border/10 hover:bg-surface/40 hover:border-brand/30"
+                        >
+                          <span className="truncate text-sm font-medium">
+                            {user?.telegram || t("profile:placeholders.telegram")}
+                          </span>
+                        </Button>
+                      )}
+                    </div>
+
+                    <SectionCard className="p-5 flex flex-col gap-4">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-secondary-text opacity-60 flex items-center gap-2">
+                        <QrCodeIcon className="h-3.5 w-3.5" />
+                        {t("profile:labels.vcard")}
+                      </h3>
+                      <div className="flex items-center gap-4">
+                        <div
+                          className="qr-minimal h-20 w-20 rounded-xl bg-white p-2 shadow-sm cursor-pointer hover:scale-105 transition-transform"
+                          onClick={openQrModal}
+                        >
+                          <React.Suspense fallback={<div className="w-full h-full bg-surface-hover/20 animate-pulse" />}>
+                            <QRCodeSVG value={buildVCard()} size={64} />
+                          </React.Suspense>
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          <p className="text-xs text-secondary-text leading-relaxed">
+                            {t("profile:tooltips.scanToSave")}
+                          </p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={openQrModal}
+                            className="h-8 rounded-lg text-[10px] font-bold uppercase tracking-wider"
+                          >
+                            {t("profile:buttons.viewQR")}
+                          </Button>
+                        </div>
+                      </div>
+                    </SectionCard>
                   </div>
 
-                  {/* Right Column - Profile Details / Edit Form */}
-                  <div className="w-full relative" style={{ marginTop: isMobile ? "0" : "0" }}>
+                  {/* Right Column: Details and Features */}
+                  <div className="flex flex-col gap-4 sm:gap-5 md:gap-6 lg:gap-8 min-w-0">
                     {edit ? (
                       <div className="profile-card profile-panel profile-panel--primary profile-panel--editor profile-edit w-full rounded-xl sm:rounded-2xl p-4 sm:p-6 md:p-8 lg:p-10">
                         <div className="flex flex-col gap-4 sm:gap-5">
@@ -1184,98 +1108,64 @@ export default function Profile() {
                         {/* Profile Details View */}
                         <div className="w-full flex flex-col gap-4 sm:gap-5 md:gap-6">
                           {/* Section Header */}
-                          <div className="flex items-center justify-between gap-3 sm:gap-4">
-                            <h2 className="text-[clamp(1.3rem,3vw+0.5rem,2rem)] sm:text-[clamp(1.5rem,3.2vw+0.5rem,2.2rem)] font-black tracking-tight text-page-foreground">
-                              {t("profile:sections.details")}
-                            </h2>
+                          <SectionCard className="p-0 border-none bg-surface/10 rounded-3xl overflow-hidden">
                             <button
                               onClick={() => setDetailsOpen(!detailsOpen)}
-                              className={`p-2 rounded-lg hover:bg-white/10 dark:hover:bg-white/5 transition-all duration-200 ${reduced ? "" : "hover:scale-105"}`}
-                              aria-label={detailsOpen ? "Свернуть" : "Развернуть"}
+                              className="w-full flex items-center justify-between px-6 py-5 hover:bg-surface/20 transition-colors"
                             >
-                              <ExpandMoreIcon
-                                className={`w-6 h-6 text-page-foreground transition-transform duration-300 ${detailsOpen ? "rotate-180" : ""}`}
-                              />
+                              <h2 className="text-lg font-bold tracking-tight text-primary-text">
+                                {t("profile:titles.details")}
+                              </h2>
+                              <ExpandMoreIcon className={cn("h-5 w-5 text-brand transition-transform duration-300", detailsOpen && "rotate-180")} />
                             </button>
-                          </div>
 
-                          {/* Collapsible Content */}
-                          <motion.div
-                            initial={false}
-                            animate={{
-                              height: detailsOpen ? "auto" : 0,
-                              opacity: detailsOpen ? 1 : 0,
-                            }}
-                            transition={{ duration: 0.3, ease: [0.22, 0.61, 0.36, 1] }}
-                            className="overflow-hidden"
-                          >
-                            <div className="flex flex-col gap-4 sm:gap-5 md:gap-6">
-                              {/* Detail Rows Grid */}
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                                {[
-                                  { label: t("profile:form.about"), value: user!.about },
-                                  { label: t("profile:form.status"), value: user!.status },
-                                  {
-                                    label: t("profile:form.recordBookNumber"),
-                                    value: user!.record_book_number,
-                                  },
-                                  {
-                                    label: t("profile:form.educationLevel"),
-                                    value: user!.education_level,
-                                  },
-                                  { label: t("profile:form.track"), value: user!.track },
-                                  { label: t("profile:form.program"), value: user!.program },
-                                  {
-                                    label: t("profile:form.department"),
-                                    value: user!.department,
-                                  },
-                                  { label: t("profile:form.position"), value: user!.position },
-                                ].map((r) => (
-                                  <DetailRow key={r.label} label={r.label} value={r.value} />
+                            <div className={cn("transition-all duration-300 overflow-hidden", detailsOpen ? "max-h-[1000px] opacity-100" : "max-h-0 opacity-0")}>
+                              <div className="px-3 pb-6 flex flex-col gap-1">
+                                <DetailRow label={t("profile:labels.institute")} value={user?.institute} />
+                                <Divider className="opacity-10 mx-4" />
+                                <DetailRow label={t("profile:labels.educationLevel")} value={user?.education_level} />
+                                <Divider className="opacity-10 mx-4" />
+                                <DetailRow label={user?.role === "teacher" ? t("profile:labels.department") : t("profile:labels.track")} value={user?.role === "teacher" ? user?.department : user?.track} />
+                                <Divider className="opacity-10 mx-4" />
+                                <DetailRow label={user?.role === "teacher" ? t("profile:labels.position") : t("profile:labels.program")} value={user?.role === "teacher" ? user?.position : user?.program} />
+                                <Divider className="opacity-10 mx-4" />
+                                <DetailRow
+                                  label={t("profile:labels.about")}
+                                  value={<span className="wrap-break-word">{user?.about || t("profile:placeholders.about")}</span>}
+                                />
+                              </div>
+                            </div>
+                          </SectionCard>
+
+                          {achievementsList.length > 0 && (
+                            <SectionCard className="p-6">
+                              <h2 className="text-lg font-bold tracking-tight text-primary-text mb-6">
+                                {t("profile:titles.achievements")}
+                              </h2>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {achievementsList.map((ach, idx) => (
+                                  <motion.div
+                                    key={ach.key}
+                                    whileHover={{ y: -2 }}
+                                    className="flex items-start gap-3 p-4 rounded-2xl bg-surface/20 border border-glass-border/10 hover:border-brand/30 hover:bg-surface/40 transition-all cursor-pointer group"
+                                    onClick={() => setAchOpen(ach)}
+                                  >
+                                    <div className="h-10 w-10 shrink-0 rounded-xl bg-brand/10 flex items-center justify-center text-brand group-hover:bg-brand group-hover:text-white transition-colors">
+                                      <Shield className="h-5 w-5" />
+                                    </div>
+                                    <div className="min-w-0">
+                                      <h4 className="text-sm font-bold text-primary-text truncate group-hover:text-brand transition-colors">
+                                        {ach.name}
+                                      </h4>
+                                      <p className="text-[11px] text-secondary-text opacity-70 mt-0.5 line-clamp-1">
+                                        {ach.issuer || "Academic Board"}
+                                      </p>
+                                    </div>
+                                  </motion.div>
                                 ))}
                               </div>
-
-                              {/* Achievements Section */}
-                              {achievementsList.length > 0 && (
-                                <div className="pt-2">
-                                  <h3 className="font-extrabold mb-3 sm:mb-4 text-lg sm:text-xl text-page-foreground">
-                                    {t("profile:sections.achievements")}
-                                  </h3>
-                                  <div className="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] sm:grid-cols-[repeat(auto-fit,minmax(140px,1fr))] md:grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-2.5 sm:gap-3">
-                                    {achievementsList.map((ach, idx) => (
-                                      <motion.button
-                                        key={ach.key}
-                                        initial={
-                                          isTest || reduced ? false : { opacity: 0, scale: 0.9 }
-                                        }
-                                        animate={{ opacity: 1, scale: 1 }}
-                                        transition={
-                                          isTest || reduced
-                                            ? { duration: 0 }
-                                            : {
-                                                delay: idx * 0.09,
-                                                duration: 0.5,
-                                                ease: [0.22, 0.61, 0.36, 1],
-                                              }
-                                        }
-                                        onClick={() =>
-                                          setAchOpen({
-                                            name: ach.name,
-                                            issuer: ach.issuer,
-                                            date: ach.date,
-                                            url: ach.url,
-                                          })
-                                        }
-                                        className="profile-achievement px-3 sm:px-4 py-2 sm:py-2.5 md:py-3 rounded-lg sm:rounded-xl text-page-foreground font-bold text-xs sm:text-sm leading-tight transition-all duration-300 cursor-pointer text-left"
-                                      >
-                                        {ach.name}
-                                      </motion.button>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </motion.div>
+                            </SectionCard>
+                          )}
                         </div>
                       </>
                     )}
@@ -1288,24 +1178,15 @@ export default function Profile() {
       </PageFadeIn>
 
       {/* QR Code Dialog */}
-      <Dialog
-        open={qrOpen}
-        onClose={closeQrModal}
-        maxWidth="xs"
-        fullWidth
-        PaperProps={{
-          className:
-            "!rounded-xl sm:!rounded-2xl border border-glass-border bg-surface dark:bg-card-bg shadow-surface dark:shadow-surface-strong",
-        }}
-      >
-        <DialogTitle className="text-center font-black tracking-wide text-page-foreground">
+      <Dialog open={qrOpen} onClose={closeQrModal} maxWidth="xs" fullWidth>
+        <DialogTitle className="text-center">
           {t("profile:dialog.qr.title")}
         </DialogTitle>
-        <DialogContent className="flex flex-col items-center justify-center gap-3 min-h-[320px] p-6">
-          <div className="bg-white p-4 rounded-2xl border border-[#0f4faa]/15 shadow-[0_18px_40px_-28px_rgba(0,0,0,0.4)]">
+        <DialogContent className="flex flex-col items-center justify-center gap-3 min-h-[320px]">
+          <div className="bg-white p-4 rounded-2xl border border-glass-border shadow-glass">
             <React.Suspense
               fallback={
-                <div className="w-[300px] h-[300px] animate-pulse bg-gray-100 rounded-xl" />
+                <div className="w-[300px] h-[300px] animate-pulse bg-surface-hover/60 rounded-xl" />
               }
             >
               <QRCodeSVG
@@ -1324,59 +1205,55 @@ export default function Profile() {
               />
             </React.Suspense>
           </div>
-          <p className="text-xs text-secondary text-center">{t("profile:dialog.qr.hint")}</p>
+          <p className="text-xs text-secondary-text text-center mt-2 opacity-80">
+            {t("profile:dialog.qr.hint")}
+          </p>
         </DialogContent>
-        <DialogActions className="justify-center pb-4">
-          <button
-            onClick={closeQrModal}
-            className="py-2.5 px-6 rounded-lg sm:rounded-xl bg-nav-link dark:bg-nav-link text-white dark:text-[#0b121f] font-extrabold tracking-wide text-sm sm:text-base shadow-surface hover:shadow-surface-strong transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.01] hover:bg-[#0d4494] dark:hover:bg-[#69a9dc] active:scale-[0.98] border border-nav-link/20 dark:border-nav-link/30"
-          >
+        <DialogActions className="justify-center">
+          <Button variant="solid" onClick={closeQrModal} fullWidth={isMobile}>
             {t("common:buttons.done")}
-          </button>
+          </Button>
         </DialogActions>
       </Dialog>
 
       {/* Achievement Dialog */}
-      <Dialog
-        open={!!achOpen}
-        onClose={() => setAchOpen(null)}
-        maxWidth="xs"
-        fullWidth
-        PaperProps={{
-          className:
-            "!rounded-xl sm:!rounded-2xl border border-glass-border bg-surface dark:bg-card-bg shadow-surface dark:shadow-surface-strong",
-        }}
-      >
-        <DialogTitle className="font-black text-page-foreground">{achOpen?.name}</DialogTitle>
-        <DialogContent className="grid gap-3 p-6">
+      <Dialog open={!!achOpen} onClose={() => setAchOpen(null)} maxWidth="xs" fullWidth>
+        <DialogTitle>{achOpen?.name}</DialogTitle>
+        <DialogContent className="grid gap-4 py-4">
           {achOpen?.issuer && (
-            <p className="text-page-foreground">
-              {t("profile:dialog.achievement.organizer", { issuer: achOpen.issuer })}
-            </p>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-brand opacity-70">
+                {t("profile:fields.organizer")}
+              </span>
+              <p className="text-primary-text font-medium">{achOpen.issuer}</p>
+            </div>
           )}
           {achOpen?.date && (
-            <p className="text-page-foreground">
-              {t("profile:dialog.achievement.date", { date: achOpen.date })}
-            </p>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-brand opacity-70">
+                {t("profile:fields.date")}
+              </span>
+              <p className="text-primary-text font-medium">{achOpen.date}</p>
+            </div>
           )}
           {achOpen?.url && (
-            <a
+            <Button
+              as="a"
               href={achOpen.url}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex justify-center py-2.5 px-6 rounded-lg sm:rounded-xl border-2 border-glass-border bg-transparent hover:bg-surface-accent dark:hover:bg-surface-accent text-page-foreground font-extrabold tracking-wide text-sm sm:text-base transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.01] active:scale-[0.98] no-underline"
+              variant="outline"
+              fullWidth
+              leadingIcon={<OpenInNewIcon className="h-4 w-4" />}
             >
               {t("profile:dialog.achievement.openLink")}
-            </a>
+            </Button>
           )}
         </DialogContent>
-        <DialogActions className="p-4">
-          <button
-            onClick={() => setAchOpen(null)}
-            className="py-2.5 px-6 rounded-lg sm:rounded-xl bg-nav-link dark:bg-nav-link text-white dark:text-[#0b121f] font-extrabold tracking-wide text-sm sm:text-base shadow-surface hover:shadow-surface-strong transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.01] hover:bg-[#0d4494] dark:hover:bg-[#69a9dc] active:scale-[0.98] border border-nav-link/20 dark:border-nav-link/30"
-          >
+        <DialogActions>
+          <Button variant="ghost" onClick={() => setAchOpen(null)}>
             {t("profile:dialog.achievement.close")}
-          </button>
+          </Button>
         </DialogActions>
       </Dialog>
 
@@ -1384,15 +1261,9 @@ export default function Profile() {
         open={!!snack}
         autoHideDuration={2600}
         onClose={() => setSnack(null)}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
         data-testid={snack?.key === "copied" ? "snackbar-copied" : undefined}
       >
-        <Alert
-          onClose={() => setSnack(null)}
-          severity={snack?.sev || "info"}
-          variant="filled"
-          sx={{ width: "100%" }}
-        >
+        <Alert onClose={() => setSnack(null)} severity={snack?.sev || "info"}>
           {snackMessage}
         </Alert>
       </Snackbar>

@@ -32,6 +32,7 @@ export {
   DialogContent,
   DialogActions,
   Snackbar,
+  Skeleton,
   // Navigation components
   Tabs,
   Tab,

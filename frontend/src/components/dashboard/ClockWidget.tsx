@@ -1,6 +1,6 @@
-import { Card, Typography } from "@mui/material"
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
+import { cn } from "@/utils/cn"
 
 export function ClockWidget() {
   const { t } = useTranslation()
@@ -12,27 +12,23 @@ export function ClockWidget() {
   }, [])
 
   return (
-    <Card
-      sx={{
-        height: "100%",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "center",
-        alignItems: "center",
-        p: 2,
-      }}
+    <div
+      className={cn(
+        "relative flex h-full flex-col items-center justify-center overflow-hidden rounded-3xl p-6 transition-all duration-500",
+        "border border-glass-border bg-surface/30 backdrop-blur-xl shadow-glass",
+        "before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_top_right,var(--primary-main),transparent_70%)] before:opacity-10"
+      )}
     >
-      <Typography variant="h3" component="div" gutterBottom>
+      <div className="text-5xl font-black tracking-tighter text-primary-text sf-pro tabular-nums">
         {time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-      </Typography>
-      <Typography variant="subtitle1" color="text.secondary">
+      </div>
+      <div className="mt-2 text-sm font-bold text-secondary-text opacity-60 uppercase tracking-widest">
         {time.toLocaleDateString(undefined, {
           weekday: "long",
-          year: "numeric",
-          month: "long",
           day: "numeric",
+          month: "long",
         })}
-      </Typography>
-    </Card>
+      </div>
+    </div>
   )
 }

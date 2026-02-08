@@ -1,15 +1,15 @@
 import { QueryClientProvider } from "@tanstack/react-query"
 import { fireEvent, render, screen, waitFor, act } from "@testing-library/react"
-import { CssVarsProvider } from "@mui/material/styles"
+import userEvent from "@testing-library/user-event"
+import { ThemeProvider } from "@/contexts/ThemeContext"
 import { MemoryRouter } from "react-router-dom"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import api from "@/api/client"
 import { createQueryClient } from "@/app/queryClient"
 import { AuthContext } from "@/contexts/AuthContext"
 import Settings from "@/pages/Settings"
 import type { User } from "@/types/User"
 import { LanguageProvider } from "@/contexts/LanguageContext"
-import theme from "@/theme"
 import i18n from "../../i18n/config"
 
 const tSettings = (key: string, options?: Record<string, unknown>) =>
@@ -83,7 +83,7 @@ const renderSettings = () => {
   const utils = render(
     <MemoryRouter initialEntries={["/settings"]}>
       <QueryClientProvider client={queryClient}>
-        <CssVarsProvider theme={theme}>
+        <ThemeProvider>
           <LanguageProvider>
             <AuthContext.Provider
               value={{
@@ -104,7 +104,7 @@ const renderSettings = () => {
               <Settings />
             </AuthContext.Provider>
           </LanguageProvider>
-        </CssVarsProvider>
+        </ThemeProvider>
       </QueryClientProvider>
     </MemoryRouter>
   )

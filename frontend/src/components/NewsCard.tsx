@@ -1,19 +1,20 @@
 import { FC, memo, useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from "react"
 import { motion } from "framer-motion"
-import MoreVertIcon from "@mui/icons-material/MoreVert"
-import EditIcon from "@mui/icons-material/Edit"
-import DeleteIcon from "@mui/icons-material/Delete"
-import PhotoCamera from "@mui/icons-material/PhotoCamera"
-import ArrowOutwardIcon from "@mui/icons-material/ArrowOutward"
-import ArticleIcon from "@mui/icons-material/Article"
-import FavoriteIcon from "@mui/icons-material/Favorite"
-import FavoriteBorderIcon from "@mui/icons-material/FavoriteBorder"
-import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline"
+import {
+  MoreVertical as MoreVertIcon,
+  Pencil as EditIcon,
+  Trash2 as DeleteIcon,
+  Camera as PhotoCamera,
+  ArrowUpRight as ArrowOutwardIcon,
+  FileText as ArticleIcon,
+  Heart as FavoriteIcon,
+  MessageCircle as ChatBubbleOutlineIcon,
+  Cloud,
+} from "lucide-react"
 import { useNewsInteraction } from "@/hooks/useNewsInteraction"
 import { useAuth } from "../contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
-import CloudDoneIcon from "@mui/icons-material/CloudDone"
 import api from "../api/client"
 import { useNavigate } from "react-router-dom"
 import dayjs from "dayjs"
@@ -31,17 +32,17 @@ dayjs.extend(utc)
 dayjs.extend(timezone)
 
 const inputClass =
-  "w-full rounded-ue-lg border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] px-4 py-2.5 text-[0.98rem] text-[color:var(--page-text)] shadow-[inset_0_1px_0_rgba(15,23,42,0.08)] transition focus:border-[color:var(--nav-link)] focus:outline-none focus:shadow-focus placeholder:text-[color:var(--placeholder-fg)]"
+  "w-full rounded-ue-lg border border-white/12 bg-[color-mix(in_srgb,var(--card-bg)_94%,white_6%)] px-4 py-2.5 text-[0.98rem] text-(--page-text) shadow-[inset_0_1px_0_rgba(15,23,42,0.08)] transition focus:border-(--nav-link) focus:outline-none focus:shadow-focus placeholder:text-(--placeholder-fg)"
 const textareaClass = `${inputClass} min-h-[128px] resize-y leading-relaxed`
 
 const iconButtonClass =
-  "inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-white/80 text-[color:var(--nav-link)] shadow-surface transition hover:bg-white focus-visible:outline-none focus-visible:shadow-focus"
+  "inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-white/80 text-(--nav-link) shadow-surface transition hover:bg-white focus-visible:outline-none focus-visible:shadow-focus"
 
 const menuPanelClass =
-  "absolute right-0 top-12 z-20 min-w-[180px] overflow-hidden rounded-ue-md border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)]/98 shadow-surface-strong backdrop-blur-xl"
+  "absolute right-0 top-12 z-20 min-w-[180px] overflow-hidden rounded-ue-md border border-white/12 bg-[color-mix(in_srgb,var(--card-bg)_94%,white_6%)]/98 shadow-surface-strong backdrop-blur-xl"
 
 const menuItemClass =
-  "flex w-full items-center gap-2 px-4 py-2.5 text-left text-[0.95rem] font-medium text-[color:var(--page-text)] transition hover:bg-[color:var(--glass-bg)]/80 focus-visible:outline-none focus-visible:bg-[color:var(--glass-bg)]"
+  "flex w-full items-center gap-2 px-4 py-2.5 text-left text-[0.95rem] font-medium text-(--page-text) transition hover:bg-(--glass-bg)/80 focus-visible:outline-none focus-visible:bg-(--glass-bg)"
 
 type NewsCardProps = {
   id: string
@@ -69,7 +70,7 @@ function Field({ label, htmlFor, children, required = false }: FieldProps) {
     <div className="space-y-2">
       <label
         htmlFor={htmlFor}
-        className="text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]"
+        className="text-sm font-semibold tracking-wide text-[color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]"
       >
         {label}
         {required ? <span className="ml-1 text-[#f87171]">*</span> : null}
@@ -316,7 +317,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       whileHover={{ y: -4 }}
       transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
       className={cn(
-        "card-glass group relative flex flex-col transition-[box-shadow] duration-300 ease-out h-[400px] md:h-[480px] w-full transform-gpu",
+        "card-glass group relative flex flex-col transition-shadow duration-300 ease-out h-[400px] md:h-[480px] w-full transform-gpu",
         hoveringDisabled
           ? "cursor-default"
           : "cursor-pointer hover:shadow-glass-strong active:scale-[0.985]"
@@ -344,7 +345,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
             disabled={loading}
             data-news-card-menu-button
           >
-            <MoreVertIcon fontSize="small" />
+            <MoreVertIcon size={20} />
           </button>
           {menuOpen ? (
             <div
@@ -364,7 +365,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
                   openEditDialog()
                 }}
               >
-                <EditIcon fontSize="small" className="text-[color:var(--nav-link)]" />
+                <EditIcon size={16} className="text-(--nav-link)" />
                 {t("common:buttons.edit")}
               </button>
               <button
@@ -376,7 +377,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
                   closeMenu()
                 }}
               >
-                <DeleteIcon fontSize="small" className="text-[#e11d48]" />
+                <DeleteIcon size={16} className="text-[#e11d48]" />
                 {t("common:buttons.delete")}
               </button>
             </div>
@@ -402,7 +403,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
         <div className="relative w-full h-[200px] md:h-[220px] shrink-0 overflow-hidden border-b border-white/10 bg-[linear-gradient(135deg,rgba(29,78,216,0.18),rgba(59,130,246,0.08))]">
           <div
             className={cn(
-              "absolute inset-0 animate-pulse bg-[color:color-mix(in_srgb,var(--glass-bg)_70%,white_30%)] transition-opacity duration-300",
+              "absolute inset-0 animate-pulse bg-[color-mix(in_srgb,var(--glass-bg)_70%,white_30%)] transition-opacity duration-300",
               cardImageReady ? "opacity-0" : "opacity-100"
             )}
             aria-hidden
@@ -417,12 +418,12 @@ const NewsCardComponent: FC<NewsCardProps> = ({
                     : t("news:alt.heroFallback")
                 }
                 sizes="(min-width: 1200px) 640px, (min-width: 900px) 520px, 100vw"
-                className="absolute inset-0 h-full w-full object-cover !object-cover transition duration-700 ease-out"
+                className="absolute inset-0 h-full w-full object-cover transition duration-700 ease-out"
                 onLoad={handleCardImageReady}
                 onError={handleCardImageReady}
               />
               <div
-                className="pointer-events-none absolute inset-0 z-[1] bg-[linear-gradient(180deg,rgba(15,23,42,0)_30%,rgba(15,23,42,0.75)_95%)] opacity-100"
+                className="pointer-events-none absolute inset-0 z-1 bg-[linear-gradient(180deg,rgba(15,23,42,0)_30%,rgba(15,23,42,0.75)_95%)] opacity-100"
                 aria-hidden
               />
             </>
@@ -434,20 +435,20 @@ const NewsCardComponent: FC<NewsCardProps> = ({
           {createdAtIso ? (
             <time
               dateTime={createdAtIso}
-              className="absolute bottom-3 left-3 z-[2] rounded-ue-pill bg-black/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/90 transition duration-300 ease-out group-hover/button:translate-y-[-2px] group-hover/button:bg-black/70"
+              className="absolute bottom-3 left-3 z-[2] rounded-ue-pill bg-black/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/90 transition duration-300 ease-out group-hover/button:-translate-y-0.5 group-hover/button:bg-black/70"
             >
               {createdAtLabel}
             </time>
           ) : null}
           {!isOnline && (
-            <div className="absolute top-3 left-3 z-[2] flex items-center gap-1 rounded-ue-pill bg-amber-500/90 px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wider text-amber-950 shadow-surface backdrop-blur-sm">
-              <CloudDoneIcon sx={{ fontSize: 12 }} />
+            <div className="absolute top-3 left-3 z-2 flex items-center gap-1 rounded-ue-pill bg-amber-500/90 px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wider text-amber-950 shadow-surface backdrop-blur-sm">
+              <Cloud size={12} />
               <span>{t("common:statuses.cached", { defaultValue: "Кэш" })}</span>
             </div>
           )}
         </div>
 
-        <div className="flex flex-1 flex-col gap-2 px-3 py-3 transition duration-300 ease-out group-hover:translate-y-[-1px] group-focus-visible/button:translate-y-[-1px] md:gap-3 md:px-5 md:py-6">
+        <div className="flex flex-1 flex-col gap-2 px-3 py-3 transition duration-300 ease-out group-hover:-translate-y-px group-focus-visible/button:-translate-y-px md:gap-3 md:px-5 md:py-6">
           <h3 className="truncate text-[clamp(1.07rem,3vw,1.18rem)] font-semibold">
             {localizedTitle}
           </h3>
@@ -466,7 +467,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
               }}
               className={cn(
                 "flex items-center gap-1.5 transition-colors duration-200",
-                isLiked ? "text-rose-500" : "text-[color:var(--secondary-text)] hover:text-rose-400"
+                isLiked ? "text-rose-500" : "text-(--secondary-text) hover:text-rose-400"
               )}
             >
               <div className="relative">
@@ -476,28 +477,28 @@ const NewsCardComponent: FC<NewsCardProps> = ({
                     animate={{ scale: 1 }}
                     transition={{ type: "spring", stiffness: 400, damping: 15 }}
                   >
-                    <FavoriteIcon fontSize="small" />
+                    <FavoriteIcon size={18} fill={isLiked ? "currentColor" : "none"} />
                   </motion.div>
                 ) : (
-                  <FavoriteBorderIcon fontSize="small" />
+                  <FavoriteIcon size={18} />
                 )}
               </div>
               <span className="text-xs font-bold tabular-nums">{likesCount}</span>
             </motion.button>
 
-            <div className="flex items-center gap-1.5 text-[color:var(--secondary-text)]">
-              <ChatBubbleOutlineIcon fontSize="small" />
+            <div className="flex items-center gap-1.5 text-(--secondary-text)">
+              <ChatBubbleOutlineIcon size={18} />
               <span className="text-xs font-bold tabular-nums">{commentsCount}</span>
             </div>
           </div>
 
-          <div className="mt-auto flex items-center gap-2 pt-2 text-[color:var(--nav-link)]">
+          <div className="mt-auto flex items-center gap-2 pt-2 text-(--nav-link)">
             <span className="translate-y-1 text-sm font-semibold tracking-wide opacity-0 transition duration-300 ease-out group-focus-visible/button:translate-y-0 group-focus-visible/button:opacity-100 group-hover:translate-y-0 group-hover:opacity-100">
               {t("common:cta.learnMore", { defaultValue: "Подробнее" })}
             </span>
             <ArrowOutwardIcon
-              fontSize="small"
-              className="translate-x-0 text-[color:var(--nav-link)] opacity-0 transition duration-300 ease-out group-focus-visible/button:translate-x-1 group-focus-visible/button:opacity-100 group-hover:translate-x-1 group-hover:opacity-100"
+              size={16}
+              className="translate-x-0 text-(--nav-link) opacity-0 transition duration-300 ease-out group-focus-visible/button:translate-x-1 group-focus-visible/button:opacity-100 group-hover:translate-x-1 group-hover:opacity-100"
             />
           </div>
         </div>
@@ -595,7 +596,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
               as="label"
               variant="outline"
               size="sm"
-              leadingIcon={<PhotoCamera className="text-[1.15rem]" />}
+              leadingIcon={<PhotoCamera size={20} />}
               className="w-full sm:w-auto"
               disabled={imageLoading}
             >
@@ -643,13 +644,13 @@ const NewsCardComponent: FC<NewsCardProps> = ({
               loading={loading}
               className="w-full bg-[linear-gradient(98deg,#dc2626,#b91c1c)] text-white hover:bg-[linear-gradient(98deg,#b91c1c,#991b1b)] sm:w-auto"
             >
-              <DeleteIcon fontSize="small" className="mr-1" />
+              <DeleteIcon size={18} className="mr-1" />
               {t("common:buttons.delete")}
             </Button>
           </>
         }
       >
-        <p className="text-[0.98rem] text-[color:var(--secondary-text)]">
+        <p className="text-[0.98rem] text-(--secondary-text)">
           {t("news:dialogs.delete.description")}
         </p>
       </Dialog>

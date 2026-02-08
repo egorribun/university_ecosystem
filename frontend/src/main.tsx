@@ -1,8 +1,5 @@
-import React, { StrictMode, useEffect } from "react"
+import React, { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
-import CssBaseline from "@mui/material/CssBaseline"
-import { CssVarsProvider } from "@mui/material/styles"
-import { useColorScheme } from "@mui/material/styles"
 import { QueryClientProvider } from "@tanstack/react-query"
 import dayjs from "dayjs"
 import "dayjs/locale/ru"
@@ -14,14 +11,10 @@ import { logError } from "./app/logger"
 import { initObservability } from "./app/observability"
 import { queryClient } from "./app/queryClient"
 import { initWebVitals, reportBootstrapTTI } from "./app/webVitals"
-import "./assets/themes.css"
-import "./i18n/config"
 import "./styles/tailwind.css"
-import theme from "./theme"
+import "./assets/themes.css"
 import { ensureTrustedTypesPolicies } from "./utils/trustedTypes"
-
-// Note: Imports ordered to ensure critical services init first where possible,
-// though imports are hoisted. Side-effect imports above run first.
+import { ThemeProvider } from "./contexts/ThemeContext"
 
 initObservability()
 initGlobalErrorHandlers()
@@ -42,7 +35,6 @@ async function setupServiceWorker() {
     const registration = await registerServiceWorker("/sw.js")
     if (!registration) return
 
-    // Try to recover consent if localStorage was cleared but browser still has subscription
     await recoverPushConsentFromBrowser()
 
     if (!hasPushConsent()) return
@@ -56,27 +48,6 @@ async function setupServiceWorker() {
   }
 }
 
-function BodyColorSchemeSync() {
-  const { mode, systemMode } = useColorScheme()
-  useEffect(() => {
-    const resolved = mode === "system" ? (systemMode ?? "light") : (mode ?? "light")
-    // Apply dark class to both html and body elements
-    // html for Tailwind CSS, body for themes.css compatibility
-    document.documentElement.classList.toggle("dark", resolved === "dark")
-    document.body.classList.toggle("dark", resolved === "dark")
-    // Also set data attribute for consistency
-    document.documentElement.dataset.colorScheme = resolved
-    document.body.dataset.colorScheme = resolved
-    return () => {
-      document.documentElement.classList.remove("dark")
-      document.body.classList.remove("dark")
-      document.documentElement.removeAttribute("data-color-scheme")
-      document.body.removeAttribute("data-color-scheme")
-    }
-  }, [mode, systemMode])
-  return null
-}
-
 const rootElement = document.getElementById("root")
 if (!rootElement) throw new Error("Root element not found")
 
@@ -86,18 +57,11 @@ const root = createRoot(rootElement)
 root.render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <CssVarsProvider
-        theme={theme}
-        defaultMode="system"
-        modeStorageKey="ue-mode"
-        disableTransitionOnChange
-      >
-        <CssBaseline enableColorScheme />
-        <BodyColorSchemeSync />
+      <ThemeProvider>
         <ErrorBoundary>
           <App />
         </ErrorBoundary>
-      </CssVarsProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   </StrictMode>
 )
@@ -106,7 +70,6 @@ const isLHCI = import.meta.env.VITE_LHCI === "true"
 
 if (isLHCI) {
   rootElement.classList.add("ready")
-  // Hide the LHCI marker after React renders to allow the actual content to show
   const lhciMarker = document.getElementById("lhci-marker")
   if (lhciMarker) {
     lhciMarker.style.display = "none"
@@ -121,7 +84,7 @@ if (isLHCI) {
 
 if (typeof window !== "undefined") {
   if (isLHCI) {
-    // Skip Service Worker setup in LHCI to avoid conflicts/delays
+    // Skip Service Worker setup
   } else if (document.readyState === "complete") {
     void setupServiceWorker()
   } else {

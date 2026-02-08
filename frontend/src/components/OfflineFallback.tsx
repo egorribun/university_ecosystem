@@ -1,9 +1,7 @@
 import { motion } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
-import WifiOffIcon from "@mui/icons-material/WifiOff"
-import HomeIcon from "@mui/icons-material/Home"
-import RefreshIcon from "@mui/icons-material/Refresh"
+import { WifiOff, Home as HomeIcon, RotateCw as RefreshIcon } from "lucide-react"
 import { Button } from "@/components/ui"
 
 interface OfflineFallbackProps {
@@ -22,14 +20,14 @@ export function OfflineFallback({ onRetry }: OfflineFallbackProps) {
         transition={{ type: "spring", stiffness: 200, damping: 20 }}
         className="mb-8 flex h-24 w-24 items-center justify-center rounded-full bg-amber-500/10 text-amber-500"
       >
-        <WifiOffIcon sx={{ fontSize: 48 }} />
+        <WifiOff size={48} />
       </motion.div>
 
       <motion.h1
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.1 }}
-        className="mb-4 text-2xl font-bold tracking-tight text-[color:var(--page-text)] sm:text-3xl"
+        className="mb-4 text-2xl font-bold tracking-tight text-(--page-text) sm:text-3xl"
       >
         {t("offlineFallback.title")}
       </motion.h1>
@@ -38,7 +36,7 @@ export function OfflineFallback({ onRetry }: OfflineFallbackProps) {
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.2 }}
-        className="mb-10 max-w-md leading-relaxed text-[color:var(--secondary-text)]"
+        className="mb-10 max-w-md leading-relaxed text-(--secondary-text)"
       >
         {t("offlineFallback.description")}
       </motion.p>
@@ -52,14 +50,14 @@ export function OfflineFallback({ onRetry }: OfflineFallbackProps) {
         <Button
           variant="solid"
           onClick={() => (onRetry ? onRetry() : window.location.reload())}
-          leadingIcon={<RefreshIcon />}
+          leadingIcon={<RefreshIcon size={18} />}
         >
           {t("offlineFallback.retry")}
         </Button>
         <Button
           variant="outline"
           onClick={() => navigate("/")}
-          leadingIcon={<HomeIcon />}
+          leadingIcon={<HomeIcon size={18} />}
           className="border-white/10"
         >
           {t("offlineFallback.backHome")}

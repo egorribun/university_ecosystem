@@ -3,14 +3,13 @@ import { MemoryRouter } from "react-router-dom"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { CssVarsProvider } from "@mui/material/styles"
+import { ThemeProvider } from "@/contexts/ThemeContext"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import Settings from "@/pages/Settings"
 import { LanguageProvider } from "@/contexts/LanguageContext"
 import { AuthContext } from "@/contexts/AuthContext"
 import type { User } from "@/types/User"
 import type { MfaTotpEnrollment } from "@/types/Mfa"
-import theme from "@/theme"
 import { createQueryClient } from "@/app/queryClient"
 import { resetTestMfa, testUser } from "@/tests/mocks/handlers"
 import { server } from "@/tests/mocks/server"
@@ -89,13 +88,13 @@ const renderSettings = (options?: RenderSettingsOptions) => {
   const result = render(
     <MemoryRouter initialEntries={["/settings"]}>
       <QueryClientProvider client={queryClient}>
-        <CssVarsProvider theme={theme}>
+        <ThemeProvider>
           <LanguageProvider>
             <TestAuthProvider>
               <Settings />
             </TestAuthProvider>
           </LanguageProvider>
-        </CssVarsProvider>
+        </ThemeProvider>
       </QueryClientProvider>
     </MemoryRouter>
   )

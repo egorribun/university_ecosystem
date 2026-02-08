@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useState, type SyntheticEvent } from "react"
-import { Alert, Button, Snackbar, Stack, Typography } from "@mui/material"
-import type { SnackbarCloseReason } from "@mui/material/Snackbar"
+import { motion, AnimatePresence } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { sanitizeHttpUrl } from "@/utils/sanitize"
+import {
+  CheckCircle2,
+  Info,
+  AlertTriangle,
+  XCircle,
+  X,
+  ExternalLink
+} from "lucide-react"
+import { cn } from "@/utils/cn"
 
 type SnackbarSeverity = "success" | "info" | "warning" | "error"
 
@@ -109,7 +117,7 @@ const consumeBufferedToasts = (): ActiveToast[] => {
 }
 
 export default function LivePushToasts() {
-  const { t } = useTranslation("notifications")
+  const { t } = useTranslation(["notifications", "common"])
   const [queue, setQueue] = useState<ActiveToast[]>([])
   const [current, setCurrent] = useState<ActiveToast | null>(null)
   const [open, setOpen] = useState(false)
@@ -128,10 +136,7 @@ export default function LivePushToasts() {
 
   useEffect(() => {
     if (typeof window === "undefined") return
-    if (!navigator.serviceWorker) {
-      console.log("[LivePushToasts] No serviceWorker in navigator")
-      return
-    }
+    if (!navigator.serviceWorker) return
 
     const handleMessage = (event: MessageEvent) => {
       const data = event.data as ServiceWorkerMessage
@@ -148,8 +153,8 @@ export default function LivePushToasts() {
         enqueue(normalized)
       } else if (data.type === "SYNC_COMPLETE") {
         const toast: ToastPayload = {
-          title: t("sync.title"),
-          body: t("sync.body"),
+          title: t("notifications:sync.title"),
+          body: t("notifications:sync.body"),
           data: { severity: "success" },
           timestamp: Date.now(),
         }
@@ -160,7 +165,7 @@ export default function LivePushToasts() {
 
     navigator.serviceWorker.addEventListener("message", handleMessage)
     return () => navigator.serviceWorker.removeEventListener("message", handleMessage)
-  }, [enqueue])
+  }, [enqueue, t])
 
   useEffect(() => {
     if (typeof document === "undefined") return
@@ -183,14 +188,10 @@ export default function LivePushToasts() {
     setOpen(true)
   }, [current, queue])
 
-  const handleClose = useCallback(
-    (_event?: Event | SyntheticEvent, reason?: SnackbarCloseReason) => {
-      if (reason === "clickaway") return
-      setOpen(false)
-      setCurrent(null)
-    },
-    []
-  )
+  const handleClose = useCallback(() => {
+    setOpen(false)
+    setTimeout(() => setCurrent(null), 300)
+  }, [])
 
   const handleAction = useCallback(() => {
     if (!current?.url) return
@@ -205,51 +206,89 @@ export default function LivePushToasts() {
         sameOrigin ? undefined : "noopener,noreferrer"
       )
     } catch (error) {
-      console.error("Failed to open toast link", error)
       window.open(safeUrl, "_blank", "noopener,noreferrer")
     }
-    setOpen(false)
-    setCurrent(null)
-  }, [current])
+    handleClose()
+  }, [current, handleClose])
+
+  useEffect(() => {
+    if (open && current) {
+       const timer = setTimeout(handleClose, 6000)
+       return () => clearTimeout(timer)
+    }
+  }, [open, current, handleClose])
 
   const severity = resolveSeverity(current)
-  const title = current?.title?.trim() || t("defaultTitle")
-  const body = current?.body?.trim() || t("defaultBody")
+  const title = current?.title?.trim() || t("notifications:defaultTitle")
+  const body = current?.body?.trim() || t("notifications:defaultBody")
+
+  const Icon = {
+    success: CheckCircle2,
+    info: Info,
+    warning: AlertTriangle,
+    error: XCircle
+  }[severity]
+
+  const severityClasses = {
+    success: "bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400",
+    info: "bg-blue-500/10 border-blue-500/20 text-blue-600 dark:text-blue-400",
+    warning: "bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400",
+    error: "bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400"
+  }[severity]
 
   return (
-    <Snackbar
-      key={current?.id}
-      open={open && Boolean(current)}
-      autoHideDuration={6000}
-      onClose={handleClose}
-      anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-    >
-      <Alert
-        severity={severity}
-        variant="filled"
-        onClose={handleClose}
-        sx={{ alignItems: "flex-start", width: "100%", gap: 0.5, minWidth: { xs: 280, sm: 320 } }}
-        action={
-          current?.url ? (
-            <Button color="inherit" size="small" onClick={handleAction}>
-              {t("toast.open")}
-            </Button>
-          ) : null
-        }
-      >
-        <Stack spacing={0.5}>
-          {title ? (
-            <Typography component="span" variant="subtitle2" sx={{ fontWeight: 700 }}>
-              {title}
-            </Typography>
-          ) : null}
-          {body ? (
-            <Typography component="span" variant="body2">
-              {body}
-            </Typography>
-          ) : null}
-        </Stack>
-      </Alert>
-    </Snackbar>
+     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] w-full max-w-sm px-6 pointer-events-none">
+       <AnimatePresence>
+         {open && current && (
+           <motion.div
+             initial={{ opacity: 0, y: 50, scale: 0.9 }}
+             animate={{ opacity: 1, y: 0, scale: 1 }}
+             exit={{ opacity: 0, scale: 0.9, y: 20 }}
+             className={cn(
+                "pointer-events-auto relative overflow-hidden flex items-start gap-4 p-4 rounded-2xl border backdrop-blur-2xl shadow-2xl",
+                severityClasses
+             )}
+           >
+             <div className="shrink-0 mt-0.5">
+                <Icon className="h-5 w-5" />
+             </div>
+
+             <div className="flex-1 min-w-0 pr-4">
+                <h4 className="text-sm font-black tracking-tight mb-0.5 truncate uppercase">
+                  {title}
+                </h4>
+                <p className="text-xs font-semibold opacity-80 leading-relaxed text-pretty">
+                  {body}
+                </p>
+
+                {current.url && (
+                  <button
+                    onClick={handleAction}
+                    className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest hover:underline"
+                  >
+                    {t("notifications:toast.open")}
+                    <ExternalLink className="h-3 w-3" />
+                  </button>
+                )}
+             </div>
+
+             <button
+               onClick={handleClose}
+               className="shrink-0 p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+             >
+                <X className="h-4 w-4" />
+             </button>
+
+             {/* Progress bar for auto-hide */}
+             <motion.div
+               className="absolute bottom-0 left-0 h-0.5 bg-current opacity-30"
+               initial={{ width: "100%" }}
+               animate={{ width: "0%" }}
+               transition={{ duration: 6, ease: "linear" }}
+             />
+           </motion.div>
+         )}
+       </AnimatePresence>
+     </div>
   )
 }

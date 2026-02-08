@@ -3,14 +3,22 @@ import PageFadeIn from "../components/PageFadeIn"
 import NewsCard from "../components/NewsCard"
 import NewsCardSkeleton from "../components/NewsCardSkeleton"
 import { useState, useRef, useCallback, useEffect, type ReactNode, type CSSProperties } from "react"
-import { Alert } from "@mui/material"
 import { isAxiosError } from "axios"
 import { createNews, uploadNewsImage } from "@/api/news"
-import ArticleIcon from "@mui/icons-material/Article"
-import PhotoCamera from "@mui/icons-material/PhotoCamera"
+import {
+  Newspaper as ArticleIcon,
+  Camera as PhotoCamera,
+  Search as SearchIcon,
+} from "lucide-react"
 import SmartImage from "@/components/SmartImage"
 import { Button } from "@/components/ui"
-import Dialog from "@/components/Dialog"
+import {
+  Alert,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+} from "@/components/settings"
 import { useAuth } from "../contexts/AuthContext"
 import { useLanguage } from "../contexts/LanguageContext"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
@@ -20,10 +28,11 @@ import { useQueryClient } from "@tanstack/react-query"
 import { useNewsListQuery } from "@/api/hooks/news"
 import { resetEtagCache } from "@/api/client"
 import { StorageItem } from "@/utils/storage"
+import { cn } from "@/utils/cn"
 
 const inputClass =
-  "w-full rounded-ue-lg border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] px-4 py-2.5 text-[0.98rem] text-[color:var(--page-text)] shadow-[inset_0_1px_0_rgba(15,23,42,0.08)] transition focus:border-[color:var(--nav-link)] focus:outline-none focus:shadow-focus placeholder:text-[color:var(--placeholder-fg)]"
-const textareaClass = `${inputClass} min-h-[148px] resize-y leading-relaxed`
+    "w-full rounded-xl border border-glass-border bg-surface/40 px-4 py-2.5 text-[0.98rem] text-primary-text shadow-sm focus:border-brand focus:outline-none transition placeholder:text-secondary-text/50"
+const textareaClass = cn(inputClass, "min-h-[148px] resize-y leading-relaxed")
 
 const fadeDelayStyle = (value: string): CSSProperties =>
   ({ "--fade-delay": value }) as CSSProperties
@@ -54,10 +63,10 @@ function Field({ label, htmlFor, children, required = false }: FieldProps) {
     <div className="space-y-2">
       <label
         htmlFor={htmlFor}
-        className="text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]"
+        className="text-sm font-semibold tracking-wide text-secondary-text/80"
       >
         {label}
-        {required ? <span className="ml-1 text-[#f87171]">*</span> : null}
+        {required ? <span className="ml-1 text-red-500">*</span> : null}
       </label>
       {children}
     </div>
@@ -205,17 +214,17 @@ const News = () => {
   return (
     <Layout>
       <PageFadeIn>
-        <div className="w-screen min-h-screen bg-[color:var(--page-bg)] text-[color:var(--page-text)] py-8 sm:py-10">
-          <div className="px-2 md:px-4">
+        <div className="w-full min-h-screen bg-transparent text-primary-text py-8 sm:py-10">
+          <div className="px-4">
             <div
               data-fade
               style={fadeDelayStyle("80ms")}
               className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[color:color-mix(in_srgb,var(--glass-bg)_70%,var(--nav-link)_30%)] text-[color:var(--nav-link)] shadow-[0_6px_20px_color-mix(in_srgb,var(--nav-link)_24%,transparent)] transition-transform duration-200 hover:scale-105 dark:bg-[color:color-mix(in_srgb,var(--glass-bg)_65%,var(--nav-link)_35%)] dark:shadow-[0_8px_24px_color-mix(in_srgb,var(--nav-link)_28%,transparent)] backdrop-blur-sm [-webkit-backdrop-filter:blur(12px)]">
-                <ArticleIcon className="text-[2rem]" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-surface/40 border border-glass-border text-brand shadow-glass transition-transform duration-200 hover:scale-105 backdrop-blur-md">
+                <ArticleIcon className="h-7 w-7" />
               </div>
-              <h1 className="text-[clamp(1.6rem,5vw,2.75rem)] font-bold tracking-tight text-[color:var(--page-text)]">
+              <h1 className="text-[clamp(1.6rem,5vw,2.75rem)] font-bold tracking-tight text-primary-text">
                 {t("news:pageTitle")}
               </h1>
             </div>
@@ -236,7 +245,7 @@ const News = () => {
             <div
               data-fade
               style={fadeDelayStyle("200ms")}
-              className="grid gap-6 grid-cols-[repeat(auto-fill,minmax(280px,1fr))]"
+              className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
             >
               {isInitialLoading
                 ? Array.from({ length: skeletonCount }).map((_, index) => (
@@ -257,19 +266,24 @@ const News = () => {
                   ))}
 
               {showEmptyState && (
-                <div className="col-span-full mt-8 flex w-full justify-center">
+                <div className="col-span-full mt-12 flex w-full justify-center">
                   {!isOnline && newsList.length === 0 ? (
                     <OfflineFallback onRetry={refreshNews} />
                   ) : (
-                    <div className="flex w-full max-w-[420px] flex-col items-center gap-5 rounded-ue-xl border border-white/12 bg-glass/60 px-6 py-10 text-center text-[color:var(--secondary-text)] shadow-surface">
-                      <span className="flex h-16 w-16 items-center justify-center rounded-full bg-[color:var(--glass-bg)]/70 text-[color:var(--nav-link)] shadow-surface">
-                        <ArticleIcon className="text-[2.2rem]" />
-                      </span>
-                      <p className="text-lg font-semibold text-[color:var(--page-text)] sm:text-xl">
-                        {t("news:states.empty")}
-                      </p>
+                    <div className="flex w-full max-w-md flex-col items-center gap-5 rounded-3xl border border-glass-border/30 bg-surface/40 px-8 py-14 text-center shadow-glass backdrop-blur-md">
+                      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand/10 border border-brand/20 shadow-brand/10 shadow-lg">
+                        <ArticleIcon className="h-8 w-8 text-brand" />
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-lg font-semibold text-primary-text">
+                          {t("news:states.empty")}
+                        </p>
+                        <p className="text-sm text-secondary-text">
+                          {t("news:states.checkLater", { defaultValue: "Check back later for updates" })}
+                        </p>
+                      </div>
                       {user?.role === "admin" && (
-                        <Button size="lg" onClick={() => setAddOpen(true)} className="px-6">
+                        <Button size="lg" onClick={() => setAddOpen(true)} className="mt-2 px-6">
                           {t("news:actions.add")}
                         </Button>
                       )}
@@ -299,132 +313,141 @@ const News = () => {
             <Dialog
               open={addOpen}
               onClose={handleCloseDialog}
-              title={t("news:dialogs.create.title")}
-              size="md"
-              fullScreenOnMobile
-              closeLabel={t("common:buttons.close")}
-              bodyClassName="space-y-4"
-              footerClassName="flex-col-reverse gap-3 sm:flex-row"
-              footer={
-                <>
-                  <Button
-                    variant="outline"
-                    onClick={handleCloseDialog}
-                    disabled={adding}
-                    className="w-full sm:w-auto"
-                  >
-                    {t("common:buttons.cancel")}
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      void handleAddNews()
-                    }}
-                    disabled={!newsData.title.trim() || !newsData.content.trim() || adding}
-                    loading={adding}
-                    className="w-full sm:w-auto"
-                  >
-                    {adding ? t("common:statuses.publishing") : t("news:actions.publish")}
-                  </Button>
-                </>
-              }
-              initialFocus={() => titleInputRef.current ?? undefined}
+              maxWidth="lg"
+              fullWidth
             >
-              <form
-                className="space-y-4"
-                onSubmit={(event) => {
-                  event.preventDefault()
-                  void handleAddNews()
-                }}
-              >
-                {addError ? (
-                  <Alert severity="error" variant="outlined">
-                    {addError}
-                  </Alert>
-                ) : null}
-
-                <Field label={t("news:form.title") ?? ""} htmlFor="news-title" required>
-                  <input
-                    id="news-title"
-                    ref={titleInputRef}
-                    type="text"
-                    value={newsData.title}
-                    onChange={(e) => setNewsData({ ...newsData, title: e.target.value })}
-                    maxLength={100}
-                    disabled={adding}
-                    className={inputClass}
-                  />
-                </Field>
-
-                <Field label={t("news:form.content") ?? ""} htmlFor="news-content" required>
-                  <textarea
-                    id="news-content"
-                    value={newsData.content}
-                    onChange={(e) => setNewsData({ ...newsData, content: e.target.value })}
-                    maxLength={3000}
-                    disabled={adding}
-                    className={textareaClass}
-                    rows={6}
-                  />
-                </Field>
-
-                <Field
-                  label={t("news:form.title_en", { defaultValue: "Title (English)" }) ?? ""}
-                  htmlFor="news-title-en"
+              <DialogTitle>{t("news:dialogs.create.title")}</DialogTitle>
+              <DialogContent className="space-y-6 pt-4">
+                <form
+                  className="grid grid-cols-1 md:grid-cols-2 gap-6"
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    void handleAddNews()
+                  }}
                 >
-                  <input
-                    id="news-title-en"
-                    type="text"
-                    value={newsData.title_en}
-                    onChange={(e) => setNewsData({ ...newsData, title_en: e.target.value })}
-                    maxLength={100}
-                    disabled={adding}
-                    className={inputClass}
-                  />
-                </Field>
+                  <div className="space-y-4">
+                    {addError ? (
+                      <Alert severity="error">
+                        {addError}
+                      </Alert>
+                    ) : null}
 
-                <Field
-                  label={t("news:form.content_en", { defaultValue: "News text (English)" }) ?? ""}
-                  htmlFor="news-content-en"
+                    <Field label={t("news:form.title") ?? ""} htmlFor="news-title" required>
+                      <input
+                        id="news-title"
+                        ref={titleInputRef}
+                        type="text"
+                        value={newsData.title}
+                        onChange={(e) => setNewsData({ ...newsData, title: e.target.value })}
+                        maxLength={100}
+                        disabled={adding}
+                        className={inputClass}
+                      />
+                    </Field>
+
+                    <Field label={t("news:form.content") ?? ""} htmlFor="news-content" required>
+                      <textarea
+                        id="news-content"
+                        value={newsData.content}
+                        onChange={(e) => setNewsData({ ...newsData, content: e.target.value })}
+                        maxLength={3000}
+                        disabled={adding}
+                        className={textareaClass}
+                        rows={6}
+                      />
+                    </Field>
+                  </div>
+
+                  <div className="space-y-4">
+                    <Field
+                      label={t("news:form.title_en", { defaultValue: "Title (English)" }) ?? ""}
+                      htmlFor="news-title-en"
+                    >
+                      <input
+                        id="news-title-en"
+                        type="text"
+                        value={newsData.title_en}
+                        onChange={(e) => setNewsData({ ...newsData, title_en: e.target.value })}
+                        maxLength={100}
+                        disabled={adding}
+                        className={inputClass}
+                      />
+                    </Field>
+
+                    <Field
+                      label={t("news:form.content_en", { defaultValue: "News text (English)" }) ?? ""}
+                      htmlFor="news-content-en"
+                    >
+                      <textarea
+                        id="news-content-en"
+                        value={newsData.content_en}
+                        onChange={(e) => setNewsData({ ...newsData, content_en: e.target.value })}
+                        maxLength={3000}
+                        disabled={adding}
+                        className={textareaClass}
+                        rows={6}
+                      />
+                    </Field>
+
+                    <div className="space-y-3">
+                      <label className="block text-sm font-semibold text-secondary-text">
+                        {t("news:form.image", { defaultValue: "Cover Image" })}
+                      </label>
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                        <Button
+                          as="label"
+                          variant="outline"
+                          size="sm"
+                          className="w-full sm:w-auto bg-surface/20 border-glass-border"
+                          disabled={adding}
+                        >
+                          <div className="flex items-center gap-2">
+                             <PhotoCamera className="h-4 w-4" />
+                             {imageFile ? t("common:buttons.changePhoto") : t("common:buttons.uploadPhoto")}
+                          </div>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            hidden
+                            ref={imageInputRef}
+                            onChange={handleImageChange}
+                          />
+                        </Button>
+
+                        {imagePreview ? (
+                          <div className="overflow-hidden rounded-xl border border-glass-border shadow-sm">
+                            <SmartImage
+                              srcRaw={imagePreview}
+                              alt={t("news:alt.newCover")}
+                              className="h-14 w-28 object-cover"
+                            />
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                </form>
+              </DialogContent>
+              <DialogActions className="flex-col-reverse gap-3 sm:flex-row p-6">
+                <Button
+                  variant="ghost"
+                  onClick={handleCloseDialog}
+                  disabled={adding}
+                  className="w-full sm:w-auto"
                 >
-                  <textarea
-                    id="news-content-en"
-                    value={newsData.content_en}
-                    onChange={(e) => setNewsData({ ...newsData, content_en: e.target.value })}
-                    maxLength={3000}
-                    disabled={adding}
-                    className={textareaClass}
-                    rows={6}
-                  />
-                </Field>
-
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <Button
-                    as="label"
-                    variant="outline"
-                    size="sm"
-                    leadingIcon={<PhotoCamera className="text-[1.15rem]" />}
-                    className="w-full sm:w-auto"
-                    disabled={adding}
-                  >
-                    {imageFile ? t("common:buttons.changePhoto") : t("common:buttons.uploadPhoto")}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      hidden
-                      ref={imageInputRef}
-                      onChange={handleImageChange}
-                    />
-                  </Button>
-
-                  {imagePreview ? (
-                    <SmartImage
-                      srcRaw={imagePreview}
-                      alt={t("news:alt.newCover")}
-                      className="h-20 w-full max-w-[160px] rounded-ue-md border border-white/10 object-cover shadow-surface"
-                    />
-                  ) : null}
-                </div>
-              </form>
+                  {t("common:buttons.cancel")}
+                </Button>
+                <Button
+                  variant="solid"
+                  onClick={() => {
+                    void handleAddNews()
+                  }}
+                  disabled={!newsData.title.trim() || !newsData.content.trim() || adding}
+                  className="w-full sm:w-auto min-w-[120px]"
+                >
+                  {adding ? t("common:statuses.publishing") : t("news:actions.publish")}
+                </Button>
+              </DialogActions>
             </Dialog>
           </div>
         </div>

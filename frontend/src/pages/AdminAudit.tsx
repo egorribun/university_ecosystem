@@ -1,174 +1,166 @@
 import { useCallback, useEffect, useState } from "react"
+import { motion, AnimatePresence } from "framer-motion"
+import { useTranslation } from "react-i18next"
+import dayjs from "dayjs"
+import {
+  ChevronDown,
+  ChevronUp,
+  ShieldCheck,
+  ShieldAlert,
+  Info,
+  Terminal,
+  User,
+  Activity,
+  Calendar
+} from "lucide-react"
 import api from "../api/client"
 import Layout from "../components/Layout"
+import { cn } from "@/utils/cn"
 import {
-  Box,
-  Typography,
-  Paper,
-  Table,
-  TableHead,
-  TableRow,
-  TableCell,
-  TableBody,
-  TableContainer,
-  Stack,
+  SectionCard,
   TextField,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  CircularProgress,
-  TablePagination,
-  Chip,
-  Tooltip,
-  IconButton,
-  Collapse,
-} from "@mui/material"
-import { useTranslation } from "react-i18next"
-import { motion, AnimatePresence } from "framer-motion"
+  Button,
+  Divider,
+} from "@/components/settings"
 import { AuditLog, AuditLogList } from "../types/Admin"
-import VerifiedUserIcon from "@mui/icons-material/VerifiedUser"
-import GppBadIcon from "@mui/icons-material/GppBad"
-import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown"
-import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp"
-import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined"
-import dayjs from "dayjs"
 
 function Row({ log }: { log: AuditLog }) {
   const [open, setOpen] = useState(false)
+  const { t } = useTranslation("admin")
 
   const getActionColor = (action: string) => {
-    if (action.includes("delete")) return "error"
-    if (action.includes("create") || action.includes("add")) return "success"
-    if (action.includes("update") || action.includes("modify")) return "warning"
-    return "default"
+    if (action.includes("delete")) return "text-error bg-error/10 border-error/20"
+    if (action.includes("create") || action.includes("add")) return "text-brand bg-brand/10 border-brand/20"
+    if (action.includes("update") || action.includes("modify")) return "text-warning bg-warning/10 border-warning/20"
+    return "text-secondary-text bg-surface-hover/20 border-glass-border/10"
   }
 
   return (
     <>
-      <TableRow
-        hover
-        sx={{
-          "& > *": { borderBottom: "unset" },
-          bgcolor: log.is_valid ? "transparent" : "rgba(239, 68, 68, 0.05)",
-        }}
+      <tr
+        className={cn(
+          "transition-colors group",
+          log.is_valid ? "hover:bg-surface-hover/5" : "bg-error/5 hover:bg-error/10",
+          open && "bg-surface-hover/10"
+        )}
       >
-        <TableCell width={50}>
-          <IconButton size="small" onClick={() => setOpen(!open)}>
-            {open ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
-          </IconButton>
-        </TableCell>
-        <TableCell>
-          <Typography variant="body2" fontWeight={600}>
-            {dayjs(log.created_at).format("MMM D, HH:mm:ss")}
-          </Typography>
-        </TableCell>
-        <TableCell>
-          <Stack spacing={0.5}>
-            <Typography variant="body2" fontWeight={700}>
-              {log.actor_name || "System"}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              ID: {log.actor_user_id || "N/A"}
-            </Typography>
-          </Stack>
-        </TableCell>
-        <TableCell>
-          <Chip
-            label={log.action.replace(/\./g, " ").toUpperCase()}
-            size="small"
-            color={getActionColor(log.action) as any}
-            sx={{ fontWeight: 700, borderRadius: 1.5, fontSize: "0.65rem" }}
-          />
-        </TableCell>
-        <TableCell>
-          <Typography variant="body2" color="text.secondary">
-            {log.resource_type}
-          </Typography>
-        </TableCell>
-        <TableCell align="center">
-          {log.is_valid ? (
-            <Tooltip title="Cryptographic Integrity Verified">
-              <VerifiedUserIcon color="success" fontSize="small" />
-            </Tooltip>
-          ) : (
-            <Tooltip title="TAMPERED OR INVALID SIGNATURE">
-              <GppBadIcon color="error" fontSize="small" />
-            </Tooltip>
-          )}
-        </TableCell>
-      </TableRow>
-      <TableRow>
-        <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={6}>
-          <Collapse in={open} timeout="auto" unmountOnExit>
-            <Box
-              sx={{
-                margin: 2,
-                p: 2,
-                bgcolor: "rgba(0,0,0,0.02)",
-                borderRadius: 2,
-                border: "1px solid var(--glass-border)",
-              }}
-            >
-              <Typography variant="subtitle2" gutterBottom component="div" fontWeight={700}>
-                Details
-              </Typography>
-              <Stack spacing={1}>
-                <Box display="flex" gap={2}>
-                  <Typography variant="caption" fontWeight={700}>
-                    Resource ID:
-                  </Typography>
-                  <Typography variant="caption">{log.resource_id || "N/A"}</Typography>
-                </Box>
-                <Box display="flex" gap={2}>
-                  <Typography variant="caption" fontWeight={700}>
-                    Subject:
-                  </Typography>
-                  <Typography variant="caption">
-                    {log.subject_name || "N/A"} ({log.subject_user_id || "N/A"})
-                  </Typography>
-                </Box>
-                <Box display="flex" gap={2}>
-                  <Typography variant="caption" fontWeight={700}>
-                    IP Address:
-                  </Typography>
-                  <Typography variant="caption">{log.ip_address || "Unknown"}</Typography>
-                </Box>
-                <Box display="flex" gap={2}>
-                  <Typography variant="caption" fontWeight={700}>
-                    User Agent:
-                  </Typography>
-                  <Typography variant="caption" sx={{ wordBreak: "break-all" }}>
-                    {log.user_agent || "N/A"}
-                  </Typography>
-                </Box>
-                {log.context && Object.keys(log.context).length > 0 && (
-                  <Box>
-                    <Typography variant="caption" fontWeight={700}>
-                      Context:
-                    </Typography>
-                    <Paper
-                      variant="outlined"
-                      sx={{
-                        mt: 1,
-                        p: 1,
-                        bgcolor: "var(--initial-bg)",
-                        color: "#fff",
-                        fontFamily: "monospace",
-                        fontSize: "0.75rem",
-                        maxHeight: 200,
-                        overflow: "auto",
-                      }}
-                    >
-                      <pre>{JSON.stringify(log.context, null, 2)}</pre>
-                    </Paper>
-                  </Box>
-                )}
-              </Stack>
-            </Box>
-          </Collapse>
-        </TableCell>
-      </TableRow>
+        <td className="px-4 py-4">
+          <button
+            onClick={() => setOpen(!open)}
+            className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-surface-hover/20"
+          >
+            {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
+        </td>
+        <td className="px-4 py-4">
+          <div className="flex flex-col">
+            <span className="text-sm font-bold text-primary-text">
+              {dayjs(log.created_at).format("MMM D")}
+            </span>
+            <span className="text-xs text-secondary-text opacity-70">
+              {dayjs(log.created_at).format("HH:mm:ss")}
+            </span>
+          </div>
+        </td>
+        <td className="px-4 py-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand/10 text-brand">
+              <User className="h-4 w-4" />
+            </div>
+            <div className="flex flex-col min-w-0">
+              <span className="truncate text-sm font-bold text-primary-text">
+                {log.actor_name || "System"}
+              </span>
+              <span className="truncate text-[10px] uppercase tracking-wider text-secondary-text opacity-50">
+                {log.actor_user_id || "SYSTEM"}
+              </span>
+            </div>
+          </div>
+        </td>
+        <td className="px-4 py-4">
+          <span className={cn(
+            "inline-flex items-center rounded-lg border px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wider",
+            getActionColor(log.action)
+          )}>
+            {log.action.replace(/\./g, " ")}
+          </span>
+        </td>
+        <td className="px-4 py-4">
+          <div className="flex items-center gap-1.5 text-sm text-secondary-text">
+            <Activity className="h-3.5 w-3.5 opacity-50" />
+            <span>{log.resource_type}</span>
+          </div>
+        </td>
+        <td className="px-4 py-4 text-center">
+          <div className="flex justify-center">
+            {log.is_valid ? (
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-brand/10 text-brand" title="Cryptographic Integrity Verified">
+                <ShieldCheck className="h-4 w-4" />
+              </div>
+            ) : (
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-error/10 text-error" title="TAMPERED OR INVALID SIGNATURE">
+                <ShieldAlert className="h-4 w-4" />
+              </div>
+            )}
+          </div>
+        </td>
+      </tr>
+      <AnimatePresence>
+        {open && (
+          <tr>
+            <td colSpan={6} className="p-0 border-none">
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
+                <div className="mx-4 mb-4 mt-2 rounded-2xl border border-glass-border bg-surface/50 p-6 shadow-sm">
+                  <div className="mb-4 flex items-center gap-2 text-sm font-bold text-primary-text">
+                    <Info className="h-4 w-4 text-brand" />
+                    <span>Audit Log Details</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-secondary-text opacity-50">Resource ID</span>
+                      <p className="text-sm font-mono text-primary-text select-all">{log.resource_id || "N/A"}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-secondary-text opacity-50">Subject</span>
+                      <p className="text-sm text-primary-text">
+                        {log.subject_name || "N/A"}
+                        <span className="ml-1 text-xs opacity-50">({log.subject_user_id || "N/A"})</span>
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-secondary-text opacity-50">IP Address</span>
+                      <p className="text-sm font-mono text-primary-text">{log.ip_address || "Unknown"}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-secondary-text opacity-50">User Agent</span>
+                      <p className="text-xs text-secondary-text line-clamp-1 hover:line-clamp-none transition-all cursor-help">{log.user_agent || "N/A"}</p>
+                    </div>
+                  </div>
+
+                  {log.context && Object.keys(log.context).length > 0 && (
+                    <div className="mt-6">
+                      <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-secondary-text opacity-50">
+                        <Terminal className="h-3 w-3" />
+                        <span>Execution Context</span>
+                      </div>
+                      <div className="rounded-xl border border-glass-border/10 bg-black/40 p-4 font-mono text-xs text-brand-light">
+                        <pre className="overflow-x-auto whitespace-pre-wrap">{JSON.stringify(log.context, null, 2)}</pre>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            </td>
+          </tr>
+        )}
+      </AnimatePresence>
     </>
   )
 }
@@ -205,136 +197,116 @@ export default function AdminAudit() {
     void fetchLogs()
   }, [fetchLogs])
 
-  const handleChangePage = (event: unknown, 控制: number) => {
-    setPage(控制)
-  }
-
-  const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setRowsPerPage(parseInt(event.target.value, 10))
-    setPage(0)
+  const handleChangePage = (dir: "prev" | "next") => {
+    if (dir === "prev") setPage(Math.max(0, page - 1))
+    else setPage(page + 1)
   }
 
   return (
     <Layout>
-      <Box
-        sx={{
-          width: "100%",
-          minHeight: "100vh",
-          bgcolor: "var(--page-bg)",
-          color: "var(--page-text)",
-          py: 4,
-          px: { xs: 2, sm: 4, md: 6 },
-        }}
-      >
-        <Box maxWidth={1400} mx="auto">
-          <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
-            <Typography
-              variant="h4"
-              fontWeight={800}
-              mb={4}
-              sx={{
-                background: "linear-gradient(45deg, #fbbf24, #f59e0b)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-                letterSpacing: "-0.02em",
-              }}
-            >
+      <div className="min-h-screen w-full bg-background/50 py-12">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-8"
+          >
+            <h1 className="text-4xl font-bold tracking-tight text-primary-text sm:text-5xl">
               {t("audit.title", "Secure Audit Logs")}
-            </Typography>
+            </h1>
+            <p className="mt-2 text-base text-secondary-text">
+              Cryptographically verified activity logging system.
+            </p>
           </motion.div>
 
           {/* Filters */}
-          <Paper
-            sx={{
-              p: 2,
-              mb: 3,
-              borderRadius: 3,
-              display: "flex",
-              gap: 2,
-              flexWrap: "wrap",
-              bgcolor: "var(--surface-accent)",
-              border: "1px solid var(--glass-border)",
-            }}
-          >
+          <SectionCard className="mb-6 flex flex-wrap items-end gap-4 p-6">
             <TextField
               label="Resource Type"
-              variant="outlined"
-              size="small"
               value={filters.resource_type}
               onChange={(e) => setFilters((f) => ({ ...f, resource_type: e.target.value }))}
-              sx={{ minWidth: 200 }}
+              className="min-w-[200px] flex-1"
             />
             <TextField
               label="Action"
-              variant="outlined"
-              size="small"
               value={filters.action}
               onChange={(e) => setFilters((f) => ({ ...f, action: e.target.value }))}
-              sx={{ minWidth: 200 }}
+              className="min-w-[200px] flex-1"
             />
-          </Paper>
+          </SectionCard>
 
-          <TableContainer
-            component={Paper}
-            sx={{
-              borderRadius: 4,
-              overflow: "hidden",
-              border: "1px solid var(--glass-border)",
-              bgcolor: "var(--surface-accent)",
-              backdropFilter: "blur(12px)",
-              boxShadow: "0 8px 32px 0 rgba(0, 0, 0, 0.1)",
-            }}
-          >
+          <div className="overflow-hidden rounded-3xl border border-glass-border bg-surface/40 shadow-glass">
             {loading && logs.length === 0 ? (
-              <Box display="flex" justifyContent="center" p={10}>
-                <CircularProgress color="inherit" />
-              </Box>
+              <div className="flex justify-center p-20">
+                <div className="h-10 w-10 animate-spin rounded-full border-4 border-brand border-t-transparent" />
+              </div>
             ) : (
               <>
-                <Table>
-                  <TableHead>
-                    <TableRow sx={{ bgcolor: "rgba(0,0,0,0.05)" }}>
-                      <TableCell />
-                      <TableCell sx={{ fontWeight: 700, color: "var(--page-text)" }}>
-                        Time
-                      </TableCell>
-                      <TableCell sx={{ fontWeight: 700, color: "var(--page-text)" }}>
-                        Actor
-                      </TableCell>
-                      <TableCell sx={{ fontWeight: 700, color: "var(--page-text)" }}>
-                        Action
-                      </TableCell>
-                      <TableCell sx={{ fontWeight: 700, color: "var(--page-text)" }}>
-                        Target
-                      </TableCell>
-                      <TableCell align="center" sx={{ fontWeight: 700, color: "var(--page-text)" }}>
-                        Integrity
-                      </TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    <AnimatePresence mode="popLayout">
-                      {logs.map((log) => (
-                        <Row key={log.id} log={log} />
-                      ))}
-                    </AnimatePresence>
-                  </TableBody>
-                </Table>
-                <TablePagination
-                  rowsPerPageOptions={[25, 50, 100]}
-                  component="div"
-                  count={total}
-                  rowsPerPage={rowsPerPage}
-                  page={page}
-                  onPageChange={handleChangePage}
-                  onRowsPerPageChange={handleChangeRowsPerPage}
-                  sx={{ color: "var(--page-text)" }}
-                />
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-glass-border/10 bg-surface-hover/20">
+                        <th className="w-12 px-4 py-4" />
+                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                          Time
+                        </th>
+                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                          Actor
+                        </th>
+                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                          Action
+                        </th>
+                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                          Target
+                        </th>
+                        <th className="px-4 py-4 text-center text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                          Integrity
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-glass-border/10">
+                      <AnimatePresence mode="popLayout">
+                        {logs.map((log) => (
+                          <Row key={log.id} log={log} />
+                        ))}
+                      </AnimatePresence>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Pagination placeholder as standard table pagination is complex to rewrite from scratch,
+                    using a simple layout for now or keeping it minimal */}
+                <div className="flex items-center justify-between border-t border-glass-border/10 bg-surface/20 px-6 py-4">
+                  <div className="text-sm text-secondary-text">
+                    Total: <span className="font-bold text-primary-text">{total}</span> logs
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage(Math.max(0, page - 1))}
+                      disabled={page === 0}
+                    >
+                      Previous
+                    </Button>
+                    <span className="flex items-center px-4 text-sm font-medium text-primary-text">
+                      Page {page + 1}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage(page + 1)}
+                      disabled={(page + 1) * rowsPerPage >= total}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                </div>
               </>
             )}
-          </TableContainer>
-        </Box>
-      </Box>
+          </div>
+        </div>
+      </div>
     </Layout>
   )
 }

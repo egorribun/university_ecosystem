@@ -34,10 +34,10 @@ export const Card = <T extends ElementType = "div">({
   return (
     <Component
       className={cn(
-        "relative flex flex-col rounded-ue-xl border border-[color-mix(in_srgb,var(--page-text)_8%,transparent)] bg-surface text-page-foreground shadow-surface transition-[transform,box-shadow] duration-500 ease-out",
+        "relative flex flex-col rounded-ue-xl border border-border-subtle bg-surface text-primary-text shadow-surface transition-[transform,box-shadow] duration-500 ease-out",
         paddingClasses[padding],
         hoverable
-          ? "hover:-translate-y-1 hover:scale-[1.015] hover:shadow-surface-strong hover:shadow-[0_8px_30px_-10px_rgba(var(--accent-rgb),0.25)] focus-visible:outline-none focus-visible:shadow-focus motion-reduce:hover:translate-y-0 motion-reduce:hover:scale-100 motion-reduce:transition-[box-shadow]"
+          ? "hover:-translate-y-1 hover:scale-[1.015] hover:shadow-surface-strong hover:shadow-[0_8px_30px_-10px_rgba(var(--primary-main),0.25)] focus-visible:outline-none focus-visible:shadow-focus motion-reduce:hover:translate-y-0 motion-reduce:hover:scale-100 motion-reduce:transition-shadow"
           : "",
         className
       )}

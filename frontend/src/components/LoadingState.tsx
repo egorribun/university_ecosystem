@@ -1,13 +1,11 @@
-import { Box, CircularProgress, Skeleton, Typography } from "@mui/material"
-import { visuallyHidden } from "@mui/utils"
 import { useTranslation } from "react-i18next"
 import Layout from "./Layout"
+import { Skeleton } from "@/components/ui"
+import { cn } from "@/utils/cn"
 
 type LoadingStateProps = {
   label?: string
 }
-
-const HEADER_SKELETON_RADIUS = "16px"
 
 export default function LoadingState({ label }: LoadingStateProps) {
   const { t } = useTranslation("common")
@@ -15,51 +13,33 @@ export default function LoadingState({ label }: LoadingStateProps) {
 
   return (
     <Layout>
-      <Box
-        component="header"
-        sx={{
-          px: { xs: 2, sm: 4 },
-          py: { xs: 3, sm: 4 },
-          borderBottom: 1,
-          borderColor: "divider",
-        }}
-      >
-        <Typography component="h1" variant="h5" sx={{ ...visuallyHidden }}>
+      <header className="px-4 sm:px-8 py-6 sm:py-8 border-b border-glass-border/10">
+        <h1 className="sr-only">
           {loadingLabel}
-        </Typography>
+        </h1>
         <Skeleton
+          className="w-[62%] sm:w-[44%] max-w-[320px] h-8 sm:h-9 rounded-2xl"
           aria-hidden="true"
-          variant="rounded"
-          sx={{
-            width: { xs: "62%", sm: "44%" },
-            maxWidth: 320,
-            height: { xs: 32, sm: 36 },
-            borderRadius: HEADER_SKELETON_RADIUS,
-          }}
         />
-      </Box>
-      <Box
-        component="section"
+      </header>
+
+      <section
         role="status"
         aria-live="polite"
         aria-busy="true"
-        sx={{
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 2,
-          px: { xs: 2, sm: 4 },
-          py: { xs: 10, md: 12 },
-          minHeight: "min(60dvh, 520px)",
-          textAlign: "center",
-        }}
+        className="flex flex-col items-center justify-center gap-6 px-4 py-20 md:py-24 min-h-[min(60dvh, 520px)] text-center"
       >
-        <CircularProgress aria-hidden="true" size={36} />
-        <Typography component="p" variant="body1">
+        <div className="relative">
+           <div className="h-12 w-12 rounded-full border-4 border-brand/10 border-t-brand animate-spin" />
+           <div className="absolute inset-0 flex items-center justify-center">
+              <div className="h-2 w-2 rounded-full bg-brand animate-pulse" />
+           </div>
+        </div>
+
+        <p className="text-base font-bold tracking-tight text-secondary-text animate-pulse">
           {loadingLabel}
-        </Typography>
-      </Box>
+        </p>
+      </section>
     </Layout>
   )
 }

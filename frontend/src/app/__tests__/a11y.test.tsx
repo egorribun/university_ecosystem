@@ -13,8 +13,7 @@ import { createQueryClient } from "@/app/queryClient"
 import api, { apiClient } from "@/api/client"
 import type { User } from "@/types/User"
 import { LanguageProvider } from "@/contexts/LanguageContext"
-import { CssVarsProvider } from "@mui/material/styles"
-import theme from "@/theme"
+import { ThemeProvider } from "@/contexts/ThemeContext"
 import { AppShellProvider } from "@/contexts/AppShellContext"
 
 vi.mock("@/components/NotificationsBell", () => ({
@@ -121,13 +120,13 @@ const createWrapper = (route = "/dashboard") => {
   const Wrapper = ({ children }: PropsWithChildren) => (
     <MemoryRouter initialEntries={[route]}>
       <QueryClientProvider client={queryClient}>
-        <CssVarsProvider theme={theme}>
+        <ThemeProvider>
           <LanguageProvider>
             <AppShellProvider>
               <AuthContext.Provider value={authValue}>{children}</AuthContext.Provider>
             </AppShellProvider>
           </LanguageProvider>
-        </CssVarsProvider>
+        </ThemeProvider>
       </QueryClientProvider>
     </MemoryRouter>
   )

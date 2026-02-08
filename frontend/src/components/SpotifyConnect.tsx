@@ -2,20 +2,12 @@ import { useEffect, useMemo, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import api from "@/api/client"
 import { useAuth, currentUserQueryKey } from "@/contexts/AuthContext"
-import {
-  Box,
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  Chip,
-  CircularProgress,
-  Stack,
-  Typography,
-} from "@mui/material"
 import { nowPlayingQueryKey, useNowPlaying } from "@/hooks/useNowPlaying"
 import { sanitizeSpotifyAuthorizeUrl } from "@/utils/spotify"
 import { useTranslation } from "react-i18next"
+import { cn } from "@/utils/cn"
+import { Button } from "@/components/settings/SettingsUI"
+import { RefreshCw, LogOut, Music, ExternalLink } from "lucide-react"
 
 export default function SpotifyConnect() {
   const { user, setUser } = useAuth()
@@ -76,69 +68,81 @@ export default function SpotifyConnect() {
 
   if (!user) return null
 
-  const loadingIndicator = useMemo(
-    () =>
-      actionLoading ? (
-        <CircularProgress size={22} color="inherit" />
-      ) : (
-        t("settings:integrations.spotify.connect")
-      ),
-    [actionLoading, t]
-  )
-
   return (
-    <Card sx={{ mt: 2 }}>
-      <CardHeader title={t("settings:integrations.spotify.title")} />
-      <CardContent>
+    <div className="mt-4 overflow-hidden rounded-3xl border border-glass-border bg-surface/30 backdrop-blur-xl transition-all duration-500 shadow-glass">
+      <div className="px-6 py-4 border-b border-glass-border/10 bg-surface/5">
+        <h3 className="text-lg font-black tracking-tight text-primary-text flex items-center gap-2">
+          <Music className="h-5 w-5 text-[#1DB954]" />
+          {t("settings:integrations.spotify.title")}
+        </h3>
+      </div>
+      <div className="p-6">
         {!spotifyEnabled ? (
-          <Button onClick={connect} variant="contained" disabled={actionLoading}>
-            {loadingIndicator}
+          <Button
+            onClick={connect}
+            variant="solid"
+            disabled={actionLoading}
+            className="w-full h-12 rounded-2xl bg-[#1DB954] hover:bg-[#1ed760] text-white font-black shadow-lg shadow-[#1DB954]/20"
+            loading={actionLoading}
+          >
+            {t("settings:integrations.spotify.connect")}
           </Button>
         ) : (
-          <Stack spacing={1.2}>
-            <Stack direction="row" spacing={1} alignItems="center">
-              <Chip
-                size="small"
-                label={
-                  user.spotify_display_name ||
-                  t("settings:integrations.spotify.status.connectedFallback")
-                }
-              />
-              <Button
-                onClick={refresh}
-                size="small"
-                variant="outlined"
-                disabled={actionLoading || refreshing}
-              >
-                {actionLoading || refreshing ? "..." : t("common:buttons.refresh")}
-              </Button>
-              <Button
-                onClick={disconnect}
-                size="small"
-                variant="outlined"
-                color="error"
-                disabled={actionLoading}
-              >
-                {t("settings:integrations.spotify.disconnect")}
-              </Button>
-            </Stack>
+          <div className="space-y-6">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="inline-flex items-center rounded-full bg-[#1DB954]/10 border border-[#1DB954]/20 px-4 py-1.5 text-xs font-black text-[#1DB954] tracking-tight">
+                {user.spotify_display_name || t("settings:integrations.spotify.status.connectedFallback")}
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  onClick={refresh}
+                  variant="outline"
+                  size="sm"
+                  disabled={actionLoading || refreshing}
+                  className="rounded-xl h-9 px-4 font-black"
+                  startIcon={<RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />}
+                >
+                  {t("common:buttons.refresh")}
+                </Button>
+                <Button
+                  onClick={disconnect}
+                  variant="outline"
+                  size="sm"
+                  disabled={actionLoading}
+                  className="rounded-xl h-9 px-4 font-black border-error/20 text-error hover:bg-error/5"
+                  startIcon={<LogOut className="h-4 w-4" />}
+                >
+                  {t("settings:integrations.spotify.disconnect")}
+                </Button>
+              </div>
+            </div>
+
             {now && (
-              <Box>
-                <Typography fontWeight={700}>{now.track_name || "—"}</Typography>
-                <Typography>{(now.artists || []).join(", ")}</Typography>
-                {!!now.album_name && (
-                  <Typography color="text.secondary">{now.album_name}</Typography>
-                )}
-                {!!now.track_url && (
-                  <a href={now.track_url} target="_blank" rel="noreferrer">
-                    {now.track_url}
-                  </a>
-                )}
-              </Box>
+              <div className="rounded-2xl bg-surface-raised/30 border border-glass-border/10 p-4 space-y-1 transition-all hover:bg-surface-raised/50">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-base font-black tracking-tight text-primary-text truncate">{now.track_name || "—"}</p>
+                    <p className="text-sm font-bold text-secondary-text truncate">{(now.artists || []).join(", ")}</p>
+                    {!!now.album_name && (
+                      <p className="text-xs font-medium text-tertiary-text truncate opacity-60">{now.album_name}</p>
+                    )}
+                  </div>
+                  {now.track_url && (
+                    <a
+                      href={now.track_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="p-2 rounded-xl bg-[#1DB954]/10 text-[#1DB954] hover:bg-[#1DB954]/20 transition-colors"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  )}
+                </div>
+              </div>
             )}
-          </Stack>
+          </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }

@@ -24,7 +24,7 @@ import {
   type KeyboardEvent,
 } from "react"
 
-import MoreVertIcon from "@mui/icons-material/MoreVert"
+import { MoreVertical as MoreVertIcon } from "lucide-react"
 import { cn } from "@/utils/cn"
 
 export interface ActionMenuItem {
@@ -155,7 +155,7 @@ export const ActionMenu = ({
         aria-haspopup="menu"
         aria-expanded={isOpen}
         className={cn(
-          "flex h-8 w-8 items-center justify-center rounded-full text-[color:var(--page-text)]/70 transition-colors hover:bg-[color:var(--glass-bg)] hover:text-[color:var(--page-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]",
+          "flex h-8 w-8 items-center justify-center rounded-full text-secondary-text transition-colors hover:bg-surface-hover hover:text-primary-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus",
           triggerClassName
         )}
       >
@@ -169,7 +169,7 @@ export const ActionMenu = ({
           tabIndex={-1}
           onKeyDown={handleKeyDown}
           className={cn(
-            "absolute top-full z-50 mt-1 min-w-[160px] overflow-hidden rounded-lg border border-[color:var(--page-text)]/10 bg-surface shadow-lg",
+            "absolute top-full z-50 mt-1 min-w-[160px] overflow-hidden rounded-lg border border-border-subtle bg-surface shadow-lg backdrop-blur-md",
             placementStyles[placement],
             menuClassName
           )}
@@ -185,10 +185,10 @@ export const ActionMenu = ({
               aria-label={item.ariaLabel}
               className={cn(
                 "flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium transition-colors",
-                "hover:bg-[color:var(--glass-bg)] focus-visible:bg-[color:var(--glass-bg)] focus-visible:outline-none",
+                "hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-none",
                 item.variant === "danger"
-                  ? "text-red-400 hover:text-red-300"
-                  : "text-[color:var(--page-text)]",
+                  ? "text-error-text hover:bg-error-bg"
+                  : "text-primary-text",
                 item.disabled && "cursor-not-allowed opacity-50"
               )}
             >

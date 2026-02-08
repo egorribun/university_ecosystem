@@ -1,7 +1,7 @@
 import { ReactNode } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useTranslation } from "react-i18next"
-import WifiOffIcon from "@mui/icons-material/WifiOff"
+import { WifiOff } from "lucide-react"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { cn } from "../utils/cn"
 import { fadeVariants } from "@/utils/animations"
@@ -37,7 +37,7 @@ const Layout = ({ children, className }: LayoutProps) => {
             exit={{ height: 0, opacity: 0 }}
             className="sticky top-0 z-[100] flex w-full items-center justify-center gap-2 bg-amber-500/90 py-1 text-[0.7rem] font-bold uppercase tracking-wider text-amber-950 backdrop-blur-md dark:bg-amber-600/90 dark:text-amber-50"
           >
-            <WifiOffIcon sx={{ fontSize: 14 }} />
+            <WifiOff size={14} />
             <span>{t("offlineIndicator.offline")}</span>
           </motion.div>
         )}

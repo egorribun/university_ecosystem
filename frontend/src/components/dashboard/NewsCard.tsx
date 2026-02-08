@@ -2,7 +2,7 @@ import { type CSSProperties, type KeyboardEvent } from "react"
 import { motion } from "framer-motion"
 import { Link, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import ArrowForwardRoundedIcon from "@mui/icons-material/ArrowForwardRounded"
+import { ArrowRight } from "lucide-react"
 
 import { Button, Card, Skeleton } from "@/components/ui"
 import { cn } from "@/utils/cn"
@@ -44,14 +44,14 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
   }
 
   const listActionBase =
-    "group relative isolate w-full overflow-hidden rounded-xl border border-white/5 bg-white/5 px-4 py-3 text-left transition-all duration-300 ease-out hover:bg-white/10 hover:border-white/10 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-main/50"
+    "group relative isolate w-full overflow-hidden rounded-xl border border-border-subtle bg-surface-hover/10 px-4 py-3 text-left transition-all duration-300 ease-out hover:bg-surface-hover/20 hover:border-border-strong hover:-translate-y-0.5 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus/50"
 
   return (
     <Card
       className={cn(
-        "group card-glass rounded-[2.4rem] transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
-        "hover:-translate-y-1 hover:scale-[1.02] hover:shadow-lg motion-reduce:hover:transform-none motion-reduce:hover:shadow-none",
-        "dash-panel-news",
+        "group bg-glass backdrop-blur-3xl transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
+        "hover:-translate-y-1 hover:scale-[1.01] hover:shadow-glass motion-reduce:hover:transform-none motion-reduce:hover:shadow-none",
+        "dash-panel-news border-glass-border",
         className
       )}
       padding="lg"
@@ -59,9 +59,9 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
       style={style}
       {...props}
     >
-      <div className="relative z-[1] space-y-5">
+      <div className="relative z-1 space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-[clamp(1.05rem,2vw,1.4rem)] font-extrabold text-page-foreground">
+          <h2 className="text-[clamp(1.1rem,2vw,1.5rem)] font-extrabold text-primary-text">
             {t("dashboard:news.heading")}
           </h2>
           <Button
@@ -85,9 +85,9 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
             {[1, 2].map((i) => (
               <div
                 key={i}
-                className="flex items-start gap-4 rounded-ue-lg border border-[color:var(--dash-panel-item-divider)] bg-[color:var(--dash-panel-item-bg)] px-4 py-3 opacity-60"
+                className="flex items-start gap-4 rounded-ue-lg border border-[--dash-panel-item-divider] bg-[--dash-panel-item-bg] px-4 py-3 opacity-60"
               >
-                <Skeleton width={44} height={44} rounded="9999px" className="flex-shrink-0" />
+                <Skeleton width={44} height={44} rounded="9999px" className="shrink-0" />
                 <div className="flex-1 space-y-2">
                   <Skeleton height={20} width="90%" />
                   <Skeleton height={14} width="70%" />
@@ -113,21 +113,20 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
                 >
                   <DateBullet date={n.created_at} locale={locale} />
                   <div className="flex flex-col gap-1">
-                    <span className="text-[clamp(.98rem,.9rem+.4vw,1.06rem)] font-bold leading-snug text-page-foreground">
+                    <span className="text-[clamp(.98rem,.9rem+.4vw,1.06rem)] font-bold leading-snug text-primary-text">
                       {n.title}
                     </span>
-                    <span className="text-sm text-secondary">
+                    <span className="text-sm text-secondary-text">
                       {(n.content || "").slice(0, 110)}
                       {(n.content || "").length > 110 ? "…" : ""}
                     </span>
                   </div>
                   <span
                     aria-hidden="true"
-                    className="ml-auto inline-flex h-9 w-9 flex-none items-center justify-center rounded-full border border-[color:var(--dash-arrow-pill-border)] bg-[color:var(--dash-arrow-pill-bg)] text-base text-[color:var(--dash-arrow-pill-text)] opacity-0 transition-[transform,opacity,background-color,border-color] duration-[var(--dash-hover-duration)] ease-[var(--dash-hover-ease)] group-hover:-translate-y-[calc(var(--dash-hover-lift)/2)] group-hover:opacity-100 group-hover:border-[color:var(--dash-arrow-pill-border-active)] group-hover:bg-[color:var(--dash-arrow-pill-bg-active)] group-hover:text-[color:var(--dash-arrow-pill-text-active)]"
+                    className="ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-glass-border bg-surface/20 text-primary-text opacity-0 transition-all duration-300 group-hover:opacity-100 group-hover:border-brand group-hover:bg-brand/10 group-hover:text-brand"
                   >
-                    <ArrowForwardRoundedIcon
+                    <ArrowRight
                       aria-hidden="true"
-                      fontSize="inherit"
                       className="h-4 w-4"
                     />
                   </span>

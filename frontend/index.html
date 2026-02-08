@@ -1,29 +1,30 @@
 <!doctype html>
-<html lang="ru" style="background-color: #060b14">
-  <head>
-    <script>
-      ;(function () {
-        var s = null
-        try {
-          s = localStorage.getItem("ue-mode")
-        } catch (e) {}
-        var m = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
-        var dark = s ? s === "dark" : m
-        var bg = dark ? "#060B14" : "#E8F1FB"
-        var html = document.documentElement
-        html.style.backgroundColor = bg
-        html.style.setProperty("--initial-bg", bg)
-        if (dark) {
-          html.classList.add("dark")
-        }
-      })()
-    </script>
-    <!-- LHCI_MODE_MARKER -->
-    <style>
-      /* LHCI_CSS_PLACEHOLDER */
-    </style>
-    <script>
-      ;(function () {
+<html lang="ru">
+
+<head>
+  <script>
+    ; (function () {
+      var s = null
+      try {
+        s = localStorage.getItem("ue-mode")
+      } catch (e) { }
+      var m = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+      var dark = s ? s === "dark" : m
+      var bg = dark ? "#020617" : "#f8fafc"
+      var html = document.documentElement
+      html.style.backgroundColor = bg
+      html.style.setProperty("--initial-bg", bg)
+      if (dark) {
+        html.classList.add("dark")
+      }
+    })()
+  </script>
+  <!-- LHCI_MODE_MARKER -->
+  <style>
+    /* LHCI_CSS_PLACEHOLDER */
+  </style>
+  <script>
+      ; (function () {
         import("/static-shell-i18n.js")
           .then(({ applyDocumentLanguage, applyMetaTranslations, getPreferredLanguage }) => {
             const language = window.__UE_SELECTED_LANG__ || getPreferredLanguage(window)
@@ -35,9 +36,9 @@
             console.error("Failed to load static shell translations", error)
           })
       })()
-    </script>
-    <script>
-      ;(function () {
+  </script>
+  <script>
+      ; (function () {
         var lang = "ru"
         try {
           var storedLang = localStorage.getItem("ue:language")
@@ -49,80 +50,82 @@
               lang = "en"
             }
           }
-        } catch (error) {}
+        } catch (error) { }
         document.documentElement.setAttribute("lang", lang)
         window.__UE_SELECTED_LANG__ = lang
       })()
-    </script>
-    <style>
-      :root {
-        --initial-bg: #060b14;
-      }
+  </script>
+  <style>
+    :root {
+      --initial-bg: #f8fafc;
+    }
 
-      html {
-        background: var(--initial-bg, #060b14) !important;
-        background-color: var(--initial-bg, #060b14) !important;
-        min-height: 100vh;
-        min-height: 100svh;
-        min-height: 100dvh;
-        height: auto;
-        scrollbar-gutter: stable;
-        visibility: visible;
-      }
+    .dark {
+      --initial-bg: #020617;
+    }
 
-      body {
-        background: var(--initial-bg, #060b14) !important;
-        background-color: var(--initial-bg, #060b14) !important;
-        margin: 0;
-        overscroll-behavior-y: none;
-        min-height: 100vh;
-        min-height: 100svh;
-        min-height: 100dvh;
-        height: auto;
-        opacity: 1;
-        visibility: visible;
-      }
+    html {
+      background: var(--initial-bg, #060b14) !important;
+      background-color: var(--initial-bg, #060b14) !important;
+      min-height: 100vh;
+      min-height: 100svh;
+      min-height: 100dvh;
+      height: auto;
+      scrollbar-gutter: stable;
+      visibility: visible;
+    }
 
-      #root {
-        background: var(--initial-bg, #060b14) !important;
-        background-color: var(--initial-bg, #060b14) !important;
-        min-height: 100vh;
-        min-height: 100svh;
-        min-height: 100dvh;
-        height: auto;
-        opacity: 0;
-        transition: opacity 0.15s ease-in;
-      }
+    body {
+      background: var(--initial-bg, #060b14) !important;
+      background-color: var(--initial-bg, #060b14) !important;
+      margin: 0;
+      overscroll-behavior-y: none;
+      min-height: 100vh;
+      min-height: 100svh;
+      min-height: 100dvh;
+      height: auto;
+      opacity: 1;
+      visibility: visible;
+    }
 
-      #root.ready,
-      .lhci-mode #root {
-        opacity: 1;
-      }
+    #root {
+      background: var(--initial-bg, #060b14) !important;
+      background-color: var(--initial-bg, #060b14) !important;
+      min-height: 100vh;
+      min-height: 100svh;
+      min-height: 100dvh;
+      height: auto;
+      opacity: 0;
+      transition: opacity 0.15s ease-in;
+    }
 
-      html::before,
-      html::after,
-      body::before,
-      body::after {
-        display: none !important;
-      }
+    #root.ready,
+    .lhci-mode #root {
+      opacity: 1;
+    }
 
-      * {
-        scrollbar-width: none;
-        -ms-overflow-style: none;
-      }
+    html::before,
+    html::after,
+    body::before,
+    body::after {
+      display: none !important;
+    }
 
-      *::-webkit-scrollbar {
-        display: none;
-        width: 0;
-        height: 0;
-      }
-    </style>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="color-scheme" content="light dark" />
-    <meta
-      http-equiv="Content-Security-Policy"
-      content="
+    * {
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+
+    *::-webkit-scrollbar {
+      display: none;
+      width: 0;
+      height: 0;
+    }
+  </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="light dark" />
+  <meta http-equiv="Content-Security-Policy" content="
         default-src 'self';
         script-src 'self' 'unsafe-inline' 'unsafe-eval' https://accounts.google.com;
         style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
@@ -132,52 +135,38 @@
         frame-src https://yandex.ru https://*.yandex.ru;
         object-src 'none';
         base-uri 'self';
-      "
-    />
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#E8F1FB" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#060B14" />
-    <meta
-      name="description"
-      content="Всё необходимое — профиль, расписание, новости и события кампуса — в одном месте."
-    />
-    <meta property="og:type" content="website" />
-    <meta property="og:title" content="Экосистема ГУУ" />
-    <meta
-      property="og:description"
-      content="Личный кабинет: профиль, расписание, новости и события кампуса."
-    />
-    <meta property="og:url" content="/" />
-    <meta property="og:image" content="/og-image.png" />
-    <meta property="og:locale" content="ru_RU" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Экосистема ГУУ" />
-    <meta
-      name="twitter:description"
-      content="Личный кабинет: профиль, расписание, новости и события кампуса."
-    />
-    <meta name="twitter:image" content="/og-image.png" />
-    <title>Экосистема ГУУ</title>
-    <link rel="icon" href="/favicon.ico" sizes="any" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Oxygen:wght@300;400;700&family=Varela&family=Manrope:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-      media="print"
-      onload="this.media = 'all'"
-    />
-  </head>
+      " />
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f8fafc" />
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#020617" />
+  <meta name="description"
+    content="Всё необходимое — профиль, расписание, новости и события кампуса — в одном месте." />
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Экосистема ГУУ" />
+  <meta property="og:description" content="Личный кабинет: профиль, расписание, новости и события кампуса." />
+  <meta property="og:url" content="/" />
+  <meta property="og:image" content="/og-image.png" />
+  <meta property="og:locale" content="ru_RU" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Экосистема ГУУ" />
+  <meta name="twitter:description" content="Личный кабинет: профиль, расписание, новости и события кампуса." />
+  <meta name="twitter:image" content="/og-image.png" />
+  <title>Экосистема ГУУ</title>
+  <link rel="icon" href="/favicon.ico" sizes="any" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Oxygen:wght@300;400;700&family=Varela&family=Manrope:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap"
+    rel="stylesheet" media="print" onload="this.media = 'all'" />
+</head>
 
-  <body>
-    <div
-      id="lhci-marker"
-      style="
+<body>
+  <div id="lhci-marker" style="
         position: fixed;
         top: 0;
         left: 0;
@@ -190,18 +179,18 @@
         justify-content: center;
         font-size: 24px;
         z-index: 999999;
-      "
-    >
-      LHCI RENDER START
-    </div>
-    <div id="root"></div>
-    <noscript>
-      <style>
-        #root {
-          display: block !important;
-        }
-      </style>
-    </noscript>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+      ">
+    LHCI RENDER START
+  </div>
+  <div id="root"></div>
+  <noscript>
+    <style>
+      #root {
+        display: block !important;
+      }
+    </style>
+  </noscript>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+
 </html>

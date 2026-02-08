@@ -41,11 +41,6 @@
     "node": ">=20.19"
   },
   "dependencies": {
-    "@emotion/react": "^11.14.0",
-    "@emotion/styled": "^11.14.0",
-    "@mui/icons-material": "^6.4.0",
-    "@mui/material": "^6.4.0",
-    "@mui/x-date-pickers": "^6.19.0",
     "@noble/hashes": "^1.4.0",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/exporter-trace-otlp-http": "^0.55.0",
@@ -129,6 +124,7 @@
     "postcss": "^8.5.6",
     "prettier": "^3.3.3",
     "rollup-plugin-visualizer": "^5.12.0",
+    "sharp": "^0.34.5",
     "storybook": "^10.1.10",
     "tailwindcss": "^4.1.18",
     "typescript": "^5.8.3",
@@ -142,7 +138,6 @@
     "workbox-expiration": "^7.4.0",
     "workbox-routing": "^7.4.0",
     "workbox-strategies": "^7.4.0",
-    "sharp": "^0.34.5",
     "workbox-window": "^7.3.0"
   },
   "description": "",

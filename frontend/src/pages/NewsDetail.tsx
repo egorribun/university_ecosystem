@@ -1,22 +1,29 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import ArrowBackIcon from "@mui/icons-material/ArrowBack"
-import EditIcon from "@mui/icons-material/Edit"
-import DeleteIcon from "@mui/icons-material/Delete"
-import { Snackbar, Alert } from "@mui/material"
-import SaveIcon from "@mui/icons-material/Save"
-import CloseIcon from "@mui/icons-material/Close"
-import PhotoCamera from "@mui/icons-material/PhotoCamera"
-import IosShareIcon from "@mui/icons-material/IosShare"
-import ContentCopyIcon from "@mui/icons-material/ContentCopy"
-import TelegramIcon from "@mui/icons-material/Telegram"
-import WhatsAppIcon from "@mui/icons-material/WhatsApp"
-import AlternateEmailIcon from "@mui/icons-material/AlternateEmail"
-import FavoriteIcon from "@mui/icons-material/Favorite"
-import FavoriteBorderIcon from "@mui/icons-material/FavoriteBorder"
-import ChatBubbleOutlineIcon from "@mui/icons-material/ChatBubbleOutline"
-import SendIcon from "@mui/icons-material/Send"
+import {
+  ArrowLeft as ArrowBackIcon,
+  Edit2 as EditIcon,
+  Trash2 as DeleteIcon,
+  Save as SaveIcon,
+  X as CloseIcon,
+  Camera as PhotoCamera,
+  Share2 as IosShareIcon,
+  Copy as ContentCopyIcon,
+  Send as SendIcon,
+  Heart as FavoriteIcon,
+  MessageSquare as ChatBubbleOutlineIcon,
+  MessageCircle as WhatsAppIcon,
+  Mail as AlternateEmailIcon,
+  Send as TelegramIcon,
+} from "lucide-react"
+import {
+  Alert,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+} from "@/components/settings"
 import { useNewsInteraction } from "@/hooks/useNewsInteraction"
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
@@ -25,7 +32,6 @@ import { deleteNews, fetchNewsItem, updateNews, uploadNewsImage, type NewsItem }
 import Layout from "@/components/Layout"
 import SmartImage from "@/components/SmartImage"
 import { Button } from "@/components/ui"
-import Dialog from "@/components/Dialog"
 import { useAuth } from "@/contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
 // import { invalidateNewsFeed } from "@/hooks/useNewsFeed"
@@ -36,10 +42,10 @@ dayjs.extend(utc)
 dayjs.extend(timezone)
 
 const inputClass =
-  "w-full rounded-ue-lg border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] px-4 py-2.5 text-[0.98rem] text-[color:var(--page-text)] shadow-[inset_0_1px_0_rgba(15,23,42,0.08)] transition focus:border-[color:var(--nav-link)] focus:outline-none focus:shadow-focus placeholder:text-[color:var(--placeholder-fg)]"
-const textareaClass = `${inputClass} min-h-[160px] resize-y leading-relaxed`
+    "w-full rounded-xl border border-glass-border bg-surface/40 px-4 py-2.5 text-[0.98rem] text-primary-text shadow-sm focus:border-brand focus:outline-none transition placeholder:text-secondary-text/50"
+const textareaClass = cn(inputClass, "min-h-[160px] resize-y leading-relaxed")
 const iconButtonClass =
-  "inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/85 text-[color:var(--nav-link)] shadow-surface transition hover:bg-white focus-visible:outline-none focus-visible:shadow-focus"
+    "inline-flex h-10 w-10 items-center justify-center rounded-full border border-glass-border bg-surface/80 text-secondary-text shadow-sm transition hover:bg-surface hover:text-primary-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 
 type FieldProps = {
   label: ReactNode
@@ -53,10 +59,10 @@ function Field({ label, htmlFor, children, required = false }: FieldProps) {
     <div className="space-y-2">
       <label
         htmlFor={htmlFor}
-        className="text-sm font-semibold tracking-wide text-[color:color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]"
+        className="text-sm font-semibold tracking-wide text-secondary-text/80"
       >
         {label}
-        {required ? <span className="ml-1 text-[#f87171]">*</span> : null}
+        {required ? <span className="ml-1 text-red-500">*</span> : null}
       </label>
       {children}
     </div>
@@ -142,7 +148,7 @@ export default function NewsDetail() {
       return {
         container: "min-h-[320px] h-[clamp(320px,56vh,520px)] max-h-[520px]",
         image: "object-cover object-[50%_40%]",
-        backdrop: "bg-[color:color-mix(in_srgb,var(--glass-bg)_80%,black_20%)]",
+        backdrop: "bg-black/20",
       }
     }
 
@@ -152,7 +158,7 @@ export default function NewsDetail() {
       return {
         container: "min-h-[440px] max-h-[82vh] aspect-[3/4]",
         image: "object-contain object-center",
-        backdrop: "bg-[color:color-mix(in_srgb,var(--glass-bg)_75%,black_25%)]",
+        backdrop: "bg-black/25",
       }
     }
 
@@ -160,7 +166,7 @@ export default function NewsDetail() {
       return {
         container: "min-h-[360px] max-h-[76vh] aspect-[5/4]",
         image: "object-cover object-[50%_38%]",
-        backdrop: "bg-[var(--glass-bg)]",
+        backdrop: "bg-surface/20",
       }
     }
 
@@ -168,14 +174,14 @@ export default function NewsDetail() {
       return {
         container: "min-h-[260px] max-h-[60vh] aspect-[21/9]",
         image: "object-cover object-[50%_46%]",
-        backdrop: "bg-[color:color-mix(in_srgb,var(--glass-bg)_80%,black_20%)]",
+        backdrop: "bg-black/20",
       }
     }
 
     return {
       container: "min-h-[300px] max-h-[68vh] aspect-video",
       image: "object-cover object-[50%_40%]",
-      backdrop: "bg-[var(--glass-bg)]",
+      backdrop: "bg-surface/20",
     }
   }, [heroRatio])
 
@@ -366,22 +372,22 @@ export default function NewsDetail() {
         id: "telegram",
         label: t("news:shareDialog.options.telegram", { defaultValue: "Telegram" }),
         href: `https://t.me/share/url?url=${encodedUrl}&text=${encodedTitle}`,
-        icon: <TelegramIcon fontSize="small" />,
-        accent: "text-[#229ED9]",
+        icon: <TelegramIcon className="h-4 w-4" />,
+        accent: "text-brand",
       },
       {
         id: "whatsapp",
         label: t("news:shareDialog.options.whatsapp", { defaultValue: "WhatsApp" }),
         href: `https://api.whatsapp.com/send?text=${encodedTitle}%20${encodedUrl}`,
-        icon: <WhatsAppIcon fontSize="small" />,
-        accent: "text-[#25D366]",
+        icon: <WhatsAppIcon className="h-4 w-4" />,
+        accent: "text-green-500",
       },
       {
         id: "email",
         label: t("news:shareDialog.options.email", { defaultValue: "Email" }),
         href: `mailto:?subject=${encodedTitle}&body=${encodedTitle}%0A${encodedUrl}`,
-        icon: <AlternateEmailIcon fontSize="small" />,
-        accent: "text-[#6366F1]",
+        icon: <AlternateEmailIcon className="h-4 w-4" />,
+        accent: "text-brand/80",
       },
     ]
   }, [displayTitle, shareUrl, t])
@@ -460,11 +466,10 @@ export default function NewsDetail() {
     }
   }, [copyingLink, shareUrl, t])
 
-  if (query.isLoading)
     return (
       <Layout>
         <div className="flex min-h-[60vh] items-center justify-center">
-          <span className="h-12 w-12 animate-spin rounded-full border-2 border-white/30 border-t-[color:var(--nav-link)]" />
+          <span className="h-12 w-12 animate-spin rounded-full border-2 border-white/30 border-t-brand" />
         </div>
       </Layout>
     )
@@ -492,27 +497,27 @@ export default function NewsDetail() {
 
         <article className="flex w-full flex-col items-start gap-8">
           <header className="flex w-full flex-col gap-4 text-left">
-            <h1 className="max-w-5xl text-[clamp(1.6rem,4vw,2.4rem)] font-extrabold tracking-tight text-[color:var(--page-text)]">
+            <h1 className="max-w-5xl text-[clamp(1.6rem,4vw,2.4rem)] font-extrabold tracking-tight text-(--page-text)">
               {displayTitle}
             </h1>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-              <div className="flex flex-wrap items-center gap-2 text-[0.9rem] text-[color:var(--secondary-text)]">
+              <div className="flex flex-wrap items-center gap-2 text-[0.9rem] text-secondary-text">
                 {createdAt ? (
-                  <span className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/5 px-3 py-1 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-[color:var(--secondary-text)]">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-glass-border bg-surface/10 px-3 py-1 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-secondary-text">
                     <span>{t("news:meta.published")}</span>
                     <span aria-hidden>•</span>
-                    <time dateTime={createdAtIso} className="text-[color:var(--page-text)]">
+                    <time dateTime={createdAtIso} className="text-primary-text">
                       {createdAtLabel}
                     </time>
                   </span>
                 ) : null}
 
-                {readingTimeMinutes !== null ? (
-                  <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[0.78rem] font-medium tracking-wide text-[color:var(--page-text)]">
-                    {t("news:meta.readingTime", { count: readingTimeMinutes })}
+                {readingTimeMinutes !== null && (
+                  <span className="inline-flex items-center gap-2 rounded-full border border-glass-border/20 bg-surface/10 px-3 py-1 text-[0.78rem] font-medium tracking-wide text-primary-text">
+                    {t("news:meta.readingTime", { count: readingTimeMinutes ?? undefined })}
                   </span>
-                ) : null}
+                )}
 
                 <Button
                   variant="outline"
@@ -533,15 +538,13 @@ export default function NewsDetail() {
                   size="sm"
                   onClick={() => toggleLike()}
                   leadingIcon={
-                    isLiked ? (
-                      <FavoriteIcon fontSize="small" className="text-rose-500" />
-                    ) : (
-                      <FavoriteBorderIcon fontSize="small" />
-                    )
+                    <FavoriteIcon
+                      className={cn("h-4 w-4", isLiked ? "fill-rose-500 text-rose-500" : "text-secondary-text")}
+                    />
                   }
                   className={cn(
                     "w-full basis-full sm:w-auto sm:basis-auto transition-colors duration-200",
-                    isLiked ? "border-rose-200 bg-rose-50/10" : ""
+                    isLiked ? "border-rose-200/30 bg-rose-500/10" : "border-glass-border/30 bg-surface/40"
                   )}
                 >
                   <span className="tabular-nums">{likesCount}</span>
@@ -563,17 +566,17 @@ export default function NewsDetail() {
                 <button
                   type="button"
                   onClick={() => setConfirmDeleteOpen(true)}
-                  className={cn(iconButtonClass, "text-[#e11d48]")}
+                  className={cn(iconButtonClass, "text-red-500 hover:text-red-400")}
                   aria-label={t("news:aria.deleteNews") ?? ""}
                   disabled={deleting || saving}
                 >
-                  <DeleteIcon fontSize="small" />
+                  <DeleteIcon className="h-5 w-5" />
                 </button>
               </div>
             ) : null}
           </header>
 
-          <figure className="w-full max-w-5xl self-start overflow-hidden rounded-ue-xl border border-white/12 bg-[color:var(--glass-bg)]/60 shadow-surface">
+          <figure className="w-full max-w-5xl self-start overflow-hidden rounded-3xl border border-glass-border bg-surface/40 shadow-glass backdrop-blur-md">
             <div
               className={cn(
                 "flex w-full items-center justify-center overflow-hidden",
@@ -593,13 +596,13 @@ export default function NewsDetail() {
               />
             </div>
             {displayTitle ? null : (
-              <figcaption className="border-t border-white/10 bg-[color:var(--glass-bg)]/70 px-5 py-3 text-sm font-medium text-[color:var(--secondary-text)]">
+              <figcaption className="border-t border-glass-border bg-surface/10 px-5 py-3 text-sm font-medium text-secondary-text">
                 {t("news:alt.heroFallback")}
               </figcaption>
             )}
           </figure>
 
-          <section className="max-w-4xl self-start space-y-6 text-[1.05rem] leading-8 text-[color:var(--secondary-text)]">
+          <section className="max-w-4xl self-start space-y-6 text-[1.05rem] leading-8 text-secondary-text">
             {content?.split(/\n{2,}/).map((chunk: string, index: number) => {
               const text = chunk.trim()
 
@@ -609,20 +612,20 @@ export default function NewsDetail() {
             })}
           </section>
 
-          <footer className="w-full max-w-4xl mt-12 border-t border-white/10 pt-10">
+          <footer className="w-full max-w-4xl mt-12 border-t border-glass-border/30 pt-10">
             <div className="flex items-center gap-3 mb-8">
-              <ChatBubbleOutlineIcon className="text-[color:var(--nav-link)]" />
-              <h2 className="text-xl font-bold">
+              <ChatBubbleOutlineIcon className="h-6 w-6 text-brand" />
+              <h2 className="text-xl font-bold text-primary-text">
                 {t("news:sections.comments", { defaultValue: "Комментарии" })}
               </h2>
-              <span className="px-2 py-0.5 rounded-full bg-glass/20 text-xs font-bold tabular-nums">
+              <span className="px-2 py-0.5 rounded-full bg-brand/10 border border-brand/20 text-xs font-bold tabular-nums text-brand">
                 {comments.length}
               </span>
             </div>
 
             <div className="space-y-6 mb-10">
               {comments.length === 0 ? (
-                <p className="text-[color:var(--secondary-text)] italic py-4">
+                <p className="text-secondary-text italic py-4">
                   {t("news:states.noComments", {
                     defaultValue: "Пока нет ни одного комментария. Будьте первым!",
                   })}
@@ -631,14 +634,14 @@ export default function NewsDetail() {
                 comments.map((comment) => (
                   <div
                     key={comment.id}
-                    className="flex flex-col gap-2 p-4 rounded-ue-lg bg-glass/5 border border-white/5"
+                    className="flex flex-col gap-2 p-4 rounded-2xl bg-surface/20 border border-glass-border/30 shadow-sm"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-sm text-[color:var(--page-text)]">
+                      <span className="font-bold text-sm text-primary-text">
                         {comment.user_name}
                       </span>
                       <div className="flex items-center gap-3">
-                        <time className="text-[0.7rem] text-[color:var(--secondary-text)] uppercase font-semibold">
+                        <time className="text-[0.7rem] text-secondary-text uppercase font-semibold">
                           {getMoscowDate(comment.created_at)}
                         </time>
                         {(user?.id === comment.user_id || user?.role === "admin") && (
@@ -648,10 +651,10 @@ export default function NewsDetail() {
                                 setEditingCommentId(comment.id)
                                 setEditingCommentText(comment.content)
                               }}
-                              className="p-1.5 rounded-full hover:bg-white/10 text-[color:var(--secondary-text)] transition-colors"
+                              className="p-1.5 rounded-full hover:bg-surface/60 text-secondary-text hover:text-primary-text transition-colors"
                               title={t("news:actions.editComment", { defaultValue: "Edit" }) ?? ""}
                             >
-                              <EditIcon sx={{ fontSize: "0.9rem" }} />
+                              <EditIcon className="h-3.5 w-3.5" />
                             </button>
                             <button
                               onClick={() => {
@@ -665,12 +668,12 @@ export default function NewsDetail() {
                                   void deleteComment(comment.id)
                                 }
                               }}
-                              className="p-1.5 rounded-full hover:bg-rose-500/20 text-rose-500 transition-colors"
+                              className="p-1.5 rounded-full hover:bg-rose-500/10 text-rose-500 hover:text-rose-400 transition-colors"
                               title={
                                 t("news:actions.deleteComment", { defaultValue: "Delete" }) ?? ""
                               }
                             >
-                              <DeleteIcon sx={{ fontSize: "0.9rem" }} />
+                              <DeleteIcon className="h-3.5 w-3.5" />
                             </button>
                           </div>
                         )}
@@ -750,226 +753,226 @@ export default function NewsDetail() {
       <Dialog
         open={shareDialogOpen}
         onClose={() => setShareDialogOpen(false)}
-        title={t("news:shareDialog.title")}
-        subtitle={t("news:shareDialog.subtitle")}
-        bodyClassName="space-y-4"
-        footer={
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>{t("news:shareDialog.title")}</DialogTitle>
+        <DialogContent className="space-y-6 pt-4">
+          <p className="text-[0.95rem] leading-relaxed text-secondary-text">
+            {t("news:shareDialog.description")}
+          </p>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            {shareOptions.map((option) => (
+              <a
+                key={`share-option-${option.id}`}
+                href={option.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setShareDialogOpen(false)}
+                className="group flex items-center gap-3 rounded-2xl border border-glass-border/20 bg-surface/40 px-4 py-3 transition hover:border-glass-border/40 hover:bg-surface/60"
+              >
+                <span
+                  className={cn(
+                    "inline-flex h-10 w-10 items-center justify-center rounded-full bg-surface/80 text-[1.2rem] shadow-sm transition group-hover:scale-105",
+                    option.id === "telegram" ? "text-brand" : option.id === "whatsapp" ? "text-green-500" : "text-brand/80"
+                  )}
+                >
+                  {option.id === "telegram" ? <TelegramIcon className="h-5 w-5" /> : option.id === "whatsapp" ? <WhatsAppIcon className="h-5 w-5" /> : <AlternateEmailIcon className="h-5 w-5" />}
+                </span>
+                <span className="text-sm font-semibold text-primary-text">
+                  {option.label}
+                </span>
+              </a>
+            ))}
+          </div>
+        </DialogContent>
+        <DialogActions className="p-6">
           <Button
+            variant="solid"
             onClick={() => {
               void handleCopyLink()
             }}
-            loading={copyingLink}
-            leadingIcon={<ContentCopyIcon fontSize="small" />}
+            disabled={copyingLink}
             className="w-full sm:w-auto"
           >
-            {copiedLink ? t("news:shareDialog.copySuccess") : t("news:shareDialog.copy")}
+             <div className="flex items-center gap-2">
+               <ContentCopyIcon className="h-4 w-4" />
+               {copiedLink ? t("news:shareDialog.copySuccess") : t("news:shareDialog.copy")}
+             </div>
           </Button>
-        }
-        footerClassName="sm:flex-row sm:justify-end"
-      >
-        <p className="text-[0.95rem] leading-relaxed text-[color:var(--secondary-text)]">
-          {t("news:shareDialog.description")}
-        </p>
-
-        <div className="grid gap-3 sm:grid-cols-3">
-          {shareOptions.map((option) => (
-            <a
-              key={`share-option-${option.id}`}
-              href={option.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => setShareDialogOpen(false)}
-              className="group flex items-center gap-3 rounded-ue-lg border border-white/10 bg-white/5 px-4 py-3 transition hover:border-white/20 hover:bg-white/10"
-            >
-              <span
-                className={cn(
-                  "inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/80 text-[1.2rem] text-[color:var(--nav-link)] shadow-surface transition group-hover:scale-105",
-                  option.accent
-                )}
-              >
-                {option.icon}
-              </span>
-              <span className="text-sm font-semibold text-[color:var(--page-text)]">
-                {option.label}
-              </span>
-            </a>
-          ))}
-        </div>
+        </DialogActions>
       </Dialog>
 
       <Dialog
         open={editOpen}
         onClose={closeEdit}
-        title={t("news:dialogs.edit.title")}
-        size="md"
-        fullScreenOnMobile
-        closeLabel={t("common:buttons.close")}
-        bodyClassName="space-y-4"
-        footerClassName="flex-col-reverse gap-3 sm:flex-row"
-        footer={
-          <>
-            <Button
-              variant="outline"
-              onClick={closeEdit}
-              disabled={saving}
-              className="w-full sm:w-auto"
-              leadingIcon={<CloseIcon fontSize="small" />}
-            >
-              {t("common:buttons.cancel")}
-            </Button>
-            <Button
-              onClick={() => {
-                void handleSave()
-              }}
-              disabled={saving}
-              loading={saving}
-              className="w-full sm:w-auto"
-              leadingIcon={<SaveIcon fontSize="small" />}
-            >
-              {t("common:buttons.save")}
-            </Button>
-          </>
-        }
-        initialFocus={() => editTitleRef.current ?? undefined}
+        maxWidth="lg"
+        fullWidth
       >
-        <form
-          className="space-y-4"
-          onSubmit={(event) => {
-            event.preventDefault()
-            void handleSave()
-          }}
-        >
-          <Field label={t("news:form.title") ?? ""} htmlFor="news-detail-title" required>
-            <input
-              id="news-detail-title"
-              ref={editTitleRef}
-              type="text"
-              value={editData.title}
-              onChange={(e) => setEditData({ ...editData, title: e.target.value })}
-              disabled={saving}
-              className={inputClass}
-            />
-          </Field>
+        <DialogTitle>{t("news:dialogs.edit.title")}</DialogTitle>
+        <DialogContent className="space-y-6 pt-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-4">
+              <Field label={t("news:form.title") ?? ""} htmlFor="edit-title" required>
+                <input
+                  id="edit-title"
+                  ref={editTitleRef}
+                  type="text"
+                  value={editData.title}
+                  onChange={(e) => setEditData({ ...editData, title: e.target.value })}
+                  maxLength={100}
+                  className={inputClass}
+                />
+              </Field>
 
-          <Field label={t("news:form.text") ?? ""} htmlFor="news-detail-content" required>
-            <textarea
-              id="news-detail-content"
-              value={editData.content}
-              onChange={(e) => setEditData({ ...editData, content: e.target.value })}
-              disabled={saving}
-              className={textareaClass}
-              rows={5}
-            />
-          </Field>
+              <Field label={t("news:form.content") ?? ""} htmlFor="edit-content" required>
+                <textarea
+                  id="edit-content"
+                  value={editData.content}
+                  onChange={(e) => setEditData({ ...editData, content: e.target.value })}
+                  maxLength={3000}
+                  className={textareaClass}
+                  rows={6}
+                />
+              </Field>
+            </div>
 
-          <Field
-            label={t("news:form.title_en", { defaultValue: "Title (English)" }) ?? ""}
-            htmlFor="news-detail-title-en"
-          >
-            <input
-              id="news-detail-title-en"
-              type="text"
-              value={editData.title_en}
-              onChange={(e) => setEditData({ ...editData, title_en: e.target.value })}
-              disabled={saving}
-              className={inputClass}
-            />
-          </Field>
+            <div className="space-y-4">
+              <Field
+                label={t("news:form.title_en", { defaultValue: "Title (English)" }) ?? ""}
+                htmlFor="edit-title-en"
+              >
+                <input
+                  id="edit-title-en"
+                  type="text"
+                  value={editData.title_en}
+                  onChange={(e) => setEditData({ ...editData, title_en: e.target.value })}
+                  maxLength={100}
+                  className={inputClass}
+                />
+              </Field>
 
-          <Field
-            label={t("news:form.content_en", { defaultValue: "News text (English)" }) ?? ""}
-            htmlFor="news-detail-content-en"
-          >
-            <textarea
-              id="news-detail-content-en"
-              value={editData.content_en}
-              onChange={(e) => setEditData({ ...editData, content_en: e.target.value })}
-              disabled={saving}
-              className={textareaClass}
-              rows={5}
-            />
-          </Field>
+              <Field
+                label={t("news:form.content_en", { defaultValue: "News text (English)" }) ?? ""}
+                htmlFor="edit-content-en"
+              >
+                <textarea
+                  id="edit-content-en"
+                  value={editData.content_en}
+                  onChange={(e) => setEditData({ ...editData, content_en: e.target.value })}
+                  maxLength={3000}
+                  className={textareaClass}
+                  rows={6}
+                />
+              </Field>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <Button
-              as="label"
-              variant="outline"
-              size="sm"
-              leadingIcon={<PhotoCamera className="text-[1.15rem]" />}
-              className="w-full sm:w-auto"
-              disabled={saving}
-            >
-              {newImage ? t("news:form.changePhoto") : t("news:form.uploadPhoto")}
-              <input
-                type="file"
-                accept="image/*"
-                hidden
-                ref={imageInputRef}
-                onChange={handleImageChange}
-              />
-            </Button>
+              <div className="space-y-3">
+                <label className="block text-sm font-semibold text-secondary-text">
+                  {t("news:form.image", { defaultValue: "Cover Image" })}
+                </label>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <Button
+                    as="label"
+                    variant="outline"
+                    className="w-full sm:w-auto bg-surface/20 border-glass-border"
+                    disabled={saving}
+                  >
+                    <div className="flex items-center gap-2">
+                       <PhotoCamera className="h-4 w-4" />
+                       {newImage ? t("common:buttons.changePhoto") : t("common:buttons.uploadPhoto")}
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      hidden
+                      ref={imageInputRef}
+                      onChange={handleImageChange}
+                    />
+                  </Button>
 
-            {imageUrl ? (
-              <SmartImage
-                srcRaw={imageUrl}
-                alt={t("news:alt.preview")}
-                className="h-20 w-full max-w-[180px] rounded-ue-md border border-white/10 object-cover shadow-surface"
-              />
-            ) : null}
+                  {imageUrl ? (
+                    <div className="overflow-hidden rounded-xl border border-glass-border shadow-sm">
+                      <SmartImage
+                        srcRaw={imageUrl}
+                        alt={t("news:alt.editPreview")}
+                        className="h-14 w-28 object-cover"
+                      />
+                    </div>
+                  ) : null}
+                </div>
+                {previewUrl && (
+                   <Button variant="ghost" size="sm" onClick={resetPreview} className="text-rose-500">
+                     {t("common:buttons.reset")}
+                   </Button>
+                )}
+              </div>
+            </div>
           </div>
-        </form>
+        </DialogContent>
+        <DialogActions className="flex-col-reverse gap-3 sm:flex-row p-6">
+          <Button variant="ghost" onClick={closeEdit} className="w-full sm:w-auto">
+            {t("common:buttons.cancel")}
+          </Button>
+          <Button
+            variant="solid"
+            onClick={handleSave}
+            disabled={!editData.title.trim() || !editData.content.trim() || saving}
+            className="w-full sm:w-auto min-w-[120px]"
+          >
+            {saving ? t("common:buttons.saving") : t("common:buttons.save")}
+          </Button>
+        </DialogActions>
       </Dialog>
 
       <Dialog
         open={confirmDeleteOpen}
         onClose={() => setConfirmDeleteOpen(false)}
-        title={t("news:dialogs.delete.title")}
-        bodyClassName="space-y-4"
-        footer={
-          <>
-            <Button
-              variant="outline"
-              onClick={() => setConfirmDeleteOpen(false)}
-              disabled={deleting}
-              className="w-full sm:w-auto"
-            >
-              {t("common:buttons.cancel")}
-            </Button>
-            <Button
-              onClick={() => {
-                void handleDelete()
-              }}
-              disabled={deleting}
-              loading={deleting}
-              className="w-full bg-[linear-gradient(98deg,#dc2626,#b91c1c)] text-white hover:bg-[linear-gradient(98deg,#b91c1c,#991b1b)] sm:w-auto"
-              leadingIcon={<DeleteIcon fontSize="small" />}
-            >
-              {t("common:buttons.delete")}
-            </Button>
-          </>
-        }
+        maxWidth="sm"
+        fullWidth
       >
-        <p className="text-[0.98rem] text-[color:var(--secondary-text)]">
-          {t("news:dialogs.delete.description")}
-        </p>
+        <DialogTitle>{t("news:dialogs.delete.title")}</DialogTitle>
+        <DialogContent className="space-y-4">
+          <p className="text-[0.98rem] text-secondary-text">
+            {t("news:dialogs.delete.description")}
+          </p>
+        </DialogContent>
+        <DialogActions className="flex-col-reverse gap-3 sm:flex-row p-6">
+          <Button
+            variant="ghost"
+            onClick={() => setConfirmDeleteOpen(false)}
+            disabled={deleting}
+            className="w-full sm:w-auto"
+          >
+            {t("common:buttons.cancel")}
+          </Button>
+          <Button
+            variant="solid"
+            onClick={() => {
+              void handleDelete()
+            }}
+            disabled={deleting}
+            className="w-full bg-linear-to-r from-red-600 to-red-700 text-white hover:from-red-700 hover:to-red-800 sm:w-auto"
+          >
+            <div className="flex items-center gap-2">
+               <DeleteIcon className="h-4 w-4" />
+               {deleting ? t("common:statuses.deleting") : t("common:buttons.delete")}
+            </div>
+          </Button>
+        </DialogActions>
       </Dialog>
 
-      <Snackbar
-        open={!!snack}
-        autoHideDuration={2400}
-        onClose={() => setSnack("")}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-        className="z-[9999]"
-      >
-        <Alert
-          onClose={() => setSnack("")}
-          severity="success"
-          sx={{ width: "100%" }}
-          variant="filled"
-        >
-          {snack}
-        </Alert>
-      </Snackbar>
+      {snack && (
+         <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 animate-in fade-in slide-in-from-bottom-4">
+           <Alert
+             severity="success"
+             onClose={() => setSnack("")}
+             className="min-w-[300px] shadow-glass border-glass-border bg-surface/90"
+           >
+             {snack}
+           </Alert>
+         </div>
+      )}
     </Layout>
   )
 }

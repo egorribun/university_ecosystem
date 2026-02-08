@@ -1,17 +1,17 @@
 import { useActionState, useEffect, useMemo, useRef, useState } from "react"
 import axios from "../api/client"
-import {
-  Box,
-  Paper,
-  Typography,
-  TextField,
-  Button,
-  Stack,
-  Chip,
-  useMediaQuery,
-} from "@mui/material"
 import { Link } from "react-router-dom"
 import { useTranslation, Trans } from "react-i18next"
+import useMediaQuery from "@/hooks/useMediaQuery"
+import { cn } from "@/utils/cn"
+import {
+  Button,
+  TextField,
+  SectionCard,
+  Chip,
+} from "@/components/settings"
+import { motion, AnimatePresence } from "framer-motion"
+import { Mail as EmailIcon, ChevronLeft, Send as SendIcon, CheckCircle2 } from "lucide-react"
 
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const COMMON_EMAIL_DOMAINS = [
@@ -83,6 +83,7 @@ export default function ForgotPassword() {
   const emailInputRef = useRef<HTMLInputElement | null>(null)
   const isMobile = useMediaQuery("(max-width:600px)")
   const emailValid = useMemo(() => email.length === 0 || emailRe.test(email), [email])
+
   useEffect(() => {
     if (!cooldown) return
     const id = setInterval(() => setCooldown((s) => Math.max(0, s - 1)), 1000)
@@ -117,7 +118,7 @@ export default function ForgotPassword() {
       try {
         await axios.post(FORGOT_URL, { email: value })
       } catch {
-        // Игнорируем ошибки, сообщение одинаково
+        // Ignore errors, message is same for security
       }
 
       setCooldown(30)
@@ -128,7 +129,6 @@ export default function ForgotPassword() {
 
   const forgotStatus = forgotState.status
   const forgotErrorMessage = forgotStatus === "error" ? (forgotState.error ?? "") : ""
-
   const canSubmit = emailRe.test(email) && !forgotPending && cooldown === 0
 
   useEffect(() => {
@@ -148,105 +148,148 @@ export default function ForgotPassword() {
   }
 
   return (
-    <Box
-      sx={{
-        minHeight: "100vh",
-        bgcolor: "var(--page-bg)",
-        color: "var(--page-text)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        px: 1,
-      }}
-    >
-      <Paper
-        elevation={7}
-        sx={{
-          width: "100%",
-          maxWidth: 440,
-          p: { xs: 2, sm: 4 },
-          borderRadius: { xs: 3, sm: 5 },
-          bgcolor: "var(--card-bg)",
-        }}
-      >
-        <Typography variant={isMobile ? "h5" : "h4"} fontWeight={700} align="center" mb={3}>
-          {t("auth:forgot.title")}
-        </Typography>
-        {forgotStatus === "success" ? (
-          <Stack spacing={2} alignItems="center">
-            <Typography align="center">
-              <Trans
-                ns="auth"
-                i18nKey="forgot.success"
-                values={{ email }}
-                components={{ strong: <b /> }}
-              />
-            </Typography>
-            <Typography color="text.secondary" align="center" sx={{ mt: -1 }}>
-              {t("auth:forgot.successHint")}
-            </Typography>
-            <Button component={Link} to="/login" variant="outlined" sx={{ mt: 1 }}>
-              {t("auth:actions.backToLogin")}
-            </Button>
-            <Button type="button" onClick={resetRequest} disabled={cooldown > 0}>
-              {t("auth:forgot.enterAnother")}
-              {cooldown > 0 ? ` (${cooldown}s)` : ""}
-            </Button>
-          </Stack>
-        ) : (
-          <form action={forgotAction} autoComplete="off">
-            <Stack spacing={2}>
-              <TextField
-                label={t("auth:fields.email")}
-                name="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                onBlur={onBlurEmail}
-                autoFocus
-                fullWidth
-                autoComplete="email"
-                error={!emailValid}
-                helperText={!emailValid ? t("auth:messages.invalidFormat") : " "}
-                inputRef={emailInputRef}
-                disabled={forgotPending || cooldown > 0}
-                inputProps={{
-                  inputMode: "email",
-                  autoCapitalize: "none",
-                  autoCorrect: "off",
-                  spellCheck: "false",
-                }}
-              />
-              {emailSuggestion && (
-                <Chip
-                  size="small"
-                  variant="outlined"
-                  color="primary"
-                  label={t("auth:messages.emailSuggestion", { suggestion: emailSuggestion })}
-                  onClick={applySuggestion}
-                />
-              )}
-              {forgotErrorMessage && (
-                <Typography color="error" fontSize={15} align="center">
-                  {forgotErrorMessage}
-                </Typography>
-              )}
-              <Button
-                type="submit"
-                variant="contained"
-                size="large"
-                fullWidth
-                disabled={!canSubmit}
-              >
-                {forgotPending ? t("auth:forgot.sending") : t("auth:forgot.sendLink")}
-              </Button>
-              <Button component={Link} to="/login" variant="text">
-                {t("auth:actions.backToLogin")}
-              </Button>
-            </Stack>
-          </form>
-        )}
-      </Paper>
-    </Box>
+    <div className="min-h-screen bg-(--page-bg) text-(--page-text) flex items-center justify-center p-6 relative overflow-hidden">
+       {/* Background decorative elements */}
+       <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-20">
+          <div className="absolute top-[-10%] left-[-5%] w-[40%] h-[40%] bg-brand/30 rounded-full blur-[120px]" />
+          <div className="absolute bottom-[-10%] right-[-5%] w-[40%] h-[40%] bg-brand/20 rounded-full blur-[120px]" />
+       </div>
+
+       <motion.div
+         initial={{ opacity: 0, y: 20 }}
+         animate={{ opacity: 1, y: 0 }}
+         className="w-full max-w-[440px] z-10"
+       >
+         <SectionCard className="p-8 sm:p-10 border-glass-border shadow-2xl backdrop-blur-2xl">
+           <div className="space-y-8">
+              <div className="text-center space-y-2">
+                 <h1 className="text-3xl font-black tracking-tight text-primary-text sm:text-4xl">
+                   {t("auth:forgot.title")}
+                 </h1>
+                 <p className="text-sm text-secondary-text font-medium">
+                   {forgotStatus === "success" ? t("auth:forgot.successSent") : t("auth:forgot.subtitle")}
+                 </p>
+              </div>
+
+              <AnimatePresence mode="wait">
+                {forgotStatus === "success" ? (
+                  <motion.div
+                    key="success"
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="space-y-6 pt-4"
+                  >
+                    <div className="flex justify-center">
+                       <div className="h-20 w-20 rounded-3xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+                          <CheckCircle2 className="h-10 w-10" />
+                       </div>
+                    </div>
+                    <div className="text-center space-y-4">
+                      <p className="text-[15px] leading-relaxed text-secondary-text">
+                        <Trans
+                          ns="auth"
+                          i18nKey="forgot.success"
+                          values={{ email }}
+                          components={{ strong: <span className="font-extrabold text-primary-text" /> }}
+                        />
+                      </p>
+                      <p className="text-xs font-bold text-brand uppercase tracking-widest opacity-70">
+                        {t("auth:forgot.successHint")}
+                      </p>
+                    </div>
+
+                    <div className="space-y-3 pt-4">
+                       <Button as={Link} to="/login" variant="solid" className="w-full h-12 rounded-2xl">
+                         {t("auth:actions.backToLogin")}
+                       </Button>
+                       <Button
+                         variant="ghost"
+                         onClick={resetRequest}
+                         disabled={cooldown > 0}
+                         className="w-full text-secondary-text hover:text-primary-text"
+                       >
+                         {t("auth:forgot.enterAnother")}
+                         {cooldown > 0 ? ` (${cooldown}s)` : ""}
+                       </Button>
+                    </div>
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="form"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="space-y-6"
+                  >
+                    <form action={forgotAction} autoComplete="off" className="space-y-6">
+                      <div className="space-y-3">
+                        <TextField
+                          label={t("auth:fields.email")}
+                          name="email"
+                          type="email"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          onBlur={onBlurEmail}
+                          autoFocus
+                          fullWidth
+                          autoComplete="email"
+                          error={!emailValid}
+                          helperText={!emailValid ? t("auth:messages.invalidFormat") : ""}
+                          ref={emailInputRef}
+                          disabled={forgotPending || cooldown > 0}
+                          className="rounded-2xl h-14"
+                        />
+
+                        {emailSuggestion && (
+                          <motion.div
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                          >
+                            <Chip
+                              label={t("auth:messages.emailSuggestion", { suggestion: emailSuggestion })}
+                              onClick={applySuggestion}
+                              color="primary"
+                              variant="outlined"
+                              className="cursor-pointer hover:bg-brand/5 transition-colors"
+                            />
+                          </motion.div>
+                        )}
+                      </div>
+
+                      {forgotErrorMessage && (
+                        <p className="text-sm font-bold text-rose-500 text-center animate-bounce">
+                          {forgotErrorMessage}
+                        </p>
+                      )}
+
+                      <div className="space-y-4 pt-2">
+                        <Button
+                          type="submit"
+                          variant="solid"
+                          className="w-full h-14 rounded-2xl text-base font-black shadow-lg shadow-brand/20 transition-all hover:shadow-brand/30 hover:-translate-y-0.5 active:translate-y-0"
+                          disabled={!canSubmit}
+                          loading={forgotPending}
+                          leadingIcon={<SendIcon className="h-5 w-5" />}
+                        >
+                          {t("auth:forgot.sendLink")}
+                        </Button>
+
+                        <div className="pt-2 text-center">
+                           <Link
+                             to="/login"
+                             className="inline-flex items-center gap-2 text-sm font-bold text-secondary-text hover:text-brand transition-colors group"
+                           >
+                             <ChevronLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
+                             {t("auth:actions.backToLogin")}
+                           </Link>
+                        </div>
+                      </div>
+                    </form>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+           </div>
+         </SectionCard>
+       </motion.div>
+    </div>
   )
 }

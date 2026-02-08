@@ -1,16 +1,15 @@
 import { QueryClientProvider } from "@tanstack/react-query"
 import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { CssVarsProvider } from "@mui/material/styles"
+import { ThemeProvider } from "@/contexts/ThemeContext"
 import { MemoryRouter } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { LanguageProvider } from "@/contexts/LanguageContext"
+import { createQueryClient } from "@/app/queryClient"
 import { AuthContext } from "@/contexts/AuthContext"
 import Settings from "@/pages/Settings"
 import type { User } from "@/types/User"
-import theme from "@/theme"
-import { createQueryClient } from "@/app/queryClient"
-import i18n from "@/i18n/config"
+import { LanguageProvider } from "@/contexts/LanguageContext"
+import i18n from "../../i18n/config"
 import { resetTestSessions, testSessions } from "@/tests/mocks/handlers"
 
 vi.mock("@/hooks/usePushPreferences", () => ({
@@ -77,7 +76,7 @@ const renderSettings = () => {
   const result = render(
     <MemoryRouter initialEntries={["/settings"]}>
       <QueryClientProvider client={queryClient}>
-        <CssVarsProvider theme={theme}>
+        <ThemeProvider>
           <LanguageProvider>
             <AuthContext.Provider
               value={{
@@ -98,7 +97,7 @@ const renderSettings = () => {
               <Settings />
             </AuthContext.Provider>
           </LanguageProvider>
-        </CssVarsProvider>
+        </ThemeProvider>
       </QueryClientProvider>
     </MemoryRouter>
   )

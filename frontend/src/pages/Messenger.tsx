@@ -9,7 +9,7 @@ import {
   MessageInput,
   NewChatModal,
 } from "../components/messenger/MessengerComponents"
-import { useMediaQuery } from "@mui/material"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import { useAuth } from "../contexts/AuthContext"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import {
@@ -72,13 +72,13 @@ function ConfirmDialog({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[4000] p-4"
+          className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-4000 p-4"
         >
           <motion.div
             initial={{ scale: 0.9, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.9, opacity: 0, y: 20 }}
-            className="bg-white dark:bg-[#0f172a] rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden border border-white/10"
+            className="bg-white dark:bg-[#0b111e] rounded-4xl shadow-2xl w-full max-w-md overflow-hidden border border-white/10"
           >
             <div className="p-8 space-y-4">
               <h3 className="text-xl font-bold tracking-tight sf-pro">{title}</h3>
@@ -561,7 +561,7 @@ export default function Messenger() {
                       initial={{ y: -20, opacity: 0 }}
                       animate={{ y: 0, opacity: 1 }}
                       exit={{ y: -20, opacity: 0 }}
-                      className="msg-header flex-shrink-0 h-16 flex items-center px-4 justify-between z-10"
+                      className="msg-header shrink-0 h-16 flex items-center px-4 justify-between z-10"
                     >
                       <div className="flex items-center gap-3">
                         {isMobile && (
@@ -744,7 +744,7 @@ export default function Messenger() {
                       initial={{ y: -20, opacity: 0 }}
                       animate={{ y: 0, opacity: 1 }}
                       exit={{ y: -20, opacity: 0 }}
-                      className="flex-shrink-0 h-16 border-b border-gray-200 dark:border-gray-800 flex items-center px-4 bg-white/90 dark:bg-[#0b111e]/90 backdrop-blur-xl z-20"
+                      className="shrink-0 h-16 border-b border-gray-200 dark:border-gray-800 flex items-center px-4 bg-white/90 dark:bg-[#0b111e]/90 backdrop-blur-xl z-20"
                     >
                       <motion.button
                         whileTap={{ scale: 0.9 }}
@@ -843,10 +843,10 @@ export default function Messenger() {
             className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[3000] p-4"
           >
             <motion.div
-              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="bg-white dark:bg-[#0f172a] rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden border border-white/10"
+              className="bg-white dark:bg-[#0f172a] rounded-4xl shadow-2xl w-full max-w-lg overflow-hidden border border-white/10 z-4000"
             >
               <div
                 className="p-6 pb-4 flex items-center justify-between"

@@ -9,22 +9,29 @@
   --nav-link-active-bar: #3b82f6;
 
   --btn-bg: #ffffff;
-  --btn-border: #e2e8f0; /* Slate 200 */
+  --btn-border: #e2e8f0;
+  /* Slate 200 */
 
-  --page-bg: #f8fafc; /* Slate 50 - Very clean, slightly cooler grey-white */
+  --page-bg: #f8fafc;
+  /* Slate 50 - Very clean, slightly cooler grey-white */
   --page-text: #0f172a;
 
   --card-bg: rgba(255, 255, 255, 0.85);
 
   /* Badges - Modern & Saturated */
-  --badge-lec: #3b82f6; /* Blue 500 */
-  --badge-prac: #10b981; /* Emerald 500 */
-  --badge-lab: #f59e0b; /* Amber 500 */
+  --badge-lec: #3b82f6;
+  /* Blue 500 */
+  --badge-prac: #10b981;
+  /* Emerald 500 */
+  --badge-lab: #f59e0b;
+  /* Amber 500 */
 
-  --secondary-text: #64748b; /* Slate 500 */
+  --secondary-text: #64748b;
+  /* Slate 500 */
 
   /* MUI & Semantic Mapping */
-  --color-primary-main: #2563eb; /* Blue 600 */
+  --color-primary-main: #2563eb;
+  /* Blue 600 */
   --color-primary-light: #60a5fa;
   --color-primary-dark: #1e40af;
   --color-primary-contrast: #ffffff;
@@ -32,14 +39,17 @@
   --color-secondary-main: #64748b;
   --color-secondary-contrast: #ffffff;
 
-  --table-header-bg: rgba(248, 250, 252, 0.7); /* Slate 50 with opacity */
+  --table-header-bg: rgba(248, 250, 252, 0.7);
+  /* Slate 50 with opacity */
   --table-row-hover: rgba(241, 245, 249, 0.6);
-  --table-row-today: rgba(239, 246, 255, 0.5); /* Blue 50 */
+  --table-row-today: rgba(239, 246, 255, 0.5);
+  /* Blue 50 */
 
   --link-color: #2563eb;
 
   --menu-hover-bg: rgba(241, 245, 249, 0.8);
-  --menu-hover-text: #0284c7; /* Sky 600 */
+  --menu-hover-text: #0284c7;
+  /* Sky 600 */
 
   --option-bg: rgba(255, 255, 255, 0.9);
   --option-hover-bg: #f0f9ff;
@@ -56,7 +66,8 @@
   --fs-h1: clamp(2rem, 1.5rem + 2.5vw, 3.5rem);
   --fs-h2: clamp(1.5rem, 1.2rem + 1.5vw, 2.5rem);
   --fs-h3: clamp(1.25rem, 1.1rem + 1vw, 2rem);
-  --fs-body: clamp(0.9375rem, 0.9rem + 0.2vw, 1.0625rem); /* Fine-tuned for readability */
+  --fs-body: clamp(0.9375rem, 0.9rem + 0.2vw, 1.0625rem);
+  /* Fine-tuned for readability */
 
   --ls-display: -0.025em;
   --ls-ui: -0.01em;
@@ -65,7 +76,8 @@
   --lh-ui: 1.6;
 
   /* Spacing & Radius */
-  --radius-lg: 24px; /* Soft, premium feel */
+  --radius-lg: 24px;
+  /* Soft, premium feel */
   --radius-md: 16px;
   --radius-sm: 10px;
 
@@ -73,7 +85,8 @@
   /* Ultra-soft ambient shadow + crisp directional shadow */
   --shadow-1: 0 2px 4px -1px rgba(0, 0, 0, 0.04), 0 4px 6px -1px rgba(0, 0, 0, 0.02);
   --shadow-2: 0 10px 30px -4px rgba(0, 0, 0, 0.08), 0 4px 8px -2px rgba(0, 0, 0, 0.03);
-  --shadow-focus: 0 0 0 2px #fff, 0 0 0 4px #bae6fd; /* Sky 200 ring */
+  --shadow-focus: 0 0 0 2px #fff, 0 0 0 4px #bae6fd;
+  /* Sky 200 ring */
   --shadow-up: 0 -8px 24px rgba(0, 0, 0, 0.04);
 
   --selection-bg: #bae6fd;
@@ -83,7 +96,8 @@
   --anim-fast: 0.2s cubic-bezier(0.25, 0.1, 0.25, 1);
   --anim-med: 0.4s cubic-bezier(0.25, 0.1, 0.25, 1);
   --anim-slow: 0.6s cubic-bezier(0.25, 0.1, 0.25, 1);
-  --anim-spring: 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); /* Elastic bounce */
+  --anim-spring: 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* Elastic bounce */
 
   /* Gradients */
   /* Subtle, sophisticated gradients commonly used in SaaS */
@@ -93,8 +107,10 @@
   --dash-header-grad-end: rgba(240, 249, 255, 0.7);
 
   /* Dashboard Orbs */
-  --dash-hero-orb: rgba(56, 189, 248, 0.15); /* Sky */
-  --dash-hero-highlight: rgba(168, 85, 247, 0.1); /* Purple */
+  --dash-hero-orb: rgba(56, 189, 248, 0.15);
+  /* Sky */
+  --dash-hero-highlight: rgba(168, 85, 247, 0.1);
+  /* Purple */
 
   /* Glassmorphism (Crystal Clear 2.0) - More Premium */
   --glass-bg: rgba(255, 255, 255, 0.7);
@@ -104,13 +120,16 @@
     0 20px 25px -5px rgba(0, 0, 0, 0.05);
   --glass-blur: 16px;
   --glass-highlight: rgba(255, 255, 255, 0.8);
-  --glass-tint-1: rgba(37, 99, 235, 0.05); /* Blue tint */
+  --glass-tint-1: rgba(37, 99, 235, 0.05);
+  /* Blue tint */
   --glass-tint-2: rgba(37, 99, 235, 0.1);
   --glass-tint-3: rgba(37, 99, 235, 0.15);
 
   /* Misc */
-  --hint-fg: #94a3b8; /* Slate 400 */
-  --placeholder-fg: #cbd5e1; /* Slate 300 */
+  --hint-fg: #94a3b8;
+  /* Slate 400 */
+  --placeholder-fg: #cbd5e1;
+  /* Slate 300 */
 
   /* Custom UI Spacing */
   --ue-spacing-xs: 0.5rem;
@@ -177,17 +196,23 @@ body.dark {
   --btn-bg: #1e293b;
   --btn-border: #334155;
 
-  --page-bg: #020617; /* Slate 950 - Almost Black */
+  --page-bg: #020617;
+  /* Slate 950 - Almost Black */
   --page-text: #f8fafc;
 
-  --card-bg: rgba(30, 41, 59, 0.75); /* Slate 800 */
+  --card-bg: rgba(30, 41, 59, 0.75);
+  /* Slate 800 */
 
   /* Badges - Neon Glow */
-  --badge-lec: #60a5fa; /* Blue Neon */
-  --badge-prac: #34d399; /* Emerald Neon */
-  --badge-lab: #fbbf24; /* Amber Neon */
+  --badge-lec: #60a5fa;
+  /* Blue Neon */
+  --badge-prac: #34d399;
+  /* Emerald Neon */
+  --badge-lab: #fbbf24;
+  /* Amber Neon */
 
-  --secondary-text: #94a3b8; /* Slate 400 */
+  --secondary-text: #94a3b8;
+  /* Slate 400 */
 
   --color-primary-main: #38bdf8;
   --color-primary-light: #7dd3fc;
@@ -199,11 +224,13 @@ body.dark {
 
   --table-header-bg: rgba(15, 23, 42, 0.8);
   --table-row-hover: rgba(30, 41, 59, 0.5);
-  --table-row-today: rgba(23, 37, 84, 0.4); /* Blue 950 */
+  --table-row-today: rgba(23, 37, 84, 0.4);
+  /* Blue 950 */
 
   --link-color: #38bdf8;
 
-  --menu-hover-bg: rgba(51, 65, 85, 0.5); /* Slate 700 */
+  --menu-hover-bg: rgba(51, 65, 85, 0.5);
+  /* Slate 700 */
   --menu-hover-text: #ffffff;
 
   --option-bg: rgba(15, 23, 42, 0.9);
@@ -216,8 +243,10 @@ body.dark {
   --dash-header-grad-end: rgba(15, 23, 42, 0.7);
 
   /* Dashboard Orbs - Radioactive Glow */
-  --dash-hero-orb: rgba(56, 189, 248, 0.2); /* Sky */
-  --dash-hero-highlight: rgba(139, 92, 246, 0.15); /* Violet */
+  --dash-hero-orb: rgba(56, 189, 248, 0.2);
+  /* Sky */
+  --dash-hero-highlight: rgba(139, 92, 246, 0.15);
+  /* Violet */
 
   /* Shadows - Dark & Deep */
   --shadow-1: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
@@ -338,8 +367,8 @@ button:not(.MuiButtonBase-root):focus-visible,
 }
 
 body {
-  background: var(--page-bg, var(--initial-bg, #060b14));
-  color: var(--page-text);
+  background: var(--bg-page);
+  color: var(--text-primary);
   transition:
     background var(--anim-med),
     color var(--anim-med);
@@ -546,12 +575,12 @@ h3 {
     0 1.5px 8px 0 #0001;
 }
 
-.theme-switch input:checked + .theme-slider .theme-knob {
+.theme-switch input:checked+.theme-slider .theme-knob {
   left: 37px;
   background: #181a1e;
 }
 
-.theme-switch input:checked + .theme-slider {
+.theme-switch input:checked+.theme-slider {
   background: #363d49;
 }
 
@@ -594,8 +623,8 @@ h3 {
 .bg-card,
 .MuiPaper-root,
 .MuiCard-root {
-  background: var(--card-bg) !important;
-  color: var(--page-text) !important;
+  background: var(--bg-surface);
+  color: var(--text-primary);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-1);
   transition:
@@ -639,6 +668,7 @@ body.dark .card-hover:focus-within {
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   .card-hover,
   .menu-link,
   .burger-btn,
@@ -988,12 +1018,10 @@ body.dark .MuiTooltip-tooltip {
 }
 
 .gradient-card-btn {
-  background: linear-gradient(
-    98deg,
-    var(--fed-blue-60v) 10%,
-    var(--fed-blue-70v) 55%,
-    var(--fed-blue-80v) 100%
-  );
+  background: linear-gradient(98deg,
+      var(--fed-blue-60v) 10%,
+      var(--fed-blue-70v) 55%,
+      var(--fed-blue-80v) 100%);
   color: #fff !important;
   font-weight: 800;
   border: none;
@@ -1084,13 +1112,11 @@ body.dark .option-card .MuiTypography-root {
   background:
     radial-gradient(120% 180% at -10% -20%, rgba(36, 145, 255, 0.18), transparent 60%),
     radial-gradient(140% 220% at 110% 10%, rgba(17, 47, 78, 0.18), transparent 62%),
-    linear-gradient(
-      112deg,
+    linear-gradient(112deg,
       var(--fed-blue-90v) 0%,
       var(--fed-blue-80v) 28%,
       var(--fed-blue-70v) 58%,
-      var(--fed-blue-60v) 100%
-    );
+      var(--fed-blue-60v) 100%);
   transition:
     background var(--anim-slow),
     box-shadow 0.27s,
@@ -1116,8 +1142,7 @@ body.dark .option-card .MuiTypography-root {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 32%)
-    no-repeat;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 32%) no-repeat;
   mix-blend-mode: overlay;
   opacity: 0.55;
 }
@@ -1250,7 +1275,7 @@ body:not(.dark) .menu-btn-settings:focus-visible {
   display: flex !important;
 }
 
-body.blurred #root > *:not(.navbar-root):not(.settings-modal) {
+body.blurred #root>*:not(.navbar-root):not(.settings-modal) {
   filter: blur(7px) brightness(0.95);
   transition: filter 0.25s cubic-bezier(0.42, 0, 0.58, 1);
   pointer-events: none;
@@ -1297,13 +1322,11 @@ body.blurred #root > *:not(.navbar-root):not(.settings-modal) {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(
-    180deg,
-    var(--glass-tint-1),
-    var(--glass-tint-2) 38%,
-    var(--glass-tint-3) 64%,
-    transparent
-  );
+  background: linear-gradient(180deg,
+      var(--glass-tint-1),
+      var(--glass-tint-2) 38%,
+      var(--glass-tint-3) 64%,
+      transparent);
 }
 
 .glass--panel:not(.map-head)::after {
@@ -1365,27 +1388,21 @@ body.blurred #root > *:not(.navbar-root):not(.settings-modal) {
   z-index: 50;
   padding: 18px 22px;
   background:
-    radial-gradient(
-      140% 120% at -15% -25%,
+    radial-gradient(140% 120% at -15% -25%,
       rgba(255, 255, 255, 0.32),
       rgba(255, 255, 255, 0.12) 45%,
-      rgba(255, 255, 255, 0) 70%
-    ),
-    radial-gradient(
-      160% 140% at 115% 125%,
+      rgba(255, 255, 255, 0) 70%),
+    radial-gradient(160% 140% at 115% 125%,
       rgba(255, 255, 255, 0.24),
       rgba(255, 255, 255, 0.1) 50%,
-      rgba(255, 255, 255, 0) 75%
-    ),
+      rgba(255, 255, 255, 0) 75%),
     radial-gradient(100% 100% at 50% -10%, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 60%),
-    linear-gradient(
-      180deg,
+    linear-gradient(180deg,
       rgba(255, 255, 255, 0.22) 0%,
       rgba(255, 255, 255, 0.14) 25%,
       rgba(255, 255, 255, 0.08) 50%,
       rgba(255, 255, 255, 0.04) 75%,
-      rgba(255, 255, 255, 0.02) 100%
-    );
+      rgba(255, 255, 255, 0.02) 100%);
   border: 1px solid rgba(255, 255, 255, 0.52);
   -webkit-backdrop-filter: saturate(200%) brightness(1.08);
   backdrop-filter: saturate(200%) brightness(1.08);
@@ -1406,27 +1423,21 @@ body.blurred #root > *:not(.navbar-root):not(.settings-modal) {
 
 body.dark .map-head {
   background:
-    radial-gradient(
-      140% 120% at -15% -25%,
+    radial-gradient(140% 120% at -15% -25%,
       rgba(255, 255, 255, 0.24),
       rgba(255, 255, 255, 0.1) 45%,
-      rgba(255, 255, 255, 0) 70%
-    ),
-    radial-gradient(
-      160% 140% at 115% 125%,
+      rgba(255, 255, 255, 0) 70%),
+    radial-gradient(160% 140% at 115% 125%,
       rgba(255, 255, 255, 0.18),
       rgba(255, 255, 255, 0.08) 50%,
-      rgba(255, 255, 255, 0) 75%
-    ),
+      rgba(255, 255, 255, 0) 75%),
     radial-gradient(100% 100% at 50% -10%, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0) 60%),
-    linear-gradient(
-      180deg,
+    linear-gradient(180deg,
       rgba(255, 255, 255, 0.16) 0%,
       rgba(255, 255, 255, 0.1) 25%,
       rgba(255, 255, 255, 0.06) 50%,
       rgba(255, 255, 255, 0.03) 75%,
-      rgba(255, 255, 255, 0.015) 100%
-    );
+      rgba(255, 255, 255, 0.015) 100%);
   border: 1px solid rgba(255, 255, 255, 0.42);
   -webkit-backdrop-filter: saturate(200%) brightness(1.12);
   backdrop-filter: saturate(200%) brightness(1.12);
@@ -1447,28 +1458,22 @@ body.dark .map-head {
   border-radius: inherit;
   pointer-events: none;
   background:
-    linear-gradient(
-      180deg,
+    linear-gradient(180deg,
       rgba(255, 255, 255, 0.45) 0%,
       rgba(255, 255, 255, 0.28) 15%,
       rgba(255, 255, 255, 0.18) 30%,
       rgba(255, 255, 255, 0.1) 50%,
       rgba(255, 255, 255, 0.05) 70%,
       rgba(255, 255, 255, 0.02) 85%,
-      transparent 100%
-    ),
-    radial-gradient(
-      90% 160% at -5% -20%,
+      transparent 100%),
+    radial-gradient(90% 160% at -5% -20%,
       rgba(255, 255, 255, 0.35),
       rgba(255, 255, 255, 0.15) 40%,
-      transparent 70%
-    ),
-    radial-gradient(
-      70% 120% at 105% 5%,
+      transparent 70%),
+    radial-gradient(70% 120% at 105% 5%,
       rgba(255, 255, 255, 0.25),
       rgba(255, 255, 255, 0.1) 45%,
-      transparent 70%
-    ),
+      transparent 70%),
     radial-gradient(50% 80% at 50% 0%, rgba(255, 255, 255, 0.2), transparent 50%);
   mix-blend-mode: overlay;
   opacity: 0.85;
@@ -1476,28 +1481,22 @@ body.dark .map-head {
 
 body.dark .map-head::before {
   background:
-    linear-gradient(
-      180deg,
+    linear-gradient(180deg,
       rgba(255, 255, 255, 0.35) 0%,
       rgba(255, 255, 255, 0.22) 15%,
       rgba(255, 255, 255, 0.14) 30%,
       rgba(255, 255, 255, 0.08) 50%,
       rgba(255, 255, 255, 0.04) 70%,
       rgba(255, 255, 255, 0.015) 85%,
-      transparent 100%
-    ),
-    radial-gradient(
-      90% 160% at -5% -20%,
+      transparent 100%),
+    radial-gradient(90% 160% at -5% -20%,
       rgba(255, 255, 255, 0.28),
       rgba(255, 255, 255, 0.12) 40%,
-      transparent 70%
-    ),
-    radial-gradient(
-      70% 120% at 105% 5%,
+      transparent 70%),
+    radial-gradient(70% 120% at 105% 5%,
       rgba(255, 255, 255, 0.2),
       rgba(255, 255, 255, 0.08) 45%,
-      transparent 70%
-    ),
+      transparent 70%),
     radial-gradient(50% 80% at 50% 0%, rgba(255, 255, 255, 0.16), transparent 50%);
   opacity: 0.75;
 }
@@ -1511,30 +1510,24 @@ body.dark .map-head::before {
   height: 240px;
   border-radius: 50%;
   background:
-    radial-gradient(
-      circle at 28% 22%,
+    radial-gradient(circle at 28% 22%,
       rgba(255, 255, 255, 0.65) 0%,
       rgba(255, 255, 255, 0.45) 18%,
       rgba(255, 255, 255, 0.3) 32%,
       rgba(255, 255, 255, 0.18) 45%,
       rgba(255, 255, 255, 0.1) 58%,
-      rgba(255, 255, 255, 0) 75%
-    ),
-    conic-gradient(
-      from 205deg at 28% 18%,
+      rgba(255, 255, 255, 0) 75%),
+    conic-gradient(from 205deg at 28% 18%,
       rgba(255, 255, 255, 0.5) 0%,
       rgba(255, 255, 255, 0.35) 12%,
       rgba(255, 255, 255, 0.22) 25%,
       rgba(255, 255, 255, 0.12) 38%,
       rgba(255, 255, 255, 0.06) 50%,
-      transparent 65%
-    ),
-    radial-gradient(
-      ellipse 120% 80% at 35% 15%,
+      transparent 65%),
+    radial-gradient(ellipse 120% 80% at 35% 15%,
       rgba(255, 255, 255, 0.4) 0%,
       rgba(255, 255, 255, 0.2) 30%,
-      transparent 60%
-    );
+      transparent 60%);
   opacity: 0.95;
   mix-blend-mode: screen;
   pointer-events: none;
@@ -1543,35 +1536,29 @@ body.dark .map-head::before {
 
 body.dark .map-head::after {
   background:
-    radial-gradient(
-      circle at 28% 22%,
+    radial-gradient(circle at 28% 22%,
       rgba(255, 255, 255, 0.5) 0%,
       rgba(255, 255, 255, 0.35) 18%,
       rgba(255, 255, 255, 0.22) 32%,
       rgba(255, 255, 255, 0.14) 45%,
       rgba(255, 255, 255, 0.08) 58%,
-      rgba(255, 255, 255, 0) 75%
-    ),
-    conic-gradient(
-      from 205deg at 28% 18%,
+      rgba(255, 255, 255, 0) 75%),
+    conic-gradient(from 205deg at 28% 18%,
       rgba(255, 255, 255, 0.4) 0%,
       rgba(255, 255, 255, 0.28) 12%,
       rgba(255, 255, 255, 0.18) 25%,
       rgba(255, 255, 255, 0.1) 38%,
       rgba(255, 255, 255, 0.05) 50%,
-      transparent 65%
-    ),
-    radial-gradient(
-      ellipse 120% 80% at 35% 15%,
+      transparent 65%),
+    radial-gradient(ellipse 120% 80% at 35% 15%,
       rgba(255, 255, 255, 0.3) 0%,
       rgba(255, 255, 255, 0.15) 30%,
-      transparent 60%
-    );
+      transparent 60%);
   opacity: 0.8;
   filter: brightness(1.15);
 }
 
-.map-head > * {
+.map-head>* {
   position: relative;
   z-index: 2;
 }
@@ -1647,6 +1634,7 @@ body.dark .map-controls-glass .glass--btn[aria-pressed="false"] .MuiSvgIcon-root
 }
 
 @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+
   .glass,
   .glass--btn,
   .glass--panel,
@@ -1711,12 +1699,10 @@ body.dark .glass:not(.map-head) {
 
 .glass--panel:not(.map-head)::before {
   background:
-    linear-gradient(
-      180deg,
+    linear-gradient(180deg,
       rgba(255, 255, 255, 0.06),
       rgba(255, 255, 255, 0.02) 42%,
-      transparent 72%
-    ),
+      transparent 72%),
     radial-gradient(70% 120% at 0% -20%, rgba(255, 255, 255, 0.12), transparent 62%);
 }
 
@@ -1728,12 +1714,10 @@ body.dark .glass:not(.map-head) {
   border-radius: 50%;
   background:
     radial-gradient(closest-side, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0) 62%),
-    conic-gradient(
-      from 210deg at 26% 18%,
+    conic-gradient(from 210deg at 26% 18%,
       rgba(255, 255, 255, 0.28),
       rgba(255, 255, 255, 0.12) 16%,
-      transparent 34%
-    );
+      transparent 34%);
   filter: blur(1px);
   opacity: 0.5;
   mix-blend-mode: screen;
@@ -1796,12 +1780,10 @@ body.dark .glass:not(.map-head) {
   position: absolute;
   inset: -40%;
   pointer-events: none;
-  background: linear-gradient(
-    105deg,
-    transparent 30%,
-    rgba(255, 255, 255, 0.36) 48%,
-    transparent 66%
-  );
+  background: linear-gradient(105deg,
+      transparent 30%,
+      rgba(255, 255, 255, 0.36) 48%,
+      transparent 66%);
   transform: translateX(-20%) rotate(10deg);
   transition:
     transform 0.65s cubic-bezier(0.22, 0.61, 0.36, 1),
@@ -1864,7 +1846,7 @@ body.dark .glass:not(.map-head) {
   }
 }
 
-.map-page > iframe,
+.map-page>iframe,
 .map-page .map-iframe,
 .map-page iframe {
   position: absolute;
@@ -1995,8 +1977,7 @@ body.dark .map-head .map-btn--reset:hover {
   border-color: rgba(255, 255, 255, 0.36);
 }
 
-:where(
-  button,
+:where(button,
   [role="button"],
   a,
   input,
@@ -2007,8 +1988,7 @@ body.dark .map-head .map-btn--reset:hover {
   .MuiOutlinedInput-root,
   .MuiSelect-root,
   .MuiCheckbox-root,
-  .MuiRadio-root
-):focus-visible {
+  .MuiRadio-root):focus-visible {
   box-shadow: var(--shadow-focus) !important;
   outline: none;
 }
@@ -2124,6 +2104,7 @@ body.dark .profile-edit .Mui-focused .MuiOutlinedInput-notchedOutline {
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   .glass--btn,
   .glass--panel,
   .gradient-card-btn,
@@ -2257,11 +2238,9 @@ body.dark .contact-links svg {
 }
 
 body:not(.dark) .profile-panel {
-  background: linear-gradient(
-    170deg,
-    rgba(255, 255, 255, 0.94),
-    rgba(240, 247, 255, 0.88)
-  ) !important;
+  background: linear-gradient(170deg,
+      rgba(255, 255, 255, 0.94),
+      rgba(240, 247, 255, 0.88)) !important;
   border: 1px solid color-mix(in srgb, var(--nav-link) 18%, transparent) !important;
   box-shadow:
     0 30px 84px -56px rgba(15, 40, 85, 0.28),
@@ -2285,11 +2264,9 @@ body.dark .profile-panel::before {
 }
 
 body:not(.dark) .profile-panel--primary {
-  background: linear-gradient(
-    175deg,
-    rgba(255, 255, 255, 0.97),
-    rgba(233, 242, 255, 0.9)
-  ) !important;
+  background: linear-gradient(175deg,
+      rgba(255, 255, 255, 0.97),
+      rgba(233, 242, 255, 0.9)) !important;
   border-color: color-mix(in srgb, var(--nav-link) 26%, transparent) !important;
   box-shadow:
     0 36px 94px -58px color-mix(in srgb, var(--nav-link) 34%, transparent),
@@ -2310,11 +2287,9 @@ body:not(.dark) .profile-panel--hero::before {
 }
 
 body:not(.dark) .profile-panel--compact {
-  background: linear-gradient(
-    165deg,
-    rgba(255, 255, 255, 0.99),
-    rgba(232, 241, 255, 0.9)
-  ) !important;
+  background: linear-gradient(165deg,
+      rgba(255, 255, 255, 0.99),
+      rgba(232, 241, 255, 0.9)) !important;
   border-color: color-mix(in srgb, var(--nav-link) 20%, transparent) !important;
   box-shadow:
     0 26px 72px -50px rgba(15, 79, 170, 0.28),
@@ -2326,11 +2301,9 @@ body:not(.dark) .profile-panel--compact::before {
 }
 
 body:not(.dark) .profile-panel--editor {
-  background: linear-gradient(
-    172deg,
-    rgba(255, 255, 255, 0.98),
-    rgba(228, 239, 252, 0.9)
-  ) !important;
+  background: linear-gradient(172deg,
+      rgba(255, 255, 255, 0.98),
+      rgba(228, 239, 252, 0.9)) !important;
   border-color: color-mix(in srgb, var(--nav-link) 24%, transparent) !important;
 }
 
@@ -2650,22 +2623,16 @@ body.dark .chip-gradient {
   position: absolute;
   inset: -2px;
   border-radius: 50%;
-  background: conic-gradient(
-    from 210deg at 50% 50%,
-    var(--accent-dyn, #b3d8ff),
-    var(--fed-blue-60v),
-    var(--accent-dyn, #b3d8ff)
-  );
-  -webkit-mask: radial-gradient(
-    farthest-side,
-    rgba(0, 0, 0, 0) calc(100% - 6px),
-    rgba(0, 0, 0, 1) calc(100% - 6px)
-  );
-  mask: radial-gradient(
-    farthest-side,
-    rgba(0, 0, 0, 0) calc(100% - 6px),
-    rgba(0, 0, 0, 1) calc(100% - 6px)
-  );
+  background: conic-gradient(from 210deg at 50% 50%,
+      var(--accent-dyn, #b3d8ff),
+      var(--fed-blue-60v),
+      var(--accent-dyn, #b3d8ff));
+  -webkit-mask: radial-gradient(farthest-side,
+      rgba(0, 0, 0, 0) calc(100% - 6px),
+      rgba(0, 0, 0, 1) calc(100% - 6px));
+  mask: radial-gradient(farthest-side,
+      rgba(0, 0, 0, 0) calc(100% - 6px),
+      rgba(0, 0, 0, 1) calc(100% - 6px));
   opacity: 0.9;
 }
 
@@ -2813,13 +2780,11 @@ body.dark {
 .footer-root {
   background:
     radial-gradient(120% 180% at -10% -20%, rgba(36, 145, 255, 0.14), transparent 60%),
-    linear-gradient(
-      112deg,
+    linear-gradient(112deg,
       var(--fed-blue-90v) 0%,
       var(--fed-blue-80v) 28%,
       var(--fed-blue-70v) 58%,
-      var(--fed-blue-60v) 100%
-    );
+      var(--fed-blue-60v) 100%);
   color: #ffffff;
   border-top: 1px solid rgba(255, 255, 255, 0.12);
   position: relative;
@@ -3296,6 +3261,7 @@ body.dark {
 }
 
 @media (prefers-reduced-transparency: reduce) {
+
   .ios-material-ultrathin,
   .ios-material-thin,
   .ios-material-regular {
@@ -3469,6 +3435,7 @@ body.dark .ios-list .ios-row {
 
 /* Pulse shadow animation for buttons */
 @keyframes pulse-shadow {
+
   0%,
   100% {
     box-shadow: 0 4px 16px -4px color-mix(in srgb, var(--nav-link) 40%, transparent 60%);

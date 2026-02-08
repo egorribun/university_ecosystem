@@ -1,31 +1,18 @@
 import { useCallback, useMemo, useState } from "react"
 import type { ChangeEvent } from "react"
-import {
-  Alert,
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Checkbox,
-  CircularProgress,
-  FormControlLabel,
-  IconButton,
-  Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Tooltip,
-  TextField,
-  Typography,
-} from "@mui/material"
-import ReplayIcon from "@mui/icons-material/Replay"
-import DeleteIcon from "@mui/icons-material/Delete"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
 import { useTranslation } from "react-i18next"
+import { RotateCcw, Trash2, Loader2, Info, AlertTriangle } from "lucide-react"
+import { cn } from "@/utils/cn"
+import {
+  Alert,
+  Button,
+  TextField,
+  SectionCard,
+  Divider,
+  CircularProgress,
+} from "@/components/settings"
 
 import {
   fetchAdminUserTopics,
@@ -253,15 +240,15 @@ export default function AdminNotifications() {
   const renderContent = () => {
     if (isLoading) {
       return (
-        <Box py={6} display="flex" justifyContent="center" alignItems="center">
-          <CircularProgress aria-label={t("common:loading") ?? "Loading"} />
-        </Box>
+        <div className="flex justify-center py-12">
+          <CircularProgress />
+        </div>
       )
     }
 
     if (hasError) {
       return (
-        <Alert severity="error" sx={{ mt: 2 }}>
+        <Alert severity="error" className="mt-4">
           {getErrorMessage(listQuery.error, t("admin:notifications.errors.fetch"))}
         </Alert>
       )
@@ -269,280 +256,266 @@ export default function AdminNotifications() {
 
     if (!jobs.length) {
       return (
-        <Alert severity="info" sx={{ mt: 2 }}>
+        <Alert severity="info" className="mt-4">
           {t("admin:notifications.empty")}
         </Alert>
       )
     }
 
     return (
-      <TableContainer component={Card} sx={{ mt: 2 }}>
-        <Table size="small" aria-label={t("admin:notifications.table.aria") ?? "Dead-letter queue"}>
-          <TableHead>
-            <TableRow>
-              <TableCell padding="checkbox">
-                <Checkbox
-                  indeterminate={selected.size > 0 && !allSelected}
-                  checked={allSelected}
-                  onChange={handleSelectAll}
-                  inputProps={{
-                    "aria-label": t("admin:notifications.table.selectAll") ?? "Select all",
-                  }}
-                />
-              </TableCell>
-              <TableCell>{t("admin:notifications.table.columns.kind")}</TableCell>
-              <TableCell>{t("admin:notifications.table.columns.record")}</TableCell>
-              <TableCell>{t("admin:notifications.table.columns.locale")}</TableCell>
-              <TableCell>{t("admin:notifications.table.columns.enqueued")}</TableCell>
-              <TableCell>{t("admin:notifications.table.columns.attempts")}</TableCell>
-              <TableCell>{t("admin:notifications.table.columns.lastError")}</TableCell>
-              <TableCell align="right">{t("admin:notifications.table.columns.actions")}</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {jobs.map((job) => {
-              const isSelected = selected.has(job.id)
-              return (
-                <TableRow key={job.id} selected={isSelected} hover>
-                  <TableCell padding="checkbox">
-                    <Checkbox
-                      checked={isSelected}
-                      onChange={() => toggleSelect(job.id)}
-                      inputProps={{
-                        "aria-label":
-                          t("admin:notifications.table.selectRow", { id: job.id }) ?? "Select",
-                      }}
-                    />
-                  </TableCell>
-                  <TableCell>{formatJobKind(job.kind, t)}</TableCell>
-                  <TableCell>{job.record_id}</TableCell>
-                  <TableCell>
-                    {job.locale ?? t("admin:notifications.table.localeFallback")}
-                  </TableCell>
-                  <TableCell>
-                    {formatDate(new Date(job.enqueued_at), { preset: "datetime" })}
-                  </TableCell>
-                  <TableCell>{job.attempts}</TableCell>
-                  <TableCell>
-                    <Typography
-                      component="span"
-                      sx={{
-                        display: "-webkit-box",
-                        WebkitBoxOrient: "vertical",
-                        WebkitLineClamp: 2,
-                        overflow: "hidden",
-                      }}
-                    >
-                      {job.last_error ?? t("admin:notifications.table.noError")}
-                    </Typography>
-                  </TableCell>
-                  <TableCell align="right">
-                    <Tooltip title={t("admin:notifications.actions.retry") ?? "Retry"}>
-                      <span>
-                        <IconButton
-                          size="small"
+      <div className="mt-4 overflow-hidden rounded-2xl border border-glass-border bg-surface/40 shadow-glass">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse" aria-label={t("admin:notifications.table.aria") ?? "Dead-letter queue"}>
+            <thead>
+              <tr className="border-b border-glass-border/10 bg-surface-hover/20">
+                <th className="px-4 py-3">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-glass-border bg-surface/50 text-brand focus:ring-brand/30"
+                    checked={allSelected}
+                    onChange={handleSelectAll}
+                    aria-label={t("admin:notifications.table.selectAll") ?? "Select all"}
+                  />
+                </th>
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                  {t("admin:notifications.table.columns.kind")}
+                </th>
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                  {t("admin:notifications.table.columns.record")}
+                </th>
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                  {t("admin:notifications.table.columns.locale")}
+                </th>
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                  {t("admin:notifications.table.columns.enqueued")}
+                </th>
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                  {t("admin:notifications.table.columns.attempts")}
+                </th>
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                  {t("admin:notifications.table.columns.lastError")}
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                  {t("admin:notifications.table.columns.actions")}
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-glass-border/10">
+              {jobs.map((job) => {
+                const isSelected = selected.has(job.id)
+                return (
+                  <tr key={job.id} className={cn("transition-colors hover:bg-surface-hover/10", isSelected && "bg-brand/5")}>
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-glass-border bg-surface/50 text-brand focus:ring-brand/30"
+                        checked={isSelected}
+                        onChange={() => toggleSelect(job.id)}
+                        aria-label={t("admin:notifications.table.selectRow", { id: job.id }) ?? "Select"}
+                      />
+                    </td>
+                    <td className="px-4 py-3 text-sm text-primary-text">{formatJobKind(job.kind, t)}</td>
+                    <td className="px-4 py-3 text-sm text-primary-text font-mono truncate max-w-[120px]">{job.record_id}</td>
+                    <td className="px-4 py-3 text-sm text-secondary-text">
+                      {job.locale ?? t("admin:notifications.table.localeFallback")}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-secondary-text whitespace-nowrap">
+                      {formatDate(new Date(job.enqueued_at), { preset: "datetime" })}
+                    </td>
+                    <td className="px-4 py-3 text-sm font-bold text-primary-text">{job.attempts}</td>
+                    <td className="px-4 py-3 text-sm text-secondary-text max-w-[200px]">
+                      <span className="line-clamp-2" title={job.last_error ?? ""}>
+                        {job.last_error ?? t("admin:notifications.table.noError")}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      <div className="flex justify-end gap-1">
+                        <button
+                          type="button"
                           onClick={() => retryMutation.mutate([job.id])}
                           disabled={retryMutation.isPending || purgeMutation.isPending}
-                          aria-label={
-                            t("admin:notifications.actions.retryJob", { id: job.id }) ?? "Retry job"
-                          }
+                          className="p-1.5 text-brand hover:bg-brand/10 rounded-lg transition-colors disabled:opacity-50"
+                          title={t("admin:notifications.actions.retry")}
                         >
-                          <ReplayIcon fontSize="small" />
-                        </IconButton>
-                      </span>
-                    </Tooltip>
-                    <Tooltip title={t("admin:notifications.actions.purge") ?? "Delete"}>
-                      <span>
-                        <IconButton
-                          size="small"
+                          <RotateCcw className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => purgeMutation.mutate([job.id])}
                           disabled={retryMutation.isPending || purgeMutation.isPending}
-                          aria-label={
-                            t("admin:notifications.actions.purgeJob", { id: job.id }) ??
-                            "Delete job"
-                          }
+                          className="p-1.5 text-error hover:bg-error/10 rounded-lg transition-colors disabled:opacity-50"
+                          title={t("admin:notifications.actions.purge")}
                         >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                      </span>
-                    </Tooltip>
-                  </TableCell>
-                </TableRow>
-              )
-            })}
-          </TableBody>
-        </Table>
-      </TableContainer>
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
     )
   }
 
   return (
     <Layout>
-      <Box
-        sx={{
-          width: "100vw",
-          minHeight: "100vh",
-          bgcolor: "var(--page-bg)",
-          color: "var(--page-text)",
-          py: { xs: 3.5, sm: 3.5, md: 3.5, lg: 3.5 },
-        }}
-      >
+      <div className="min-h-screen w-full bg-background/50 py-8">
         <PageFadeIn>
-          <Box
-            sx={{
-              ml: { xs: 2, sm: 4, md: 5, lg: 8 },
-              mr: { xs: 2, sm: 4, md: 5, lg: 8 },
-              maxWidth: 1200,
-              mx: "auto",
-            }}
-          >
-            <Typography
-              variant="h4"
-              fontWeight={700}
-              mb={2}
-              color="primary.main"
-              sx={{
-                textAlign: "left",
-                fontSize: "clamp(0.8rem, 5vw, 2.7rem)",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {t("admin:notifications.title")}
-            </Typography>
-            <Typography variant="body1" color="text.secondary">
-              {t("admin:notifications.subtitle")}
-            </Typography>
-            <Card sx={{ mt: 3 }}>
-              <CardContent>
-                <Typography variant="h6" fontWeight={600} gutterBottom>
-                  {t("admin:notifications.topics.title")}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {t("admin:notifications.topics.description")}
-                </Typography>
-                <Stack
-                  direction={{ xs: "column", sm: "row" }}
-                  spacing={2}
-                  alignItems={{ xs: "stretch", sm: "flex-end" }}
-                  mt={2}
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="mb-8 flex flex-col gap-2">
+              <h1 className="text-4xl font-bold tracking-tight text-primary-text sm:text-5xl">
+                {t("admin:notifications.title")}
+              </h1>
+              <p className="text-base text-secondary-text">
+                {t("admin:notifications.subtitle")}
+              </p>
+            </div>
+
+            <SectionCard className="p-6">
+              <h2 className="text-lg font-bold tracking-tight text-primary-text mb-1">
+                {t("admin:notifications.topics.title")}
+              </h2>
+              <p className="text-sm text-secondary-text mb-6">
+                {t("admin:notifications.topics.description")}
+              </p>
+
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+                <TextField
+                  label={t("admin:notifications.topics.userIdLabel")}
+                  value={topicsUserIdInput}
+                  onChange={(event) => {
+                    setTopicsUserIdInput(event.target.value)
+                    resetTopicFeedback()
+                  }}
+                  disabled={topicsBusy}
+                  className="sm:min-w-[240px]"
+                />
+                <Button
+                  onClick={handleLoadTopics}
+                  disabled={topicsBusy}
+                  className="sm:min-w-[120px]"
                 >
-                  <TextField
-                    label={t("admin:notifications.topics.userIdLabel")}
-                    value={topicsUserIdInput}
-                    onChange={(event) => {
-                      setTopicsUserIdInput(event.target.value)
-                      resetTopicFeedback()
-                    }}
-                    type="text"
-                    // inputProps={{ min: 1 }}
-                    sx={{ minWidth: { xs: "100%", sm: 200 } }}
-                    disabled={topicsBusy}
-                  />
-                  <Button variant="contained" onClick={handleLoadTopics} disabled={topicsBusy}>
-                    {topicsBusy
-                      ? (t("common:loading") ?? "Loading")
-                      : t("admin:notifications.topics.load")}
-                  </Button>
-                </Stack>
-                {topicsError && (
-                  <Alert severity="error" sx={{ mt: 2 }}>
-                    {topicsError}
-                  </Alert>
-                )}
-                {topicsMessage && (
-                  <Alert severity="success" sx={{ mt: 2 }}>
-                    {topicsMessage}
-                  </Alert>
-                )}
-                {topicsData && (
-                  <Box mt={topicsError || topicsMessage ? 2 : 3}>
-                    <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                  {topicsBusy ? (
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>{t("common:loading")}</span>
+                    </div>
+                  ) : (
+                    t("admin:notifications.topics.load")
+                  )}
+                </Button>
+              </div>
+
+              {topicsError && (
+                <Alert severity="error" className="mt-4">
+                  {topicsError}
+                </Alert>
+              )}
+              {topicsMessage && (
+                <Alert severity="info" className="mt-4">
+                  {topicsMessage}
+                </Alert>
+              )}
+
+              {topicsData && (
+                <div className="mt-8 space-y-6">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-primary-text">
                       {t("admin:notifications.topics.userSummary", {
                         email: topicsData.email,
                         id: topicsData.user_id,
                       })}
-                    </Typography>
-                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1} flexWrap="wrap">
-                      {topicsData.allowed_topics.length === 0 ? (
-                        <Typography variant="body2" color="text.secondary">
-                          {t("admin:notifications.topics.empty")}
-                        </Typography>
-                      ) : (
-                        topicsData.allowed_topics.map((topic) => {
-                          const normalized = normalizeTopicKey(topic)
-                          const translationKey = `notifications:topics.${normalized}`
-                          const label = t(translationKey)
-                          const resolvedLabel = label === translationKey ? topic : (label as string)
-                          return (
-                            <FormControlLabel
-                              key={topic}
-                              control={
-                                <Checkbox
-                                  checked={Boolean(topicsState[normalized])}
-                                  onChange={handleTopicToggle(topic)}
-                                  disabled={topicsBusy}
-                                />
-                              }
-                              label={resolvedLabel}
+                    </h3>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {topicsData.allowed_topics.length === 0 ? (
+                      <p className="text-sm text-secondary-text">
+                        {t("admin:notifications.topics.empty")}
+                      </p>
+                    ) : (
+                      topicsData.allowed_topics.map((topic) => {
+                        const normalized = normalizeTopicKey(topic)
+                        const translationKey = `notifications:topics.${normalized}`
+                        const label = t(translationKey)
+                        const resolvedLabel = label === translationKey ? topic : (label as string)
+                        return (
+                          <div key={topic} className="flex items-center gap-3 rounded-xl border border-glass-border/10 bg-surface/20 px-4 py-3 transition-colors hover:bg-surface/30">
+                            <input
+                              type="checkbox"
+                              id={`topic-${normalized}`}
+                              checked={Boolean(topicsState[normalized])}
+                              onChange={(e) => handleTopicToggle(topic)(null as any, e.target.checked)}
+                              disabled={topicsBusy}
+                              className="h-5 w-5 rounded border-glass-border bg-surface/50 text-brand focus:ring-brand/30"
                             />
-                          )
-                        })
-                      )}
-                    </Stack>
-                    <Box mt={2}>
-                      <Button
-                        variant="contained"
-                        color="primary"
-                        onClick={handleSaveTopics}
-                        disabled={topicsBusy || !topicsData.allowed_topics.length}
-                      >
-                        {topicsBusy
-                          ? (t("common:loading") ?? "Loading")
-                          : t("admin:notifications.topics.save")}
-                      </Button>
-                    </Box>
-                  </Box>
-                )}
-              </CardContent>
-            </Card>
-            <Card sx={{ mt: 3 }}>
-              <CardContent>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems="flex-start">
-                  <Typography variant="subtitle1" fontWeight={600} sx={{ flexGrow: 1 }}>
+                            <label htmlFor={`topic-${normalized}`} className="text-sm font-medium text-primary-text leading-none select-none">
+                              {resolvedLabel}
+                            </label>
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+
+                  <Button
+                    onClick={handleSaveTopics}
+                    disabled={topicsBusy || !topicsData.allowed_topics.length}
+                    className="min-w-[140px]"
+                  >
+                    {topicsBusy ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      t("admin:notifications.topics.save")
+                    )}
+                  </Button>
+                </div>
+              )}
+            </SectionCard>
+
+            <SectionCard className="mt-6 p-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-lg font-bold tracking-tight text-primary-text">
                     {t("admin:notifications.total", { count: total })}
-                  </Typography>
-                  <Stack direction="row" spacing={1}>
-                    <Button
-                      variant="contained"
-                      color="primary"
-                      onClick={handleRetrySelected}
-                      disabled={disableActions}
-                    >
-                      {t("admin:notifications.actions.retrySelected")}
-                    </Button>
-                    <Button
-                      variant="outlined"
-                      color="secondary"
-                      onClick={handlePurgeSelected}
-                      disabled={disableActions}
-                    >
-                      {t("admin:notifications.actions.purgeSelected")}
-                    </Button>
-                  </Stack>
-                </Stack>
-                {actionError && (
-                  <Alert severity="error" sx={{ mt: 2 }}>
-                    {actionError}
-                  </Alert>
-                )}
-                {renderContent()}
-              </CardContent>
-            </Card>
-          </Box>
+                  </h2>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    onClick={handleRetrySelected}
+                    disabled={disableActions}
+                    variant="outline"
+                    className="flex-1 sm:flex-initial"
+                  >
+                    <RotateCcw className="mr-2 h-4 w-4" />
+                    {t("admin:notifications.actions.retrySelected")}
+                  </Button>
+                  <Button
+                    onClick={handlePurgeSelected}
+                    disabled={disableActions}
+                    variant="outline"
+                    className="flex-1 border-error/20 text-error hover:bg-error/5 sm:flex-initial"
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    {t("admin:notifications.actions.purgeSelected")}
+                  </Button>
+                </div>
+              </div>
+
+              {actionError && (
+                <Alert severity="error" className="mt-4">
+                  {actionError}
+                </Alert>
+              )}
+
+              {renderContent()}
+            </SectionCard>
+          </div>
         </PageFadeIn>
-      </Box>
+      </div>
     </Layout>
   )
 }

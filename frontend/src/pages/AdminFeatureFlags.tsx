@@ -1,29 +1,28 @@
 import { useCallback, useEffect, useState } from "react"
+import { motion, AnimatePresence } from "framer-motion"
+import { useTranslation } from "react-i18next"
+import {
+  Activity,
+  Shield,
+  Settings,
+  Info,
+  Lock,
+  Unlock,
+  Users,
+  Percent,
+  ToggleLeft
+} from "lucide-react"
 import api from "../api/client"
 import Layout from "../components/Layout"
+import { cn } from "@/utils/cn"
 import {
-  Box,
-  Typography,
-  Paper,
-  Table,
-  TableHead,
-  TableRow,
-  TableCell,
-  TableBody,
-  TableContainer,
-  Stack,
-  Switch,
-  Slider,
-  Tooltip,
+  SectionCard,
+  SwitchControl,
   Chip,
-  circularProgressClasses,
-  CircularProgress,
-  IconButton,
-} from "@mui/material"
-import { useTranslation } from "react-i18next"
-import { motion, AnimatePresence } from "framer-motion"
+  Button,
+  Divider,
+} from "@/components/settings"
 import { FeatureFlag, FlagStatus } from "../types/Admin"
-import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined"
 
 export default function AdminFeatureFlags() {
   const [flags, setFlags] = useState<FeatureFlag[]>([])
@@ -71,189 +70,123 @@ export default function AdminFeatureFlags() {
   if (loading) {
     return (
       <Layout>
-        <Box
-          display="flex"
-          justifyContent="center"
-          alignItems="center"
-          minHeight="100vh"
-          bgcolor="var(--page-bg)"
-        >
-          <CircularProgress
-            variant="indeterminate"
-            disableShrink
-            sx={{
-              color: "var(--primary-main)",
-              animationDuration: "550ms",
-              [`& .${circularProgressClasses.circle}`]: {
-                strokeLinecap: "round",
-              },
-            }}
-            size={40}
-            thickness={4}
-          />
-        </Box>
+        <div className="flex min-h-screen items-center justify-center bg-background/50">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-brand border-t-transparent" />
+        </div>
       </Layout>
     )
   }
 
   return (
     <Layout>
-      <Box
-        sx={{
-          width: "100%",
-          minHeight: "100vh",
-          bgcolor: "var(--page-bg)",
-          color: "var(--page-text)",
-          py: 4,
-          px: { xs: 2, sm: 4, md: 6 },
-        }}
-      >
-        <Box maxWidth={1200} mx="auto">
+      <div className="min-h-screen w-full bg-background/50 py-12">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
+            className="mb-8"
           >
-            <Typography
-              variant="h4"
-              fontWeight={800}
-              mb={4}
-              sx={{
-                background: "linear-gradient(45deg, var(--primary-main), #818cf8)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-                letterSpacing: "-0.02em",
-              }}
-            >
+            <h1 className="text-4xl font-bold tracking-tight text-primary-text sm:text-5xl">
               {t("featureFlags.title", "Dynamic Feature Flags")}
-            </Typography>
+            </h1>
+            <p className="mt-2 text-base text-secondary-text">
+              Real-time control over application features and rollout strategies.
+            </p>
           </motion.div>
 
-          <TableContainer
-            component={Paper}
-            sx={{
-              borderRadius: 4,
-              overflow: "hidden",
-              border: "1px solid var(--glass-border)",
-              bgcolor: "var(--surface-accent)",
-              backdropFilter: "blur(12px)",
-              boxShadow: "0 8px 32px 0 rgba(0, 0, 0, 0.1)",
-            }}
-          >
-            <Table>
-              <TableHead>
-                <TableRow sx={{ bgcolor: "rgba(0,0,0,0.05)" }}>
-                  <TableCell sx={{ fontWeight: 700, color: "var(--page-text)" }}>
-                    {t("featureFlags.table.flag", "Feature Flag")}
-                  </TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: "var(--page-text)" }}>
-                    {t("featureFlags.table.status", "Status")}
-                  </TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: "var(--page-text)" }}>
-                    {t("featureFlags.table.rollout", "Rollout")}
-                  </TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 700, color: "var(--page-text)" }}>
-                    {t("featureFlags.table.details", "Details")}
-                  </TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                <AnimatePresence mode="popLayout">
-                  {flags.map((flag, index) => (
-                    <TableRow
-                      key={flag.name}
-                      component={motion.tr}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.05 }}
-                      hover
-                      sx={{
-                        "&:last-child td, &:last-child th": { border: 0 },
-                        transition: "background-color 0.2s",
-                      }}
-                    >
-                      <TableCell>
-                        <Stack spacing={0.5}>
-                          <Typography fontWeight={700} fontSize={16} color="var(--page-text)">
-                            {flag.name}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 300 }}>
-                            {flag.description}
-                          </Typography>
-                        </Stack>
-                      </TableCell>
-                      <TableCell>
-                        <Stack direction="row" spacing={2} alignItems="center">
-                          <Chip
-                            label={flag.status.toUpperCase()}
-                            size="small"
-                            color={getStatusColor(flag.status)}
-                            sx={{ fontWeight: 700, borderRadius: 1.5, minWidth: 90 }}
-                          />
-                          <Switch
-                            checked={flag.status !== "disabled"}
-                            onChange={() => handleToggle(flag.name, flag.status)}
-                            color="primary"
-                            sx={{
-                              "& .MuiSwitch-switchBase.Mui-checked": {
-                                color: "var(--primary-main)",
-                              },
-                              "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": {
-                                backgroundColor: "var(--primary-main)",
-                              },
-                            }}
-                          />
-                        </Stack>
-                      </TableCell>
-                      <TableCell sx={{ width: 250 }}>
-                        {flag.status === "percentage" ? (
-                          <Box px={2}>
-                            <Slider
-                              value={flag.percentage}
-                              onChange={(_, val) =>
-                                handlePercentageChange(flag.name, val as number)
-                              }
-                              valueLabelDisplay="auto"
-                              step={5}
-                              marks
-                              min={0}
-                              max={100}
-                              sx={{
-                                color: "var(--primary-main)",
-                                "& .MuiSlider-thumb": {
-                                  width: 14,
-                                  height: 14,
-                                  "&:hover, &.Mui-focusVisible": {
-                                    boxShadow: "0 0 0 8px rgba(99, 102, 241, 0.16)",
-                                  },
-                                },
-                              }}
+          <div className="overflow-hidden rounded-3xl border border-glass-border bg-surface/40 shadow-glass">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-glass-border/10 bg-surface-hover/20">
+                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                      {t("featureFlags.table.flag", "Feature Flag")}
+                    </th>
+                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                      {t("featureFlags.table.status", "Status")}
+                    </th>
+                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                      {t("featureFlags.table.rollout", "Rollout")}
+                    </th>
+                    <th className="px-6 py-4 text-right text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                      {t("featureFlags.table.details", "Details")}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-glass-border/10">
+                  <AnimatePresence mode="popLayout">
+                    {flags.map((flag, index) => (
+                      <motion.tr
+                        key={flag.name}
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: index * 0.05 }}
+                        className="transition-colors hover:bg-surface-hover/5"
+                      >
+                        <td className="px-6 py-5">
+                          <div className="flex flex-col gap-1">
+                            <span className="text-base font-bold text-primary-text">
+                              {flag.name}
+                            </span>
+                            <span className="text-xs text-secondary-text max-w-xs opacity-70">
+                              {flag.description}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-5">
+                          <div className="flex items-center gap-4">
+                            <Chip
+                              label={flag.status.toUpperCase()}
+                              color={getStatusColor(flag.status) === "success" ? "success" : getStatusColor(flag.status) === "info" ? "primary" : "default"}
+                              className="w-24 justify-center"
                             />
-                            <Typography variant="caption" color="text.secondary">
-                              {flag.percentage}% of users
-                            </Typography>
-                          </Box>
-                        ) : (
-                          <Typography variant="body2" color="text.disabled" fontStyle="italic">
-                            Global toggle active
-                          </Typography>
-                        )}
-                      </TableCell>
-                      <TableCell align="right">
-                        <Tooltip title={JSON.stringify(flag.metadata, null, 2)} arrow>
-                          <IconButton size="small" sx={{ color: "text.secondary" }}>
-                            <InfoOutlinedIcon fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </AnimatePresence>
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Box>
-      </Box>
+                            <SwitchControl
+                              checked={flag.status !== "disabled"}
+                              onChange={() => handleToggle(flag.name, flag.status)}
+                            />
+                          </div>
+                        </td>
+                        <td className="px-6 py-5">
+                          {flag.status === "percentage" ? (
+                            <div className="flex flex-col gap-2 min-w-[200px]">
+                              <input
+                                type="range"
+                                min="0"
+                                max="100"
+                                step="5"
+                                value={flag.percentage}
+                                onChange={(e) => handlePercentageChange(flag.name, parseInt(e.target.value))}
+                                className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-glass-border accent-brand"
+                              />
+                              <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-secondary-text">
+                                <span>{flag.percentage}% of users</span>
+                                <Percent className="h-3 w-3" />
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-sm italic text-secondary-text opacity-50">
+                              Global toggle active
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-5 text-right">
+                          <button
+                            title={JSON.stringify(flag.metadata, null, 2)}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-secondary-text transition-colors hover:bg-surface-hover/20 hover:text-brand"
+                          >
+                            <Info className="h-4 w-4" />
+                          </button>
+                        </td>
+                      </motion.tr>
+                    ))}
+                  </AnimatePresence>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
     </Layout>
   )
 }
