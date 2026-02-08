@@ -1,26 +1,41 @@
+# syntax=docker/dockerfile:1.7
+
 # Build stage
-FROM golang:1.25-alpine AS builder
+FROM golang:1.25.5-alpine3.21 AS builder
 
 WORKDIR /app
 
 RUN apk add --no-cache git ca-certificates
 
-COPY go.mod go.sum* ./
+# Copy required dependencies for the replace directive
+COPY go.mod go.sum ./
+COPY gen/go ./gen/go
+COPY services/ws-hub/go.mod services/ws-hub/go.sum* ./services/ws-hub/
+
+WORKDIR /app/services/ws-hub
 RUN go mod download
 
-COPY . .
+# Copy source
+COPY services/ws-hub .
 
+# Build
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o ws-hub .
 
 # Runtime stage
-FROM alpine:3.23
+FROM alpine:3.21.2
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata \
+  && addgroup -S app && adduser -S app -G app
 
 WORKDIR /app
 
-COPY --from=builder /app/ws-hub .
+COPY --from=builder --chown=app:app /app/services/ws-hub/ws-hub .
+
+USER app
 
 EXPOSE 8081
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD nc -z localhost 8081 || exit 1
 
 CMD ["./ws-hub"]

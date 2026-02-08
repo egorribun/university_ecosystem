@@ -4,7 +4,7 @@
 services:
   # Caddy - Reverse proxy with automatic HTTPS
   caddy:
-    image: caddy:2-alpine
+    image: caddy:2.9.1-alpine
     ports:
       - "80:80"
       - "443:443"
@@ -23,10 +23,20 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # MinIO - S3-compatible object storage
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2024-01-31T20-20-33Z
     command: server /data --console-address ":9001"
     ports:
       - "9000:9000" # API
@@ -43,11 +53,21 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     restart: unless-stopped
 
   # NATS JetStream - High-performance messaging
   nats:
-    image: nats:2-alpine
+    image: nats:2.10.25-alpine
     command:
       - "--js" # Enable JetStream
       - "--sd=/data" # Storage directory
@@ -64,11 +84,21 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     restart: unless-stopped
 
   # Elasticsearch - Full-text search engine
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.1
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
@@ -84,6 +114,16 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     restart: unless-stopped
 
 volumes:

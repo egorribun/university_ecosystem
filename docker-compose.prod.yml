@@ -1,6 +1,11 @@
 services:
   backend:
     profiles: ["prod"]
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
     environment:
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for production}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:?Set FRONTEND_ORIGIN for production}
@@ -8,16 +13,32 @@ services:
 
   notifications-worker:
     profiles: ["prod"]
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
     environment:
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for production}
 
   migrations:
     profiles: ["prod"]
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
     environment:
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for production}
 
   postgres:
+    image: pgvector/pgvector:pg17-v0.8.0
     profiles: ["prod"]
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-university}
       POSTGRES_DB: ${POSTGRES_DB:-university}

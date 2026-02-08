@@ -25,7 +25,6 @@ services:
       MINIO_BUCKET: uploads
       MINIO_SECURE: "false"
       VAPID_SUBJECT: ${VAPID_SUBJECT:-}
-      # Spotify
       SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID}
       SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET}
       SPOTIFY_REDIRECT_URI: ${SPOTIFY_REDIRECT_URI}
@@ -45,12 +44,16 @@ services:
     networks:
       - internal
       - public
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/healthz >/dev/null || exit 1"]
-      interval: 10s
-      timeout: 5s
-      start_period: 60s
-      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     restart: unless-stopped
 
   frontend:
@@ -61,18 +64,22 @@ services:
       args:
         VITE_BACKEND_ORIGIN: ""
     ports:
-      - "8081:80"
+      - "8081:8080"
     networks:
       - public
     depends_on:
       backend:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null || exit 1"]
-      interval: 30s
-      timeout: 10s
-      start_period: 30s
-      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     restart: unless-stopped
 
   notifications-worker:
@@ -98,13 +105,23 @@ services:
         condition: service_completed_successfully
     networks:
       - internal
+    deploy:
+      resources:
+        limits:
+          cpus: '0.30'
+          memory: 384M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     restart: unless-stopped
 
   # ============================================================================
   # Infrastructure Services
   # ============================================================================
   postgres:
-    image: pgvector/pgvector:pg17
+    image: pgvector/pgvector:pg17-v0.8.0
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -112,24 +129,34 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}" ]
       interval: 5s
       timeout: 5s
       retries: 5
     networks:
       - internal
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 1G
     restart: unless-stopped
 
   redis:
-    image: redis:7-alpine
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    image: redis:7.4.2-alpine
+    command: [ "redis-server", "--save", "", "--appendonly", "no" ]
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 5s
       timeout: 5s
       retries: 5
     networks:
       - internal
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
     restart: unless-stopped
 
   minio:
@@ -146,10 +173,15 @@ services:
     networks:
       - internal
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: [ "CMD", "mc", "ready", "local" ]
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 512M
     restart: unless-stopped
 
   migrations:
@@ -167,7 +199,259 @@ services:
         condition: service_healthy
     networks:
       - internal
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
     restart: on-failure
+
+  rust-optimizer:
+    build:
+      context: .
+      dockerfile: services/rust-optimizer/Dockerfile
+    ports:
+      - "8090:8080"
+    networks:
+      - internal
+      - public
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
+    restart: unless-stopped
+
+  nats:
+    image: nats:2.10.25-alpine
+    command:
+      - "--js"
+      - "--sd=/data"
+      - "--http_port=8222"
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    volumes:
+      - nats-data:/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+    restart: unless-stopped
+
+  gateway:
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      GATEWAY_PORT: "8080"
+      BACKEND_URL: http://backend:8000
+      REDIS_URL: redis://redis:6379/3
+      JWT_SECRET: ${SECRET_KEY}
+    depends_on:
+      backend:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - public
+      - internal
+    deploy:
+      resources:
+        limits:
+          cpus: '0.30'
+          memory: 256M
+    restart: unless-stopped
+
+  ws-hub:
+    build:
+      context: .
+      dockerfile: services/ws-hub/Dockerfile
+    ports:
+      - "8083:8081"
+    environment:
+      WS_HUB_PORT: "8081"
+      NATS_URL: nats://nats:4222
+      JWT_SECRET: ${SECRET_KEY}
+    depends_on:
+      - nats
+    networks:
+      - internal
+      - public
+    deploy:
+      resources:
+        limits:
+          cpus: '0.30'
+          memory: 256M
+    restart: unless-stopped
+
+  file-processor:
+    build:
+      context: .
+      dockerfile: services/file-processor/Dockerfile
+    environment:
+      NATS_URL: nats://nats:4222
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_BUCKET: uploads
+    depends_on:
+      - nats
+      - minio
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+    restart: unless-stopped
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.1
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsSL http://localhost:9200/_cluster/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+    restart: unless-stopped
+
+  spicedb:
+    image: authzed/spicedb:v1.36.0
+    command: serve --grpc-preshared-key "dev-key" --datastore-engine memory
+    ports:
+      - "50051:50051"
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "grpc_health_probe", "-addr=:50051"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+
+  imgproxy:
+    image: darthsim/imgproxy:v3.15.0
+    ports:
+      - "8082:8080"
+    environment:
+      IMGPROXY_ALLOWED_SOURCES: "http://backend:8000/,https://*,http://*"
+      IMGPROXY_DEVELOPMENT_ERRORS_MODE: "true"
+    networks:
+      - internal
+      - public
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.5.1
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    networks:
+      - internal
+      - public
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 512M
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    ports:
+      - "9090:9090"
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 512M
+    restart: unless-stopped
+
+  tempo:
+    image: grafana/tempo:2.7.1
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./infrastructure/observability/tempo.yaml:/etc/tempo/tempo.yaml:ro
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 512M
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.4.1
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    volumes:
+      - ./infrastructure/observability/loki.yaml:/etc/loki/loki.yaml:ro
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 512M
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.9.1-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infrastructure/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - public
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+    restart: unless-stopped
 
 networks:
   public:
@@ -178,3 +462,9 @@ volumes:
   postgres-data:
   static-data:
   minio-data:
+  nats-data:
+  elasticsearch-data:
+  tempo-data:
+  loki-data:
+  grafana-data:
+  prometheus-data:
