@@ -2,33 +2,63 @@
 .git
 .gitmodules
 .gitignore
+.github
 
-# Python cache
-__pycache__
-**/__pycache__
+# Python cache & artifacts
+__pycache__/
 *.py[cod]
-*.pyo
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.hypothesis/
+.mypy_cache/
 
 # Node/npm artifacts
-node_modules
-root/node_modules
-root/frontend/node_modules
-root/frontend/.vite
-root/frontend/dist
+node_modules/
+**/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm/
+.vite/
+dist/
 
-# Virtual environments & tooling caches
-.venv
-root/.venv
-root/.mypy_cache
-root/.pytest_cache
-root/.ruff_cache
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
 
 # Local databases and secrets
-root/dev.db
+*.db
+*.sqlite3
 .env
-*.env
+.env.*
+!.env.example
+*.bak
+*.swp
+*.log
 
 # IDE files
-.vscode
-.idea
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 .DS_Store
+
+# Misc
+Dockerfile*
+docker-compose*.yml
+README.md
+LICENSE
+docs/
+tests/
+alembic/versions/*.pyc

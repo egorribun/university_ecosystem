@@ -5,8 +5,8 @@ services:
   # API Gateway - Rate limiting, JWT validation, reverse proxy
   gateway:
     build:
-      context: ./services/gateway
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/gateway/Dockerfile
     ports:
       - "8080:8080"
     environment:
@@ -15,23 +15,25 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/3
       JWT_SECRET: ${JWT_SECRET:-${SECRET_KEY:-}}
     depends_on:
-      - backend
-      - redis
+      backend:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - public
       - internal
+    deploy:
+      resources:
+        limits:
+          cpus: '0.30'
+          memory: 256M
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
 
   # WebSocket Hub - Real-time messaging
   ws-hub:
     build:
-      context: ./services/ws-hub
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/ws-hub/Dockerfile
     ports:
       - "8083:8081"
     environment:
@@ -43,18 +45,18 @@ services:
     networks:
       - internal
       - public
+    deploy:
+      resources:
+        limits:
+          cpus: '0.30'
+          memory: 256M
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8081/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
 
   # File Processor - Image processing worker
   file-processor:
     build:
-      context: ./services/file-processor
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/file-processor/Dockerfile
     environment:
       NATS_URL: nats://nats:4222
       MINIO_ENDPOINT: minio:9000
@@ -66,6 +68,9 @@ services:
       - minio
     networks:
       - internal
-    restart: unless-stopped
     deploy:
-      replicas: 2  # Scale for parallel processing
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+    restart: unless-stopped

@@ -1,23 +1,36 @@
-# syntax=docker/dockerfile:1.6
+# syntax=docker/dockerfile:1.7
 
-FROM node:22-alpine AS base
+# Stage 1: Base
+FROM node:22.13.1-alpine3.21 AS base
 WORKDIR /app
 
+# Stage 2: Dependencies
 FROM base AS deps
 COPY frontend/package.json frontend/package-lock.json ./
 COPY frontend/scripts ./scripts/
-RUN --mount=type=cache,target=/root/.npm npm ci --legacy-peer-deps
+RUN --mount=type=cache,target=/root/.npm \
+  npm ci --legacy-peer-deps
 
+# Stage 3: Builder
 FROM base AS builder
-ARG VITE_BACKEND_ORIGIN=http://localhost:8000
+ARG VITE_BACKEND_ORIGIN=""
 ENV VITE_BACKEND_ORIGIN=$VITE_BACKEND_ORIGIN
 COPY --from=deps /app/node_modules ./node_modules
 COPY frontend ./
 RUN npm run build
 
-FROM nginx:1.27-alpine AS runtime
+# Stage 4: Runtime
+FROM nginxinc/nginx-unprivileged:1.27.3-alpine AS runtime
+
+# Copy custom nginx config
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=builder /app/dist /usr/share/nginx/html
-EXPOSE 80
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=5 CMD wget -qO- http://127.0.0.1/ >/dev/null || exit 1
+
+# Copy build artifacts to nginx public directory
+COPY --from=builder --chown=101:101 /app/dist /usr/share/nginx/html
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=5 \
+  CMD wget -qO- http://127.0.0.1:8080/ >/dev/null || exit 1
+
 CMD ["nginx", "-g", "daemon off;"]
