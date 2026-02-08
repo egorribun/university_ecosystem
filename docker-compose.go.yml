@@ -68,8 +68,6 @@ services:
         condition: service_started
       minio:
         condition: service_healthy
-      temporal:
-        condition: service_healthy
     networks:
       - internal
     deploy:

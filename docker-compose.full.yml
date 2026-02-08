@@ -363,6 +363,31 @@ services:
           cpus: '0.25'
           memory: 256M
 
+  temporal:
+    image: temporalio/admin-tools:1.25.1
+    container_name: temporal
+    ports:
+      - "7233:7233"
+      - "8233:8233"
+    environment:
+      - TEMPORAL_CLI_ADDRESS=temporal:7233
+    entrypoint: [ "/bin/bash", "-c", "temporal server start-dev --ip 0.0.0.0 --ui-port 8233 --db-filename /data/temporal.db" ]
+    volumes:
+      - temporal-data:/data
+    networks:
+      - internal
+    healthcheck:
+      test: [ "CMD-SHELL", "temporal operator cluster health" ]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 1G
+    restart: unless-stopped
+
   imgproxy:
     image: darthsim/imgproxy:v3.15.0
     ports:
@@ -472,3 +497,4 @@ volumes:
   loki-data:
   grafana-data:
   prometheus-data:
+  temporal-data:
