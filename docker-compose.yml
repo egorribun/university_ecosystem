@@ -146,7 +146,7 @@ services:
         max-file: "3"
 
   postgres:
-    image: pgvector/pgvector:pg17-v0.8.0
+    image: pgvector/pgvector:pg17
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - set in .env file}
