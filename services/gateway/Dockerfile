@@ -36,6 +36,6 @@ USER app
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD nc -z localhost 8080 || exit 1
+  CMD wget -qO- http://127.0.0.1:8080/health >/dev/null || exit 1
 
 CMD ["./gateway"]

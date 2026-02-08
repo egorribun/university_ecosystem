@@ -34,6 +34,6 @@ COPY --from=builder --chown=app:app /app/services/file-processor/file-processor 
 USER app
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD ps | grep file-processor || exit 1
+  CMD wget -qO- http://127.0.0.1:8080/metrics >/dev/null || exit 1
 
 CMD ["./file-processor"]

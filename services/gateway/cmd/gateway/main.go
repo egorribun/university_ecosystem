@@ -231,15 +231,30 @@ func main() {
 
 	jwtMiddleware := middleware.NewJWTMiddleware(cfg.JWTSecret, redisClient)
 	jwtMiddleware.ListenForRevocations(ctx)
+
+	// Protected specific routes
 	protected := router.Group("/")
 	protected.Use(jwtMiddleware.Validate())
 	{
-		// New gRPC Endpoint for Synchronous File Processing
+		// New gRPC Endpoint for Synchronous File Processing - register BEFORE catch-all
 		protected.POST("/api/v1/files/process/sync", handlers.FileProcessSyncHandler(grpcConn, fileClient, logger))
-
-		protected.Any("/api/v1/*path", handlers.ProxyHandler(proxy))
-		protected.Any("/api/admin/*path", handlers.ProxyHandler(proxy))
 	}
+
+	// Catch-all Proxy for remaining routes (BFF fallback)
+	// We use NoRoute but we need it to still respect JWT for /api/v1/ and /api/admin/
+	router.NoRoute(jwtMiddleware.Optional(), func(c *gin.Context) {
+		path := c.Request.URL.Path
+		if strings.HasPrefix(path, "/api/v1/") || strings.HasPrefix(path, "/api/admin/") {
+			// Require full validation for these paths if they weren't matched by specific routes
+			// (jwtMiddleware.Optional already set user info if valid, but here we can enforce it if needed)
+			// For BFF simplicity, we re-run Validate() for these specific prefixes in NoRoute
+			jwtMiddleware.Validate()(c)
+			if c.IsAborted() {
+				return
+			}
+		}
+		handlers.ProxyHandler(proxy)(c)
+	})
 	logger.Info("JWT validation enabled")
 
 	// Start server with graceful shutdown
