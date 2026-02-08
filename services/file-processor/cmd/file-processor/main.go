@@ -90,14 +90,28 @@ func main() {
 		logger.Info("OpenTelemetry initialized")
 	}
 
-	// Connect to Temporal
-	c, err := client.Dial(client.Options{
-		HostPort: cfg.TemporalHost,
-	})
-	if err != nil {
-		logger.Fatal("Unable to create Temporal client", zap.Error(err))
+	// Connect to Temporal with retry loop
+	var c client.Client
+	maxAttempts := 10
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		c, err = client.Dial(client.Options{
+			HostPort: cfg.TemporalHost,
+		})
+		if err == nil {
+			break
+		}
+		if attempt == maxAttempts {
+			logger.Fatal("Unable to create Temporal client after multiple attempts", zap.Error(err))
+		}
+		logger.Warn("Failed to connect to Temporal, retrying...",
+			zap.Int("attempt", attempt),
+			zap.String("addr", cfg.TemporalHost),
+			zap.Error(err),
+		)
+		time.Sleep(time.Duration(attempt) * 2 * time.Second)
 	}
 	defer c.Close()
+	logger.Info("Connected to Temporal", zap.String("addr", cfg.TemporalHost))
 
 	// Start Temporal Worker
 	w := worker.New(c, "FILE_PROCESSING_TASK_QUEUE", worker.Options{})

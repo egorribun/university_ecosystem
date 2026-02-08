@@ -245,6 +245,11 @@ services:
       - temporal_data:/data
     networks:
       - internal
+    healthcheck:
+      test: [ "CMD-SHELL", "temporal operator cluster health" ]
+      interval: 10s
+      timeout: 10s
+      retries: 5
     deploy:
       resources:
         limits:
