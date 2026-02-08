@@ -30,6 +30,7 @@ FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
   libssl3 \
   ca-certificates \
+  wget \
   && rm -rf /var/lib/apt/lists/* \
   && groupadd --system app && useradd --system --gid app app
 
@@ -41,6 +42,6 @@ USER app
 
 # Basic healthcheck that checks if process is running
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD ps -ef | grep rust-optimizer | grep -v grep || exit 1
+  CMD wget -qO- http://127.0.0.1:8080/health >/dev/null || exit 1
 
 CMD ["./rust-optimizer"]

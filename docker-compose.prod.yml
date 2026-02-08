@@ -32,7 +32,7 @@ services:
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for production}
 
   postgres:
-    image: pgvector/pgvector:pg17-v0.8.0
+    image: pgvector/pgvector:pg17
     profiles: ["prod"]
     deploy:
       resources:

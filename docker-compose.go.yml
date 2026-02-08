@@ -64,8 +64,10 @@ services:
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
       MINIO_BUCKET: uploads
     depends_on:
-      - nats
-      - minio
+      nats:
+        condition: service_started
+      minio:
+        condition: service_healthy
     networks:
       - internal
     deploy:

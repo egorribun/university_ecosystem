@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: pgvector/pgvector:pg17-v0.8.0
+    image: pgvector/pgvector:pg17
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: test

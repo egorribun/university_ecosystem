@@ -146,7 +146,7 @@ services:
         max-file: "3"
 
   postgres:
-    image: pgvector/pgvector:pg17-v0.8.0
+    image: pgvector/pgvector:pg17
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - set in .env file}
@@ -233,18 +233,21 @@ services:
           memory: 512M
 
   temporal:
-    image: temporalio/admin-tools:1.25.1
+    image: temporalio/admin-tools:1.26.2
     container_name: temporal
     ports:
       - "7233:7233"
       - "8233:8233"
     environment:
       - TEMPORAL_CLI_ADDRESS=temporal:7233
-    entrypoint: [ "/bin/bash", "-c", "temporal server start-dev --ip 0.0.0.0 --ui-port 8233 --db-filename /data/temporal.db" ]
-    volumes:
-      - temporal_data:/data
+    entrypoint: [ "/bin/bash", "-c", "temporal server start-dev --ip 0.0.0.0 --ui-port 8233 --db-filename /tmp/temporal.db" ]
     networks:
       - internal
+    healthcheck:
+      test: [ "CMD-SHELL", "temporal operator cluster health --address 127.0.0.1:7233 || exit 1" ]
+      interval: 10s
+      timeout: 10s
+      retries: 10
     deploy:
       resources:
         limits:
