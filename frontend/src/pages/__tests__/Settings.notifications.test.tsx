@@ -213,7 +213,7 @@ describe("usePushPreferences notifications flow", () => {
 
     expect(setPushConsentMock).toHaveBeenCalledWith(true)
     expect(onNotify).toHaveBeenCalledWith(
-      expect.objectContaining({ text: tNotifications("messages.enabled"), sev: "success" })
+      expect.objectContaining({ text: tNotifications("messages.enabled"), severity: "success" })
     )
     expect(result.current.topicState).toMatchObject({
       news: true,
@@ -244,7 +244,7 @@ describe("usePushPreferences notifications flow", () => {
     expect(deleteSubscriptionMock).toHaveBeenCalledWith(subscription.endpoint)
     expect(setPushConsentMock).toHaveBeenCalledWith(false)
     expect(onNotify).toHaveBeenCalledWith(
-      expect.objectContaining({ text: tNotifications("messages.disabled"), sev: "success" })
+      expect.objectContaining({ text: tNotifications("messages.disabled"), severity: "success" })
     )
     await waitFor(() => expect(result.current.notificationsEnabled).toBe(false))
   })
@@ -313,7 +313,7 @@ describe("usePushPreferences notifications flow", () => {
     expect(onNotify).toHaveBeenCalledWith(
       expect.objectContaining({
         text: tNotifications("messages.enableInSettings"),
-        sev: "info",
+        severity: "info",
       })
     )
     expect(result.current.notificationsEnabled).toBe(false)
@@ -334,7 +334,7 @@ describe("usePushPreferences notifications flow", () => {
     expect(onNotify).toHaveBeenCalledWith(
       expect.objectContaining({
         text: tNotifications("messages.confirmPermission"),
-        sev: "info",
+        severity: "info",
       })
     )
     expect(result.current.notificationsEnabled).toBe(false)
@@ -355,7 +355,7 @@ describe("usePushPreferences notifications flow", () => {
     expect(onNotify).toHaveBeenCalledWith(
       expect.objectContaining({
         text: tNotifications("messages.subscriptionFailed"),
-        sev: "error",
+        severity: "error",
       })
     )
     expect(result.current.notificationsEnabled).toBe(false)
