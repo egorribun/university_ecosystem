@@ -255,7 +255,7 @@ export default function InstallPrompt() {
                          {t("system:installPrompt.install")}
                        </Button>
                        <Button
-                         variant="plain"
+                         variant="ghost"
                          onClick={handleInstallDismiss}
                          className="h-12 rounded-2xl font-black px-6"
                        >
@@ -402,13 +402,13 @@ export default function InstallPrompt() {
           >
              <div className={cn(
                "flex items-center gap-3 p-4 rounded-2xl border backdrop-blur-2xl shadow-2xl",
-               feedback.sev === "error"
+               feedback.severity === "error"
                  ? "bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400"
-                 : feedback.sev === "success"
+                 : feedback.severity === "success"
                    ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400"
                    : "bg-brand/10 border-brand/20 text-brand"
              )}>
-                {feedback.sev === "error" ? <AlertTriangle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
+                {feedback.severity === "error" ? <AlertTriangle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
                 <p className="text-sm font-black tracking-tight flex-1">{feedback.text}</p>
                 <button onClick={handleFeedbackClose}>
                    <X className="h-4 w-4" />

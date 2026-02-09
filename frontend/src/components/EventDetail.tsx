@@ -778,7 +778,7 @@ const EventDetail = () => {
           </div>
         </div>
 
-        <Snackbar open={!!snack} message={snack} onClose={() => setSnack("")} />
+        <Snackbar open={!!snackbar} message={snackbar} onClose={() => setSnackbar("")} />
       </div>
     </Layout>
   )

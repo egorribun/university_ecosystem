@@ -270,7 +270,7 @@ export default function ForgotPassword() {
                           className="w-full h-14 rounded-2xl text-base font-black shadow-lg shadow-brand/20 transition-all hover:shadow-brand/30 hover:-translate-y-0.5 active:translate-y-0"
                           disabled={!canSubmit}
                           loading={forgotPending}
-                          leadingIcon={<SendIcon className="h-5 w-5" />}
+                          startIcon={<SendIcon className="h-5 w-5" />}
                         >
                           {t("auth:forgot.sendLink")}
                         </Button>
