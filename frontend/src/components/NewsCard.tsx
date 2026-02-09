@@ -26,8 +26,12 @@ import { Button } from "@/components/ui"
 import Dialog from "@/components/Dialog"
 import { useSpotlight, SpotlightOverlay } from "@/components/ui/Spotlight"
 import { getMoscowDate } from "@/utils/date"
-const NewsCardActions = lazy(() => import("./news/NewsCardActions").then(m => ({ default: m.NewsCardActions })))
-const NewsCardEditDialog = lazy(() => import("./news/NewsCardEditDialog").then(m => ({ default: m.NewsCardEditDialog })))
+const NewsCardActions = lazy(() =>
+  import("./news/NewsCardActions").then((m) => ({ default: m.NewsCardActions }))
+)
+const NewsCardEditDialog = lazy(() =>
+  import("./news/NewsCardEditDialog").then((m) => ({ default: m.NewsCardEditDialog }))
+)
 
 export type NewsCardProps = {
   id: string
@@ -69,13 +73,16 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   const [loading, setLoading] = useState(false)
   const [cardImageReady, setCardImageReady] = useState(!image_url)
 
-  const editData = useMemo(() => ({
-    title,
-    content,
-    title_en: title_en ?? "",
-    content_en: content_en ?? "",
-    image_url: image_url || "",
-  }), [title, content, title_en, content_en, image_url])
+  const editData = useMemo(
+    () => ({
+      title,
+      content,
+      title_en: title_en ?? "",
+      content_en: content_en ?? "",
+      image_url: image_url || "",
+    }),
+    [title, content, title_en, content_en, image_url]
+  )
 
   const { interactions, toggleLike } = useNewsInteraction(id, {
     initialData: {

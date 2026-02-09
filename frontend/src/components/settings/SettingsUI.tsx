@@ -45,16 +45,22 @@ export function Button<T extends React.ElementType = "button">({
   endIcon?: React.ReactNode
 } & Omit<GlobalButtonProps<T>, "variant" | "size" | "leadingIcon" | "trailingIcon">) {
   const mappedVariant =
-    variant === "contained" ? ("solid" as const) :
-    variant === "outlined" ? ("outline" as const) :
-    variant === "text" ? ("ghost" as const) :
-    (variant as GlobalButtonProps<T>["variant"]) || ("solid" as const)
+    variant === "contained"
+      ? ("solid" as const)
+      : variant === "outlined"
+        ? ("outline" as const)
+        : variant === "text"
+          ? ("ghost" as const)
+          : (variant as GlobalButtonProps<T>["variant"]) || ("solid" as const)
 
   const mappedSize =
-    size === "small" ? ("sm" as const) :
-    size === "medium" ? ("md" as const) :
-    size === "large" ? ("lg" as const) :
-    (size as GlobalButtonProps<T>["size"]) || ("md" as const)
+    size === "small"
+      ? ("sm" as const)
+      : size === "medium"
+        ? ("md" as const)
+        : size === "large"
+          ? ("lg" as const)
+          : (size as GlobalButtonProps<T>["size"]) || ("md" as const)
 
   return (
     <GlobalButton
@@ -134,11 +140,7 @@ export function SectionTitle({
           : "text-base"
   return (
     <Component
-      className={cn(
-        "font-bold tracking-tight text-primary-text",
-        sizeClasses,
-        className
-      )}
+      className={cn("font-bold tracking-tight text-primary-text", sizeClasses, className)}
       {...props}
     >
       {children}
@@ -159,14 +161,7 @@ export function SectionSubtitle({
   const sizeClasses =
     variant === "body2" ? "text-sm" : variant === "caption" ? "text-xs" : "text-sm"
   return (
-    <p
-      className={cn(
-        "text-secondary-text leading-relaxed",
-        sizeClasses,
-        className
-      )}
-      {...props}
-    >
+    <p className={cn("text-secondary-text leading-relaxed", sizeClasses, className)} {...props}>
       {children}
     </p>
   )
@@ -233,14 +228,8 @@ export function AccordionSection({
       >
         <div className="flex items-center justify-between gap-3">
           <div className="flex flex-col gap-1 min-w-0">
-            <h3 className="text-sm font-bold text-primary-text">
-              {title}
-            </h3>
-            {subtitle && (
-              <p className="text-xs text-secondary-text">
-                {subtitle}
-              </p>
-            )}
+            <h3 className="text-sm font-bold text-primary-text">{title}</h3>
+            {subtitle && <p className="text-xs text-secondary-text">{subtitle}</p>}
           </div>
           <motion.svg
             animate={{ rotate: expanded ? 180 : 0 }}
@@ -265,7 +254,6 @@ export function AccordionSection({
   )
 }
 
-
 // Form Components
 // TextField wrapper using global Input
 export const TextField = React.forwardRef<
@@ -288,96 +276,119 @@ export const TextField = React.forwardRef<
     rows?: number
     trailingIcon?: React.ReactNode
     leadingIcon?: React.ReactNode
-  } & Omit<React.InputHTMLAttributes<HTMLInputElement | HTMLTextAreaElement>, "size" | "onChange" | "onBlur">
->(({
-  label,
-  value,
-  onChange,
-  onBlur,
-  type = "text",
-  disabled = false,
-  error = false,
-  helperText,
-  placeholder,
-  size = "medium",
-  fullWidth = false,
-  autoComplete,
-  className = "",
-  multiline = false,
-  rows,
-  trailingIcon,
-  leadingIcon,
-  ...props
-}, ref) => {
-  const InputComponent = multiline ? "textarea" : Input
+  } & Omit<
+    React.InputHTMLAttributes<HTMLInputElement | HTMLTextAreaElement>,
+    "size" | "onChange" | "onBlur"
+  >
+>(
+  (
+    {
+      label,
+      value,
+      onChange,
+      onBlur,
+      type = "text",
+      disabled = false,
+      error = false,
+      helperText,
+      placeholder,
+      size = "medium",
+      fullWidth = false,
+      autoComplete,
+      className = "",
+      multiline = false,
+      rows,
+      trailingIcon,
+      leadingIcon,
+      ...props
+    },
+    ref
+  ) => {
+    const InputComponent = multiline ? "textarea" : Input
 
-  return (
-    <div className={cn("flex flex-col gap-1.5", fullWidth && "w-full", className)}>
-      {label && (
-        <label
-          htmlFor={props.id}
-          className="mb-0.5 block px-1 text-xs font-bold uppercase tracking-widest text-secondary-text"
-        >
-          {label}
-        </label>
-      )}
-      <div className="relative">
-        {leadingIcon && (
-          <div className="absolute left-4 top-1/2 -translate-y-1/2 text-tertiary-text">
-            {leadingIcon}
-          </div>
+    return (
+      <div className={cn("flex flex-col gap-1.5", fullWidth && "w-full", className)}>
+        {label && (
+          <label
+            htmlFor={props.id}
+            className="mb-0.5 block px-1 text-xs font-bold uppercase tracking-widest text-secondary-text"
+          >
+            {label}
+          </label>
         )}
-        {multiline ? (
-          <textarea
-            ref={ref as React.Ref<HTMLTextAreaElement>}
-            value={value}
-            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => onChange(e as unknown as React.ChangeEvent<HTMLInputElement>)}
-            onBlur={(e: React.FocusEvent<HTMLTextAreaElement>) => onBlur?.(e as unknown as React.FocusEvent<HTMLInputElement>)}
-            disabled={disabled}
-            placeholder={placeholder}
-            rows={rows}
+        <div className="relative">
+          {leadingIcon && (
+            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-tertiary-text">
+              {leadingIcon}
+            </div>
+          )}
+          {multiline ? (
+            <textarea
+              ref={ref as React.Ref<HTMLTextAreaElement>}
+              value={value}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                onChange(e as unknown as React.ChangeEvent<HTMLInputElement>)
+              }
+              onBlur={(e: React.FocusEvent<HTMLTextAreaElement>) =>
+                onBlur?.(e as unknown as React.FocusEvent<HTMLInputElement>)
+              }
+              disabled={disabled}
+              placeholder={placeholder}
+              rows={rows}
+              className={cn(
+                "flex w-full rounded-2xl border border-(--glass-border) bg-(--bg-surface) px-4 py-3 text-base font-medium text-(--primary-text) shadow-sm transition-all duration-500",
+                "placeholder:text-(--secondary-text)/50",
+                "focus:border-(--brand-main)/40 focus:outline-none focus:ring-4 focus:ring-(--brand-main)/10",
+                "disabled:cursor-not-allowed disabled:opacity-50",
+                error
+                  ? "border-(--error-text) focus:border-(--error-text) focus:ring-(--error-text)/10"
+                  : "",
+                !fullWidth ? "w-auto" : "",
+                "resize-none",
+                leadingIcon ? "pl-11" : "",
+                trailingIcon ? "pr-11" : ""
+              )}
+              {...props}
+            />
+          ) : (
+            <Input
+              ref={ref as React.Ref<HTMLInputElement>}
+              type={type}
+              value={value}
+              onChange={onChange}
+              onBlur={onBlur}
+              disabled={disabled}
+              placeholder={placeholder}
+              autoComplete={autoComplete}
+              error={error}
+              className={cn(
+                fullWidth && "w-full",
+                leadingIcon ? "pl-11" : "",
+                trailingIcon ? "pr-11" : ""
+              )}
+              {...props}
+            />
+          )}
+          {trailingIcon && (
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 text-tertiary-text">
+              {trailingIcon}
+            </div>
+          )}
+        </div>
+        {helperText && (
+          <p
             className={cn(
-              "flex w-full rounded-2xl border border-(--glass-border) bg-(--bg-surface) px-4 py-3 text-base font-medium text-(--primary-text) shadow-sm transition-all duration-500",
-              "placeholder:text-(--secondary-text)/50",
-              "focus:border-(--brand-main)/40 focus:outline-none focus:ring-4 focus:ring-(--brand-main)/10",
-              "disabled:cursor-not-allowed disabled:opacity-50",
-              error ? "border-(--error-text) focus:border-(--error-text) focus:ring-(--error-text)/10" : "",
-              !fullWidth ? "w-auto" : "",
-              "resize-none",
-              leadingIcon ? "pl-11" : "",
-              trailingIcon ? "pr-11" : ""
+              "px-1 text-xs font-medium leading-tight",
+              error ? "text-error" : "text-tertiary-text/80"
             )}
-            {...props}
-          />
-        ) : (
-          <Input
-            ref={ref as React.Ref<HTMLInputElement>}
-            type={type}
-            value={value}
-            onChange={onChange}
-            onBlur={onBlur}
-            disabled={disabled}
-            placeholder={placeholder}
-            autoComplete={autoComplete}
-            error={error}
-            className={cn(fullWidth && "w-full", leadingIcon ? "pl-11" : "", trailingIcon ? "pr-11" : "")}
-            {...props}
-          />
-        )}
-        {trailingIcon && (
-          <div className="absolute right-4 top-1/2 -translate-y-1/2 text-tertiary-text">
-            {trailingIcon}
-          </div>
+          >
+            {helperText}
+          </p>
         )}
       </div>
-      {helperText && (
-        <p className={cn("px-1 text-xs font-medium leading-tight", error ? "text-error" : "text-tertiary-text/80")}>
-          {helperText}
-        </p>
-      )}
-    </div>
-  )
-})
+    )
+  }
+)
 
 TextField.displayName = "TextField"
 
@@ -401,7 +412,9 @@ export function SwitchControl({
       checked={checked}
       disabled={disabled}
       aria-label={ariaLabel}
-      onCheckedChange={(c: boolean) => onChange({ target: { checked: c } } as React.ChangeEvent<HTMLInputElement>, c)}
+      onCheckedChange={(c: boolean) =>
+        onChange({ target: { checked: c } } as React.ChangeEvent<HTMLInputElement>, c)
+      }
     />
   )
 }
@@ -430,9 +443,7 @@ export function FormControlLabel({
       {React.isValidElement(control)
         ? React.cloneElement(control as React.ReactElement<{ value?: string }>, { value })
         : control}
-      <span className="text-sm font-bold text-primary-text transition-colors">
-        {label}
-      </span>
+      <span className="text-sm font-bold text-primary-text transition-colors">{label}</span>
     </label>
   )
 }
@@ -494,9 +505,9 @@ export function Chip({
   className?: string
 } & React.HTMLAttributes<HTMLSpanElement>) {
   const colorMap = {
-      default: "text-(--secondary-text) bg-(--bg-surface)/50 border-(--glass-border)",
-      success: "text-(--success-bg) bg-(--success-bg)/10 border-(--success-bg)/20",
-      primary: "text-(--brand-main) bg-(--brand-main)/10 border-(--brand-main)/20",
+    default: "text-(--secondary-text) bg-(--bg-surface)/50 border-(--glass-border)",
+    success: "text-(--success-bg) bg-(--success-bg)/10 border-(--success-bg)/20",
+    primary: "text-(--brand-main) bg-(--brand-main)/10 border-(--brand-main)/20",
   }
 
   return (
@@ -582,7 +593,11 @@ export function Skeleton({
     <div
       className={cn(
         "animate-pulse bg-white/5 dark:bg-white/10",
-        variant === "circular" ? "rounded-full" : variant === "rounded" ? "rounded-2xl" : "rounded-none",
+        variant === "circular"
+          ? "rounded-full"
+          : variant === "rounded"
+            ? "rounded-2xl"
+            : "rounded-none",
         className
       )}
       style={{
@@ -776,7 +791,12 @@ export function Snackbar({
 
   return (
     <div
-      className={cn("fixed pointer-events-none z-(--ue-z-index-toast)", positionClasses, horizontalClasses, className)}
+      className={cn(
+        "fixed pointer-events-none z-(--ue-z-index-toast)",
+        positionClasses,
+        horizontalClasses,
+        className
+      )}
     >
       <motion.div
         initial={{ opacity: 0, y: 20, scale: 0.8 }}
@@ -816,7 +836,11 @@ export function Tabs({
       {React.Children.map(children, (child, index) => {
         if (React.isValidElement(child)) {
           return React.cloneElement(
-            child as React.ReactElement<{ selected?: boolean; onClick?: () => void; index?: number }>,
+            child as React.ReactElement<{
+              selected?: boolean
+              onClick?: () => void
+              index?: number
+            }>,
             {
               selected: value === index,
               index: index,

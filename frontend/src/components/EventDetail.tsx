@@ -349,9 +349,7 @@ const EventDetail = () => {
                 {t("events:card.participants", { count: event.participant_count || 0 })}
               </Badge>
             </div>
-            <p className="text-base font-semibold text-(--page-text)">
-              {event.description}
-            </p>
+            <p className="text-base font-semibold text-(--page-text)">{event.description}</p>
             <div className="space-y-2">
               <p className="text-base font-semibold text-(--page-text)">
                 {t("events:detail.fields.location")}: <strong>{event.location}</strong>
@@ -442,9 +440,7 @@ const EventDetail = () => {
                 <p
                   className={cn(
                     "whitespace-pre-line text-base leading-relaxed",
-                    event?.about
-                      ? "text-(--page-text)"
-                      : "text-(--secondary-text)"
+                    event?.about ? "text-(--page-text)" : "text-(--secondary-text)"
                   )}
                 >
                   {event?.about || t("events:detail.sections.about.empty")}
@@ -633,9 +629,7 @@ const EventDetail = () => {
                 <p
                   className={cn(
                     "whitespace-pre-line text-lg leading-relaxed",
-                    event?.about
-                      ? "text-(--page-text)"
-                      : "text-(--secondary-text)"
+                    event?.about ? "text-(--page-text)" : "text-(--secondary-text)"
                   )}
                 >
                   {event?.about || t("events:detail.sections.about.empty")}

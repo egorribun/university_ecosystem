@@ -178,10 +178,7 @@ interface FooterProps extends HTMLAttributes<HTMLDivElement> {
 const Footer = forwardRef<HTMLDivElement, FooterProps>(({ children, className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn(
-      "flex items-center gap-3 border-t border-border-subtle px-4 py-3",
-      className
-    )}
+    className={cn("flex items-center gap-3 border-t border-border-subtle px-4 py-3", className)}
     {...props}
   >
     {children}

@@ -312,9 +312,7 @@ export default function DashboardStories({
               <div
                 className={cn(
                   "relative z-10 flex aspect-9/16 w-(--story-card-w) max-h-[92vh] max-w-(--story-card-w) flex-col items-stretch justify-center overflow-hidden text-white sm:aspect-video sm:w-[min(96%,960px)] sm:max-h-[80vh] sm:max-w-[min(96%,960px)]",
-                  viewerStory.cover_url
-                    ? "bg-page"
-                    : "bg-brand shadow-premium-lift",
+                  viewerStory.cover_url ? "bg-page" : "bg-brand shadow-premium-lift",
                   viewerStory.cover_url ? "rounded-none" : "rounded-ue-xl sm:rounded-ue-2xl"
                 )}
                 onPointerDown={handlePointerStart}
@@ -357,13 +355,15 @@ export default function DashboardStories({
                       viewerStory.cta_url ? "gap-5" : "gap-4",
                       "p-6 pt-12 sm:p-8 sm:pt-16"
                     )}
-                     style={{
-                       backgroundImage: viewerStory.cover_url
-                         ? "linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--primary-main) 10%, transparent) 55%, var(--bg-page) 100%)"
-                         : "linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--slate-900) 82%, transparent) 60%, var(--bg-page) 100%)",
-                       backdropFilter: viewerStory.cover_url ? "blur(var(--blur-glass))" : undefined,
-                       WebkitBackdropFilter: viewerStory.cover_url ? "blur(var(--blur-glass))" : undefined,
-                     }}
+                    style={{
+                      backgroundImage: viewerStory.cover_url
+                        ? "linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--primary-main) 10%, transparent) 55%, var(--bg-page) 100%)"
+                        : "linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--slate-900) 82%, transparent) 60%, var(--bg-page) 100%)",
+                      backdropFilter: viewerStory.cover_url ? "blur(var(--blur-glass))" : undefined,
+                      WebkitBackdropFilter: viewerStory.cover_url
+                        ? "blur(var(--blur-glass))"
+                        : undefined,
+                    }}
                   >
                     {viewerStory.title && (
                       <h2 id={dialogTitleId} className="text-3xl font-extrabold leading-snug">

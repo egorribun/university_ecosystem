@@ -233,12 +233,7 @@ export function ScheduleCard({
                     />
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-sm text-secondary-text">
-                    <Badge
-                      size="sm"
-                      tone="default"
-                      variant="outline"
-                      label={l.lesson_type}
-                    />
+                    <Badge size="sm" tone="default" variant="outline" label={l.lesson_type} />
                     <span className="truncate max-w-[150px] opacity-80">
                       {t("dashboard:lessonMeta", { teacher: l.teacher, room: l.room })}
                     </span>

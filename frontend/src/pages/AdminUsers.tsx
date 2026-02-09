@@ -214,7 +214,9 @@ export default function AdminUsers() {
                         {user.role !== "teacher" && user.role !== "admin" ? (
                           <select
                             value={user.group_id ? String(user.group_id) : ""}
-                            onChange={(event) => handleGroupSelectChange(user.id, event.target.value)}
+                            onChange={(event) =>
+                              handleGroupSelectChange(user.id, event.target.value)
+                            }
                             className={cn(
                               "rounded-lg border border-glass-border bg-surface/50 px-2.5 py-1 text-xs text-primary-text shadow-sm outline-none transition-all",
                               "focus:border-brand/40 focus:ring-2 focus:ring-brand/10"
@@ -262,9 +264,7 @@ export default function AdminUsers() {
                   <h3 className="truncate text-base font-bold text-primary-text">
                     {user.full_name}
                   </h3>
-                  <p className="truncate text-sm text-secondary-text">
-                    {user.email}
-                  </p>
+                  <p className="truncate text-sm text-secondary-text">{user.email}</p>
                   <div className="mt-2 flex items-center gap-2">
                     <span className="rounded-full bg-brand/10 px-2 py-0.5 text-[0.7rem] font-bold text-brand ring-1 ring-inset ring-brand/20">
                       {roleOptions[user.role]}

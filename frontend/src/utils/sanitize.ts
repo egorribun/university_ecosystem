@@ -35,9 +35,12 @@ const createPolicy = async (windowInstance: TrustedTypesWindow): Promise<Trusted
   const DOMPurify = await getDOMPurify()
 
   try {
-    windowInstance.__dompurifyNewsPolicy = windowInstance.trustedTypes.createPolicy("dompurify-news", {
-      createHTML: (dirty: string) => DOMPurify.sanitize(dirty, HTML_CONFIG),
-    })
+    windowInstance.__dompurifyNewsPolicy = windowInstance.trustedTypes.createPolicy(
+      "dompurify-news",
+      {
+        createHTML: (dirty: string) => DOMPurify.sanitize(dirty, HTML_CONFIG),
+      }
+    )
   } catch (error) {
     console.warn("Unable to create dompurify-news trusted types policy", error)
     windowInstance.__dompurifyNewsPolicy = false

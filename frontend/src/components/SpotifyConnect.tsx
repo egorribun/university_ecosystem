@@ -91,7 +91,8 @@ export default function SpotifyConnect() {
           <div className="space-y-6">
             <div className="flex flex-wrap items-center gap-3">
               <div className="inline-flex items-center rounded-full bg-(--color-spotify)/10 border border-(--color-spotify)/20 px-4 py-1.5 text-xs font-black text-(--color-spotify) tracking-tight">
-                {user.spotify_display_name || t("settings:integrations.spotify.status.connectedFallback")}
+                {user.spotify_display_name ||
+                  t("settings:integrations.spotify.status.connectedFallback")}
               </div>
               <div className="flex gap-2">
                 <Button
@@ -121,10 +122,16 @@ export default function SpotifyConnect() {
               <div className="rounded-2xl bg-surface-raised/30 border border-glass-border/10 p-4 space-y-1 transition-all hover:bg-surface-raised/50">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
-                    <p className="text-base font-black tracking-tight text-primary-text truncate">{now.track_name || "—"}</p>
-                    <p className="text-sm font-bold text-secondary-text truncate">{(now.artists || []).join(", ")}</p>
+                    <p className="text-base font-black tracking-tight text-primary-text truncate">
+                      {now.track_name || "—"}
+                    </p>
+                    <p className="text-sm font-bold text-secondary-text truncate">
+                      {(now.artists || []).join(", ")}
+                    </p>
                     {!!now.album_name && (
-                      <p className="text-xs font-medium text-tertiary-text truncate opacity-60">{now.album_name}</p>
+                      <p className="text-xs font-medium text-tertiary-text truncate opacity-60">
+                        {now.album_name}
+                      </p>
                     )}
                   </div>
                   {now.track_url && (

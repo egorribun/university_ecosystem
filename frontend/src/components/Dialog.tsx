@@ -133,10 +133,7 @@ export function Dialog({
               </h2>
             ) : null}
             {subtitle ? (
-              <p
-                id={dialogSubtitleId}
-                className="text-sm font-medium text-(--secondary-text)"
-              >
+              <p id={dialogSubtitleId} className="text-sm font-medium text-(--secondary-text)">
                 {subtitle}
               </p>
             ) : null}

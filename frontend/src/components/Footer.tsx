@@ -40,9 +40,13 @@ export default function Footer() {
                   className="h-12 w-12"
                 />
               </div>
-              <h2 className="text-xl font-extrabold tracking-tight text-white">{t("navigation:brandName")}</h2>
+              <h2 className="text-xl font-extrabold tracking-tight text-white">
+                {t("navigation:brandName")}
+              </h2>
             </div>
-            <p className="max-w-[640px] text-white opacity-85">{t("navigation:brandDescription")}</p>
+            <p className="max-w-[640px] text-white opacity-85">
+              {t("navigation:brandDescription")}
+            </p>
             <div className="mt-4 flex gap-3">
               <Button
                 as="a"
@@ -72,7 +76,9 @@ export default function Footer() {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <h3 className="mb-1.5 text-sm font-extrabold tracking-widest text-white uppercase opacity-95">{t("navigation:footer.navigationTitle")}</h3>
+            <h3 className="mb-1.5 text-sm font-extrabold tracking-widest text-white uppercase opacity-95">
+              {t("navigation:footer.navigationTitle")}
+            </h3>
             <Link to="/dashboard" className="footer-link-premium">
               {t("navigation:menu.dashboard")}
             </Link>
@@ -91,7 +97,9 @@ export default function Footer() {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <h3 className="mb-1.5 text-sm font-extrabold tracking-widest text-white uppercase opacity-95">{t("navigation:footer.profileTitle")}</h3>
+            <h3 className="mb-1.5 text-sm font-extrabold tracking-widest text-white uppercase opacity-95">
+              {t("navigation:footer.profileTitle")}
+            </h3>
             <Link to="/profile" className="footer-link-premium">
               {t("navigation:footer.myProfile")}
             </Link>

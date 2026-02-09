@@ -87,9 +87,7 @@ export function LessonCard({
             {`${getTimeStr(lesson)}–${getEndTimeStr(lesson)}`}
           </Badge>
         </div>
-        <h3
-          className="text-base font-extrabold text-(--page-text) line-clamp-2 leading-tight tracking-tight"
-        >
+        <h3 className="text-base font-extrabold text-(--page-text) line-clamp-2 leading-tight tracking-tight">
           {lesson.subject}
         </h3>
         <div className="flex flex-wrap gap-2">
@@ -111,7 +109,10 @@ export function LessonCard({
         </div>
       </div>
       <Tooltip content={t("schedule:lesson.details")}>
-        <InfoOutlinedIcon size={18} className="absolute bottom-3 right-3 text-text-muted-subtle opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+        <InfoOutlinedIcon
+          size={18}
+          className="absolute bottom-3 right-3 text-text-muted-subtle opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+        />
       </Tooltip>
       {canEdit && (
         <button

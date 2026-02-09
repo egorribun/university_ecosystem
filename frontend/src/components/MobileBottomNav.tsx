@@ -77,7 +77,11 @@ export default function MobileBottomNav() {
 
   const items = useMemo(
     () => [
-      { to: "/dashboard", label: t("navigation:menu.dashboard"), icon: <DashboardIcon size={22} /> },
+      {
+        to: "/dashboard",
+        label: t("navigation:menu.dashboard"),
+        icon: <DashboardIcon size={22} />,
+      },
       { to: "/news", label: t("navigation:menu.news"), icon: <ArticleIcon size={22} /> },
       { to: "/events", label: t("navigation:menu.events"), icon: <EventNoteIcon size={22} /> },
       { to: "/schedule", label: t("navigation:menu.schedule"), icon: <TodayIcon size={22} /> },

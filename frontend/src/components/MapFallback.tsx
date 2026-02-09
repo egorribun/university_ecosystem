@@ -117,8 +117,8 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
               {t("map.fallback.instructions")}
             </p>
             <div className="inline-flex items-center gap-2 rounded-xl bg-orange-500/10 border border-orange-500/20 px-3 py-1.5 text-xs font-black text-orange-600 dark:text-orange-400 uppercase tracking-wider">
-               <AlertCircle className="h-3.5 w-3.5" />
-               {t("map.fallback.offlineNotice")}
+              <AlertCircle className="h-3.5 w-3.5" />
+              {t("map.fallback.offlineNotice")}
             </div>
           </div>
 
@@ -180,10 +180,14 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
                       {point.address}
                     </div>
                   </div>
-                  <div className={cn(
-                    "p-2 rounded-2xl transition-all duration-500",
-                    isActive ? "bg-brand text-white shadow-lg shadow-brand/40" : "bg-surface-hover/20 text-tertiary-text opacity-40 group-hover:opacity-100"
-                  )}>
+                  <div
+                    className={cn(
+                      "p-2 rounded-2xl transition-all duration-500",
+                      isActive
+                        ? "bg-brand text-white shadow-lg shadow-brand/40"
+                        : "bg-surface-hover/20 text-tertiary-text opacity-40 group-hover:opacity-100"
+                    )}
+                  >
                     <ChevronRight className="h-5 w-5" />
                   </div>
                 </div>
@@ -199,7 +203,9 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
                       label={tag.label}
                       className={cn(
                         "rounded-xl border shadow-sm",
-                        isActive ? "bg-brand/10 border-brand/20 text-brand" : "bg-surface-hover/10 border-glass-border text-tertiary-text"
+                        isActive
+                          ? "bg-brand/10 border-brand/20 text-brand"
+                          : "bg-surface-hover/10 border-glass-border text-tertiary-text"
                       )}
                     />
                   ))}

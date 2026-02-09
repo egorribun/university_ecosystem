@@ -124,7 +124,7 @@ const Register = () => {
     matchOk &&
     (!needsInvite || form.invite_code.trim().length > 0)
 
-   const handleChange = (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleChange = (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setForm((formState) => ({ ...formState, [event.target.name]: event.target.value }))
   }
 
@@ -200,7 +200,7 @@ const Register = () => {
           role,
           invite_code: inviteCode,
         })
-         navigate("/login")
+        navigate("/login")
         return { status: "success" as const }
       } catch (error: unknown) {
         let errorMessage = t("auth:register.error")
@@ -364,9 +364,7 @@ const Register = () => {
                     aria-hidden="true"
                   />
                 </div>
-                <span className="text-text-muted-subtle text-sm">
-                  {inviteHint}
-                </span>
+                <span className="text-text-muted-subtle text-sm">{inviteHint}</span>
               </div>
             </div>
 
@@ -394,7 +392,7 @@ const Register = () => {
                 <button
                   type="button"
                   className="inline-flex items-center gap-2 rounded-full border border-brand/20 px-4 py-2 text-xs font-semibold uppercase tracking-widest text-brand transition hover:bg-brand/5"
-                   onClick={() => {
+                  onClick={() => {
                     setForm((formState) => ({ ...formState, email: emailSuggestion }))
                     setEmailSuggestion(null)
                   }}
@@ -432,11 +430,15 @@ const Register = () => {
                 <input
                   id="password"
                   name="password"
-                   type={showPass ? "text" : "password"}
+                  type={showPass ? "text" : "password"}
                   value={form.password}
                   onChange={(event) => handlePass(event.target.value)}
-                  onKeyUp={(event: React.KeyboardEvent) => setCapsPass(event.getModifierState("CapsLock"))}
-                  onKeyDown={(event: React.KeyboardEvent) => setCapsPass(event.getModifierState("CapsLock"))}
+                  onKeyUp={(event: React.KeyboardEvent) =>
+                    setCapsPass(event.getModifierState("CapsLock"))
+                  }
+                  onKeyDown={(event: React.KeyboardEvent) =>
+                    setCapsPass(event.getModifierState("CapsLock"))
+                  }
                   className={inputBaseClass}
                   autoComplete="new-password"
                   ref={passwordRef}
@@ -459,9 +461,7 @@ const Register = () => {
                   )}
                 </button>
               </div>
-              <p className="text-xs text-text-muted-subtle">
-                {t("auth:register.passwordHint")}
-              </p>
+              <p className="text-xs text-text-muted-subtle">{t("auth:register.passwordHint")}</p>
               {passwordStrengthPercent !== null ? (
                 <div className="space-y-1">
                   <div className="h-3 w-full rounded-full bg-surface-hover">
@@ -480,18 +480,14 @@ const Register = () => {
               <div className="flex flex-wrap gap-2">
                 <span
                   className={`${chipClass} ${
-                    minLenOk
-                      ? "border-brand/40 text-brand"
-                      : "text-text-muted-subtle"
+                    minLenOk ? "border-brand/40 text-brand" : "text-text-muted-subtle"
                   }`}
                 >
                   {t("auth:register.passwordChip.minLength")}
                 </span>
                 <span
                   className={`${chipClass} ${
-                    matchOk
-                      ? "border-brand/40 text-brand"
-                      : "text-text-muted-subtle"
+                    matchOk ? "border-brand/40 text-brand" : "text-text-muted-subtle"
                   }`}
                 >
                   {t("auth:register.passwordChip.match")}
@@ -512,11 +508,15 @@ const Register = () => {
                 <input
                   id="confirm"
                   name="confirm"
-                   type={showConfirm ? "text" : "password"}
+                  type={showConfirm ? "text" : "password"}
                   value={form.confirm}
                   onChange={handleChange}
-                  onKeyUp={(event: React.KeyboardEvent) => setCapsConfirm(event.getModifierState("CapsLock"))}
-                  onKeyDown={(event: React.KeyboardEvent) => setCapsConfirm(event.getModifierState("CapsLock"))}
+                  onKeyUp={(event: React.KeyboardEvent) =>
+                    setCapsConfirm(event.getModifierState("CapsLock"))
+                  }
+                  onKeyDown={(event: React.KeyboardEvent) =>
+                    setCapsConfirm(event.getModifierState("CapsLock"))
+                  }
                   className={inputBaseClass}
                   autoComplete="new-password"
                   ref={confirmRef}

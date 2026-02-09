@@ -177,7 +177,7 @@ const Login = () => {
           return null
         }
 
-         navigate(redirectPath, { replace: true })
+        navigate(redirectPath, { replace: true })
         return null
       } catch (error) {
         let message = t("auth:login.error")
@@ -202,7 +202,7 @@ const Login = () => {
 
   const otpHelperText = null
 
-   const handleEmailBlur = () => {
+  const handleEmailBlur = () => {
     const raw = (emailRef.current?.value ?? "").trim()
     if (!raw) return
     const suggestion = suggestEmailDomain(raw)
@@ -245,7 +245,7 @@ const Login = () => {
 
     setPasskeyError(null)
     setSubmitting(true)
-     try {
+    try {
       await loginWithPasskey(email, trustDevice)
       navigate(redirectPath, { replace: true })
     } catch (error) {
@@ -276,7 +276,7 @@ const Login = () => {
         await submitMfaChallenge({
           method: "totp",
           code,
-           challengeToken: otpChallenge.challenge_token,
+          challengeToken: otpChallenge.challenge_token,
           trustDevice,
         })
         navigate(redirectPath, { replace: true })
@@ -315,13 +315,15 @@ const Login = () => {
 
     try {
       const response = await startAuthentication({
-        optionsJSON: (webauthnChallenge.options as unknown) as Parameters<typeof startAuthentication>[0]["optionsJSON"],
+        optionsJSON: webauthnChallenge.options as unknown as Parameters<
+          typeof startAuthentication
+        >[0]["optionsJSON"],
       })
 
       await submitMfaChallenge({
         method: "webauthn",
         webauthnResponse: response,
-         challengeToken: webauthnChallenge.challenge_token,
+        challengeToken: webauthnChallenge.challenge_token,
         trustDevice,
       })
       navigate(redirectPath, { replace: true })
@@ -463,7 +465,7 @@ const Login = () => {
                     <input
                       type="checkbox"
                       className="size-5 rounded-lg border-brand/50 bg-transparent accent-brand"
-                       checked={trustDevice}
+                      checked={trustDevice}
                       onChange={(event) => setTrustDevice(event.target.checked)}
                       disabled={mfaBusy}
                     />
@@ -577,7 +579,7 @@ const Login = () => {
                 name="username"
                 type="email"
                 className={!emailValid ? "border-error-text focus:border-error-text" : ""}
-                 defaultValue={savedEmail}
+                defaultValue={savedEmail}
                 ref={emailRef}
                 onChange={(event) => setEmailMirror(event.target.value)}
                 onBlur={handleEmailBlur}
@@ -627,12 +629,16 @@ const Login = () => {
               </div>
               <div className="relative">
                 <Input
-                   id="password"
+                  id="password"
                   name="password"
                   type={showPassword ? "text" : "password"}
                   ref={passwordRef}
-                  onKeyUp={(event: React.KeyboardEvent) => setCaps(event.getModifierState("CapsLock"))}
-                  onKeyDown={(event: React.KeyboardEvent) => setCaps(event.getModifierState("CapsLock"))}
+                  onKeyUp={(event: React.KeyboardEvent) =>
+                    setCaps(event.getModifierState("CapsLock"))
+                  }
+                  onKeyDown={(event: React.KeyboardEvent) =>
+                    setCaps(event.getModifierState("CapsLock"))
+                  }
                   autoComplete="current-password"
                   disabled={isPending || submitting}
                   required

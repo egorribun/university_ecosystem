@@ -1,5 +1,9 @@
 import { FC, useState, useRef, useEffect, useCallback } from "react"
-import { MoreVertical as MoreVertIcon, Pencil as EditIcon, Trash2 as DeleteIcon } from "lucide-react"
+import {
+  MoreVertical as MoreVertIcon,
+  Pencil as EditIcon,
+  Trash2 as DeleteIcon,
+} from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
 
@@ -61,7 +65,11 @@ export const NewsCardActions: FC<NewsCardActionsProps> = ({ onEdit, onDelete, is
   }, [])
 
   return (
-    <div className="absolute right-3 top-3 z-10" onClick={(e) => e.stopPropagation()} role="presentation">
+    <div
+      className="absolute right-3 top-3 z-10"
+      onClick={(e) => e.stopPropagation()}
+      role="presentation"
+    >
       <button
         ref={menuButtonRef}
         type="button"

@@ -126,7 +126,6 @@
     --error-text: var(--color-red-600);
     --error-text-rgb: 153, 27, 27;
 
-
     /* Shadows - Gold Standard */
     --shadow-premium: 0 20px 50px rgba(0, 0, 0, 0.12), 0 8px 16px rgba(0, 0, 0, 0.08);
     --shadow-glass: 0 35px 80px rgba(0, 0, 0, 0.25);

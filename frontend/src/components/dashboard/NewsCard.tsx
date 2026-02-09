@@ -125,10 +125,7 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
                     aria-hidden="true"
                     className="ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-glass-border bg-surface/20 text-primary-text opacity-0 transition-all duration-300 group-hover:opacity-100 group-hover:border-brand group-hover:bg-brand/10 group-hover:text-brand"
                   >
-                    <ArrowRight
-                      aria-hidden="true"
-                      className="h-4 w-4"
-                    />
+                    <ArrowRight aria-hidden="true" className="h-4 w-4" />
                   </span>
                 </button>
               </li>

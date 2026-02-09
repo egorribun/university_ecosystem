@@ -48,7 +48,7 @@ const ParticleAuthBackground = () => {
         primary,
         `color-mix(in srgb, ${primary}, transparent 20%)`,
         secondary,
-        `color-mix(in srgb, ${primary}, white 20%)`
+        `color-mix(in srgb, ${primary}, white 20%)`,
       ]
     }
 

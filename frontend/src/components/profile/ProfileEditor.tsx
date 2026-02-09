@@ -113,9 +113,7 @@ export const ProfileEditor = ({
             onChange={(e) => setTelegram(e.target.value)}
             className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-surface text-page-foreground placeholder:text-placeholder focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-200"
           />
-          <p className="text-[10px] xs:text-xs text-hint">
-            {t("profile:form.telegramHint")}
-          </p>
+          <p className="text-[10px] xs:text-xs text-hint">{t("profile:form.telegramHint")}</p>
         </div>
 
         {/* Teacher Fields */}

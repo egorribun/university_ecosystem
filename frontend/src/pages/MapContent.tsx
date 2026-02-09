@@ -11,11 +11,7 @@ import MapFallback from "@/components/MapFallback"
 import { CAMPUS_COORDINATES } from "@/constants/campus"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { cn } from "@/utils/cn"
-import {
-  Alert,
-  Button,
-  Snackbar,
-} from "@/components/settings"
+import { Alert, Button, Snackbar } from "@/components/settings"
 
 type LayerMode = "map" | "hybrid"
 
@@ -231,12 +227,16 @@ export default function MapContent() {
             ) : (
               <div className="flex flex-col items-center gap-4">
                 <p className="text-sm font-medium text-secondary-text">{t("map.loadError")}</p>
-                <Button variant="outline" size="sm" onClick={() => {
-                  setLoadError(false)
-                  iframeLoadedRef.current = false
-                  setIframeLoaded(false)
-                  setFrameKey((k) => k + 1)
-                }}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setLoadError(false)
+                    iframeLoadedRef.current = false
+                    setIframeLoaded(false)
+                    setFrameKey((k) => k + 1)
+                  }}
+                >
                   <RestartAltIcon className="h-4 w-4 mr-2" />
                   {t("common:buttons.retry")}
                 </Button>

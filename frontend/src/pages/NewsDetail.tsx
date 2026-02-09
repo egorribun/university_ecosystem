@@ -468,13 +468,13 @@ export default function NewsDetail() {
     }
   }, [copyingLink, shareUrl, t])
 
-    return (
-      <Layout>
-        <div className="flex min-h-[60vh] items-center justify-center">
-          <span className="h-12 w-12 animate-spin rounded-full border-2 border-white/30 border-t-(--brand-main)" />
-        </div>
-      </Layout>
-    )
+  return (
+    <Layout>
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <span className="h-12 w-12 animate-spin rounded-full border-2 border-white/30 border-t-(--brand-main)" />
+      </div>
+    </Layout>
+  )
 
   if (query.isError || !query.data)
     return (
@@ -541,12 +541,17 @@ export default function NewsDetail() {
                   onClick={() => toggleLike()}
                   leadingIcon={
                     <FavoriteIcon
-                      className={cn("h-4 w-4", isLiked ? "fill-rose-500 text-rose-500" : "text-(--secondary-text)")}
+                      className={cn(
+                        "h-4 w-4",
+                        isLiked ? "fill-rose-500 text-rose-500" : "text-(--secondary-text)"
+                      )}
                     />
                   }
                   className={cn(
                     "w-full basis-full sm:w-auto sm:basis-auto transition-colors duration-200",
-                    isLiked ? "border-rose-200/30 bg-rose-500/10" : "border-(--glass-border)/30 bg-(--bg-surface)/40"
+                    isLiked
+                      ? "border-rose-200/30 bg-rose-500/10"
+                      : "border-(--glass-border)/30 bg-(--bg-surface)/40"
                   )}
                 >
                   <span className="tabular-nums">{likesCount}</span>
@@ -568,7 +573,10 @@ export default function NewsDetail() {
                 <button
                   type="button"
                   onClick={() => setConfirmDeleteOpen(true)}
-                  className={cn(iconButtonClass, "text-(--error-text) hover:text-(--error-text)/80")}
+                  className={cn(
+                    iconButtonClass,
+                    "text-(--error-text) hover:text-(--error-text)/80"
+                  )}
                   aria-label={t("news:aria.deleteNews") ?? ""}
                   disabled={deleting || saving}
                 >
@@ -777,14 +785,22 @@ export default function NewsDetail() {
                 <span
                   className={cn(
                     "inline-flex h-10 w-10 items-center justify-center rounded-full bg-(--bg-surface)/80 text-xl shadow-sm transition group-hover:scale-105",
-                    option.id === "telegram" ? "text-(--brand-main)" : option.id === "whatsapp" ? "text-green-500" : "text-(--brand-main)/80"
-                  ) }
+                    option.id === "telegram"
+                      ? "text-(--brand-main)"
+                      : option.id === "whatsapp"
+                        ? "text-green-500"
+                        : "text-(--brand-main)/80"
+                  )}
                 >
-                  {option.id === "telegram" ? <TelegramIcon className="h-5 w-5" /> : option.id === "whatsapp" ? <WhatsAppIcon className="h-5 w-5" /> : <AlternateEmailIcon className="h-5 w-5" />}
+                  {option.id === "telegram" ? (
+                    <TelegramIcon className="h-5 w-5" />
+                  ) : option.id === "whatsapp" ? (
+                    <WhatsAppIcon className="h-5 w-5" />
+                  ) : (
+                    <AlternateEmailIcon className="h-5 w-5" />
+                  )}
                 </span>
-                <span className="text-sm font-semibold text-(--primary-text)">
-                  {option.label}
-                </span>
+                <span className="text-sm font-semibold text-(--primary-text)">{option.label}</span>
               </a>
             ))}
           </div>
@@ -798,20 +814,15 @@ export default function NewsDetail() {
             disabled={copyingLink}
             className="w-full sm:w-auto"
           >
-             <div className="flex items-center gap-2">
-               <ContentCopyIcon className="h-4 w-4" />
-               {copiedLink ? t("news:shareDialog.copySuccess") : t("news:shareDialog.copy")}
-             </div>
+            <div className="flex items-center gap-2">
+              <ContentCopyIcon className="h-4 w-4" />
+              {copiedLink ? t("news:shareDialog.copySuccess") : t("news:shareDialog.copy")}
+            </div>
           </Button>
         </DialogActions>
       </Dialog>
 
-      <Dialog
-        open={editOpen}
-        onClose={closeEdit}
-        maxWidth="lg"
-        fullWidth
-      >
+      <Dialog open={editOpen} onClose={closeEdit} maxWidth="lg" fullWidth>
         <DialogTitle>{t("news:dialogs.edit.title")}</DialogTitle>
         <DialogContent className="space-y-6 pt-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -881,8 +892,8 @@ export default function NewsDetail() {
                     disabled={saving}
                   >
                     <div className="flex items-center gap-2">
-                       <PhotoCamera className="h-4 w-4" />
-                       {newImage ? t("common:buttons.changePhoto") : t("common:buttons.uploadPhoto")}
+                      <PhotoCamera className="h-4 w-4" />
+                      {newImage ? t("common:buttons.changePhoto") : t("common:buttons.uploadPhoto")}
                     </div>
                     <input
                       type="file"
@@ -904,9 +915,14 @@ export default function NewsDetail() {
                   ) : null}
                 </div>
                 {previewUrl && (
-                   <Button variant="ghost" size="sm" onClick={resetPreview} className="text-rose-500">
-                     {t("common:buttons.reset")}
-                   </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={resetPreview}
+                    className="text-rose-500"
+                  >
+                    {t("common:buttons.reset")}
+                  </Button>
                 )}
               </div>
             </div>
@@ -935,9 +951,7 @@ export default function NewsDetail() {
       >
         <DialogTitle>{t("news:dialogs.delete.title")}</DialogTitle>
         <DialogContent className="space-y-4">
-          <p className="text-md text-secondary-text">
-            {t("news:dialogs.delete.description")}
-          </p>
+          <p className="text-md text-secondary-text">{t("news:dialogs.delete.description")}</p>
         </DialogContent>
         <DialogActions className="flex-col-reverse gap-3 sm:flex-row p-6">
           <Button
@@ -957,25 +971,25 @@ export default function NewsDetail() {
             className="w-full bg-linear-to-r from-red-600 to-red-700 text-white hover:from-red-700 hover:to-red-800 sm:w-auto"
           >
             <div className="flex items-center gap-2">
-               <DeleteIcon className="h-4 w-4" />
-               {deleting ? t("common:statuses.deleting") : t("common:buttons.delete")}
+              <DeleteIcon className="h-4 w-4" />
+              {deleting ? t("common:statuses.deleting") : t("common:buttons.delete")}
             </div>
           </Button>
         </DialogActions>
       </Dialog>
 
       {snackbar && (
-           <Snackbar
-        open={!!snackbar}
-        autoHideDuration={2400}
-        onClose={() => setSnackbar("")}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-        className="z-50"
-      >
-        <Alert severity="success" variant="filled" onClose={() => setSnackbar("")}>
-          {snackbar}
-        </Alert>
-      </Snackbar>
+        <Snackbar
+          open={!!snackbar}
+          autoHideDuration={2400}
+          onClose={() => setSnackbar("")}
+          anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+          className="z-50"
+        >
+          <Alert severity="success" variant="filled" onClose={() => setSnackbar("")}>
+            {snackbar}
+          </Alert>
+        </Snackbar>
       )}
     </Layout>
   )

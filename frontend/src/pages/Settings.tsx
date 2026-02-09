@@ -127,9 +127,7 @@ const resolveDetailMessage = (error: unknown, fallback: string): string => {
   return error instanceof Error ? error.message : fallback
 }
 
-const isCreationOptions = (
-  value: unknown
-): value is PublicKeyCredentialCreationOptionsJSON => {
+const isCreationOptions = (value: unknown): value is PublicKeyCredentialCreationOptionsJSON => {
   if (!value || typeof value !== "object") return false
   const candidate = value as {
     challenge?: unknown
@@ -407,9 +405,15 @@ export default function Settings() {
     const s = sp.get("spotify")
     if (s) {
       if (s === "connected")
-        setSnackbar({ text: t("settings:integrations.spotify.snackbar.connected"), severity: "success" })
+        setSnackbar({
+          text: t("settings:integrations.spotify.snackbar.connected"),
+          severity: "success",
+        })
       if (s === "error")
-        setSnackbar({ text: t("settings:integrations.spotify.snackbar.connectFailed"), severity: "error" })
+        setSnackbar({
+          text: t("settings:integrations.spotify.snackbar.connectFailed"),
+          severity: "error",
+        })
       sp.delete("spotify")
       const next = window.location.pathname + (sp.toString() ? "?" + sp : "")
       window.history.replaceState({}, "", next)
@@ -442,7 +446,10 @@ export default function Settings() {
       if (!safeUrl) throw new Error("Received unsafe Spotify authorization URL")
       window.location.assign(safeUrl)
     } catch (error) {
-      setSnackbar({ text: t("settings:integrations.spotify.snackbar.openFailed"), severity: "error" })
+      setSnackbar({
+        text: t("settings:integrations.spotify.snackbar.openFailed"),
+        severity: "error",
+      })
     }
   }
 
@@ -468,9 +475,15 @@ export default function Settings() {
             : prev
         )
       }
-      setSnackbar({ text: t("settings:integrations.spotify.snackbar.disconnected"), severity: "success" })
+      setSnackbar({
+        text: t("settings:integrations.spotify.snackbar.disconnected"),
+        severity: "success",
+      })
     } catch {
-      setSnackbar({ text: t("settings:integrations.spotify.snackbar.disconnectFailed"), severity: "error" })
+      setSnackbar({
+        text: t("settings:integrations.spotify.snackbar.disconnectFailed"),
+        severity: "error",
+      })
     }
   }
 
@@ -1106,7 +1119,10 @@ export default function Settings() {
         try {
           await deleteWebAuthnCredential(credentialId)
           await Promise.all([refetchWebAuthn(), refreshMe()])
-          setSnackbar({ text: t("settings:security.snackbar.webauthnDeleted"), severity: "success" })
+          setSnackbar({
+            text: t("settings:security.snackbar.webauthnDeleted"),
+            severity: "success",
+          })
         } catch (error) {
           setSnackbar({
             text: resolveDetailMessage(error, t("settings:security.snackbar.webauthnDeleteFailed")),
@@ -1139,7 +1155,10 @@ export default function Settings() {
 
   const uploadAvatar = async (file: File) => {
     if (!isImage(file))
-      return setSnackbar({ text: t("settings:media.validation.supportedFormats"), severity: "warning" })
+      return setSnackbar({
+        text: t("settings:media.validation.supportedFormats"),
+        severity: "warning",
+      })
     if (!withinSize(file))
       return setSnackbar({ text: t("settings:media.validation.fileTooLarge"), severity: "warning" })
     try {
@@ -1180,7 +1199,10 @@ export default function Settings() {
 
   const uploadCover = async (file: File) => {
     if (!isImage(file))
-      return setSnackbar({ text: t("settings:media.validation.supportedFormats"), severity: "warning" })
+      return setSnackbar({
+        text: t("settings:media.validation.supportedFormats"),
+        severity: "warning",
+      })
     if (!withinSize(file))
       return setSnackbar({ text: t("settings:media.validation.fileTooLarge"), severity: "warning" })
     try {
@@ -1254,14 +1276,16 @@ export default function Settings() {
 
             <div data-fade style={fadeDelayStyle("200ms")}>
               {tab === 0 && (
-                 <div className="flex w-full flex-col gap-8 sm:gap-10 xl:max-w-[min(100%,1100px)] 2xl:gap-12">
-                   <div className="flex flex-col gap-3">
+                <div className="flex w-full flex-col gap-8 sm:gap-10 xl:max-w-[min(100%,1100px)] 2xl:gap-12">
+                  <div className="flex flex-col gap-3">
                     <SectionTitle variant="h6">{t("settings:appearance.theme.title")}</SectionTitle>
                     <RadioGroup
                       row
                       value={theme}
-                      onChange={(_event: React.ChangeEvent<HTMLInputElement> | null, value: string) =>
-                        handleThemeChange(_event as React.ChangeEvent<HTMLInputElement>, value)}
+                      onChange={(
+                        _event: React.ChangeEvent<HTMLInputElement> | null,
+                        value: string
+                      ) => handleThemeChange(_event as React.ChangeEvent<HTMLInputElement>, value)}
                     >
                       <FormControlLabel
                         value="system"
@@ -1301,8 +1325,10 @@ export default function Settings() {
                     <RadioGroup
                       row
                       value={language}
-                      onChange={(_event: React.ChangeEvent<HTMLInputElement> | null, value: string) =>
-                        setLanguage(value as SupportedLanguage)}
+                      onChange={(
+                        _event: React.ChangeEvent<HTMLInputElement> | null,
+                        value: string
+                      ) => setLanguage(value as SupportedLanguage)}
                       aria-label={t("settings:language.aria")}
                     >
                       {availableLanguages.map((code) => (
@@ -1323,7 +1349,7 @@ export default function Settings() {
                     </SectionSubtitle>
                   </div>
 
-                   <Divider />
+                  <Divider />
                   <div className="flex flex-col gap-4">
                     <SectionTitle variant="h6">{t("settings:notifications.title")}</SectionTitle>
                     {!pushSupported ? (
@@ -1498,8 +1524,7 @@ export default function Settings() {
                                 background: coverSrc
                                   ? `url(${coverSrc}) center/cover no-repeat`
                                   : "var(--surface-hover)",
-                                borderColor:
-                                  "var(--glass-border-subtle)",
+                                borderColor: "var(--glass-border-subtle)",
                               }}
                             />
                             <div className="flex flex-col sm:flex-row gap-2 flex-1">
@@ -1950,7 +1975,7 @@ export default function Settings() {
                                   <div
                                     key={enrollment.id}
                                     className={cn(
-                                    "flex flex-col gap-2.5 rounded-2xl border p-3 transition-colors sm:flex-row sm:items-center sm:justify-between",
+                                      "flex flex-col gap-2.5 rounded-2xl border p-3 transition-colors sm:flex-row sm:items-center sm:justify-between",
                                       "border-[color-mix(in_srgb,var(--glass-border)_88%,transparent)]",
                                       "bg-[color-mix(in_srgb,var(--card-bg)_96%,var(--primary-main)_4%)]",
                                       "dark:border-white/10",
@@ -2030,7 +2055,8 @@ export default function Settings() {
                                     </div>
                                     <div className="flex min-w-0 flex-col gap-0.5">
                                       <p className="font-semibold text-[color-mix(in_srgb,var(--page-text)_90%,var(--nav-link)_10%)]">
-                                        {credential.label || t("settings:security.webauthn.defaultLabel")}
+                                        {credential.label ||
+                                          t("settings:security.webauthn.defaultLabel")}
                                       </p>
                                       <SectionSubtitle className="text-xs whitespace-nowrap overflow-hidden text-ellipsis">
                                         {t("settings:security.webauthn.added", {
@@ -2202,7 +2228,10 @@ export default function Settings() {
               <p className="text-sm">{t("settings:account.logout.dialogDescription")}</p>
             </DialogContent>
             <DialogActions>
-              <Button onClick={() => setConfirmLogout(false)} className="px-(--btn-padding-x) py-(--btn-padding-y)">
+              <Button
+                onClick={() => setConfirmLogout(false)}
+                className="px-(--btn-padding-x) py-(--btn-padding-y)"
+              >
                 {t("common:buttons.cancel")}
               </Button>
               <Button

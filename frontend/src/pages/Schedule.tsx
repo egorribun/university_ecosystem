@@ -222,19 +222,12 @@ export default function Schedule() {
                       headRefs.current[idx] = el
                     }}
                     className={cn(
-                      isTodayCol
-                        ? "bg-brand/10 shadow-focus"
-                        : "bg-surface/40",
+                      isTodayCol ? "bg-brand/10 shadow-focus" : "bg-surface/40",
                       "z-navbar backdrop-blur-md"
                     )}
                   >
                     <div className="flex items-center justify-center gap-2">
-                      <span
-                        className={cn(
-                          "tracking-tight",
-                          isTodayCol && "text-(--nav-link)"
-                        )}
-                      >
+                      <span className={cn("tracking-tight", isTodayCol && "text-(--nav-link)")}>
                         {label}
                       </span>
                       {(user?.role === "admin" || user?.role === "teacher") && (
@@ -280,12 +273,7 @@ export default function Schedule() {
                       return (
                         <td
                           key={`empty-${rowIdx}-${colIdx}`}
-                          className={cn(
-                            "p-3",
-                            colIsToday
-                              ? "bg-card-hover"
-                              : ""
-                          )}
+                          className={cn("p-3", colIsToday ? "bg-card-hover" : "")}
                         >
                           <div className="min-h-[148px] rounded-xl border border-dashed border-card-border" />
                         </td>
@@ -495,12 +483,7 @@ export default function Schedule() {
             {isMobile ? renderMobileCards() : renderTable()}
           </div>
 
-          <Dialog
-            open={openDialog}
-            onClose={() => setOpenDialog(false)}
-            maxWidth="sm"
-            fullWidth
-          >
+          <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
             <DialogTitle>
               {dialogLesson?.subject || t("schedule:dialog.detailsFallback")}
             </DialogTitle>
@@ -550,12 +533,7 @@ export default function Schedule() {
             </DialogActions>
           </Dialog>
 
-          <Dialog
-            open={editing}
-            onClose={() => setEditing(false)}
-            maxWidth="sm"
-            fullWidth
-          >
+          <Dialog open={editing} onClose={() => setEditing(false)} maxWidth="sm" fullWidth>
             <DialogTitle>{t("schedule:dialog.editTitle")}</DialogTitle>
             <DialogContent className="space-y-5 pt-4">
               {editLesson && (
@@ -568,7 +546,9 @@ export default function Schedule() {
                       type="text"
                       value={editLesson.subject || ""}
                       onChange={(event) =>
-                        setEditLesson((prev) => (prev ? { ...prev, subject: event.target.value } : null))
+                        setEditLesson((prev) =>
+                          prev ? { ...prev, subject: event.target.value } : null
+                        )
                       }
                       className={inputClass}
                     />
@@ -581,7 +561,9 @@ export default function Schedule() {
                       type="text"
                       value={editLesson.teacher || ""}
                       onChange={(event) =>
-                        setEditLesson((prev) => (prev ? { ...prev, teacher: event.target.value } : null))
+                        setEditLesson((prev) =>
+                          prev ? { ...prev, teacher: event.target.value } : null
+                        )
                       }
                       className={inputClass}
                     />
@@ -594,7 +576,9 @@ export default function Schedule() {
                       type="text"
                       value={editLesson.room || ""}
                       onChange={(event) =>
-                        setEditLesson((prev) => (prev ? { ...prev, room: event.target.value } : null))
+                        setEditLesson((prev) =>
+                          prev ? { ...prev, room: event.target.value } : null
+                        )
                       }
                       className={inputClass}
                     />
@@ -632,7 +616,8 @@ export default function Schedule() {
                             prev
                               ? {
                                   ...prev,
-                                  start_time: dayjs().format("YYYY-MM-DDT") + event.target.value + ":00",
+                                  start_time:
+                                    dayjs().format("YYYY-MM-DDT") + event.target.value + ":00",
                                 }
                               : null
                           )
@@ -652,7 +637,8 @@ export default function Schedule() {
                             prev
                               ? {
                                   ...prev,
-                                  end_time: dayjs().format("YYYY-MM-DDT") + event.target.value + ":00",
+                                  end_time:
+                                    dayjs().format("YYYY-MM-DDT") + event.target.value + ":00",
                                 }
                               : null
                           )
@@ -732,7 +718,9 @@ export default function Schedule() {
                   </label>
                   <input
                     value={addFields.subject}
-                    onChange={(event) => setAddFields({ ...addFields, subject: event.target.value })}
+                    onChange={(event) =>
+                      setAddFields({ ...addFields, subject: event.target.value })
+                    }
                     className={inputClass}
                   />
                 </div>
@@ -742,7 +730,9 @@ export default function Schedule() {
                   </label>
                   <input
                     value={addFields.teacher}
-                    onChange={(event) => setAddFields({ ...addFields, teacher: event.target.value })}
+                    onChange={(event) =>
+                      setAddFields({ ...addFields, teacher: event.target.value })
+                    }
                     className={inputClass}
                   />
                 </div>
@@ -762,7 +752,9 @@ export default function Schedule() {
                   </label>
                   <select
                     value={addFields.lessonType}
-                    onChange={(event) => setAddFields({ ...addFields, lessonType: event.target.value })}
+                    onChange={(event) =>
+                      setAddFields({ ...addFields, lessonType: event.target.value })
+                    }
                     className={inputClass}
                   >
                     {lessonTypeOptions.map((option) => (
@@ -780,7 +772,9 @@ export default function Schedule() {
                     <input
                       type="time"
                       value={addFields.startTime}
-                      onChange={(event) => setAddFields({ ...addFields, startTime: event.target.value })}
+                      onChange={(event) =>
+                        setAddFields({ ...addFields, startTime: event.target.value })
+                      }
                       className={inputClass}
                     />
                   </div>
@@ -791,7 +785,9 @@ export default function Schedule() {
                     <input
                       type="time"
                       value={addFields.endTime}
-                      onChange={(event) => setAddFields({ ...addFields, endTime: event.target.value })}
+                      onChange={(event) =>
+                        setAddFields({ ...addFields, endTime: event.target.value })
+                      }
                       className={inputClass}
                     />
                   </div>
@@ -825,15 +821,15 @@ export default function Schedule() {
           </Dialog>
 
           <Snackbar
-        open={!!snackbar}
-        autoHideDuration={4000}
-        onClose={() => setSnackbar("")}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-      >
-        <Alert severity="success" variant="filled" onClose={() => setSnackbar("")}>
-          {snackbar}
-        </Alert>
-      </Snackbar>
+            open={!!snackbar}
+            autoHideDuration={4000}
+            onClose={() => setSnackbar("")}
+            anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+          >
+            <Alert severity="success" variant="filled" onClose={() => setSnackbar("")}>
+              {snackbar}
+            </Alert>
+          </Snackbar>
         </div>
       </PageFadeIn>
     </Layout>

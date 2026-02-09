@@ -52,9 +52,7 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
         <span
           className={cn(
             "pointer-events-none absolute -inset-1 rounded-full transition-premium",
-            focus && !disabled
-              ? "scale-100 opacity-100 ring-4 ring-brand/20"
-              : "scale-90 opacity-0"
+            focus && !disabled ? "scale-100 opacity-100 ring-4 ring-brand/20" : "scale-90 opacity-0"
           )}
         />
 
@@ -84,8 +82,8 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
         <motion.span
           initial={{ x: checked ? 28 : 0, scale: 1 }}
           animate={{
-             x: checked ? 28 : 0,
-             scale: hover ? 1.1 : 1,
+            x: checked ? 28 : 0,
+            scale: hover ? 1.1 : 1,
           }}
           transition={{ type: "spring", stiffness: 500, damping: 30 }}
           className={cn(

@@ -38,7 +38,7 @@ export function SpotlightOverlay({
         className
       )}
       style={{
-          background: `
+        background: `
             radial-gradient(
               var(--overlay-blur) circle at ${mouseX}px ${mouseY}px,
               var(--primary-main) 0%,

@@ -16,7 +16,7 @@ import {
   TrendingDown as TrendingDownIcon,
   CalendarCheck as EventAvailableIcon,
   GraduationCap as SchoolIcon,
-  Award as EmojiEventsIcon
+  Award as EmojiEventsIcon,
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { getLocaleForLanguage, useLanguage } from "@/contexts/LanguageContext"
@@ -526,9 +526,11 @@ export default function Activity() {
   }) => {
     const toneClasses = {
       neutral: "bg-glass-elevated",
-      success: "bg-linear-to-b from-success-bg/30 to-success-bg/50 dark:from-success-bg/20 dark:to-success-bg/40",
+      success:
+        "bg-linear-to-b from-success-bg/30 to-success-bg/50 dark:from-success-bg/20 dark:to-success-bg/40",
       info: "bg-linear-to-b from-brand/10 to-brand/20 dark:from-brand/15 dark:to-brand/25",
-      warning: "bg-linear-to-b from-warning-bg/30 to-warning-bg/50 dark:from-warning-bg/20 dark:to-warning-bg/40",
+      warning:
+        "bg-linear-to-b from-warning-bg/30 to-warning-bg/50 dark:from-warning-bg/20 dark:to-warning-bg/40",
     }
 
     return (
@@ -541,9 +543,7 @@ export default function Activity() {
           toneClasses[tone],
           "shadow-premium",
           "transition-all duration-180",
-          reduce
-            ? ""
-            : "hover:-translate-y-0.5 hover:shadow-premium",
+          reduce ? "" : "hover:-translate-y-0.5 hover:shadow-premium",
           "active:translate-y-0",
           onClick &&
             "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
@@ -633,35 +633,35 @@ export default function Activity() {
                 {t("activity:title")}
               </h1>
             </div>
-              <motion.div
-                data-fade
-                initial={{ opacity: 0, y: reduce ? 0 : 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: reduce ? 0 : 0.35 }}
-                style={{
-                  ...(reduce ? {} : { willChange: "transform, opacity", transform: "translateZ(0)" }),
-                  ...fadeDelayStyle("140ms"),
-                }}
-                className="mb-6 inline-flex items-center gap-1 rounded-full border border-glass-border bg-surface/40 p-1 shadow-premium backdrop-blur-xl [-webkit-backdrop-filter:blur(12px)] dark:border-white/10 dark:bg-slate-900/40 dark:shadow-premium"
-              >
-                {periodOptions.map((option) => (
-                  <button
-                    key={option.value}
-                    onClick={() => setPeriod(option.value)}
-                    className={cn(
-                      "relative rounded-full border-0 px-4 py-1.5 text-sm font-bold transition-colors duration-150",
-                      period === option.value
-                        ? "text-white"
-                        : "bg-transparent text-primary-text hover:bg-brand-subtle-bg hover:text-brand"
-                    )}
-                  >
-                    {period === option.value && (
-                      <motion.span
-                        layoutId="activity-period-indicator"
-                        className="absolute inset-0 rounded-full bg-brand shadow-[0_4px_12px_color-mix(in_srgb,var(--primary-main)_35%,transparent)]"
-                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                      />
-                    )}
+            <motion.div
+              data-fade
+              initial={{ opacity: 0, y: reduce ? 0 : 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: reduce ? 0 : 0.35 }}
+              style={{
+                ...(reduce ? {} : { willChange: "transform, opacity", transform: "translateZ(0)" }),
+                ...fadeDelayStyle("140ms"),
+              }}
+              className="mb-6 inline-flex items-center gap-1 rounded-full border border-glass-border bg-surface/40 p-1 shadow-premium backdrop-blur-xl [-webkit-backdrop-filter:blur(12px)] dark:border-white/10 dark:bg-slate-900/40 dark:shadow-premium"
+            >
+              {periodOptions.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => setPeriod(option.value)}
+                  className={cn(
+                    "relative rounded-full border-0 px-4 py-1.5 text-sm font-bold transition-colors duration-150",
+                    period === option.value
+                      ? "text-white"
+                      : "bg-transparent text-primary-text hover:bg-brand-subtle-bg hover:text-brand"
+                  )}
+                >
+                  {period === option.value && (
+                    <motion.span
+                      layoutId="activity-period-indicator"
+                      className="absolute inset-0 rounded-full bg-brand shadow-[0_4px_12px_color-mix(in_srgb,var(--primary-main)_35%,transparent)]"
+                      transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                    />
+                  )}
                   <span className="relative z-10">{option.label}</span>
                 </button>
               ))}
@@ -887,9 +887,7 @@ export default function Activity() {
                             <div className="flex items-center gap-2">
                               <div className="h-2 w-2 rounded-full bg-(--primary-main)/90 shadow-[0_0_0_3px_var(--primary-main)/18]" />
                               <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-1.5">
-                                <span className="font-bold text-(--page-text)">
-                                  {r.course}
-                                </span>
+                                <span className="font-bold text-(--page-text)">{r.course}</span>
                                 <span className="text-sm text-[color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
                                   {r.score}
                                   {r.max ? "/" + r.max : ""}
@@ -944,9 +942,7 @@ export default function Activity() {
                             <div className="flex items-center gap-2">
                               <div className="h-2 w-2 rounded-full bg-(--warning-text)/90 shadow-[0_0_0_3px_var(--warning-text)/18]" />
                               <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-1.5">
-                                <span className="font-bold text-(--page-text)">
-                                  {r.title}
-                                </span>
+                                <span className="font-bold text-(--page-text)">{r.title}</span>
                                 <span className="text-sm text-[color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
                                   {[formatDate(r.date), r.role].filter(Boolean).join(separator)}
                                 </span>
@@ -1049,9 +1045,7 @@ export default function Activity() {
                 <div className="space-y-2">
                   {(participation?.recent ?? []).map((r, i) => (
                     <div key={participationItemKey(r, i)} className="space-y-0.5">
-                      <p className="text-sm font-semibold text-(--page-text)">
-                        {r.title}
-                      </p>
+                      <p className="text-sm font-semibold text-(--page-text)">{r.title}</p>
                       <p className="text-xs text-[color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
                         {[formatDate(r.date), r.role].filter(Boolean).join(separator)}
                       </p>

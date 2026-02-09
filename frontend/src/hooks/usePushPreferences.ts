@@ -11,7 +11,7 @@ import {
   getPersistedTopics,
   getExistingPushSubscription,
   hasPushConsent,
-  setPersistedTopics
+  setPersistedTopics,
 } from "@/push/subscribe"
 import { currentUserQueryKey, useAuth } from "@/contexts/AuthContext"
 import { isSafariIOS } from "@/utils/browser"
@@ -148,7 +148,6 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
   )
 
   const enableNotifications = useCallback(async () => {
-
     if (!isPushSupported()) {
       setPushSupported(false)
       notify({ text: t("notifications:messages.browserUnsupported"), severity: "warning" })
@@ -217,7 +216,6 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
   }, [activeUserId, applyServerTopics, invalidatePushQueries, notify, selectedTopics, t])
 
   const disableNotifications = useCallback(async () => {
-
     // Optimistic update: instantly show disabled
     setOptimisticEnabled(false)
 
@@ -279,7 +277,6 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
 
   const handleTopicToggle = useCallback(
     (key: NotificationTopicKey) => async (_: ChangeEvent<HTMLInputElement>, checked: boolean) => {
-
       const previousState = topicState
       const nextState = { ...topicState, [key]: checked }
       setTopicState(nextState)

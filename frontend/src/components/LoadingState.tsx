@@ -14,9 +14,7 @@ export default function LoadingState({ label }: LoadingStateProps) {
   return (
     <Layout>
       <header className="px-4 sm:px-8 py-6 sm:py-8 border-b border-glass-border/10">
-        <h1 className="sr-only">
-          {loadingLabel}
-        </h1>
+        <h1 className="sr-only">{loadingLabel}</h1>
         <Skeleton
           className="w-[62%] sm:w-[44%] max-w-[320px] h-8 sm:h-9 rounded-2xl"
           aria-hidden="true"
@@ -30,10 +28,10 @@ export default function LoadingState({ label }: LoadingStateProps) {
         className="flex flex-col items-center justify-center gap-6 px-4 py-20 md:py-24 min-h-60dvh text-center"
       >
         <div className="relative">
-           <div className="h-12 w-12 rounded-full border-4 border-brand/10 border-t-brand animate-spin" />
-           <div className="absolute inset-0 flex items-center justify-center">
-              <div className="h-2 w-2 rounded-full bg-brand animate-pulse" />
-           </div>
+          <div className="h-12 w-12 rounded-full border-4 border-brand/10 border-t-brand animate-spin" />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="h-2 w-2 rounded-full bg-brand animate-pulse" />
+          </div>
         </div>
 
         <p className="text-base font-bold tracking-tight text-secondary-text animate-pulse">

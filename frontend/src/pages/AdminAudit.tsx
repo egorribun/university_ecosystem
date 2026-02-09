@@ -11,17 +11,12 @@ import {
   Terminal,
   User,
   Activity,
-  Calendar
+  Calendar,
 } from "lucide-react"
 import api from "../api/client"
 import Layout from "../components/Layout"
 import { cn } from "@/utils/cn"
-import {
-  SectionCard,
-  TextField,
-  Button,
-  Divider,
-} from "@/components/settings"
+import { SectionCard, TextField, Button, Divider } from "@/components/settings"
 import { AuditLog, AuditLogList } from "../types/Admin"
 
 function Row({ log }: { log: AuditLog }) {
@@ -30,8 +25,10 @@ function Row({ log }: { log: AuditLog }) {
 
   const getActionColor = (action: string) => {
     if (action.includes("delete")) return "text-error bg-error/10 border-error/20"
-    if (action.includes("create") || action.includes("add")) return "text-brand bg-brand/10 border-brand/20"
-    if (action.includes("update") || action.includes("modify")) return "text-warning bg-warning/10 border-warning/20"
+    if (action.includes("create") || action.includes("add"))
+      return "text-brand bg-brand/10 border-brand/20"
+    if (action.includes("update") || action.includes("modify"))
+      return "text-warning bg-warning/10 border-warning/20"
     return "text-secondary-text bg-surface-hover/20 border-glass-border/10"
   }
 
@@ -78,10 +75,12 @@ function Row({ log }: { log: AuditLog }) {
           </div>
         </td>
         <td className="px-4 py-4">
-          <span className={cn(
-            "inline-flex items-center rounded-lg border px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wider",
-            getActionColor(log.action)
-          )}>
+          <span
+            className={cn(
+              "inline-flex items-center rounded-lg border px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wider",
+              getActionColor(log.action)
+            )}
+          >
             {log.action.replace(/\./g, " ").toUpperCase()}
           </span>
         </td>
@@ -173,7 +172,9 @@ function Row({ log }: { log: AuditLog }) {
                         <span>{t("audit.details.executionContext")}</span>
                       </div>
                       <div className="rounded-xl border border-glass-border/10 bg-black/40 p-4 font-mono text-xs text-brand-light">
-                        <pre className="overflow-x-auto whitespace-pre-wrap">{JSON.stringify(log.context, null, 2)}</pre>
+                        <pre className="overflow-x-auto whitespace-pre-wrap">
+                          {JSON.stringify(log.context, null, 2)}
+                        </pre>
                       </div>
                     </div>
                   )}
@@ -236,9 +237,7 @@ export default function AdminAudit() {
             <h1 className="text-4xl font-bold tracking-tight text-primary-text sm:text-5xl">
               {t("audit.title")}
             </h1>
-            <p className="mt-2 text-base text-secondary-text">
-              {t("audit.subtitle")}
-            </p>
+            <p className="mt-2 text-base text-secondary-text">{t("audit.subtitle")}</p>
           </motion.div>
 
           {/* Filters */}
@@ -248,7 +247,10 @@ export default function AdminAudit() {
               label={t("audit.filters.resourceType")}
               value={filters.resource_type}
               onChange={(event) =>
-                setFilters((previousFilters) => ({ ...previousFilters, resource_type: event.target.value }))
+                setFilters((previousFilters) => ({
+                  ...previousFilters,
+                  resource_type: event.target.value,
+                }))
               }
               className="min-w-[200px] flex-1"
             />
@@ -257,7 +259,10 @@ export default function AdminAudit() {
               label={t("audit.filters.action")}
               value={filters.action}
               onChange={(event) =>
-                setFilters((previousFilters) => ({ ...previousFilters, action: event.target.value }))
+                setFilters((previousFilters) => ({
+                  ...previousFilters,
+                  action: event.target.value,
+                }))
               }
               className="min-w-[200px] flex-1"
             />

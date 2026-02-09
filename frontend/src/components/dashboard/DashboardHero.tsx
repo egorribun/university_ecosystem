@@ -84,11 +84,13 @@ export function DashboardHero({
   const showHeaderMotion = !prefersReducedMotion && !isNarrow
 
   return (
-    <section className={cn(
-      "relative flex w-full flex-col overflow-hidden",
-      "px-4 pb-16 pt-10 text-page-foreground sm:px-8 md:px-12 lg:px-16",
-      "bg-linear-[145deg,var(--hero-grad-start),var(--hero-grad-end)]"
-    )}>
+    <section
+      className={cn(
+        "relative flex w-full flex-col overflow-hidden",
+        "px-4 pb-16 pt-10 text-page-foreground sm:px-8 md:px-12 lg:px-16",
+        "bg-linear-[145deg,var(--hero-grad-start),var(--hero-grad-end)]"
+      )}
+    >
       <div aria-hidden="true" className="pointer-events-none absolute inset-0">
         {heroBackdropLayers.map((layer, index) => (
           <div key={index} className={layer} />
@@ -145,10 +147,7 @@ export function DashboardHero({
                   >
                     <span className="flex items-baseline gap-1 font-mono text-lg leading-none">
                       <span>{hh}</span>
-                      <span
-                        aria-hidden="true"
-                        className="inline-block animate-dash-colon-blink"
-                      >
+                      <span aria-hidden="true" className="inline-block animate-dash-colon-blink">
                         :
                       </span>
                       <span>{mm}</span>

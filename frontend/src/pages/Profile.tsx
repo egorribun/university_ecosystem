@@ -23,10 +23,7 @@ import { useNowPlaying } from "@/hooks/useNowPlaying"
 import { addVersionParam, resolveMediaUrl } from "@/utils/media"
 import { useTranslation } from "react-i18next"
 import { QRCodeSVG } from "qrcode.react"
-import {
-  ChevronDown as ExpandMoreIcon,
-  ExternalLink as OpenInNewIcon,
-} from "lucide-react"
+import { ChevronDown as ExpandMoreIcon, ExternalLink as OpenInNewIcon } from "lucide-react"
 
 import {
   NowPlayingCard,
@@ -128,8 +125,8 @@ export default function Profile() {
 
   const isOnline = Boolean(
     (user as { is_online?: boolean; online?: boolean } | null)?.is_online ??
-      (user as { is_online?: boolean; online?: boolean } | null)?.online ??
-      true
+    (user as { is_online?: boolean; online?: boolean } | null)?.online ??
+    true
   )
   const avatarPx = calculateAvatarSize(isMobile, isWideScreen)
   const { heroPaddingBottom } = calculateHeroLayout(avatarPx, isMobile)
@@ -168,7 +165,9 @@ export default function Profile() {
       let messageText: string | undefined
 
       if (error && typeof error === "object" && "response" in error) {
-        const axiosError = error as { response: { data: { detail?: string | Array<{ msg?: string; message?: string }> } } }
+        const axiosError = error as {
+          response: { data: { detail?: string | Array<{ msg?: string; message?: string }> } }
+        }
         const detail = axiosError.response?.data?.detail
 
         if (detail) {
@@ -195,7 +194,9 @@ export default function Profile() {
     navigate("/profile", { replace: true })
   }
 
-  const snackbarMessage = snackbar?.key ? t(`profile:snackbar.${snackbar.key}`) : snackbar?.message || ""
+  const snackbarMessage = snackbar?.key
+    ? t(`profile:snackbar.${snackbar.key}`)
+    : snackbar?.message || ""
 
   return (
     <Layout className="bg-transparent!">
@@ -222,7 +223,9 @@ export default function Profile() {
                 className="px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-8 sm:py-10 md:py-12 lg:py-14 rounded-xl sm:rounded-2xl md:rounded-3xl relative overflow-hidden bg-primary-subtle-bg/10 shadow-glass border border-glass-border-subtle/20 backdrop-blur-md"
                 initial={isTest ? false : { opacity: reduced ? 1 : 0.98, y: reduced ? 0 : 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={isTest ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 34 }}
+                transition={
+                  isTest ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 34 }
+                }
               >
                 <div className="grid grid-cols-1 lg:grid-cols-[minmax(280px,380px)_minmax(0,1fr)] gap-x-8 gap-y-8 items-start">
                   {/* Left Column */}
@@ -332,7 +335,12 @@ export default function Profile() {
       </Dialog>
 
       {/* Achievement Dialog */}
-      <Dialog open={!!achievementOpen} onClose={() => setAchievementOpen(null)} maxWidth="xs" fullWidth>
+      <Dialog
+        open={!!achievementOpen}
+        onClose={() => setAchievementOpen(null)}
+        maxWidth="xs"
+        fullWidth
+      >
         <DialogTitle>{achievementOpen?.name}</DialogTitle>
         <DialogContent className="grid gap-4 py-4">
           {achievementOpen?.issuer && (
@@ -363,11 +371,7 @@ export default function Profile() {
         </DialogActions>
       </Dialog>
 
-      <Snackbar
-        open={!!snackbar}
-        autoHideDuration={2600}
-        onClose={() => setSnackbar(null)}
-      >
+      <Snackbar open={!!snackbar} autoHideDuration={2600} onClose={() => setSnackbar(null)}>
         <Alert onClose={() => setSnackbar(null)} severity={snackbar?.severity || "info"}>
           {snackbarMessage}
         </Alert>

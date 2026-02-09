@@ -44,18 +44,26 @@ export const ProfileDetails = ({ user, isOpen, onToggle }: ProfileDetailsProps) 
           <DetailRow label={t("profile:labels.educationLevel")} value={user?.education_level} />
           <Divider className="opacity-10 mx-4" />
           <DetailRow
-            label={user?.role === "teacher" ? t("profile:labels.department") : t("profile:labels.track")}
+            label={
+              user?.role === "teacher" ? t("profile:labels.department") : t("profile:labels.track")
+            }
             value={user?.role === "teacher" ? user?.department : user?.track}
           />
           <Divider className="opacity-10 mx-4" />
           <DetailRow
-            label={user?.role === "teacher" ? t("profile:labels.position") : t("profile:labels.program")}
+            label={
+              user?.role === "teacher" ? t("profile:labels.position") : t("profile:labels.program")
+            }
             value={user?.role === "teacher" ? user?.position : user?.program}
           />
           <Divider className="opacity-10 mx-4" />
           <DetailRow
             label={t("profile:labels.about")}
-            value={<span className="wrap-break-word">{user?.about || t("profile:placeholders.about")}</span>}
+            value={
+              <span className="wrap-break-word">
+                {user?.about || t("profile:placeholders.about")}
+              </span>
+            }
           />
         </div>
       </div>

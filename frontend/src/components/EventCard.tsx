@@ -720,7 +720,10 @@ const EventCardComponent: FC<EventCardProps> = ({
         {/* Date */}
         <div className="mb-2 flex items-center gap-2 group/date">
           <Tooltip content={t("events:form.dates")}>
-            <EventIcon size={20} className="text-brand transition-transform group-hover/date:scale-110" />
+            <EventIcon
+              size={20}
+              className="text-brand transition-transform group-hover/date:scale-110"
+            />
           </Tooltip>
           <span className="text-base text-secondary-text">
             {formatLocalDateTime(starts_at)} — {formatLocalDateTime(ends_at)}
@@ -730,7 +733,10 @@ const EventCardComponent: FC<EventCardProps> = ({
         {/* Location */}
         <div className="mb-2 flex items-center gap-2 group/loc">
           <Tooltip content={t("events:form.location")}>
-            <PlaceIcon size={20} className="text-(--nav-link) transition-transform group-hover/loc:scale-110" />
+            <PlaceIcon
+              size={20}
+              className="text-(--nav-link) transition-transform group-hover/loc:scale-110"
+            />
           </Tooltip>
           <span className="text-base text-(--secondary-text)">{location}</span>
         </div>
@@ -739,15 +745,16 @@ const EventCardComponent: FC<EventCardProps> = ({
         <div className="my-3 h-px bg-linear-to-r from-transparent via-[color-mix(in_srgb,var(--nav-link)_20%,transparent_80%)] to-transparent" />
 
         {/* Description */}
-        <p className="mb-4 line-clamp-3 text-base text-(--page-text) grow-0">
-          {description}
-        </p>
+        <p className="mb-4 line-clamp-3 text-base text-(--page-text) grow-0">{description}</p>
 
         <div className="mt-auto">
           {/* Participants */}
           <div className="mb-4 flex items-center gap-2 group/part">
             <Tooltip content={t("events:form.participants")}>
-              <PeopleAltIcon size={19} className="text-(--nav-link) transition-transform group-hover/part:scale-110" />
+              <PeopleAltIcon
+                size={19}
+                className="text-(--nav-link) transition-transform group-hover/part:scale-110"
+              />
             </Tooltip>
             <span className="text-[15px] text-(--page-text)">
               {t("events:card.participants", { count })}
@@ -857,9 +864,7 @@ const EventCardComponent: FC<EventCardProps> = ({
           }
           footerClassName="flex-col-reverse gap-3 sm:flex-row"
         >
-          <p className="text-(--page-text)">
-            {t("events:card.dialogs.delete.description")}
-          </p>
+          <p className="text-(--page-text)">{t("events:card.dialogs.delete.description")}</p>
         </Dialog>
 
         <Snackbar open={!!snackbar} message={snackbar} onClose={() => setSnackbar("")} />

@@ -1,11 +1,7 @@
 import React, { useRef } from "react"
 import { motion } from "framer-motion"
 import { useTranslation } from "react-i18next"
-import {
-  Mail as EmailIcon,
-  Send as TelegramIcon,
-  QrCode as QrCodeIcon
-} from "lucide-react"
+import { Mail as EmailIcon, Send as TelegramIcon, QrCode as QrCodeIcon } from "lucide-react"
 import { QRCodeSVG } from "qrcode.react"
 import { Button } from "@/components/ui"
 import { SectionCard } from "@/components/settings"
@@ -135,9 +131,7 @@ export const ProfileHeader = ({
       {/* Stats Panel */}
       <div className="grid grid-cols-2 gap-4 rounded-xl sm:rounded-2xl md:rounded-3xl p-4 bg-(--bg-surface)/30 border border-(--glass-border)/10 backdrop-blur-sm shadow-glass">
         <div className="flex flex-col items-center justify-center py-2 text-center border-r border-(--glass-border)/10">
-          <span className="text-xl font-bold text-(--brand-main)">
-            {user?.course || "—"}
-          </span>
+          <span className="text-xl font-bold text-(--brand-main)">{user?.course || "—"}</span>
           <span className="text-[10px] font-bold uppercase tracking-widest text-(--secondary-text) opacity-60">
             {t("profile:labels.course")}
           </span>

@@ -101,10 +101,7 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
           if (axiosError.response?.status === 401) throw error
         }
 
-        if (
-          !navigator.onLine ||
-          (error instanceof Error && error.message === "Network Error")
-        ) {
+        if (!navigator.onLine || (error instanceof Error && error.message === "Network Error")) {
           await queueInteraction(`/api/v1/news/${newsId}/like`, {})
           return { isOfflineStore: true }
         }
@@ -145,10 +142,7 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
           if (axiosError.response?.status === 401) throw error
         }
 
-        if (
-          !navigator.onLine ||
-          (error instanceof Error && error.message === "Network Error")
-        ) {
+        if (!navigator.onLine || (error instanceof Error && error.message === "Network Error")) {
           await queueInteraction(`/api/v1/news/${newsId}/comment`, { content })
           return { isOfflineStore: true }
         }

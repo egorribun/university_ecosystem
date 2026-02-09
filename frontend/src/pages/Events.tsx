@@ -25,12 +25,7 @@ import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { EVENTS_PAGE_SIZE, useEventsListQuery, useMyEventsQuery } from "@/api/hooks/events"
 import { Button, Badge, Skeleton } from "@/components/ui"
-import {
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-} from "@/components/settings"
+import { Dialog, DialogActions, DialogContent, DialogTitle } from "@/components/settings"
 import { cn } from "@/utils/cn"
 import useMediaQuery from "@/hooks/useMediaQuery"
 
@@ -90,7 +85,7 @@ const fadeDelayStyle = (value: string): CSSProperties =>
   ({ "--fade-delay": value }) as CSSProperties
 
 const inputClass =
-    "w-full rounded-xl border border-glass-border bg-surface/40 px-4 py-3 text-md font-medium text-primary-text shadow-sm focus:border-brand focus:outline-none transition-all placeholder:text-secondary-text/50"
+  "w-full rounded-xl border border-glass-border bg-surface/40 px-4 py-3 text-md font-medium text-primary-text shadow-sm focus:border-brand focus:outline-none transition-all placeholder:text-secondary-text/50"
 
 const Events = () => {
   const { user } = useAuth()
@@ -434,7 +429,7 @@ const Events = () => {
                     className={cn(
                       "relative rounded-full p-2 transition-all duration-150 hover:bg-surface/20 active:scale-95",
                       filtersActive ? "text-brand" : "text-secondary-text"
-    )}
+                    )}
                     aria-label={t("events:aria.openFilters")}
                   >
                     {filtersActive && (
@@ -587,12 +582,7 @@ const Events = () => {
             )}
 
             {/* Create dialog */}
-            <Dialog
-              open={createOpen}
-              onClose={closeCreate}
-              maxWidth="lg"
-              fullWidth
-            >
+            <Dialog open={createOpen} onClose={closeCreate} maxWidth="lg" fullWidth>
               <DialogTitle>{t("events:dialogs.create.title")}</DialogTitle>
               <DialogContent className="space-y-6 pt-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -622,7 +612,9 @@ const Events = () => {
                       </label>
                       <textarea
                         value={getLocalizedDraftValue("description")}
-                        onChange={(event) => updateLocalizedDraftValue("description", event.target.value)}
+                        onChange={(event) =>
+                          updateLocalizedDraftValue("description", event.target.value)
+                        }
                         rows={3}
                         className={cn(inputClass, "min-h-[120px] resize-y")}
                       />
@@ -638,7 +630,9 @@ const Events = () => {
                       <input
                         type="text"
                         value={getLocalizedDraftValue("event_type")}
-                        onChange={(event) => updateLocalizedDraftValue("event_type", event.target.value)}
+                        onChange={(event) =>
+                          updateLocalizedDraftValue("event_type", event.target.value)
+                        }
                         className={inputClass}
                       />
                     </div>
@@ -653,7 +647,9 @@ const Events = () => {
                       <input
                         type="text"
                         value={getLocalizedDraftValue("location")}
-                        onChange={(event) => updateLocalizedDraftValue("location", event.target.value)}
+                        onChange={(event) =>
+                          updateLocalizedDraftValue("location", event.target.value)
+                        }
                         className={inputClass}
                       />
                     </div>
@@ -667,7 +663,9 @@ const Events = () => {
                       <input
                         type="text"
                         value={eventData.speaker}
-                        onChange={(event) => setEventData({ ...eventData, speaker: event.target.value })}
+                        onChange={(event) =>
+                          setEventData({ ...eventData, speaker: event.target.value })
+                        }
                         className={inputClass}
                       />
                     </div>
@@ -719,7 +717,9 @@ const Events = () => {
                         <input
                           type="datetime-local"
                           value={eventData.starts_at}
-                          onChange={(event) => setEventData({ ...eventData, starts_at: event.target.value })}
+                          onChange={(event) =>
+                            setEventData({ ...eventData, starts_at: event.target.value })
+                          }
                           className={inputClass}
                         />
                       </div>
@@ -730,7 +730,9 @@ const Events = () => {
                         <input
                           type="datetime-local"
                           value={eventData.ends_at}
-                          onChange={(event) => setEventData({ ...eventData, ends_at: event.target.value })}
+                          onChange={(event) =>
+                            setEventData({ ...eventData, ends_at: event.target.value })
+                          }
                           className={cn(inputClass, dateError && "border-red-500")}
                         />
                       </div>

@@ -129,9 +129,7 @@ export function MobileMenu({
                   <Settings
                     className={cn(
                       "text-[22px] transition-colors",
-                      isActive("/settings")
-                        ? "text-(--nav-link)"
-                        : "text-(--secondary-text)"
+                      isActive("/settings") ? "text-(--nav-link)" : "text-(--secondary-text)"
                     )}
                   />
                   {t("navigation:menu.settings")}

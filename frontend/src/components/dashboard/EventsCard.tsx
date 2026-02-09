@@ -179,10 +179,7 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
                         {e.title}
                       </span>
                       <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-glass-border bg-surface/20 text-brand transition-all duration-300 group-hover:bg-brand/10">
-                        <Sparkles
-                          aria-hidden="true"
-                          className="h-3.5 w-3.5"
-                        />
+                        <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
                       </span>
                     </span>
                     <span className="flex flex-wrap items-center gap-2 text-sm text-secondary">

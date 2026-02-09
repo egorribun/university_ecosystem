@@ -125,10 +125,14 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
         </h3>
 
         <p className="text-sm text-center text-secondary-text font-medium leading-relaxed">
-           {t("mfa.otp.descriptions.totp")}
+          {t("mfa.otp.descriptions.totp")}
         </p>
 
-        <div className="flex gap-2 sm:gap-3 justify-center" aria-describedby={describedBy} role="group">
+        <div
+          className="flex gap-2 sm:gap-3 justify-center"
+          aria-describedby={describedBy}
+          role="group"
+        >
           {digits.map((digit, index) => (
             <input
               key={index}
@@ -167,10 +171,10 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
 
         {derivedError ? (
           <div className="flex items-center justify-center gap-2 animate-bounce">
-             <ShieldAlert className="h-4 w-4 text-rose-500" />
-             <p id={errorId} className="text-xs font-bold text-rose-500">
-               {derivedError}
-             </p>
+            <ShieldAlert className="h-4 w-4 text-rose-500" />
+            <p id={errorId} className="text-xs font-bold text-rose-500">
+              {derivedError}
+            </p>
           </div>
         ) : derivedHelperText ? (
           <p id={helperId} className="text-xs font-bold text-center text-secondary-text opacity-60">
@@ -180,7 +184,7 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
 
         {loading && (
           <div className="flex justify-center items-center py-4">
-             <div className="h-8 w-8 rounded-full border-4 border-brand/10 border-t-brand animate-spin" />
+            <div className="h-8 w-8 rounded-full border-4 border-brand/10 border-t-brand animate-spin" />
           </div>
         )}
 

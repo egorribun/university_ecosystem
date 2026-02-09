@@ -116,7 +116,6 @@ body.dark {
   --bn-h: 4rem;
 }
 
-
 ::selection {
   background: var(--selection-bg);
   color: var(--selection-text);
@@ -141,7 +140,6 @@ body,
 html {
   scroll-behavior: smooth;
 }
-
 
 .theme-switch {
   position: relative;
@@ -189,12 +187,12 @@ html {
     0 1.5px 8px 0 #0001;
 }
 
-.theme-switch input:checked+.theme-slider .theme-knob {
+.theme-switch input:checked + .theme-slider .theme-knob {
   left: 37px;
   background: #181a1e;
 }
 
-.theme-switch input:checked+.theme-slider {
+.theme-switch input:checked + .theme-slider {
   background: #363d49;
 }
 
@@ -231,7 +229,6 @@ html {
   filter: brightness(0.98);
 }
 
-
 body.dark .MuiPaper-root,
 body.dark .MuiCard-root {
   background: var(--card-bg) !important;
@@ -259,8 +256,6 @@ body.dark .card-hover:focus-within {
     0 18px 48px #0b122940,
     0 8px 24px #00000033;
 }
-
-
 
 input,
 input:focus,
@@ -294,7 +289,6 @@ input[type="password"]::placeholder {
   transition: color var(--anim-fast);
 }
 
-
 .MuiInputBase-root input,
 .MuiOutlinedInput-input {
   color: var(--page-text) !important;
@@ -322,7 +316,6 @@ input[type="password"]::placeholder {
 .MuiFormHelperText-root.Mui-error {
   color: #d32f2f !important;
 }
-
 
 a {
   color: var(--nav-link);
@@ -352,7 +345,6 @@ a:hover {
 body.dark ::-webkit-scrollbar-thumb {
   background: #343c59;
 }
-
 
 body.dark .MuiDayCalendar-weekDayLabel,
 body.dark .MuiDayCalendar-header,
@@ -421,7 +413,6 @@ body.dark .MuiTableCell-body {
   border: 1px solid #263142 !important;
 }
 
-
 body.dark .MuiPaper-root {
   background: var(--card-bg) !important;
   color: var(--page-text) !important;
@@ -487,7 +478,6 @@ body.dark .MuiTypography-root a {
   color: var(--link-color) !important;
 }
 
-
 body.dark .MuiChip-outlined {
   border-color: #223349 !important;
   color: #eaf4ff !important;
@@ -509,18 +499,12 @@ body.dark .MuiTooltip-tooltip {
   background: var(--progress-bar) !important;
 }
 
-
-
 body,
 html {
   overflow-x: hidden;
 }
 
-
-
-
 @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-
   .glass,
   .glass--btn,
   .glass--panel,
@@ -591,10 +575,12 @@ body.dark .glass {
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(180deg,
+    linear-gradient(
+      180deg,
       rgba(255, 255, 255, 0.06),
       rgba(255, 255, 255, 0.02) 42%,
-      transparent 72%),
+      transparent 72%
+    ),
     radial-gradient(70% 120% at 0% -20%, rgba(255, 255, 255, 0.12), transparent 62%);
 }
 
@@ -608,10 +594,12 @@ body.dark .glass {
   border-radius: 50%;
   background:
     radial-gradient(closest-side, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0) 62%),
-    conic-gradient(from 210deg at 26% 18%,
+    conic-gradient(
+      from 210deg at 26% 18%,
       rgba(255, 255, 255, 0.28),
       rgba(255, 255, 255, 0.12) 16%,
-      transparent 34%);
+      transparent 34%
+    );
   filter: blur(1px);
   opacity: 0.5;
   mix-blend-mode: screen;
@@ -626,7 +614,9 @@ body.dark .glass {
     inset 0 0 0 1px rgba(0, 0, 0, 0.03),
     0 10px 26px rgba(0, 0, 0, 0.14);
   border-radius: 12px;
-  transition: transform var(--anim-fast), box-shadow var(--anim-fast);
+  transition:
+    transform var(--anim-fast),
+    box-shadow var(--anim-fast);
 }
 
 .glass--btn:hover {
@@ -679,10 +669,12 @@ body.dark .glass {
   position: absolute;
   inset: -40%;
   pointer-events: none;
-  background: linear-gradient(105deg,
-      transparent 30%,
-      rgba(255, 255, 255, 0.36) 48%,
-      transparent 66%);
+  background: linear-gradient(
+    105deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.36) 48%,
+    transparent 66%
+  );
   transform: translateX(-20%) rotate(10deg);
   transition:
     transform 0.65s cubic-bezier(0.22, 0.61, 0.36, 1),

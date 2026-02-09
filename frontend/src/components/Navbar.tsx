@@ -176,9 +176,7 @@ const Navbar = () => {
               />
             </motion.div>
             <div className="flex flex-col justify-center">
-              <span
-                className="whitespace-nowrap font-black tracking-tight text-lg group-hover:opacity-80 transition-all duration-300 leading-tight text-brand"
-              >
+              <span className="whitespace-nowrap font-black tracking-tight text-lg group-hover:opacity-80 transition-all duration-300 leading-tight text-brand">
                 {t("navigation:brandName")}
               </span>
             </div>
@@ -201,9 +199,7 @@ const Navbar = () => {
                   />
                 </motion.div>
               ) : (
-                <Skeleton
-                  className="rounded-full shrink-0 w-9 h-9 bg-white/30"
-                />
+                <Skeleton className="rounded-full shrink-0 w-9 h-9 bg-white/30" />
               )}
               <motion.button
                 whileTap={{ scale: 0.9 }}

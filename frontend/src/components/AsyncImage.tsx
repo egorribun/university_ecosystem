@@ -85,10 +85,7 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
         ref={(el) => {
           containerRef.current = el
         }}
-        className={cn(
-          "relative overflow-hidden rounded-lg bg-surface/10",
-          className
-        )}
+        className={cn("relative overflow-hidden rounded-lg bg-surface/10", className)}
         style={style}
         {...rest}
       >
@@ -133,7 +130,7 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
           />
         )}
 
-        {(!hasImage && fallbackSrc) && (
+        {!hasImage && fallbackSrc && (
           <img
             src={fallbackSrc}
             alt={alt}

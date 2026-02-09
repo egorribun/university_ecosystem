@@ -11,7 +11,7 @@ type AchievementsSectionProps = {
 
 export const AchievementsSection = ({
   achievements,
-  onAchievementClick
+  onAchievementClick,
 }: AchievementsSectionProps) => {
   const { t } = useTranslation(["profile"])
 

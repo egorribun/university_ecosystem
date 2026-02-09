@@ -48,11 +48,7 @@ function toIso(date: string) {
   return parsed.toDate().toISOString()
 }
 
-function formatTimeLeft(
-  expiresAt: string,
-  now: dayjs.Dayjs,
-  t: TFunction<"stories">
-) {
+function formatTimeLeft(expiresAt: string, now: dayjs.Dayjs, t: TFunction<"stories">) {
   const expires = dayjs(expiresAt)
   if (!expires.isValid()) return t("stories:list.timeLeft.unknown")
   const diffSeconds = Math.floor(expires.diff(now, "second"))
@@ -258,76 +254,78 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
               </Badge>
               {story.cta_url && (
                 <div className="mt-2 p-3 rounded-xl bg-surface/20 border border-glass-border/20">
-                   <p className="text-xs font-bold uppercase tracking-widest text-secondary-text opacity-50 mb-1">
-                     {t("stories:list.details.cta")}
-                   </p>
-                   <p className="text-xs font-mono break-all text-brand">{story.cta_url}</p>
+                  <p className="text-xs font-bold uppercase tracking-widest text-secondary-text opacity-50 mb-1">
+                    {t("stories:list.details.cta")}
+                  </p>
+                  <p className="text-xs font-mono break-all text-brand">{story.cta_url}</p>
                 </div>
               )}
             </div>
 
             <div className="w-full md:w-56 flex flex-col items-center gap-4">
-               <div className="relative w-full aspect-9/16 rounded-2xl overflow-hidden bg-surface/20 border border-glass-border shadow-inner group">
-                  {coverPreview ? (
-                    <img
-                      src={sanitizeUrl(coverPreview) ?? ""}
-                      alt={t("stories:list.coverAlt", { title: story.title })}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : story.cover_url ? (
-                    <SmartImage
-                      srcRaw={story.cover_url}
-                      alt={story.title}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center p-6 text-center">
-                      <p className="text-xs font-medium text-secondary-text opacity-60">
-                        {t("stories:list.noCover")}
-                      </p>
-                    </div>
-                  )}
-               </div>
+              <div className="relative w-full aspect-9/16 rounded-2xl overflow-hidden bg-surface/20 border border-glass-border shadow-inner group">
+                {coverPreview ? (
+                  <img
+                    src={sanitizeUrl(coverPreview) ?? ""}
+                    alt={t("stories:list.coverAlt", { title: story.title })}
+                    className="w-full h-full object-cover"
+                  />
+                ) : story.cover_url ? (
+                  <SmartImage
+                    srcRaw={story.cover_url}
+                    alt={story.title}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center p-6 text-center">
+                    <p className="text-xs font-medium text-secondary-text opacity-60">
+                      {t("stories:list.noCover")}
+                    </p>
+                  </div>
+                )}
+              </div>
 
-               <div className="w-full space-y-2">
-                  <div className="flex gap-2 w-full">
+              <div className="w-full space-y-2">
+                <div className="flex gap-2 w-full">
+                  <Button
+                    as="label"
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    startIcon={<PhotoCamera className="h-4 w-4" />}
+                  >
+                    {coverFile
+                      ? t("common:buttons.changePhoto")
+                      : t("stories:list.actions.pickCover")}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      hidden
+                      onChange={handleCoverChange}
+                      ref={fileInputRef}
+                    />
+                  </Button>
+                  {coverFile && (
                     <Button
-                      as="label"
                       variant="outline"
                       size="sm"
-                      className="flex-1"
-                      startIcon={<PhotoCamera className="h-4 w-4" />}
-                    >
-                      {coverFile ? t("common:buttons.changePhoto") : t("stories:list.actions.pickCover")}
-                      <input
-                        type="file"
-                        accept="image/*"
-                        hidden
-                        onChange={handleCoverChange}
-                        ref={fileInputRef}
-                      />
-                    </Button>
-                    {coverFile && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleCoverReset}
-                        startIcon={<RestartAltIcon className="h-4 w-4" />}
-                        className="text-secondary-text"
-                      />
-                    )}
-                  </div>
-                  <Button
-                    variant="solid"
-                    size="sm"
-                    className="w-full"
-                    disabled={!coverFile || updatingCover}
-                    onClick={handleCoverUpdate}
-                    loading={updatingCover}
-                  >
-                    {t("stories:list.actions.updateCover")}
-                  </Button>
-               </div>
+                      onClick={handleCoverReset}
+                      startIcon={<RestartAltIcon className="h-4 w-4" />}
+                      className="text-secondary-text"
+                    />
+                  )}
+                </div>
+                <Button
+                  variant="solid"
+                  size="sm"
+                  className="w-full"
+                  disabled={!coverFile || updatingCover}
+                  onClick={handleCoverUpdate}
+                  loading={updatingCover}
+                >
+                  {t("stories:list.actions.updateCover")}
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -379,9 +377,9 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
             </div>
           </div>
           {actionError && (
-             <Alert severity="error" className="shadow-sm">
-               {actionError}
-             </Alert>
+            <Alert severity="error" className="shadow-sm">
+              {actionError}
+            </Alert>
           )}
         </div>
       </div>
@@ -513,7 +511,7 @@ export default function StoriesAdmin() {
       <Layout>
         <PageFadeIn>
           <div className="flex min-h-[70vh] items-center justify-center px-4">
-             <h2 className="text-2xl font-bold opacity-40">{t("stories:notAuthorized")}</h2>
+            <h2 className="text-2xl font-bold opacity-40">{t("stories:notAuthorized")}</h2>
           </div>
         </PageFadeIn>
       </Layout>
@@ -525,18 +523,18 @@ export default function StoriesAdmin() {
       <PageFadeIn>
         <div className="mx-auto max-w-[1100px] px-4 py-8 md:py-12">
           <div className="mb-10 flex items-center gap-4">
-             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand/10 text-brand">
-                <RestartAltIcon className="h-7 w-7" />
-             </div>
-             <h1 className="text-3xl font-extrabold tracking-tight text-primary-text">
-               {t("stories:pageTitle")}
-             </h1>
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand/10 text-brand">
+              <RestartAltIcon className="h-7 w-7" />
+            </div>
+            <h1 className="text-3xl font-extrabold tracking-tight text-primary-text">
+              {t("stories:pageTitle")}
+            </h1>
           </div>
 
           <SectionCard className="mb-12">
             <div className="px-6 py-5 border-b border-glass-border/30">
-               <h2 className="text-lg font-bold text-primary-text">{t("stories:form.title")}</h2>
-               <p className="text-sm text-secondary-text mt-0.5">{t("stories:form.subtitle")}</p>
+              <h2 className="text-lg font-bold text-primary-text">{t("stories:form.title")}</h2>
+              <p className="text-sm text-secondary-text mt-0.5">{t("stories:form.subtitle")}</p>
             </div>
             <div className="p-6">
               <div className="flex flex-col gap-6">
@@ -589,46 +587,52 @@ export default function StoriesAdmin() {
                 </div>
 
                 <div className="flex flex-col gap-4 py-2">
-                   <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3">
+                    <Button
+                      as="label"
+                      variant="outline"
+                      startIcon={<PhotoCamera className="h-4 w-4" />}
+                    >
+                      {coverFile
+                        ? t("common:buttons.changePhoto")
+                        : t("common:buttons.uploadPhoto")}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        hidden
+                        onChange={handleCoverChange}
+                        ref={fileInputRef}
+                      />
+                    </Button>
+                    {coverFile && (
                       <Button
-                        as="label"
-                        variant="outline"
-                        startIcon={<PhotoCamera className="h-4 w-4" />}
+                        variant="ghost"
+                        onClick={resetCoverOnly}
+                        startIcon={<RestartAltIcon className="h-4 w-4" />}
+                        className="text-secondary-text"
                       >
-                        {coverFile ? t("common:buttons.changePhoto") : t("common:buttons.uploadPhoto")}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          hidden
-                          onChange={handleCoverChange}
-                          ref={fileInputRef}
-                        />
+                        {t("stories:form.resetCover")}
                       </Button>
-                      {coverFile && (
-                        <Button
-                          variant="ghost"
-                          onClick={resetCoverOnly}
-                          startIcon={<RestartAltIcon className="h-4 w-4" />}
-                          className="text-secondary-text"
-                        >
-                          {t("stories:form.resetCover")}
-                        </Button>
-                      )}
-                   </div>
+                    )}
+                  </div>
 
-                   {coverPreview && (
-                      <div className="relative w-full sm:w-80 aspect-9/16 rounded-3xl overflow-hidden border border-glass-border shadow-2xl mt-2 group mx-auto md:mx-0">
-                         <SmartImage
-                           srcRaw={coverPreview || ""}
-                           alt={t("stories:form.previewAlt")}
-                           className="w-full h-full object-cover"
-                         />
-                         <div className="absolute inset-x-0 bottom-0 p-6 bg-linear-to-t from-black/80 to-transparent">
-                            <h4 className="text-white font-bold text-lg">{formState.titleRu || "Title"}</h4>
-                            <p className="text-white/70 text-sm line-clamp-2">{formState.shortTextRu || "Text"}</p>
-                         </div>
+                  {coverPreview && (
+                    <div className="relative w-full sm:w-80 aspect-9/16 rounded-3xl overflow-hidden border border-glass-border shadow-2xl mt-2 group mx-auto md:mx-0">
+                      <SmartImage
+                        srcRaw={coverPreview || ""}
+                        alt={t("stories:form.previewAlt")}
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute inset-x-0 bottom-0 p-6 bg-linear-to-t from-black/80 to-transparent">
+                        <h4 className="text-white font-bold text-lg">
+                          {formState.titleRu || "Title"}
+                        </h4>
+                        <p className="text-white/70 text-sm line-clamp-2">
+                          {formState.shortTextRu || "Text"}
+                        </p>
                       </div>
-                   )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex flex-wrap gap-3 pt-4 border-t border-glass-border/20">
@@ -658,10 +662,10 @@ export default function StoriesAdmin() {
           <div className="space-y-6">
             <div className="flex items-center justify-between px-2">
               <h2 className="text-2xl font-extrabold text-primary-text flex items-center gap-3">
-                 {t("stories:list.title")}
-                 <span className="px-2 py-0.5 rounded-full bg-brand/10 border border-brand/20 text-xs font-bold tabular-nums text-brand">
-                    {stories.length}
-                 </span>
+                {t("stories:list.title")}
+                <span className="px-2 py-0.5 rounded-full bg-brand/10 border border-brand/20 text-xs font-bold tabular-nums text-brand">
+                  {stories.length}
+                </span>
               </h2>
               <Button
                 variant="ghost"
@@ -673,15 +677,19 @@ export default function StoriesAdmin() {
               </Button>
             </div>
 
-            {listError && <Alert severity="error" className="shadow-sm">{listError}</Alert>}
+            {listError && (
+              <Alert severity="error" className="shadow-sm">
+                {listError}
+              </Alert>
+            )}
 
             {loading && stories.length === 0 ? (
               <div className="flex justify-center py-20">
-                 <CircularProgress size={40} />
+                <CircularProgress size={40} />
               </div>
             ) : stories.length === 0 ? (
               <div className="text-center py-20 bg-surface/10 rounded-3xl border border-dashed border-glass-border/30">
-                 <p className="text-secondary-text italic">{t("stories:list.empty")}</p>
+                <p className="text-secondary-text italic">{t("stories:list.empty")}</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

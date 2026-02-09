@@ -115,8 +115,8 @@ export function AppRoutes() {
     prefetchRouteModules([...publicLoaders, ...sharedLoaders], { timeoutMs: 800 })
   }, [isAuth])
 
-  const isCompactPage = ["/login", "/register", "/forgot-password"].some((path) =>
-    location.pathname.startsWith(path) || location.pathname.startsWith("/reset-password")
+  const isCompactPage = ["/login", "/register", "/forgot-password"].some(
+    (path) => location.pathname.startsWith(path) || location.pathname.startsWith("/reset-password")
   )
 
   const wrap = (node: ReactElement) => {
