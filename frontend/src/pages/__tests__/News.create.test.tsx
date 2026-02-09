@@ -120,3 +120,7 @@ describe("News creation dialog", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument()
   })
 })
+
+
+
+

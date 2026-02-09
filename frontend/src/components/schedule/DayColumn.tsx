@@ -51,26 +51,25 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
       <div
         ref={ref}
         className={cn(
-          "group relative isolate mb-2 rounded-2xl border border-(--glass-border) p-4 sm:p-6 shadow-premium [content-visibility:auto] [contain-intrinsic-size:400px] transition-all duration-300",
+          "group relative isolate mb-2 rounded-2xl border border-glass-border p-4 sm:p-6 shadow-premium [content-visibility:auto] [contain-intrinsic-size:400px] transition-all duration-300",
           isToday
-            ? "bg-(--nav-link)/5 ring-2 ring-(--nav-link)/20 dark:bg-(--nav-link)/10 dark:ring-(--nav-link)/30"
-            : "bg-(--card-bg)/80 dark:bg-(--card-bg)/90 shadow-md dark:shadow-xl",
+            ? "bg-primary-main/5 ring-2 ring-primary-main/20 dark:bg-primary-main/10 dark:ring-primary-main/30"
+            : "bg-(--bg-surface)/80 dark:bg-(--bg-surface)/90 shadow-md dark:shadow-xl",
           "backdrop-blur-md"
         )}
       >
         <div className="mb-4 flex items-center gap-2">
           <h3
             className={cn(
-              "text-lg font-extrabold tracking-tight text-(--page-text) transition-colors duration-200",
-              isToday &&
-                "text-(--nav-link) dark:text-[color-mix(in_srgb,var(--nav-link)_95%,white_5%)]"
+              "text-lg font-extrabold tracking-tight text-(--text-primary) transition-colors duration-200",
+              isToday && "text-primary-main dark:text-primary-light"
             )}
           >
             {label}
           </h3>
           {(userRole === "admin" || userRole === "teacher") && (
             <button
-              className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg border border-[color-mix(in_srgb,white_14%,var(--nav-link)_86%)] bg-[color-mix(in_srgb,var(--card-bg)_92%,var(--nav-link)_8%)] text-(--nav-link) transition-all duration-200 hover:border-(--nav-link) hover:bg-(--nav-link) hover:text-white hover:shadow-[0_4px_12px_color-mix(in_srgb,var(--nav-link)_25%,transparent)] hover:scale-110 dark:border-[color-mix(in_srgb,white_10%,var(--nav-link)_90%)] dark:bg-[color-mix(in_srgb,var(--card-bg)_88%,var(--nav-link)_12%)] dark:hover:shadow-[0_6px_16px_color-mix(in_srgb,var(--nav-link)_32%,transparent)]"
+              className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg border border-primary-main/20 bg-primary-main/10 text-primary-main transition-all duration-200 hover:border-primary-main hover:bg-primary-main hover:text-white hover:shadow-[0_4px_12px_rgba(59,130,246,0.25)] hover:scale-110"
               onClick={(e) => {
                 e.stopPropagation()
                 onAdd()
@@ -86,7 +85,7 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
             {!isOnline && !hasSchedule ? (
               <OfflineFallback onRetry={onRetry} />
             ) : (
-              <p className="text-[color-mix(in_srgb,var(--secondary-text)_65%,transparent)] text-sm font-medium dark:text-[color-mix(in_srgb,var(--secondary-text)_75%,transparent)]">
+              <p className="text-[color-mix(in_srgb,var(--text-secondary)_65%,transparent)] text-sm font-medium dark:text-[color-mix(in_srgb,var(--text-secondary)_75%,transparent)]">
                 {t("schedule:mobile.noLessons")}
               </p>
             )}
@@ -127,3 +126,8 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
 )
 
 DayColumn.displayName = "DayColumn"
+
+
+
+
+

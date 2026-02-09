@@ -81,7 +81,7 @@ export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, 
                 className="w-12 h-12 rounded-full object-cover shadow-sm"
               />
               {contact.online && (
-                <span className="msg-online-indicator absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-(--success-bg) border-2 border-(--bg-surface) dark:border-(--page-bg)"></span>
+                <span className="msg-online-indicator absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-(--success-bg) border-2 border-(--bg-surface) dark:border-(--bg-page)"></span>
               )}
             </div>
             <div className="flex-1 min-w-0">
@@ -89,7 +89,7 @@ export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, 
                 <h3
                   className={cn(
                     "font-bold text-base truncate sf-pro",
-                    selectedId === contact.id ? "text-white" : "text-primary-text"
+                    selectedId === contact.id ? "text-white" : "text-(--text-primary)"
                   )}
                 >
                   {contact.name}
@@ -99,7 +99,7 @@ export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, 
                     "text-xs shrink-0 ml-2 font-medium uppercase tracking-tight",
                     selectedId === contact.id
                       ? "text-white/70"
-                      : "text-(--secondary-text) opacity-60"
+                      : "text-(--text-secondary) opacity-60"
                   )}
                 >
                   {contact.lastMessageTime}
@@ -109,7 +109,7 @@ export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, 
                 <p
                   className={cn(
                     "text-sm truncate flex-1 leading-tight",
-                    selectedId === contact.id ? "text-white/80" : "text-(--secondary-text)"
+                    selectedId === contact.id ? "text-white/80" : "text-(--text-secondary)"
                   )}
                 >
                   {contact.lastMessage}
@@ -214,7 +214,7 @@ const ChatWindow: React.FC<ChatWindowProps> = memo(({ messages }) => {
                     "max-w-[80%] md:max-w-[70%] px-4 py-2.5 text-base relative",
                     message.isMe
                       ? "msg-bubble-sent text-white rounded-2xl rounded-br-sm md:rounded-br-2xl md:rounded-bl-sm"
-                      : "msg-bubble-received text-(--primary-text) rounded-2xl rounded-bl-sm shadow-sm"
+                      : "msg-bubble-received text-(--text-primary) rounded-2xl rounded-bl-sm shadow-sm"
                   )}
                 >
                   {message.attachments && message.attachments.length > 0 && (
@@ -267,7 +267,7 @@ const ChatWindow: React.FC<ChatWindowProps> = memo(({ messages }) => {
                     <span
                       className="text-[0.65rem] font-bold uppercase tracking-wider"
                       style={{
-                        color: message.isMe ? "var(--primary-subtle)" : "var(--secondary-text)",
+                        color: message.isMe ? "var(--primary-subtle)" : "var(--text-secondary)",
                       }}
                     >
                       {message.timestamp}
@@ -398,7 +398,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
                   className="w-16 h-16 object-cover rounded-xl border border-(--glass-border)/20 shadow-sm"
                 />
               ) : (
-                <div className="shrink-0 flex items-center justify-center h-10 w-10 md:h-12 md:w-12 bg-(--bg-surface-raised) rounded-xl border border-(--glass-border)/20 shadow-sm text-(--secondary-text)">
+                <div className="shrink-0 flex items-center justify-center h-10 w-10 md:h-12 md:w-12 bg-(--bg-surface-raised) rounded-xl border border-(--glass-border)/20 shadow-sm text-(--text-secondary)">
                   <FileText className="w-8 h-8" />
                 </div>
               )}
@@ -423,7 +423,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
               "p-2.5 rounded-xl transition-colors hover:bg-(--bg-surface-hover)/30",
               showAttachMenu
                 ? "text-(--brand-main) bg-(--brand-main)/10"
-                : "text-(--secondary-text)"
+                : "text-(--text-secondary)"
             )}
             aria-label="Attachments"
           >
@@ -476,7 +476,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
                     >
                       <item.icon className="w-4.5 h-4.5" />
                     </div>
-                    <span className="text-sm font-bold text-(--primary-text)">
+                    <span className="text-sm font-bold text-(--text-primary)">
                       {t(`messenger:attach${item.label}`)}
                     </span>
                   </button>
@@ -492,7 +492,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={t("messenger:typeMessage", "Message...")}
-          className="flex-1 bg-transparent border-none focus:ring-0 outline-none resize-none max-h-48 py-2 md:py-2.5 px-1 text-base text-(--primary-text) placeholder:text-(--secondary-text) placeholder:opacity-50"
+          className="flex-1 bg-transparent border-none focus:ring-0 outline-none resize-none max-h-48 py-2 md:py-2.5 px-1 text-base text-(--text-primary) placeholder:text-(--text-secondary) placeholder:opacity-50"
           rows={1}
         />
         <motion.button
@@ -504,7 +504,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
             "p-2.5 rounded-xl transition-all duration-300",
             text.trim() || selectedFiles.length > 0
               ? "bg-(--brand-main) text-white shadow-lg shadow-(--brand-main)/30"
-              : "bg-(--bg-surface-hover)/10 text-(--secondary-text) opacity-30 cursor-not-allowed"
+              : "bg-(--bg-surface-hover)/10 text-(--text-secondary) opacity-30 cursor-not-allowed"
           )}
         >
           <Send className="w-5 h-5" fill="currentColor" />
@@ -552,12 +552,12 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
             onClick={(event) => event.stopPropagation()}
           >
             <div className="p-6 pb-4 flex items-center justify-between border-b border-(--glass-border)/10 bg-(--bg-surface)/50">
-              <h3 className="text-xl font-black tracking-tight text-(--primary-text) sf-pro">
+              <h3 className="text-xl font-black tracking-tight text-(--text-primary) sf-pro">
                 {t("messenger:newChat", "New Chat")}
               </h3>
               <button
                 onClick={onClose}
-                className="p-2 rounded-xl hover:bg-(--bg-surface-hover)/50 text-(--secondary-text) transition-colors"
+                className="p-2 rounded-xl hover:bg-(--bg-surface-hover)/50 text-(--text-secondary) transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -565,14 +565,14 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
 
             <div className="p-6">
               <div className="relative group mb-6">
-                <Search className="w-4.5 h-4.5 absolute left-3.5 top-1/2 -translate-y-1/2 text-(--secondary-text) group-focus-within:text-(--brand-main) transition-colors" />
+                <Search className="w-4.5 h-4.5 absolute left-3.5 top-1/2 -translate-y-1/2 text-(--text-secondary) group-focus-within:text-(--brand-main) transition-colors" />
                 <input
                   type="text"
                   autoFocus
                   placeholder={t("messenger:searchUsers", "Search users by name or email...")}
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  className="w-full pl-11 pr-4 py-3 rounded-2xl border border-(--glass-border)/20 bg-(--bg-surface-raised)/40 focus:ring-4 focus:ring-(--brand-main)/10 focus:border-(--brand-main)/40 outline-none transition-all text-base font-medium text-(--primary-text) placeholder:text-(--secondary-text) placeholder:opacity-50"
+                  className="w-full pl-11 pr-4 py-3 rounded-2xl border border-(--glass-border)/20 bg-(--bg-surface-raised)/40 focus:ring-4 focus:ring-(--brand-main)/10 focus:border-(--brand-main)/40 outline-none transition-all text-base font-medium text-(--text-primary) placeholder:text-(--text-secondary) placeholder:opacity-50"
                 />
               </div>
 
@@ -585,10 +585,10 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
 
                 {!isLoading && users.length === 0 && search.length > 1 && (
                   <div className="text-center py-12 px-4 space-y-2">
-                    <div className="w-16 h-16 rounded-full bg-(--bg-surface-raised) mx-auto flex items-center justify-center text-(--secondary-text) opacity-20">
+                    <div className="w-16 h-16 rounded-full bg-(--bg-surface-raised) mx-auto flex items-center justify-center text-(--text-secondary) opacity-20">
                       <Search className="w-8 h-8" />
                     </div>
-                    <p className="text-sm font-bold text-(--secondary-text) opacity-60">
+                    <p className="text-sm font-bold text-(--text-secondary) opacity-60">
                       {t("messenger:noUsersFound", "No users found matching your search")}
                     </p>
                   </div>
@@ -612,10 +612,10 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
                         />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-base font-black truncate leading-tight text-(--primary-text) group-hover:text-(--brand-main) transition-colors sf-pro">
+                        <p className="text-base font-black truncate leading-tight text-(--text-primary) group-hover:text-(--brand-main) transition-colors sf-pro">
                           {user.full_name}
                         </p>
-                        <p className="text-xs text-(--secondary-text) truncate font-medium opacity-60">
+                        <p className="text-xs text-(--text-secondary) truncate font-medium opacity-60">
                           {user.email}
                         </p>
                       </div>
@@ -630,3 +630,9 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
     </AnimatePresence>
   )
 }
+
+
+
+
+
+

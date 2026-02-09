@@ -52,20 +52,20 @@ const Select = ({
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
           "flex min-h-12 w-full items-center justify-between gap-2 rounded-xl border-2 px-4 py-2 text-left transition-all duration-300",
-          "border-border-strong bg-surface/40 backdrop-blur-md shadow-sm",
-          "hover:border-brand/40 hover:bg-surface-hover/60",
+          "border-border-strong bg-(--bg-surface)/40 backdrop-blur-md shadow-sm",
+          "hover:border-brand/40 hover:bg-(--bg-surface-hover)/60",
           "focus:outline-none focus:ring-4 focus:ring-brand/10",
           isOpen &&
             "border-brand ring-4 ring-brand/10 shadow-[0_0_12px_rgba(var(--primary-main),0.1)]",
           error && "border-error bg-error/5 focus:ring-error/10",
           disabled && "cursor-not-allowed opacity-50 grayscale",
-          !selectedOption && "text-tertiary-text"
+          !selectedOption && "text-(--text-tertiary)"
         )}
       >
         <span className="truncate">{selectedOption ? selectedOption.label : placeholder}</span>
         <ChevronDown
           className={cn(
-            "h-4 w-4 shrink-0 text-secondary-text transition-transform duration-300",
+            "h-4 w-4 shrink-0 text-(--text-secondary) transition-transform duration-300",
             isOpen && "rotate-180"
           )}
         />
@@ -79,7 +79,7 @@ const Select = ({
             exit={{ opacity: 0, y: -10, scale: 0.98 }}
             transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
             className={cn(
-              "absolute z-(--ue-z-index-dropdown,50) mt-1 w-full overflow-hidden rounded-xl border border-glass-border bg-surface/90 shadow-glass backdrop-blur-xl",
+              "absolute z-(--ue-z-index-dropdown,50) mt-1 w-full overflow-hidden rounded-xl border border-glass-border bg-(--bg-surface)/90 shadow-glass backdrop-blur-xl",
               "p-1.5"
             )}
           >
@@ -97,7 +97,7 @@ const Select = ({
                     "hover:bg-brand/10 hover:text-brand",
                     value === option.value
                       ? "bg-brand text-inverse-text shadow-sm"
-                      : "text-primary-text"
+                      : "text-(--text-primary)"
                   )}
                 >
                   {option.label}
@@ -113,3 +113,9 @@ const Select = ({
 
 export { Select }
 export type { SelectOption }
+
+
+
+
+
+

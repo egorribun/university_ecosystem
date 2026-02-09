@@ -98,3 +98,7 @@ export const prefetchDashboardSchedule = (
   role: User["role"] | null | undefined,
   groupId: string | number | null | undefined
 ) => queryClient.prefetchQuery(createScheduleQueryOptions(queryClient, role, groupId))
+
+
+
+

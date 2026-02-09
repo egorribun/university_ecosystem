@@ -192,3 +192,7 @@ export const fetchWeatherSnapshot = async (
     })
   }
 }
+
+
+
+

@@ -147,7 +147,7 @@ export default function ResetPassword() {
   const isSuccess = resetStatus === "success"
 
   return (
-    <div className="min-h-screen bg-(--page-bg) text-(--page-text) flex items-center justify-center p-6 relative overflow-hidden">
+    <div className="min-h-screen bg-(--bg-page) text-(--text-primary) flex items-center justify-center p-6 relative overflow-hidden">
       {/* Background decorative elements */}
       <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-20">
         <div className="absolute top-[-10%] right-[-5%] w-[40%] h-[40%] bg-brand/30 rounded-full blur-[120px]" />
@@ -175,10 +175,10 @@ export default function ResetPassword() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <h2 className="text-2xl font-black tracking-tight text-primary-text">
+                    <h2 className="text-2xl font-black tracking-tight text-(--text-primary)">
                       {t("auth:reset.successTitle")}
                     </h2>
-                    <p className="text-sm text-secondary-text font-medium leading-relaxed">
+                    <p className="text-sm text-(--text-secondary) font-medium leading-relaxed">
                       {t("auth:reset.successMessage")}
                     </p>
                   </div>
@@ -201,10 +201,10 @@ export default function ResetPassword() {
                   className="space-y-6"
                 >
                   <div className="text-center space-y-2">
-                    <h1 className="text-3xl font-black tracking-tight text-primary-text sm:text-4xl">
+                    <h1 className="text-3xl font-black tracking-tight text-(--text-primary) sm:text-4xl">
                       {t("auth:reset.title")}
                     </h1>
-                    <p className="text-sm text-secondary-text font-medium">
+                    <p className="text-sm text-(--text-secondary) font-medium">
                       {t("auth:reset.subtitle")}
                     </p>
                   </div>
@@ -257,7 +257,7 @@ export default function ResetPassword() {
                               className="h-1.5"
                             />
                             <div className="flex justify-between items-center">
-                              <p className="text-[10px] font-bold uppercase tracking-widest text-secondary-text opacity-60">
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-(--text-secondary) opacity-60">
                                 {t("auth:register.passwordStrength")}
                               </p>
                               <p className="text-[10px] font-bold text-brand uppercase tracking-widest">
@@ -360,7 +360,7 @@ export default function ResetPassword() {
                       <div className="pt-2 text-center">
                         <Link
                           to="/forgot-password"
-                          className="inline-flex items-center gap-2 text-sm font-bold text-secondary-text hover:text-brand transition-colors group"
+                          className="inline-flex items-center gap-2 text-sm font-bold text-(--text-secondary) hover:text-brand transition-colors group"
                         >
                           <ChevronLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
                           {t("auth:reset.linkHelp")}
@@ -377,3 +377,8 @@ export default function ResetPassword() {
     </div>
   )
 }
+
+
+
+
+

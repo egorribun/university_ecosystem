@@ -77,3 +77,7 @@ describe("initObservability", () => {
     expect(Sentry.init).not.toHaveBeenCalled()
   })
 })
+
+
+
+

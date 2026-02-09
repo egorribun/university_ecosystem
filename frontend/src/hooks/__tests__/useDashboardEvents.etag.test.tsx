@@ -74,3 +74,7 @@ describe("useDashboardEvents", () => {
     await waitFor(() => expect(result.current.data).toEqual(secondUserEvents))
   })
 })
+
+
+
+

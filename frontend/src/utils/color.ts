@@ -46,3 +46,7 @@ export const mixColorWithWhite = (color: string, coefficient: number) => {
 }
 
 export const lightenColor = mixColorWithWhite
+
+
+
+

@@ -120,9 +120,9 @@ export default function MobileBottomNav() {
                 }
               }}
               className={({ isActive }) =>
-                "group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--nav-text) transition-all outline-none select-none " +
+                "group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--text-primary) transition-all outline-none select-none " +
                 (isActive
-                  ? "active text-(--nav-link) font-bold scale-110"
+                  ? "active text-brand font-bold scale-110"
                   : "opacity-60 hover:opacity-100")
               }
               aria-label={it.label}
@@ -131,7 +131,7 @@ export default function MobileBottomNav() {
                 {isActive && (
                   <motion.div
                     layoutId="bottom-nav-active-glow"
-                    className="absolute inset-[-14px] rounded-full bg-(--nav-link) opacity-10 blur-xl -z-10"
+                    className="absolute inset-[-14px] rounded-full bg-brand opacity-10 blur-xl -z-10"
                     transition={springBouncy}
                   />
                 )}
@@ -170,3 +170,7 @@ export default function MobileBottomNav() {
     </>
   )
 }
+
+
+
+

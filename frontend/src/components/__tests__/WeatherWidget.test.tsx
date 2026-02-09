@@ -175,3 +175,7 @@ describe("WeatherWidget", () => {
     expect(container.firstChild).toBeNull()
   })
 })
+
+
+
+

@@ -11,8 +11,8 @@ function MapSkeleton() {
   const iconSize = isMobile ? 26 : 34
 
   return (
-    <div className="w-full bg-(--card-bg) text-(--page-text) rounded-none shadow-2xl overflow-hidden relative">
-      <div className="map-page bg-(--bg-surface-alt) dark:bg-(--bg-page) relative h-full w-full">
+    <div className="w-full bg-(--bg-surface) text-(--text-primary) rounded-none shadow-2xl overflow-hidden relative">
+      <div className="map-page bg-(--bg-canvas-light) dark:bg-(--bg-canvas-dark) relative h-full w-full">
         <div className="glass glass--panel glass--sheen map-head flex items-center justify-between px-6 py-4 absolute top-0 left-0 right-0 z-navbar">
           <div className="flex items-center gap-3">
             <Skeleton className={`rounded-full h-[${iconSize}px] w-[${iconSize}px]`} />
@@ -34,7 +34,7 @@ function MapSkeleton() {
 
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-navbar pointer-events-none flex flex-col gap-3 pb-(--safe-area-bottom)">
           <div className="flex items-center gap-2 pointer-events-auto">
-            <div className="glass glass--panel rounded-2xl p-1 bg-surface/40 backdrop-blur-xl border border-glass-border shadow-2xl flex items-center gap-1">
+            <div className="glass glass--panel rounded-2xl p-1 bg-(--bg-surface)/40 backdrop-blur-xl border border-glass-border shadow-2xl flex items-center gap-1">
               <Skeleton className={isMobile ? "h-8 w-36" : "h-10 w-52"} />
               <Skeleton className="h-10 w-10 rounded-xl" />
             </div>
@@ -56,3 +56,7 @@ export default function MapPage() {
     </Layout>
   )
 }
+
+
+
+

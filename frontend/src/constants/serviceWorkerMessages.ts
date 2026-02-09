@@ -21,3 +21,7 @@ export type ServiceWorkerMessage =
   | { type: typeof SERVICE_WORKER_MESSAGE_TYPES.SKIP_WAITING }
   | { type: typeof SERVICE_WORKER_MESSAGE_TYPES.PROCESS_NOTIFICATION_CLICK_QUEUE }
   | ApiCacheControlMessage
+
+
+
+

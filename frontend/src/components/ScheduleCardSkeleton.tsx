@@ -61,3 +61,7 @@ export function ScheduleCardSkeleton({ items = 3, className = "" }: ScheduleCard
 }
 
 export default memo(ScheduleCardSkeleton)
+
+
+
+

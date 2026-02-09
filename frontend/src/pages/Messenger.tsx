@@ -82,7 +82,7 @@ function ConfirmDialog({
           >
             <div className="p-8 space-y-4">
               <h3 className="text-xl font-bold tracking-tight sf-pro">{title}</h3>
-              <p className="text-base text-secondary-text font-medium leading-relaxed">{message}</p>
+              <p className="text-base text-(--text-secondary) font-medium leading-relaxed">{message}</p>
               <div className="flex gap-3 justify-end pt-4">
                 <motion.button
                   whileHover={{ scale: 1.05, backgroundColor: "rgba(0,0,0,0.05)" }}
@@ -451,13 +451,11 @@ export default function Messenger() {
 
   return (
     <div
-      className="flex overflow-hidden text-gray-900 dark:text-gray-100 font-sans"
+      className="flex overflow-hidden text-gray-900 dark:text-gray-100 font-sans h-full bg-msg-chat"
       style={{
-        height: "100%",
         paddingBottom: isBottomNavVisible
           ? "calc(var(--bn-h, 4rem) + env(safe-area-inset-bottom, 0px) + 8px)"
           : 0,
-        background: "var(--msg-chat-bg)",
       }}
     >
       <AnimatePresence mode="wait">
@@ -469,18 +467,10 @@ export default function Messenger() {
             animate={{ x: 0, opacity: 1 }}
             exit={isMobile ? { x: -300, opacity: 0 } : undefined}
             transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-            className="w-full md:w-80 lg:w-96 flex flex-col border-r h-full relative z-deep"
-            style={{
-              background: "var(--msg-sidebar-bg)",
-              borderColor: "var(--msg-header-border)",
-            }}
+            className="w-full md:w-80 lg:w-96 flex flex-col border-r border-msg-border h-full relative z-deep bg-msg-sidebar"
           >
             <div
-              className="p-4 flex justify-between items-center sticky top-0 z-deep backdrop-blur-xl"
-              style={{
-                background: "var(--msg-header-bg)",
-                borderBottom: "1px solid var(--msg-header-border)",
-              }}
+              className="p-4 flex justify-between items-center sticky top-0 z-deep backdrop-blur-xl bg-msg-header border-b border-msg-border"
             >
               <h1 className="text-2xl font-bold tracking-tight sf-pro">
                 {t("messenger:title", "Messages")}
@@ -489,8 +479,7 @@ export default function Messenger() {
                 whileHover={{ scale: 1.1, backgroundColor: "var(--msg-sidebar-hover)" }}
                 whileTap={{ scale: 0.9 }}
                 onClick={() => setIsNewChatModalOpen(true)}
-                className="p-2 rounded-full transition-colors bg-blue-500/10"
-                style={{ color: "var(--msg-sidebar-active)" }}
+                className="p-2 rounded-full transition-colors bg-blue-500/10 text-msg-active"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -509,7 +498,7 @@ export default function Messenger() {
               </motion.button>
             </div>
 
-            <div className="p-4" style={{ background: "var(--msg-sidebar-bg)" }}>
+            <div className="p-4 bg-msg-sidebar">
               <div className="relative group">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -549,8 +538,7 @@ export default function Messenger() {
             animate={{ x: 0, opacity: 1 }}
             exit={isMobile ? { x: 300, opacity: 0 } : undefined}
             transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-            className="flex-1 flex flex-col overflow-hidden h-full relative z-base"
-            style={{ background: "var(--msg-chat-bg)" }}
+            className="flex-1 flex flex-col overflow-hidden h-full relative z-base bg-msg-chat"
           >
             {selectedChatId && activeChat ? (
               <>
@@ -617,8 +605,7 @@ export default function Messenger() {
                                   initial={{ opacity: 0, y: 5 }}
                                   animate={{ opacity: 1, y: 0 }}
                                   exit={{ opacity: 0, y: -5 }}
-                                  className="text-xs font-semibold uppercase tracking-wider"
-                                  style={{ color: "var(--msg-online-color)" }}
+                                  className="text-xs font-semibold uppercase tracking-wider text-msg-online"
                                 >
                                   {t("messenger:online", "online")}
                                 </motion.p>
@@ -688,7 +675,7 @@ export default function Messenger() {
                                 initial={{ opacity: 0, scale: 0.9, y: 10, x: 5 }}
                                 animate={{ opacity: 1, scale: 1, y: 0, x: 0 }}
                                 exit={{ opacity: 0, scale: 0.9, y: 10 }}
-                                className="absolute right-0 top-full mt-2 bg-surface/90 dark:bg-slate-900/90 backdrop-blur-xl rounded-2xl shadow-premium border border-subtle dark:border-slate-800 py-2 min-w-[220px] z-navbar overflow-hidden"
+                                className="absolute right-0 top-full mt-2 bg-(--bg-surface)/90 dark:bg-slate-900/90 backdrop-blur-xl rounded-2xl shadow-premium border border-subtle dark:border-slate-800 py-2 min-w-[220px] z-navbar overflow-hidden"
                               >
                                 {[
                                   {
@@ -803,9 +790,8 @@ export default function Messenger() {
                     viewBox="0 0 24 24"
                     strokeWidth={1}
                     stroke="currentColor"
-                    className="w-16 h-16"
-                    style={{ color: "var(--msg-sidebar-active)", opacity: 0.6 }}
-                  >
+                  className="w-16 h-16 text-msg-active opacity-60"
+                >
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -849,8 +835,7 @@ export default function Messenger() {
               className="bg-(--bg-surface) dark:bg-(--bg-page) rounded-4xl shadow-2xl w-full max-w-lg overflow-hidden border border-white/10 z-modal"
             >
               <div
-                className="p-6 pb-4 flex items-center justify-between"
-                style={{ borderBottom: "1px solid var(--msg-header-border)" }}
+                className="p-6 pb-4 flex items-center justify-between border-b border-msg-border"
               >
                 <h3 className="text-xl font-bold tracking-tight sf-pro">
                   {profileUser?.full_name || t("messenger:profile", "Profile")}
@@ -920,7 +905,7 @@ export default function Messenger() {
 
                     <div className="grid grid-cols-2 gap-3 pb-2">
                       <div className="p-4 rounded-2xl bg-gray-50 dark:bg-white/5 border border-black/5 dark:border-white/5">
-                        <p className="text-xs font-bold uppercase tracking-widest text-secondary-text/60 mb-1">
+                        <p className="text-xs font-bold uppercase tracking-widest text-(--text-secondary)/60 mb-1">
                           {t("messenger:status", "Status")}
                         </p>
                         <p className="text-sm font-bold flex items-center gap-1.5">
@@ -944,7 +929,7 @@ export default function Messenger() {
                           rel="noreferrer"
                           className="p-4 rounded-2xl bg-blue-500/5 border border-blue-500/10 hover:bg-blue-500/10 transition-colors"
                         >
-                          <p className="text-xs font-bold uppercase tracking-widest text-nav-link mb-1">
+                          <p className="text-xs font-bold uppercase tracking-widest text-(--primary-main) mb-1">
                             {t("messenger:avatar", "Avatar")}
                           </p>
                           <p className="text-sm font-bold text-blue-600 dark:text-blue-400">
@@ -975,3 +960,9 @@ export default function Messenger() {
     </div>
   )
 }
+
+
+
+
+
+

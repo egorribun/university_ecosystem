@@ -220,7 +220,7 @@ export default function InstallPrompt() {
             exit={{ opacity: 0, y: 50, scale: 0.95 }}
             className="fixed bottom-24 right-4 left-4 sm:left-auto sm:right-6 z-4000 w-auto max-w-sm"
           >
-            <div className="bg-surface/90 backdrop-blur-2xl rounded-3xl border border-glass-border shadow-2xl overflow-hidden ring-1 ring-black/5 p-6">
+            <div className="bg-(--bg-surface)/90 backdrop-blur-2xl rounded-3xl border border-glass-border shadow-2xl overflow-hidden ring-1 ring-black/5 p-6">
               <div
                 className={cn(
                   "flex flex-col",
@@ -234,19 +234,19 @@ export default function InstallPrompt() {
                         <div className="p-2.5 rounded-2xl bg-brand/10 text-brand">
                           <Download className="h-5 w-5" />
                         </div>
-                        <h3 className="text-lg font-black tracking-tight text-primary-text sf-pro">
+                        <h3 className="text-lg font-black tracking-tight text-(--text-primary) sf-pro">
                           {t("system:installPrompt.installTitle", { appName })}
                         </h3>
                       </div>
                       <button
                         onClick={handleInstallDismiss}
                         aria-label={t("system:installPrompt.closeOffer")}
-                        className="p-1.5 rounded-xl hover:bg-surface-hover/30 text-secondary-text transition-colors"
+                        className="p-1.5 rounded-xl hover:bg-(--bg-surface-hover)/30 text-(--text-secondary) transition-colors"
                       >
                         <X className="h-5 w-5" />
                       </button>
                     </div>
-                    <p className="text-sm font-medium text-secondary-text leading-relaxed opacity-80">
+                    <p className="text-sm font-medium text-(--text-secondary) leading-relaxed opacity-80">
                       {t("system:installPrompt.description")}
                     </p>
                     <div className="flex gap-2 pt-2">
@@ -279,20 +279,20 @@ export default function InstallPrompt() {
                         <div className="p-2.5 rounded-2xl bg-brand/10 text-brand">
                           <Bell className="h-5 w-5" />
                         </div>
-                        <h3 className="text-lg font-black tracking-tight text-primary-text sf-pro">
+                        <h3 className="text-lg font-black tracking-tight text-(--text-primary) sf-pro">
                           {t("system:installPrompt.notificationsTitle")}
                         </h3>
                       </div>
                       <button
                         onClick={handlePushDismiss}
                         aria-label={t("system:installPrompt.notificationsClose")}
-                        className="p-1.5 rounded-xl hover:bg-surface-hover/30 text-secondary-text transition-colors"
+                        className="p-1.5 rounded-xl hover:bg-(--bg-surface-hover)/30 text-(--text-secondary) transition-colors"
                       >
                         <X className="h-5 w-5" />
                       </button>
                     </div>
 
-                    <p className="text-sm font-medium text-secondary-text leading-relaxed opacity-80">
+                    <p className="text-sm font-medium text-(--text-secondary) leading-relaxed opacity-80">
                       {t("system:installPrompt.manageNotifications")}
                     </p>
 
@@ -336,14 +336,14 @@ export default function InstallPrompt() {
                           >
                             {t("system:installPrompt.check")}
                           </Button>
-                          <span className="text-[11px] font-bold text-secondary-text uppercase tracking-wider opacity-60">
+                          <span className="text-[11px] font-bold text-(--text-secondary) uppercase tracking-wider opacity-60">
                             {t("system:installPrompt.status", { status: permissionText })}
                           </span>
                         </div>
                       </div>
                     ) : notificationPermission === "default" ? (
                       <div className="space-y-4">
-                        <p className="text-xs font-bold text-secondary-text opacity-60 leading-relaxed px-1">
+                        <p className="text-xs font-bold text-(--text-secondary) opacity-60 leading-relaxed px-1">
                           {t("system:installPrompt.defaultPermissionDescription")}
                         </p>
                         <div className="flex items-center gap-3">
@@ -356,16 +356,16 @@ export default function InstallPrompt() {
                           >
                             {t("system:installPrompt.allow")}
                           </Button>
-                          <span className="text-[11px] font-bold text-secondary-text uppercase tracking-wider opacity-60">
+                          <span className="text-[11px] font-bold text-(--text-secondary) uppercase tracking-wider opacity-60">
                             {t("system:installPrompt.status", { status: permissionText })}
                           </span>
                         </div>
                       </div>
                     ) : (
                       <div className="space-y-4 pt-2">
-                        <div className="rounded-2xl border border-glass-border/10 bg-surface-raised/30 p-4 space-y-4">
+                        <div className="rounded-2xl border border-glass-border/10 bg-(--bg-surface-raised)/30 p-4 space-y-4">
                           <div className="flex items-center justify-between">
-                            <span className="text-sm font-bold text-primary-text">
+                            <span className="text-sm font-bold text-(--text-primary)">
                               {t("system:installPrompt.toggleLabel")}
                             </span>
                             <SwitchControl
@@ -381,7 +381,7 @@ export default function InstallPrompt() {
                           <div className="h-px bg-glass-border/10" />
                           {topicKeys.map((key) => (
                             <div key={key} className="flex items-center justify-between">
-                              <span className="text-xs font-bold text-secondary-text">
+                              <span className="text-xs font-bold text-(--text-secondary)">
                                 {t(`notifications:topics.${key}`)}
                               </span>
                               <SwitchControl
@@ -392,7 +392,7 @@ export default function InstallPrompt() {
                             </div>
                           ))}
                         </div>
-                        <p className="text-[11px] font-bold text-secondary-text opacity-40 uppercase tracking-widest px-1">
+                        <p className="text-[11px] font-bold text-(--text-secondary) opacity-40 uppercase tracking-widest px-1">
                           {t("system:installPrompt.browserPermission", { status: permissionText })}
                         </p>
                       </div>
@@ -411,7 +411,7 @@ export default function InstallPrompt() {
             initial={{ opacity: 0, scale: 0.9, y: -20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: -20 }}
-            className="fixed top-24 left-1/2 -translate-x-1/2 z-5000 w-full max-w-sm px-6"
+            className="fixed top-24 left-1/2 -translate-x-1/2 z-navbar00 w-full max-w-sm px-6"
           >
             <div
               className={cn(
@@ -443,7 +443,7 @@ export default function InstallPrompt() {
             initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 50 }}
-            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-5000 w-full max-w-md px-6"
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-navbar00 w-full max-w-md px-6"
           >
             <div className="flex items-center gap-4 p-4 rounded-2xl border border-brand/20 bg-brand/5 backdrop-blur-2xl shadow-2xl text-brand">
               <RefreshCw className="h-6 w-6 animate-spin-slow" />
@@ -473,3 +473,9 @@ export default function InstallPrompt() {
     </>
   )
 }
+
+
+
+
+
+

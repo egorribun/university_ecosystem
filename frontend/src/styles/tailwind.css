@@ -14,14 +14,14 @@
   --color-surface-raised: var(--bg-surface-raised);
   --color-panel: var(--bg-panel);
   --color-glass: var(--glass-bg);
-  --color-surface-mix: var(--bg-surface-mix);
+  --color-surface-mix: var(--bg-(--bg-surface)-mix);
   --color-input-mix: var(--bg-input-mix);
   --color-glass-elevated: var(--glass-bg-elevated);
 
   /* Typography */
-  --color-primary-text: var(--text-primary);
-  --color-secondary-text: var(--text-secondary);
-  --color-tertiary-text: var(--text-tertiary);
+  --color-(--text-primary): var(--text-primary);
+  --color-(--text-secondary): var(--text-secondary);
+  --color-(--text-tertiary): var(--text-tertiary);
   --color-inverse-text: var(--text-inverse);
   --color-text-muted-subtle: var(--text-muted-subtle);
 
@@ -66,17 +66,6 @@
   --radius-ue-lg: var(--radius-lg);
   --radius-ue-xl: 2rem;
   --radius-ue-2xl: 3rem;
-
-  /*
-   * LEGACY MAPPINGS (Temporary for backward compatibility)
-   * These map old utility names to new tokens where possible
-   */
-  --color-nav: var(--bg-surface);
-  --color-nav-text: var(--text-primary);
-  --color-nav-link: var(--primary-main);
-  --color-nav-hover: var(--primary-hover);
-  --color-button: var(--primary-main);
-  --color-button-border: var(--primary-main);
 
   /* Component Dimensions */
   --story-card-w: min(92vw, 420px);
@@ -145,10 +134,19 @@
   --breakpoint-wide: 1350px;
 
   /* Glass Tints & Effects */
-  --color-glass-tint1: var(--glass-tint-1);
-  --color-glass-tint2: var(--glass-tint-2);
-  --color-glass-tint3: var(--glass-tint-3);
+  --color-glass-tint1: var(--glass-tint1);
+  --color-glass-tint2: var(--glass-tint2);
+  --color-glass-tint3: var(--glass-tint3);
   --blur-glass: var(--glass-blur);
+
+  /* Messenger Utilities */
+  --color-msg-sidebar: var(--msg-sidebar-bg);
+  --color-msg-chat: var(--msg-chat-bg);
+  --color-msg-header: var(--msg-header-bg);
+  --color-msg-border: var(--msg-header-border);
+  --color-msg-hover: var(--msg-sidebar-hover);
+  --color-msg-active: var(--msg-sidebar-active);
+  --color-msg-online: var(--msg-online-color);
 
   /* Animations & Keyframes */
   --animate-fade-in: fade-in var(--anim-med, 0.3s cubic-bezier(0.42, 0, 0.58, 1)) both;
@@ -201,6 +199,7 @@
   }
 
   @keyframes dash-colon-blink {
+
     0%,
     100% {
       opacity: 1;
@@ -291,6 +290,7 @@
   }
 
   @keyframes msg-online-pulse {
+
     0%,
     100% {
       box-shadow: 0 0 0 0 var(--msg-online-pulse);
@@ -302,6 +302,7 @@
   }
 
   @keyframes msg-typing {
+
     0%,
     60%,
     100% {
@@ -312,18 +313,6 @@
     30% {
       opacity: 1;
       transform: translateY(-4px);
-    }
-  }
-
-  @keyframes msg-bubble-in {
-    from {
-      opacity: 0;
-      transform: translateY(10px) scale(0.95);
-    }
-
-    to {
-      opacity: 1;
-      transform: translateY(0) scale(1);
     }
   }
 
@@ -342,13 +331,14 @@
   }
 
   @keyframes pulse-shadow {
+
     0%,
     100% {
-      box-shadow: 0 4px 16px -4px color-mix(in srgb, var(--nav-link) 40%, transparent 60%);
+      box-shadow: 0 4px 16px -4px color-mix(in srgb, var(--primary-main) 40%, transparent 60%);
     }
 
     50% {
-      box-shadow: 0 6px 24px -4px color-mix(in srgb, var(--nav-link) 55%, transparent 45%);
+      box-shadow: 0 6px 24px -4px color-mix(in srgb, var(--primary-main) 55%, transparent 45%);
     }
   }
 }
@@ -400,7 +390,7 @@
 
 @layer base {
   body {
-    @apply min-h-dvh text-primary-text antialiased;
+    @apply min-h-dvh text-(--text-primary) antialiased;
     font-family: var(--font-ui);
     font-size: var(--fs-body);
     line-height: 1.6;
@@ -419,11 +409,17 @@
   h4,
   h5,
   h6 {
-    @apply font-display tracking-tight;
+    @apply font-display tracking-tight text-(--text-primary);
+  }
+
+  ::selection {
+    background: var(--primary-main);
+    color: var(--color-white);
   }
 }
 
 @layer components {
+
   /* Premium Glass Card - Elevated */
   .card-glass {
     @apply relative overflow-hidden rounded-4xl border border-glass-border bg-glass backdrop-blur-2xl shadow-glass transition-all;
@@ -451,8 +447,6 @@
     @apply scale-[0.98] translate-y-0 shadow-glass;
   }
 
-  /* Fluid Layout Container moved to @utility above */
-
   /* Skeleton with organic pulse */
   .skeleton {
     @apply relative overflow-hidden rounded-ue-md bg-slate-200/40 dark:bg-slate-800/40;
@@ -461,32 +455,28 @@
   .skeleton::after {
     content: "";
     @apply absolute inset-0;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      rgba(255, 255, 255, 0.25) 50%,
-      transparent 100%
-    );
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.25) 50%,
+        transparent 100%);
     animation: skeleton-shimmer 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
   }
 
   .dark .skeleton::after {
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      rgba(255, 255, 255, 0.05) 50%,
-      transparent 100%
-    );
+    background: linear-gradient(90deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.05) 50%,
+        transparent 100%);
   }
 }
 
 @layer utilities {
   .glass-high-fidelity {
-    @apply border border-glass-border bg-surface/60 shadow-glass backdrop-blur-3xl;
+    @apply border border-glass-border bg-(--bg-surface)/60 shadow-glass backdrop-blur-3xl;
   }
 
   .surface-raised {
-    @apply bg-surface-raised shadow-sm border border-border-subtle;
+    @apply bg-(--bg-surface-raised) shadow-sm border border-border-subtle;
   }
 
   .dash-panel-schedule,
@@ -545,6 +535,7 @@
   }
 
   @keyframes dash-colon-blink {
+
     0%,
     100% {
       opacity: 1;
@@ -562,6 +553,12 @@
 
 @layer components {
   .skip-link {
-    @apply sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-6 focus:py-3 focus:rounded-xl focus:bg-glass focus:text-brand focus:font-bold focus:shadow-glass focus:backdrop-blur-xl focus:border focus:border-glass-border focus:outline-none focus:ring-2 focus:ring-brand transition-all duration-300;
+    @apply sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-navbar focus:px-6 focus:py-3 focus:rounded-xl focus:bg-glass focus:text-brand focus:font-bold focus:shadow-glass focus:backdrop-blur-xl focus:border focus:border-glass-border focus:outline-none focus:ring-2 focus:ring-brand transition-all duration-300;
   }
 }
+
+
+
+
+
+

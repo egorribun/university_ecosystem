@@ -1,0 +1,70 @@
+import React from "react"
+import { Tooltip } from "@/components/ui"
+import { MapPin as PlaceIcon, Calendar as EventIcon } from "lucide-react"
+import { useTranslation } from "react-i18next"
+import { formatLocalDateTime } from "@/utils/date"
+
+interface EventInfoProps {
+  title: string
+  speaker?: string
+  startsAt: string
+  endsAt: string
+  location: string
+  description: string
+}
+
+export const EventInfo: React.FC<EventInfoProps> = ({
+  title,
+  speaker,
+  startsAt,
+  endsAt,
+  location,
+  description,
+}) => {
+  const { t } = useTranslation(["events"])
+
+  return (
+    <>
+      <h3 className="mb-2 text-xl font-extrabold leading-tight text-(--text-primary) sm:text-2xl">
+        {title}
+      </h3>
+
+      {speaker && (
+        <p className="mb-2 text-[15px] font-semibold text-(--text-secondary)">
+          {t("events:form.speaker")}: {speaker}
+        </p>
+      )}
+
+      <div className="mb-2 flex items-center gap-2 group/date">
+        <Tooltip content={t("events:form.dates")}>
+          <EventIcon
+            size={20}
+            className="text-brand transition-transform group-hover/date:scale-110"
+          />
+        </Tooltip>
+        <span className="text-base text-(--text-secondary)">
+          {formatLocalDateTime(startsAt)} — {formatLocalDateTime(endsAt)}
+        </span>
+      </div>
+
+      <div className="mb-2 flex items-center gap-2 group/loc">
+        <Tooltip content={t("events:form.location")}>
+          <PlaceIcon
+            size={20}
+            className="text-brand transition-transform group-hover/loc:scale-110"
+          />
+        </Tooltip>
+        <span className="text-base text-(--text-secondary)">{location}</span>
+      </div>
+
+      <div className="my-3 h-px bg-linear-to-r from-transparent via-[color-mix(in_srgb,var(--primary-main)_20%,transparent_80%)] to-transparent" />
+
+      <p className="mb-4 line-clamp-3 text-base text-(--text-primary) grow-0">{description}</p>
+    </>
+  )
+}
+
+
+
+
+

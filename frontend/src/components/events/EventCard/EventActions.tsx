@@ -1,0 +1,122 @@
+import React, { useState, useEffect } from "react"
+import { Button, Tooltip } from "@/components/ui"
+import { Users as PeopleAltIcon, QrCode as QrCodeIcon } from "lucide-react"
+import { useTranslation } from "react-i18next"
+import { EventQrDialog } from "@/components/events/EventQrDialog"
+
+interface EventActionsProps {
+  eventId: string
+  isActive: boolean
+  isEnded: boolean
+  isRegistered: boolean
+  participantCount: number
+  qrToken?: string
+  loading: boolean
+  onRegister: (e: React.MouseEvent) => void
+  onUnregister: (e: React.MouseEvent) => void
+  userRole?: string
+}
+
+const qrOpenKey = (eventId: string) => `event:qr_open:${eventId}`
+
+export const EventActions: React.FC<EventActionsProps> = ({
+  eventId,
+  isActive,
+  isEnded,
+  isRegistered,
+  participantCount,
+  qrToken,
+  loading,
+  onRegister,
+  onUnregister,
+  userRole,
+}) => {
+  const { t } = useTranslation(["events"])
+  const [qrOpen, setQrOpen] = useState(false)
+
+  // QR Dialog persistence logic
+  useEffect(() => {
+    try {
+      const wasOpen = sessionStorage.getItem(qrOpenKey(eventId)) === "1"
+      if (wasOpen && qrToken) {
+        setQrOpen(true)
+      }
+    } catch {}
+  }, [eventId, qrToken])
+
+  useEffect(() => {
+    try {
+      if (qrOpen) sessionStorage.setItem(qrOpenKey(eventId), "1")
+      else sessionStorage.removeItem(qrOpenKey(eventId))
+    } catch {}
+  }, [qrOpen, eventId])
+
+  return (
+    <div className="mt-auto">
+      <div className="mb-4 flex items-center gap-2 group/part">
+        <Tooltip content={t("events:form.participants")}>
+          <PeopleAltIcon
+            size={19}
+            className="text-brand transition-transform group-hover/part:scale-110"
+          />
+        </Tooltip>
+        <span className="text-[15px] text-(--text-primary)">
+          {t("events:card.participants", { count: participantCount })}
+        </span>
+      </div>
+
+      {isEnded && (
+        <span className="inline-flex mb-4 py-1.5 px-3 rounded-lg bg-red-500/10 border border-red-500/30 text-sm font-semibold text-red-500">
+          {t("events:card.statuses.ended")}
+        </span>
+      )}
+
+      {isActive && !isEnded && !isRegistered && userRole !== "admin" && userRole !== "teacher" && (
+        <Button
+          variant="solid"
+          onClick={onRegister}
+          disabled={loading}
+          className="mt-2 font-bold relative overflow-hidden shadow-[0_4px_16px_-4px_color-mix(in_srgb,var(--primary-main)_40%,transparent_60%)] hover:shadow-[0_6px_20px_-4px_color-mix(in_srgb,var(--primary-main)_50%,transparent_50%)] transition-shadow animate-pulse-shadow"
+        >
+          {t("events:card.actions.register")}
+        </Button>
+      )}
+
+      {isActive && !isEnded && isRegistered && (
+        <div className="mt-4 flex flex-wrap items-center gap-4">
+          <Button variant="outline" onClick={onUnregister} disabled={loading}>
+            {t("events:card.actions.unregister")}
+          </Button>
+
+          {qrToken && (
+            <>
+              <Tooltip content={t("events:card.actions.openQr")}>
+                <Button
+                  variant="gradient"
+                  size="lg"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setQrOpen(true)
+                  }}
+                  className="p-4! sm:p-5! rounded-fluid-lg shadow-premium-lift group/qr"
+                >
+                  <QrCodeIcon className="w-8 h-8 text-white drop-shadow-sm relative z-10" />
+                </Button>
+              </Tooltip>
+
+              <EventQrDialog
+                open={qrOpen}
+                onClose={() => setQrOpen(false)}
+                qr={qrToken}
+              />
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+
+

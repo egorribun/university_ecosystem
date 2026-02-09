@@ -144,3 +144,7 @@ describe("Settings sessions panel", () => {
     expect(testSessions[1].revoked_at).not.toBeNull()
   })
 })
+
+
+
+

@@ -33,3 +33,7 @@ self.onmessage = async (event: MessageEvent) => {
     self.postMessage({ id, error: message })
   }
 }
+
+
+
+

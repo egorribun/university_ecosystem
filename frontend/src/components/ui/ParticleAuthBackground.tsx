@@ -38,6 +38,7 @@ const ParticleAuthBackground = () => {
     const swarmSpeed = 12 // Speed at which the swarm follows the path (pixels per frame)
 
     // Colors for different themes
+    // Note: Hex fallbacks are required for Canvas API when CSS variables aren't computed yet
     const getThemeColors = () => {
       const styles = getComputedStyle(document.documentElement)
       const primary = styles.getPropertyValue("--primary-main").trim() || "#0ea5e9"
@@ -219,3 +220,8 @@ const ParticleAuthBackground = () => {
 }
 
 export default ParticleAuthBackground
+
+
+
+
+

@@ -160,3 +160,7 @@ describe("WidgetErrorBoundary", () => {
     expect(onError.mock.calls[0][0]).toBeInstanceOf(Error)
   })
 })
+
+
+
+

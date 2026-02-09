@@ -44,25 +44,25 @@ const variantStyles: Record<ButtonVariant, string> = {
     "disabled:bg-slate-200 disabled:text-slate-400 dark:disabled:bg-slate-800 dark:disabled:text-slate-600"
   ),
   outline: cn(
-    "border border-border-subtle text-primary-text shadow-surface bg-transparent",
+    "border border-border-subtle text-(--text-primary) shadow-surface bg-transparent",
     "hover:border-brand hover:text-brand hover:bg-brand-subtle hover:shadow-surface-strong",
     "active:scale-95",
     "motion-reduce:hover:translate-y-0 motion-reduce:active:translate-y-0",
     "disabled:border-slate-200 disabled:text-slate-300 dark:disabled:border-slate-700 dark:disabled:text-slate-600"
   ),
   ghost: cn(
-    "bg-transparent text-secondary-text",
-    "hover:bg-surface-hover hover:text-primary-text",
-    "active:bg-surface-hover",
+    "bg-transparent text-(--text-secondary)",
+    "hover:bg-(--bg-surface-hover) hover:text-(--text-primary)",
+    "active:bg-(--bg-surface-hover)",
     "motion-reduce:transition-none"
   ),
   glass: cn(
-    "bg-white/10 backdrop-blur-md text-primary-text border border-white/20 shadow-premium",
+    "bg-glass backdrop-blur-glass text-(--text-primary) border border-glass-border shadow-glass",
     "hover:bg-white/20 hover:scale-[1.02]",
     "active:scale-95 transition-all duration-300"
   ),
   gradient: cn(
-    "bg-gradient-brand text-inverse-text shadow-surface ring-brand/20",
+    "bg-gradient-brand text-inverse-text shadow-premium ring-brand/20",
     "hover:shadow-premium-lift hover:saturate-150 hover:scale-[1.02]",
     "active:scale-95 transition-all duration-500"
   ),
@@ -153,3 +153,8 @@ export const Button = forwardRef(
   props: ButtonProps<T> & { ref?: PolymorphicRef<T> }
 ) => ReactElement | null
 ;(Button as { displayName?: string }).displayName = "Button"
+
+
+
+
+

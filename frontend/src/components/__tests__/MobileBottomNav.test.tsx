@@ -31,3 +31,7 @@ describe("MobileBottomNav", () => {
     expect(container).toMatchSnapshot()
   })
 })
+
+
+
+

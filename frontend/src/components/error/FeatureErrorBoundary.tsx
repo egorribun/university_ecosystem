@@ -47,7 +47,7 @@ function FeatureErrorFallback({
   return (
     <div
       role="alert"
-      className="flex flex-col items-center justify-center gap-3 rounded-xl border border-[color:var(--page-text)]/10 bg-[color:var(--glass-bg)] p-6 text-center"
+      className="flex flex-col items-center justify-center gap-3 rounded-xl border border-[color:var(--text-primary)]/10 bg-[color:var(--glass-bg)] p-6 text-center"
     >
       <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/20">
         <svg
@@ -65,10 +65,10 @@ function FeatureErrorFallback({
         </svg>
       </div>
       <div>
-        <p className="text-sm font-medium text-[color:var(--page-text)]">
+        <p className="text-sm font-medium text-[color:var(--text-primary)]">
           {featureName ? `${featureName} unavailable` : "Feature unavailable"}
         </p>
-        <p className="text-xs text-[color:var(--page-text)]/60">Something went wrong</p>
+        <p className="text-xs text-[color:var(--text-primary)]/60">Something went wrong</p>
       </div>
       <button
         type="button"
@@ -150,3 +150,7 @@ export class FeatureErrorBoundary extends Component<
 }
 
 export default FeatureErrorBoundary
+
+
+
+

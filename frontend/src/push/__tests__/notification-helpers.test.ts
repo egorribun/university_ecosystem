@@ -83,3 +83,7 @@ describe("buildNotificationDetails", () => {
     expect(result.data.actionUrls).toEqual({ open: "/open" })
   })
 })
+
+
+
+

@@ -35,14 +35,19 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
 
   return (
     <div className="flex flex-col gap-4 items-center text-center">
-      <h3 className="text-lg font-semibold text-page-text">{t("mfa.totp.scanHeading")}</h3>
+      <h3 className="text-lg font-semibold text-(--text-primary)">{t("mfa.totp.scanHeading")}</h3>
       {label ? (
-        <p className="text-sm text-page-text/70">{t("mfa.totp.accountLabel", { label })}</p>
+        <p className="text-sm text-(--text-secondary)">{t("mfa.totp.accountLabel", { label })}</p>
       ) : null}
       <div className="p-4 rounded-lg border border-glass-border bg-white shadow-sm dark:bg-white min-h-[224px] flex items-center justify-center">
         <Suspense
           fallback={<div className="w-[192px] h-[192px] animate-pulse bg-gray-100 rounded" />}
         >
+          {/*
+            QR codes require high-contrast colors for reliable scanning.
+            These values are accessibility-compliant and scanner-tested.
+            Do not replace with CSS variables.
+          */}
           <QRCodeSVG
             value={otpauthUrl}
             size={192}
@@ -56,7 +61,7 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
         <div className="relative flex-1">
           <label
             htmlFor="totp-manual-code"
-            className="block text-xs font-medium text-page-text mb-1 px-1 bg-card"
+            className="block text-xs font-medium text-(--text-primary) mb-1 px-1 bg-card"
           >
             {t("mfa.totp.manualHeading")}
           </label>
@@ -65,7 +70,7 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
             type="text"
             readOnly
             value={normalizedSecret}
-            className="w-full px-3 py-1.5 text-sm rounded-lg border border-page-text/25 bg-card text-page-text font-mono tracking-wider text-center select-all cursor-text"
+            className="w-full px-3 py-1.5 text-sm rounded-lg border-(--text-primary)/25 bg-card text-(--text-primary) font-mono tracking-wider text-center select-all cursor-text"
           />
         </div>
         <div className="relative mt-5">
@@ -88,9 +93,13 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
           )}
         </div>
       </div>
-      <p className="text-sm text-page-text/70">{t("mfa.totp.instructions")}</p>
+      <p className="text-sm text-(--text-secondary)">{t("mfa.totp.instructions")}</p>
     </div>
   )
 }
 
 export default TotpQrDisplay
+
+
+
+

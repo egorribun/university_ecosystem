@@ -43,8 +43,8 @@ export const zIndexTokens = {
 } as const
 
 export const focusRing = {
-  light: "0 0 0 2px rgba(255, 255, 255, 0.9), 0 0 0 4px rgba(59, 130, 246, 0.5)",
-  dark: "0 0 0 2px rgba(3, 7, 18, 0.9), 0 0 0 4px rgba(96, 165, 250, 0.6)",
+  light: "var(--shadow-focus)",
+  dark: "var(--shadow-focus)",
 } as const
 
 export const shadows = {
@@ -63,3 +63,7 @@ export const glass = {
   tint2: "var(--glass-tint2)",
   tint3: "var(--glass-tint3)",
 } as const
+
+
+
+

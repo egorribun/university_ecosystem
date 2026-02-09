@@ -133,7 +133,7 @@ export function Dialog({
               </h2>
             ) : null}
             {subtitle ? (
-              <p id={dialogSubtitleId} className="text-sm font-medium text-(--secondary-text)">
+              <p id={dialogSubtitleId} className="text-sm font-medium text-(--text-secondary)">
                 {subtitle}
               </p>
             ) : null}
@@ -142,14 +142,14 @@ export function Dialog({
             ref={closeButtonRef}
             type="button"
             onClick={onClose}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-(--glass-bg)/70 text-(--nav-link) shadow-surface transition hover:bg-(--glass-bg) focus-visible:outline-none focus-visible:shadow-focus"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-(--glass-bg)/70 text-(--primary-main) shadow-surface transition hover:bg-(--glass-bg) focus-visible:outline-none focus-visible:shadow-focus"
           >
             <span className="sr-only">{closeLabel}</span>
             <svg
               viewBox="0 0 20 20"
               fill="none"
               xmlns="http://www.w3.org/2000/svg"
-              className="h-4 w-4 text-(--nav-link)"
+              className="h-4 w-4 text-(--primary-main)"
               aria-hidden
             >
               <path
@@ -176,3 +176,8 @@ export function Dialog({
 }
 
 export default Dialog
+
+
+
+
+

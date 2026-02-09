@@ -40,3 +40,7 @@ describe("i18n integration", () => {
     expect(document.documentElement.getAttribute("lang")).toBe("en")
   })
 })
+
+
+
+

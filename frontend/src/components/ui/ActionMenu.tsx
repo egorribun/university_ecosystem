@@ -155,7 +155,7 @@ export const ActionMenu = ({
         aria-haspopup="menu"
         aria-expanded={isOpen}
         className={cn(
-          "flex h-8 w-8 items-center justify-center rounded-full text-secondary-text transition-colors hover:bg-surface-hover hover:text-primary-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus",
+          "flex h-8 w-8 items-center justify-center rounded-full text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus",
           triggerClassName
         )}
       >
@@ -169,7 +169,7 @@ export const ActionMenu = ({
           tabIndex={-1}
           onKeyDown={handleKeyDown}
           className={cn(
-            "absolute top-full z-(--overlay-z) mt-1 w-40 overflow-hidden rounded-lg border border-border-subtle bg-surface shadow-lg backdrop-blur-md",
+            "absolute top-full z-(--z-overlay) mt-1 w-40 overflow-hidden rounded-lg border border-border-subtle bg-(--bg-surface) shadow-lg backdrop-blur-md",
             placementStyles[placement],
             menuClassName
           )}
@@ -185,15 +185,15 @@ export const ActionMenu = ({
               aria-label={item.ariaLabel}
               className={cn(
                 "flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium transition-colors",
-                "hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-none",
+                "hover:bg-(--bg-surface-hover) focus-visible:bg-(--bg-surface-hover) focus-visible:outline-none",
                 item.variant === "danger"
                   ? "text-error-text hover:bg-error-bg"
-                  : "text-primary-text",
+                  : "text-(--text-primary)",
                 item.disabled && "cursor-not-allowed opacity-50"
               )}
             >
               {item.icon && (
-                <span className="shrink-0 text-secondary-text transition-transform duration-200 group-hover:scale-110">
+                <span className="shrink-0 text-(--text-secondary) transition-transform duration-200 group-hover:scale-110">
                   {item.icon}
                 </span>
               )}
@@ -207,3 +207,8 @@ export const ActionMenu = ({
 }
 
 ActionMenu.displayName = "ActionMenu"
+
+
+
+
+

@@ -312,7 +312,7 @@ export default function DashboardStories({
               <div
                 className={cn(
                   "relative z-10 flex aspect-9/16 w-(--story-card-w) max-h-[92vh] max-w-(--story-card-w) flex-col items-stretch justify-center overflow-hidden text-white sm:aspect-video sm:w-[min(96%,960px)] sm:max-h-[80vh] sm:max-w-[min(96%,960px)]",
-                  viewerStory.cover_url ? "bg-page" : "bg-brand shadow-premium-lift",
+                  viewerStory.cover_url ? "bg-(--bg-page)" : "bg-brand shadow-premium-lift",
                   viewerStory.cover_url ? "rounded-none" : "rounded-ue-xl sm:rounded-ue-2xl"
                 )}
                 onPointerDown={handlePointerStart}
@@ -529,7 +529,7 @@ export default function DashboardStories({
                       "transition-transform data-[active=true]:ring-4 data-[active=true]:ring-brand/45"
                     )}
                   >
-                    <div className="relative z-1 aspect-9/16 w-[--story-card-w] overflow-hidden rounded-ue-xl bg-surface-raised shadow-premium md:w-[--story-card-w-md]">
+                    <div className="relative z-1 aspect-9/16 w-[--story-card-w] overflow-hidden rounded-ue-xl bg-(--bg-surface-raised) shadow-premium md:w-[--story-card-w-md]">
                       {renderAvatar(story)}
                     </div>
                   </StoryCircle>
@@ -592,3 +592,8 @@ function ArrowRightIcon(props: SVGProps<SVGSVGElement>) {
     </svg>
   )
 }
+
+
+
+
+

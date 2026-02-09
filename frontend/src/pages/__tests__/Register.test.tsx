@@ -86,3 +86,7 @@ describe("Register page", () => {
     expect(results).toHaveNoViolations()
   })
 })
+
+
+
+

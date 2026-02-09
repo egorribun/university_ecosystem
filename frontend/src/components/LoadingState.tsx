@@ -34,10 +34,15 @@ export default function LoadingState({ label }: LoadingStateProps) {
           </div>
         </div>
 
-        <p className="text-base font-bold tracking-tight text-secondary-text animate-pulse">
+        <p className="text-base font-bold tracking-tight text-(--text-secondary) animate-pulse">
           {loadingLabel}
         </p>
       </section>
     </Layout>
   )
 }
+
+
+
+
+

@@ -31,3 +31,7 @@ export function EventQrDialog({ open, onClose, qr }: EventQrDialogProps) {
     </Dialog>
   )
 }
+
+
+
+

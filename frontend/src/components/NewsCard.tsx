@@ -263,7 +263,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
               }}
               className={cn(
                 "flex items-center gap-1.5 transition-colors duration-200",
-                isLiked ? "text-rose-500" : "text-(--secondary-text) hover:text-rose-400"
+                isLiked ? "text-rose-500" : "text-(--text-secondary) hover:text-rose-400"
               )}
             >
               <div className="relative">
@@ -282,19 +282,19 @@ const NewsCardComponent: FC<NewsCardProps> = ({
               <span className="text-xs font-bold tabular-nums">{likesCount}</span>
             </motion.button>
 
-            <div className="flex items-center gap-1.5 text-(--secondary-text)">
+            <div className="flex items-center gap-1.5 text-(--text-secondary)">
               <ChatBubbleOutlineIcon size={18} />
               <span className="text-xs font-bold tabular-nums">{commentsCount}</span>
             </div>
           </div>
 
-          <div className="mt-auto flex items-center gap-2 pt-2 text-(--nav-link)">
+          <div className="mt-auto flex items-center gap-2 pt-2 text-(--primary-main)">
             <span className="translate-y-1 text-sm font-semibold tracking-wide opacity-0 transition duration-300 ease-out group-focus-visible/button:translate-y-0 group-focus-visible/button:opacity-100 group-hover:translate-y-0 group-hover:opacity-100">
               {t("common:cta.learnMore", { defaultValue: "Подробнее" })}
             </span>
             <ArrowOutwardIcon
               size={16}
-              className="translate-x-0 text-(--nav-link) opacity-0 transition duration-300 ease-out group-focus-visible/button:translate-x-1 group-focus-visible/button:opacity-100 group-hover:translate-x-1 group-hover:opacity-100"
+              className="translate-x-0 text-(--primary-main) opacity-0 transition duration-300 ease-out group-focus-visible/button:translate-x-1 group-focus-visible/button:opacity-100 group-hover:translate-x-1 group-hover:opacity-100"
             />
           </div>
         </div>
@@ -339,7 +339,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
           </>
         }
       >
-        <p className="text-[0.98rem] text-(--secondary-text)">
+        <p className="text-[0.98rem] text-(--text-secondary)">
           {t("news:dialogs.delete.description")}
         </p>
       </Dialog>
@@ -358,3 +358,8 @@ const areNewsCardPropsEqual = (prev: NewsCardProps, next: NewsCardProps) =>
   prev.onChange === next.onChange
 
 export default memo(NewsCardComponent, areNewsCardPropsEqual)
+
+
+
+
+

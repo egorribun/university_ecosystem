@@ -23,7 +23,7 @@ interface NewsCardEditDialogProps {
 }
 
 const inputClass =
-  "w-full rounded-ue-lg border border-white/12 bg-input-mix px-4 py-2.5 text-[0.98rem] text-(--page-text) shadow-[inset_0_1px_0_rgba(15,23,42,0.08)] transition focus:border-(--nav-link) focus:outline-none focus:shadow-focus placeholder:text-(--placeholder-fg)"
+  "w-full rounded-ue-lg border border-white/12 bg-input-mix px-4 py-2.5 text-[0.98rem] text-(--text-primary) shadow-[inset_0_1px_0_rgba(15,23,42,0.08)] transition focus:border-(--primary-main) focus:outline-none focus:shadow-focus placeholder:text-(--text-secondary)"
 const textareaClass = `${inputClass} min-h-[128px] resize-y leading-relaxed`
 
 type FieldProps = {
@@ -38,7 +38,7 @@ function Field({ label, htmlFor, children, required = false }: FieldProps) {
     <div className="space-y-2">
       <label
         htmlFor={htmlFor}
-        className="text-sm font-semibold tracking-wide text-[color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]"
+        className="text-sm font-semibold tracking-wide text-[color-mix(in_srgb,var(--text-secondary)_85%,white_15%)]"
       >
         {label}
         {required ? <span className="ml-1 text-(--error-text)">*</span> : null}
@@ -238,3 +238,8 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
     </Dialog>
   )
 }
+
+
+
+
+

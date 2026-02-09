@@ -30,8 +30,8 @@ function DefaultFallback({ onRetry }: { onRetry: () => void }) {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: "var(--page-bg, #0b0d11)",
-          color: "var(--page-text, #f5f7fa)",
+          backgroundColor: "var(--bg-(--bg-page), #0b0d11)",
+          color: "var(--text-primary, #f5f7fa)",
         }}
       >
         ...
@@ -51,8 +51,8 @@ function DefaultFallback({ onRetry }: { onRetry: () => void }) {
         gap: "1.5rem",
         padding: "2rem",
         textAlign: "center",
-        backgroundColor: "var(--page-bg, #0b0d11)",
-        color: "var(--page-text, #f5f7fa)",
+        backgroundColor: "var(--bg-(--bg-page), #0b0d11)",
+        color: "var(--text-primary, #f5f7fa)",
       }}
     >
       <div style={{ maxWidth: "32rem" }}>
@@ -77,7 +77,7 @@ function DefaultFallback({ onRetry }: { onRetry: () => void }) {
             borderRadius: "9999px",
             border: "none",
             cursor: "pointer",
-            background: "#0b63f4",
+            background: "var(--primary-main, #2563eb)",
             color: "white",
             fontWeight: 600,
           }}
@@ -143,3 +143,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 }
 
 export default ErrorBoundary
+
+
+
+

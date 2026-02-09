@@ -263,42 +263,42 @@ export default function AdminNotifications() {
     }
 
     return (
-      <div className="mt-4 overflow-hidden rounded-2xl border border-glass-border bg-surface/40 shadow-glass">
+      <div className="mt-4 overflow-hidden rounded-2xl border border-glass-border bg-(--bg-surface)/40 shadow-glass">
         <div className="overflow-x-auto">
           <table
             className="w-full text-left border-collapse"
             aria-label={t("admin:notifications.table.aria") ?? "Dead-letter queue"}
           >
             <thead>
-              <tr className="border-b border-glass-border/10 bg-surface-hover/20">
+              <tr className="border-b border-glass-border/10 bg-(--bg-surface-hover)/20">
                 <th className="px-4 py-3">
                   <input
                     type="checkbox"
-                    className="h-4 w-4 rounded border-glass-border bg-surface/50 text-brand focus:ring-brand/30"
+                    className="h-4 w-4 rounded border-glass-border bg-(--bg-surface)/50 text-brand focus:ring-brand/30"
                     checked={allSelected}
                     onChange={handleSelectAll}
                     aria-label={t("admin:notifications.table.selectAll") ?? "Select all"}
                   />
                 </th>
-                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
                   {t("admin:notifications.table.columns.kind")}
                 </th>
-                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
                   {t("admin:notifications.table.columns.record")}
                 </th>
-                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
                   {t("admin:notifications.table.columns.locale")}
                 </th>
-                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
                   {t("admin:notifications.table.columns.enqueued")}
                 </th>
-                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
                   {t("admin:notifications.table.columns.attempts")}
                 </th>
-                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
                   {t("admin:notifications.table.columns.lastError")}
                 </th>
-                <th className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                <th className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
                   {t("admin:notifications.table.columns.actions")}
                 </th>
               </tr>
@@ -310,14 +310,14 @@ export default function AdminNotifications() {
                   <tr
                     key={job.id}
                     className={cn(
-                      "transition-colors hover:bg-surface-hover/10",
+                      "transition-colors hover:bg-(--bg-surface-hover)/10",
                       isSelected && "bg-brand/5"
                     )}
                   >
                     <td className="px-4 py-3">
                       <input
                         type="checkbox"
-                        className="h-4 w-4 rounded border-glass-border bg-surface/50 text-brand focus:ring-brand/30"
+                        className="h-4 w-4 rounded border-glass-border bg-(--bg-surface)/50 text-brand focus:ring-brand/30"
                         checked={isSelected}
                         onChange={() => toggleSelect(job.id)}
                         aria-label={
@@ -325,22 +325,22 @@ export default function AdminNotifications() {
                         }
                       />
                     </td>
-                    <td className="px-4 py-3 text-sm text-primary-text">
+                    <td className="px-4 py-3 text-sm text-(--text-primary)">
                       {formatJobKind(job.kind, t)}
                     </td>
-                    <td className="px-4 py-3 text-sm text-primary-text font-mono truncate max-w-[120px]">
+                    <td className="px-4 py-3 text-sm text-(--text-primary) font-mono truncate max-w-[120px]">
                       {job.record_id}
                     </td>
-                    <td className="px-4 py-3 text-sm text-secondary-text">
+                    <td className="px-4 py-3 text-sm text-(--text-secondary)">
                       {job.locale ?? t("admin:notifications.table.localeFallback")}
                     </td>
-                    <td className="px-4 py-3 text-sm text-secondary-text whitespace-nowrap">
+                    <td className="px-4 py-3 text-sm text-(--text-secondary) whitespace-nowrap">
                       {formatDate(new Date(job.enqueued_at), { preset: "datetime" })}
                     </td>
-                    <td className="px-4 py-3 text-sm font-bold text-primary-text">
+                    <td className="px-4 py-3 text-sm font-bold text-(--text-primary)">
                       {job.attempts}
                     </td>
-                    <td className="px-4 py-3 text-sm text-secondary-text max-w-[200px]">
+                    <td className="px-4 py-3 text-sm text-(--text-secondary) max-w-[200px]">
                       <span className="line-clamp-2" title={job.last_error ?? ""}>
                         {job.last_error ?? t("admin:notifications.table.noError")}
                       </span>
@@ -383,17 +383,17 @@ export default function AdminNotifications() {
         <PageFadeIn>
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="mb-8 flex flex-col gap-2">
-              <h1 className="text-4xl font-bold tracking-tight text-primary-text sm:text-5xl">
+              <h1 className="text-4xl font-bold tracking-tight text-(--text-primary) sm:text-5xl">
                 {t("admin:notifications.title")}
               </h1>
-              <p className="text-base text-secondary-text">{t("admin:notifications.subtitle")}</p>
+              <p className="text-base text-(--text-secondary)">{t("admin:notifications.subtitle")}</p>
             </div>
 
             <SectionCard className="p-6">
-              <h2 className="text-lg font-bold tracking-tight text-primary-text mb-1">
+              <h2 className="text-lg font-bold tracking-tight text-(--text-primary) mb-1">
                 {t("admin:notifications.topics.title")}
               </h2>
-              <p className="text-sm text-secondary-text mb-6">
+              <p className="text-sm text-(--text-secondary) mb-6">
                 {t("admin:notifications.topics.description")}
               </p>
 
@@ -438,7 +438,7 @@ export default function AdminNotifications() {
               {topicsData && (
                 <div className="mt-8 space-y-6">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-bold text-primary-text">
+                    <h3 className="text-sm font-bold text-(--text-primary)">
                       {t("admin:notifications.topics.userSummary", {
                         email: topicsData.email,
                         id: topicsData.user_id,
@@ -448,7 +448,7 @@ export default function AdminNotifications() {
 
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                     {topicsData.allowed_topics.length === 0 ? (
-                      <p className="text-sm text-secondary-text">
+                      <p className="text-sm text-(--text-secondary)">
                         {t("admin:notifications.topics.empty")}
                       </p>
                     ) : (
@@ -460,7 +460,7 @@ export default function AdminNotifications() {
                         return (
                           <div
                             key={topic}
-                            className="flex items-center gap-3 rounded-xl border border-glass-border/10 bg-surface/20 px-4 py-3 transition-colors hover:bg-surface/30"
+                            className="flex items-center gap-3 rounded-xl border border-glass-border/10 bg-(--bg-surface)/20 px-4 py-3 transition-colors hover:bg-(--bg-surface)/30"
                           >
                             <input
                               type="checkbox"
@@ -470,11 +470,11 @@ export default function AdminNotifications() {
                                 handleTopicToggle(topic)(null as any, e.target.checked)
                               }
                               disabled={topicsBusy}
-                              className="h-5 w-5 rounded border-glass-border bg-surface/50 text-brand focus:ring-brand/30"
+                              className="h-5 w-5 rounded border-glass-border bg-(--bg-surface)/50 text-brand focus:ring-brand/30"
                             />
                             <label
                               htmlFor={`topic-${normalized}`}
-                              className="text-sm font-medium text-primary-text leading-none select-none"
+                              className="text-sm font-medium text-(--text-primary) leading-none select-none"
                             >
                               {resolvedLabel}
                             </label>
@@ -502,7 +502,7 @@ export default function AdminNotifications() {
             <SectionCard className="mt-6 p-6">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h2 className="text-lg font-bold tracking-tight text-primary-text">
+                  <h2 className="text-lg font-bold tracking-tight text-(--text-primary)">
                     {t("admin:notifications.total", { count: total })}
                   </h2>
                 </div>
@@ -542,3 +542,8 @@ export default function AdminNotifications() {
     </Layout>
   )
 }
+
+
+
+
+

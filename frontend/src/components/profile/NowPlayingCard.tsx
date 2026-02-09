@@ -163,7 +163,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
       <motion.div
         className={cn(
           "nowplaying--spotify w-full grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 px-4 py-3.5 rounded-2xl relative overflow-hidden",
-          "border border-glass-border bg-surface/40 backdrop-blur-md shadow-glass text-primary-text",
+          "border border-glass-border bg-(--bg-surface)/40 backdrop-blur-md shadow-glass text-(--text-primary)",
           "transition-all duration-300 hover:-translate-y-0.5"
         )}
         initial={isTest || prefersReduce || reduced ? false : { y: 12, opacity: 0.94, scale: 1 }}
@@ -194,32 +194,32 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
               }`}
             />
           ) : (
-            <div className="w-full h-full rounded-lg bg-surface-hover/60 flex items-center justify-center">
+            <div className="w-full h-full rounded-lg bg-(--bg-surface-hover)/60 flex items-center justify-center">
               <span className="text-text-tertiary text-xs">♪</span>
             </div>
           )}
         </div>
         <div className="min-w-0 flex flex-col gap-1.5 relative z-1" aria-live="polite">
           <h3
-            className={`np-title font-bold leading-tight tracking-tight text-primary-text text-base transition-opacity duration-200 ${
+            className={`np-title font-bold leading-tight tracking-tight text-(--text-primary) text-base transition-opacity duration-200 ${
               imageLoaded || !data.album_image_url || imageError ? "opacity-100" : "opacity-0"
             }`}
           >
             {data.track_name || "—"}
           </h3>
-          <p className="np-art text-sm text-secondary-text opacity-90 truncate">
+          <p className="np-art text-sm text-(--text-secondary) opacity-90 truncate">
             {data.artists.join(", ")}
           </p>
           {!data.is_playing && (
             <span
-              className="inline-flex self-start px-2 py-0.5 text-[10px] font-bold uppercase bg-surface-hover/80 text-secondary-text rounded-full border border-glass-border"
+              className="inline-flex self-start px-2 py-0.5 text-[10px] font-bold uppercase bg-(--bg-surface-hover)/80 text-(--text-secondary) rounded-full border border-glass-border"
               aria-hidden
             >
               {t("profile:nowPlaying.paused")}
             </span>
           )}
           <div className="flex items-center gap-2 w-full mt-0.5">
-            <div className="flex-1 min-w-0 h-1.5 bg-surface-hover/80 rounded-full overflow-hidden relative">
+            <div className="flex-1 min-w-0 h-1.5 bg-(--bg-surface-hover)/80 rounded-full overflow-hidden relative">
               <div
                 role="progressbar"
                 aria-valuenow={progress}
@@ -247,3 +247,8 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
 })
 
 export default NowPlayingCard
+
+
+
+
+

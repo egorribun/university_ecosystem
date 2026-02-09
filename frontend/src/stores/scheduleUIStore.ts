@@ -143,3 +143,7 @@ export const useScheduleUIActions = () =>
     toggleCompactMode: state.toggleCompactMode,
     resetPreferences: state.resetPreferences,
   }))
+
+
+
+

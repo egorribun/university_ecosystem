@@ -19,10 +19,10 @@ export function ClockWidget() {
         "before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_top_right,var(--primary-main),transparent_70%)] before:opacity-10"
       )}
     >
-      <div className="text-5xl font-black tracking-tighter text-primary-text sf-pro tabular-nums">
+      <div className="text-5xl font-black tracking-tighter text-(--text-primary) sf-pro tabular-nums">
         {time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
       </div>
-      <div className="mt-2 text-sm font-bold text-secondary-text opacity-60 uppercase tracking-widest">
+      <div className="mt-2 text-sm font-bold text-(--text-secondary) opacity-60 uppercase tracking-widest">
         {time.toLocaleDateString(undefined, {
           weekday: "long",
           day: "numeric",
@@ -32,3 +32,8 @@ export function ClockWidget() {
     </div>
   )
 }
+
+
+
+
+

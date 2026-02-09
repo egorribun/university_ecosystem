@@ -117,3 +117,7 @@ describe("static shell i18n integration", () => {
     ).toEqual(manifestStrings?.shortcuts)
   })
 })
+
+
+
+

@@ -5,7 +5,7 @@ export function ScheduleSkeleton() {
   const { t } = useTranslation("schedule")
 
   return (
-    <div className="w-screen min-h-screen bg-[color:var(--page-bg)] py-8 sm:py-10">
+    <div className="w-screen min-h-screen bg-(--bg-page) py-8 sm:py-10">
       <div className="px-2 md:px-4">
         {/* Header Skeleton */}
         <div className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5">
@@ -27,7 +27,7 @@ export function ScheduleSkeleton() {
         {/* Table/List Skeleton */}
         <div className="hidden md:block">
           {/* Desktop Table Mock */}
-          <div className="rounded-2xl border border-white/10 bg-[color:var(--card-bg)] p-4">
+          <div className="rounded-2xl border border-white/10 bg-(--bg-surface) p-4">
             <div className="flex gap-4 mb-4">
               {Array.from({ length: 7 }).map((_, i) => (
                 <Skeleton key={i} className="flex-1 h-10" />
@@ -59,3 +59,8 @@ export function ScheduleSkeleton() {
     </div>
   )
 }
+
+
+
+
+

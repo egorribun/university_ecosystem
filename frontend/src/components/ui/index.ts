@@ -13,3 +13,11 @@ export * from "./switch"
 export * from "./checkbox"
 export * from "./radio-group"
 export * from "./select"
+export { default as Snackbar } from "./Snackbar"
+export { default as ParticleAuthBackground } from "./ParticleAuthBackground"
+export * from "./GlassCard"
+export * from "./Spotlight"
+
+
+
+

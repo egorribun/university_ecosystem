@@ -87,7 +87,7 @@ export function DashboardHero({
     <section
       className={cn(
         "relative flex w-full flex-col overflow-hidden",
-        "px-4 pb-16 pt-10 text-page-foreground sm:px-8 md:px-12 lg:px-16",
+        "px-4 pb-16 pt-10 text-(--text-primary) sm:px-8 md:px-12 lg:px-16",
         "bg-linear-[145deg,var(--hero-grad-start),var(--hero-grad-end)]"
       )}
     >
@@ -130,19 +130,19 @@ export function DashboardHero({
               <div className="pointer-events-none absolute left-[-18%] top-[-42%] h-48 w-48 rounded-full bg-[conic-gradient(from_130deg_at_50%_50%,var(--dash-hero-conic-primary),var(--dash-hero-conic-secondary),transparent_85%)] opacity-50 blur-[110px]" />
             )}
             <div className="relative grid gap-6 lg:grid-cols-12 lg:items-center">
-              <div className="space-y-3 text-primary-text lg:col-span-8">
+              <div className="space-y-3 text-(--text-primary) lg:col-span-8">
                 <h1 className="font-display text-[clamp(1.5rem,2.4vw,2.6rem)] font-extrabold leading-tight">
                   {greeting}
                   {user?.full_name ? `, ${user.full_name.split(" ")[0]}` : ""}!
                 </h1>
                 <div
-                  className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-primary-text/90"
+                  className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-(--text-primary)/90"
                   role="status"
                   aria-live="polite"
                 >
                   <Badge
                     size="sm"
-                    className="shrink-0 border-glass-border-subtle bg-surface-hover font-mono text-base text-primary-text/80 dark:text-primary-text/80"
+                    className="shrink-0 border-glass-border-subtle bg-(--bg-surface-hover) font-mono text-base text-(--text-primary)/80 dark:text-(--text-primary)/80"
                     aria-label={t("common:ariaCurrentTime")}
                   >
                     <span className="flex items-baseline gap-1 font-mono text-lg leading-none">
@@ -179,3 +179,8 @@ export function DashboardHero({
     </section>
   )
 }
+
+
+
+
+

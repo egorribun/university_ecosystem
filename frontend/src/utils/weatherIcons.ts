@@ -63,3 +63,7 @@ export const getWeatherLabel = (code: number | null | undefined): string =>
   getWeatherIconMeta(code).label
 
 export const WEATHER_ICON_FALLBACK = FALLBACK_META
+
+
+
+

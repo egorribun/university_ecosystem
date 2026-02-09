@@ -20,8 +20,8 @@ const circleSizeMap: Record<BadgeSize, string> = {
 
 const toneVariantStyles: Record<BadgeTone, Record<BadgeVariant, string>> = {
   default: {
-    solid: "bg-surface-hover text-primary-text",
-    outline: "border border-border-strong text-secondary-text",
+    solid: "bg-(--bg-surface-hover) text-(--text-primary)",
+    outline: "border border-border-strong text-(--text-secondary)",
   },
   primary: {
     solid: "bg-brand text-inverse-text shadow-sm",
@@ -95,3 +95,8 @@ export const Badge = <T extends ElementType = "span">({
 Badge.displayName = "Badge"
 
 export const Chip = Badge
+
+
+
+
+

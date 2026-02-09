@@ -114,7 +114,7 @@ export function ScheduleCard({
   }
 
   const listActionBase =
-    "group relative isolate w-full overflow-hidden rounded-xl border border-transparent bg-surface/10 px-4 py-3 text-left transition-all duration-300 ease-out hover:bg-surface/20 hover:border-glass-border hover:-translate-y-0.5 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+    "group relative isolate w-full overflow-hidden rounded-xl border border-transparent bg-(--bg-surface)/10 px-4 py-3 text-left transition-all duration-300 ease-out hover:bg-(--bg-surface)/20 hover:border-glass-border hover:-translate-y-0.5 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
 
   return (
     <Card
@@ -131,7 +131,7 @@ export function ScheduleCard({
     >
       <div className="relative z-1 space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-[clamp(1.1rem,2vw,1.5rem)] font-extrabold text-primary-text">
+          <h2 className="text-[clamp(1.1rem,2vw,1.5rem)] font-extrabold text-(--text-primary)">
             {t("dashboard:todaySchedule")}
           </h2>
           <div className="flex items-center gap-2">
@@ -160,7 +160,7 @@ export function ScheduleCard({
                   label={`${fmtTime(currentLesson.start_time)}–${fmtTime(currentLesson.end_time)}`}
                 />
               </div>
-              <span className="text-base font-semibold leading-tight text-primary-text line-clamp-1">
+              <span className="text-base font-semibold leading-tight text-(--text-primary) line-clamp-1">
                 {currentLesson.subject}
               </span>
             </div>
@@ -181,7 +181,7 @@ export function ScheduleCard({
               label={t("dashboard:next")}
             />
             <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-              <span className="text-base font-semibold leading-tight text-primary-text truncate">
+              <span className="text-base font-semibold leading-tight text-(--text-primary) truncate">
                 {nextLesson.subject}
               </span>
               <Badge
@@ -209,7 +209,7 @@ export function ScheduleCard({
           </div>
         )}
         {!loadingSched && todayLessons.length === 0 && (
-          <p className="text-sm text-secondary-text">{t("dashboard:noClasses")}</p>
+          <p className="text-sm text-(--text-secondary)">{t("dashboard:noClasses")}</p>
         )}
         {!loadingSched && todayLessons.length > 0 && (
           <ul className="space-y-3">
@@ -218,12 +218,12 @@ export function ScheduleCard({
                 <div
                   className={cn(
                     listActionBase,
-                    "flex flex-col gap-2 border border-transparent bg-surface/10 px-4 py-3 pb-4 hover:bg-surface/20 sm:gap-2.5",
+                    "flex flex-col gap-2 border border-transparent bg-(--bg-surface)/10 px-4 py-3 pb-4 hover:bg-(--bg-surface)/20 sm:gap-2.5",
                     "cursor-default"
                   )}
                 >
                   <div className="flex w-full items-start justify-between gap-3">
-                    <span className="text-base font-semibold leading-tight text-primary-text line-clamp-2">
+                    <span className="text-base font-semibold leading-tight text-(--text-primary) line-clamp-2">
                       {l.subject}
                     </span>
                     <Badge
@@ -232,7 +232,7 @@ export function ScheduleCard({
                       label={`${fmtTime(l.start_time)}–${fmtTime(l.end_time)}`}
                     />
                   </div>
-                  <div className="flex flex-wrap items-center gap-2 text-sm text-secondary-text">
+                  <div className="flex flex-wrap items-center gap-2 text-sm text-(--text-secondary)">
                     <Badge size="sm" tone="default" variant="outline" label={l.lesson_type} />
                     <span className="truncate max-w-[150px] opacity-80">
                       {t("dashboard:lessonMeta", { teacher: l.teacher, room: l.room })}
@@ -277,3 +277,8 @@ export function ScheduleCard({
     </Card>
   )
 }
+
+
+
+
+

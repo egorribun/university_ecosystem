@@ -15,15 +15,15 @@ export function GlassCard({
   ...rest
 }: GlassCardProps) {
   const intensities = {
-    low: "bg-white/5 backdrop-blur-md",
-    medium: "bg-white/10 backdrop-blur-xl",
-    high: "bg-white/20 backdrop-blur-2xl",
+    low: "bg-[rgba(255,255,255,var(--glass-alpha-low))] backdrop-blur-md",
+    medium: "bg-glass backdrop-blur-xl",
+    high: "bg-[rgba(255,255,255,var(--glass-alpha-high))] backdrop-blur-2xl",
   }
 
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-ue-xl border border-white/10 shadow-premium",
+        "relative overflow-hidden rounded-ue-xl border border-glass-border shadow-glass",
         intensities[intensity],
         interactive && "transition-transform duration-300 hover:scale-[1.01] hover:bg-white/15",
         className
@@ -39,3 +39,7 @@ export function GlassCard({
 }
 
 GlassCard.displayName = "GlassCard"
+
+
+
+

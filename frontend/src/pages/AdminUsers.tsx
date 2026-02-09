@@ -102,7 +102,7 @@ export default function AdminUsers() {
       <div className="min-h-screen w-full bg-background/50 py-8">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="mb-8 flex flex-col gap-6">
-            <h1 className="text-4xl font-bold tracking-tight text-primary-text sm:text-5xl">
+            <h1 className="text-4xl font-bold tracking-tight text-(--text-primary) sm:text-5xl">
               {t("users.title")}
             </h1>
 
@@ -117,7 +117,7 @@ export default function AdminUsers() {
               <div className="flex flex-col gap-1.5 min-w-[180px] flex-1">
                 <label
                   htmlFor="group-filter"
-                  className="text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70"
+                  className="text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70"
                 >
                   {t("users.filters.group")}
                 </label>
@@ -126,7 +126,7 @@ export default function AdminUsers() {
                   value={filters.group_id}
                   onChange={(event) => handleGroupFilterChange(event.target.value)}
                   className={cn(
-                    "h-11 rounded-xl border border-glass-border bg-surface/50 px-3 py-2 text-sm text-primary-text shadow-sm outline-none transition-all",
+                    "h-11 rounded-xl border border-glass-border bg-(--bg-surface)/50 px-3 py-2 text-sm text-(--text-primary) shadow-sm outline-none transition-all",
                     "focus:border-brand/40 focus:ring-2 focus:ring-brand/10"
                   )}
                 >
@@ -141,7 +141,7 @@ export default function AdminUsers() {
               <div className="flex flex-col gap-1.5 min-w-[180px] flex-1">
                 <label
                   htmlFor="role-filter"
-                  className="text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70"
+                  className="text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70"
                 >
                   {t("users.filters.role")}
                 </label>
@@ -150,7 +150,7 @@ export default function AdminUsers() {
                   value={filters.role}
                   onChange={(event) => handleRoleChange(event.target.value as UserRole)}
                   className={cn(
-                    "h-11 rounded-xl border border-glass-border bg-surface/50 px-3 py-2 text-sm text-primary-text shadow-sm outline-none transition-all",
+                    "h-11 rounded-xl border border-glass-border bg-(--bg-surface)/50 px-3 py-2 text-sm text-(--text-primary) shadow-sm outline-none transition-all",
                     "focus:border-brand/40 focus:ring-2 focus:ring-brand/10"
                   )}
                 >
@@ -164,34 +164,34 @@ export default function AdminUsers() {
           </div>
 
           {/* Desktop Table */}
-          <div className="hidden overflow-hidden rounded-3xl border border-glass-border bg-surface/40 shadow-glass md:block">
+          <div className="hidden overflow-hidden rounded-3xl border border-glass-border bg-(--bg-surface)/40 shadow-glass md:block">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-glass-border/10 bg-surface-hover/20">
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                  <tr className="border-b border-glass-border/10 bg-(--bg-surface-hover)/20">
+                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
                       {t("users.table.avatar")}
                     </th>
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
                       {t("users.table.fullName")}
                     </th>
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
                       {t("users.table.email")}
                     </th>
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
                       {t("users.table.role")}
                     </th>
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
                       {t("users.table.group")}
                     </th>
-                    <th className="px-6 py-4 text-right text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                    <th className="px-6 py-4 text-right text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
                       {t("users.table.actions")}
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-glass-border/10">
                   {users.map((user) => (
-                    <tr key={user.id} className="transition-colors hover:bg-surface-hover/10">
+                    <tr key={user.id} className="transition-colors hover:bg-(--bg-surface-hover)/10">
                       <td className="whitespace-nowrap px-6 py-4">
                         <Avatar
                           src={buildAvatarUrl(user.avatar_url, user.id)}
@@ -199,10 +199,10 @@ export default function AdminUsers() {
                           className="h-10 w-10"
                         />
                       </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-primary-text">
+                      <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-(--text-primary)">
                         {user.full_name}
                       </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-sm text-secondary-text">
+                      <td className="whitespace-nowrap px-6 py-4 text-sm text-(--text-secondary)">
                         {user.email}
                       </td>
                       <td className="whitespace-nowrap px-6 py-4">
@@ -218,7 +218,7 @@ export default function AdminUsers() {
                               handleGroupSelectChange(user.id, event.target.value)
                             }
                             className={cn(
-                              "rounded-lg border border-glass-border bg-surface/50 px-2.5 py-1 text-xs text-primary-text shadow-sm outline-none transition-all",
+                              "rounded-lg border border-glass-border bg-(--bg-surface)/50 px-2.5 py-1 text-xs text-(--text-primary) shadow-sm outline-none transition-all",
                               "focus:border-brand/40 focus:ring-2 focus:ring-brand/10"
                             )}
                           >
@@ -261,10 +261,10 @@ export default function AdminUsers() {
                   className="h-14 w-14"
                 />
                 <div className="flex flex-1 flex-col min-w-0">
-                  <h3 className="truncate text-base font-bold text-primary-text">
+                  <h3 className="truncate text-base font-bold text-(--text-primary)">
                     {user.full_name}
                   </h3>
-                  <p className="truncate text-sm text-secondary-text">{user.email}</p>
+                  <p className="truncate text-sm text-(--text-secondary)">{user.email}</p>
                   <div className="mt-2 flex items-center gap-2">
                     <span className="rounded-full bg-brand/10 px-2 py-0.5 text-[0.7rem] font-bold text-brand ring-1 ring-inset ring-brand/20">
                       {roleOptions[user.role]}
@@ -274,7 +274,7 @@ export default function AdminUsers() {
                         value={user.group_id ? String(user.group_id) : ""}
                         onChange={(event) => handleGroupSelectChange(user.id, event.target.value)}
                         className={cn(
-                          "rounded-lg border border-glass-border bg-surface/50 px-2 py-0.5 text-[0.7rem] text-primary-text shadow-sm outline-none transition-all",
+                          "rounded-lg border border-glass-border bg-(--bg-surface)/50 px-2 py-0.5 text-[0.7rem] text-(--text-primary) shadow-sm outline-none transition-all",
                           "focus:border-brand/40 focus:ring-2 focus:ring-brand/10"
                         )}
                       >
@@ -307,3 +307,8 @@ export default function AdminUsers() {
     </Layout>
   )
 }
+
+
+
+
+

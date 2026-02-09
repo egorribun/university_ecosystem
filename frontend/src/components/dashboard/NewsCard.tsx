@@ -44,7 +44,7 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
   }
 
   const listActionBase =
-    "group relative isolate w-full overflow-hidden rounded-xl border border-border-subtle bg-surface-hover/10 px-4 py-3 text-left transition-all duration-300 ease-out hover:bg-surface-hover/20 hover:border-border-strong hover:-translate-y-0.5 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+    "group relative isolate w-full overflow-hidden rounded-xl border border-border-subtle bg-(--bg-surface-hover)/10 px-4 py-3 text-left transition-all duration-300 ease-out hover:bg-(--bg-surface-hover)/20 hover:border-border-strong hover:-translate-y-0.5 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
 
   return (
     <Card
@@ -61,7 +61,7 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
     >
       <div className="relative z-1 space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-[clamp(1.1rem,2vw,1.5rem)] font-extrabold text-primary-text">
+          <h2 className="text-[clamp(1.1rem,2vw,1.5rem)] font-extrabold text-(--text-primary)">
             {t("dashboard:news.heading")}
           </h2>
           <Button
@@ -98,7 +98,7 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
           </div>
         )}
         {!loadingNews && news.length === 0 && (
-          <p className="text-sm text-secondary">{t("dashboard:news.empty")}</p>
+          <p className="text-sm text-(--text-secondary)">{t("dashboard:news.empty")}</p>
         )}
         {!loadingNews && news.length > 0 && (
           <ul className="space-y-3" aria-label={t("dashboard:aria.newsList")}>
@@ -113,17 +113,17 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
                 >
                   <DateBullet date={n.created_at} locale={locale} />
                   <div className="flex flex-col gap-1">
-                    <span className="text-[clamp(.98rem,.9rem+.4vw,1.06rem)] font-bold leading-snug text-primary-text">
+                    <span className="text-[clamp(.98rem,.9rem+.4vw,1.06rem)] font-bold leading-snug text-(--text-primary)">
                       {n.title}
                     </span>
-                    <span className="text-sm text-secondary-text">
+                    <span className="text-sm text-(--text-secondary)">
                       {(n.content || "").slice(0, 110)}
                       {(n.content || "").length > 110 ? "…" : ""}
                     </span>
                   </div>
                   <span
                     aria-hidden="true"
-                    className="ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-glass-border bg-surface/20 text-primary-text opacity-0 transition-all duration-300 group-hover:opacity-100 group-hover:border-brand group-hover:bg-brand/10 group-hover:text-brand"
+                    className="ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-glass-border bg-(--bg-surface)/20 text-(--text-primary) opacity-0 transition-all duration-300 group-hover:opacity-100 group-hover:border-brand group-hover:bg-brand/10 group-hover:text-brand"
                   >
                     <ArrowRight aria-hidden="true" className="h-4 w-4" />
                   </span>
@@ -166,3 +166,8 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
     </Card>
   )
 }
+
+
+
+
+

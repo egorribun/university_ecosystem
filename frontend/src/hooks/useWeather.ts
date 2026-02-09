@@ -173,3 +173,7 @@ export const useWeather = (options: UseWeatherOptions = {}): UseWeatherResult =>
 
   return { data, isLoading, error, refresh }
 }
+
+
+
+

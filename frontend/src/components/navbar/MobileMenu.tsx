@@ -58,7 +58,7 @@ export function MobileMenu({
     <div
       id="mobile-drawer"
       className={cn(
-        "mobile-drawer fixed inset-0 z-(--ue-z-index-overlay) flex h-screen w-screen",
+        "mobile-drawer fixed inset-0 z-(--z-overlay) flex h-screen w-screen",
         isOpen ? "pointer-events-auto bg-black/40" : "pointer-events-none bg-transparent", // Darker overlay
         !prefersReducedMotion && "transition-colors duration-200"
       )}
@@ -73,7 +73,7 @@ export function MobileMenu({
       <nav
         ref={drawerTrapRef}
         className={cn(
-          "fixed inset-y-0 left-0 z-(--overlay-z) flex h-full w-(--mobile-menu-w) max-w-[85%] flex-col bg-(--glass-bg) shadow-2xl transition-transform duration-500 ease-premium",
+          "fixed inset-y-0 left-0 z-(--z-overlay) flex h-full w-(--mobile-menu-w) max-w-[85%] flex-col bg-(--glass-bg) shadow-2xl transition-transform duration-500 ease-premium",
           "border-r border-(--glass-border) backdrop-blur-(--glass-blur)",
           isOpen ? "translate-x-0" : "-translate-x-full"
         )}
@@ -92,7 +92,7 @@ export function MobileMenu({
                     className={cn(
                       "flex items-center gap-4 rounded-2xl px-5 py-4 text-[16px] font-semibold transition-all duration-300",
                       active
-                        ? "bg-(--nav-link-active-bg) text-(--nav-link) shadow-sm"
+                        ? "bg-(--primary-main)/10 text-(--primary-main) shadow-sm"
                         : "text-(--nav-text) hover:bg-(--glass-tint-1) hover:translate-x-1"
                     )}
                   >
@@ -100,7 +100,7 @@ export function MobileMenu({
                       <Icon
                         className={cn(
                           "text-[22px] transition-colors",
-                          active ? "text-(--nav-link)" : "text-(--secondary-text)"
+                          active ? "text-(--primary-main)" : "text-(--text-secondary)"
                         )}
                       />
                     )}
@@ -116,7 +116,7 @@ export function MobileMenu({
                   className={cn(
                     "flex w-full items-center gap-4 rounded-2xl px-5 py-4 text-[16px] font-semibold transition-all duration-300",
                     isActive("/settings")
-                      ? "bg-(--nav-link-active-bg) text-(--nav-link) shadow-sm"
+                      ? "bg-(--primary-main)/10 text-(--primary-main) shadow-sm"
                       : "text-(--nav-text) hover:bg-(--glass-tint-1) hover:translate-x-1"
                   )}
                   onClick={(e) => {
@@ -129,7 +129,7 @@ export function MobileMenu({
                   <Settings
                     className={cn(
                       "text-[22px] transition-colors",
-                      isActive("/settings") ? "text-(--nav-link)" : "text-(--secondary-text)"
+                      isActive("/settings") ? "text-(--primary-main)" : "text-(--text-secondary)"
                     )}
                   />
                   {t("navigation:menu.settings")}
@@ -140,7 +140,7 @@ export function MobileMenu({
         </div>
 
         <div className="border-t border-(--glass-border) p-8">
-          <div className="text-center text-xs font-medium text-(--secondary-text) opacity-60">
+          <div className="text-center text-xs font-medium text-(--text-secondary) opacity-60">
             © {new Date().getFullYear()} {t("navigation:brandName")}
           </div>
         </div>
@@ -149,3 +149,9 @@ export function MobileMenu({
     document.body
   )
 }
+
+
+
+
+
+

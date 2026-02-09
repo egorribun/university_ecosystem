@@ -5,3 +5,7 @@ type PaginatedEventsSchema = components["schemas"]["PaginatedEvents"]
 export type PaginatedResponse<T> = Omit<PaginatedEventsSchema, "items"> & {
   items: T[]
 }
+
+
+
+

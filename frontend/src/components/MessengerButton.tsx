@@ -26,7 +26,7 @@ export default function MessengerButton() {
       aria-label={t("navigation:aria.messenger")}
     >
       <MessageSquare
-        className="w-5.5 h-5.5 transition-all duration-500 group-hover:rotate-[-8deg] group-hover:scale-110 text-secondary-text group-hover:text-brand"
+        className="w-5.5 h-5.5 transition-all duration-500 group-hover:rotate-[-8deg] group-hover:scale-110 text-(--text-secondary) group-hover:text-brand"
         strokeWidth={2}
       />
       {unreadCount > 0 && (
@@ -44,3 +44,8 @@ export default function MessengerButton() {
     </motion.button>
   )
 }
+
+
+
+
+

@@ -49,3 +49,7 @@ export default function Magnetic({ children, strength = 0.5, className }: Magnet
     </motion.div>
   )
 }
+
+
+
+

@@ -60,7 +60,7 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
         <motion.span
           className={cn(
             "absolute inset-0 rounded-full border border-border-subtle transition-colors duration-300",
-            "bg-surface-tint backdrop-blur-sm",
+            "bg-(--bg-surface)-tint backdrop-blur-sm",
             checked && "bg-brand/20 border-brand/30"
           )}
           animate={{
@@ -115,3 +115,9 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
 Switch.displayName = "Switch"
 
 export { Switch }
+
+
+
+
+
+

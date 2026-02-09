@@ -54,13 +54,12 @@ export function LessonCard({
       role="button"
       tabIndex={0}
       className={cn(
-        "group relative flex h-full min-h-[110px] flex-col overflow-hidden rounded-2xl border border-glass-border-subtle bg-glass-elevated p-4 shadow-premium transition-all duration-300 sm:min-h-[130px]",
+        "group relative flex h-full min-h-32 flex-col overflow-hidden rounded-2xl border border-glass-border-subtle bg-glass-elevated p-3 shadow-premium transition-all duration-300 sm:min-h-[130px]",
         hasBreakBefore ? "mt-6" : "",
         "hover:-translate-y-1 hover:shadow-glass hover:border-brand/30",
         "dark:shadow-premium-dark dark:hover:shadow-glass-strong-dark",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-page"
       )}
-      style={{ minHeight: lessonCardHeight, padding: "12px" }}
       title={isConflict ? t("schedule:lesson.conflict") : undefined}
     >
       <div className="flex flex-col gap-2">
@@ -87,22 +86,22 @@ export function LessonCard({
             {`${getTimeStr(lesson)}–${getEndTimeStr(lesson)}`}
           </Badge>
         </div>
-        <h3 className="text-base font-extrabold text-(--page-text) line-clamp-2 leading-tight tracking-tight">
+        <h3 className="text-base font-extrabold text-(--text-primary) line-clamp-2 leading-tight tracking-tight">
           {lesson.subject}
         </h3>
         <div className="flex flex-wrap gap-2">
           <Badge
             size="xs"
             variant="outline"
-            className="font-medium text-(--page-text)/80 border-(--glass-border) bg-(--card-bg)/40 dark:text-(--page-text)/90 dark:bg-(--card-bg)/60"
+            className="font-medium text-(--text-primary)/80 border-(--glass-border) bg-(--bg-surface)/40 dark:text-(--text-primary)/90 dark:bg-(--bg-surface)/60"
           >
             {lesson.teacher}
           </Badge>
           <Badge
             size="xs"
             variant="outline"
-            leadingIcon={<RoomIcon size={15} className="text-(--nav-link)" />}
-            className="font-medium text-(--page-text)/80 border-(--glass-border) bg-(--card-bg)/40 dark:text-(--page-text)/90 dark:bg-(--card-bg)/60"
+            leadingIcon={<RoomIcon size={15} className="text-(--primary-main)" />}
+            className="font-medium text-(--text-primary)/80 border-(--glass-border) bg-(--bg-surface)/40 dark:text-(--text-primary)/90 dark:bg-(--bg-surface)/60"
           >
             {lesson.room}
           </Badge>
@@ -139,3 +138,7 @@ export function LessonCard({
 }
 
 export default LessonCard
+
+
+
+

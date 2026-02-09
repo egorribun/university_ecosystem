@@ -115,3 +115,7 @@ export function calculateStatusIndicator(avatarPx: number): {
     offset: Math.max(6, Math.round(avatarPx * 0.08)),
   }
 }
+
+
+
+

@@ -362,3 +362,7 @@ describe("usePushPreferences notifications flow", () => {
     expect(result.current.notificationPermission).toBe("granted")
   })
 })
+
+
+
+

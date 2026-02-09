@@ -47,3 +47,7 @@ export const prefetchDashboardNews = async (
 export const dashboardNewsQueryKey = (language: SupportedLanguage) => {
   return newsListQueryKey({ language, limit: DASHBOARD_NEWS_LIMIT })
 }
+
+
+
+

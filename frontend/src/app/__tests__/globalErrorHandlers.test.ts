@@ -94,3 +94,7 @@ describe("initGlobalErrorHandlers", () => {
     expect(removeEventListenerMock).toHaveBeenCalledTimes(2)
   })
 })
+
+
+
+

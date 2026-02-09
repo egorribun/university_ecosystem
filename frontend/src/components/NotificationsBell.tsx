@@ -123,9 +123,9 @@ export default function NotificationsBell() {
         className={cn(
           "relative flex items-center justify-center p-2 rounded-xl transition-all",
           isOpen
-            ? "bg-(--nav-link-active-bg) border-(--glass-border) shadow-sm"
+            ? "bg-(--primary-main)/10 border-(--glass-border) shadow-sm"
             : "hover:bg-(--glass-tint-2) hover:border-(--glass-border)",
-          isOpen ? "text-(--nav-link)" : "text-(--nav-text)"
+          isOpen ? "text-(--primary-main)" : "text-(--nav-text)"
         )}
         aria-label={t("system:notificationsBell.open")}
       >
@@ -168,9 +168,9 @@ export default function NotificationsBell() {
               ref={dropdownRef}
             >
               {/* Header */}
-              <div className="p-4 border-b border-glass-border flex items-center justify-between bg-surface/30">
+              <div className="p-4 border-b border-glass-border flex items-center justify-between bg-(--bg-surface)/30">
                 <div className="flex items-center gap-2">
-                  <h3 className="font-semibold text-page-foreground tracking-tight">
+                  <h3 className="font-semibold text-(--text-primary) tracking-tight">
                     {t("system:notificationsBell.title")}
                   </h3>
                   {unreadCount > 0 && (
@@ -184,7 +184,7 @@ export default function NotificationsBell() {
                   <button
                     onClick={() => markAll()}
                     disabled={actionsDisabled}
-                    className="p-1.5 text-secondary hover:text-page-foreground hover:bg-slate-5 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+                    className="p-1.5 text-(--text-secondary) hover:text-(--text-primary) hover:bg-slate-5 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
                     title={t("system:notificationsBell.markAll")}
                   >
                     <svg
@@ -210,7 +210,7 @@ export default function NotificationsBell() {
                       })
                     }
                     disabled={actionsDisabled}
-                    className="p-1.5 text-secondary hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+                    className="p-1.5 text-(--text-secondary) hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
                     title={t("system:notificationsBell.clear")}
                   >
                     <Trash2 className="w-4 h-4" />
@@ -228,7 +228,7 @@ export default function NotificationsBell() {
                     <p className="text-sm text-red-500/80">{t("system:notificationsBell.error")}</p>
                     <button
                       onClick={() => refetch()}
-                      className="text-xs bg-slate-10 hover:bg-slate-20 text-page-foreground px-3 py-1.5 rounded-lg transition-colors"
+                      className="text-xs bg-slate-10 hover:bg-slate-20 text-(--text-primary) px-3 py-1.5 rounded-lg transition-colors"
                     >
                       {t("system:errorBoundary.retry")}
                     </button>
@@ -238,7 +238,7 @@ export default function NotificationsBell() {
                     <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
                   </div>
                 ) : data.length === 0 ? (
-                  <div className="p-12 text-center text-secondary flex flex-col items-center gap-3">
+                  <div className="p-12 text-center text-(--text-secondary) flex flex-col items-center gap-3">
                     <div className="w-16 h-16 rounded-2xl bg-slate-5 flex items-center justify-center mb-2">
                       <Bell className="w-8 h-8 opacity-20" />
                     </div>
@@ -272,7 +272,7 @@ export default function NotificationsBell() {
                               "w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-opacity",
                               !n.read
                                 ? "bg-indigo-500/10 text-indigo-500 dark:text-indigo-400"
-                                : "bg-slate-10 text-secondary"
+                                : "bg-slate-10 text-(--text-secondary)"
                             )}
                           >
                             {n.type === "chat.message" ? (
@@ -288,12 +288,12 @@ export default function NotificationsBell() {
                             <p
                               className={cn(
                                 "text-sm font-medium leading-tight",
-                                !n.read ? "text-page-foreground" : "text-secondary"
+                                !n.read ? "text-(--text-primary)" : "text-(--text-secondary)"
                               )}
                             >
                               {n.title}
                             </p>
-                            <p className="text-xs text-secondary leading-relaxed text-pretty">
+                            <p className="text-xs text-(--text-secondary) leading-relaxed text-pretty">
                               {n.body}
                             </p>
                             {/* Timestamp if available could go here */}
@@ -308,7 +308,7 @@ export default function NotificationsBell() {
                               e.stopPropagation()
                               markRead(n.id)
                             }}
-                            className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-all p-1.5 rounded-lg text-secondary hover:text-page-foreground hover:bg-slate-10 bg-surface/50 backdrop-blur-sm"
+                            className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-all p-1.5 rounded-lg text-(--text-secondary) hover:text-(--text-primary) hover:bg-slate-10 bg-(--bg-surface)/50 backdrop-blur-sm"
                             title={t("system:notificationsBell.markRead")}
                           >
                             <CheckCheck className="w-3.5 h-3.5" />
@@ -327,7 +327,7 @@ export default function NotificationsBell() {
                         <button
                           onClick={() => fetchMore(nextCursor)}
                           disabled={!nextCursor || isFetchingMore}
-                          className="w-full py-2 flex items-center justify-center gap-2 text-xs font-medium text-secondary hover:text-page-foreground bg-slate-5 hover:bg-slate-10 rounded-lg transition-all disabled:opacity-50"
+                          className="w-full py-2 flex items-center justify-center gap-2 text-xs font-medium text-(--text-secondary) hover:text-(--text-primary) bg-slate-5 hover:bg-slate-10 rounded-lg transition-all disabled:opacity-50"
                         >
                           {isFetchingMore ? (
                             <>
@@ -354,3 +354,8 @@ export default function NotificationsBell() {
     </>
   )
 }
+
+
+
+
+

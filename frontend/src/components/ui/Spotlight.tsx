@@ -65,3 +65,7 @@ export function Spotlight({ children, className = "", spotlightColor }: Spotligh
     </div>
   )
 }
+
+
+
+

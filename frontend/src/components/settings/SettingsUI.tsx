@@ -82,7 +82,7 @@ export const fadeDelayStyle = (value: string): CSSProperties =>
 
 export const securityStatusChipClassName = cn(
   "font-bold tracking-tight px-3 py-1 rounded-full text-xs",
-  "text-(--primary-text) border border-(--glass-border) bg-(--bg-surface)/40",
+  "text-(--text-primary) border border-(--glass-border) bg-(--bg-surface)/40",
   "shadow-glass backdrop-blur-xl transition-all duration-300",
   "dark:bg-(--bg-surface)/20 dark:border-white/10"
 )
@@ -103,7 +103,7 @@ export function SectionCard({
     <Component
       className={cn(
         "relative flex flex-col gap-3 overflow-hidden rounded-3xl px-6 py-6",
-        "border border-(--glass-border) bg-(--bg-surface)/40 text-(--primary-text)",
+        "border border-(--glass-border) bg-(--bg-surface)/40 text-(--text-primary)",
         "shadow-glass transition-all duration-500",
         "before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit] before:opacity-30",
         "before:bg-[radial-gradient(circle_at_0%_0%,var(--primary-main),transparent_60%)]",
@@ -140,7 +140,7 @@ export function SectionTitle({
           : "text-base"
   return (
     <Component
-      className={cn("font-bold tracking-tight text-primary-text", sizeClasses, className)}
+      className={cn("font-bold tracking-tight text-(--text-primary)", sizeClasses, className)}
       {...props}
     >
       {children}
@@ -161,7 +161,7 @@ export function SectionSubtitle({
   const sizeClasses =
     variant === "body2" ? "text-sm" : variant === "caption" ? "text-xs" : "text-sm"
   return (
-    <p className={cn("text-secondary-text leading-relaxed", sizeClasses, className)} {...props}>
+    <p className={cn("text-(--text-secondary) leading-relaxed", sizeClasses, className)} {...props}>
       {children}
     </p>
   )
@@ -179,7 +179,7 @@ export function SessionItem({
     <div
       className={cn(
         "group relative flex items-stretch justify-between gap-4 rounded-2xl px-4 py-3",
-        "border border-(--glass-border) bg-(--bg-surface)/30 text-(--primary-text)",
+        "border border-(--glass-border) bg-(--bg-surface)/30 text-(--text-primary)",
         "transition-all duration-500 ease-out backdrop-blur-sm",
         "hover:-translate-y-px hover:border-(--brand-main)/30 hover:bg-(--bg-surface)/50 hover:shadow-glass",
         "max-sm:flex-col max-sm:items-start",
@@ -228,8 +228,8 @@ export function AccordionSection({
       >
         <div className="flex items-center justify-between gap-3">
           <div className="flex flex-col gap-1 min-w-0">
-            <h3 className="text-sm font-bold text-primary-text">{title}</h3>
-            {subtitle && <p className="text-xs text-secondary-text">{subtitle}</p>}
+            <h3 className="text-sm font-bold text-(--text-primary)">{title}</h3>
+            {subtitle && <p className="text-xs text-(--text-secondary)">{subtitle}</p>}
           </div>
           <motion.svg
             animate={{ rotate: expanded ? 180 : 0 }}
@@ -311,14 +311,14 @@ export const TextField = React.forwardRef<
         {label && (
           <label
             htmlFor={props.id}
-            className="mb-0.5 block px-1 text-xs font-bold uppercase tracking-widest text-secondary-text"
+            className="mb-0.5 block px-1 text-xs font-bold uppercase tracking-widest text-(--text-secondary)"
           >
             {label}
           </label>
         )}
         <div className="relative">
           {leadingIcon && (
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-tertiary-text">
+            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-(--text-tertiary)">
               {leadingIcon}
             </div>
           )}
@@ -336,8 +336,8 @@ export const TextField = React.forwardRef<
               placeholder={placeholder}
               rows={rows}
               className={cn(
-                "flex w-full rounded-2xl border border-(--glass-border) bg-(--bg-surface) px-4 py-3 text-base font-medium text-(--primary-text) shadow-sm transition-all duration-500",
-                "placeholder:text-(--secondary-text)/50",
+                "flex w-full rounded-2xl border border-(--glass-border) bg-(--bg-surface) px-4 py-3 text-base font-medium text-(--text-primary) shadow-sm transition-all duration-500",
+                "placeholder:text-(--text-secondary)/50",
                 "focus:border-(--brand-main)/40 focus:outline-none focus:ring-4 focus:ring-(--brand-main)/10",
                 "disabled:cursor-not-allowed disabled:opacity-50",
                 error
@@ -370,7 +370,7 @@ export const TextField = React.forwardRef<
             />
           )}
           {trailingIcon && (
-            <div className="absolute right-4 top-1/2 -translate-y-1/2 text-tertiary-text">
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 text-(--text-tertiary)">
               {trailingIcon}
             </div>
           )}
@@ -379,7 +379,7 @@ export const TextField = React.forwardRef<
           <p
             className={cn(
               "px-1 text-xs font-medium leading-tight",
-              error ? "text-error" : "text-tertiary-text/80"
+              error ? "text-error" : "text-(--text-tertiary)/80"
             )}
           >
             {helperText}
@@ -443,7 +443,7 @@ export function FormControlLabel({
       {React.isValidElement(control)
         ? React.cloneElement(control as React.ReactElement<{ value?: string }>, { value })
         : control}
-      <span className="text-sm font-bold text-primary-text transition-colors">{label}</span>
+      <span className="text-sm font-bold text-(--text-primary) transition-colors">{label}</span>
     </label>
   )
 }
@@ -505,7 +505,7 @@ export function Chip({
   className?: string
 } & React.HTMLAttributes<HTMLSpanElement>) {
   const colorMap = {
-    default: "text-(--secondary-text) bg-(--bg-surface)/50 border-(--glass-border)",
+    default: "text-(--text-secondary) bg-(--bg-surface)/50 border-(--glass-border)",
     success: "text-(--success-bg) bg-(--success-bg)/10 border-(--success-bg)/20",
     primary: "text-(--brand-main) bg-(--brand-main)/10 border-(--brand-main)/20",
   }
@@ -562,7 +562,7 @@ export function Avatar({
         className
       )}
     >
-      <div className="relative h-full w-full overflow-hidden rounded-full bg-surface">
+      <div className="relative h-full w-full overflow-hidden rounded-full bg-(--bg-surface)">
         <SmartImage
           srcRaw={src}
           alt={alt}
@@ -675,7 +675,7 @@ export function Dialog({
   return ReactDOM.createPortal(
     <div
       role="presentation"
-      className="fixed inset-0 z-(--ue-z-index-overlay) flex items-center justify-center p-4"
+      className="fixed inset-0 z-(--z-overlay) flex items-center justify-center p-4"
     >
       <motion.div
         initial={{ opacity: 0 }}
@@ -712,7 +712,7 @@ export function DialogTitle({
   return (
     <h2
       className={cn(
-        "px-6 pt-6 pb-2 text-xl font-bold tracking-tight text-(--primary-text) border-b border-(--glass-border)/10",
+        "px-6 pt-6 pb-2 text-xl font-bold tracking-tight text-(--text-primary) border-b border-(--glass-border)/10",
         className
       )}
     >
@@ -729,7 +729,7 @@ export function DialogContent({
   className?: string
 }) {
   return (
-    <div className={cn("px-6 py-4 text-secondary-text leading-relaxed", className)}>{children}</div>
+    <div className={cn("px-6 py-4 text-(--text-secondary) leading-relaxed", className)}>{children}</div>
   )
 }
 
@@ -874,8 +874,8 @@ export function Tab({
       className={cn(
         "relative flex h-10 items-center justify-center rounded-xl px-5 text-sm font-black transition-all duration-500",
         selected
-          ? "text-primary-text"
-          : "text-secondary-text opacity-70 hover:opacity-100 hover:bg-surface-hover/20"
+          ? "text-(--text-primary)"
+          : "text-(--text-secondary) opacity-70 hover:opacity-100 hover:bg-(--bg-surface-hover)/20"
       )}
     >
       {selected && (
@@ -889,3 +889,9 @@ export function Tab({
     </button>
   )
 }
+
+
+
+
+
+

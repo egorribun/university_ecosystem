@@ -42,3 +42,7 @@ export const listWebAuthnCredentials = () => api.get<unknown[]>("/auth/mfa/webau
 
 export const deleteWebAuthnCredential = (credentialId: string) =>
   api.delete<MfaFactorStatus>(`/auth/mfa/webauthn/${credentialId}`)
+
+
+
+

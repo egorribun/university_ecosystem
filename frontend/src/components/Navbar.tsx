@@ -147,7 +147,7 @@ const Navbar = () => {
             to="/dashboard"
             aria-label={t("navigation:aria.homeLink")}
             className={cn(
-              "inline-flex min-w-0 items-center rounded-ue-xl px-3 py-1.5 no-underline group transition-all duration-300 hover:bg-surface-hover/30",
+              "inline-flex min-w-0 items-center rounded-ue-xl px-3 py-1.5 no-underline group transition-all duration-300 hover:bg-(--bg-surface-hover)/30",
               isMobile ? "gap-fluid-gap" : "gap-4"
             )}
             onPointerDown={markScrollFromBottom}
@@ -162,7 +162,7 @@ const Navbar = () => {
               variants={hoverScale}
               whileHover="hover"
               whileTap="tap"
-              className="flex items-center justify-center shrink-0 rounded-full bg-surface-raised shadow-sm w-11 h-11 border border-border-subtle"
+              className="flex items-center justify-center shrink-0 rounded-full bg-(--bg-surface-raised) shadow-sm w-11 h-11 border border-border-subtle"
             >
               <SmartImage
                 srcRaw={guuLogo}
@@ -205,7 +205,7 @@ const Navbar = () => {
                 whileTap={{ scale: 0.9 }}
                 transition={springSoft}
                 type="button"
-                className="flex shrink-0 cursor-pointer items-center justify-center rounded-ue-xl border border-(--glass-border) bg-(--bg-surface-hover)/10 p-0 shadow-sm backdrop-blur-md transition-all duration-300 hover:bg-(--bg-surface-hover)/20 w-11 h-11 text-(--primary-text)"
+                className="flex shrink-0 cursor-pointer items-center justify-center rounded-ue-xl border border-(--glass-border) bg-(--bg-surface-hover)/10 p-0 shadow-sm backdrop-blur-md transition-all duration-300 hover:bg-(--bg-surface-hover)/20 w-11 h-11 text-(--text-primary)"
                 onClick={() => setMobileMenu((v) => !v)}
                 aria-label={
                   mobileMenu ? t("navigation:aria.closeMenu") : t("navigation:aria.openMenu")
@@ -222,7 +222,7 @@ const Navbar = () => {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   aria-hidden="true"
-                  className="overflow-visible stroke-(--primary-text) w-[20px] h-[20px]"
+                  className="overflow-visible stroke-(--text-primary) w-[20px] h-[20px]"
                 >
                   <motion.line
                     x1="4"
@@ -334,7 +334,7 @@ const Navbar = () => {
                         onClick={() => go("/profile")}
                         aria-label={profileTitle}
                         title={profileTitle}
-                        className="cursor-pointer border-none bg-transparent p-0 m-0 font-bold text-(--primary-text) tracking-tight text-base hover:text-(--nav-link) transition-colors"
+                        className="cursor-pointer border-none bg-transparent p-0 m-0 font-bold text-(--text-primary) tracking-tight text-base hover:text-brand transition-colors"
                       >
                         {user.full_name}
                       </button>
@@ -347,7 +347,7 @@ const Navbar = () => {
                         whileTap={{ scale: 0.9 }}
                         transition={springSoft}
                         type="button"
-                        className="flex items-center justify-center w-10 h-10 rounded-ue-xl text-(--primary-text) transition-colors"
+                        className="flex items-center justify-center w-10 h-10 rounded-ue-xl text-(--text-primary) transition-colors"
                         onClick={() => go("/settings")}
                         aria-label={t("navigation:menu.settings")}
                         title={t("navigation:menu.settings")}
@@ -381,3 +381,9 @@ const Navbar = () => {
 }
 
 export default Navbar
+
+
+
+
+
+
