@@ -1,4 +1,0 @@
-
-> frontend@1.0.0 test
-> vitest run --watchAll=false
-
