@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest"
 
 import MapFallback from "@/components/MapFallback"
 import { LanguageProvider, useLanguage, type SupportedLanguage } from "@/contexts/LanguageContext"
+import { ThemeProvider } from "@/contexts/ThemeContext"
 
 const storageKey = "ue:language"
 
@@ -20,10 +21,12 @@ function LanguageSetter({ language }: { language: SupportedLanguage }) {
 function renderWithLanguage(language: SupportedLanguage) {
   window.localStorage.setItem(storageKey, language)
   render(
-    <LanguageProvider>
-      <LanguageSetter language={language} />
-      <MapFallback reason="load-error" />
-    </LanguageProvider>
+    <ThemeProvider>
+      <LanguageProvider>
+        <LanguageSetter language={language} />
+        <MapFallback reason="load-error" />
+      </LanguageProvider>
+    </ThemeProvider>
   )
 }
 

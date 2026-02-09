@@ -20,13 +20,13 @@ export default function MessengerButton() {
       whileTap={{ scale: 0.95 }}
       onClick={() => navigate("/messenger")}
       className={cn(
-        "relative flex items-center justify-center rounded-[14px] transition-all duration-300 outline-none group",
-        "w-10 h-10 border border-transparent hover:border-blue-500/30 bg-transparent glass-morphism shadow-sm"
+        "relative flex items-center justify-center rounded-ue-md transition-all duration-300 outline-none group focus-visible:shadow-focus",
+        "w-11 h-11 border border-transparent hover:border-brand/30 bg-transparent glass-morphism shadow-sm"
       )}
       aria-label={t("navigation:aria.messenger")}
     >
       <MessageSquare
-        className="w-5 h-5 transition-all duration-500 group-hover:rotate-[-8deg] group-hover:scale-110 text-gray-600 dark:text-gray-300 group-hover:text-blue-500"
+        className="w-5.5 h-5.5 transition-all duration-500 group-hover:rotate-[-8deg] group-hover:scale-110 text-secondary-text group-hover:text-brand"
         strokeWidth={2}
       />
       {unreadCount > 0 && (
@@ -36,7 +36,7 @@ export default function MessengerButton() {
           className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center"
         >
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-40"></span>
-          <span className="relative inline-flex rounded-full h-4 w-4 bg-blue-500 border-2 border-white dark:border-[#0F172A] text-[9px] font-bold text-white items-center justify-center">
+          <span className="relative inline-flex rounded-full h-4 w-4 bg-(--brand-main) border-2 border-(--bg-surface) dark:border-(--bg-page) text-[0.55rem] font-bold text-white items-center justify-center">
             {unreadCount}
           </span>
         </motion.span>

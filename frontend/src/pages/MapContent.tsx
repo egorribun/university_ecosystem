@@ -6,17 +6,12 @@ import {
   Satellite as SatelliteAltIcon,
   RefreshCw as RestartAltIcon,
 } from "lucide-react"
-import "../assets/themes.css"
 import { useTranslation } from "react-i18next"
 import MapFallback from "@/components/MapFallback"
 import { CAMPUS_COORDINATES } from "@/constants/campus"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { cn } from "@/utils/cn"
-import {
-  Alert,
-  Button,
-  Snackbar,
-} from "@/components/settings"
+import { Alert, Button, Snackbar } from "@/components/settings"
 
 type LayerMode = "map" | "hybrid"
 
@@ -175,9 +170,9 @@ export default function MapContent() {
     <div className="w-full bg-(--card-bg) text-(--page-text) rounded-none shadow-2xl overflow-hidden relative">
       <div
         ref={containerRef}
-        className="map-page bg-surface-alt dark:bg-[#0b0d12] transition-colors duration-300 h-full w-full relative"
+        className="map-page bg-surface-alt dark:bg-canvas-dark transition-colors duration-300 h-full w-full relative"
       >
-        <div className="glass glass--panel glass--sheen map-head z-50 flex items-center justify-between px-6 py-4 absolute top-0 left-0 right-0">
+        <div className="glass glass--panel glass--sheen map-head z-navbar flex items-center justify-between px-6 py-4 absolute top-0 left-0 right-0">
           <div className="flex items-center gap-3">
             <MapIcon className={cn("text-brand", isMobile ? "h-6 w-6" : "h-8 w-8")} />
             <h1 className="map-title text-[clamp(1.1rem,3.6vw,2rem)] font-black tracking-tight text-primary-text">
@@ -226,18 +221,22 @@ export default function MapContent() {
         )}
 
         {(!iframeLoaded || loadError) && !disableEmbeds && (
-          <div className="absolute inset-0 z-40 grid place-items-center bg-background/90 backdrop-blur-sm">
+          <div className="absolute inset-0 z-sidebar grid place-items-center bg-background/90 backdrop-blur-sm">
             {!loadError ? (
               <div className="h-16 w-16 rounded-full border-4 border-surface/20 border-t-brand animate-spin" />
             ) : (
               <div className="flex flex-col items-center gap-4">
                 <p className="text-sm font-medium text-secondary-text">{t("map.loadError")}</p>
-                <Button variant="outline" size="sm" onClick={() => {
-                  setLoadError(false)
-                  iframeLoadedRef.current = false
-                  setIframeLoaded(false)
-                  setFrameKey((k) => k + 1)
-                }}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setLoadError(false)
+                    iframeLoadedRef.current = false
+                    setIframeLoaded(false)
+                    setFrameKey((k) => k + 1)
+                  }}
+                >
                   <RestartAltIcon className="h-4 w-4 mr-2" />
                   {t("common:buttons.retry")}
                 </Button>
@@ -255,7 +254,7 @@ export default function MapContent() {
 
         <div className="map-controls-shield absolute inset-0 pointer-events-none" />
 
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 pointer-events-none flex flex-col gap-3 safe-bottom">
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-navbar pointer-events-none flex flex-col gap-3 pb-(--safe-area-bottom)">
           <div className="flex items-center gap-2 pointer-events-auto">
             <div className="glass glass--panel rounded-2xl p-1 bg-surface/40 backdrop-blur-xl border border-glass-border shadow-2xl flex items-center gap-1">
               <button

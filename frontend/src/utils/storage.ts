@@ -25,8 +25,8 @@ export class StorageItem<T> {
       const raw = window.localStorage.getItem(this.key)
       if (raw === null) return this.fallback
       return JSON.parse(raw) as T
-    } catch (e) {
-      console.warn(`[Storage] Failed to parse key "${this.key}":`, e)
+    } catch (error) {
+      console.warn(`[Storage] Failed to parse key "${this.key}":`, error)
       return this.fallback
     }
   }
@@ -47,8 +47,8 @@ export class StorageItem<T> {
           url: window.location.href,
         })
       )
-    } catch (e) {
-      console.warn(`[Storage] Failed to set key "${this.key}":`, e)
+    } catch (error) {
+      console.warn(`[Storage] Failed to set key "${this.key}":`, error)
     }
   }
 
@@ -66,8 +66,8 @@ export class StorageItem<T> {
           url: window.location.href,
         })
       )
-    } catch (e) {
-      console.warn(`[Storage] Failed to remove key "${this.key}":`, e)
+    } catch (error) {
+      console.warn(`[Storage] Failed to remove key "${this.key}":`, error)
     }
   }
 

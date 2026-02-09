@@ -1,0 +1,249 @@
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { motion, useReducedMotion } from "framer-motion"
+import { useTranslation } from "react-i18next"
+import { cn } from "@/utils/cn"
+import useMediaQuery from "@/hooks/useMediaQuery"
+import type { NowPlaying } from "@/types/spotify"
+
+const isTest = typeof import.meta !== "undefined" && import.meta.env.MODE === "test"
+
+export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: NowPlaying }) {
+  const prefersReduce = useMediaQuery("(prefers-reduced-motion: reduce)")
+  const reduced = useReducedMotion()
+  const duration = data.duration_ms ?? 0
+  const { t } = useTranslation(["profile"])
+  const [imageLoaded, setImageLoaded] = useState(false)
+  const [imageError, setImageError] = useState(false)
+
+  const clampProgress = useCallback(
+    (value: number | null | undefined) => {
+      if (value == null) return 0
+      if (!Number.isFinite(value)) return 0
+      if (!duration || duration <= 0) return Math.max(0, value)
+      return Math.min(Math.max(0, value), duration)
+    },
+    [duration]
+  )
+
+  const initialProgress = clampProgress(data.progress_ms)
+  const [progress, setProgress] = useState<number>(() => initialProgress)
+  const startRef = useRef<number>(Date.now() - initialProgress)
+  const rafRef = useRef<number | null>(null)
+  const prevTrackIdRef = useRef<string | null>(data.track_id ?? null)
+  const prevProgressRef = useRef<number>(initialProgress)
+  const prevIsPlayingRef = useRef<boolean>(data.is_playing)
+
+  useEffect(() => {
+    const next = clampProgress(data.progress_ms)
+    const trackChanged = (data.track_id ?? null) !== prevTrackIdRef.current
+    const progressChanged = next !== prevProgressRef.current
+    const resumed = data.is_playing && !prevIsPlayingRef.current
+
+    if (trackChanged) {
+      prevTrackIdRef.current = data.track_id ?? null
+      setImageLoaded(false)
+      setImageError(false)
+    }
+
+    if (progressChanged) {
+      prevProgressRef.current = next
+    }
+
+    if (trackChanged || progressChanged || resumed) {
+      startRef.current = Date.now() - next
+      setProgress(next)
+    }
+
+    prevIsPlayingRef.current = data.is_playing
+  }, [clampProgress, data.is_playing, data.progress_ms, data.track_id])
+
+  useEffect(() => {
+    if (data.is_playing) return
+    const next = clampProgress(data.progress_ms)
+    startRef.current = Date.now() - next
+    setProgress((prev) => (prev === next ? prev : next))
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+    }
+  }, [clampProgress, data.is_playing, data.progress_ms])
+
+  const shouldAnimate = !isTest && data.is_playing && !prefersReduce && !reduced && duration > 0
+
+  useEffect(() => {
+    if (!shouldAnimate) {
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current)
+        rafRef.current = null
+      }
+      return
+    }
+    const loop = () => {
+      const elapsed = Date.now() - startRef.current
+      setProgress(clampProgress(elapsed))
+      rafRef.current = requestAnimationFrame(loop)
+    }
+    rafRef.current = requestAnimationFrame(loop)
+    return () => {
+      if (rafRef.current != null) {
+        cancelAnimationFrame(rafRef.current)
+        rafRef.current = null
+      }
+    }
+  }, [clampProgress, shouldAnimate])
+
+  const pct = duration > 0 ? Math.max(0, Math.min(100, (progress / duration) * 100)) : 0
+  const fmt = (ms: number | null | undefined) => {
+    if (ms == null) return "0:00"
+    const seconds = Math.max(0, Math.floor(ms / 1000))
+    const minutes = Math.floor(seconds / 60)
+    const rest = String(seconds % 60).padStart(2, "0")
+    return `${minutes}:${rest}`
+  }
+
+  const handleImageLoad = useCallback(() => {
+    setImageLoaded(true)
+    setImageError(false)
+  }, [])
+
+  const handleImageError = useCallback(() => {
+    setImageError(true)
+    setImageLoaded(true)
+  }, [])
+
+  const href = data.track_url || "https://open.spotify.com"
+
+  const maxTimeWidth = useMemo(() => {
+    const fmtTime = (ms: number | null | undefined) => {
+      if (ms == null) return "0:00"
+      const seconds = Math.max(0, Math.floor(ms / 1000))
+      const minutes = Math.floor(seconds / 60)
+      const rest = String(seconds % 60).padStart(2, "0")
+      return `${minutes}:${rest}`
+    }
+    const maxTimeStr = fmtTime(duration)
+    const fullFormat = `${maxTimeStr} / ${maxTimeStr}`
+    return `${fullFormat.length * 0.6}ch`
+  }, [duration])
+
+  useEffect(() => {
+    if (!data.album_image_url) {
+      setImageLoaded(true)
+      return
+    }
+
+    const img = new Image()
+    img.src = data.album_image_url
+
+    if (img.complete) {
+      setImageLoaded(true)
+      setImageError(false)
+    }
+  }, [data.album_image_url])
+
+  const progressBarTransition = useMemo(() => {
+    if (shouldAnimate && !prefersReduce && !reduced) {
+      return "transform 0.1s linear"
+    }
+    return "transform 0.2s ease-out"
+  }, [shouldAnimate, prefersReduce, reduced])
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={
+        data.track_name
+          ? t("profile:nowPlaying.openSpotifyWithTrack", { track: data.track_name })
+          : t("profile:nowPlaying.openSpotify")
+      }
+      className="block w-full no-underline"
+    >
+      <motion.div
+        className={cn(
+          "nowplaying--spotify w-full grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 px-4 py-3.5 rounded-2xl relative overflow-hidden",
+          "border border-glass-border bg-surface/40 backdrop-blur-md shadow-glass text-primary-text",
+          "transition-all duration-300 hover:-translate-y-0.5"
+        )}
+        initial={isTest || prefersReduce || reduced ? false : { y: 12, opacity: 0.94, scale: 1 }}
+        animate={{ y: 0, opacity: 1, scale: 1 }}
+        whileHover={prefersReduce || reduced ? {} : { y: -1, scale: 1.002 }}
+        whileTap={prefersReduce || reduced ? {} : { scale: 0.997 }}
+        transition={
+          isTest ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 36, mass: 0.9 }
+        }
+      >
+        <div className="absolute inset-0 bg-linear-to-br from-brand/10 to-transparent pointer-events-none" />
+        <div className="relative w-14 h-14 rounded-lg overflow-hidden shadow-premium">
+          {data.album_image_url && !imageError ? (
+            <img
+              src={data.album_image_url}
+              alt={data.album_name || data.track_name || t("profile:nowPlaying.albumFallback")}
+              loading="eager"
+              decoding="async"
+              referrerPolicy="no-referrer"
+              onLoad={handleImageLoad}
+              onError={handleImageError}
+              className={`w-full h-full rounded-lg object-cover transition-opacity duration-300 ${
+                imageLoaded ? "opacity-100" : "opacity-0"
+              } ${
+                prefersReduce || reduced
+                  ? ""
+                  : "scale-[1.012] transition-transform duration-900 cubic-bezier-[0.22,0.61,0.36,1] hover:scale-[1.02]"
+              }`}
+            />
+          ) : (
+            <div className="w-full h-full rounded-lg bg-surface-hover/60 flex items-center justify-center">
+              <span className="text-text-tertiary text-xs">♪</span>
+            </div>
+          )}
+        </div>
+        <div className="min-w-0 flex flex-col gap-1.5 relative z-1" aria-live="polite">
+          <h3
+            className={`np-title font-bold leading-tight tracking-tight text-primary-text text-base transition-opacity duration-200 ${
+              imageLoaded || !data.album_image_url || imageError ? "opacity-100" : "opacity-0"
+            }`}
+          >
+            {data.track_name || "—"}
+          </h3>
+          <p className="np-art text-sm text-secondary-text opacity-90 truncate">
+            {data.artists.join(", ")}
+          </p>
+          {!data.is_playing && (
+            <span
+              className="inline-flex self-start px-2 py-0.5 text-[10px] font-bold uppercase bg-surface-hover/80 text-secondary-text rounded-full border border-glass-border"
+              aria-hidden
+            >
+              {t("profile:nowPlaying.paused")}
+            </span>
+          )}
+          <div className="flex items-center gap-2 w-full mt-0.5">
+            <div className="flex-1 min-w-0 h-1.5 bg-surface-hover/80 rounded-full overflow-hidden relative">
+              <div
+                role="progressbar"
+                aria-valuenow={progress}
+                aria-valuemin={0}
+                aria-valuemax={duration}
+                aria-label={t("profile:nowPlaying.progress")}
+                className="h-full bg-brand rounded-full origin-left will-change-transform shadow-[0_0_8px_color-mix(in_srgb,var(--primary-main)_40%,transparent)]"
+                style={{
+                  transform: `scaleX(${pct / 100})`,
+                  transition: progressBarTransition,
+                }}
+              />
+            </div>
+            <span
+              className="np-time text-xs text-text-tertiary whitespace-nowrap tabular-nums shrink-0"
+              style={{ width: maxTimeWidth }}
+            >
+              {fmt(progress)} / {fmt(duration)}
+            </span>
+          </div>
+        </div>
+      </motion.div>
+    </a>
+  )
+})
+
+export default NowPlayingCard

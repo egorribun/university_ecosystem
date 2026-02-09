@@ -6,7 +6,7 @@ import { cn } from "@/utils/cn"
 
 interface RadioGroupProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "onChange"> {
   value?: string
-  onChange?: (event: any, value: string) => void
+  onChange?: (event: React.ChangeEvent<HTMLInputElement> | null, value: string) => void
   disabled?: boolean
   name?: string
   row?: boolean
@@ -26,15 +26,10 @@ const RadioGroup = React.forwardRef<HTMLDivElement, RadioGroupProps>(
     }
 
     return (
-      <RadioGroupContext.Provider
-        value={{ value, onChange: handleValueChange, disabled, name }}
-      >
+      <RadioGroupContext.Provider value={{ value, onChange: handleValueChange, disabled, name }}>
         <div
           ref={ref}
-          className={cn(
-            row ? "flex flex-row flex-wrap gap-4" : "grid gap-2",
-            className
-          )}
+          className={cn(row ? "flex flex-row flex-wrap gap-4" : "grid gap-2", className)}
           {...props}
         />
       </RadioGroupContext.Provider>
@@ -66,6 +61,7 @@ const RadioGroupItem = React.forwardRef<HTMLInputElement, RadioGroupItemProps>(
           type="radio"
           ref={ref}
           className="peer sr-only"
+          value={value}
           checked={isSelected}
           disabled={isDisabled}
           name={context.name}
@@ -78,7 +74,8 @@ const RadioGroupItem = React.forwardRef<HTMLInputElement, RadioGroupItemProps>(
             "border-border-strong bg-surface/40 backdrop-blur-md shadow-sm",
             "hover:border-brand/40 hover:bg-surface-hover/60",
             "peer-focus-visible:ring-4 peer-focus-visible:ring-brand/20",
-            isSelected && "border-brand bg-brand/10 shadow-[0_0_12px_rgba(var(--primary-main),0.15)]",
+            isSelected &&
+              "border-brand bg-brand/10 shadow-[0_0_12px_rgba(var(--primary-main),0.15)]",
             className
           )}
         >

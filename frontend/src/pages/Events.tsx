@@ -25,12 +25,7 @@ import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { EVENTS_PAGE_SIZE, useEventsListQuery, useMyEventsQuery } from "@/api/hooks/events"
 import { Button, Badge, Skeleton } from "@/components/ui"
-import {
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-} from "@/components/settings"
+import { Dialog, DialogActions, DialogContent, DialogTitle } from "@/components/settings"
 import { cn } from "@/utils/cn"
 import useMediaQuery from "@/hooks/useMediaQuery"
 
@@ -78,19 +73,19 @@ const initialEvent: EventDraft = {
 }
 
 function useDebounced<T>(value: T, delay = 350) {
-  const [v, setV] = useState(value)
+  const [debouncedValue, setDebouncedValue] = useState(value)
   useEffect(() => {
-    const t = setTimeout(() => setV(value), delay)
-    return () => clearTimeout(t)
+    const timer = setTimeout(() => setDebouncedValue(value), delay)
+    return () => clearTimeout(timer)
   }, [value, delay])
-  return v
+  return debouncedValue
 }
 
 const fadeDelayStyle = (value: string): CSSProperties =>
   ({ "--fade-delay": value }) as CSSProperties
 
 const inputClass =
-    "w-full rounded-xl border border-glass-border bg-surface/40 px-4 py-3 text-[0.98rem] font-medium text-primary-text shadow-sm focus:border-brand focus:outline-none transition-all placeholder:text-secondary-text/50"
+  "w-full rounded-xl border border-glass-border bg-surface/40 px-4 py-3 text-md font-medium text-primary-text shadow-sm focus:border-brand focus:outline-none transition-all placeholder:text-secondary-text/50"
 
 const Events = () => {
   const { user } = useAuth()
@@ -368,7 +363,7 @@ const Events = () => {
               >
                 {/* Sliding indicator */}
                 <div
-                  className="absolute bottom-1 top-1 rounded-[9px] border border-glass-border/20 bg-surface shadow-sm transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
+                  className="absolute bottom-1 top-1 rounded-lg border border-glass-border/20 bg-surface shadow-sm transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
                   style={{
                     left: indicatorStyle.left,
                     width: indicatorStyle.width,
@@ -407,7 +402,7 @@ const Events = () => {
                 <input
                   type="text"
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(event) => setSearch(event.target.value)}
                   placeholder={t("events:filters.search")}
                   className={cn(
                     "w-full rounded-2xl px-4 py-3.5 pl-11 pr-20 text-base text-primary-text",
@@ -430,7 +425,7 @@ const Events = () => {
                   )}
                   <button
                     type="button"
-                    onClick={(e) => setFilterAnchor(e.currentTarget)}
+                    onClick={(event) => setFilterAnchor(event.currentTarget)}
                     className={cn(
                       "relative rounded-full p-2 transition-all duration-150 hover:bg-surface/20 active:scale-95",
                       filtersActive ? "text-brand" : "text-secondary-text"
@@ -439,7 +434,7 @@ const Events = () => {
                   >
                     {filtersActive && (
                       <span
-                        className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-brand shadow-[0_0_8px_rgba(var(--primary-main),0.5)]"
+                        className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-brand shadow-glow-green"
                         aria-hidden="true"
                       />
                     )}
@@ -467,7 +462,7 @@ const Events = () => {
                     <input
                       type="text"
                       value={type}
-                      onChange={(e) => setType(e.target.value)}
+                      onChange={(event) => setType(event.target.value)}
                       className={inputClass}
                     />
                   </div>
@@ -587,12 +582,7 @@ const Events = () => {
             )}
 
             {/* Create dialog */}
-            <Dialog
-              open={createOpen}
-              onClose={closeCreate}
-              maxWidth="lg"
-              fullWidth
-            >
+            <Dialog open={createOpen} onClose={closeCreate} maxWidth="lg" fullWidth>
               <DialogTitle>{t("events:dialogs.create.title")}</DialogTitle>
               <DialogContent className="space-y-6 pt-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -608,7 +598,7 @@ const Events = () => {
                       <input
                         type="text"
                         value={getLocalizedDraftValue("title")}
-                        onChange={(e) => updateLocalizedDraftValue("title", e.target.value)}
+                        onChange={(event) => updateLocalizedDraftValue("title", event.target.value)}
                         className={inputClass}
                       />
                     </div>
@@ -622,7 +612,9 @@ const Events = () => {
                       </label>
                       <textarea
                         value={getLocalizedDraftValue("description")}
-                        onChange={(e) => updateLocalizedDraftValue("description", e.target.value)}
+                        onChange={(event) =>
+                          updateLocalizedDraftValue("description", event.target.value)
+                        }
                         rows={3}
                         className={cn(inputClass, "min-h-[120px] resize-y")}
                       />
@@ -638,7 +630,9 @@ const Events = () => {
                       <input
                         type="text"
                         value={getLocalizedDraftValue("event_type")}
-                        onChange={(e) => updateLocalizedDraftValue("event_type", e.target.value)}
+                        onChange={(event) =>
+                          updateLocalizedDraftValue("event_type", event.target.value)
+                        }
                         className={inputClass}
                       />
                     </div>
@@ -653,7 +647,9 @@ const Events = () => {
                       <input
                         type="text"
                         value={getLocalizedDraftValue("location")}
-                        onChange={(e) => updateLocalizedDraftValue("location", e.target.value)}
+                        onChange={(event) =>
+                          updateLocalizedDraftValue("location", event.target.value)
+                        }
                         className={inputClass}
                       />
                     </div>
@@ -667,7 +663,9 @@ const Events = () => {
                       <input
                         type="text"
                         value={eventData.speaker}
-                        onChange={(e) => setEventData({ ...eventData, speaker: e.target.value })}
+                        onChange={(event) =>
+                          setEventData({ ...eventData, speaker: event.target.value })
+                        }
                         className={inputClass}
                       />
                     </div>
@@ -695,8 +693,8 @@ const Events = () => {
                           type="file"
                           hidden
                           accept="image/*"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0]
+                          onChange={(event) => {
+                            const file = event.target.files?.[0]
                             if (file) handleImageUpload(file)
                           }}
                         />
@@ -719,7 +717,9 @@ const Events = () => {
                         <input
                           type="datetime-local"
                           value={eventData.starts_at}
-                          onChange={(e) => setEventData({ ...eventData, starts_at: e.target.value })}
+                          onChange={(event) =>
+                            setEventData({ ...eventData, starts_at: event.target.value })
+                          }
                           className={inputClass}
                         />
                       </div>
@@ -730,7 +730,9 @@ const Events = () => {
                         <input
                           type="datetime-local"
                           value={eventData.ends_at}
-                          onChange={(e) => setEventData({ ...eventData, ends_at: e.target.value })}
+                          onChange={(event) =>
+                            setEventData({ ...eventData, ends_at: event.target.value })
+                          }
                           className={cn(inputClass, dateError && "border-red-500")}
                         />
                       </div>

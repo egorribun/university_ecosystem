@@ -15,7 +15,7 @@ export function ClockWidget() {
     <div
       className={cn(
         "relative flex h-full flex-col items-center justify-center overflow-hidden rounded-3xl p-6 transition-all duration-500",
-        "border border-glass-border bg-surface/30 backdrop-blur-xl shadow-glass",
+        "border border-glass-border bg-glass/30 backdrop-blur-xl shadow-glass",
         "before:pointer-events-none before:absolute before:inset-0 before:bg-[radial-gradient(circle_at_top_right,var(--primary-main),transparent_70%)] before:opacity-10"
       )}
     >

@@ -19,7 +19,8 @@
       "email": "Email",
       "role": "Role",
       "group": "Group",
-      "actions": "Actions"
+      "actions": "Actions",
+      "deleteUser": "Delete user"
     }
   },
   "notifications": {
@@ -72,6 +73,40 @@
     "kinds": {
       "event": "Event",
       "news": "News"
+    }
+  },
+  "audit": {
+    "title": "Secure Audit Logs",
+    "subtitle": "Cryptographically verified activity logging system.",
+    "filters": {
+      "resourceType": "Resource Type",
+      "action": "Action"
+    },
+    "table": {
+      "time": "Time",
+      "actor": "Actor",
+      "action": "Action",
+      "target": "Target",
+      "integrity": "Integrity"
+    },
+    "details": {
+      "title": "Audit Log Details",
+      "resourceId": "Resource ID",
+      "subject": "Subject",
+      "ipAddress": "IP Address",
+      "userAgent": "User Agent",
+      "executionContext": "Execution Context",
+      "integrityVerified": "Cryptographic Integrity Verified",
+      "integrityTampered": "TAMPERED OR INVALID SIGNATURE",
+      "notAvailable": "N/A",
+      "system": "System",
+      "unknown": "Unknown"
+    },
+    "pagination": {
+      "total": "Total: {{count}} logs",
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {{current}}"
     }
   }
 }

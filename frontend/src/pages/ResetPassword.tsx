@@ -1,5 +1,5 @@
 import { useActionState, useEffect, useRef, useState } from "react"
-import axios from "../api/client"
+import api from "@/api/client"
 import { useParams, useSearchParams, Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { motion, AnimatePresence } from "framer-motion"
@@ -10,16 +10,11 @@ import {
   Lock as LockIcon,
   CheckCircle2,
   ShieldCheck,
-  AlertTriangle
+  AlertTriangle,
 } from "lucide-react"
 
 import { cn } from "@/utils/cn"
-import {
-  Button,
-  TextField,
-  SectionCard,
-  Alert,
-} from "@/components/settings"
+import { Button, TextField, SectionCard, Alert } from "@/components/settings"
 import { ProgressBar } from "@/components/ui"
 
 const RESET_URL = "/password/reset"
@@ -52,9 +47,9 @@ async function isPwnedPassword(pwd: string) {
 
 export default function ResetPassword() {
   const { t } = useTranslation(["auth"])
-  const params = useParams<{ token?: string }>()
-  const [sp] = useSearchParams()
-  const token = params.token || sp.get("token") || ""
+  const routeParameters = useParams<{ token?: string }>()
+  const [searchParameters] = useSearchParams()
+  const token = routeParameters.token || searchParameters.get("token") || ""
 
   const [password, setPassword] = useState("")
   const [confirm, setConfirm] = useState("")
@@ -72,10 +67,10 @@ export default function ResetPassword() {
   const matchOk = confirm.length > 0 && password === confirm
   const canSubmit = token && minLenOk && matchOk
 
-  const onPass = async (v: string) => {
-    setPassword(v)
+  const onPass = async (value: string) => {
+    setPassword(value)
     setFeedback("")
-    if (!v) {
+    if (!value) {
       setStrength(null)
       setPwned(false)
       return
@@ -84,29 +79,31 @@ export default function ResetPassword() {
       const { zxcvbn, zxcvbnOptions } = await import("@zxcvbn-ts/core")
       const zxcvbnCommon = await import("@zxcvbn-ts/language-common")
       zxcvbnOptions.setOptions(zxcvbnCommon)
-      const res = zxcvbn(v)
-      setStrength(res.score)
+      const complexityResult = zxcvbn(value)
+      setStrength(complexityResult.score)
       const tips =
-        (res.feedback?.warning || "") +
-        (res.feedback?.suggestions?.length ? " · " + res.feedback.suggestions.join(" · ") : "")
+        (complexityResult.feedback?.warning || "") +
+        (complexityResult.feedback?.suggestions?.length
+          ? " · " + complexityResult.feedback.suggestions.join(" · ")
+          : "")
       setFeedback(tips)
     } catch {
       setStrength(null)
     }
     try {
-      const bad = await isPwnedPassword(v)
-      if (v === password) setPwned(bad)
+      const bad = await isPwnedPassword(value)
+      if (value === password) setPwned(bad)
     } catch {}
   }
 
   const [resetState, resetAction, resetPending] = useActionState<ResetState, FormData>(
-    async (_prev, input) => {
-      if (input.get("__set_error__")) {
-        return { status: "error" as const, error: String(input.get("__set_error__")) }
+    async (_previousState, formData) => {
+      if (formData.get("__set_error__")) {
+        return { status: "error" as const, error: String(formData.get("__set_error__")) }
       }
 
-      const pwd = String(input.get("password") ?? "")
-      const confirmValue = String(input.get("confirm") ?? "")
+      const pwd = String(formData.get("password") ?? "")
+      const confirmValue = String(formData.get("confirm") ?? "")
 
       if (!token) {
         return { status: "error" as const, error: t("auth:reset.invalidLink") }
@@ -121,11 +118,15 @@ export default function ResetPassword() {
       }
 
       try {
-        await axios.post(RESET_URL, { token, password: pwd })
+        await api.post(RESET_URL, { token, password: pwd })
         return { status: "success" as const }
-      } catch (err: any) {
-        const msg = err?.response?.data?.detail || t("auth:reset.errorGeneric")
-        return { status: "error" as const, error: msg }
+      } catch (error: unknown) {
+        let errorMessage = t("auth:reset.errorGeneric")
+        if (typeof error === "object" && error !== null && "response" in error) {
+          const axiosError = error as { response?: { data?: { detail?: string } } }
+          errorMessage = axiosError.response?.data?.detail || errorMessage
+        }
+        return { status: "error" as const, error: errorMessage }
       }
     },
     token
@@ -147,197 +148,232 @@ export default function ResetPassword() {
 
   return (
     <div className="min-h-screen bg-(--page-bg) text-(--page-text) flex items-center justify-center p-6 relative overflow-hidden">
-       {/* Background decorative elements */}
-       <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-20">
-          <div className="absolute top-[-10%] right-[-5%] w-[40%] h-[40%] bg-brand/30 rounded-full blur-[120px]" />
-          <div className="absolute bottom-[-10%] left-[-5%] w-[40%] h-[40%] bg-brand/20 rounded-full blur-[120px]" />
-       </div>
+      {/* Background decorative elements */}
+      <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-20">
+        <div className="absolute top-[-10%] right-[-5%] w-[40%] h-[40%] bg-brand/30 rounded-full blur-[120px]" />
+        <div className="absolute bottom-[-10%] left-[-5%] w-[40%] h-[40%] bg-brand/20 rounded-full blur-[120px]" />
+      </div>
 
-       <motion.div
-         initial={{ opacity: 0, y: 20 }}
-         animate={{ opacity: 1, y: 0 }}
-         className="w-full max-w-[460px] z-10"
-       >
-         <SectionCard className="p-8 sm:p-10 border-glass-border shadow-2xl backdrop-blur-2xl">
-           <div className="space-y-8">
-              <AnimatePresence mode="wait">
-                {isSuccess ? (
-                  <motion.div
-                    key="success"
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="space-y-6 pt-4 text-center"
-                  >
-                    <div className="flex justify-center">
-                       <div className="h-20 w-20 rounded-3xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
-                          <CheckCircle2 className="h-10 w-10" />
-                       </div>
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="w-full max-w-[460px] z-10"
+      >
+        <SectionCard className="p-8 sm:p-10 border-glass-border shadow-2xl backdrop-blur-2xl">
+          <div className="space-y-8">
+            <AnimatePresence mode="wait">
+              {isSuccess ? (
+                <motion.div
+                  key="success"
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="space-y-6 pt-4 text-center"
+                >
+                  <div className="flex justify-center">
+                    <div className="h-20 w-20 rounded-3xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+                      <CheckCircle2 className="h-10 w-10" />
                     </div>
-                    <div className="space-y-2">
-                       <h2 className="text-2xl font-black tracking-tight text-primary-text">
-                         {t("auth:reset.successTitle")}
-                       </h2>
-                       <p className="text-sm text-secondary-text font-medium leading-relaxed">
-                         {t("auth:reset.successMessage")}
-                       </p>
-                    </div>
-                    <div className="pt-4">
-                       <Button as={Link} to="/login" variant="solid" className="w-full h-12 rounded-2xl">
-                         {t("auth:actions.goToLogin")}
-                       </Button>
-                    </div>
-                  </motion.div>
-                ) : (
-                  <motion.div
-                    key="form"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="space-y-6"
-                  >
-                    <div className="text-center space-y-2">
-                       <h1 className="text-3xl font-black tracking-tight text-primary-text sm:text-4xl">
-                         {t("auth:reset.title")}
-                       </h1>
-                       <p className="text-sm text-secondary-text font-medium">
-                         {t("auth:reset.subtitle")}
-                       </p>
-                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <h2 className="text-2xl font-black tracking-tight text-primary-text">
+                      {t("auth:reset.successTitle")}
+                    </h2>
+                    <p className="text-sm text-secondary-text font-medium leading-relaxed">
+                      {t("auth:reset.successMessage")}
+                    </p>
+                  </div>
+                  <div className="pt-4">
+                    <Button
+                      as={Link}
+                      to="/login"
+                      variant="solid"
+                      className="w-full h-12 rounded-2xl"
+                    >
+                      {t("auth:actions.goToLogin")}
+                    </Button>
+                  </div>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="form"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="space-y-6"
+                >
+                  <div className="text-center space-y-2">
+                    <h1 className="text-3xl font-black tracking-tight text-primary-text sm:text-4xl">
+                      {t("auth:reset.title")}
+                    </h1>
+                    <p className="text-sm text-secondary-text font-medium">
+                      {t("auth:reset.subtitle")}
+                    </p>
+                  </div>
 
-                    <form action={resetAction} autoComplete="off" className="space-y-6">
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <TextField
-                            label={t("auth:fields.password")}
-                            name="password"
-                            type={showPass ? "text" : "password"}
-                            value={password}
-                            onChange={(e) => onPass(e.target.value)}
-                            onKeyUp={(e) => setCapsPass((e as any).getModifierState?.("CapsLock"))}
-                            onKeyDown={(e) => setCapsPass((e as any).getModifierState?.("CapsLock"))}
-                            autoFocus
-                            fullWidth
-                            autoComplete="new-password"
-                            ref={passwordRef}
-                            disabled={resetPending}
-                            className="rounded-2xl"
-                            trailingIcon={
-                               <button
-                                 type="button"
-                                 onClick={() => setShowPass(!showPass)}
-                                 className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded-md transition-colors"
-                                 tabIndex={-1}
-                               >
-                                 {showPass ? <VisibilityOff className="h-4 w-4" /> : <Visibility className="h-4 w-4" />}
-                               </button>
-                            }
-                          />
+                  <form action={resetAction} autoComplete="off" className="space-y-6">
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <TextField
+                          id="password"
+                          label={t("auth:fields.password")}
+                          name="password"
+                          type={showPass ? "text" : "password"}
+                          value={password}
+                          onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+                            onPass(event.target.value)
+                          }
+                          onKeyUp={(event: React.KeyboardEvent<HTMLInputElement>) =>
+                            setCapsPass(event.getModifierState("CapsLock"))
+                          }
+                          onKeyDown={(event: React.KeyboardEvent<HTMLInputElement>) =>
+                            setCapsPass(event.getModifierState("CapsLock"))
+                          }
+                          autoFocus
+                          fullWidth
+                          autoComplete="new-password"
+                          ref={passwordRef}
+                          disabled={resetPending}
+                          className="rounded-2xl"
+                          trailingIcon={
+                            <button
+                              type="button"
+                              onClick={() => setShowPass(!showPass)}
+                              className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded-md transition-colors"
+                              tabIndex={-1}
+                            >
+                              {showPass ? (
+                                <VisibilityOff className="h-4 w-4" />
+                              ) : (
+                                <Visibility className="h-4 w-4" />
+                              )}
+                            </button>
+                          }
+                        />
 
-                          {strength !== null && (
-                            <div className="px-1 space-y-1">
-                               <ProgressBar
-                                 value={[10, 30, 55, 75, 100][strength]}
-                                 color={strength < 2 ? "error" : strength < 3 ? "warning" : "success"}
-                                 className="h-1.5"
-                               />
-                               <div className="flex justify-between items-center">
-                                  <p className="text-[10px] font-bold uppercase tracking-widest text-secondary-text opacity-60">
-                                    {t("auth:register.passwordStrength")}
-                                  </p>
-                                  <p className="text-[10px] font-bold text-brand uppercase tracking-widest">
-                                    {[t("common:strength.very_weak"), t("common:strength.weak"), t("common:strength.medium"), t("common:strength.strong"), t("common:strength.very_strong")][strength]}
-                                  </p>
-                               </div>
+                        {strength !== null && (
+                          <div className="px-1 space-y-1">
+                            <ProgressBar
+                              value={[10, 30, 55, 75, 100][strength]}
+                              color={strength < 2 ? "error" : strength < 3 ? "warning" : "success"}
+                              className="h-1.5"
+                            />
+                            <div className="flex justify-between items-center">
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-secondary-text opacity-60">
+                                {t("auth:register.passwordStrength")}
+                              </p>
+                              <p className="text-[10px] font-bold text-brand uppercase tracking-widest">
+                                {
+                                  [
+                                    t("common:strength.very_weak"),
+                                    t("common:strength.weak"),
+                                    t("common:strength.medium"),
+                                    t("common:strength.strong"),
+                                    t("common:strength.very_strong"),
+                                  ][strength]
+                                }
+                              </p>
                             </div>
-                          )}
-                        </div>
-
-                        {!!feedback && (
-                          <div className="flex gap-2 px-2 py-2 rounded-xl bg-blue-500/5 border border-blue-500/10">
-                             <ShieldCheck className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
-                             <p className="text-xs font-medium text-blue-500/80 leading-relaxed">
-                               {feedback}
-                             </p>
                           </div>
-                        )}
-
-                        <div className="space-y-2">
-                           <TextField
-                             label={t("auth:fields.confirmPassword")}
-                             name="confirm"
-                             type={showConfirm ? "text" : "password"}
-                             value={confirm}
-                             onChange={(e) => setConfirm(e.target.value)}
-                             onKeyUp={(e) => setCapsConfirm((e as any).getModifierState?.("CapsLock"))}
-                             onKeyDown={(e) => setCapsConfirm((e as any).getModifierState?.("CapsLock"))}
-                             fullWidth
-                             autoComplete="new-password"
-                             ref={confirmRef}
-                             disabled={resetPending}
-                             className="rounded-2xl"
-                             trailingIcon={
-                                <button
-                                  type="button"
-                                  onClick={() => setShowConfirm(!showConfirm)}
-                                  className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded-md transition-colors"
-                                  tabIndex={-1}
-                                >
-                                  {showConfirm ? <VisibilityOff className="h-4 w-4" /> : <Visibility className="h-4 w-4" />}
-                                </button>
-                             }
-                           />
-                        </div>
-
-                        {(capsPass || capsConfirm) && (
-                          <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-orange-500/5 border border-orange-500/10 text-orange-500">
-                             <AlertTriangle className="h-4 w-4" />
-                             <p className="text-xs font-bold uppercase tracking-wider">
-                               {t("auth:messages.capsLock")}
-                             </p>
-                          </div>
-                        )}
-
-                        {pwned && (
-                           <Alert severity="warning" className="rounded-xl py-2">
-                              {t("auth:reset.pwnedWarning")}
-                           </Alert>
                         )}
                       </div>
 
-                      {resetErrorMessage && (
-                        <p className="text-sm font-bold text-rose-500 text-center animate-bounce">
-                          {resetErrorMessage}
-                        </p>
+                      {!!feedback && (
+                        <div className="flex gap-2 px-2 py-2 rounded-xl bg-blue-500/5 border border-blue-500/10">
+                          <ShieldCheck className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+                          <p className="text-xs font-medium text-blue-500/80 leading-relaxed">
+                            {feedback}
+                          </p>
+                        </div>
                       )}
 
-                      <div className="space-y-4 pt-2">
-                        <Button
-                          type="submit"
-                          variant="solid"
-                          className="w-full h-14 rounded-2xl text-base font-black shadow-lg shadow-brand/20"
-                          disabled={!canSubmit || resetPending}
-                          loading={resetPending}
-                          leadingIcon={<LockIcon className="h-5 w-5" />}
-                        >
-                          {t("auth:reset.saveButton")}
-                        </Button>
-
-                        <div className="pt-2 text-center">
-                           <Link
-                             to="/forgot-password"
-                             className="inline-flex items-center gap-2 text-sm font-bold text-secondary-text hover:text-brand transition-colors group"
-                           >
-                             <ChevronLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
-                             {t("auth:reset.linkHelp")}
-                           </Link>
-                        </div>
+                      <div className="space-y-2">
+                        <TextField
+                          id="confirm"
+                          label={t("auth:fields.confirmPassword")}
+                          name="confirm"
+                          type={showConfirm ? "text" : "password"}
+                          value={confirm}
+                          onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+                            setConfirm(event.target.value)
+                          }
+                          onKeyUp={(event: React.KeyboardEvent<HTMLInputElement>) =>
+                            setCapsConfirm(event.getModifierState("CapsLock"))
+                          }
+                          onKeyDown={(event: React.KeyboardEvent<HTMLInputElement>) =>
+                            setCapsConfirm(event.getModifierState("CapsLock"))
+                          }
+                          fullWidth
+                          autoComplete="new-password"
+                          ref={confirmRef}
+                          disabled={resetPending}
+                          className="rounded-2xl"
+                          trailingIcon={
+                            <button
+                              type="button"
+                              onClick={() => setShowConfirm(!showConfirm)}
+                              className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded-md transition-colors"
+                              tabIndex={-1}
+                            >
+                              {showConfirm ? (
+                                <VisibilityOff className="h-4 w-4" />
+                              ) : (
+                                <Visibility className="h-4 w-4" />
+                              )}
+                            </button>
+                          }
+                        />
                       </div>
-                    </form>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-           </div>
-         </SectionCard>
-       </motion.div>
+
+                      {(capsPass || capsConfirm) && (
+                        <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-orange-500/5 border border-orange-500/10 text-orange-500">
+                          <AlertTriangle className="h-4 w-4" />
+                          <p className="text-xs font-bold uppercase tracking-wider">
+                            {t("auth:messages.capsLock")}
+                          </p>
+                        </div>
+                      )}
+
+                      {pwned && (
+                        <Alert severity="warning" className="rounded-xl py-2">
+                          {t("auth:reset.pwnedWarning")}
+                        </Alert>
+                      )}
+                    </div>
+
+                    {resetErrorMessage && (
+                      <p className="text-sm font-bold text-rose-500 text-center animate-bounce">
+                        {resetErrorMessage}
+                      </p>
+                    )}
+
+                    <div className="space-y-4 pt-2">
+                      <Button
+                        type="submit"
+                        variant="solid"
+                        className="w-full h-14 rounded-2xl text-base font-black shadow-lg shadow-brand/20"
+                        disabled={!canSubmit || resetPending}
+                        loading={resetPending}
+                        startIcon={<LockIcon className="h-5 w-5" />}
+                      >
+                        {t("auth:reset.saveButton")}
+                      </Button>
+
+                      <div className="pt-2 text-center">
+                        <Link
+                          to="/forgot-password"
+                          className="inline-flex items-center gap-2 text-sm font-bold text-secondary-text hover:text-brand transition-colors group"
+                        >
+                          <ChevronLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
+                          {t("auth:reset.linkHelp")}
+                        </Link>
+                      </div>
+                    </div>
+                  </form>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </SectionCard>
+      </motion.div>
     </div>
   )
 }

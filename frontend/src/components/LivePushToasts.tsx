@@ -2,14 +2,7 @@ import { useCallback, useEffect, useState, type SyntheticEvent } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { sanitizeHttpUrl } from "@/utils/sanitize"
-import {
-  CheckCircle2,
-  Info,
-  AlertTriangle,
-  XCircle,
-  X,
-  ExternalLink
-} from "lucide-react"
+import { CheckCircle2, Info, AlertTriangle, XCircle, X, ExternalLink } from "lucide-react"
 import { cn } from "@/utils/cn"
 
 type SnackbarSeverity = "success" | "info" | "warning" | "error"
@@ -213,8 +206,8 @@ export default function LivePushToasts() {
 
   useEffect(() => {
     if (open && current) {
-       const timer = setTimeout(handleClose, 6000)
-       return () => clearTimeout(timer)
+      const timer = setTimeout(handleClose, 6000)
+      return () => clearTimeout(timer)
     }
   }, [open, current, handleClose])
 
@@ -226,69 +219,67 @@ export default function LivePushToasts() {
     success: CheckCircle2,
     info: Info,
     warning: AlertTriangle,
-    error: XCircle
+    error: XCircle,
   }[severity]
 
   const severityClasses = {
     success: "bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400",
     info: "bg-blue-500/10 border-blue-500/20 text-blue-600 dark:text-blue-400",
     warning: "bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400",
-    error: "bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400"
+    error: "bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400",
   }[severity]
 
   return (
-     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] w-full max-w-sm px-6 pointer-events-none">
-       <AnimatePresence>
-         {open && current && (
-           <motion.div
-             initial={{ opacity: 0, y: 50, scale: 0.9 }}
-             animate={{ opacity: 1, y: 0, scale: 1 }}
-             exit={{ opacity: 0, scale: 0.9, y: 20 }}
-             className={cn(
-                "pointer-events-auto relative overflow-hidden flex items-start gap-4 p-4 rounded-2xl border backdrop-blur-2xl shadow-2xl",
-                severityClasses
-             )}
-           >
-             <div className="shrink-0 mt-0.5">
-                <Icon className="h-5 w-5" />
-             </div>
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] w-full max-w-sm px-6 pointer-events-none">
+      <AnimatePresence>
+        {open && current && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+            className={cn(
+              "pointer-events-auto relative overflow-hidden flex items-start gap-4 p-4 rounded-2xl border backdrop-blur-2xl shadow-2xl",
+              severityClasses
+            )}
+          >
+            <div className="shrink-0 mt-0.5">
+              <Icon className="h-5 w-5" />
+            </div>
 
-             <div className="flex-1 min-w-0 pr-4">
-                <h4 className="text-sm font-black tracking-tight mb-0.5 truncate uppercase">
-                  {title}
-                </h4>
-                <p className="text-xs font-semibold opacity-80 leading-relaxed text-pretty">
-                  {body}
-                </p>
+            <div className="flex-1 min-w-0 pr-4">
+              <h4 className="text-sm font-black tracking-tight mb-0.5 truncate uppercase">
+                {title}
+              </h4>
+              <p className="text-xs font-semibold opacity-80 leading-relaxed text-pretty">{body}</p>
 
-                {current.url && (
-                  <button
-                    onClick={handleAction}
-                    className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest hover:underline"
-                  >
-                    {t("notifications:toast.open")}
-                    <ExternalLink className="h-3 w-3" />
-                  </button>
-                )}
-             </div>
+              {current.url && (
+                <button
+                  onClick={handleAction}
+                  className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest hover:underline"
+                >
+                  {t("notifications:toast.open")}
+                  <ExternalLink className="h-3 w-3" />
+                </button>
+              )}
+            </div>
 
-             <button
-               onClick={handleClose}
-               className="shrink-0 p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-             >
-                <X className="h-4 w-4" />
-             </button>
+            <button
+              onClick={handleClose}
+              className="shrink-0 p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
 
-             {/* Progress bar for auto-hide */}
-             <motion.div
-               className="absolute bottom-0 left-0 h-0.5 bg-current opacity-30"
-               initial={{ width: "100%" }}
-               animate={{ width: "0%" }}
-               transition={{ duration: 6, ease: "linear" }}
-             />
-           </motion.div>
-         )}
-       </AnimatePresence>
-     </div>
+            {/* Progress bar for auto-hide */}
+            <motion.div
+              className="absolute bottom-0 left-0 h-0.5 bg-current opacity-30"
+              initial={{ width: "100%" }}
+              animate={{ width: "0%" }}
+              transition={{ duration: 6, ease: "linear" }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   )
 }

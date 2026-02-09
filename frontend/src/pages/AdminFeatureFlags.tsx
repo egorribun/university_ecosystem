@@ -10,18 +10,12 @@ import {
   Unlock,
   Users,
   Percent,
-  ToggleLeft
+  ToggleLeft,
 } from "lucide-react"
 import api from "../api/client"
 import Layout from "../components/Layout"
 import { cn } from "@/utils/cn"
-import {
-  SectionCard,
-  SwitchControl,
-  Chip,
-  Button,
-  Divider,
-} from "@/components/settings"
+import { SectionCard, SwitchControl, Chip, Button, Divider } from "@/components/settings"
 import { FeatureFlag, FlagStatus } from "../types/Admin"
 
 export default function AdminFeatureFlags() {
@@ -31,8 +25,8 @@ export default function AdminFeatureFlags() {
 
   const fetchFlags = useCallback(async () => {
     try {
-      const res = await api.get<FeatureFlag[]>("/admin/feature-flags")
-      setFlags(res.data)
+      const response = await api.get<FeatureFlag[]>("/admin/feature-flags")
+      setFlags(response.data)
     } finally {
       setLoading(false)
     }
@@ -138,7 +132,13 @@ export default function AdminFeatureFlags() {
                           <div className="flex items-center gap-4">
                             <Chip
                               label={flag.status.toUpperCase()}
-                              color={getStatusColor(flag.status) === "success" ? "success" : getStatusColor(flag.status) === "info" ? "primary" : "default"}
+                              color={
+                                getStatusColor(flag.status) === "success"
+                                  ? "success"
+                                  : getStatusColor(flag.status) === "info"
+                                    ? "primary"
+                                    : "default"
+                              }
                               className="w-24 justify-center"
                             />
                             <SwitchControl
@@ -156,7 +156,9 @@ export default function AdminFeatureFlags() {
                                 max="100"
                                 step="5"
                                 value={flag.percentage}
-                                onChange={(e) => handlePercentageChange(flag.name, parseInt(e.target.value))}
+                                onChange={(event) =>
+                                  handlePercentageChange(flag.name, parseInt(event.target.value))
+                                }
                                 className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-glass-border accent-brand"
                               />
                               <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-secondary-text">

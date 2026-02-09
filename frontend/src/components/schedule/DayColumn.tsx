@@ -51,11 +51,11 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
       <div
         ref={ref}
         className={cn(
-          "group relative isolate mb-2 rounded-2xl border border-[color-mix(in_srgb,white_10%,var(--nav-link)_90%)] p-4 sm:p-6 shadow-[0_8px_24px_rgba(0,0,0,0.08),0_2px_8px_rgba(0,0,0,0.04)] [content-visibility:auto] [contain-intrinsic-size:400px] transition-all duration-300",
+          "group relative isolate mb-2 rounded-2xl border border-(--glass-border) p-4 sm:p-6 shadow-premium [content-visibility:auto] [contain-intrinsic-size:400px] transition-all duration-300",
           isToday
-            ? "bg-[color-mix(in_srgb,var(--nav-link)_5%,var(--card-bg)_95%)] ring-2 ring-[color-mix(in_srgb,var(--nav-link)_22%,transparent)] dark:bg-[color-mix(in_srgb,var(--nav-link)_7%,var(--card-bg)_93%)] dark:ring-[color-mix(in_srgb,var(--nav-link)_24%,transparent)]"
-            : "bg-[color-mix(in_srgb,var(--card-bg)_96%,white_4%)] dark:bg-[color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)] dark:shadow-[0_16px_48px_rgba(0,0,0,0.16),0_6px_20px_rgba(0,0,0,0.08)]",
-          "backdrop-blur-sm [-webkit-backdrop-filter:blur(12px)]"
+            ? "bg-(--nav-link)/5 ring-2 ring-(--nav-link)/20 dark:bg-(--nav-link)/10 dark:ring-(--nav-link)/30"
+            : "bg-(--card-bg)/80 dark:bg-(--card-bg)/90 shadow-md dark:shadow-xl",
+          "backdrop-blur-md"
         )}
       >
         <div className="mb-4 flex items-center gap-2">
@@ -102,7 +102,7 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
                   {idx > 0 && gap > 0 && (
                     <Badge
                       size="xs"
-                      className="chip-break mb-2 font-medium bg-[color-mix(in_srgb,var(--card-bg)_92%,yellow_8%)] border-[color-mix(in_srgb,var(--nav-link)_22%,transparent)] text-[color-mix(in_srgb,var(--page-text)_88%,yellow_12%)] shadow-[0_4px_12px_rgba(0,0,0,0.1)] dark:bg-[color-mix(in_srgb,var(--card-bg)_88%,yellow_12%)] dark:border-[color-mix(in_srgb,var(--nav-link)_28%,transparent)] dark:text-[color-mix(in_srgb,var(--page-text)_92%,yellow_8%)] dark:shadow-[0_6px_16px_rgba(0,0,0,0.24)]"
+                      className="chip-break mb-2 font-medium bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400 shadow-sm"
                     >
                       {t("schedule:break", { minutes: gap })}
                     </Badge>

@@ -11,17 +11,12 @@ import {
   Terminal,
   User,
   Activity,
-  Calendar
+  Calendar,
 } from "lucide-react"
 import api from "../api/client"
 import Layout from "../components/Layout"
 import { cn } from "@/utils/cn"
-import {
-  SectionCard,
-  TextField,
-  Button,
-  Divider,
-} from "@/components/settings"
+import { SectionCard, TextField, Button, Divider } from "@/components/settings"
 import { AuditLog, AuditLogList } from "../types/Admin"
 
 function Row({ log }: { log: AuditLog }) {
@@ -30,8 +25,10 @@ function Row({ log }: { log: AuditLog }) {
 
   const getActionColor = (action: string) => {
     if (action.includes("delete")) return "text-error bg-error/10 border-error/20"
-    if (action.includes("create") || action.includes("add")) return "text-brand bg-brand/10 border-brand/20"
-    if (action.includes("update") || action.includes("modify")) return "text-warning bg-warning/10 border-warning/20"
+    if (action.includes("create") || action.includes("add"))
+      return "text-brand bg-brand/10 border-brand/20"
+    if (action.includes("update") || action.includes("modify"))
+      return "text-warning bg-warning/10 border-warning/20"
     return "text-secondary-text bg-surface-hover/20 border-glass-border/10"
   }
 
@@ -69,7 +66,7 @@ function Row({ log }: { log: AuditLog }) {
             </div>
             <div className="flex flex-col min-w-0">
               <span className="truncate text-sm font-bold text-primary-text">
-                {log.actor_name || "System"}
+                {log.actor_name || t("audit.details.system")}
               </span>
               <span className="truncate text-[10px] uppercase tracking-wider text-secondary-text opacity-50">
                 {log.actor_user_id || "SYSTEM"}
@@ -78,11 +75,13 @@ function Row({ log }: { log: AuditLog }) {
           </div>
         </td>
         <td className="px-4 py-4">
-          <span className={cn(
-            "inline-flex items-center rounded-lg border px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wider",
-            getActionColor(log.action)
-          )}>
-            {log.action.replace(/\./g, " ")}
+          <span
+            className={cn(
+              "inline-flex items-center rounded-lg border px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wider",
+              getActionColor(log.action)
+            )}
+          >
+            {log.action.replace(/\./g, " ").toUpperCase()}
           </span>
         </td>
         <td className="px-4 py-4">
@@ -94,11 +93,17 @@ function Row({ log }: { log: AuditLog }) {
         <td className="px-4 py-4 text-center">
           <div className="flex justify-center">
             {log.is_valid ? (
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-brand/10 text-brand" title="Cryptographic Integrity Verified">
+              <div
+                className="flex h-6 w-6 items-center justify-center rounded-full bg-brand/10 text-brand"
+                title={t("audit.details.integrityVerified")}
+              >
                 <ShieldCheck className="h-4 w-4" />
               </div>
             ) : (
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-error/10 text-error" title="TAMPERED OR INVALID SIGNATURE">
+              <div
+                className="flex h-6 w-6 items-center justify-center rounded-full bg-error/10 text-error"
+                title={t("audit.details.integrityTampered")}
+              >
                 <ShieldAlert className="h-4 w-4" />
               </div>
             )}
@@ -119,28 +124,44 @@ function Row({ log }: { log: AuditLog }) {
                 <div className="mx-4 mb-4 mt-2 rounded-2xl border border-glass-border bg-surface/50 p-6 shadow-sm">
                   <div className="mb-4 flex items-center gap-2 text-sm font-bold text-primary-text">
                     <Info className="h-4 w-4 text-brand" />
-                    <span>Audit Log Details</span>
+                    <span>{t("audit.details.title")}</span>
                   </div>
 
                   <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
                     <div className="space-y-1">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-secondary-text opacity-50">Resource ID</span>
-                      <p className="text-sm font-mono text-primary-text select-all">{log.resource_id || "N/A"}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-secondary-text opacity-50">Subject</span>
-                      <p className="text-sm text-primary-text">
-                        {log.subject_name || "N/A"}
-                        <span className="ml-1 text-xs opacity-50">({log.subject_user_id || "N/A"})</span>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-secondary-text opacity-50">
+                        {t("audit.details.resourceId")}
+                      </span>
+                      <p className="text-sm font-mono text-primary-text select-all">
+                        {log.resource_id || t("audit.details.notAvailable")}
                       </p>
                     </div>
                     <div className="space-y-1">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-secondary-text opacity-50">IP Address</span>
-                      <p className="text-sm font-mono text-primary-text">{log.ip_address || "Unknown"}</p>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-secondary-text opacity-50">
+                        {t("audit.details.subject")}
+                      </span>
+                      <p className="text-sm text-primary-text">
+                        {log.subject_name || t("audit.details.notAvailable")}
+                        <span className="ml-1 text-xs opacity-50">
+                          ({log.subject_user_id || t("audit.details.notAvailable")})
+                        </span>
+                      </p>
                     </div>
                     <div className="space-y-1">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-secondary-text opacity-50">User Agent</span>
-                      <p className="text-xs text-secondary-text line-clamp-1 hover:line-clamp-none transition-all cursor-help">{log.user_agent || "N/A"}</p>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-secondary-text opacity-50">
+                        {t("audit.details.ipAddress")}
+                      </span>
+                      <p className="text-sm font-mono text-primary-text">
+                        {log.ip_address || t("audit.details.unknown")}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-secondary-text opacity-50">
+                        {t("audit.details.userAgent")}
+                      </span>
+                      <p className="text-xs text-secondary-text line-clamp-1 hover:line-clamp-none transition-all cursor-help">
+                        {log.user_agent || t("audit.details.notAvailable")}
+                      </p>
                     </div>
                   </div>
 
@@ -148,10 +169,12 @@ function Row({ log }: { log: AuditLog }) {
                     <div className="mt-6">
                       <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-secondary-text opacity-50">
                         <Terminal className="h-3 w-3" />
-                        <span>Execution Context</span>
+                        <span>{t("audit.details.executionContext")}</span>
                       </div>
                       <div className="rounded-xl border border-glass-border/10 bg-black/40 p-4 font-mono text-xs text-brand-light">
-                        <pre className="overflow-x-auto whitespace-pre-wrap">{JSON.stringify(log.context, null, 2)}</pre>
+                        <pre className="overflow-x-auto whitespace-pre-wrap">
+                          {JSON.stringify(log.context, null, 2)}
+                        </pre>
                       </div>
                     </div>
                   )}
@@ -178,16 +201,16 @@ export default function AdminAudit() {
   const fetchLogs = useCallback(async () => {
     setLoading(true)
     try {
-      const params: any = {
+      const queryParameters: Record<string, unknown> = {
         limit: rowsPerPage,
         offset: page * rowsPerPage,
       }
-      if (filters.resource_type) params.resource_type = filters.resource_type
-      if (filters.action) params.action = filters.action
+      if (filters.resource_type) queryParameters.resource_type = filters.resource_type
+      if (filters.action) queryParameters.action = filters.action
 
-      const res = await api.get<AuditLogList>("/admin/audit", { params })
-      setLogs(res.data.items)
-      setTotal(res.data.total)
+      const response = await api.get<AuditLogList>("/admin/audit", { params: queryParameters })
+      setLogs(response.data.items)
+      setTotal(response.data.total)
     } finally {
       setLoading(false)
     }
@@ -197,8 +220,8 @@ export default function AdminAudit() {
     void fetchLogs()
   }, [fetchLogs])
 
-  const handleChangePage = (dir: "prev" | "next") => {
-    if (dir === "prev") setPage(Math.max(0, page - 1))
+  const handleChangePage = (direction: "previous" | "next") => {
+    if (direction === "previous") setPage(Math.max(0, page - 1))
     else setPage(page + 1)
   }
 
@@ -212,25 +235,35 @@ export default function AdminAudit() {
             className="mb-8"
           >
             <h1 className="text-4xl font-bold tracking-tight text-primary-text sm:text-5xl">
-              {t("audit.title", "Secure Audit Logs")}
+              {t("audit.title")}
             </h1>
-            <p className="mt-2 text-base text-secondary-text">
-              Cryptographically verified activity logging system.
-            </p>
+            <p className="mt-2 text-base text-secondary-text">{t("audit.subtitle")}</p>
           </motion.div>
 
           {/* Filters */}
           <SectionCard className="mb-6 flex flex-wrap items-end gap-4 p-6">
             <TextField
-              label="Resource Type"
+              id="resource-type-filter"
+              label={t("audit.filters.resourceType")}
               value={filters.resource_type}
-              onChange={(e) => setFilters((f) => ({ ...f, resource_type: e.target.value }))}
+              onChange={(event) =>
+                setFilters((previousFilters) => ({
+                  ...previousFilters,
+                  resource_type: event.target.value,
+                }))
+              }
               className="min-w-[200px] flex-1"
             />
             <TextField
-              label="Action"
+              id="action-filter"
+              label={t("audit.filters.action")}
               value={filters.action}
-              onChange={(e) => setFilters((f) => ({ ...f, action: e.target.value }))}
+              onChange={(event) =>
+                setFilters((previousFilters) => ({
+                  ...previousFilters,
+                  action: event.target.value,
+                }))
+              }
               className="min-w-[200px] flex-1"
             />
           </SectionCard>
@@ -248,19 +281,19 @@ export default function AdminAudit() {
                       <tr className="border-b border-glass-border/10 bg-surface-hover/20">
                         <th className="w-12 px-4 py-4" />
                         <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
-                          Time
+                          {t("audit.table.time")}
                         </th>
                         <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
-                          Actor
+                          {t("audit.table.actor")}
                         </th>
                         <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
-                          Action
+                          {t("audit.table.action")}
                         </th>
                         <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
-                          Target
+                          {t("audit.table.target")}
                         </th>
                         <th className="px-4 py-4 text-center text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
-                          Integrity
+                          {t("audit.table.integrity")}
                         </th>
                       </tr>
                     </thead>
@@ -278,7 +311,7 @@ export default function AdminAudit() {
                     using a simple layout for now or keeping it minimal */}
                 <div className="flex items-center justify-between border-t border-glass-border/10 bg-surface/20 px-6 py-4">
                   <div className="text-sm text-secondary-text">
-                    Total: <span className="font-bold text-primary-text">{total}</span> logs
+                    {t("audit.pagination.total", { count: total })}
                   </div>
                   <div className="flex gap-2">
                     <Button
@@ -287,10 +320,10 @@ export default function AdminAudit() {
                       onClick={() => setPage(Math.max(0, page - 1))}
                       disabled={page === 0}
                     >
-                      Previous
+                      {t("audit.pagination.previous")}
                     </Button>
                     <span className="flex items-center px-4 text-sm font-medium text-primary-text">
-                      Page {page + 1}
+                      {t("audit.pagination.page", { current: page + 1 })}
                     </span>
                     <Button
                       variant="outline"
@@ -298,7 +331,7 @@ export default function AdminAudit() {
                       onClick={() => setPage(page + 1)}
                       disabled={(page + 1) * rowsPerPage >= total}
                     >
-                      Next
+                      {t("audit.pagination.next")}
                     </Button>
                   </div>
                 </div>

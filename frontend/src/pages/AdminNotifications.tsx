@@ -128,8 +128,8 @@ export default function AdminNotifications() {
 
   const toggleSelect = (jobId: string) => {
     setActionError(null)
-    setSelected((prev) => {
-      const next = new Set(prev)
+    setSelected((previous) => {
+      const next = new Set(previous)
       if (next.has(jobId)) {
         next.delete(jobId)
       } else {
@@ -142,8 +142,8 @@ export default function AdminNotifications() {
   const handleSelectAll = () => {
     const items = listQuery.data?.items ?? []
     if (items.length === 0) return
-    setSelected((prev) => {
-      if (prev.size === items.length) {
+    setSelected((previous) => {
+      if (previous.size === items.length) {
         return new Set()
       }
       return new Set(items.map((item) => item.id))
@@ -193,7 +193,7 @@ export default function AdminNotifications() {
   const handleTopicToggle = useCallback(
     (topic: string) => (_event: ChangeEvent<HTMLInputElement>, checked: boolean) => {
       const normalized = normalizeTopicKey(topic)
-      setTopicsState((prev) => ({ ...prev, [normalized]: checked }))
+      setTopicsState((previous) => ({ ...previous, [normalized]: checked }))
     },
     []
   )
@@ -265,7 +265,10 @@ export default function AdminNotifications() {
     return (
       <div className="mt-4 overflow-hidden rounded-2xl border border-glass-border bg-surface/40 shadow-glass">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse" aria-label={t("admin:notifications.table.aria") ?? "Dead-letter queue"}>
+          <table
+            className="w-full text-left border-collapse"
+            aria-label={t("admin:notifications.table.aria") ?? "Dead-letter queue"}
+          >
             <thead>
               <tr className="border-b border-glass-border/10 bg-surface-hover/20">
                 <th className="px-4 py-3">
@@ -304,25 +307,39 @@ export default function AdminNotifications() {
               {jobs.map((job) => {
                 const isSelected = selected.has(job.id)
                 return (
-                  <tr key={job.id} className={cn("transition-colors hover:bg-surface-hover/10", isSelected && "bg-brand/5")}>
+                  <tr
+                    key={job.id}
+                    className={cn(
+                      "transition-colors hover:bg-surface-hover/10",
+                      isSelected && "bg-brand/5"
+                    )}
+                  >
                     <td className="px-4 py-3">
                       <input
                         type="checkbox"
                         className="h-4 w-4 rounded border-glass-border bg-surface/50 text-brand focus:ring-brand/30"
                         checked={isSelected}
                         onChange={() => toggleSelect(job.id)}
-                        aria-label={t("admin:notifications.table.selectRow", { id: job.id }) ?? "Select"}
+                        aria-label={
+                          t("admin:notifications.table.selectRow", { id: job.id }) ?? "Select"
+                        }
                       />
                     </td>
-                    <td className="px-4 py-3 text-sm text-primary-text">{formatJobKind(job.kind, t)}</td>
-                    <td className="px-4 py-3 text-sm text-primary-text font-mono truncate max-w-[120px]">{job.record_id}</td>
+                    <td className="px-4 py-3 text-sm text-primary-text">
+                      {formatJobKind(job.kind, t)}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-primary-text font-mono truncate max-w-[120px]">
+                      {job.record_id}
+                    </td>
                     <td className="px-4 py-3 text-sm text-secondary-text">
                       {job.locale ?? t("admin:notifications.table.localeFallback")}
                     </td>
                     <td className="px-4 py-3 text-sm text-secondary-text whitespace-nowrap">
                       {formatDate(new Date(job.enqueued_at), { preset: "datetime" })}
                     </td>
-                    <td className="px-4 py-3 text-sm font-bold text-primary-text">{job.attempts}</td>
+                    <td className="px-4 py-3 text-sm font-bold text-primary-text">
+                      {job.attempts}
+                    </td>
                     <td className="px-4 py-3 text-sm text-secondary-text max-w-[200px]">
                       <span className="line-clamp-2" title={job.last_error ?? ""}>
                         {job.last_error ?? t("admin:notifications.table.noError")}
@@ -369,9 +386,7 @@ export default function AdminNotifications() {
               <h1 className="text-4xl font-bold tracking-tight text-primary-text sm:text-5xl">
                 {t("admin:notifications.title")}
               </h1>
-              <p className="text-base text-secondary-text">
-                {t("admin:notifications.subtitle")}
-              </p>
+              <p className="text-base text-secondary-text">{t("admin:notifications.subtitle")}</p>
             </div>
 
             <SectionCard className="p-6">
@@ -443,16 +458,24 @@ export default function AdminNotifications() {
                         const label = t(translationKey)
                         const resolvedLabel = label === translationKey ? topic : (label as string)
                         return (
-                          <div key={topic} className="flex items-center gap-3 rounded-xl border border-glass-border/10 bg-surface/20 px-4 py-3 transition-colors hover:bg-surface/30">
+                          <div
+                            key={topic}
+                            className="flex items-center gap-3 rounded-xl border border-glass-border/10 bg-surface/20 px-4 py-3 transition-colors hover:bg-surface/30"
+                          >
                             <input
                               type="checkbox"
                               id={`topic-${normalized}`}
                               checked={Boolean(topicsState[normalized])}
-                              onChange={(e) => handleTopicToggle(topic)(null as any, e.target.checked)}
+                              onChange={(e) =>
+                                handleTopicToggle(topic)(null as any, e.target.checked)
+                              }
                               disabled={topicsBusy}
                               className="h-5 w-5 rounded border-glass-border bg-surface/50 text-brand focus:ring-brand/30"
                             />
-                            <label htmlFor={`topic-${normalized}`} className="text-sm font-medium text-primary-text leading-none select-none">
+                            <label
+                              htmlFor={`topic-${normalized}`}
+                              className="text-sm font-medium text-primary-text leading-none select-none"
+                            >
                               {resolvedLabel}
                             </label>
                           </div>

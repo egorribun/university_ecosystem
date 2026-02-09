@@ -9,7 +9,7 @@ import {
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { motion } from "framer-motion"
-import { springBouncy, springSoft, hoverScale } from "@/utils/animations"
+import { springBouncy, springSoft } from "@/utils/animations"
 
 function getScrollRoot(): HTMLElement {
   const cands: (Element | null | Document | HTMLElement)[] = [
@@ -77,7 +77,11 @@ export default function MobileBottomNav() {
 
   const items = useMemo(
     () => [
-      { to: "/dashboard", label: t("navigation:menu.dashboard"), icon: <DashboardIcon size={22} /> },
+      {
+        to: "/dashboard",
+        label: t("navigation:menu.dashboard"),
+        icon: <DashboardIcon size={22} />,
+      },
       { to: "/news", label: t("navigation:menu.news"), icon: <ArticleIcon size={22} /> },
       { to: "/events", label: t("navigation:menu.events"), icon: <EventNoteIcon size={22} /> },
       { to: "/schedule", label: t("navigation:menu.schedule"), icon: <TodayIcon size={22} /> },
@@ -93,7 +97,7 @@ export default function MobileBottomNav() {
   return (
     <>
       <nav
-        className="fixed bottom-0 left-0 right-0 z-50 flex h-[calc(4rem+env(safe-area-inset-bottom))] w-full items-center justify-around border-t border-(--glass-border) bg-(--nav-bg) backdrop-blur-(--glass-blur) pb-[env(safe-area-inset-bottom)] shadow-(--shadow-up) transition-all md:hidden"
+        className="fixed bottom-0 left-0 right-0 z-navbar flex h-navbar-height w-full items-center justify-around border-t border-glass-border bg-nav backdrop-blur-nav pb-(--safe-area-bottom) shadow-premium transition-all md:hidden"
         style={{
           transitionDuration: "600ms",
           transitionTimingFunction: "var(--ease-premium)",
@@ -144,7 +148,7 @@ export default function MobileBottomNav() {
                 </motion.span>
               </div>
               <motion.span
-                className="z-10 text-[9px] font-bold uppercase tracking-tighter"
+                className="z-10 text-[10px] font-black uppercase tracking-tight"
                 animate={{
                   opacity: isActive ? 1 : 0.6,
                 }}
@@ -159,7 +163,7 @@ export default function MobileBottomNav() {
       {/* Spacer for bottom nav */}
       {!pathname.startsWith("/messenger") && (
         <div
-          className="h-[calc(4rem+env(safe-area-inset-bottom))] bg-(--page-bg) transition-colors duration-500 md:hidden"
+          className="h-navbar-height bg-transparent transition-colors duration-500 md:hidden"
           aria-hidden="true"
         />
       )}

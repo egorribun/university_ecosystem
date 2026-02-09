@@ -45,10 +45,7 @@ const Select = ({
   }, [])
 
   return (
-    <div
-      ref={containerRef}
-      className={cn("relative w-full", className)}
-    >
+    <div ref={containerRef} className={cn("relative w-full", className)}>
       <button
         type="button"
         disabled={disabled}
@@ -58,15 +55,14 @@ const Select = ({
           "border-border-strong bg-surface/40 backdrop-blur-md shadow-sm",
           "hover:border-brand/40 hover:bg-surface-hover/60",
           "focus:outline-none focus:ring-4 focus:ring-brand/10",
-          isOpen && "border-brand ring-4 ring-brand/10 shadow-[0_0_12px_rgba(var(--primary-main),0.1)]",
+          isOpen &&
+            "border-brand ring-4 ring-brand/10 shadow-[0_0_12px_rgba(var(--primary-main),0.1)]",
           error && "border-error bg-error/5 focus:ring-error/10",
           disabled && "cursor-not-allowed opacity-50 grayscale",
           !selectedOption && "text-tertiary-text"
         )}
       >
-        <span className="truncate">
-          {selectedOption ? selectedOption.label : placeholder}
-        </span>
+        <span className="truncate">{selectedOption ? selectedOption.label : placeholder}</span>
         <ChevronDown
           className={cn(
             "h-4 w-4 shrink-0 text-secondary-text transition-transform duration-300",

@@ -10,6 +10,7 @@ import {
   Zap,
   ShieldCheck,
   Sparkles,
+  Check as CheckIcon,
 } from "lucide-react"
 import { motion } from "framer-motion"
 import { ChallengeLockedError, useAuth } from "@/contexts/AuthContext"
@@ -66,28 +67,30 @@ const COMMON_EMAIL_DOMAINS = [
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function suggestEmailDomain(email: string) {
-  const at = email.indexOf("@")
-  if (at < 0) return null
+  const atIndex = email.indexOf("@")
+  if (atIndex < 0) return null
 
-  const local = email.slice(0, at).trim()
-  const dom = email
-    .slice(at + 1)
+  const localPart = email.slice(0, atIndex).trim()
+  const domain = email
+    .slice(atIndex + 1)
     .trim()
     .toLowerCase()
 
-  if (!local || !dom) return null
-  if (COMMON_EMAIL_DOMAINS.includes(dom)) return null
+  if (!localPart || !domain) return null
+  if (COMMON_EMAIL_DOMAINS.includes(domain)) return null
 
-  let best: { d: string; dist: number } | null = null
-  for (const cand of COMMON_EMAIL_DOMAINS) {
-    const dist = levenshtein(dom, cand)
-    if (dist <= 2 && (!best || dist < best.dist)) best = { d: cand, dist }
+  let bestMatch: { domain: string; distance: number } | null = null
+  for (const candidate of COMMON_EMAIL_DOMAINS) {
+    const distance = levenshtein(domain, candidate)
+    if (distance <= 2 && (!bestMatch || distance < bestMatch.distance)) {
+      bestMatch = { domain: candidate, distance }
+    }
   }
-  return best ? `${local}@${best.d}` : null
+  return bestMatch ? `${localPart}@${bestMatch.domain}` : null
 }
 
 const badgeClass =
-  "inline-flex min-w-[160px] items-baseline justify-center gap-2 rounded-full border border-border-subtle/80 " +
+  "inline-flex w-40 items-baseline justify-center gap-2 rounded-full border border-glass-border-subtle/80 " +
   "bg-glass backdrop-blur-md px-4 py-2 text-sm font-semibold " +
   "text-primary-text/90 shadow-sm"
 
@@ -104,7 +107,8 @@ const Login = () => {
   const location = useLocation()
   const { login, pendingMfa, submitMfaChallenge, loginWithPasskey } = useAuth()
 
-  const from = (location.state as any)?.from?.pathname || "/dashboard"
+  const state = location.state as { from?: { pathname: string } } | null
+  const redirectPath = state?.from?.pathname || "/dashboard"
 
   const [savedEmail, setSavedEmail] = useLocalStorage<string>("auth:lastEmail", "")
   // Keep savedEmail ref for internal logic consistency with minimum changes
@@ -173,15 +177,15 @@ const Login = () => {
           return null
         }
 
-        navigate(from, { replace: true })
+        navigate(redirectPath, { replace: true })
         return null
-      } catch (err) {
+      } catch (error) {
         let message = t("auth:login.error")
-        if (err instanceof Error && err.message) {
-          message = err.message
+        if (error instanceof Error && error.message) {
+          message = error.message
         }
-        if (isAxiosError(err) && err.response?.data?.detail) {
-          message = err.response.data.detail
+        if (isAxiosError(error) && error.response?.data?.detail) {
+          message = error.response.data.detail
         }
         return message
       }
@@ -201,8 +205,8 @@ const Login = () => {
   const handleEmailBlur = () => {
     const raw = (emailRef.current?.value ?? "").trim()
     if (!raw) return
-    const sugg = suggestEmailDomain(raw)
-    setEmailSuggestion(sugg)
+    const suggestion = suggestEmailDomain(raw)
+    setEmailSuggestion(suggestion)
   }
 
   const applySuggestion = () => {
@@ -243,12 +247,12 @@ const Login = () => {
     setSubmitting(true)
     try {
       await loginWithPasskey(email, trustDevice)
-      navigate(from, { replace: true })
-    } catch (err) {
+      navigate(redirectPath, { replace: true })
+    } catch (error) {
       let message = t("auth:login.error")
-      if (err instanceof Error) message = err.message
-      if (isAxiosError(err) && err.response?.data?.detail) {
-        message = err.response.data.detail
+      if (error instanceof Error) message = error.message
+      if (isAxiosError(error) && error.response?.data?.detail) {
+        message = error.response.data.detail
       }
       setPasskeyError(message)
     } finally {
@@ -275,18 +279,18 @@ const Login = () => {
           challengeToken: otpChallenge.challenge_token,
           trustDevice,
         })
-        navigate(from, { replace: true })
-      } catch (err) {
-        if (err instanceof ChallengeLockedError) {
-          setMfaError(err.message)
+        navigate(redirectPath, { replace: true })
+      } catch (error) {
+        if (error instanceof ChallengeLockedError) {
+          setMfaError(error.message)
           setMfaErrorSource("general")
         } else {
           let message = t("auth:mfa.errors.generic")
-          if (err instanceof Error && err.message) {
-            message = err.message
+          if (error instanceof Error && error.message) {
+            message = error.message
           }
-          if (isAxiosError(err) && err.response?.data?.detail) {
-            message = err.response.data.detail
+          if (isAxiosError(error) && error.response?.data?.detail) {
+            message = error.response.data.detail
           }
           setMfaError(message)
           setMfaErrorSource("totp")
@@ -311,7 +315,9 @@ const Login = () => {
 
     try {
       const response = await startAuthentication({
-        optionsJSON: webauthnChallenge.options as any,
+        optionsJSON: webauthnChallenge.options as unknown as Parameters<
+          typeof startAuthentication
+        >[0]["optionsJSON"],
       })
 
       await submitMfaChallenge({
@@ -320,14 +326,14 @@ const Login = () => {
         challengeToken: webauthnChallenge.challenge_token,
         trustDevice,
       })
-      navigate(from, { replace: true })
-    } catch (err) {
+      navigate(redirectPath, { replace: true })
+    } catch (error) {
       let message = t("auth:mfa.errors.generic")
-      if (err instanceof Error && err.message) {
-        message = err.message
+      if (error instanceof Error && error.message) {
+        message = error.message
       }
-      if (isAxiosError(err) && err.response?.data?.detail) {
-        message = err.response.data.detail
+      if (isAxiosError(error) && error.response?.data?.detail) {
+        message = error.response.data.detail
       }
       setMfaError(message)
       setMfaErrorSource("general")
@@ -388,7 +394,7 @@ const Login = () => {
         <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
           <div className="w-full max-w-2xl rounded-4xl glass-high-fidelity p-8">
             <div className="flex flex-col items-center gap-6 text-center">
-              <div className="inline-flex items-center gap-2 rounded-full border border-glass-border bg-surface-hover/10 px-4 py-1 text-sm font-semibold tracking-wide text-primary-text">
+              <div className="inline-flex items-center gap-2 rounded-full border border-glass-border-subtle bg-surface-hover/10 px-4 py-1 text-sm font-semibold tracking-wide text-primary-text">
                 <ShieldCheck className="h-4 w-4" aria-hidden="true" />
                 {t("auth:mfa.verifyTitle")}
               </div>
@@ -436,7 +442,7 @@ const Login = () => {
                   {webauthnChallenge && (
                     <div className="relative w-full py-2">
                       <div className="absolute inset-0 flex items-center">
-                        <div className="w-full border-t border-glass-border"></div>
+                        <div className="w-full border-t border-glass-border-subtle"></div>
                       </div>
                       <div className="relative flex justify-center text-xs uppercase">
                         <span className="bg-surface px-2 text-secondary-text">
@@ -460,7 +466,7 @@ const Login = () => {
                       type="checkbox"
                       className="size-5 rounded-lg border-brand/50 bg-transparent accent-brand"
                       checked={trustDevice}
-                      onChange={(e) => setTrustDevice(e.target.checked)}
+                      onChange={(event) => setTrustDevice(event.target.checked)}
                       disabled={mfaBusy}
                     />
                     {t("auth:actions.trustDevice", { defaultValue: "Доверять этому устройству" })}
@@ -490,19 +496,19 @@ const Login = () => {
   }
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-page text-page-foreground">
+    <div className="relative min-h-screen w-full overflow-hidden bg-page text-primary-text">
       <ParticleAuthBackground />
       <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col items-center justify-center gap-10 px-4 py-12 sm:px-6 lg:px-8 lg:flex-row">
         <motion.div
           initial={{ x: -200 }}
           animate={{ x: 0 }}
           transition={{ duration: 0.5, ease: "easeOut" }}
-          className="w-full rounded-[2.4rem] border border-glass-border/80 bg-surface/60 p-8 shadow-[0_30px_90px_rgba(15,23,42,0.28)] backdrop-blur-3xl lg:p-12"
+          className="w-full rounded-4xl border border-glass-border/80 bg-surface/60 p-8 shadow-glass backdrop-blur-3xl lg:p-12"
         >
-          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-page-foreground/70">
+          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-primary-text/70">
             {t("auth:login.heroBadge", { defaultValue: "University Ecosystem" })}
           </p>
-          <h1 className="mt-4 text-4xl font-extrabold leading-tight text-page-foreground sm:text-5xl">
+          <h1 className="mt-4 text-4xl font-extrabold leading-tight text-primary-text sm:text-5xl">
             {t("auth:login.heroHeading", {
               defaultValue: "Добро пожаловать в Экосистему Университета",
             })}
@@ -518,10 +524,10 @@ const Login = () => {
             {heroHighlights.map(({ icon: Icon, title, description }) => (
               <div
                 key={title}
-                className="group relative overflow-hidden rounded-3xl border border-glass-border/85 bg-surface/50 px-5 py-6 shadow-[0_20px_50px_rgba(15,23,42,0.18)] transition-transform duration-300 hover:-translate-y-1"
+                className="group relative overflow-hidden rounded-3xl border border-glass-border/85 bg-surface/50 px-5 py-6 shadow-premium transition-transform duration-300 hover:-translate-y-1"
               >
                 <div className="flex items-center gap-3">
-                  <span className="flex size-12 items-center justify-center rounded-2xl bg-nav-link/15 text-nav-link">
+                  <span className="flex size-12 items-center justify-center rounded-2xl bg-brand-subtle-bg text-brand">
                     <Icon className="h-5 w-5" aria-hidden="true" />
                   </span>
                   <p className="text-base font-semibold">{title}</p>
@@ -534,7 +540,7 @@ const Login = () => {
           <div className="mt-10 flex flex-wrap gap-4">
             {statPills.map((pill, i) => (
               <div key={i} className={badgeClass.replace("items-baseline", "items-center")}>
-                <pill.icon className="mr-1 h-4 w-4 text-nav-link" strokeWidth={3} />
+                <pill.icon className="mr-1 h-4 w-4 text-brand" strokeWidth={3} />
                 <span className="text-xs font-extrabold uppercase tracking-[0.2em]">
                   {pill.value}
                 </span>
@@ -552,7 +558,7 @@ const Login = () => {
           initial={{ y: 200 }}
           animate={{ y: 0 }}
           transition={{ duration: 0.5, ease: "easeOut", delay: 0.2 }}
-          className="w-full max-w-xl rounded-[2.4rem] border border-glass-border/80 bg-surface/80 p-6 shadow-[0_30px_70px_rgba(15,23,42,0.3)] backdrop-blur-2xl sm:p-10"
+          className="w-full max-w-xl rounded-4xl border border-glass-border/80 bg-surface/80 p-6 shadow-glass backdrop-blur-2xl sm:p-10"
         >
           <form noValidate autoComplete="on" action={submitAction} className="flex flex-col gap-6">
             <div className="space-y-2 text-center">
@@ -565,7 +571,7 @@ const Login = () => {
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="username" className="text-sm font-semibold text-page-foreground">
+              <label htmlFor="username" className="text-sm font-semibold text-primary-text">
                 {t("auth:fields.email")}
               </label>
               <Input
@@ -575,7 +581,7 @@ const Login = () => {
                 className={!emailValid ? "border-error-text focus:border-error-text" : ""}
                 defaultValue={savedEmail}
                 ref={emailRef}
-                onChange={(e) => setEmailMirror(e.target.value)}
+                onChange={(event) => setEmailMirror(event.target.value)}
                 onBlur={handleEmailBlur}
                 autoComplete="username"
                 autoFocus
@@ -627,8 +633,12 @@ const Login = () => {
                   name="password"
                   type={showPassword ? "text" : "password"}
                   ref={passwordRef}
-                  onKeyUp={(e) => setCaps((e as any).getModifierState?.("CapsLock"))}
-                  onKeyDown={(e) => setCaps((e as any).getModifierState?.("CapsLock"))}
+                  onKeyUp={(event: React.KeyboardEvent) =>
+                    setCaps(event.getModifierState("CapsLock"))
+                  }
+                  onKeyDown={(event: React.KeyboardEvent) =>
+                    setCaps(event.getModifierState("CapsLock"))
+                  }
                   autoComplete="current-password"
                   disabled={isPending || submitting}
                   required
@@ -642,7 +652,7 @@ const Login = () => {
             </div>
 
             <div
-              className="min-h-[1.5rem] text-center text-sm font-semibold text-red-400"
+              className="min-h-6 text-center text-sm font-semibold text-error-text"
               aria-live="assertive"
             >
               {submitError || passkeyError}
@@ -662,7 +672,7 @@ const Login = () => {
             <div className="flex flex-col gap-3">
               <button
                 type="submit"
-                className="inline-flex w-full items-center justify-center gap-2 rounded-[1.6rem] bg-[radial-gradient(circle_at_top,var(--nav-link),var(--nav-link-hover))] px-6 py-4 text-lg font-extrabold text-white shadow-[0_20px_45px_rgba(36,99,235,0.35)] transition hover:translate-y-[-2px] hover:shadow-[0_30px_60px_rgba(36,99,235,0.45)] disabled:opacity-60"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-ue-xl bg-linear-to-b from-brand to-brand-hover px-6 py-4 text-lg font-extrabold text-white shadow-premium transition hover:translate-y-[-2px] hover:shadow-glass-strong disabled:opacity-60"
                 disabled={isPending || submitting}
               >
                 {isPending || submitting ? (
@@ -680,7 +690,7 @@ const Login = () => {
                   type="button"
                   onClick={handlePasskeyLogin}
                   disabled={submitting}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-[1.6rem] border border-brand/40 bg-brand/5 px-6 py-4 text-lg font-extrabold text-brand shadow-[0_10px_30px_rgba(15,23,42,0.05)] transition hover:translate-y-[-2px] hover:bg-brand/10 disabled:opacity-60"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-ue-xl border border-brand/40 bg-brand/5 px-6 py-4 text-lg font-extrabold text-brand shadow-surface transition hover:translate-y-[-2px] hover:bg-brand/10 disabled:opacity-60"
                 >
                   <Fingerprint className="h-6 w-6" />
                   {t("auth:login.signInWithPasskey", { defaultValue: "Войти с помощью Passkey" })}

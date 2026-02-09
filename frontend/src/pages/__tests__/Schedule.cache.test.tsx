@@ -199,7 +199,7 @@ describe("Schedule cache handling", () => {
         expect(apiGetMock).toHaveBeenCalledWith("/schedule/group-1")
       })
 
-      expect(await screen.findByText("Fresh Subject")).toBeInTheDocument()
+      expect((await screen.findAllByText("Fresh Subject"))[0]).toBeInTheDocument()
       expect(screen.queryByText("Stale Subject")).not.toBeInTheDocument()
     } finally {
       client.clear()

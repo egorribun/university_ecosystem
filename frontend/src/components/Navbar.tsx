@@ -17,6 +17,7 @@ import { Settings as SettingsIcon } from "lucide-react"
 import { cn } from "@/utils/cn"
 import { MobileMenu } from "@/components/navbar/MobileMenu"
 import { motion, useScroll, useMotionValueEvent } from "framer-motion"
+import { breakpoints } from "@/theme/tokens"
 import {
   hoverLift,
   springSoft,
@@ -25,6 +26,7 @@ import {
   slideUpVariants,
   hoverScale,
 } from "@/utils/animations"
+import { NAVBAR_SCROLL_THRESHOLD } from "@/constants/scroll"
 
 const AVATAR_FALLBACK = AVATAR_PLACEHOLDER_URL
 
@@ -51,12 +53,12 @@ const Navbar = () => {
 
   const { scrollY } = useScroll()
   useMotionValueEvent(scrollY, "change", (latest) => {
-    const scrolled = latest > 20
+    const scrolled = latest > NAVBAR_SCROLL_THRESHOLD
     if (scrolled !== isScrolled) setIsScrolled(scrolled)
   })
 
   // Disable "scrolled" state on mobile to avoid layout shifts or too much blur
-  const isMobile = useMediaQuery("(max-width: 1350px)")
+  const isMobile = useMediaQuery(`(max-width: ${breakpoints.wide})`)
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const { scrollToTop, markScrollFromBottom, isSamePath } = useScrollRestoration(location.pathname)
   const prevIsMobile = useRef(isMobile)
@@ -130,22 +132,23 @@ const Navbar = () => {
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
         className={cn(
-          "navbar-root sticky top-0 z-(--ue-z-index-nav) w-full flex flex-col justify-center",
+          "sticky top-0 z-navbar w-full flex flex-col justify-center",
           "border-b border-glass-border transition-all duration-500",
           isScrolled
-            ? "bg-glass/80 shadow-glass backdrop-blur-xl py-2"
-            : "bg-transparent py-4",
-          "min-h-[64px] items-center",
+            ? "bg-nav/80 shadow-glass backdrop-nav h-(--navbar-height-scrolled)"
+            : "bg-transparent h-(--navbar-height)",
+          "items-center",
+          "pt-(--safe-area-top)",
           prefersReducedMotion && "transition-none"
         )}
       >
-        <div className="flex h-full w-full items-center px-[clamp(16px,5vw,48px)] box-border">
+        <div className="flex h-full w-full items-center px-fluid-x box-border">
           <Link
             to="/dashboard"
             aria-label={t("navigation:aria.homeLink")}
             className={cn(
-              "brand inline-flex min-w-0 items-center rounded-2xl px-3 py-1.5 no-underline group transition-all duration-300 hover:bg-surface-hover/50",
-              isMobile ? "gap-2.5" : "gap-4"
+              "inline-flex min-w-0 items-center rounded-ue-xl px-3 py-1.5 no-underline group transition-all duration-300 hover:bg-surface-hover/30",
+              isMobile ? "gap-fluid-gap" : "gap-4"
             )}
             onPointerDown={markScrollFromBottom}
             onClick={(e) => {
@@ -159,7 +162,7 @@ const Navbar = () => {
               variants={hoverScale}
               whileHover="hover"
               whileTap="tap"
-              className="flex items-center justify-center shrink-0 rounded-full bg-surface-raised shadow-sm w-[clamp(32px,7vw,42px)] h-[clamp(32px,7vw,42px)] border border-border-subtle"
+              className="flex items-center justify-center shrink-0 rounded-full bg-surface-raised shadow-sm w-11 h-11 border border-border-subtle"
             >
               <SmartImage
                 srcRaw={guuLogo}
@@ -173,17 +176,14 @@ const Navbar = () => {
               />
             </motion.div>
             <div className="flex flex-col justify-center">
-              <span
-                className="whitespace-nowrap font-black tracking-tight text-[clamp(14px,3.5vw,18px)] group-hover:opacity-80 transition-all duration-300 leading-tight"
-                style={{ color: "var(--text-primary)" }}
-              >
+              <span className="whitespace-nowrap font-black tracking-tight text-lg group-hover:opacity-80 transition-all duration-300 leading-tight text-brand">
                 {t("navigation:brandName")}
               </span>
             </div>
           </Link>
 
           {isMobile ? (
-            <div className="ml-auto flex items-center gap-[clamp(12px,3vw,24px)]">
+            <div className="ml-auto flex items-center gap-(--fluid-gap)">
               <MessengerButton />
               <NotificationsBell />
               {isAuth && user && !loading ? (
@@ -194,20 +194,18 @@ const Navbar = () => {
                     fallback={avatarFallback}
                     alt={profileAlt}
                     title={profileTitle}
-                    className="block cursor-pointer rounded-full border-2 border-white/50 shadow-sm object-cover w-[clamp(28px,6vw,40px)] h-[clamp(28px,6vw,40px)] shrink-0"
+                    className="block cursor-pointer rounded-full border-2 border-white/50 shadow-sm object-cover w-9 h-9 shrink-0"
                     onClick={() => go("/profile")}
                   />
                 </motion.div>
               ) : (
-                <Skeleton
-                  className="rounded-full shrink-0 w-[clamp(28px,6vw,40px)] h-[clamp(28px,6vw,40px)] bg-white/30"
-                />
+                <Skeleton className="rounded-full shrink-0 w-9 h-9 bg-white/30" />
               )}
               <motion.button
                 whileTap={{ scale: 0.9 }}
                 transition={springSoft}
                 type="button"
-                className="flex shrink-0 cursor-pointer items-center justify-center rounded-2xl border border-glass-border bg-surface-hover/10 p-0 shadow-sm backdrop-blur-md transition-all duration-300 hover:bg-surface-hover/20 w-[clamp(36px,8vw,44px)] h-[clamp(36px,8vw,44px)] text-primary-text"
+                className="flex shrink-0 cursor-pointer items-center justify-center rounded-ue-xl border border-(--glass-border) bg-(--bg-surface-hover)/10 p-0 shadow-sm backdrop-blur-md transition-all duration-300 hover:bg-(--bg-surface-hover)/20 w-11 h-11 text-(--primary-text)"
                 onClick={() => setMobileMenu((v) => !v)}
                 aria-label={
                   mobileMenu ? t("navigation:aria.closeMenu") : t("navigation:aria.openMenu")
@@ -224,7 +222,7 @@ const Navbar = () => {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   aria-hidden="true"
-                  className="overflow-visible stroke-primary-text w-[20px] h-[20px]"
+                  className="overflow-visible stroke-(--primary-text) w-[20px] h-[20px]"
                 >
                   <motion.line
                     x1="4"
@@ -265,7 +263,7 @@ const Navbar = () => {
                 variants={staggerContainerVariants(0.05, 0.2)}
                 initial="hidden"
                 animate="visible"
-                className="ml-8 flex flex-1 flex-row flex-wrap items-center gap-1 m-0 p-0 min-w-0 list-none text-[1.05rem] font-medium"
+                className="ml-8 flex flex-1 flex-row flex-wrap items-center gap-1 m-0 p-0 min-w-0 list-none text-base font-medium"
               >
                 {menuLinks.map((item) => (
                   <motion.li
@@ -315,7 +313,7 @@ const Navbar = () => {
                   >
                     <MessengerButton />
                     <NotificationsBell />
-                    <div className="flex h-10 items-center gap-3 pl-4 border-l border-glass-border ml-2">
+                    <div className="flex h-10 items-center gap-3 pl-4 border-l border-(--glass-border) ml-2">
                       <motion.div
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
@@ -327,7 +325,7 @@ const Navbar = () => {
                           fallback={avatarFallback}
                           alt={profileAlt}
                           title={profileTitle}
-                          className="block h-9 w-9 cursor-pointer rounded-full border border-border-subtle bg-surface-raised object-cover shadow-sm hover:shadow-md transition-all duration-300"
+                          className="block h-9 w-9 cursor-pointer rounded-full border border-(--border-subtle) bg-(--bg-surface-raised) object-cover shadow-sm hover:shadow-md transition-all duration-300"
                           onClick={() => go("/profile")}
                         />
                       </motion.div>
@@ -336,7 +334,7 @@ const Navbar = () => {
                         onClick={() => go("/profile")}
                         aria-label={profileTitle}
                         title={profileTitle}
-                        className="cursor-pointer border-none bg-transparent p-0 m-0 font-bold text-primary-text tracking-tight text-[1.05rem] hover:text-brand transition-colors"
+                        className="cursor-pointer border-none bg-transparent p-0 m-0 font-bold text-(--primary-text) tracking-tight text-base hover:text-(--nav-link) transition-colors"
                       >
                         {user.full_name}
                       </button>
@@ -349,7 +347,7 @@ const Navbar = () => {
                         whileTap={{ scale: 0.9 }}
                         transition={springSoft}
                         type="button"
-                        className="flex items-center justify-center w-10 h-10 rounded-xl text-primary-text transition-colors"
+                        className="flex items-center justify-center w-10 h-10 rounded-ue-xl text-(--primary-text) transition-colors"
                         onClick={() => go("/settings")}
                         aria-label={t("navigation:menu.settings")}
                         title={t("navigation:menu.settings")}

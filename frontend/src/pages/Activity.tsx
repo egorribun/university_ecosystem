@@ -16,7 +16,7 @@ import {
   TrendingDown as TrendingDownIcon,
   CalendarCheck as EventAvailableIcon,
   GraduationCap as SchoolIcon,
-  Award as EmojiEventsIcon
+  Award as EmojiEventsIcon,
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { getLocaleForLanguage, useLanguage } from "@/contexts/LanguageContext"
@@ -222,15 +222,15 @@ function AnimatedRing({
   const dash = useTransform(mv, (v) => c - (Math.max(0, Math.min(100, v)) / 100) * c)
 
   const colorClasses = {
-    success: "stroke-[#10b981] dark:stroke-[#34d399]",
-    info: "stroke-[#3b82f6] dark:stroke-[#60a5fa]",
-    warning: "stroke-[#f59e0b] dark:stroke-[#fbbf24]",
+    success: "stroke-success-text",
+    info: "stroke-brand",
+    warning: "stroke-warning-text",
   }
 
   const bgColorClasses = {
-    success: "stroke-[#10b981]/15 dark:stroke-[#34d399]/15",
-    info: "stroke-[#3b82f6]/15 dark:stroke-[#60a5fa]/15",
-    warning: "stroke-[#f59e0b]/15 dark:stroke-[#fbbf24]/15",
+    success: "stroke-success-text/15",
+    info: "stroke-brand/15",
+    warning: "stroke-warning-text/15",
   }
 
   return (
@@ -256,7 +256,7 @@ function AnimatedRing({
           style={{ strokeDashoffset: dash }}
         />
       </svg>
-      <div className="absolute inset-0 grid place-items-center font-black tracking-tighter tabular-nums lining-nums text-(--page-text)">
+      <div className="absolute inset-0 grid place-items-center font-black tracking-tighter tabular-nums lining-nums text-primary-text">
         {Math.round(value)}%
       </div>
     </div>
@@ -525,13 +525,12 @@ export default function Activity() {
     children: React.ReactNode
   }) => {
     const toneClasses = {
-      neutral:
-        "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,white_4%)] dark:bg-[color:color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)]",
+      neutral: "bg-glass-elevated",
       success:
-        "bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card-bg)_96%,white_4%)_0%,color-mix(in_srgb,var(--card-bg)_92%,white_8%)_100%),linear-gradient(#10b981/10,#10b981/10)] dark:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)_0%,color-mix(in_srgb,var(--card-bg)_88%,transparent_12%)_100%),linear-gradient(#34d399/12,#34d399/12)]",
-      info: "bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card-bg)_96%,white_4%)_0%,color-mix(in_srgb,var(--card-bg)_92%,white_8%)_100%),linear-gradient(#3b82f6/10,#3b82f6/10)] dark:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)_0%,color-mix(in_srgb,var(--card-bg)_88%,transparent_12%)_100%),linear-gradient(#60a5fa/12,#60a5fa/12)]",
+        "bg-linear-to-b from-success-bg/30 to-success-bg/50 dark:from-success-bg/20 dark:to-success-bg/40",
+      info: "bg-linear-to-b from-brand/10 to-brand/20 dark:from-brand/15 dark:to-brand/25",
       warning:
-        "bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card-bg)_96%,white_4%)_0%,color-mix(in_srgb,var(--card-bg)_92%,white_8%)_100%),linear-gradient(#f59e0b/10,#f59e0b/10)] dark:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)_0%,color-mix(in_srgb,var(--card-bg)_88%,transparent_12%)_100%),linear-gradient(#fbbf24/12,#fbbf24/12)]",
+        "bg-linear-to-b from-warning-bg/30 to-warning-bg/50 dark:from-warning-bg/20 dark:to-warning-bg/40",
     }
 
     return (
@@ -540,16 +539,14 @@ export default function Activity() {
         animate={{ y: 0, opacity: 1 }}
         transition={{ type: "spring", stiffness: 260, damping: 32, mass: 1 }}
         className={cn(
-          "relative flex h-full flex-col overflow-hidden rounded-2xl border border-[color-mix(in_srgb,white_12%,var(--nav-link)_88%)] backdrop-blur-xl [-webkit-backdrop-filter:blur(12px)]",
+          "relative flex h-full flex-col overflow-hidden rounded-2xl border border-glass-border-subtle backdrop-blur-xl [-webkit-backdrop-filter:blur(12px)]",
           toneClasses[tone],
-          "shadow-[0_4px_16px_rgba(0,0,0,0.08),0_2px_6px_rgba(0,0,0,0.04)] dark:shadow-[0_6px_20px_rgba(0,0,0,0.16),0_2px_8px_rgba(0,0,0,0.08)]",
+          "shadow-premium",
           "transition-all duration-180",
-          reduce
-            ? ""
-            : "hover:-translate-y-0.5 hover:shadow-[0_10px_36px_rgba(0,0,0,0.12),0_4px_12px_rgba(0,0,0,0.08)] dark:hover:shadow-[0_4px_24px_rgba(0,0,0,0.36)]",
+          reduce ? "" : "hover:-translate-y-0.5 hover:shadow-premium",
           "active:translate-y-0",
           onClick &&
-            "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--nav-link) focus-visible:ring-offset-2"
+            "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
         )}
         style={
           reduce ? undefined : { willChange: "transform, opacity", transform: "translateZ(0)" }
@@ -614,7 +611,7 @@ export default function Activity() {
   return (
     <Layout>
       <PageFadeIn>
-        <div className="w-screen min-h-screen bg-(--page-bg) text-(--page-text) py-8 sm:py-10">
+        <div className="w-screen min-h-screen bg-page text-primary-text py-8 sm:py-10">
           <motion.div
             initial="hidden"
             animate="show"
@@ -629,42 +626,42 @@ export default function Activity() {
               style={fadeDelayStyle("80ms")}
               className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--glass-bg)_70%,var(--nav-link)_30%)] text-(--nav-link) shadow-[0_6px_20px_color-mix(in_srgb,var(--nav-link)_24%,transparent)] transition-transform duration-200 hover:scale-105 dark:bg-[color-mix(in_srgb,var(--glass-bg)_65%,var(--nav-link)_35%)] dark:shadow-[0_8px_24px_color-mix(in_srgb,var(--nav-link)_28%,transparent)] backdrop-blur-sm [-webkit-backdrop-filter:blur(12px)]">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-subtle-bg text-brand shadow-[0_6px_20px_color-mix(in_srgb,var(--primary-main)_24%,transparent)] transition-transform duration-200 hover:scale-105 backdrop-blur-sm [-webkit-backdrop-filter:blur(12px)]">
                 <TimelineIcon className="text-[2rem]" />
               </div>
-              <h1 className="text-[clamp(1.6rem,5vw,2.75rem)] font-bold tracking-tight text-(--page-text)">
+              <h1 className="text-[clamp(1.6rem,5vw,2.75rem)] font-bold tracking-tight text-primary-text">
                 {t("activity:title")}
               </h1>
             </div>
-              <motion.div
-                data-fade
-                initial={{ opacity: 0, y: reduce ? 0 : 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: reduce ? 0 : 0.35 }}
-                style={{
-                  ...(reduce ? {} : { willChange: "transform, opacity", transform: "translateZ(0)" }),
-                  ...fadeDelayStyle("140ms"),
-                }}
-                className="mb-6 inline-flex items-center gap-1 rounded-full border border-[color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color-mix(in_srgb,var(--card-bg)_96%,white_4%)] p-1 shadow-[0_4px_12px_rgba(0,0,0,0.08),0_2px_4px_rgba(0,0,0,0.04)] backdrop-blur-xl [-webkit-backdrop-filter:blur(12px)] dark:border-[color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)] dark:shadow-[0_12px_34px_rgba(0,0,0,0.46)]"
-              >
-                {periodOptions.map((option) => (
-                  <button
-                    key={option.value}
-                    onClick={() => setPeriod(option.value)}
-                    className={cn(
-                      "relative rounded-full border-0 px-4 py-1.5 text-sm font-bold transition-colors duration-150",
-                      period === option.value
-                        ? "text-white"
-                        : "bg-transparent text-(--page-text) hover:bg-[color-mix(in_srgb,var(--nav-link)_8%,transparent)] hover:text-(--nav-link)"
-                    )}
-                  >
-                    {period === option.value && (
-                      <motion.span
-                        layoutId="activity-period-indicator"
-                        className="absolute inset-0 rounded-full bg-(--nav-link) shadow-[0_4px_12px_color-mix(in_srgb,var(--nav-link)_35%,transparent)] dark:shadow-[0_8px_24px_color-mix(in_srgb,var(--nav-link)_45%,transparent)]"
-                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                      />
-                    )}
+            <motion.div
+              data-fade
+              initial={{ opacity: 0, y: reduce ? 0 : 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: reduce ? 0 : 0.35 }}
+              style={{
+                ...(reduce ? {} : { willChange: "transform, opacity", transform: "translateZ(0)" }),
+                ...fadeDelayStyle("140ms"),
+              }}
+              className="mb-6 inline-flex items-center gap-1 rounded-full border border-glass-border bg-surface/40 p-1 shadow-premium backdrop-blur-xl [-webkit-backdrop-filter:blur(12px)] dark:border-white/10 dark:bg-slate-900/40 dark:shadow-premium"
+            >
+              {periodOptions.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => setPeriod(option.value)}
+                  className={cn(
+                    "relative rounded-full border-0 px-4 py-1.5 text-sm font-bold transition-colors duration-150",
+                    period === option.value
+                      ? "text-white"
+                      : "bg-transparent text-primary-text hover:bg-brand-subtle-bg hover:text-brand"
+                  )}
+                >
+                  {period === option.value && (
+                    <motion.span
+                      layoutId="activity-period-indicator"
+                      className="absolute inset-0 rounded-full bg-brand shadow-[0_4px_12px_color-mix(in_srgb,var(--primary-main)_35%,transparent)]"
+                      transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                    />
+                  )}
                   <span className="relative z-10">{option.label}</span>
                 </button>
               ))}
@@ -685,11 +682,11 @@ export default function Activity() {
                 <div className="flex items-center gap-4">
                   <AnimatedRing value={attendance?.percent ?? 0} size={ringSize} tone="success" />
                   <div className="flex min-w-0 flex-1 flex-col gap-1">
-                    <p className="text-[0.65rem] font-semibold uppercase tracking-wider text-[color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
+                    <p className="text-[0.65rem] font-semibold uppercase tracking-wider text-text-muted-subtle">
                       {t("activity:sections.attendance.title")}
                     </p>
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-[clamp(1.75rem,2vw,2.25rem)] font-black tracking-tighter tabular-nums lining-nums text-(--page-text)">
+                      <span className="text-[clamp(1.75rem,2vw,2.25rem)] font-black tracking-tighter tabular-nums lining-nums text-primary-text">
                         {attendancePctAnimated}%
                       </span>
                       <TrendChip value={attendance?.trend} />
@@ -697,9 +694,9 @@ export default function Activity() {
                     <ProgressBar
                       value={progressAttendance}
                       className="h-2 rounded-full"
-                      barClassName="bg-[#10b981] dark:bg-[#34d399] rounded-full transition-[width] duration-600"
+                      barClassName="bg-(--success-text) rounded-full transition-[width] duration-600"
                     />
-                    <p className="truncate text-sm text-[color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
+                    <p className="truncate text-sm text-text-muted-subtle">
                       {t("activity:sections.attendance.summary", {
                         present: attendance?.present ?? 0,
                         total: attendance?.total ?? 0,
@@ -716,7 +713,7 @@ export default function Activity() {
                     {t("activity:sections.grades.title")}
                   </p>
                   <div className="flex items-center gap-2">
-                    <span className="text-[clamp(1.75rem,2vw,2.25rem)] font-black tracking-tighter tabular-nums lining-nums text-(--page-text)">
+                    <span className="text-[clamp(1.75rem,2vw,2.25rem)] font-black tracking-tighter tabular-nums lining-nums text-primary-text">
                       {grades?.scale === "gpa"
                         ? `GPA ${gradesAnimated}`
                         : grades?.scale === "100"
@@ -725,7 +722,7 @@ export default function Activity() {
                     </span>
                     <TrendChip value={grades?.trend} />
                   </div>
-                  <p className="text-sm text-[color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
+                  <p className="text-sm text-text-muted-subtle">
                     {t("activity:sections.grades.averageLabel")}
                   </p>
                 </div>
@@ -737,7 +734,7 @@ export default function Activity() {
                     {t("activity:sections.participation.title")}
                   </p>
                   <div className="flex items-center gap-2">
-                    <span className="text-[clamp(1.75rem,2vw,2.25rem)] font-black tracking-tighter tabular-nums lining-nums text-(--page-text)">
+                    <span className="text-[clamp(1.75rem,2vw,2.25rem)] font-black tracking-tighter tabular-nums lining-nums text-primary-text">
                       {t("activity:sections.participation.eventsCount", {
                         value: partEventsAnimated,
                         count: participation?.events ?? 0,
@@ -745,7 +742,7 @@ export default function Activity() {
                     </span>
                     <TrendChip value={participation?.trend} />
                   </div>
-                  <p className="text-sm text-[color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
+                  <p className="text-sm text-text-muted-subtle">
                     {[
                       participation?.hours != null
                         ? t("activity:sections.participation.summaryHours", {
@@ -765,7 +762,7 @@ export default function Activity() {
               </CardShell>
             </motion.div>
 
-            <div className="my-4 border-t border-[color-mix(in_srgb,white_12%,var(--nav-link)_88%)] md:my-6 dark:border-[color-mix(in_srgb,white_8%,var(--nav-link)_92%)]" />
+            <div className="my-4 border-t border-glass-border-subtle md:my-6" />
 
             <motion.div
               variants={gridVariants}
@@ -776,8 +773,8 @@ export default function Activity() {
               <CardShell onClick={() => setDetail("attendance_recent")}>
                 <div className="flex flex-col">
                   <div className="mb-2 flex items-center gap-2">
-                    <EventAvailableIcon className="text-base text-(--nav-link)" />
-                    <h3 className="font-black text-(--page-text)">
+                    <EventAvailableIcon className="text-base text-brand" />
+                    <h3 className="font-black text-primary-text">
                       {t("activity:sections.attendance.recent")}
                     </h3>
                   </div>
@@ -786,16 +783,16 @@ export default function Activity() {
                       {(attendance?.recent ?? []).slice(0, 6).map((r, i) => {
                         const color =
                           r.status === "present"
-                            ? "#10b981"
+                            ? "var(--success-text)"
                             : r.status === "late"
-                              ? "#f59e0b"
-                              : "#ef4444"
+                              ? "var(--warning-text)"
+                              : "var(--error-text)"
                         const darkColor =
                           r.status === "present"
-                            ? "#34d399"
+                            ? "var(--success-text)"
                             : r.status === "late"
-                              ? "#fbbf24"
-                              : "#f87171"
+                              ? "var(--warning-text)"
+                              : "var(--error-text)"
                         const attendanceRecord = r as Partial<{
                           id?: number | string
                           lesson_id?: number | string
@@ -888,11 +885,9 @@ export default function Activity() {
                             }
                           >
                             <div className="flex items-center gap-2">
-                              <div className="h-2 w-2 rounded-full bg-[#3b82f6]/90 shadow-[0_0_0_3px_#3b82f618] dark:bg-[#60a5fa]/90 dark:shadow-[0_0_0_3px_#60a5fa18]" />
+                              <div className="h-2 w-2 rounded-full bg-(--primary-main)/90 shadow-[0_0_0_3px_var(--primary-main)/18]" />
                               <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-1.5">
-                                <span className="font-bold text-(--page-text)">
-                                  {r.course}
-                                </span>
+                                <span className="font-bold text-(--page-text)">{r.course}</span>
                                 <span className="text-sm text-[color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
                                   {r.score}
                                   {r.max ? "/" + r.max : ""}
@@ -945,11 +940,9 @@ export default function Activity() {
                             }
                           >
                             <div className="flex items-center gap-2">
-                              <div className="h-2 w-2 rounded-full bg-[#f59e0b]/90 shadow-[0_0_0_3px_#f59e0b18] dark:bg-[#fbbf24]/90 dark:shadow-[0_0_0_3px_#fbbf2418]" />
+                              <div className="h-2 w-2 rounded-full bg-(--warning-text)/90 shadow-[0_0_0_3px_var(--warning-text)/18]" />
                               <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-1.5">
-                                <span className="font-bold text-(--page-text)">
-                                  {r.title}
-                                </span>
+                                <span className="font-bold text-(--page-text)">{r.title}</span>
                                 <span className="text-sm text-[color-mix(in_srgb,var(--secondary-text)_55%,transparent)]">
                                   {[formatDate(r.date), r.role].filter(Boolean).join(separator)}
                                 </span>
@@ -988,7 +981,7 @@ export default function Activity() {
                 <ProgressBar
                   value={Math.max(0, Math.min(100, attendance?.percent ?? 0))}
                   className="h-2.5 rounded-lg"
-                  barClassName="bg-[#10b981] dark:bg-[#34d399] rounded-lg"
+                  barClassName="bg-(--success-text) rounded-lg"
                 />
                 <div className="space-y-2">
                   {(attendance?.recent ?? []).map((r, i) => (
@@ -1052,9 +1045,7 @@ export default function Activity() {
                 <div className="space-y-2">
                   {(participation?.recent ?? []).map((r, i) => (
                     <div key={participationItemKey(r, i)} className="space-y-0.5">
-                      <p className="text-sm font-semibold text-(--page-text)">
-                        {r.title}
-                      </p>
+                      <p className="text-sm font-semibold text-(--page-text)">{r.title}</p>
                       <p className="text-xs text-[color-mix(in_srgb,var(--secondary-text)_65%,transparent)]">
                         {[formatDate(r.date), r.role].filter(Boolean).join(separator)}
                       </p>

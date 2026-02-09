@@ -18,7 +18,7 @@ export function ProfileCardSkeleton({
 }: ProfileCardSkeletonProps) {
   return (
     <div
-      className={`rounded-ue-xl border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] overflow-hidden ${className}`}
+      className={`rounded-ue-xl border border-white/12 bg-input-mix overflow-hidden ${className}`}
       aria-busy="true"
       aria-label="Loading profile"
     >
@@ -38,7 +38,7 @@ export function ProfileCardSkeleton({
             width={80}
             height={80}
             rounded="50%"
-            className="border-4 border-[color:var(--card-bg)] sm:h-24 sm:w-24"
+            className="border-4 border-(--bg-surface) sm:h-24 sm:w-24"
             ariaLabel="Loading avatar"
           />
         </div>

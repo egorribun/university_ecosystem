@@ -104,7 +104,8 @@ const getTimeStatus = (
   return { status: "upcoming" }
 }
 
-const qrKey = (eventId: string, user: any) => `qr:${eventId}:${user?.id ?? user?.user_id ?? "me"}`
+const qrKey = (eventId: string, user: { id?: string | number; user_id?: string | number } | null) =>
+  `qr:${eventId}:${user?.id ?? user?.user_id ?? "me"}`
 const qrOpenKey = (eventId: string) => `qr:open:${eventId}`
 const regKey = (eventId: string, userId: number | string | undefined) =>
   `event:reg:${eventId}:${userId ?? "anon"}`
@@ -129,8 +130,8 @@ function Snackbar({
   if (!open || !message) return null
 
   return (
-    <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 animate-in slide-in-from-bottom-4 fade-in">
-      <div className="rounded-[1.25rem] border border-[color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color-mix(in_srgb,var(--card-bg)_98%,white_2%)] px-5 py-3.5 text-sm font-semibold text-[var(--page-text)] shadow-[0_8px_24px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.08)] backdrop-blur-md">
+    <div className="fixed bottom-6 left-1/2 z-overlay -translate-x-1/2 animate-in slide-in-from-bottom-4 fade-in">
+      <div className="rounded-ue-lg border border-glass-border-subtle bg-glass-elevated px-5 py-3.5 text-sm font-semibold text-primary-text shadow-premium backdrop-blur-md">
         {message}
       </div>
     </div>
@@ -203,7 +204,7 @@ const EventCardComponent: FC<EventCardProps> = ({
   const imageInputRef = useRef<HTMLInputElement>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 
-  const [snack, setSnack] = useState<string>("")
+  const [snackbar, setSnackbar] = useState<string>("")
   const spotlight = useSpotlight()
 
   useEffect(() => {
@@ -418,7 +419,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       setRegistered(true)
       setQr(code)
       setCount((c) => c + 1)
-      setSnack(t("events:card.messages.registerSuccess"))
+      setSnackbar(t("events:card.messages.registerSuccess"))
       try {
         localStorage.setItem(qrKey(id, user), code)
       } catch {}
@@ -433,7 +434,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       if (shouldResync) {
         const restored = await syncRegistrationState()
         if (restored === "registered") {
-          setSnack(t("events:card.messages.registerSuccess"))
+          setSnackbar(t("events:card.messages.registerSuccess"))
           return
         }
       }
@@ -442,7 +443,7 @@ const EventCardComponent: FC<EventCardProps> = ({
         (isAxiosError(error) && typeof error.response?.data?.detail === "string"
           ? error.response?.data?.detail
           : null) || t("events:card.messages.registerFailure")
-      setSnack(detail)
+      setSnackbar(detail)
     } finally {
       setLoading(false)
     }
@@ -456,7 +457,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       setRegistered(false)
       setQr(undefined)
       setCount((c) => Math.max(0, c - 1))
-      setSnack(t("events:card.messages.unregisterSuccess"))
+      setSnackbar(t("events:card.messages.unregisterSuccess"))
       try {
         localStorage.removeItem(qrKey(id, user))
       } catch {}
@@ -471,7 +472,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       if (shouldResync) {
         const restored = await syncRegistrationState()
         if (restored === "unregistered") {
-          setSnack(t("events:card.messages.unregisterSuccess"))
+          setSnackbar(t("events:card.messages.unregisterSuccess"))
           return
         }
       }
@@ -480,7 +481,7 @@ const EventCardComponent: FC<EventCardProps> = ({
         (isAxiosError(error) && typeof error.response?.data?.detail === "string"
           ? error.response?.data?.detail
           : null) || t("events:card.messages.unregisterFailure")
-      setSnack(detail)
+      setSnackbar(detail)
     } finally {
       setLoading(false)
     }
@@ -493,10 +494,10 @@ const EventCardComponent: FC<EventCardProps> = ({
       try {
         localStorage.removeItem(qrKey(id, user))
       } catch {}
-      setSnack(t("events:card.messages.deleteSuccess"))
+      setSnackbar(t("events:card.messages.deleteSuccess"))
       onChange && onChange()
     } catch {
-      setSnack(t("events:card.messages.deleteFailure"))
+      setSnackbar(t("events:card.messages.deleteFailure"))
     } finally {
       setLoading(false)
       setConfirmDeleteOpen(false)
@@ -529,9 +530,9 @@ const EventCardComponent: FC<EventCardProps> = ({
       setEditData((prev) => ({ ...prev, image_url: imgUrl }))
       closeEditDialog()
       onChange && onChange()
-      setSnack(t("events:card.messages.saveSuccess"))
+      setSnackbar(t("events:card.messages.saveSuccess"))
     } catch {
-      setSnack(t("events:card.messages.saveFailure"))
+      setSnackbar(t("events:card.messages.saveFailure"))
     } finally {
       setLoading(false)
     }
@@ -577,7 +578,7 @@ const EventCardComponent: FC<EventCardProps> = ({
     >
       <div
         className={cn(
-          "card-glass group relative flex flex-col transition-shadow duration-300 ease-out w-full p-5 transform-gpu will-change-transform",
+          "card-glass group relative flex flex-col transition-shadow duration-300 ease-out w-full p-fluid-card-p transform-gpu will-change-transform rounded-fluid-lg bg-glass-elevated border-glass-border-subtle shadow-premium",
           hoveringDisabled
             ? "cursor-default"
             : "cursor-pointer hover:shadow-glass-strong active:scale-[0.985]"
@@ -601,20 +602,21 @@ const EventCardComponent: FC<EventCardProps> = ({
         {/* Admin menu */}
         {user && (user.role === "admin" || user.role === "teacher") && (
           <>
-            <button
-              type="button"
+            <Button
+              variant="glass"
+              size="sm"
               aria-label={t("events:card.aria.actions")}
               aria-controls={menuAnchor ? menuId : undefined}
               aria-haspopup="true"
-              aria-expanded={Boolean(menuAnchor) ? "true" : undefined}
-              className="absolute top-2.5 right-2.5 z-2 rounded-full bg-white/82 p-1.5 text-(--page-text) shadow-surface transition-colors hover:bg-white"
+              aria-expanded={Boolean(menuAnchor)}
+              className="absolute top-small right-small z-2 min-h-0! p-2! rounded-full"
               onClick={(e) => {
                 e.stopPropagation()
-                setMenuAnchor(e.currentTarget)
+                setMenuAnchor(e.currentTarget as HTMLElement)
               }}
             >
               <MoreVertIcon size={20} />
-            </button>
+            </Button>
             {menuAnchor && (
               <div
                 ref={menuRef}
@@ -718,9 +720,12 @@ const EventCardComponent: FC<EventCardProps> = ({
         {/* Date */}
         <div className="mb-2 flex items-center gap-2 group/date">
           <Tooltip content={t("events:form.dates")}>
-            <EventIcon size={20} className="text-(--nav-link) transition-transform group-hover/date:scale-110" />
+            <EventIcon
+              size={20}
+              className="text-brand transition-transform group-hover/date:scale-110"
+            />
           </Tooltip>
-          <span className="text-base text-(--secondary-text)">
+          <span className="text-base text-secondary-text">
             {formatLocalDateTime(starts_at)} — {formatLocalDateTime(ends_at)}
           </span>
         </div>
@@ -728,7 +733,10 @@ const EventCardComponent: FC<EventCardProps> = ({
         {/* Location */}
         <div className="mb-2 flex items-center gap-2 group/loc">
           <Tooltip content={t("events:form.location")}>
-            <PlaceIcon size={20} className="text-(--nav-link) transition-transform group-hover/loc:scale-110" />
+            <PlaceIcon
+              size={20}
+              className="text-(--nav-link) transition-transform group-hover/loc:scale-110"
+            />
           </Tooltip>
           <span className="text-base text-(--secondary-text)">{location}</span>
         </div>
@@ -737,15 +745,16 @@ const EventCardComponent: FC<EventCardProps> = ({
         <div className="my-3 h-px bg-linear-to-r from-transparent via-[color-mix(in_srgb,var(--nav-link)_20%,transparent_80%)] to-transparent" />
 
         {/* Description */}
-        <p className="mb-4 line-clamp-3 text-base text-(--page-text) grow-0">
-          {description}
-        </p>
+        <p className="mb-4 line-clamp-3 text-base text-(--page-text) grow-0">{description}</p>
 
         <div className="mt-auto">
           {/* Participants */}
           <div className="mb-4 flex items-center gap-2 group/part">
             <Tooltip content={t("events:form.participants")}>
-              <PeopleAltIcon size={19} className="text-(--nav-link) transition-transform group-hover/part:scale-110" />
+              <PeopleAltIcon
+                size={19}
+                className="text-(--nav-link) transition-transform group-hover/part:scale-110"
+              />
             </Tooltip>
             <span className="text-[15px] text-(--page-text)">
               {t("events:card.participants", { count })}
@@ -785,18 +794,17 @@ const EventCardComponent: FC<EventCardProps> = ({
               {qr && (
                 <>
                   <Tooltip content={t("events:card.actions.openQr")}>
-                    <button
-                      type="button"
+                    <Button
+                      variant="gradient"
+                      size="lg"
                       onClick={(e) => {
                         e.stopPropagation()
                         setQrOpen(true)
                       }}
-                      className="relative flex items-center justify-center p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-linear-to-br from-(--nav-link) to-[color-mix(in_srgb,var(--nav-link)_80%,#3b82f6_20%)] hover:from-[color-mix(in_srgb,var(--nav-link)_90%,white_10%)] hover:to-[color-mix(in_srgb,var(--nav-link)_70%,#3b82f6_30%)] border border-white/20 shadow-[0_4px_16px_-4px_color-mix(in_srgb,var(--nav-link)_50%,transparent_50%),inset_0_1px_0_rgba(255,255,255,0.15)] transition-all duration-300 hover:scale-105 hover:shadow-[0_8px_24px_-4px_color-mix(in_srgb,var(--nav-link)_60%,transparent_40%)] active:scale-95 group/qr overflow-hidden"
+                      className="p-4! sm:p-5! rounded-fluid-lg shadow-premium-lift group/qr"
                     >
-                      {/* Shimmer effect */}
-                      <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover/qr:translate-x-full transition-transform duration-700 ease-out" />
-                      <QrCodeIcon className="w-7 h-7 sm:w-8 sm:h-8 text-white drop-shadow-sm relative z-10" />
-                    </button>
+                      <QrCodeIcon className="w-8 h-8 text-white drop-shadow-sm relative z-10" />
+                    </Button>
                   </Tooltip>
 
                   <EventQrDialog
@@ -856,12 +864,10 @@ const EventCardComponent: FC<EventCardProps> = ({
           }
           footerClassName="flex-col-reverse gap-3 sm:flex-row"
         >
-          <p className="text-(--page-text)">
-            {t("events:card.dialogs.delete.description")}
-          </p>
+          <p className="text-(--page-text)">{t("events:card.dialogs.delete.description")}</p>
         </Dialog>
 
-        <Snackbar open={!!snack} message={snack} onClose={() => setSnack("")} />
+        <Snackbar open={!!snackbar} message={snackbar} onClose={() => setSnackbar("")} />
       </div>
     </motion.div>
   )

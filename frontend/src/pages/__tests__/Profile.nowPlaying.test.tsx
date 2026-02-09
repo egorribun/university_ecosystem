@@ -1,7 +1,7 @@
 import { ThemeProvider } from "@/contexts/ThemeContext"
 import { render, act } from "@testing-library/react"
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
-import { NowPlayingCard } from "@/pages/Profile"
+import { NowPlayingCard } from "@/components/profile"
 import type { NowPlaying } from "@/types/spotify"
 import i18n from "@/i18n/config"
 

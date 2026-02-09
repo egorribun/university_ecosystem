@@ -121,15 +121,12 @@ export default function NotificationsBell() {
         whileTap={{ scale: 0.95 }}
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          "relative flex items-center justify-center rounded-xl transition-all duration-300 outline-none group",
-          "w-[clamp(32px,7vw,40px)] h-[clamp(32px,7vw,40px)] border border-transparent",
+          "relative flex items-center justify-center p-2 rounded-xl transition-all",
           isOpen
-            ? "bg-[var(--nav-link-active-bg)] border-[var(--glass-border)] shadow-sm"
-            : "hover:bg-[var(--glass-tint-2)] hover:border-[var(--glass-border)]"
+            ? "bg-(--nav-link-active-bg) border-(--glass-border) shadow-sm"
+            : "hover:bg-(--glass-tint-2) hover:border-(--glass-border)",
+          isOpen ? "text-(--nav-link)" : "text-(--nav-text)"
         )}
-        style={{
-          color: isOpen ? "var(--nav-link)" : "var(--nav-text)",
-        }}
         aria-label={t("system:notificationsBell.open")}
       >
         <Bell
@@ -142,7 +139,7 @@ export default function NotificationsBell() {
         {unreadCount ? (
           <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500 border-2 border-white dark:border-[#0F172A]"></span>
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-(--error-text) border-2 border-(--bg-surface) dark:border-(--bg-page)"></span>
           </span>
         ) : null}
       </motion.button>
@@ -156,7 +153,7 @@ export default function NotificationsBell() {
               exit="exit"
               variants={listVariants}
               className={cn(
-                "fixed z-[9999] origin-top-right",
+                "fixed z-popover origin-top-right",
                 // Mobile styles: we handle translation in framer motion to avoid conflict
                 "max-sm:left-1/2 max-sm:w-[calc(100vw-2rem)]",
                 // Desktop styles

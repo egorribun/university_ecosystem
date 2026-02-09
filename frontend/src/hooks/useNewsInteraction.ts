@@ -43,7 +43,7 @@ function openDatabase(): Promise<IDBDatabase> {
   })
 }
 
-async function queueInteraction(url: string, payload: any, method: string = "POST") {
+async function queueInteraction(url: string, payload: unknown, method = "POST") {
   const db = await openDatabase()
   const tx = db.transaction(NEWS_INTERACTION_STORE, "readwrite")
   const store = tx.objectStore(NEWS_INTERACTION_STORE)
@@ -95,10 +95,13 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
     mutationFn: async () => {
       try {
         await api.post(`/news/${newsId}/like`)
-      } catch (error: any) {
-        if (error?.response?.status === 401) throw error
+      } catch (error: unknown) {
+        if (typeof error === "object" && error !== null && "response" in error) {
+          const axiosError = error as { response?: { status?: number } }
+          if (axiosError.response?.status === 401) throw error
+        }
 
-        if (!navigator.onLine || error.message === "Network Error") {
+        if (!navigator.onLine || (error instanceof Error && error.message === "Network Error")) {
           await queueInteraction(`/api/v1/news/${newsId}/like`, {})
           return { isOfflineStore: true }
         }
@@ -132,11 +135,14 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
       try {
         const res = await api.post(`/news/${newsId}/comment`, { content })
         return res.data
-      } catch (error: any) {
+      } catch (error: unknown) {
         // If it's a 401, don't queue, let the interceptor handle it
-        if (error?.response?.status === 401) throw error
+        if (typeof error === "object" && error !== null && "response" in error) {
+          const axiosError = error as { response?: { status?: number } }
+          if (axiosError.response?.status === 401) throw error
+        }
 
-        if (!navigator.onLine || error.message === "Network Error") {
+        if (!navigator.onLine || (error instanceof Error && error.message === "Network Error")) {
           await queueInteraction(`/api/v1/news/${newsId}/comment`, { content })
           return { isOfflineStore: true }
         }

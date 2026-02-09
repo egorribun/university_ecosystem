@@ -45,21 +45,19 @@ afterAll(() => server.close())
 if (!(globalThis as any).TextEncoder) (globalThis as any).TextEncoder = TextEncoder
 if (!(globalThis as any).TextDecoder) (globalThis as any).TextDecoder = TextDecoder as any
 if (!(globalThis as any).crypto) (globalThis as any).crypto = webcrypto
-if (!("matchMedia" in window)) {
-  Object.defineProperty(window, "matchMedia", {
-    writable: true,
-    value: (query: string) => ({
-      matches: false,
-      media: query,
-      onchange: null,
-      addListener: () => {},
-      removeListener: () => {},
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      dispatchEvent: () => false,
-    }),
-  })
-}
+Object.defineProperty(window, "matchMedia", {
+  writable: true,
+  value: vi.fn().mockImplementation((query) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(), // deprecated
+    removeListener: vi.fn(), // deprecated
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })),
+})
 
 if (!("IntersectionObserver" in window)) {
   Object.defineProperty(window, "IntersectionObserver", {

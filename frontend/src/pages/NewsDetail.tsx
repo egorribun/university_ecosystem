@@ -23,6 +23,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Snackbar,
 } from "@/components/settings"
 import { useNewsInteraction } from "@/hooks/useNewsInteraction"
 import dayjs from "dayjs"
@@ -30,6 +31,7 @@ import utc from "dayjs/plugin/utc"
 import timezone from "dayjs/plugin/timezone"
 import { deleteNews, fetchNewsItem, updateNews, uploadNewsImage, type NewsItem } from "@/api/news"
 import Layout from "@/components/Layout"
+import PageFadeIn from "@/components/PageFadeIn"
 import SmartImage from "@/components/SmartImage"
 import { Button } from "@/components/ui"
 import { useAuth } from "@/contexts/AuthContext"
@@ -42,10 +44,10 @@ dayjs.extend(utc)
 dayjs.extend(timezone)
 
 const inputClass =
-    "w-full rounded-xl border border-glass-border bg-surface/40 px-4 py-2.5 text-[0.98rem] text-primary-text shadow-sm focus:border-brand focus:outline-none transition placeholder:text-secondary-text/50"
-const textareaClass = cn(inputClass, "min-h-[160px] resize-y leading-relaxed")
+  "w-full rounded-xl border border-(--glass-border) bg-(--bg-surface)/40 px-4 py-2.5 text-base text-(--primary-text) shadow-sm focus:border-(--brand-main) focus:outline-none transition placeholder:text-(--secondary-text)/50"
+const textareaClass = cn(inputClass, "min-h-40 resize-y leading-relaxed")
 const iconButtonClass =
-    "inline-flex h-10 w-10 items-center justify-center rounded-full border border-glass-border bg-surface/80 text-secondary-text shadow-sm transition hover:bg-surface hover:text-primary-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+  "inline-flex h-10 w-10 items-center justify-center rounded-full border border-(--glass-border) bg-(--bg-surface)/80 text-(--secondary-text) shadow-sm transition hover:bg-(--bg-surface) hover:text-(--primary-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--brand-main)"
 
 type FieldProps = {
   label: ReactNode
@@ -59,10 +61,10 @@ function Field({ label, htmlFor, children, required = false }: FieldProps) {
     <div className="space-y-2">
       <label
         htmlFor={htmlFor}
-        className="text-sm font-semibold tracking-wide text-secondary-text/80"
+        className="text-sm font-semibold tracking-wide text-(--secondary-text)/80"
       >
         {label}
-        {required ? <span className="ml-1 text-red-500">*</span> : null}
+        {required ? <span className="ml-1 text-(--error-text)">*</span> : null}
       </label>
       {children}
     </div>
@@ -104,7 +106,7 @@ export default function NewsDetail() {
   const [deleting, setDeleting] = useState(false)
   const [newImage, setNewImage] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const [snack, setSnack] = useState("")
+  const [snackbar, setSnackbar] = useState("")
   const [sharing, setSharing] = useState(false)
   const [shareDialogOpen, setShareDialogOpen] = useState(false)
   const [copyingLink, setCopyingLink] = useState(false)
@@ -146,7 +148,7 @@ export default function NewsDetail() {
   const heroFrame = useMemo(() => {
     if (!heroRatio || !Number.isFinite(heroRatio) || heroRatio <= 0) {
       return {
-        container: "min-h-[320px] h-[clamp(320px,56vh,520px)] max-h-[520px]",
+        container: "h-[50vh] min-h-80 max-h-[520px]",
         image: "object-cover object-[50%_40%]",
         backdrop: "bg-black/20",
       }
@@ -156,7 +158,7 @@ export default function NewsDetail() {
 
     if (ratio < 0.82) {
       return {
-        container: "min-h-[440px] max-h-[82vh] aspect-[3/4]",
+        container: "min-h-[440px] max-h-[82vh] aspect-3/4",
         image: "object-contain object-center",
         backdrop: "bg-black/25",
       }
@@ -164,7 +166,7 @@ export default function NewsDetail() {
 
     if (ratio < 1.18) {
       return {
-        container: "min-h-[360px] max-h-[76vh] aspect-[5/4]",
+        container: "min-h-[360px] max-h-[76vh] aspect-5/4",
         image: "object-cover object-[50%_38%]",
         backdrop: "bg-surface/20",
       }
@@ -172,7 +174,7 @@ export default function NewsDetail() {
 
     if (ratio > 2.6) {
       return {
-        container: "min-h-[260px] max-h-[60vh] aspect-[21/9]",
+        container: "min-h-[260px] max-h-[60vh] aspect-21/9",
         image: "object-cover object-[50%_46%]",
         backdrop: "bg-black/20",
       }
@@ -200,10 +202,10 @@ export default function NewsDetail() {
   }, [previewUrl])
 
   useEffect(() => {
-    if (!snack) return
-    const timeout = window.setTimeout(() => setSnack(""), 2400)
+    if (!snackbar) return
+    const timeout = window.setTimeout(() => setSnackbar(""), 2400)
     return () => window.clearTimeout(timeout)
-  }, [snack])
+  }, [snackbar])
 
   useEffect(() => {
     if (shareDialogOpen) return
@@ -250,8 +252,8 @@ export default function NewsDetail() {
     setEditOpen(false)
   }
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
+  const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
     if (!file) return
     if (previewUrl) URL.revokeObjectURL(previewUrl)
     setNewImage(file)
@@ -277,11 +279,11 @@ export default function NewsDetail() {
       const { data } = await updateNews(query.data.id, payload)
       queryClient.setQueryData(["news", id, language], data)
       await queryClient.invalidateQueries({ queryKey: ["news", "list"] })
-      setSnack(t("news:notifications.updated"))
+      setSnackbar(t("news:notifications.updated"))
       closeEdit()
     } catch (error) {
       console.error(error)
-      setSnack(t("news:notifications.savedError"))
+      setSnackbar(t("news:notifications.savedError"))
     } finally {
       setSaving(false)
     }
@@ -292,14 +294,14 @@ export default function NewsDetail() {
     setDeleting(true)
     try {
       await deleteNews(query.data.id)
-      setSnack(t("news:notifications.deleted"))
+      setSnackbar(t("news:notifications.deleted"))
       queryClient.removeQueries({ queryKey: ["news", id] })
       await queryClient.invalidateQueries({ queryKey: ["news", "list"] })
       if (window.history.length > 1) navigate(-1)
       else navigate("/news")
     } catch (error) {
       console.error(error)
-      setSnack(t("news:notifications.deleteError"))
+      setSnackbar(t("news:notifications.deleteError"))
     } finally {
       setDeleting(false)
       setConfirmDeleteOpen(false)
@@ -414,7 +416,7 @@ export default function NewsDetail() {
       setSharing(true)
       if (canUseNativeShare) {
         await navigator.share(shareData)
-        setSnack(t("news:notifications.shareSuccess"))
+        setSnackbar(t("news:notifications.shareSuccess"))
       } else {
         setShareDialogOpen(true)
       }
@@ -422,7 +424,7 @@ export default function NewsDetail() {
       const message = (error as DOMException | Error)?.name ?? ""
       if (message === "AbortError") return
       console.error(error)
-      setSnack(t("news:notifications.shareError"))
+      setSnackbar(t("news:notifications.shareError"))
     } finally {
       setSharing(false)
     }
@@ -448,9 +450,9 @@ export default function NewsDetail() {
       }
 
       setCopiedLink(true)
-      const msg = t("news:notifications.linkCopied")
+      const message = t("news:notifications.linkCopied")
 
-      setSnack(msg)
+      setSnackbar(message)
       if (copyTimeoutRef.current) {
         window.clearTimeout(copyTimeoutRef.current)
       }
@@ -460,25 +462,25 @@ export default function NewsDetail() {
       }, 2200)
     } catch (error) {
       console.error(error)
-      setSnack(t("news:notifications.shareError"))
+      setSnackbar(t("news:notifications.shareError"))
     } finally {
       setCopyingLink(false)
     }
   }, [copyingLink, shareUrl, t])
 
-    return (
-      <Layout>
-        <div className="flex min-h-[60vh] items-center justify-center">
-          <span className="h-12 w-12 animate-spin rounded-full border-2 border-white/30 border-t-brand" />
-        </div>
-      </Layout>
-    )
+  return (
+    <Layout>
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <span className="h-12 w-12 animate-spin rounded-full border-2 border-white/30 border-t-(--brand-main)" />
+      </div>
+    </Layout>
+  )
 
   if (query.isError || !query.data)
     return (
       <Layout>
         <div className="px-4 py-10">
-          <p className="text-lg font-semibold text-[#f87171]">{t("news:states.loadError")}</p>
+          <p className="text-lg font-semibold text-(--error-text)">{t("news:states.loadError")}</p>
         </div>
       </Layout>
     )
@@ -489,8 +491,8 @@ export default function NewsDetail() {
         <Button
           variant="outline"
           onClick={handleBack}
-          leadingIcon={<ArrowBackIcon className="text-[1.1rem]" />}
-          className="w-fit justify-start border-white/20 text-[clamp(0.95rem,2vw,1.1rem)]"
+          leadingIcon={<ArrowBackIcon className="text-lg" />}
+          className="w-fit justify-start border-white/20 text-base"
         >
           {t("common:buttons.back")}
         </Button>
@@ -502,19 +504,19 @@ export default function NewsDetail() {
             </h1>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-              <div className="flex flex-wrap items-center gap-2 text-[0.9rem] text-secondary-text">
+              <div className="flex flex-wrap items-center gap-2 text-sm text-(--secondary-text)">
                 {createdAt ? (
-                  <span className="inline-flex items-center gap-2 rounded-full border border-glass-border bg-surface/10 px-3 py-1 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-secondary-text">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-(--glass-border) bg-(--bg-surface)/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-(--secondary-text)">
                     <span>{t("news:meta.published")}</span>
                     <span aria-hidden>•</span>
-                    <time dateTime={createdAtIso} className="text-primary-text">
+                    <time dateTime={createdAtIso} className="text-(--primary-text)">
                       {createdAtLabel}
                     </time>
                   </span>
                 ) : null}
 
                 {readingTimeMinutes !== null && (
-                  <span className="inline-flex items-center gap-2 rounded-full border border-glass-border/20 bg-surface/10 px-3 py-1 text-[0.78rem] font-medium tracking-wide text-primary-text">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-(--glass-border)/20 bg-(--bg-surface)/10 px-3 py-1 text-xs font-medium tracking-wide text-(--primary-text)">
                     {t("news:meta.readingTime", { count: readingTimeMinutes ?? undefined })}
                   </span>
                 )}
@@ -539,12 +541,17 @@ export default function NewsDetail() {
                   onClick={() => toggleLike()}
                   leadingIcon={
                     <FavoriteIcon
-                      className={cn("h-4 w-4", isLiked ? "fill-rose-500 text-rose-500" : "text-secondary-text")}
+                      className={cn(
+                        "h-4 w-4",
+                        isLiked ? "fill-rose-500 text-rose-500" : "text-(--secondary-text)"
+                      )}
                     />
                   }
                   className={cn(
                     "w-full basis-full sm:w-auto sm:basis-auto transition-colors duration-200",
-                    isLiked ? "border-rose-200/30 bg-rose-500/10" : "border-glass-border/30 bg-surface/40"
+                    isLiked
+                      ? "border-rose-200/30 bg-rose-500/10"
+                      : "border-(--glass-border)/30 bg-(--bg-surface)/40"
                   )}
                 >
                   <span className="tabular-nums">{likesCount}</span>
@@ -566,7 +573,10 @@ export default function NewsDetail() {
                 <button
                   type="button"
                   onClick={() => setConfirmDeleteOpen(true)}
-                  className={cn(iconButtonClass, "text-red-500 hover:text-red-400")}
+                  className={cn(
+                    iconButtonClass,
+                    "text-(--error-text) hover:text-(--error-text)/80"
+                  )}
                   aria-label={t("news:aria.deleteNews") ?? ""}
                   disabled={deleting || saving}
                 >
@@ -576,7 +586,7 @@ export default function NewsDetail() {
             ) : null}
           </header>
 
-          <figure className="w-full max-w-5xl self-start overflow-hidden rounded-3xl border border-glass-border bg-surface/40 shadow-glass backdrop-blur-md">
+          <figure className="w-full max-w-5xl self-start overflow-hidden rounded-3xl border border-(--glass-border) bg-(--bg-surface)/40 shadow-glass backdrop-blur-md">
             <div
               className={cn(
                 "flex w-full items-center justify-center overflow-hidden",
@@ -596,13 +606,13 @@ export default function NewsDetail() {
               />
             </div>
             {displayTitle ? null : (
-              <figcaption className="border-t border-glass-border bg-surface/10 px-5 py-3 text-sm font-medium text-secondary-text">
+              <figcaption className="border-t border-(--glass-border) bg-(--bg-surface)/10 px-5 py-3 text-sm font-medium text-(--secondary-text)">
                 {t("news:alt.heroFallback")}
               </figcaption>
             )}
           </figure>
 
-          <section className="max-w-4xl self-start space-y-6 text-[1.05rem] leading-8 text-secondary-text">
+          <section className="max-w-4xl self-start space-y-6 text-lg leading-8 text-(--secondary-text)">
             {content?.split(/\n{2,}/).map((chunk: string, index: number) => {
               const text = chunk.trim()
 
@@ -637,11 +647,11 @@ export default function NewsDetail() {
                     className="flex flex-col gap-2 p-4 rounded-2xl bg-surface/20 border border-glass-border/30 shadow-sm"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-sm text-primary-text">
+                      <span className="font-bold text-sm text-(--primary-text)">
                         {comment.user_name}
                       </span>
                       <div className="flex items-center gap-3">
-                        <time className="text-[0.7rem] text-secondary-text uppercase font-semibold">
+                        <time className="text-xs text-(--secondary-text) uppercase font-semibold">
                           {getMoscowDate(comment.created_at)}
                         </time>
                         {(user?.id === comment.user_id || user?.role === "admin") && (
@@ -683,8 +693,8 @@ export default function NewsDetail() {
                       <div className="space-y-3 mt-1">
                         <textarea
                           value={editingCommentText}
-                          onChange={(e) => setEditingCommentText(e.target.value)}
-                          className={cn(textareaClass, "min-h-[80px] text-sm")}
+                          onChange={(event) => setEditingCommentText(event.target.value)}
+                          className={cn(textareaClass, "min-h-20 text-sm")}
                           autoFocus
                         />
                         <div className="flex justify-end gap-2">
@@ -710,7 +720,7 @@ export default function NewsDetail() {
                         </div>
                       </div>
                     ) : (
-                      <p className="text-[0.95rem] leading-relaxed whitespace-pre-wrap">
+                      <p className="text-base leading-relaxed whitespace-pre-wrap">
                         {comment.content}
                       </p>
                     )}
@@ -723,11 +733,11 @@ export default function NewsDetail() {
               <div className="space-y-4">
                 <textarea
                   value={commentText}
-                  onChange={(e) => setCommentText(e.target.value)}
+                  onChange={(event) => setCommentText(event.target.value)}
                   placeholder={t("news:form.commentPlaceholder", {
                     defaultValue: "Напишите что-нибудь...",
                   })}
-                  className={cn(textareaClass, "min-h-[100px]")}
+                  className={cn(textareaClass, "min-h-24")}
                 />
                 <div className="flex justify-end">
                   <Button
@@ -758,7 +768,7 @@ export default function NewsDetail() {
       >
         <DialogTitle>{t("news:shareDialog.title")}</DialogTitle>
         <DialogContent className="space-y-6 pt-4">
-          <p className="text-[0.95rem] leading-relaxed text-secondary-text">
+          <p className="text-base leading-relaxed text-(--secondary-text)">
             {t("news:shareDialog.description")}
           </p>
 
@@ -770,19 +780,27 @@ export default function NewsDetail() {
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => setShareDialogOpen(false)}
-                className="group flex items-center gap-3 rounded-2xl border border-glass-border/20 bg-surface/40 px-4 py-3 transition hover:border-glass-border/40 hover:bg-surface/60"
+                className="group flex items-center gap-3 rounded-2xl border border-(--glass-border)/20 bg-(--bg-surface)/40 px-4 py-3 transition hover:border-(--glass-border)/40 hover:bg-(--bg-surface)/60"
               >
                 <span
                   className={cn(
-                    "inline-flex h-10 w-10 items-center justify-center rounded-full bg-surface/80 text-[1.2rem] shadow-sm transition group-hover:scale-105",
-                    option.id === "telegram" ? "text-brand" : option.id === "whatsapp" ? "text-green-500" : "text-brand/80"
+                    "inline-flex h-10 w-10 items-center justify-center rounded-full bg-(--bg-surface)/80 text-xl shadow-sm transition group-hover:scale-105",
+                    option.id === "telegram"
+                      ? "text-(--brand-main)"
+                      : option.id === "whatsapp"
+                        ? "text-green-500"
+                        : "text-(--brand-main)/80"
                   )}
                 >
-                  {option.id === "telegram" ? <TelegramIcon className="h-5 w-5" /> : option.id === "whatsapp" ? <WhatsAppIcon className="h-5 w-5" /> : <AlternateEmailIcon className="h-5 w-5" />}
+                  {option.id === "telegram" ? (
+                    <TelegramIcon className="h-5 w-5" />
+                  ) : option.id === "whatsapp" ? (
+                    <WhatsAppIcon className="h-5 w-5" />
+                  ) : (
+                    <AlternateEmailIcon className="h-5 w-5" />
+                  )}
                 </span>
-                <span className="text-sm font-semibold text-primary-text">
-                  {option.label}
-                </span>
+                <span className="text-sm font-semibold text-(--primary-text)">{option.label}</span>
               </a>
             ))}
           </div>
@@ -796,20 +814,15 @@ export default function NewsDetail() {
             disabled={copyingLink}
             className="w-full sm:w-auto"
           >
-             <div className="flex items-center gap-2">
-               <ContentCopyIcon className="h-4 w-4" />
-               {copiedLink ? t("news:shareDialog.copySuccess") : t("news:shareDialog.copy")}
-             </div>
+            <div className="flex items-center gap-2">
+              <ContentCopyIcon className="h-4 w-4" />
+              {copiedLink ? t("news:shareDialog.copySuccess") : t("news:shareDialog.copy")}
+            </div>
           </Button>
         </DialogActions>
       </Dialog>
 
-      <Dialog
-        open={editOpen}
-        onClose={closeEdit}
-        maxWidth="lg"
-        fullWidth
-      >
+      <Dialog open={editOpen} onClose={closeEdit} maxWidth="lg" fullWidth>
         <DialogTitle>{t("news:dialogs.edit.title")}</DialogTitle>
         <DialogContent className="space-y-6 pt-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -879,8 +892,8 @@ export default function NewsDetail() {
                     disabled={saving}
                   >
                     <div className="flex items-center gap-2">
-                       <PhotoCamera className="h-4 w-4" />
-                       {newImage ? t("common:buttons.changePhoto") : t("common:buttons.uploadPhoto")}
+                      <PhotoCamera className="h-4 w-4" />
+                      {newImage ? t("common:buttons.changePhoto") : t("common:buttons.uploadPhoto")}
                     </div>
                     <input
                       type="file"
@@ -902,9 +915,14 @@ export default function NewsDetail() {
                   ) : null}
                 </div>
                 {previewUrl && (
-                   <Button variant="ghost" size="sm" onClick={resetPreview} className="text-rose-500">
-                     {t("common:buttons.reset")}
-                   </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={resetPreview}
+                    className="text-rose-500"
+                  >
+                    {t("common:buttons.reset")}
+                  </Button>
                 )}
               </div>
             </div>
@@ -918,7 +936,7 @@ export default function NewsDetail() {
             variant="solid"
             onClick={handleSave}
             disabled={!editData.title.trim() || !editData.content.trim() || saving}
-            className="w-full sm:w-auto min-w-[120px]"
+            className="w-full sm:w-auto min-w-32"
           >
             {saving ? t("common:buttons.saving") : t("common:buttons.save")}
           </Button>
@@ -933,9 +951,7 @@ export default function NewsDetail() {
       >
         <DialogTitle>{t("news:dialogs.delete.title")}</DialogTitle>
         <DialogContent className="space-y-4">
-          <p className="text-[0.98rem] text-secondary-text">
-            {t("news:dialogs.delete.description")}
-          </p>
+          <p className="text-md text-secondary-text">{t("news:dialogs.delete.description")}</p>
         </DialogContent>
         <DialogActions className="flex-col-reverse gap-3 sm:flex-row p-6">
           <Button
@@ -955,23 +971,25 @@ export default function NewsDetail() {
             className="w-full bg-linear-to-r from-red-600 to-red-700 text-white hover:from-red-700 hover:to-red-800 sm:w-auto"
           >
             <div className="flex items-center gap-2">
-               <DeleteIcon className="h-4 w-4" />
-               {deleting ? t("common:statuses.deleting") : t("common:buttons.delete")}
+              <DeleteIcon className="h-4 w-4" />
+              {deleting ? t("common:statuses.deleting") : t("common:buttons.delete")}
             </div>
           </Button>
         </DialogActions>
       </Dialog>
 
-      {snack && (
-         <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 animate-in fade-in slide-in-from-bottom-4">
-           <Alert
-             severity="success"
-             onClose={() => setSnack("")}
-             className="min-w-[300px] shadow-glass border-glass-border bg-surface/90"
-           >
-             {snack}
-           </Alert>
-         </div>
+      {snackbar && (
+        <Snackbar
+          open={!!snackbar}
+          autoHideDuration={2400}
+          onClose={() => setSnackbar("")}
+          anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+          className="z-50"
+        >
+          <Alert severity="success" variant="filled" onClose={() => setSnackbar("")}>
+            {snackbar}
+          </Alert>
+        </Snackbar>
       )}
     </Layout>
   )

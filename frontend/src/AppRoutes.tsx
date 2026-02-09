@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useLocation } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 
+import MainLayout from "./components/layout/MainLayout"
 import Navbar from "./components/Navbar"
 import Footer from "./components/Footer"
 import MobileBottomNav from "./components/MobileBottomNav"
@@ -74,23 +75,17 @@ export function AppRoutes() {
   // Global push subscription sync
   usePushSync(isAuth)
 
-  const hideNavbar =
-    location.pathname === "/login" ||
-    location.pathname === "/register" ||
-    location.pathname === "/forgot-password" ||
-    location.pathname.startsWith("/reset-password")
-
   useEffect(() => {
-    const sp = new URLSearchParams(location.search)
-    const s = sp.get("spotify")
-    if (!s) return
-    if (s === "connected") {
+    const searchParams = new URLSearchParams(location.search)
+    const spotifyStatus = searchParams.get("spotify")
+    if (!spotifyStatus) return
+    if (spotifyStatus === "connected") {
       void queryClient.invalidateQueries({ queryKey: currentUserQueryKey })
       void queryClient.invalidateQueries({ queryKey: nowPlayingQueryKey })
     }
-    sp.delete("spotify")
-    const next = location.pathname + (sp.toString() ? "?" + sp : "")
-    window.history.replaceState({}, "", next)
+    searchParams.delete("spotify")
+    const nextPath = location.pathname + (searchParams.toString() ? "?" + searchParams : "")
+    window.history.replaceState({}, "", nextPath)
   }, [location.pathname, location.search, queryClient])
 
   useEffect(() => {
@@ -120,8 +115,12 @@ export function AppRoutes() {
     prefetchRouteModules([...publicLoaders, ...sharedLoaders], { timeoutMs: 800 })
   }, [isAuth])
 
+  const isCompactPage = ["/login", "/register", "/forgot-password"].some(
+    (path) => location.pathname.startsWith(path) || location.pathname.startsWith("/reset-password")
+  )
+
   const wrap = (node: ReactElement) => {
-    if (reduceMotion || hideNavbar || isMessenger) return node
+    if (reduceMotion || isCompactPage || location.pathname.startsWith("/messenger")) return node
     return <PageTransition>{node}</PageTransition>
   }
 
@@ -144,8 +143,6 @@ export function AppRoutes() {
       {isLHCI ? "UNIVERSITY ECOSYSTEM LHCI RENDER" : "Loading..."}
     </div>
   )
-
-  const isMessenger = location.pathname.startsWith("/messenger")
 
   const routes = (
     <Routes location={location} key={location.pathname}>
@@ -185,38 +182,15 @@ export function AppRoutes() {
   )
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden">
-      {!hideNavbar && <Navbar />}
+    <MainLayout>
+      <Suspense fallback={fallbackShell}>
+        {reduceMotion || isCompactPage ? routes : <MotionPresence>{routes}</MotionPresence>}
+      </Suspense>
 
-      <div
-        id="main"
-        role="main"
-        tabIndex={-1}
-        className="flex-1 min-h-0 relative"
-      >
-        <div
-          className={cn(
-            "h-full",
-            isMessenger ? "overflow-hidden" : "overflow-y-auto custom-scrollbar"
-          )}
-        >
-          <Suspense fallback={fallbackShell}>
-            {reduceMotion || hideNavbar ? routes : <MotionPresence>{routes}</MotionPresence>}
-          </Suspense>
-
-          {!hideNavbar && !isMessenger && (
-            <>
-              <BackToTop />
-              <Footer />
-            </>
-          )}
-        </div>
-      </div>
-
-      {!hideNavbar && <MobileBottomNav />}
+      <BackToTop />
       <LivePushToasts />
       <OfflineIndicator />
-      {!hideNavbar && <InstallPrompt />}
-    </div>
+      <InstallPrompt />
+    </MainLayout>
   )
 }

@@ -49,10 +49,7 @@ interface ContactListProps {
 
 export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, onSelect }) => {
   return (
-    <div
-      className="flex-1 overflow-y-auto custom-scrollbar p-2 msg-sidebar-bg"
-      style={{ background: "var(--msg-sidebar-bg)" }}
-    >
+    <div className="flex-1 overflow-y-auto custom-scrollbar p-2 bg-(--msg-sidebar-bg)">
       <LayoutGroup>
         {contacts.map((contact) => (
           <motion.div
@@ -61,20 +58,22 @@ export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, 
             role="button"
             tabIndex={0}
             onClick={() => onSelect(contact.id)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault()
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault()
                 onSelect(contact.id)
               }
             }}
             whileHover={{ x: 4 }}
             whileTap={{ scale: 0.98 }}
             className={cn(
-               "msg-contact-item flex items-center gap-3 p-3 mb-1 rounded-2xl cursor-pointer transition-all duration-300",
-               selectedId === contact.id ? "active bg-brand text-white" : "hover:bg-surface-hover/10"
+              "msg-contact-item flex items-center gap-3 p-3 mb-1 rounded-2xl cursor-pointer transition-all duration-300",
+              selectedId === contact.id
+                ? "active bg-(--brand-main) text-white"
+                : "hover:bg-(--bg-surface-hover)/10"
             )}
           >
-            <div className="relative flex-shrink-0">
+            <div className="relative shrink-0">
               <SmartImage
                 srcRaw={contact.avatar || AVATAR_PLACEHOLDER_URL}
                 fallback={AVATAR_PLACEHOLDER_URL}
@@ -82,14 +81,14 @@ export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, 
                 className="w-12 h-12 rounded-full object-cover shadow-sm"
               />
               {contact.online && (
-                <span className="msg-online-indicator absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white dark:border-[#0F172A]"></span>
+                <span className="msg-online-indicator absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-(--success-bg) border-2 border-(--bg-surface) dark:border-(--page-bg)"></span>
               )}
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex justify-between items-center mb-0.5">
                 <h3
                   className={cn(
-                    "font-bold text-[15px] truncate sf-pro",
+                    "font-bold text-base truncate sf-pro",
                     selectedId === contact.id ? "text-white" : "text-primary-text"
                   )}
                 >
@@ -97,8 +96,10 @@ export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, 
                 </h3>
                 <span
                   className={cn(
-                    "text-[11px] flex-shrink-0 ml-2 font-medium",
-                    selectedId === contact.id ? "text-white/70" : "text-secondary-text opacity-60"
+                    "text-xs shrink-0 ml-2 font-medium uppercase tracking-tight",
+                    selectedId === contact.id
+                      ? "text-white/70"
+                      : "text-(--secondary-text) opacity-60"
                   )}
                 >
                   {contact.lastMessageTime}
@@ -107,8 +108,8 @@ export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, 
               <div className="flex items-center gap-2">
                 <p
                   className={cn(
-                    "text-[13px] truncate flex-1 leading-tight",
-                    selectedId === contact.id ? "text-white/80" : "text-secondary-text"
+                    "text-sm truncate flex-1 leading-tight",
+                    selectedId === contact.id ? "text-white/80" : "text-(--secondary-text)"
                   )}
                 >
                   {contact.lastMessage}
@@ -117,7 +118,7 @@ export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, 
                   <motion.span
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
-                    className="msg-unread-badge min-w-[18px] h-[18px] px-1 bg-red-500 text-white rounded-full text-[10px] font-black flex items-center justify-center shadow-lg shadow-red-500/20"
+                    className="msg-unread-badge min-w-5 h-5 px-1 bg-(--error-text) text-white rounded-full text-[0.6rem] font-black flex items-center justify-center shadow-lg shadow-(--error-text)/20"
                   >
                     {contact.unread > 99 ? "99+" : contact.unread}
                   </motion.span>
@@ -175,8 +176,8 @@ const ChatWindow: React.FC<ChatWindowProps> = memo(({ messages }) => {
         }}
       >
         {virtualizer.getVirtualItems().map((virtualRow) => {
-          const msg = messages[virtualRow.index]
-          if (!msg) return null
+          const message = messages[virtualRow.index]
+          if (!message) return null
 
           return (
             <div
@@ -193,62 +194,64 @@ const ChatWindow: React.FC<ChatWindowProps> = memo(({ messages }) => {
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
                 className={cn(
-                   "flex items-end gap-2 md:gap-3 py-1 w-full md:flex-row group",
-                   msg.isMe ? "flex-row-reverse justify-start md:justify-start" : "flex-row justify-start"
+                  "flex items-end gap-2 md:gap-3 py-1 w-full md:flex-row group",
+                  message.isMe
+                    ? "flex-row-reverse justify-start md:justify-start"
+                    : "flex-row justify-start"
                 )}
               >
-                <div className="flex-shrink-0 mb-1">
+                <div className="shrink-0 mb-1">
                   <SmartImage
-                    srcRaw={msg.senderAvatar || AVATAR_PLACEHOLDER_URL}
+                    srcRaw={message.senderAvatar || AVATAR_PLACEHOLDER_URL}
                     fallback={AVATAR_PLACEHOLDER_URL}
-                    alt={msg.senderName || ""}
+                    alt={message.senderName || ""}
                     className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover shadow-sm ring-1 ring-black/5 dark:ring-white/5"
                   />
                 </div>
 
                 <div
                   className={cn(
-                    "max-w-[80%] md:max-w-[70%] px-4 py-2.5 text-[15px] relative",
-                    msg.isMe
+                    "max-w-[80%] md:max-w-[70%] px-4 py-2.5 text-base relative",
+                    message.isMe
                       ? "msg-bubble-sent text-white rounded-2xl rounded-br-sm md:rounded-br-2xl md:rounded-bl-sm"
-                      : "msg-bubble-received text-primary-text rounded-2xl rounded-bl-sm shadow-sm"
+                      : "msg-bubble-received text-(--primary-text) rounded-2xl rounded-bl-sm shadow-sm"
                   )}
                 >
-                  {msg.attachments && msg.attachments.length > 0 && (
+                  {message.attachments && message.attachments.length > 0 && (
                     <div className="mb-2 space-y-2">
-                      {msg.attachments.map((att) => (
-                        <div key={att.id} className="overflow-hidden rounded-xl">
-                          {att.type === "image" ? (
-                            sanitizeUrl(att.url) ? (
+                      {message.attachments.map((attachment) => (
+                        <div key={attachment.id} className="overflow-hidden rounded-xl">
+                          {attachment.type === "image" ? (
+                            sanitizeUrl(attachment.url) ? (
                               <SmartImage
-                                srcRaw={att.url}
-                                alt={att.name}
+                                srcRaw={attachment.url}
+                                alt={attachment.name}
                                 className="w-full h-auto max-h-72 object-cover cursor-pointer hover:scale-[1.02] transition-transform duration-500"
                                 onClick={() => {
-                                  const safe = sanitizeUrl(att.url)
+                                  const safe = sanitizeUrl(attachment.url)
                                   if (safe) window.open(safe, "_blank", "noopener,noreferrer")
                                 }}
                               />
                             ) : null
-                          ) : sanitizeUrl(att.url) ? (
+                          ) : sanitizeUrl(attachment.url) ? (
                             <a
-                              href={sanitizeUrl(att.url)!}
+                              href={sanitizeUrl(attachment.url)!}
                               target="_blank"
                               rel="noopener noreferrer"
                               className={cn(
                                 "flex items-center gap-3 p-3 rounded-xl transition-colors border border-white/5",
-                                msg.isMe
+                                message.isMe
                                   ? "bg-white/15 hover:bg-white/25"
-                                  : "bg-surface-raised/50 hover:bg-surface-hover/50"
+                                  : "bg-(--bg-surface-raised)/50 hover:bg-(--bg-surface-hover)/50"
                               )}
                             >
-                              <div className="p-2 rounded-lg bg-white/10 text-brand">
+                              <div className="p-2 rounded-lg bg-white/10 text-(--brand-main)">
                                 <File className="w-5 h-5" />
                               </div>
                               <div className="flex-1 min-w-0">
-                                <p className="truncate text-sm font-bold">{att.name}</p>
-                                <p className="text-[10px] opacity-60 font-medium">
-                                  {(att.size / 1024).toFixed(1)} KB
+                                <p className="truncate text-sm font-bold">{attachment.name}</p>
+                                <p className="text-[0.65rem] opacity-60 font-medium">
+                                  {(attachment.size / 1024).toFixed(1)} KB
                                 </p>
                               </div>
                             </a>
@@ -257,29 +260,41 @@ const ChatWindow: React.FC<ChatWindowProps> = memo(({ messages }) => {
                       ))}
                     </div>
                   )}
-                  <p className="break-words leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                  <p className="wrap-break-word leading-relaxed whitespace-pre-wrap">
+                    {message.text}
+                  </p>
                   <div className="flex items-center justify-end gap-1.5 mt-1 opacity-80">
                     <span
-                      className="text-[10px] font-bold uppercase tracking-wider"
+                      className="text-[0.65rem] font-bold uppercase tracking-wider"
                       style={{
-                        color: msg.isMe
-                          ? "rgba(255,255,255,0.7)"
-                          : "var(--secondary-text)",
+                        color: message.isMe ? "var(--primary-subtle)" : "var(--secondary-text)",
                       }}
                     >
-                      {msg.timestamp}
+                      {message.timestamp}
                     </span>
-                    {msg.isMe && (
+                    {message.isMe && (
                       <span className="flex items-center opacity-80">
-                        {msg.status === "read" ? (
-                           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-3 h-3 text-white">
-                             <polyline points="1,8 4,11 11,4" />
-                             <polyline points="7,11 14,4" />
-                           </svg>
+                        {message.status === "read" ? (
+                          <svg
+                            viewBox="0 0 16 16"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth={2.5}
+                            className="w-3 h-3 text-white"
+                          >
+                            <polyline points="1,8 4,11 11,4" />
+                            <polyline points="7,11 14,4" />
+                          </svg>
                         ) : (
-                           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-3 h-3 text-white opacity-60">
-                             <polyline points="4,12 8,16 16,8" />
-                           </svg>
+                          <svg
+                            viewBox="0 0 16 16"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth={2.5}
+                            className="w-3 h-3 text-white opacity-60"
+                          >
+                            <polyline points="4,12 8,16 16,8" />
+                          </svg>
                         )}
                       </span>
                     )}
@@ -316,9 +331,9 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
     }
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
+  const handleKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault()
       handleSend()
     }
   }
@@ -341,8 +356,8 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
     }
   }
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
     if (files && files.length > 0) {
       const filteredFiles = await Promise.all(
         Array.from(files).map(async (file) => {
@@ -358,7 +373,10 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
           return file
         })
       )
-      setSelectedFiles((prev) => [...prev, ...filteredFiles.filter((f) => !!f)])
+      setSelectedFiles((previousFiles) => [
+        ...previousFiles,
+        ...filteredFiles.filter((file) => !!file),
+      ])
     }
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
@@ -368,27 +386,25 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
   }
 
   return (
-    <div
-      className="flex-shrink-0 p-3 z-[2500] relative border-t border-glass-border/10 bg-surface/30 backdrop-blur-xl"
-    >
+    <div className="shrink-0 p-3 z-popover relative border-t border-(--glass-border)/10 bg-(--bg-surface)/30 backdrop-blur-xl">
       {selectedFiles.length > 0 && (
         <div className="flex gap-2 mb-3 overflow-x-auto pb-2 custom-scrollbar">
           {selectedFiles.map((file, index) => (
-            <div key={index} className="relative flex-shrink-0 group">
+            <div key={index} className="relative shrink-0 group">
               {file.type.startsWith("image/") ? (
                 <SmartImage
                   srcRaw={URL.createObjectURL(file)}
                   alt={file.name}
-                  className="w-16 h-16 object-cover rounded-xl border border-glass-border/20 shadow-sm"
+                  className="w-16 h-16 object-cover rounded-xl border border-(--glass-border)/20 shadow-sm"
                 />
               ) : (
-                <div className="w-16 h-16 flex items-center justify-center bg-surface-raised rounded-xl border border-glass-border/20 shadow-sm text-secondary-text">
+                <div className="shrink-0 flex items-center justify-center h-10 w-10 md:h-12 md:w-12 bg-(--bg-surface-raised) rounded-xl border border-(--glass-border)/20 shadow-sm text-(--secondary-text)">
                   <FileText className="w-8 h-8" />
                 </div>
               )}
               <button
                 onClick={() => removeFile(index)}
-                className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white rounded-full p-1 shadow-lg hover:bg-rose-600 transition-colors"
+                className="absolute -top-1.5 -right-1.5 bg-(--error-text) text-white rounded-full p-1 shadow-lg hover:bg-(--error-text)/80 transition-colors"
                 aria-label="Remove"
               >
                 <X className="w-3 h-3" strokeWidth={3} />
@@ -397,19 +413,26 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
           ))}
         </div>
       )}
-      <div className="flex items-end gap-2 bg-surface-hover/10 rounded-2xl border border-glass-border/20 p-2 focus-within:ring-4 focus-within:ring-brand/5 focus-within:border-brand/30 transition-all duration-300">
+      <div className="flex items-end gap-2 bg-(--bg-surface-hover)/10 rounded-2xl border border-(--glass-border)/20 p-2 focus-within:ring-4 focus-within:ring-(--brand-main)/5 focus-within:border-(--brand-main)/30 transition-all duration-300">
         <div className="relative">
           <motion.button
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             onClick={() => setShowAttachMenu(!showAttachMenu)}
             className={cn(
-               "p-2.5 rounded-xl transition-colors hover:bg-surface-hover/30",
-               showAttachMenu ? "text-brand bg-brand/10" : "text-secondary-text"
+              "p-2.5 rounded-xl transition-colors hover:bg-(--bg-surface-hover)/30",
+              showAttachMenu
+                ? "text-(--brand-main) bg-(--brand-main)/10"
+                : "text-(--secondary-text)"
             )}
             aria-label="Attachments"
           >
-            <Paperclip className={cn("w-5 h-5 transition-transform duration-300", showAttachMenu && "rotate-45")} />
+            <Paperclip
+              className={cn(
+                "w-5 h-5 transition-transform duration-300",
+                showAttachMenu && "rotate-45"
+              )}
+            />
           </motion.button>
 
           <AnimatePresence>
@@ -418,22 +441,42 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
                 initial={{ opacity: 0, scale: 0.95, y: 10 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                className="absolute bottom-full left-0 mb-4 py-2 min-w-[200px] bg-surface/90 backdrop-blur-2xl rounded-2xl border border-glass-border shadow-2xl overflow-hidden ring-1 ring-black/5"
+                className="absolute bottom-full left-0 mb-4 py-2 min-w-[200px] bg-(--bg-surface)/90 backdrop-blur-2xl rounded-2xl border border-(--glass-border) shadow-2xl overflow-hidden ring-1 ring-black/5"
               >
                 {[
-                  { id: "photo", icon: ImageIcon, label: "Photo", color: "text-blue-500 bg-blue-500/10" },
-                  { id: "document", icon: FileText, label: "Document", color: "text-emerald-500 bg-emerald-500/10" },
-                  { id: "file", icon: File, label: "File", color: "text-amber-500 bg-amber-500/10" },
-                ].map((item, idx) => (
+                  {
+                    id: "photo",
+                    icon: ImageIcon,
+                    label: "Photo",
+                    color: "text-blue-500 bg-blue-500/10",
+                  },
+                  {
+                    id: "document",
+                    icon: FileText,
+                    label: "Document",
+                    color: "text-emerald-500 bg-emerald-500/10",
+                  },
+                  {
+                    id: "file",
+                    icon: File,
+                    label: "File",
+                    color: "text-amber-500 bg-amber-500/10",
+                  },
+                ].map((item, index) => (
                   <button
                     key={item.id}
                     onClick={() => handleAttachmentClick(item.id as any)}
-                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-surface-hover transition-colors text-left group"
+                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-(--bg-surface-hover) transition-colors text-left group"
                   >
-                    <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center transition-transform group-hover:scale-110", item.color)}>
+                    <div
+                      className={cn(
+                        "w-8 h-8 rounded-lg flex items-center justify-center transition-transform group-hover:scale-110",
+                        item.color
+                      )}
+                    >
                       <item.icon className="w-4.5 h-4.5" />
                     </div>
-                    <span className="text-sm font-bold text-primary-text">
+                    <span className="text-sm font-bold text-(--primary-text)">
                       {t(`messenger:attach${item.label}`)}
                     </span>
                   </button>
@@ -449,7 +492,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={t("messenger:typeMessage", "Message...")}
-          className="flex-1 bg-transparent border-none focus:ring-0 outline-none resize-none max-h-48 py-2 md:py-2.5 px-1 text-[15px] text-primary-text placeholder:text-secondary-text placeholder:opacity-50"
+          className="flex-1 bg-transparent border-none focus:ring-0 outline-none resize-none max-h-48 py-2 md:py-2.5 px-1 text-base text-(--primary-text) placeholder:text-(--secondary-text) placeholder:opacity-50"
           rows={1}
         />
         <motion.button
@@ -458,10 +501,10 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
           onClick={handleSend}
           disabled={!text.trim() && selectedFiles.length === 0}
           className={cn(
-             "p-2.5 rounded-xl transition-all duration-300",
-             text.trim() || selectedFiles.length > 0
-               ? "bg-brand text-white shadow-lg shadow-brand/30"
-               : "bg-surface-hover/10 text-secondary-text opacity-30 cursor-not-allowed"
+            "p-2.5 rounded-xl transition-all duration-300",
+            text.trim() || selectedFiles.length > 0
+              ? "bg-(--brand-main) text-white shadow-lg shadow-(--brand-main)/30"
+              : "bg-(--bg-surface-hover)/10 text-(--secondary-text) opacity-30 cursor-not-allowed"
           )}
         >
           <Send className="w-5 h-5" fill="currentColor" />
@@ -495,57 +538,57 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
     <AnimatePresence>
       {open && (
         <motion.div
-           initial={{ opacity: 0 }}
-           animate={{ opacity: 1 }}
-           exit={{ opacity: 0 }}
-           className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[5000] p-4"
-           onClick={onClose}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-modal p-4"
+          onClick={onClose}
         >
           <motion.div
             initial={{ scale: 0.95, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.95, opacity: 0, y: 20 }}
-            className="bg-surface/90 backdrop-blur-2xl rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-glass-border ring-1 ring-white/10"
-            onClick={e => e.stopPropagation()}
+            className="bg-(--bg-surface)/90 backdrop-blur-2xl rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-(--glass-border) ring-1 ring-white/10"
+            onClick={(event) => event.stopPropagation()}
           >
-            <div className="p-6 pb-4 flex items-center justify-between border-b border-glass-border/10 bg-surface/50">
-               <h3 className="text-xl font-black tracking-tight text-primary-text sf-pro">
-                 {t("messenger:newChat", "New Chat")}
-               </h3>
-               <button
-                 onClick={onClose}
-                 className="p-2 rounded-xl hover:bg-surface-hover/50 text-secondary-text transition-colors"
-               >
-                 <X className="w-5 h-5" />
-               </button>
+            <div className="p-6 pb-4 flex items-center justify-between border-b border-(--glass-border)/10 bg-(--bg-surface)/50">
+              <h3 className="text-xl font-black tracking-tight text-(--primary-text) sf-pro">
+                {t("messenger:newChat", "New Chat")}
+              </h3>
+              <button
+                onClick={onClose}
+                className="p-2 rounded-xl hover:bg-(--bg-surface-hover)/50 text-(--secondary-text) transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
             <div className="p-6">
               <div className="relative group mb-6">
-                <Search className="w-4.5 h-4.5 absolute left-3.5 top-1/2 -translate-y-1/2 text-secondary-text group-focus-within:text-brand transition-colors" />
+                <Search className="w-4.5 h-4.5 absolute left-3.5 top-1/2 -translate-y-1/2 text-(--secondary-text) group-focus-within:text-(--brand-main) transition-colors" />
                 <input
                   type="text"
                   autoFocus
                   placeholder={t("messenger:searchUsers", "Search users by name or email...")}
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="w-full pl-11 pr-4 py-3 rounded-2xl border border-glass-border/20 bg-surface-raised/40 focus:ring-4 focus:ring-brand/10 focus:border-brand/40 outline-none transition-all text-[15px] font-medium text-primary-text placeholder:text-secondary-text placeholder:opacity-50"
+                  onChange={(event) => setSearch(event.target.value)}
+                  className="w-full pl-11 pr-4 py-3 rounded-2xl border border-(--glass-border)/20 bg-(--bg-surface-raised)/40 focus:ring-4 focus:ring-(--brand-main)/10 focus:border-(--brand-main)/40 outline-none transition-all text-base font-medium text-(--primary-text) placeholder:text-(--secondary-text) placeholder:opacity-50"
                 />
               </div>
 
               <div className="max-h-[350px] overflow-y-auto custom-scrollbar pr-1 -mr-1">
                 {isLoading && (
                   <div className="flex flex-col items-center py-10">
-                    <div className="w-10 h-10 border-4 border-brand/10 border-t-brand rounded-full animate-spin"></div>
+                    <div className="w-10 h-10 border-4 border-(--brand-main)/10 border-t-(--brand-main) rounded-full animate-spin"></div>
                   </div>
                 )}
 
                 {!isLoading && users.length === 0 && search.length > 1 && (
                   <div className="text-center py-12 px-4 space-y-2">
-                    <div className="w-16 h-16 rounded-full bg-surface-raised mx-auto flex items-center justify-center text-secondary-text opacity-20">
-                       <Search className="w-8 h-8" />
+                    <div className="w-16 h-16 rounded-full bg-(--bg-surface-raised) mx-auto flex items-center justify-center text-(--secondary-text) opacity-20">
+                      <Search className="w-8 h-8" />
                     </div>
-                    <p className="text-sm font-bold text-secondary-text opacity-60">
+                    <p className="text-sm font-bold text-(--secondary-text) opacity-60">
                       {t("messenger:noUsersFound", "No users found matching your search")}
                     </p>
                   </div>
@@ -561,18 +604,20 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
                       className="w-full flex items-center gap-4 p-3.5 rounded-2xl transition-all text-left group"
                     >
                       <div className="relative shrink-0">
-                         <SmartImage
-                           srcRaw={user.avatar_url || AVATAR_PLACEHOLDER_URL}
-                           fallback={AVATAR_PLACEHOLDER_URL}
-                           alt={user.full_name || ""}
-                           className="w-11 h-11 rounded-2xl object-cover shadow-sm ring-1 ring-black/5"
-                         />
+                        <SmartImage
+                          srcRaw={user.avatar_url || AVATAR_PLACEHOLDER_URL}
+                          fallback={AVATAR_PLACEHOLDER_URL}
+                          alt={user.full_name || ""}
+                          className="w-11 h-11 rounded-2xl object-cover shadow-sm ring-1 ring-black/5"
+                        />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-[15px] font-black truncate leading-tight text-primary-text group-hover:text-brand transition-colors sf-pro">
+                        <p className="text-base font-black truncate leading-tight text-(--primary-text) group-hover:text-(--brand-main) transition-colors sf-pro">
                           {user.full_name}
                         </p>
-                        <p className="text-[12px] text-secondary-text truncate font-medium opacity-60">{user.email}</p>
+                        <p className="text-xs text-(--secondary-text) truncate font-medium opacity-60">
+                          {user.email}
+                        </p>
                       </div>
                     </motion.button>
                   ))}

@@ -14,6 +14,7 @@ import React, {
   type CSSProperties,
   type ReactNode,
   forwardRef,
+  useId,
 } from "react"
 import ReactDOM from "react-dom"
 import { motion, AnimatePresence } from "framer-motion"
@@ -21,6 +22,7 @@ import { cn } from "@/utils/cn"
 import SmartImage from "@/components/SmartImage"
 import {
   Button as GlobalButton,
+  type ButtonProps as GlobalButtonProps,
   Input,
   Switch,
   RadioGroup,
@@ -30,24 +32,43 @@ import {
 export { Input, Switch, RadioGroup, Radio }
 
 // Compatible Button wrapper
-export function Button({
+export function Button<T extends React.ElementType = "button">({
   variant,
+  size,
   startIcon,
   endIcon,
   ...props
-}: any) {
+}: {
+  variant?: "contained" | "outlined" | "text" | "solid" | "outline" | "ghost" | "glass" | "gradient"
+  size?: "small" | "medium" | "large" | "sm" | "md" | "lg"
+  startIcon?: React.ReactNode
+  endIcon?: React.ReactNode
+} & Omit<GlobalButtonProps<T>, "variant" | "size" | "leadingIcon" | "trailingIcon">) {
   const mappedVariant =
-    variant === "contained" ? "solid" :
-    variant === "outlined" ? "outline" :
-    variant === "text" ? "ghost" :
-    variant || "solid"
+    variant === "contained"
+      ? ("solid" as const)
+      : variant === "outlined"
+        ? ("outline" as const)
+        : variant === "text"
+          ? ("ghost" as const)
+          : (variant as GlobalButtonProps<T>["variant"]) || ("solid" as const)
+
+  const mappedSize =
+    size === "small"
+      ? ("sm" as const)
+      : size === "medium"
+        ? ("md" as const)
+        : size === "large"
+          ? ("lg" as const)
+          : (size as GlobalButtonProps<T>["size"]) || ("md" as const)
 
   return (
     <GlobalButton
       variant={mappedVariant}
+      size={mappedSize}
       leadingIcon={startIcon}
       trailingIcon={endIcon}
-      {...props}
+      {...(props as GlobalButtonProps<T>)}
     />
   )
 }
@@ -61,9 +82,9 @@ export const fadeDelayStyle = (value: string): CSSProperties =>
 
 export const securityStatusChipClassName = cn(
   "font-bold tracking-tight px-3 py-1 rounded-full text-xs",
-  "text-primary-text border border-glass-border bg-surface/40",
+  "text-(--primary-text) border border-(--glass-border) bg-(--bg-surface)/40",
   "shadow-glass backdrop-blur-xl transition-all duration-300",
-  "dark:bg-surface/20 dark:border-white/10"
+  "dark:bg-(--bg-surface)/20 dark:border-white/10"
 )
 
 // Section Components
@@ -82,7 +103,7 @@ export function SectionCard({
     <Component
       className={cn(
         "relative flex flex-col gap-3 overflow-hidden rounded-3xl px-6 py-6",
-        "border border-glass-border bg-surface/40 text-primary-text",
+        "border border-(--glass-border) bg-(--bg-surface)/40 text-(--primary-text)",
         "shadow-glass transition-all duration-500",
         "before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit] before:opacity-30",
         "before:bg-[radial-gradient(circle_at_0%_0%,var(--primary-main),transparent_60%)]",
@@ -119,11 +140,7 @@ export function SectionTitle({
           : "text-base"
   return (
     <Component
-      className={cn(
-        "font-bold tracking-tight text-primary-text",
-        sizeClasses,
-        className
-      )}
+      className={cn("font-bold tracking-tight text-primary-text", sizeClasses, className)}
       {...props}
     >
       {children}
@@ -144,14 +161,7 @@ export function SectionSubtitle({
   const sizeClasses =
     variant === "body2" ? "text-sm" : variant === "caption" ? "text-xs" : "text-sm"
   return (
-    <p
-      className={cn(
-        "text-secondary-text leading-relaxed",
-        sizeClasses,
-        className
-      )}
-      {...props}
-    >
+    <p className={cn("text-secondary-text leading-relaxed", sizeClasses, className)} {...props}>
       {children}
     </p>
   )
@@ -169,12 +179,12 @@ export function SessionItem({
     <div
       className={cn(
         "group relative flex items-stretch justify-between gap-4 rounded-2xl px-4 py-3",
-        "border border-glass-border bg-surface/30 text-primary-text",
+        "border border-(--glass-border) bg-(--bg-surface)/30 text-(--primary-text)",
         "transition-all duration-500 ease-out backdrop-blur-sm",
-        "hover:-translate-y-px hover:border-brand/30 hover:bg-surface/50 hover:shadow-glass",
+        "hover:-translate-y-px hover:border-(--brand-main)/30 hover:bg-(--bg-surface)/50 hover:shadow-glass",
         "max-sm:flex-col max-sm:items-start",
-        "data-[revoked=true]:border-dashed data-[revoked=true]:border-border-subtle",
-        "data-[revoked=true]:bg-surface/10 data-[revoked=true]:shadow-none data-[revoked=true]:backdrop-blur-none",
+        "data-[revoked=true]:border-dashed data-[revoked=true]:border-(--border-subtle)",
+        "data-[revoked=true]:bg-(--bg-surface)/10 data-[revoked=true]:shadow-none data-[revoked=true]:backdrop-blur-none",
         "data-[revoked=true]:hover:translate-y-0",
         className
       )}
@@ -204,9 +214,9 @@ export function AccordionSection({
     <div
       className={cn(
         "overflow-hidden rounded-2xl border transition-all duration-500",
-        "border-glass-border bg-surface/30 backdrop-blur-sm",
+        "border-(--glass-border) bg-(--bg-surface)/30 backdrop-blur-sm",
         expanded
-          ? "shadow-glass border-brand/20 bg-surface/50"
+          ? "shadow-glass border-(--brand-main)/20 bg-(--bg-surface)/50"
           : "shadow-sm border-transparent",
         className
       )}
@@ -218,14 +228,8 @@ export function AccordionSection({
       >
         <div className="flex items-center justify-between gap-3">
           <div className="flex flex-col gap-1 min-w-0">
-            <h3 className="text-sm font-bold text-primary-text">
-              {title}
-            </h3>
-            {subtitle && (
-              <p className="text-xs text-secondary-text">
-                {subtitle}
-              </p>
-            )}
+            <h3 className="text-sm font-bold text-primary-text">{title}</h3>
+            {subtitle && <p className="text-xs text-secondary-text">{subtitle}</p>}
           </div>
           <motion.svg
             animate={{ rotate: expanded ? 180 : 0 }}
@@ -250,7 +254,6 @@ export function AccordionSection({
   )
 }
 
-
 // Form Components
 // TextField wrapper using global Input
 export const TextField = React.forwardRef<
@@ -273,93 +276,119 @@ export const TextField = React.forwardRef<
     rows?: number
     trailingIcon?: React.ReactNode
     leadingIcon?: React.ReactNode
-  } & Omit<React.InputHTMLAttributes<HTMLInputElement | HTMLTextAreaElement>, "size" | "onChange" | "onBlur">
->(({
-  label,
-  value,
-  onChange,
-  onBlur,
-  type = "text",
-  disabled = false,
-  error = false,
-  helperText,
-  placeholder,
-  size = "medium",
-  fullWidth = false,
-  autoComplete,
-  className = "",
-  multiline = false,
-  rows,
-  trailingIcon,
-  leadingIcon,
-  ...props
-}, ref) => {
-  const InputComponent = multiline ? "textarea" : Input
+  } & Omit<
+    React.InputHTMLAttributes<HTMLInputElement | HTMLTextAreaElement>,
+    "size" | "onChange" | "onBlur"
+  >
+>(
+  (
+    {
+      label,
+      value,
+      onChange,
+      onBlur,
+      type = "text",
+      disabled = false,
+      error = false,
+      helperText,
+      placeholder,
+      size = "medium",
+      fullWidth = false,
+      autoComplete,
+      className = "",
+      multiline = false,
+      rows,
+      trailingIcon,
+      leadingIcon,
+      ...props
+    },
+    ref
+  ) => {
+    const InputComponent = multiline ? "textarea" : Input
 
-  return (
-    <div className={cn("flex flex-col gap-1.5", fullWidth && "w-full", className)}>
-      {label && (
-        <label className="mb-0.5 block px-1 text-[10px] font-bold uppercase tracking-widest text-secondary-text">
-          {label}
-        </label>
-      )}
-      <div className="relative">
-        {leadingIcon && (
-          <div className="absolute left-4 top-1/2 -translate-y-1/2 text-tertiary-text">
-            {leadingIcon}
-          </div>
+    return (
+      <div className={cn("flex flex-col gap-1.5", fullWidth && "w-full", className)}>
+        {label && (
+          <label
+            htmlFor={props.id}
+            className="mb-0.5 block px-1 text-xs font-bold uppercase tracking-widest text-secondary-text"
+          >
+            {label}
+          </label>
         )}
-        {multiline ? (
-          <textarea
-            ref={ref as React.Ref<HTMLTextAreaElement>}
-            value={value}
-            onChange={onChange as any}
-            onBlur={onBlur as any}
-            disabled={disabled}
-            placeholder={placeholder}
-            rows={rows}
+        <div className="relative">
+          {leadingIcon && (
+            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-tertiary-text">
+              {leadingIcon}
+            </div>
+          )}
+          {multiline ? (
+            <textarea
+              ref={ref as React.Ref<HTMLTextAreaElement>}
+              value={value}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                onChange(e as unknown as React.ChangeEvent<HTMLInputElement>)
+              }
+              onBlur={(e: React.FocusEvent<HTMLTextAreaElement>) =>
+                onBlur?.(e as unknown as React.FocusEvent<HTMLInputElement>)
+              }
+              disabled={disabled}
+              placeholder={placeholder}
+              rows={rows}
+              className={cn(
+                "flex w-full rounded-2xl border border-(--glass-border) bg-(--bg-surface) px-4 py-3 text-base font-medium text-(--primary-text) shadow-sm transition-all duration-500",
+                "placeholder:text-(--secondary-text)/50",
+                "focus:border-(--brand-main)/40 focus:outline-none focus:ring-4 focus:ring-(--brand-main)/10",
+                "disabled:cursor-not-allowed disabled:opacity-50",
+                error
+                  ? "border-(--error-text) focus:border-(--error-text) focus:ring-(--error-text)/10"
+                  : "",
+                !fullWidth ? "w-auto" : "",
+                "resize-none",
+                leadingIcon ? "pl-11" : "",
+                trailingIcon ? "pr-11" : ""
+              )}
+              {...props}
+            />
+          ) : (
+            <Input
+              ref={ref as React.Ref<HTMLInputElement>}
+              type={type}
+              value={value}
+              onChange={onChange}
+              onBlur={onBlur}
+              disabled={disabled}
+              placeholder={placeholder}
+              autoComplete={autoComplete}
+              error={error}
+              className={cn(
+                fullWidth && "w-full",
+                leadingIcon ? "pl-11" : "",
+                trailingIcon ? "pr-11" : ""
+              )}
+              {...props}
+            />
+          )}
+          {trailingIcon && (
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 text-tertiary-text">
+              {trailingIcon}
+            </div>
+          )}
+        </div>
+        {helperText && (
+          <p
             className={cn(
-              "flex w-full rounded-2xl border border-glass-border bg-surface px-4 py-3 text-base font-medium text-primary-text shadow-sm transition-all duration-500",
-              "placeholder:text-tertiary-text",
-              "focus:border-brand/40 focus:outline-none focus:ring-4 focus:ring-brand/10",
-              "disabled:cursor-not-allowed disabled:opacity-50",
-              error ? "border-error focus:border-error focus:ring-error/10" : "",
-              !fullWidth ? "w-auto" : "",
-              "resize-none",
-              leadingIcon ? "pl-11" : "",
-              trailingIcon ? "pr-11" : ""
+              "px-1 text-xs font-medium leading-tight",
+              error ? "text-error" : "text-tertiary-text/80"
             )}
-            {...(props as any)}
-          />
-        ) : (
-          <Input
-            ref={ref as React.Ref<HTMLInputElement>}
-            type={type}
-            value={value}
-            onChange={onChange}
-            onBlur={onBlur}
-            disabled={disabled}
-            placeholder={placeholder}
-            autoComplete={autoComplete}
-            error={error}
-            className={cn(fullWidth && "w-full", leadingIcon ? "pl-11" : "", trailingIcon ? "pr-11" : "")}
-            {...props}
-          />
-        )}
-        {trailingIcon && (
-          <div className="absolute right-4 top-1/2 -translate-y-1/2 text-tertiary-text">
-            {trailingIcon}
-          </div>
+          >
+            {helperText}
+          </p>
         )}
       </div>
-      {helperText && (
-        <p className={cn("px-1 text-[11px] font-medium leading-tight", error ? "text-error" : "text-tertiary-text/80")}>
-          {helperText}
-        </p>
-      )}
-    </div>
-  )
-})
+    )
+  }
+)
 
 TextField.displayName = "TextField"
 
@@ -383,7 +412,9 @@ export function SwitchControl({
       checked={checked}
       disabled={disabled}
       aria-label={ariaLabel}
-      onCheckedChange={(c: boolean) => onChange({ target: { checked: c } } as any, c)}
+      onCheckedChange={(c: boolean) =>
+        onChange({ target: { checked: c } } as React.ChangeEvent<HTMLInputElement>, c)
+      }
     />
   )
 }
@@ -410,11 +441,9 @@ export function FormControlLabel({
       )}
     >
       {React.isValidElement(control)
-        ? React.cloneElement(control as React.ReactElement, { value } as any)
+        ? React.cloneElement(control as React.ReactElement<{ value?: string }>, { value })
         : control}
-      <span className="text-sm font-bold text-primary-text transition-colors">
-        {label}
-      </span>
+      <span className="text-sm font-bold text-primary-text transition-colors">{label}</span>
     </label>
   )
 }
@@ -434,14 +463,15 @@ export function Alert({
   className?: string
 }) {
   const palette = {
-    info: "bg-brand/10 text-brand border-brand/20",
-    error: "bg-error/10 text-error border-error/20",
-    warning: "bg-warning/10 text-warning border-warning/20",
-    success: "bg-success/10 text-success border-success/20",
+    info: "bg-(--brand-main)/10 text-(--brand-main) border-(--brand-main)/20",
+    error: "bg-(--error-text)/10 text-(--error-text) border-(--error-text)/20",
+    warning: "bg-(--warning-text)/10 text-(--warning-text) border-(--warning-text)/20",
+    success: "bg-(--success-bg)/10 text-(--success-bg) border-(--success-bg)/20",
   }
 
   return (
     <div
+      role="alert"
       className={cn(
         "flex items-center gap-3 rounded-2xl border px-4 py-3 backdrop-blur-md shadow-sm",
         palette[severity],
@@ -475,9 +505,9 @@ export function Chip({
   className?: string
 } & React.HTMLAttributes<HTMLSpanElement>) {
   const colorMap = {
-      default: "text-secondary-text bg-surface/50 border-glass-border",
-      success: "text-success bg-success/10 border-success/20",
-      primary: "text-brand bg-brand/10 border-brand/20",
+    default: "text-(--secondary-text) bg-(--bg-surface)/50 border-(--glass-border)",
+    success: "text-(--success-bg) bg-(--success-bg)/10 border-(--success-bg)/20",
+    primary: "text-(--brand-main) bg-(--brand-main)/10 border-(--brand-main)/20",
   }
 
   return (
@@ -563,7 +593,11 @@ export function Skeleton({
     <div
       className={cn(
         "animate-pulse bg-white/5 dark:bg-white/10",
-        variant === "circular" ? "rounded-full" : variant === "rounded" ? "rounded-2xl" : "rounded-none",
+        variant === "circular"
+          ? "rounded-full"
+          : variant === "rounded"
+            ? "rounded-2xl"
+            : "rounded-none",
         className
       )}
       style={{
@@ -654,8 +688,10 @@ export function Dialog({
         initial={{ opacity: 0, scale: 0.95, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 10 }}
+        role="dialog"
+        aria-modal="true"
         className={cn(
-          "relative z-10 w-full overflow-hidden rounded-3xl border border-glass-border bg-surface shadow-glass",
+          "relative z-10 w-full overflow-hidden rounded-3xl border border-(--glass-border) bg-(--bg-surface) shadow-glass",
           fullWidth ? "w-full" : maxWidthClasses
         )}
       >
@@ -676,7 +712,7 @@ export function DialogTitle({
   return (
     <h2
       className={cn(
-        "px-6 pt-6 pb-2 text-xl font-bold tracking-tight text-primary-text border-b border-glass-border/10",
+        "px-6 pt-6 pb-2 text-xl font-bold tracking-tight text-(--primary-text) border-b border-(--glass-border)/10",
         className
       )}
     >
@@ -707,7 +743,7 @@ export function DialogActions({
   return (
     <div
       className={cn(
-        "flex items-center justify-end gap-3 border-t border-glass-border/10 px-6 py-4 bg-surface-hover/20",
+        "flex items-center justify-end gap-3 border-t border-(--glass-border)/10 px-6 py-4 bg-(--bg-surface-hover)/20",
         className
       )}
     >
@@ -755,7 +791,12 @@ export function Snackbar({
 
   return (
     <div
-      className={cn("fixed pointer-events-none z-(--ue-z-index-toast)", positionClasses, horizontalClasses, className)}
+      className={cn(
+        "fixed pointer-events-none z-(--ue-z-index-toast)",
+        positionClasses,
+        horizontalClasses,
+        className
+      )}
     >
       <motion.div
         initial={{ opacity: 0, y: 20, scale: 0.8 }}
@@ -788,16 +829,21 @@ export function Tabs({
       role="tablist"
       className={cn(
         "relative flex flex-wrap items-center gap-1.5 overflow-x-auto rounded-2xl px-1.5 py-1.5",
-        "border border-glass-border bg-surface/30 backdrop-blur-md shadow-glass",
+        "border border-(--glass-border) bg-(--bg-surface)/30 backdrop-blur-md shadow-glass",
         className
       )}
     >
       {React.Children.map(children, (child, index) => {
         if (React.isValidElement(child)) {
           return React.cloneElement(
-            child as React.ReactElement<{ selected?: boolean; onClick?: () => void }>,
+            child as React.ReactElement<{
+              selected?: boolean
+              onClick?: () => void
+              index?: number
+            }>,
             {
               selected: value === index,
+              index: index,
               onClick: () => onChange(null, index),
             }
           )
@@ -822,6 +868,8 @@ export function Tab({
   return (
     <button
       type="button"
+      role="tab"
+      aria-selected={selected}
       onClick={onClick}
       className={cn(
         "relative flex h-10 items-center justify-center rounded-xl px-5 text-sm font-black transition-all duration-500",

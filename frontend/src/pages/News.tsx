@@ -5,20 +5,10 @@ import NewsCardSkeleton from "../components/NewsCardSkeleton"
 import { useState, useRef, useCallback, useEffect, type ReactNode, type CSSProperties } from "react"
 import { isAxiosError } from "axios"
 import { createNews, uploadNewsImage } from "@/api/news"
-import {
-  Newspaper as ArticleIcon,
-  Camera as PhotoCamera,
-  Search as SearchIcon,
-} from "lucide-react"
+import { Newspaper as ArticleIcon, Camera as PhotoCamera, Search as SearchIcon } from "lucide-react"
 import SmartImage from "@/components/SmartImage"
 import { Button } from "@/components/ui"
-import {
-  Alert,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-} from "@/components/settings"
+import { Alert, Dialog, DialogActions, DialogContent, DialogTitle } from "@/components/settings"
 import { useAuth } from "../contexts/AuthContext"
 import { useLanguage } from "../contexts/LanguageContext"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
@@ -31,7 +21,7 @@ import { StorageItem } from "@/utils/storage"
 import { cn } from "@/utils/cn"
 
 const inputClass =
-    "w-full rounded-xl border border-glass-border bg-surface/40 px-4 py-2.5 text-[0.98rem] text-primary-text shadow-sm focus:border-brand focus:outline-none transition placeholder:text-secondary-text/50"
+  "w-full rounded-xl border border-glass-border bg-surface/40 px-4 py-2.5 text-[0.98rem] text-primary-text shadow-sm focus:border-brand focus:outline-none transition placeholder:text-secondary-text/50"
 const textareaClass = cn(inputClass, "min-h-[148px] resize-y leading-relaxed")
 
 const fadeDelayStyle = (value: string): CSSProperties =>
@@ -118,8 +108,8 @@ const News = () => {
   }, [newsList, language])
 
   const handleImageChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0]
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0]
       if (file) {
         setImageFile(file)
         if (imagePreview) URL.revokeObjectURL(imagePreview)
@@ -279,7 +269,9 @@ const News = () => {
                           {t("news:states.empty")}
                         </p>
                         <p className="text-sm text-secondary-text">
-                          {t("news:states.checkLater", { defaultValue: "Check back later for updates" })}
+                          {t("news:states.checkLater", {
+                            defaultValue: "Check back later for updates",
+                          })}
                         </p>
                       </div>
                       {user?.role === "admin" && (
@@ -310,12 +302,7 @@ const News = () => {
               </div>
             )}
 
-            <Dialog
-              open={addOpen}
-              onClose={handleCloseDialog}
-              maxWidth="lg"
-              fullWidth
-            >
+            <Dialog open={addOpen} onClose={handleCloseDialog} maxWidth="lg" fullWidth>
               <DialogTitle>{t("news:dialogs.create.title")}</DialogTitle>
               <DialogContent className="space-y-6 pt-4">
                 <form
@@ -326,11 +313,7 @@ const News = () => {
                   }}
                 >
                   <div className="space-y-4">
-                    {addError ? (
-                      <Alert severity="error">
-                        {addError}
-                      </Alert>
-                    ) : null}
+                    {addError ? <Alert severity="error">{addError}</Alert> : null}
 
                     <Field label={t("news:form.title") ?? ""} htmlFor="news-title" required>
                       <input
@@ -338,7 +321,9 @@ const News = () => {
                         ref={titleInputRef}
                         type="text"
                         value={newsData.title}
-                        onChange={(e) => setNewsData({ ...newsData, title: e.target.value })}
+                        onChange={(event) =>
+                          setNewsData({ ...newsData, title: event.target.value })
+                        }
                         maxLength={100}
                         disabled={adding}
                         className={inputClass}
@@ -349,7 +334,9 @@ const News = () => {
                       <textarea
                         id="news-content"
                         value={newsData.content}
-                        onChange={(e) => setNewsData({ ...newsData, content: e.target.value })}
+                        onChange={(event) =>
+                          setNewsData({ ...newsData, content: event.target.value })
+                        }
                         maxLength={3000}
                         disabled={adding}
                         className={textareaClass}
@@ -367,7 +354,9 @@ const News = () => {
                         id="news-title-en"
                         type="text"
                         value={newsData.title_en}
-                        onChange={(e) => setNewsData({ ...newsData, title_en: e.target.value })}
+                        onChange={(event) =>
+                          setNewsData({ ...newsData, title_en: event.target.value })
+                        }
                         maxLength={100}
                         disabled={adding}
                         className={inputClass}
@@ -375,13 +364,17 @@ const News = () => {
                     </Field>
 
                     <Field
-                      label={t("news:form.content_en", { defaultValue: "News text (English)" }) ?? ""}
+                      label={
+                        t("news:form.content_en", { defaultValue: "News text (English)" }) ?? ""
+                      }
                       htmlFor="news-content-en"
                     >
                       <textarea
                         id="news-content-en"
                         value={newsData.content_en}
-                        onChange={(e) => setNewsData({ ...newsData, content_en: e.target.value })}
+                        onChange={(event) =>
+                          setNewsData({ ...newsData, content_en: event.target.value })
+                        }
                         maxLength={3000}
                         disabled={adding}
                         className={textareaClass}
@@ -402,8 +395,10 @@ const News = () => {
                           disabled={adding}
                         >
                           <div className="flex items-center gap-2">
-                             <PhotoCamera className="h-4 w-4" />
-                             {imageFile ? t("common:buttons.changePhoto") : t("common:buttons.uploadPhoto")}
+                            <PhotoCamera className="h-4 w-4" />
+                            {imageFile
+                              ? t("common:buttons.changePhoto")
+                              : t("common:buttons.uploadPhoto")}
                           </div>
                           <input
                             type="file"

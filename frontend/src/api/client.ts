@@ -515,19 +515,19 @@ api.interceptors.request.use(async (config) => {
 })
 
 api.interceptors.response.use(
-  (r) => {
-    const config = r.config as ApiRequestConfig | undefined
+  (response) => {
+    const config = response.config as ApiRequestConfig | undefined
     const etagKey = config?.etagCacheKey
     if (etagKey) {
       const responseHeaders = AxiosHeaders.from(
-        (r.headers ?? undefined) as AxiosHeaders | string | undefined
+        (response.headers ?? undefined) as AxiosHeaders | string | undefined
       )
       const tag = responseHeaders.get("etag") ?? responseHeaders.get("ETag")
       if (typeof tag === "string" && tag.trim()) {
         etagCache.set(etagKey, tag)
         // Cache response body for 304 handling
-        if (r.status === 200 && r.data) {
-          responseCache.set(etagKey, r.data)
+        if (response.status === 200 && response.data) {
+          responseCache.set(etagKey, response.data)
         }
       } else {
         etagCache.delete(etagKey)
@@ -535,48 +535,48 @@ api.interceptors.response.use(
       }
 
       // Handle 304 Not Modified - return cached data
-      if (r.status === 304) {
+      if (response.status === 304) {
         const cachedData = responseCache.get(etagKey)
         if (cachedData) {
-          r.data = cachedData
+          response.data = cachedData
           // Change status to 200 so the app treats it as success
-          r.status = 200
+          response.status = 200
         }
       }
     }
-    updateTraceContext(r.headers as AxiosHeaders)
-    releaseClientQueueSlot(r.config as ApiRequestConfig | undefined)
-    return r
+    updateTraceContext(response.headers as AxiosHeaders)
+    releaseClientQueueSlot(response.config as ApiRequestConfig | undefined)
+    return response
   },
-  async (err) => {
-    releaseClientQueueSlot(err?.config as ApiRequestConfig | undefined)
+  async (error) => {
+    releaseClientQueueSlot(error?.config as ApiRequestConfig | undefined)
 
-    if (err?.response?.headers) {
-      updateTraceContext(err.response.headers as AxiosHeaders)
+    if (error?.response?.headers) {
+      updateTraceContext(error.response.headers as AxiosHeaders)
     }
 
-    const config = err?.config as ApiRequestConfig | undefined
+    const config = error?.config as ApiRequestConfig | undefined
     const etagKey = config?.etagCacheKey
     if (
       etagKey &&
-      err?.response?.status &&
-      err.response.status >= 400 &&
-      err.response.status !== 304
+      error?.response?.status &&
+      error.response.status >= 400 &&
+      error.response.status !== 304
     ) {
       etagCache.delete(etagKey)
     }
 
-    if (err?.response?.status === 429 && err.config) {
-      const retryConfig = err.config as ApiRequestConfig
+    if (error?.response?.status === 429 && error.config) {
+      const retryConfig = error.config as ApiRequestConfig
       if (!retryConfig.skipRateLimitQueue) {
-        const delay = getRetryDelay(err.response?.headers)
+        const delay = getRetryDelay(error.response?.headers)
         scheduleRateLimitWindow(delay)
 
         const retryCount = retryConfig.__rateLimitRetryCount ?? 0
         if (
           retryCount < RATE_LIMIT_MAX_RETRY &&
           !retryConfig.signal?.aborted &&
-          !isAbortError(err)
+          !isAbortError(error)
         ) {
           retryConfig.__rateLimitRetryCount = retryCount + 1
           await waitForRateLimitWindow()
@@ -585,17 +585,17 @@ api.interceptors.response.use(
       }
     }
 
-    if (err?.response?.status === 401) {
-      const headers = (err.config?.headers ?? {}) as Record<string, unknown>
+    if (error?.response?.status === 401) {
+      const headers = (error.config?.headers ?? {}) as Record<string, unknown>
       if (headers[SKIP_UNAUTHORIZED_HEADER]) {
         delete headers[SKIP_UNAUTHORIZED_HEADER]
-        return Promise.reject(err)
+        return Promise.reject(error)
       }
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent(API_UNAUTHORIZED_EVENT))
       }
     }
-    return Promise.reject(err)
+    return Promise.reject(error)
   }
 )
 

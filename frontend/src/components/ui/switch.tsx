@@ -40,9 +40,9 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
     return (
       <span
         className={cn(
-          "relative inline-flex h-[28px] w-[56px] cursor-pointer items-center rounded-full p-[3px]",
-          "touch-manipulation select-none transition-transform duration-200",
-          disabled ? "cursor-not-allowed opacity-50" : "hover:scale-[1.02] active:scale-[0.98]",
+          "relative inline-flex h-7 w-14 cursor-pointer items-center rounded-full p-0.5",
+          "touch-manipulation select-none transition-premium",
+          disabled ? "cursor-not-allowed opacity-50" : "hover:scale-105 active:scale-95",
           className
         )}
         onMouseEnter={() => !disabled && setHover(true)}
@@ -51,10 +51,8 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
         {/* Focus ring */}
         <span
           className={cn(
-            "pointer-events-none absolute -inset-1 rounded-full transition-all duration-300",
-            focus && !disabled
-              ? "scale-100 opacity-100 ring-4 ring-brand/20"
-              : "scale-90 opacity-0"
+            "pointer-events-none absolute -inset-1 rounded-full transition-premium",
+            focus && !disabled ? "scale-100 opacity-100 ring-4 ring-brand/20" : "scale-90 opacity-0"
           )}
         />
 
@@ -62,7 +60,7 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
         <motion.span
           className={cn(
             "absolute inset-0 rounded-full border border-border-subtle transition-colors duration-300",
-            "bg-surface/50 backdrop-blur-sm",
+            "bg-surface-tint backdrop-blur-sm",
             checked && "bg-brand/20 border-brand/30"
           )}
           animate={{
@@ -70,7 +68,7 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
               ? "var(--primary-main)"
               : hover && !disabled
                 ? "var(--primary-hover)"
-                : "var(--border-strong)",
+                : "var(--border-subtle)",
             backgroundColor: checked
               ? "color-mix(in srgb, var(--primary-main) 20%, transparent)"
               : hover && !disabled
@@ -82,12 +80,16 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
 
         {/* Thumb */}
         <motion.span
-          initial={{ x: checked ? 26 : 0, scaleX: 1, scaleY: 1 }}
-          animate={controls}
+          initial={{ x: checked ? 28 : 0, scale: 1 }}
+          animate={{
+            x: checked ? 28 : 0,
+            scale: hover ? 1.1 : 1,
+          }}
+          transition={{ type: "spring", stiffness: 500, damping: 30 }}
           className={cn(
-            "relative z-10 block h-[22px] w-[22px] rounded-full bg-white shadow-sm",
+            "relative z-10 block h-5.5 w-5.5 rounded-full bg-white shadow-surface",
             "border border-white/20",
-            "dark:bg-slate-200 dark:shadow-md",
+            "dark:bg-slate-100",
             checked && "bg-white"
           )}
           style={{
