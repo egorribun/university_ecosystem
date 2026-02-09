@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next"
 import { Settings } from "lucide-react"
 import { cn } from "@/utils/cn"
 import { useAppShell } from "@/contexts/AppShellContext"
+import type { User } from "@/types/User"
 
 interface MenuLink {
   to: string
@@ -18,7 +19,7 @@ interface MobileMenuProps {
   menuLinks: MenuLink[]
   isActive: (to: string) => boolean
   go: (to: string) => void
-  user: any
+  user: User | null
   isAuth: boolean
   prefersReducedMotion: boolean
   drawerTrapRef: React.RefObject<HTMLDivElement | null>
@@ -72,7 +73,7 @@ export function MobileMenu({
       <nav
         ref={drawerTrapRef}
         className={cn(
-          "fixed inset-y-0 left-0 z-60 flex h-full w-[300px] max-w-[85%] flex-col bg-(--glass-bg) shadow-2xl transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]",
+          "fixed inset-y-0 left-0 z-(--overlay-z) flex h-full w-(--mobile-menu-w) max-w-[85%] flex-col bg-(--glass-bg) shadow-2xl transition-transform duration-500 ease-premium",
           "border-r border-(--glass-border) backdrop-blur-(--glass-blur)",
           isOpen ? "translate-x-0" : "-translate-x-full"
         )}
@@ -141,7 +142,7 @@ export function MobileMenu({
         </div>
 
         <div className="border-t border-(--glass-border) p-8">
-          <div className="text-center text-[13px] font-medium text-(--secondary-text) opacity-60">
+          <div className="text-center text-xs font-medium text-(--secondary-text) opacity-60">
             © {new Date().getFullYear()} {t("navigation:brandName")}
           </div>
         </div>

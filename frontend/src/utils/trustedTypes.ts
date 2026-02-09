@@ -11,7 +11,8 @@ const APP_POLICY_NAME = "app"
 let dompurifyInstance: any = null
 async function getDOMPurify() {
   if (dompurifyInstance) return dompurifyInstance
-  dompurifyInstance = (await import("dompurify")).default
+  const DOMPurify = (await import("dompurify")).default
+  dompurifyInstance = DOMPurify
   return dompurifyInstance
 }
 

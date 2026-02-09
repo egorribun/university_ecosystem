@@ -58,7 +58,7 @@ const isCanceledRequestError = (err: unknown): boolean => {
 }
 
 const inputClass =
-  "w-full rounded-ue-lg border border-[color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color-mix(in_srgb,var(--card-bg)_96%,white_4%)] px-4 py-3 text-[0.98rem] font-medium text-(--page-text) shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)] transition-all duration-200 focus:border-(--nav-link) focus:outline-none focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--nav-link)_15%,transparent)] placeholder:text-[color-mix(in_srgb,var(--placeholder-fg)_70%,transparent)]"
+  "w-full rounded-ue-lg border border-(--glass-border) bg-(--card-bg)/50 px-4 py-3 text-[0.98rem] font-medium text-(--page-text) shadow-sm transition-all duration-200 focus:border-(--nav-link) focus:outline-none focus:ring-4 focus:ring-(--nav-link)/15 placeholder:text-(--placeholder-fg)/60"
 
 function Snackbar({
   open,
@@ -81,7 +81,7 @@ function Snackbar({
 
   return (
     <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 animate-in slide-in-from-bottom-4 fade-in">
-      <div className="rounded-[1.25rem] border border-[color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color-mix(in_srgb,var(--card-bg)_98%,white_2%)] px-5 py-3.5 text-sm font-semibold text-(--page-text) shadow-[0_8px_24px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.08)] backdrop-blur-md">
+      <div className="rounded-[1.25rem] border border-(--glass-border) bg-(--card-bg)/90 px-5 py-3.5 text-sm font-semibold text-(--page-text) shadow-premium backdrop-blur-md">
         {message}
       </div>
     </div>
@@ -140,14 +140,14 @@ const EventDetail = () => {
           headers: { "Content-Type": "multipart/form-data" },
         })
         mutateFiles({ type: "remove", id: optimisticId })
-        setSnack(t("events:detail.messages.fileAdded"))
+        setSnackbar(t("events:detail.messages.fileAdded"))
         setSelectedFile(null)
         if (fileInputRef.current) fileInputRef.current.value = ""
         await refreshEvent().catch(() => {})
         return { status: "success" }
       } catch (err) {
         mutateFiles({ type: "remove", id: optimisticId })
-        setSnack(t("events:detail.messages.fileAddFailed"))
+        setSnackbar(t("events:detail.messages.fileAddFailed"))
         return { status: "error", error: t("events:detail.upload.errors.failed") }
       }
     },
@@ -158,7 +158,7 @@ const EventDetail = () => {
   const [aboutDraft, setAboutDraft] = useState("")
   const [savingAbout, setSavingAbout] = useState(false)
 
-  const [snack, setSnack] = useState("")
+  const [snackbar, setSnackbar] = useState("")
   const [heroPos, setHeroPos] = useState<"50% 18%" | "50% 38%" | "50% 50%" | string>("50% 38%")
   const handleHeroLoad: React.ReactEventHandler<HTMLImageElement> = (e) => {
     const img = e.currentTarget
@@ -197,7 +197,7 @@ const EventDetail = () => {
         return data
       } catch (err) {
         if (!isCanceledRequestError(err) && !signal?.aborted) {
-          setSnack(t("events:detail.messages.loadFailed"))
+          setSnackbar(t("events:detail.messages.loadFailed"))
         }
         throw err
       } finally {
@@ -229,9 +229,9 @@ const EventDetail = () => {
     mutateFiles({ type: "remove", id: fileId })
     try {
       await api.delete(`/events/file/${fileId}`)
-      setSnack(t("events:detail.messages.fileDeleted"))
+      setSnackbar(t("events:detail.messages.fileDeleted"))
     } catch {
-      setSnack(t("events:detail.messages.fileDeleteFailed"))
+      setSnackbar(t("events:detail.messages.fileDeleteFailed"))
     } finally {
       await refreshEvent().catch(() => {})
     }
@@ -255,7 +255,7 @@ const EventDetail = () => {
 
   const handleSaveAbout = async () => {
     if (!event) {
-      setSnack(t("events:detail.messages.aboutUpdateFailed"))
+      setSnackbar(t("events:detail.messages.aboutUpdateFailed"))
       return
     }
 
@@ -264,11 +264,11 @@ const EventDetail = () => {
       const payloadKey = language === "en" ? "about_en" : "about"
       await api.patch(`/events/${event.id}`, { [payloadKey]: aboutDraft.trim() })
       setEditingAbout(false)
-      setSnack(t("events:detail.messages.aboutUpdated"))
+      setSnackbar(t("events:detail.messages.aboutUpdated"))
       await refreshEvent().catch(() => {})
       setTimeout(() => aboutSectionRef.current?.focus?.(), 0)
     } catch {
-      setSnack(t("events:detail.messages.aboutUpdateFailed"))
+      setSnackbar(t("events:detail.messages.aboutUpdateFailed"))
     } finally {
       setSavingAbout(false)
     }
@@ -314,12 +314,12 @@ const EventDetail = () => {
       leadingIcon={<ArrowBackIcon size={20} />}
       className={cn(
         "mb-6 w-full font-bold sm:w-auto",
-        "bg-linear-to-r from-[#1d5fff] via-[#65b2ff] to-[#1d5fff] text-white",
-        "shadow-[0_2px_18px_rgba(25,118,210,0.22),0_1.5px_8px_rgba(0,0,0,0.01)]",
-        "transition-all duration-200",
-        "hover:from-[#1976d2] hover:via-[#449aff] hover:to-[#1976d2] hover:scale-105 hover:shadow-[0_6px_28px_rgba(29,95,255,0.25),0_2.5px_10px_rgba(0,0,0,0.02)]",
-        "active:scale-[0.98]",
-        "md:sticky md:top-3 md:z-99"
+        "bg-linear-to-r from-(--primary-main) via-(--primary-light) to-(--primary-main) text-white",
+        "shadow-premium ring-1 ring-white/10",
+        "transition-all duration-300 transform-gpu",
+        "hover:scale-105 hover:shadow-glass-strong",
+        "active:scale-95",
+        "md:sticky md:top-3 md:z-(--overlay-z)"
       )}
     >
       {t("common:buttons.back")}
@@ -343,8 +343,8 @@ const EventDetail = () => {
               )}
               <Badge
                 size="sm"
-                leadingIcon={<PeopleAltIcon size={16} className="text-[#1976d2]" />}
-                className="border-(--glass-border)"
+                leadingIcon={<PeopleAltIcon size={16} className="text-(--primary-main)" />}
+                className="border-(--glass-border) bg-(--primary-main)/5 text-(--primary-main)"
               >
                 {t("events:card.participants", { count: event.participant_count || 0 })}
               </Badge>
@@ -369,7 +369,7 @@ const EventDetail = () => {
               )}
             </div>
             {imageUrl && (
-              <div className="relative w-full overflow-hidden rounded-ue-xl border border-[color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[rgba(0,0,0,0.04)] shadow-surface aspect-video">
+              <div className="relative w-full overflow-hidden rounded-ue-xl border border-(--glass-border) bg-black/5 shadow-premium aspect-video">
                 <SmartImage
                   srcRaw={imageUrl}
                   alt={t("events:alt.image")}
@@ -443,8 +443,8 @@ const EventDetail = () => {
                   className={cn(
                     "whitespace-pre-line text-base leading-relaxed",
                     event?.about
-                      ? "text-[color:var(--page-text)]"
-                      : "text-[color:var(--secondary-text)]"
+                      ? "text-(--page-text)"
+                      : "text-(--secondary-text)"
                   )}
                 >
                   {event?.about || t("events:detail.sections.about.empty")}
@@ -474,7 +474,7 @@ const EventDetail = () => {
                   </Button>
                   {selectedFile && (
                     <span
-                      className="ml-2 max-w-[110px] truncate text-xs text-[color:var(--secondary-text)]"
+                      className="ml-2 max-w-[110px] truncate text-xs text-(--secondary-text)"
                       title={selectedFile.name}
                     >
                       {selectedFile.name}
@@ -489,7 +489,7 @@ const EventDetail = () => {
 
             {optimisticFiles.length > 0 ? (
               <div>
-                <h3 className="mb-2 text-base font-semibold text-[color:var(--page-text)]">
+                <h3 className="mb-2 text-base font-semibold text-(--page-text)">
                   {t("events:detail.sections.files.title")}
                 </h3>
                 <div className="space-y-2">
@@ -501,7 +501,7 @@ const EventDetail = () => {
                     return (
                       <div key={f.id} className="flex items-center gap-2">
                         {isPendingFile ? (
-                          <span className="flex-1 text-sm text-[color:var(--secondary-text)]">
+                          <span className="flex-1 text-sm text-(--secondary-text)">
                             {f.description || t("events:detail.sections.files.pending")}
                           </span>
                         ) : (
@@ -514,7 +514,7 @@ const EventDetail = () => {
                             aria-label={t("events:detail.sections.files.downloadAria", {
                               label: fileLabel,
                             })}
-                            className="flex-1 text-sm font-medium text-[#1976d2] underline transition-colors hover:text-[#1565c0]"
+                            className="flex-1 text-sm font-medium text-(--primary-main) underline transition-colors hover:text-(--primary-dark)"
                           >
                             {fileLabel}
                           </a>
@@ -540,13 +540,13 @@ const EventDetail = () => {
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-[color:var(--secondary-text)]">
+              <p className="text-sm text-(--secondary-text)">
                 {t("events:detail.sections.files.empty")}
               </p>
             )}
           </div>
 
-          <Snackbar open={!!snack} message={snack} onClose={() => setSnack("")} />
+          <Snackbar open={!!snackbar} message={snackbar} onClose={() => setSnackbar("")} />
         </div>
       </Layout>
     )
@@ -554,12 +554,12 @@ const EventDetail = () => {
 
   return (
     <Layout>
-      <div className="flex w-full min-h-[calc(100vh-56px)] flex-col bg-[color:var(--page-bg)] px-4 py-4 sm:px-6 md:px-8 lg:px-12">
+      <div className="flex w-full min-h-[calc(100vh-56px)] flex-col bg-(--page-bg) px-4 py-4 sm:px-6 md:px-8 lg:px-12">
         {BackButton}
         <div className="flex flex-row gap-8 items-start">
           <div className="w-[45%] space-y-6">
             {imageUrl && (
-              <div className="relative w-full overflow-hidden rounded-[2rem] border border-[color:color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[rgba(0,0,0,0.04)] shadow-surface-strong aspect-[21/9]">
+              <div className="relative w-full overflow-hidden rounded-[2rem] border border-(--glass-border) bg-black/5 shadow-premium aspect-21/9">
                 <SmartImage
                   srcRaw={imageUrl}
                   alt={t("events:alt.image")}
@@ -656,8 +656,8 @@ const EventDetail = () => {
               )}
               <Badge
                 size="md"
-                leadingIcon={<PeopleAltIcon size={18} className="text-[#1976d2]" />}
-                className="border-(--glass-border)"
+                leadingIcon={<PeopleAltIcon size={18} className="text-(--primary-main)" />}
+                className="border-(--glass-border) bg-(--primary-main)/5 text-(--primary-main)"
               >
                 {t("events:card.participants", { count: event.participant_count || 0 })}
               </Badge>
@@ -704,7 +704,7 @@ const EventDetail = () => {
                   </Button>
                   {selectedFile && (
                     <span
-                      className="ml-2 max-w-[150px] truncate text-sm text-[color:var(--secondary-text)]"
+                      className="ml-2 max-w-[150px] truncate text-sm text-(--secondary-text)"
                       title={selectedFile.name}
                     >
                       {selectedFile.name}
@@ -719,8 +719,8 @@ const EventDetail = () => {
 
             {optimisticFiles.length > 0 ? (
               <div>
-                <div className="my-3 h-px bg-[color:var(--glass-border)]" />
-                <h3 className="mb-2 text-base font-semibold text-[color:var(--page-text)]">
+                <div className="my-3 h-px bg-(--glass-border)" />
+                <h3 className="mb-2 text-base font-semibold text-(--page-text)">
                   {t("events:detail.sections.files.title")}
                 </h3>
                 <div className="space-y-2">
@@ -732,7 +732,7 @@ const EventDetail = () => {
                     return (
                       <div key={f.id} className="flex items-center gap-2">
                         {isPendingFile ? (
-                          <span className="flex-1 text-sm text-[color:var(--secondary-text)]">
+                          <span className="flex-1 text-sm text-(--secondary-text)">
                             {f.description || t("events:detail.sections.files.pending")}
                           </span>
                         ) : (
@@ -745,7 +745,7 @@ const EventDetail = () => {
                             aria-label={t("events:detail.sections.files.downloadAria", {
                               label: fileLabel,
                             })}
-                            className="flex-1 text-sm font-medium text-[#1976d2] underline transition-colors hover:text-[#1565c0]"
+                            className="flex-1 text-sm font-medium text-(--primary-main) underline transition-colors hover:text-(--primary-dark)"
                           >
                             {fileLabel}
                           </a>
@@ -771,7 +771,7 @@ const EventDetail = () => {
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-[color:var(--secondary-text)]">
+              <p className="text-sm text-(--secondary-text)">
                 {t("events:detail.sections.files.empty")}
               </p>
             )}

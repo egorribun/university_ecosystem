@@ -169,7 +169,7 @@ export const ActionMenu = ({
           tabIndex={-1}
           onKeyDown={handleKeyDown}
           className={cn(
-            "absolute top-full z-50 mt-1 min-w-[160px] overflow-hidden rounded-lg border border-border-subtle bg-surface shadow-lg backdrop-blur-md",
+            "absolute top-full z-(--overlay-z) mt-1 w-40 overflow-hidden rounded-lg border border-border-subtle bg-surface shadow-lg backdrop-blur-md",
             placementStyles[placement],
             menuClassName
           )}
@@ -193,7 +193,9 @@ export const ActionMenu = ({
               )}
             >
               {item.icon && (
-                <span className="flex-shrink-0 [&>svg]:h-4 [&>svg]:w-4">{item.icon}</span>
+                <span className="shrink-0 text-secondary-text transition-transform duration-200 group-hover:scale-110">
+                  {item.icon}
+                </span>
               )}
               {item.label}
             </button>

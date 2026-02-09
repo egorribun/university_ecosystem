@@ -14,7 +14,7 @@ export type MfaVerifyPayload = {
   method: "totp" | "webauthn"
   challenge_token: string
   code?: string
-  webauthn_response?: any
+  webauthn_response?: unknown
   trust_device?: boolean
 }
 
@@ -37,11 +37,11 @@ export type WebAuthnCredential = {
 }
 
 export type WebAuthnRegistrationOptionsOut = {
-  publicKey: any
+  publicKey: unknown
 }
 
 export type WebAuthnRegistrationVerifyIn = {
   challenge: string
-  response: any
+  response: unknown
   label?: string
 }

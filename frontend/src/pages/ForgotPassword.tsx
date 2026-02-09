@@ -12,6 +12,7 @@ import {
 } from "@/components/settings"
 import { motion, AnimatePresence } from "framer-motion"
 import { Mail as EmailIcon, ChevronLeft, Send as SendIcon, CheckCircle2 } from "lucide-react"
+import { Input } from "@/components/ui"
 
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const COMMON_EMAIL_DOMAINS = [
@@ -223,6 +224,7 @@ export default function ForgotPassword() {
                     <form action={forgotAction} autoComplete="off" className="space-y-6">
                       <div className="space-y-3">
                         <TextField
+                          id="email"
                           label={t("auth:fields.email")}
                           name="email"
                           type="email"
@@ -232,8 +234,8 @@ export default function ForgotPassword() {
                           autoFocus
                           fullWidth
                           autoComplete="email"
-                          error={!emailValid}
-                          helperText={!emailValid ? t("auth:messages.invalidFormat") : ""}
+                          error={!emailValid && email.length > 0}
+                          helperText={!emailValid && email.length > 0 ? t("auth:messages.invalidFormat") : ""}
                           ref={emailInputRef}
                           disabled={forgotPending || cooldown > 0}
                           className="rounded-2xl h-14"

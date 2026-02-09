@@ -30,15 +30,15 @@ export const verifyMfaChallenge = (payload: MfaVerifyPayload) =>
 export const requestStepUpChallenge = () => api.post<StepUpResponse>("/auth/mfa/step-up")
 
 export const startWebAuthnRegistration = () =>
-  api.post<{ publicKey: any; challenge_token: string }>("/auth/mfa/webauthn/register/start")
+  api.post<{ publicKey: unknown; challenge_token: string }>("/auth/mfa/webauthn/register/start")
 
 export const confirmWebAuthnRegistration = (payload: {
   challenge: string
-  response: any
+  response: unknown
   label?: string
 }) => api.post<MfaFactorStatus>("/auth/mfa/webauthn/register/confirm", payload)
 
-export const listWebAuthnCredentials = () => api.get<any[]>("/auth/mfa/webauthn")
+export const listWebAuthnCredentials = () => api.get<unknown[]>("/auth/mfa/webauthn")
 
 export const deleteWebAuthnCredential = (credentialId: string) =>
   api.delete<MfaFactorStatus>(`/auth/mfa/webauthn/${credentialId}`)

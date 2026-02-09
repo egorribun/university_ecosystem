@@ -208,7 +208,7 @@ export default function DashboardStories({
     }
     const initials = story.title.slice(0, 2).toUpperCase()
     return (
-      <div className="flex h-full w-full items-center justify-center text-[1.1rem] font-semibold uppercase tracking-wide text-white/95">
+      <div className="flex h-full w-full items-center justify-center text-lg font-semibold uppercase tracking-wide text-white/95">
         {initials}
       </div>
     )
@@ -293,12 +293,12 @@ export default function DashboardStories({
     isClient && viewerStory && openIndex !== null
       ? createPortal(
           <div
-            className="fixed inset-0 flex items-center justify-center p-4 sm:p-8"
-            style={{ zIndex: "var(--ue-z-index-overlay)" }}
+            className="fixed inset-0 flex items-center justify-center p-fluid-x sm:p-fluid-y"
+            style={{ zIndex: "var(--z-overlay)" }}
           >
             <div
               aria-hidden
-              className="absolute inset-0 bg-[rgba(8,11,21,0.35)] backdrop-blur-xl"
+              className="absolute inset-0 z-1 bg-linear-to-b from-black/40 via-transparent to-black/80"
               onClick={closeViewer}
             />
             <div
@@ -307,15 +307,15 @@ export default function DashboardStories({
               aria-modal="true"
               aria-labelledby={viewerStory.title ? dialogTitleId : undefined}
               aria-label={storyDialogLabel}
-              className="relative z-[1] flex w-full justify-center"
+              className="relative z-1 flex w-full justify-center"
             >
               <div
                 className={cn(
-                  "relative flex aspect-[9/16] w-[min(92vw,420px)] max-h-[92vh] max-w-[min(92vw,420px)] flex-col items-stretch justify-center overflow-hidden text-white sm:aspect-[16/9] sm:w-[min(96vw,960px)] sm:max-h-[80vh] sm:max-w-[min(96vw,960px)]",
+                  "relative z-10 flex aspect-9/16 w-(--story-card-w) max-h-[92vh] max-w-(--story-card-w) flex-col items-stretch justify-center overflow-hidden text-white sm:aspect-video sm:w-[min(96%,960px)] sm:max-h-[80vh] sm:max-w-[min(96%,960px)]",
                   viewerStory.cover_url
-                    ? "bg-[#080b15]"
-                    : "bg-[linear-gradient(135deg,#1d4ed8,#60a5fa)] shadow-[0_30px_80px_rgba(0,0,0,0.55)]",
-                  viewerStory.cover_url ? "rounded-none" : "rounded-[1.25rem] sm:rounded-[1.5rem]"
+                    ? "bg-page"
+                    : "bg-brand shadow-premium-lift",
+                  viewerStory.cover_url ? "rounded-none" : "rounded-ue-xl sm:rounded-ue-2xl"
                 )}
                 onPointerDown={handlePointerStart}
                 onPointerUp={handlePointerEnd}
@@ -337,11 +337,11 @@ export default function DashboardStories({
                       height: "100%",
                       objectFit: "contain",
                       objectPosition: "center",
-                      backgroundColor: "#080b15",
+                      backgroundColor: "var(--bg-page)",
                     }}
                   />
                 ) : (
-                  <div className="flex flex-1 items-center justify-center bg-[linear-gradient(135deg,#1d4ed8,#60a5fa)]">
+                  <div className="flex w-full items-center justify-between px-fluid-x">
                     <span className="text-[clamp(2.2rem,12vw,3.2rem)] font-extrabold uppercase">
                       {viewerStory.title.slice(0, 2).toUpperCase()}
                     </span>
@@ -357,13 +357,13 @@ export default function DashboardStories({
                       viewerStory.cta_url ? "gap-5" : "gap-4",
                       "p-6 pt-12 sm:p-8 sm:pt-16"
                     )}
-                    style={{
-                      backgroundImage: viewerStory.cover_url
-                        ? "linear-gradient(180deg, rgba(8,11,21,0) 0%, rgba(8,11,21,0.65) 55%, rgba(8,11,21,0.85) 100%)"
-                        : "linear-gradient(180deg, rgba(15,23,42,0) 0%, rgba(15,23,42,0.82) 60%, rgba(15,23,42,0.95) 100%)",
-                      backdropFilter: viewerStory.cover_url ? "blur(12px)" : undefined,
-                      WebkitBackdropFilter: viewerStory.cover_url ? "blur(12px)" : undefined,
-                    }}
+                     style={{
+                       backgroundImage: viewerStory.cover_url
+                         ? "linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--primary-main) 10%, transparent) 55%, var(--bg-page) 100%)"
+                         : "linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--slate-900) 82%, transparent) 60%, var(--bg-page) 100%)",
+                       backdropFilter: viewerStory.cover_url ? "blur(var(--blur-glass))" : undefined,
+                       WebkitBackdropFilter: viewerStory.cover_url ? "blur(var(--blur-glass))" : undefined,
+                     }}
                   >
                     {viewerStory.title && (
                       <h2 id={dialogTitleId} className="text-3xl font-extrabold leading-snug">
@@ -425,7 +425,7 @@ export default function DashboardStories({
                   type="button"
                   onClick={closeViewer}
                   aria-label={t("stories.viewer.aria.close")}
-                  className="absolute right-4 top-9 inline-flex h-11 w-11 items-center justify-center rounded-full bg-[rgba(8,11,21,0.55)] text-white transition-colors duration-200 ease-out hover:bg-[rgba(8,11,21,0.7)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70 sm:right-6"
+                  className="absolute right-4 top-9 inline-flex h-11 w-11 items-center justify-center rounded-full bg-glass/50 text-white transition-colors duration-200 ease-out hover:bg-glass/70 focus-visible:outline focus-visible:ring-2 focus-visible:ring-white/70 sm:right-6"
                 >
                   <CloseIcon className="h-5 w-5" aria-hidden="true" />
                 </button>
@@ -436,7 +436,7 @@ export default function DashboardStories({
                       type="button"
                       onClick={goPrev}
                       aria-label={t("stories.viewer.aria.prev")}
-                      className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-[rgba(8,11,21,0.55)] text-white transition-colors duration-200 ease-out hover:bg-[rgba(8,11,21,0.7)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70"
+                      className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-glass/50 text-white transition-colors duration-200 ease-out hover:bg-glass/70 focus-visible:outline focus-visible:ring-2 focus-visible:ring-white/70"
                     >
                       <ArrowLeftIcon className="h-5 w-5" aria-hidden="true" />
                     </button>
@@ -446,7 +446,7 @@ export default function DashboardStories({
                       type="button"
                       onClick={goNext}
                       aria-label={t("stories.viewer.aria.next")}
-                      className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-[rgba(8,11,21,0.55)] text-white transition-colors duration-200 ease-out hover:bg-[rgba(8,11,21,0.7)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/70"
+                      className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-glass/50 text-white transition-colors duration-200 ease-out hover:bg-glass/70 focus-visible:outline focus-visible:ring-2 focus-visible:ring-white/70"
                     >
                       <ArrowRightIcon className="h-5 w-5" aria-hidden="true" />
                     </button>
@@ -475,7 +475,7 @@ export default function DashboardStories({
             {Array.from({ length: SKELETON_COUNT }).map((_, index) => (
               <div
                 key={index}
-                className="flex flex-shrink-0 flex-col items-center justify-center"
+                className="shrink-0 flex items-center gap-2"
                 style={{
                   width: STORY_CIRCLE_DIAMETER,
                   minHeight: STORY_CIRCLE_DIAMETER,
@@ -494,7 +494,7 @@ export default function DashboardStories({
         )}
         {!loading && hasStories && (
           <ul
-            className="-mr-4 flex list-none gap-6 overflow-x-auto p-0 pr-4 sm:-mr-0 sm:flex-wrap sm:pr-0 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+            className="-mr-4 flex list-none gap-6 overflow-x-auto p-0 pr-4 sm:mr-0 sm:flex-wrap sm:pr-0 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
             aria-label={listLabel}
           >
             {displayStories.map((story, index) => {
@@ -504,7 +504,7 @@ export default function DashboardStories({
                 <li
                   key={story.id}
                   className={cn(
-                    "flex flex-shrink-0 flex-col items-center justify-center overflow-visible",
+                    "flex shrink-0 flex-col items-center justify-center overflow-visible",
                     index === 0 ? "ml-3 sm:ml-2" : ""
                   )}
                   style={{
@@ -526,10 +526,10 @@ export default function DashboardStories({
                     title={tooltip ?? undefined}
                     data-active={viewerStory?.id === story.id ? "true" : undefined}
                     className={cn(
-                      "transition-transform data-[active=true]:ring-4 data-[active=true]:ring-[rgba(125,172,255,0.45)]"
+                      "transition-transform data-[active=true]:ring-4 data-[active=true]:ring-brand/45"
                     )}
                   >
-                    <div className="relative h-full w-full overflow-hidden rounded-full">
+                    <div className="relative z-1 aspect-9/16 w-[--story-card-w] overflow-hidden rounded-ue-xl bg-surface-raised shadow-premium md:w-[--story-card-w-md]">
                       {renderAvatar(story)}
                     </div>
                   </StoryCircle>

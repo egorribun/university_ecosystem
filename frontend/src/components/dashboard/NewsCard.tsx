@@ -44,7 +44,7 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
   }
 
   const listActionBase =
-    "group relative isolate w-full overflow-hidden rounded-xl border border-border-subtle bg-surface-hover/10 px-4 py-3 text-left transition-all duration-300 ease-out hover:bg-surface-hover/20 hover:border-border-strong hover:-translate-y-0.5 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus/50"
+    "group relative isolate w-full overflow-hidden rounded-xl border border-border-subtle bg-surface-hover/10 px-4 py-3 text-left transition-all duration-300 ease-out hover:bg-surface-hover/20 hover:border-border-strong hover:-translate-y-0.5 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
 
   return (
     <Card

@@ -1,6 +1,7 @@
 import { useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { isAxiosError } from "axios"
+import type { TFunction } from "i18next"
 import { useQueryClient } from "@tanstack/react-query"
 import api, { API_UNAUTHORIZED_EVENT } from "@/api/client"
 import { SPOTIFY_REAUTH_EVENT } from "@/hooks/useNowPlaying"
@@ -49,7 +50,7 @@ const isTokenWithProfileResponse = (
 
 const formatLockoutDuration = (
   seconds: number | null | undefined,
-  t: (key: string, options?: any) => string
+  t: TFunction<"auth">
 ): string | null => {
   if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds <= 0) {
     return null
@@ -146,7 +147,7 @@ export const useAuthApi = (
         )
 
         if (response.status === 202) {
-          const mfaResponse = response.data as any
+          const mfaResponse = response.data as PendingMfaResponse
           // Backend returns 'methods', frontend expects 'challenges'
           const challenges = mfaResponse.challenges || mfaResponse.methods || []
           const pendingState: PendingMfaState = {
@@ -379,7 +380,7 @@ export const useAuthApi = (
 
         // 2. Start biometric authentication
         const authResponse = await startAuthentication({
-          optionsJSON: optionsResponse.data.publicKey as any,
+          optionsJSON: optionsResponse.data.publicKey as Parameters<typeof startAuthentication>[0]["optionsJSON"],
         })
 
         // 3. Verify authentication response

@@ -28,7 +28,8 @@ self.onmessage = async (event: MessageEvent) => {
       const signature = CryptoJS.HmacSHA256(json, key)
       self.postMessage({ id, result: signature.toString(CryptoJS.enc.Base64) })
     }
-  } catch (error: any) {
-    self.postMessage({ id, error: error?.message || "Unknown worker error" })
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown worker error"
+    self.postMessage({ id, error: message })
   }
 }

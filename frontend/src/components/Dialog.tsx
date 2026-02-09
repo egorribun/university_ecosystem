@@ -98,11 +98,11 @@ export function Dialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[var(--ue-z-index-overlay)] flex items-center justify-center overflow-y-auto px-4 py-8 sm:px-6 sm:py-12"
+      className="fixed inset-0 z-overlay flex items-center justify-center overflow-y-auto px-fluid-x py-fluid-y"
       role="presentation"
     >
       <div
-        className="absolute inset-0 bg-[rgba(10,16,32,0.62)] backdrop-blur-[12px]"
+        className="absolute inset-0 bg-overlay-bg backdrop-blur-overlay"
         aria-hidden="true"
         onClick={onClose}
       />
@@ -113,11 +113,11 @@ export function Dialog({
         aria-labelledby={labelledBy}
         aria-describedby={describedBy}
         className={cn(
-          "relative z-10 w-full max-w-[min(100%,480px)]",
+          "relative z-10 w-full max-w-(--dialog-max-w)",
           sizeClassMap[size],
           fullScreenOnMobile
-            ? "h-[100dvh] max-h-[100dvh] overflow-y-auto rounded-none bg-[color:color-mix(in_srgb,var(--card-bg)_92%,white_8%)] px-5 pb-6 pt-5 text-page-foreground shadow-surface-strong ring-1 ring-white/10 sm:h-auto sm:max-h-[90vh] sm:rounded-ue-xl sm:px-6 sm:pb-7"
-            : "max-h-[92vh] overflow-y-auto rounded-ue-xl bg-[color:color-mix(in_srgb,var(--card-bg)_92%,white_8%)] px-5 pb-6 pt-5 text-page-foreground shadow-surface-strong ring-1 ring-white/10 backdrop-blur-xl sm:px-6 sm:pb-7",
+            ? "h-dvh max-h-dvh overflow-y-auto rounded-none bg-(--bg-surface) pb-6 pt-5 text-(--text-primary) shadow-surface-strong ring-1 ring-white/10 sm:h-auto sm:max-h-[90vh] sm:rounded-ue-xl sm:px-6 sm:pb-7"
+            : "max-h-[92vh] overflow-y-auto rounded-ue-xl bg-(--bg-surface)/90 pb-6 pt-5 text-(--text-primary) shadow-surface-strong ring-1 ring-white/10 backdrop-blur-xl sm:px-6 sm:pb-7",
           "focus:outline-none",
           className
         )}
@@ -127,7 +127,7 @@ export function Dialog({
             {title ? (
               <h2
                 id={dialogTitleId}
-                className="text-[clamp(1.2rem,3vw,1.45rem)] font-semibold text-page-foreground"
+                className="text-[clamp(1.2rem,3vw,1.45rem)] font-semibold text-(--text-primary)"
               >
                 {title}
               </h2>
@@ -135,7 +135,7 @@ export function Dialog({
             {subtitle ? (
               <p
                 id={dialogSubtitleId}
-                className="text-sm font-medium text-[color:var(--secondary-text)]"
+                className="text-sm font-medium text-(--secondary-text)"
               >
                 {subtitle}
               </p>
@@ -145,14 +145,14 @@ export function Dialog({
             ref={closeButtonRef}
             type="button"
             onClick={onClose}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/70 text-nav-link shadow-surface transition hover:bg-white focus-visible:outline-none focus-visible:shadow-focus"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-(--glass-bg)/70 text-(--nav-link) shadow-surface transition hover:bg-(--glass-bg) focus-visible:outline-none focus-visible:shadow-focus"
           >
             <span className="sr-only">{closeLabel}</span>
             <svg
               viewBox="0 0 20 20"
               fill="none"
               xmlns="http://www.w3.org/2000/svg"
-              className="h-4 w-4 text-[color:var(--nav-link)]"
+              className="h-4 w-4 text-(--nav-link)"
               aria-hidden
             >
               <path

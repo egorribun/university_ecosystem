@@ -31,8 +31,8 @@ export default function AdminFeatureFlags() {
 
   const fetchFlags = useCallback(async () => {
     try {
-      const res = await api.get<FeatureFlag[]>("/admin/feature-flags")
-      setFlags(res.data)
+      const response = await api.get<FeatureFlag[]>("/admin/feature-flags")
+      setFlags(response.data)
     } finally {
       setLoading(false)
     }
@@ -156,7 +156,7 @@ export default function AdminFeatureFlags() {
                                 max="100"
                                 step="5"
                                 value={flag.percentage}
-                                onChange={(e) => handlePercentageChange(flag.name, parseInt(e.target.value))}
+                                onChange={(event) => handlePercentageChange(flag.name, parseInt(event.target.value))}
                                 className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-glass-border accent-brand"
                               />
                               <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-secondary-text">

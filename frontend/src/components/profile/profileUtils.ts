@@ -4,12 +4,12 @@
  * Shared types and helper functions for the Profile page components.
  */
 
-export type SnackKey = "spotifyConnected" | "spotifyError" | "copied" | "profileUpdated" | "error"
+export type SnackbarKey = "spotifyConnected" | "spotifyError" | "copied" | "profileUpdated" | "error"
 
-export type SnackState = {
-  key?: SnackKey
+export type SnackbarState = {
+  key?: SnackbarKey
   message?: string
-  sev?: "success" | "info" | "warning" | "error"
+  severity?: "success" | "info" | "warning" | "error"
 }
 
 /**

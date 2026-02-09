@@ -4,6 +4,7 @@ import guuLogo from "@/assets/guu_logo.png"
 import SmartImage from "@/components/SmartImage"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
+import { Button } from "@/components/ui"
 
 export default function Footer() {
   const year = new Date().getFullYear()
@@ -16,17 +17,17 @@ export default function Footer() {
 
   return (
     <footer
-      className="footer-root relative overflow-hidden"
+      className="bg-footer relative overflow-hidden border-t border-white/10"
       role="contentinfo"
       style={{
         minHeight: "150px",
       }}
     >
-      <div className="footer-inner relative z-10">
-        <div className="footer-grid">
-          <div className="footer-brand">
-            <div className="footer-brand-head">
-              <div className="footer-logo">
+      <div className="relative z-10 mx-auto max-w-[1260px] px-fluid-x py-8 md:py-10">
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr] lg:gap-8">
+          <div className="flex min-w-0 flex-col gap-3">
+            <div className="flex items-center gap-3">
+              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white">
                 <SmartImage
                   srcRaw={guuLogo}
                   alt={t("navigation:brandAlt")}
@@ -39,66 +40,72 @@ export default function Footer() {
                   className="h-12 w-12"
                 />
               </div>
-              <h2 className="footer-brand-title">{t("navigation:brandName")}</h2>
+              <h2 className="text-xl font-extrabold tracking-tight text-white">{t("navigation:brandName")}</h2>
             </div>
-            <p className="footer-text">{t("navigation:brandDescription")}</p>
-            <div className="footer-social flex gap-3 mt-4">
-              <a
+            <p className="max-w-[640px] text-white opacity-85">{t("navigation:brandDescription")}</p>
+            <div className="mt-4 flex gap-3">
+              <Button
+                as="a"
+                variant="glass"
+                size="sm"
                 aria-label={t("navigation:footer.contactTelegram")}
-                className="footer-social-btn flex items-center justify-center w-10 h-10 rounded-xl bg-surface-raised border border-glass-border hover:bg-surface-hover hover:text-brand transition-all shadow-sm"
+                className="h-10! w-10! p-0! rounded-xl"
                 href="https://t.me/GUUmsk"
                 target="_blank"
                 rel="noopener noreferrer"
               >
                 <Send className="w-5 h-5" />
-              </a>
-              <a
+              </Button>
+              <Button
+                as="a"
+                variant="glass"
+                size="sm"
                 aria-label={t("navigation:footer.contactEmail")}
-                className="footer-social-btn flex items-center justify-center w-10 h-10 rounded-xl bg-surface-raised border border-glass-border hover:bg-surface-hover hover:text-brand transition-all shadow-sm"
+                className="h-10! w-10! p-0! rounded-xl"
                 href="https://mail.google.com/mail/?view=cm&fs=1&to=inf@guu.ru"
                 target="_blank"
                 rel="noopener noreferrer"
               >
                 <Mail className="w-5 h-5" />
-              </a>
+              </Button>
             </div>
           </div>
 
-          <div className="footer-col">
-            <h3 className="footer-title">{t("navigation:footer.navigationTitle")}</h3>
-            <Link to="/dashboard" className="footer-link">
+          <div className="flex flex-col gap-1.5">
+            <h3 className="mb-1.5 text-sm font-extrabold tracking-widest text-white uppercase opacity-95">{t("navigation:footer.navigationTitle")}</h3>
+            <Link to="/dashboard" className="footer-link-premium">
               {t("navigation:menu.dashboard")}
             </Link>
-            <Link to="/news" className="footer-link">
+            <Link to="/news" className="footer-link-premium">
               {t("navigation:menu.news")}
             </Link>
-            <Link to="/schedule" className="footer-link">
+            <Link to="/schedule" className="footer-link-premium">
               {t("navigation:menu.schedule")}
             </Link>
-            <Link to="/events" className="footer-link">
+            <Link to="/events" className="footer-link-premium">
               {t("navigation:menu.events")}
             </Link>
-            <Link to="/map" className="footer-link">
+            <Link to="/map" className="footer-link-premium">
               {t("navigation:menu.map")}
             </Link>
           </div>
 
-          <div className="footer-col">
-            <h3 className="footer-title">{t("navigation:footer.profileTitle")}</h3>
-            <Link to="/profile" className="footer-link">
+          <div className="flex flex-col gap-1.5">
+            <h3 className="mb-1.5 text-sm font-extrabold tracking-widest text-white uppercase opacity-95">{t("navigation:footer.profileTitle")}</h3>
+            <Link to="/profile" className="footer-link-premium">
               {t("navigation:footer.myProfile")}
             </Link>
-            <Link to="/settings" className="footer-link">
+            <Link to="/settings" className="footer-link-premium">
               {t("navigation:menu.settings")}
             </Link>
           </div>
         </div>
 
-        <div className="footer-bottom mt-12 pt-8 border-t border-glass-border/10">
-          <p className="footer-copy text-sm opacity-60">
+        <div className="mt-12 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-8">
+          <p className="text-sm font-medium text-white opacity-60">
             {t("navigation:footer.copyright", { year })}
           </p>
-          <p className="footer-note text-xs opacity-40 mt-1">{t("navigation:footer.careNote")}</p>
+          <p className="text-xs text-white opacity-40">{t("navigation:footer.careNote")}</p>
         </div>
       </div>
     </footer>

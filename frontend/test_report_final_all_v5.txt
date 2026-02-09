@@ -1,0 +1,468 @@
+
+> frontend@1.0.0 test
+> vitest run --run
+
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90mC:/Users/egorribun/Documents/university_ecosystem/frontend[39m
+
+[90mstdout[2m | src/pages/__tests__/AdminUsers.test.tsx[2m > [22m[2mAdminUsers page[2m > [22m[2mrenders users and groups
+[22m[39m[SmartImage] status=fallback src=/fallbacks/placeholder.png
+[SmartImage] status=fallback src=/fallbacks/placeholder.png
+[SmartImage] status=fallback src=/fallbacks/placeholder.png
+[SmartImage] status=fallback src=/fallbacks/placeholder.png
+
+[90mstdout[2m | src/pages/__tests__/AdminUsers.test.tsx[2m > [22m[2mAdminUsers page[2m > [22m[2mfilters users by name
+[22m[39m[SmartImage] status=fallback src=/fallbacks/placeholder.png
+[SmartImage] status=fallback src=/fallbacks/placeholder.png
+[SmartImage] status=fallback src=/fallbacks/placeholder.png
+[SmartImage] status=fallback src=/fallbacks/placeholder.png
+
+[90mstdout[2m | src/pages/__tests__/AdminUsers.test.tsx[2m > [22m[2mAdminUsers page[2m > [22m[2mhandles user deletion
+[22m[39m[SmartImage] status=fallback src=/fallbacks/placeholder.png
+[SmartImage] status=fallback src=/fallbacks/placeholder.png
+[SmartImage] status=fallback src=/fallbacks/placeholder.png
+[SmartImage] status=fallback src=/fallbacks/placeholder.png
+
+[90mstdout[2m | src/pages/__tests__/Settings.media.test.tsx[2m > [22m[2mSettings media actions[2m > [22m[2muploads avatar and refreshes the profile
+[22m[39m[SmartImage] status=primary src=/api/v1/img/media/avatars/original.png?_v=1770600193364
+
+[90mstdout[2m | src/pages/__tests__/Settings.totp.test.tsx[2m > [22m[2mSettings TOTP enrollment[2m > [22m[2mstarts and completes a new TOTP enrollment
+[22m[39m[SmartImage] status=primary src=/fallbacks/default_avatar.png
+
+[90mstdout[2m | src/pages/__tests__/Settings.media.test.tsx[2m > [22m[2mSettings media actions[2m > [22m[2muploads avatar and refreshes the profile
+[22m[39m[SmartImage] status=primary src=/api/v1/img/media/avatars/original.png?_v=1770600193661
+
+[90mstdout[2m | src/pages/__tests__/AdminUsers.test.tsx[2m > [22m[2mAdminUsers page[2m > [22m[2mhandles group change
+[22m[39m[SmartImage] status=fallback src=/fallbacks/placeholder.png
+[SmartImage] status=fallback src=/fallbacks/placeholder.png
+[SmartImage] status=fallback src=/fallbacks/placeholder.png
+[SmartImage] status=fallback src=/fallbacks/placeholder.png
+
+[90mstdout[2m | src/pages/__tests__/Settings.totp.test.tsx[2m > [22m[2mSettings TOTP enrollment[2m > [22m[2mstarts and completes a new TOTP enrollment
+[22m[39m[settings] Rendering sessions[0]: ID=session-1 UA=Mozilla/5.0 (Macintosh; Intel Mac OS X) revoked=false (null)
+[settings] Session session-1 final statusLabel: This device
+[settings] Rendering sessions[1]: ID=session-2 UA=Safari/17.3 (iPhone; CPU iPhone OS) revoked=false (null)
+[settings] Session session-2 final statusLabel: Active
+
+ [32mтЬУ[39m src/pages/__tests__/AdminUsers.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[33m 542[2mms[22m[39m
+[90mstdout[2m | src/pages/__tests__/Settings.media.test.tsx[2m > [22m[2mSettings media actions[2m > [22m[2mshows an error when avatar upload fails
+[22m[39m[SmartImage] status=primary src=/api/v1/img/media/avatars/original.png?_v=1770600193740
+
+[90mstdout[2m | src/pages/__tests__/Settings.media.test.tsx[2m > [22m[2mSettings media actions[2m > [22m[2mshows an error when avatar upload fails
+[22m[39m[settings] Rendering sessions[0]: ID=session-1 UA=Mozilla/5.0 (Macintosh; Intel Mac OS X) revoked=false (null)
+[settings] Session session-1 final statusLabel: This device
+[settings] Rendering sessions[1]: ID=session-2 UA=Safari/17.3 (iPhone; CPU iPhone OS) revoked=false (null)
+[settings] Session session-2 final statusLabel: Active
+
+[90mstdout[2m | src/pages/__tests__/Settings.media.test.tsx[2m > [22m[2mSettings media actions[2m > [22m[2mshows an error when avatar upload fails
+[22m[39m[settings] Rendering sessions[0]: ID=session-1 UA=Mozilla/5.0 (Macintosh; Intel Mac OS X) revoked=false (null)
+[settings] Session session-1 final statusLabel: This device
+[settings] Rendering sessions[1]: ID=session-2 UA=Safari/17.3 (iPhone; CPU iPhone OS) revoked=false (null)
+[settings] Session session-2 final statusLabel: Active
+
+ [32mтЬУ[39m src/components/__tests__/Navbar.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[33m 749[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m Navbar[2m > [22mtraps focus within the mobile drawer and closes on Escape [33m 509[2mms[22m[39m
+[90mstdout[2m | src/pages/__tests__/Settings.media.test.tsx[2m > [22m[2mSettings media actions[2m > [22m[2muploads cover and updates preview
+[22m[39m[SmartImage] status=primary src=/api/v1/img/media/avatars/original.png?_v=1770600193909
+
+[90mstdout[2m | src/pages/__tests__/Settings.totp.test.tsx[2m > [22m[2mSettings TOTP enrollment[2m > [22m[2mstarts and completes a new TOTP enrollment
+[22m[39m[settings] Rendering sessions[0]: ID=session-1 UA=Mozilla/5.0 (Macintosh; Intel Mac OS X) revoked=false (null)
+[settings] Session session-1 final statusLabel: This device
+[settings] Rendering sessions[1]: ID=session-2 UA=Safari/17.3 (iPhone; CPU iPhone OS) revoked=false (null)
+[settings] Session session-2 final statusLabel: Active
+
+[90mstdout[2m | src/pages/__tests__/Settings.totp.test.tsx[2m > [22m[2mSettings TOTP enrollment[2m > [22m[2mstarts and completes a new TOTP enrollment
+[22m[39m[settings] Rendering sessions[0]: ID=session-1 UA=Mozilla/5.0 (Macintosh; Intel Mac OS X) revoked=false (null)
+[settings] Session session-1 final statusLabel: This device
+[settings] Rendering sessions[1]: ID=session-2 UA=Safari/17.3 (iPhone; CPU iPhone OS) revoked=false (null)
+[settings] Session session-2 final statusLabel: Active
+
+ [32mтЬУ[39m src/pages/__tests__/AdminNotifications.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[33m 893[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m AdminNotifications page[2m > [22mlists dead-letter jobs and supports selection [33m 364[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m AdminNotifications page[2m > [22mretries and purges selected jobs [33m 494[2mms[22m[39m
+ [32mтЬУ[39m src/pages/__tests__/ForgotPassword.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[33m 942[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m ForgotPassword page[2m > [22mshows validation message for malformed email [33m 364[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m ForgotPassword page[2m > [22mconfirms submission and starts cooldown [33m 503[2mms[22m[39m
+[90mstdout[2m | src/pages/__tests__/Settings.totp.test.tsx[2m > [22m[2mSettings TOTP enrollment[2m > [22m[2mstarts and completes a new TOTP enrollment
+[22m[39m[settings] Rendering sessions[0]: ID=session-1 UA=Mozilla/5.0 (Macintosh; Intel Mac OS X) revoked=false (null)
+[settings] Session session-1 final statusLabel: This device
+[settings] Rendering sessions[1]: ID=session-2 UA=Safari/17.3 (iPhone; CPU iPhone OS) revoked=false (null)
+[settings] Session session-2 final statusLabel: Active
+
+ [32mтЬУ[39m src/pages/__tests__/News.create.test.tsx [2m([22m[2m1 test[22m[2m)[22m[33m 992[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m News creation dialog[2m > [22mkeeps the dialog open and surfaces errors when creation fails [33m 990[2mms[22m[39m
+[90mstdout[2m | src/pages/__tests__/Settings.totp.test.tsx[2m > [22m[2mSettings TOTP enrollment[2m > [22m[2mstarts and completes a new TOTP enrollment
+[22m[39m[settings] Rendering sessions[0]: ID=session-1 UA=Mozilla/5.0 (Macintosh; Intel Mac OS X) revoked=false (null)
+[settings] Session session-1 final statusLabel: This device
+[settings] Rendering sessions[1]: ID=session-2 UA=Safari/17.3 (iPhone; CPU iPhone OS) revoked=false (null)
+[settings] Session session-2 final statusLabel: Active
+
+[90mstdout[2m | src/pages/__tests__/Settings.totp.test.tsx[2m > [22m[2mSettings TOTP enrollment[2m > [22m[2mstarts and completes a new TOTP enrollment
+[22m[39m[settings] Rendering sessions[0]: ID=session-1 UA=Mozilla/5.0 (Macintosh; Intel Mac OS X) revoked=false (null)
+[settings] Session session-1 final statusLabel: This device
+[settings] Rendering sessions[1]: ID=session-2 UA=Safari/17.3 (iPhone; CPU iPhone OS) revoked=false (null)
+[settings] Session session-2 final statusLabel: Active
+
+[90mstdout[2m | src/pages/__tests__/Settings.media.test.tsx[2m > [22m[2mSettings media actions[2m > [22m[2mdeletes avatar and refreshes the profile
+[22m[39m[SmartImage] status=primary src=/api/v1/img/media/avatars/original.png?_v=1770600194108
+
+[90mstdout[2m | src/pages/__tests__/Settings.media.test.tsx[2m > [22m[2mSettings media actions[2m > [22m[2mdeletes avatar and refreshes the profile
+[22m[39m[SmartImage] status=primary src=/api/v1/img/media/avatars/original.png?_v=1770600194347
+
+[90mstdout[2m | src/pages/__tests__/Settings.totp.test.tsx[2m > [22m[2mSettings TOTP enrollment[2m > [22m[2msurfaces server errors when confirmation fails
+[22m[39m[SmartImage] status=primary src=/fallbacks/default_avatar.png
+
+[90mstdout[2m | src/pages/__tests__/Settings.totp.test.tsx[2m > [22m[2mSettings TOTP enrollment[2m > [22m[2msurfaces server errors when confirmation fails
+[22m[39m[settings] Rendering sessions[0]: ID=session-1 UA=Mozilla/5.0 (Macintosh; Intel Mac OS X) revoked=false (null)
+[settings] Session session-1 final statusLabel: This device
+[settings] Rendering sessions[1]: ID=session-2 UA=Safari/17.3 (iPhone; CPU iPhone OS) revoked=false (null)
+[settings] Session session-2 final statusLabel: Active
+
+[90mstdout[2m | src/pages/__tests__/Settings.media.test.tsx[2m > [22m[2mSettings media actions[2m > [22m[2mdeletes cover and refreshes the profile
+[22m[39m[SmartImage] status=primary src=/api/v1/img/media/avatars/original.png?_v=1770600194412
+
+ [32mтЬУ[39m src/pages/__tests__/Settings.media.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[33m 1383[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m Settings media actions[2m > [22muploads avatar and refreshes the profile [33m 387[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m Settings media actions[2m > [22mdeletes avatar and refreshes the profile [33m 304[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m Settings media actions[2m > [22mdeletes cover and refreshes the profile [33m 321[2mms[22m[39m
+[90mstdout[2m | src/pages/__tests__/Settings.totp.test.tsx[2m > [22m[2mSettings TOTP enrollment[2m > [22m[2msurfaces server errors when confirmation fails
+[22m[39m[settings] Rendering sessions[0]: ID=session-1 UA=Mozilla/5.0 (Macintosh; Intel Mac OS X) revoked=false (null)
+[settings] Session session-1 final statusLabel: This device
+[settings] Rendering sessions[1]: ID=session-2 UA=Safari/17.3 (iPhone; CPU iPhone OS) revoked=false (null)
+[settings] Session session-2 final statusLabel: Active
+
+[90mstdout[2m | src/pages/__tests__/Settings.totp.test.tsx[2m > [22m[2mSettings TOTP enrollment[2m > [22m[2msurfaces server errors when confirmation fails
+[22m[39m[settings] Rendering sessions[0]: ID=session-1 UA=Mozilla/5.0 (Macintosh; Intel Mac OS X) revoked=false (null)
+[settings] Session session-1 final statusLabel: This device
+[settings] Rendering sessions[1]: ID=session-2 UA=Safari/17.3 (iPhone; CPU iPhone OS) revoked=false (null)
+[settings] Session session-2 final statusLabel: Active
+
+ [32mтЬУ[39m src/pages/__tests__/ResetPassword.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[33m 1708[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m ResetPassword page[2m > [22mpropagates API errors to the user [33m 1025[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m ResetPassword page[2m > [22msubmits the new password and shows success state [33m 681[2mms[22m[39m
+ [32mтЬУ[39m src/contexts/__tests__/AuthContext.mfa.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[33m 1827[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m AuthProvider MFA state machine[2m > [22msurfaces login MFA challenges and clears them after successful verification [33m 824[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m AuthProvider MFA state machine[2m > [22mprovides step-up challenges and resets state on verification [33m 669[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m AuthProvider MFA state machine[2m > [22msurfaces verification errors when the wrong OTP is provided [33m 331[2mms[22m[39m
+[90mstdout[2m | src/pages/__tests__/Settings.totp.test.tsx[2m > [22m[2mSettings TOTP enrollment[2m > [22m[2msurfaces server errors when confirmation fails
+[22m[39m[settings] Rendering sessions[0]: ID=session-1 UA=Mozilla/5.0 (Macintosh; Intel Mac OS X) revoked=false (null)
+[settings] Session session-1 final statusLabel: This device
+[settings] Rendering sessions[1]: ID=session-2 UA=Safari/17.3 (iPhone; CPU iPhone OS) revoked=false (null)
+[settings] Session session-2 final statusLabel: Active
+
+[90mstdout[2m | src/pages/__tests__/Settings.totp.test.tsx[2m > [22m[2mSettings TOTP enrollment[2m > [22m[2msurfaces server errors when confirmation fails
+[22m[39m[settings] Rendering sessions[0]: ID=session-1 UA=Mozilla/5.0 (Macintosh; Intel Mac OS X) revoked=false (null)
+[settings] Session session-1 final statusLabel: This device
+[settings] Rendering sessions[1]: ID=session-2 UA=Safari/17.3 (iPhone; CPU iPhone OS) revoked=false (null)
+[settings] Session session-2 final statusLabel: Active
+
+[90mstdout[2m | src/pages/__tests__/Settings.totp.test.tsx[2m > [22m[2mSettings TOTP enrollment[2m > [22m[2mcancels a pending TOTP enrollment
+[22m[39m[SmartImage] status=primary src=/fallbacks/default_avatar.png
+
+[90mstdout[2m | src/pages/__tests__/Settings.totp.test.tsx[2m > [22m[2mSettings TOTP enrollment[2m > [22m[2mcancels a pending TOTP enrollment
+[22m[39m[settings] Rendering sessions[0]: ID=session-1 UA=Mozilla/5.0 (Macintosh; Intel Mac OS X) revoked=false (null)
+[settings] Session session-1 final statusLabel: This device
+[settings] Rendering sessions[1]: ID=session-2 UA=Safari/17.3 (iPhone; CPU iPhone OS) revoked=false (null)
+[settings] Session session-2 final statusLabel: Active
+
+[90mstdout[2m | src/pages/__tests__/Settings.totp.test.tsx[2m > [22m[2mSettings TOTP enrollment[2m > [22m[2mcancels a pending TOTP enrollment
+[22m[39m[settings] Rendering sessions[0]: ID=session-1 UA=Mozilla/5.0 (Macintosh; Intel Mac OS X) revoked=false (null)
+[settings] Session session-1 final statusLabel: This device
+[settings] Rendering sessions[1]: ID=session-2 UA=Safari/17.3 (iPhone; CPU iPhone OS) revoked=false (null)
+[settings] Session session-2 final statusLabel: Active
+
+[90mstdout[2m | src/pages/__tests__/Settings.totp.test.tsx[2m > [22m[2mSettings TOTP enrollment[2m > [22m[2mcancels a pending TOTP enrollment
+[22m[39m[settings] Rendering sessions[0]: ID=session-1 UA=Mozilla/5.0 (Macintosh; Intel Mac OS X) revoked=false (null)
+[settings] Session session-1 final statusLabel: This device
+[settings] Rendering sessions[1]: ID=session-2 UA=Safari/17.3 (iPhone; CPU iPhone OS) revoked=false (null)
+[settings] Session session-2 final statusLabel: Active
+
+ [32mтЬУ[39m src/pages/__tests__/Register.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[33m 2615[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m Register page[2m > [22msurfaces API error messages [33m 1385[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m Register page[2m > [22msends registration payload and navigates to login [33m 1001[2mms[22m[39m
+[90mstdout[2m | src/pages/__tests__/Settings.totp.test.tsx[2m > [22m[2mSettings TOTP enrollment[2m > [22m[2mcancels a pending TOTP enrollment
+[22m[39m[settings] Rendering sessions[0]: ID=session-1 UA=Mozilla/5.0 (Macintosh; Intel Mac OS X) revoked=false (null)
+[settings] Session session-1 final statusLabel: This device
+[settings] Rendering sessions[1]: ID=session-2 UA=Safari/17.3 (iPhone; CPU iPhone OS) revoked=false (null)
+[settings] Session session-2 final statusLabel: Active
+
+[90mstdout[2m | src/pages/__tests__/Settings.totp.test.tsx[2m > [22m[2mSettings TOTP enrollment[2m > [22m[2mcancels a pending TOTP enrollment
+[22m[39m[settings] Rendering sessions[0]: ID=session-1 UA=Mozilla/5.0 (Macintosh; Intel Mac OS X) revoked=false (null)
+[settings] Session session-1 final statusLabel: This device
+[settings] Rendering sessions[1]: ID=session-2 UA=Safari/17.3 (iPhone; CPU iPhone OS) revoked=false (null)
+[settings] Session session-2 final statusLabel: Active
+
+[90mstdout[2m | src/pages/__tests__/Settings.totp.test.tsx[2m > [22m[2mSettings TOTP enrollment[2m > [22m[2mcancels a pending TOTP enrollment
+[22m[39m[settings] Rendering sessions[0]: ID=session-1 UA=Mozilla/5.0 (Macintosh; Intel Mac OS X) revoked=false (null)
+[settings] Session session-1 final statusLabel: This device
+[settings] Rendering sessions[1]: ID=session-2 UA=Safari/17.3 (iPhone; CPU iPhone OS) revoked=false (null)
+[settings] Session session-2 final statusLabel: Active
+
+[90mstdout[2m | src/pages/__tests__/Settings.totp.test.tsx[2m > [22m[2mSettings TOTP enrollment[2m > [22m[2mshows an error if pending cancellation fails
+[22m[39m[SmartImage] status=primary src=/fallbacks/default_avatar.png
+
+[90mstdout[2m | src/pages/__tests__/Settings.totp.test.tsx[2m > [22m[2mSettings TOTP enrollment[2m > [22m[2mshows an error if pending cancellation fails
+[22m[39m[settings] Rendering sessions[0]: ID=session-1 UA=Mozilla/5.0 (Macintosh; Intel Mac OS X) revoked=false (null)
+[settings] Session session-1 final statusLabel: This device
+[settings] Rendering sessions[1]: ID=session-2 UA=Safari/17.3 (iPhone; CPU iPhone OS) revoked=false (null)
+[settings] Session session-2 final statusLabel: Active
+
+ [32mтЬУ[39m src/tests/pageTranslations.test.tsx [2m([22m[2m13 tests[22m[2m)[22m[33m 2268[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m page translations[2m > [22mswitches activity page translations [33m 739[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m page translations[2m > [22mswitches dashboard page translations [33m 319[2mms[22m[39m
+[90mstdout[2m | src/pages/__tests__/Settings.sessions.test.tsx[2m > [22m[2mSettings sessions panel[2m > [22m[2mlists sessions and revokes a secondary session
+[22m[39m[SmartImage] status=primary src=/fallbacks/default_avatar.png
+
+[90mstdout[2m | src/pages/__tests__/Settings.sessions.test.tsx[2m > [22m[2mSettings sessions panel[2m > [22m[2mlists sessions and revokes a secondary session
+[22m[39m[settings] Rendering sessions[0]: ID=session-1 UA=Mozilla/5.0 (Macintosh; Intel Mac OS X) revoked=false (null)
+[settings] Session session-1 final statusLabel: This device
+[settings] Rendering sessions[1]: ID=session-2 UA=Safari/17.3 (iPhone; CPU iPhone OS) revoked=false (null)
+[settings] Session session-2 final statusLabel: Active
+
+[90mstdout[2m | src/app/__tests__/a11y.test.tsx[2m > [22m[2mAccessibility checks[2m > [22m[2mNavbar has no axe violations
+[22m[39m[SmartImage] status=primary src=/src/assets/guu_logo.png
+[SmartImage] status=primary src=/fallbacks/default_avatar.png
+
+[90mstdout[2m | src/pages/__tests__/Settings.totp.test.tsx[2m > [22m[2mSettings TOTP enrollment[2m > [22m[2mshows an error if pending cancellation fails
+[22m[39m[settings] Rendering sessions[0]: ID=session-1 UA=Mozilla/5.0 (Macintosh; Intel Mac OS X) revoked=false (null)
+[settings] Session session-1 final statusLabel: This device
+[settings] Rendering sessions[1]: ID=session-2 UA=Safari/17.3 (iPhone; CPU iPhone OS) revoked=false (null)
+[settings] Session session-2 final statusLabel: Active
+
+[90mstdout[2m | src/pages/__tests__/Settings.totp.test.tsx[2m > [22m[2mSettings TOTP enrollment[2m > [22m[2mshows an error if pending cancellation fails
+[22m[39m[settings] Rendering sessions[0]: ID=session-1 UA=Mozilla/5.0 (Macintosh; Intel Mac OS X) revoked=false (null)
+[settings] Session session-1 final statusLabel: This device
+[settings] Rendering sessions[1]: ID=session-2 UA=Safari/17.3 (iPhone; CPU iPhone OS) revoked=false (null)
+[settings] Session session-2 final statusLabel: Active
+
+[90mstdout[2m | src/pages/__tests__/Settings.sessions.test.tsx[2m > [22m[2mSettings sessions panel[2m > [22m[2mlists sessions and revokes a secondary session
+[22m[39m[settings] Clicked revoke for session session-2
+[settings] Revoking session session-2...
+
+[90mstdout[2m | src/pages/__tests__/Settings.sessions.test.tsx[2m > [22m[2mSettings sessions panel[2m > [22m[2mlists sessions and revokes a secondary session
+[22m[39m[settings] mutationFn: deleting session session-2
+
+[90mstdout[2m | src/pages/__tests__/Settings.sessions.test.tsx[2m > [22m[2mSettings sessions panel[2m > [22m[2mlists sessions and revokes a secondary session
+[22m[39m[settings] mutationFn: session session-2 deleted, returning data {
+  id: [32m'session-2'[39m,
+  user_id: [32m'uuid-1'[39m,
+  jti: [32m'session-secondary'[39m,
+  created_at: [32m'2026-02-08T23:23:15.979Z'[39m,
+  expires_at: [32m'2026-02-09T03:23:15.979Z'[39m,
+  revoked_at: [32m'2026-02-09T01:23:16.556Z'[39m,
+  ip_address: [32m'203.0.113.42'[39m,
+  user_agent: [32m'Safari/17.3 (iPhone; CPU iPhone OS)'[39m,
+  last_seen_at: [32m'2026-02-09T01:23:16.556Z'[39m,
+  mfa_required: [33mfalse[39m,
+  mfa_completed_at: [32m'2026-02-09T01:23:15.979Z'[39m,
+  mfa_method: [1mnull[22m,
+  mfa_verified_at: [32m'2026-02-09T01:23:15.979Z'[39m,
+  is_current: [33mfalse[39m
+}
+
+ [32mтЬУ[39m src/components/__tests__/DashboardStories.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[33m 796[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m DashboardStories[2m > [22mopens a story and allows navigation via buttons [33m 389[2mms[22m[39m
+[90mstdout[2m | src/pages/__tests__/Settings.sessions.test.tsx[2m > [22m[2mSettings sessions panel[2m > [22m[2mlists sessions and revokes a secondary session
+[22m[39m[settings] Session session-2 revoked successfully {
+  id: [32m'session-2'[39m,
+  user_id: [32m'uuid-1'[39m,
+  jti: [32m'session-secondary'[39m,
+  created_at: [32m'2026-02-08T23:23:15.979Z'[39m,
+  expires_at: [32m'2026-02-09T03:23:15.979Z'[39m,
+  revoked_at: [32m'2026-02-09T01:23:16.556Z'[39m,
+  ip_address: [32m'203.0.113.42'[39m,
+  user_agent: [32m'Safari/17.3 (iPhone; CPU iPhone OS)'[39m,
+  last_seen_at: [32m'2026-02-09T01:23:16.556Z'[39m,
+  mfa_required: [33mfalse[39m,
+  mfa_completed_at: [32m'2026-02-09T01:23:15.979Z'[39m,
+  mfa_method: [1mnull[22m,
+  mfa_verified_at: [32m'2026-02-09T01:23:15.979Z'[39m,
+  is_current: [33mfalse[39m
+}
+
+[90mstdout[2m | src/pages/__tests__/Settings.sessions.test.tsx[2m > [22m[2mSettings sessions panel[2m > [22m[2mlists sessions and revokes a secondary session
+[22m[39m[settings] Sessions query invalidated for ["auth","sessions","uuid-1"]
+
+[90mstdout[2m | src/pages/__tests__/Settings.sessions.test.tsx[2m > [22m[2mSettings sessions panel[2m > [22m[2mlists sessions and revokes a secondary session
+[22m[39m[settings] Rendering sessions[0]: ID=session-1 UA=Mozilla/5.0 (Macintosh; Intel Mac OS X) revoked=false (null)
+[settings] Session session-1 final statusLabel: This device
+[settings] Rendering sessions[1]: ID=session-2 UA=Safari/17.3 (iPhone; CPU iPhone OS) revoked=true (2026-02-09T01:23:16.556Z)
+[settings] Session session-2 final statusLabel: Revoked
+
+[90mstdout[2m | src/pages/__tests__/Settings.sessions.test.tsx[2m > [22m[2mSettings sessions panel[2m > [22m[2mlists sessions and revokes a secondary session
+[22m[39m[settings] Rendering sessions[0]: ID=session-1 UA=Mozilla/5.0 (Macintosh; Intel Mac OS X) revoked=false (null)
+[settings] Session session-1 final statusLabel: This device
+[settings] Rendering sessions[1]: ID=session-2 UA=Safari/17.3 (iPhone; CPU iPhone OS) revoked=true (2026-02-09T01:23:16.556Z)
+[settings] Session session-2 final statusLabel: Revoked
+
+ [32mтЬУ[39m src/pages/__tests__/Settings.sessions.test.tsx [2m([22m[2m1 test[22m[2m)[22m[33m 660[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m Settings sessions panel[2m > [22mlists sessions and revokes a secondary session [33m 657[2mms[22m[39m
+[90mstdout[2m | src/tests/accessibility/skipLink.test.tsx[2m > [22m[2mglobal skip link[2m > [22m[2mrenders a single skip link on 'profile'
+[22m[39m[SmartImage] status=fallback src=/src/assets/background.png
+[SmartImage] status=fallback src=/fallbacks/default_avatar.png
+
+ [32mтЬУ[39m src/pages/__tests__/AdminAudit.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[33m 605[2mms[22m[39m
+[90mstdout[2m | src/pages/__tests__/Settings.totp.test.tsx[2m > [22m[2mSettings TOTP enrollment[2m > [22m[2mshows an error if pending cancellation fails
+[22m[39m[settings] Rendering sessions[0]: ID=session-1 UA=Mozilla/5.0 (Macintosh; Intel Mac OS X) revoked=false (null)
+[settings] Session session-1 final statusLabel: This device
+[settings] Rendering sessions[1]: ID=session-2 UA=Safari/17.3 (iPhone; CPU iPhone OS) revoked=false (null)
+[settings] Session session-2 final statusLabel: Active
+
+[90mstdout[2m | src/pages/__tests__/Settings.totp.test.tsx[2m > [22m[2mSettings TOTP enrollment[2m > [22m[2mshows an error if pending cancellation fails
+[22m[39m[settings] Rendering sessions[0]: ID=session-1 UA=Mozilla/5.0 (Macintosh; Intel Mac OS X) revoked=false (null)
+[settings] Session session-1 final statusLabel: This device
+[settings] Rendering sessions[1]: ID=session-2 UA=Safari/17.3 (iPhone; CPU iPhone OS) revoked=false (null)
+[settings] Session session-2 final statusLabel: Active
+
+ [32mтЬУ[39m src/contexts/__tests__/AuthContext.test.tsx [2m([22m[2m8 tests[22m[2m)[22m[33m 3843[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m AuthProvider caching[2m > [22mstores the current user in the query cache and local storage [33m 418[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m AuthProvider caching[2m > [22mremoves cached profile information on logout [33m 433[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m AuthProvider caching[2m > [22msynchronizes cached profile state when storage changes [33m 436[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m AuthProvider caching[2m > [22mdiscards tampered cached envelopes [33m 590[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m AuthProvider loading state[2m > [22mkeeps loading false when a cached profile is available [33m 315[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m AuthProvider loading state[2m > [22mtoggles loading during refresh when no cached profile exists [33m 401[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m AuthProvider dashboard prefetch[2m > [22mprefetches dashboard queries after login [33m 613[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m AuthProvider dashboard prefetch[2m > [22mprefetches schedule data when the student has a group [33m 634[2mms[22m[39m
+[90mstdout[2m | src/app/__tests__/a11y.test.tsx[2m > [22m[2mAccessibility checks[2m > [22m[2mProfile page has no axe violations
+[22m[39m[SmartImage] status=fallback src=/src/assets/background.png
+[SmartImage] status=fallback src=/fallbacks/default_avatar.png
+
+ [32mтЬУ[39m src/tests/accessibility/skipLink.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[33m 706[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m global skip link[2m > [22mrenders a single skip link on 'dashboard' [33m 365[2mms[22m[39m
+[90mstdout[2m | src/pages/__tests__/Settings.totp.test.tsx[2m > [22m[2mSettings TOTP enrollment[2m > [22m[2mshows pending enrollments only inside the QR panel
+[22m[39m[SmartImage] status=primary src=/fallbacks/default_avatar.png
+
+[90mstdout[2m | src/pages/__tests__/Settings.totp.test.tsx[2m > [22m[2mSettings TOTP enrollment[2m > [22m[2mshows pending enrollments only inside the QR panel
+[22m[39m[settings] Rendering sessions[0]: ID=session-1 UA=Mozilla/5.0 (Macintosh; Intel Mac OS X) revoked=false (null)
+[settings] Session session-1 final statusLabel: This device
+[settings] Rendering sessions[1]: ID=session-2 UA=Safari/17.3 (iPhone; CPU iPhone OS) revoked=false (null)
+[settings] Session session-2 final statusLabel: Active
+
+ [32mтЬУ[39m src/app/__tests__/a11y.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[33m 781[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m Accessibility checks[2m > [22mNavbar has no axe violations [33m 315[2mms[22m[39m
+ [32mтЬУ[39m src/components/__tests__/NotificationsBell.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[33m 547[2mms[22m[39m
+ [32mтЬУ[39m src/components/ui/__tests__/composition.test.tsx [2m([22m[2m14 tests[22m[2m)[22m[33m 650[2mms[22m[39m
+[90mstdout[2m | src/pages/__tests__/Settings.totp.test.tsx[2m > [22m[2mSettings TOTP enrollment[2m > [22m[2mdisables additional authenticator enrollment when one is already confirmed
+[22m[39m[SmartImage] status=primary src=/fallbacks/default_avatar.png
+
+[90mstdout[2m | src/pages/__tests__/Settings.totp.test.tsx[2m > [22m[2mSettings TOTP enrollment[2m > [22m[2mdisables additional authenticator enrollment when one is already confirmed
+[22m[39m[settings] Rendering sessions[0]: ID=session-1 UA=Mozilla/5.0 (Macintosh; Intel Mac OS X) revoked=false (null)
+[settings] Session session-1 final statusLabel: This device
+[settings] Rendering sessions[1]: ID=session-2 UA=Safari/17.3 (iPhone; CPU iPhone OS) revoked=false (null)
+[settings] Session session-2 final statusLabel: Active
+
+ [32mтЬУ[39m src/components/__tests__/InstallPrompt.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[33m 479[2mms[22m[39m
+ [32mтЬУ[39m src/pages/__tests__/Settings.totp.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[33m 4133[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m Settings TOTP enrollment[2m > [22mstarts and completes a new TOTP enrollment [33m 1003[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m Settings TOTP enrollment[2m > [22msurfaces server errors when confirmation fails [33m 686[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m Settings TOTP enrollment[2m > [22mcancels a pending TOTP enrollment [33m 950[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m Settings TOTP enrollment[2m > [22mshows an error if pending cancellation fails [33m 828[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m Settings TOTP enrollment[2m > [22mshows pending enrollments only inside the QR panel [33m 306[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m Settings TOTP enrollment[2m > [22mdisables additional authenticator enrollment when one is already confirmed [33m 354[2mms[22m[39m
+[90mstdout[2m | src/tests/pages/EventsCache.test.tsx[2m > [22m[2mEvents caching[2m > [22m[2mrestores cached data when a 304 response is received after switching tabs
+[22m[39m[SmartImage] status=fallback src=/fallbacks/placeholder.png
+
+[90mstdout[2m | src/tests/pages/EventsCache.test.tsx[2m > [22m[2mEvents caching[2m > [22m[2mrestores cached data when a 304 response is received after switching tabs
+[22m[39m[SmartImage] status=fallback src=/fallbacks/placeholder.png
+
+[90mstdout[2m | src/tests/pages/EventsCache.test.tsx[2m > [22m[2mEvents caching[2m > [22m[2mrestores cached data when a 304 response is received after switching tabs
+[22m[39m[SmartImage] status=fallback src=/fallbacks/placeholder.png
+
+ [32mтЬУ[39m src/tests/pages/EventsCache.test.tsx [2m([22m[2m1 test[22m[2m)[22m[33m 508[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m Events caching[2m > [22mrestores cached data when a 304 response is received after switching tabs [33m 505[2mms[22m[39m
+[90mstdout[2m | src/tests/navigationTranslations.test.tsx[2m > [22m[2mnavigation components translations[2m > [22m[2mupdates footer translations when switching languages
+[22m[39m[SmartImage] status=primary src=/src/assets/guu_logo.png
+
+ [32mтЬУ[39m src/contexts/__tests__/AuthContext.requests.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[33m 344[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m ensureSessionSigningKey request configuration[2m > [22mpasses skipRateLimitQueue when requesting the session signing key [33m 338[2mms[22m[39m
+ [32mтЬУ[39m src/tests/navigationTranslations.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[33m 470[2mms[22m[39m
+ [32mтЬУ[39m src/hooks/__tests__/useFocusTrap.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[33m 357[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m useFocusTrap[2m > [22mfocuses the initial element and restores focus on close [33m 309[2mms[22m[39m
+ [32mтЬУ[39m src/tests/authTranslations.test.tsx [2m([22m[2m1 test[22m[2m)[22m[33m 443[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m auth page translations[2m > [22mrenders login content for Russian and English locales [33m 441[2mms[22m[39m
+ [32mтЬУ[39m src/tests/pages/EventsPagination.test.tsx [2m([22m[2m1 test[22m[2m)[22m[33m 369[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m Events pagination UI[2m > [22mloads additional pages when clicking load more [33m 367[2mms[22m[39m
+ [32mтЬУ[39m src/components/mfa/__tests__/OtpEntry.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[33m 321[2mms[22m[39m
+ [32mтЬУ[39m src/tests/components/MapFallback.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[32m 278[2mms[22m[39m
+ [32mтЬУ[39m src/app/ErrorBoundary.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[32m 248[2mms[22m[39m
+ [32mтЬУ[39m src/pages/__tests__/Settings.radio.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[32m 266[2mms[22m[39m
+ [32mтЬУ[39m src/tests/components/StepUpDialog.test.tsx [2m([22m[2m1 test[22m[2m)[22m[33m 323[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m StepUpDialog[2m > [22mrefreshes challenges when a locked error is refreshable [33m 320[2mms[22m[39m
+ [32mтЬУ[39m src/tests/i18n.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 279[2mms[22m[39m
+ [32mтЬУ[39m src/pages/__tests__/Login.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[33m 6979[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m Login page[2m > [22mblocks submission for invalid email [33m 899[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m Login page[2m > [22msubmits credentials and redirects on success [33m 1241[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m Login page[2m > [22mreturns server errors to the user [33m 783[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m Login page[2m > [22mshows lockout messaging with retry information [33m 793[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m Login page[2m > [22mtransitions to MFA verification when additional challenges are required [33m 1231[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m Login page[2m > [22mdisplays errors for invalid OTP attempts and allows retry [33m 1504[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m Login page[2m > [22mmeets basic accessibility requirements [33m 526[2mms[22m[39m
+ [32mтЬУ[39m src/hooks/__tests__/useNowPlaying.test.tsx [2m([22m[2m5 tests[22m[2m)[22m[32m 241[2mms[22m[39m
+ [32mтЬУ[39m src/tests/components/RouteGuards.test.tsx [2m([22m[2m6 tests[22m[2m)[22m[32m 266[2mms[22m[39m
+ [32mтЬУ[39m src/pages/__tests__/Settings.notifications.test.tsx [2m([22m[2m7 tests[22m[2m)[22m[32m 215[2mms[22m[39m
+ [32mтЬУ[39m src/tests/components/ui/tooltip.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[32m 164[2mms[22m[39m
+ [32mтЬУ[39m src/hooks/__tests__/useScrollRestoration.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 212[2mms[22m[39m
+ [32mтЬУ[39m src/pages/__tests__/Schedule.translations.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 264[2mms[22m[39m
+ [32mтЬУ[39m src/components/__tests__/MobileBottomNav.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[32m 158[2mms[22m[39m
+ [32mтЬУ[39m src/pages/__tests__/Schedule.cache.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 161[2mms[22m[39m
+ [32mтЬУ[39m src/hooks/__tests__/useDashboardEvents.etag.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 160[2mms[22m[39m
+ [32mтЬУ[39m src/api/hooks/__tests__/events.etag.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 191[2mms[22m[39m
+ [32mтЬУ[39m src/components/__tests__/LoadingState.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 185[2mms[22m[39m
+ [32mтЬУ[39m src/components/__tests__/BackToTop.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[33m 794[2mms[22m[39m
+   [33m[2mтЬУ[22m[39m BackToTop[2m > [22mhides button when scrolled back to top [33m 575[2mms[22m[39m
+[90mstdout[2m | src/tests/sw.test.ts[2m > [22m[2mqueue helper module exports[2m > [22m[2msanitizes report payloads deeply
+[22m[39m[SW] Processing offline queues...
+
+[90mstdout[2m | src/tests/sw.test.ts[2m > [22m[2mqueue helper module exports[2m > [22m[2mreport queue waits for connectivity before flushing
+[22m[39m[SW] Bootstrap complete
+
+[90mstdout[2m | src/tests/sw.test.ts[2m > [22m[2mqueue helper module exports[2m > [22m[2mreport queue waits for connectivity before flushing
+[22m[39m[SW] Processing offline queues...
+
+[90mstdout[2m | src/tests/sw.test.ts[2m > [22m[2mqueue helper module exports[2m > [22m[2mreport queue waits for connectivity before flushing
+[22m[39m[SW] Bootstrap complete
+
+ [32mтЬУ[39m src/tests/sw.test.ts [2m([22m[2m13 tests[22m[2m | [22m[33m11 skipped[39m[2m)[22m[32m 151[2mms[22m[39m
+ [32mтЬУ[39m src/components/error/__tests__/errorBoundaries.test.tsx [2m([22m[2m10 tests[22m[2m)[22m[32m 148[2mms[22m[39m
+ [32mтЬУ[39m src/pages/__tests__/Profile.nowPlaying.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 179[2mms[22m[39m
+ [32mтЬУ[39m src/tests/components/MessengerVisuals.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 158[2mms[22m[39m
+ [32mтЬУ[39m src/tests/components/ui/progress-bar.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[32m 144[2mms[22m[39m
+ [32mтЬУ[39m src/tests/staticShellI18n.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 41[2mms[22m[39m
+ [32mтЬУ[39m src/api/__tests__/client.language.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 57[2mms[22m[39m
+ [32mтЬУ[39m src/components/__tests__/LivePushToasts.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[32m 84[2mms[22m[39m
+ [32mтЬУ[39m src/stores/__tests__/stores.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 60[2mms[22m[39m
+ [32mтЬУ[39m src/components/__tests__/AsyncImage.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 68[2mms[22m[39m
+ [32mтЬУ[39m src/pages/__tests__/News.performance.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[32m 128[2mms[22m[39m
+ [32mтЬУ[39m src/components/__tests__/WeatherWidget.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 59[2mms[22m[39m
+ [32mтЬУ[39m src/api/__tests__/client.etag.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 35[2mms[22m[39m
+ [32mтЬУ[39m src/utils/__tests__/media.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32mтЬУ[39m src/hooks/__tests__/useMediaQuery.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[32m 26[2mms[22m[39m
+[90mstdout[2m | src/tests/hooks/useChatWebSocket.test.tsx[2m > [22m[2museChatWebSocket[2m > [22m[2memits presence updates with last seen information
+[22m[39m[WebSocket] Connected
+
+ [32mтЬУ[39m src/tests/hooks/useChatWebSocket.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32mтЬУ[39m src/app/__tests__/globalErrorHandlers.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32mтЬУ[39m src/api/__tests__/client.rateLimit.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 14[2mms[22m[39m
+ [32mтЬУ[39m src/tests/translationParity.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [32mтЬУ[39m src/push/__tests__/topicsPersistence.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32mтЬУ[39m src/app/__tests__/logger.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32mтЬУ[39m src/utils/__tests__/cn.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32mтЬУ[39m src/push/__tests__/unsubscribePush.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32mтЬУ[39m src/api/__tests__/chat.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32mтЬУ[39m src/tests/webVitals.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+[90mstdout[2m | src/tests/observability.test.ts[2m > [22m[2minitObservability[2m > [22m[2mskips initialization in development
+[22m[39mSentry disabled in development mode; skipping initialization
+
+ [32mтЬУ[39m src/tests/observability.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32mтЬУ[39m src/utils/__tests__/avatar.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32mтЬУ[39m src/tests/data/campusPoints.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32mтЬУ[39m src/push/__tests__/notification-helpers.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 13[2mms[22m[39m
+ [32mтЬУ[39m src/tests/components/EventDetail.helpers.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32mтЬУ[39m src/api/__tests__/client.types.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [2m[90mтЖУ[39m[22m src/tests/pages/News/NewsFeed.test.tsx [2m([22m[2m1 test[22m[2m | [22m[33m1 skipped[39m[2m)[22m
+
+[2m Test Files [22m [1m[32m76 passed[39m[22m[2m | [22m[33m1 skipped[39m[90m (77)[39m
+[2m      Tests [22m [1m[32m292 passed[39m[22m[2m | [22m[33m12 skipped[39m[90m (304)[39m
+[2m   Start at [22m 04:23:10
+[2m   Duration [22m 14.93s[2m (transform 3.19s, setup 46.79s, collect 25.76s, tests 42.82s, environment 52.58s, prepare 6.20s)[22m
+

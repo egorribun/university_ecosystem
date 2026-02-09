@@ -1,0 +1,11 @@
+
+> frontend@1.0.0 lint
+> eslint --max-warnings=0 --ext .ts,.tsx "src" "tests"
+
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\utils\__tests__\cn.test.ts
+  10:20  error  Unexpected constant truthiness on the left-hand side of a `&&` expression  no-constant-binary-expression
+  11:20  error  Unexpected constant truthiness on the left-hand side of a `&&` expression  no-constant-binary-expression
+
+тЬЦ 2 problems (2 errors, 0 warnings)
+

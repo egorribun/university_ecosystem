@@ -1,4 +1,4 @@
-import { motion, useAnimation, useInView, Variants } from "framer-motion"
+import { motion, useAnimation, useInView, Variants, TargetAndTransition } from "framer-motion"
 import { ReactNode, useEffect, useRef } from "react"
 import { springHeavy, easePremium } from "@/utils/animations"
 
@@ -18,8 +18,8 @@ type Props = {
 const getVariants = (mode: string, direction: string): Variants => {
   const distance = 30
 
-  const baseHidden: any = { opacity: 0, filter: "blur(8px)" }
-  const baseVisible: any = { opacity: 1, filter: "blur(0px)" }
+  const baseHidden: TargetAndTransition = { opacity: 0, filter: "blur(8px)" }
+  const baseVisible: TargetAndTransition = { opacity: 1, filter: "blur(0px)" }
 
   if (mode === "pop") {
     baseHidden.scale = 0.94

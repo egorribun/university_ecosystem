@@ -3,7 +3,8 @@ import type { TrustedHTML, TrustedTypePolicyFactory } from "trusted-types/lib"
 let dompurifyInstance: any = null
 async function getDOMPurify() {
   if (dompurifyInstance) return dompurifyInstance
-  dompurifyInstance = (await import("dompurify")).default
+  const DOMPurify = (await import("dompurify")).default
+  dompurifyInstance = DOMPurify
   return dompurifyInstance
 }
 
@@ -26,22 +27,22 @@ type TrustedTypesWindow = Window & {
   __dompurifyNewsPolicy?: TrustedPolicy | false
 }
 
-const createPolicy = async (win: TrustedTypesWindow): Promise<TrustedPolicy | null> => {
-  if (!win.trustedTypes) return null
-  if (win.__dompurifyNewsPolicy === false) return null
-  if (win.__dompurifyNewsPolicy) return win.__dompurifyNewsPolicy
+const createPolicy = async (windowInstance: TrustedTypesWindow): Promise<TrustedPolicy | null> => {
+  if (!windowInstance.trustedTypes) return null
+  if (windowInstance.__dompurifyNewsPolicy === false) return null
+  if (windowInstance.__dompurifyNewsPolicy) return windowInstance.__dompurifyNewsPolicy
 
   const DOMPurify = await getDOMPurify()
 
   try {
-    win.__dompurifyNewsPolicy = win.trustedTypes.createPolicy("dompurify-news", {
+    windowInstance.__dompurifyNewsPolicy = windowInstance.trustedTypes.createPolicy("dompurify-news", {
       createHTML: (dirty: string) => DOMPurify.sanitize(dirty, HTML_CONFIG),
     })
   } catch (error) {
     console.warn("Unable to create dompurify-news trusted types policy", error)
-    win.__dompurifyNewsPolicy = false
+    windowInstance.__dompurifyNewsPolicy = false
   }
-  return win.__dompurifyNewsPolicy || null
+  return windowInstance.__dompurifyNewsPolicy || null
 }
 
 export const sanitizeNewsHtml = async (
@@ -51,8 +52,8 @@ export const sanitizeNewsHtml = async (
   const DOMPurify = await getDOMPurify()
 
   if (typeof window !== "undefined") {
-    const win = window as TrustedTypesWindow
-    const policy = await createPolicy(win)
+    const windowInstance = window as TrustedTypesWindow
+    const policy = await createPolicy(windowInstance)
     if (policy) {
       return policy.createHTML(source)
     }

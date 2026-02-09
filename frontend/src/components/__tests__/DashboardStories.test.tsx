@@ -100,7 +100,7 @@ function renderStories(
   const user = options.user ?? userEvent.setup()
 
   const result = render(
-    <ThemeProvider theme={theme}>
+    <ThemeProvider>
       <MemoryRouter>
         <DashboardStories {...props} />
       </MemoryRouter>

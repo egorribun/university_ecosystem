@@ -128,8 +128,8 @@ export default function AdminNotifications() {
 
   const toggleSelect = (jobId: string) => {
     setActionError(null)
-    setSelected((prev) => {
-      const next = new Set(prev)
+    setSelected((previous) => {
+      const next = new Set(previous)
       if (next.has(jobId)) {
         next.delete(jobId)
       } else {
@@ -142,8 +142,8 @@ export default function AdminNotifications() {
   const handleSelectAll = () => {
     const items = listQuery.data?.items ?? []
     if (items.length === 0) return
-    setSelected((prev) => {
-      if (prev.size === items.length) {
+    setSelected((previous) => {
+      if (previous.size === items.length) {
         return new Set()
       }
       return new Set(items.map((item) => item.id))
@@ -193,7 +193,7 @@ export default function AdminNotifications() {
   const handleTopicToggle = useCallback(
     (topic: string) => (_event: ChangeEvent<HTMLInputElement>, checked: boolean) => {
       const normalized = normalizeTopicKey(topic)
-      setTopicsState((prev) => ({ ...prev, [normalized]: checked }))
+      setTopicsState((previous) => ({ ...previous, [normalized]: checked }))
     },
     []
   )

@@ -27,7 +27,7 @@ export default function LoadingState({ label }: LoadingStateProps) {
         role="status"
         aria-live="polite"
         aria-busy="true"
-        className="flex flex-col items-center justify-center gap-6 px-4 py-20 md:py-24 min-h-[min(60dvh, 520px)] text-center"
+        className="flex flex-col items-center justify-center gap-6 px-4 py-20 md:py-24 min-h-60dvh text-center"
       >
         <div className="relative">
            <div className="h-12 w-12 rounded-full border-4 border-brand/10 border-t-brand animate-spin" />

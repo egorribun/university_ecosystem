@@ -118,8 +118,8 @@ const News = () => {
   }, [newsList, language])
 
   const handleImageChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0]
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0]
       if (file) {
         setImageFile(file)
         if (imagePreview) URL.revokeObjectURL(imagePreview)
@@ -338,7 +338,7 @@ const News = () => {
                         ref={titleInputRef}
                         type="text"
                         value={newsData.title}
-                        onChange={(e) => setNewsData({ ...newsData, title: e.target.value })}
+                        onChange={(event) => setNewsData({ ...newsData, title: event.target.value })}
                         maxLength={100}
                         disabled={adding}
                         className={inputClass}
@@ -349,7 +349,7 @@ const News = () => {
                       <textarea
                         id="news-content"
                         value={newsData.content}
-                        onChange={(e) => setNewsData({ ...newsData, content: e.target.value })}
+                        onChange={(event) => setNewsData({ ...newsData, content: event.target.value })}
                         maxLength={3000}
                         disabled={adding}
                         className={textareaClass}
@@ -367,7 +367,7 @@ const News = () => {
                         id="news-title-en"
                         type="text"
                         value={newsData.title_en}
-                        onChange={(e) => setNewsData({ ...newsData, title_en: e.target.value })}
+                        onChange={(event) => setNewsData({ ...newsData, title_en: event.target.value })}
                         maxLength={100}
                         disabled={adding}
                         className={inputClass}
@@ -381,7 +381,7 @@ const News = () => {
                       <textarea
                         id="news-content-en"
                         value={newsData.content_en}
-                        onChange={(e) => setNewsData({ ...newsData, content_en: e.target.value })}
+                        onChange={(event) => setNewsData({ ...newsData, content_en: event.target.value })}
                         maxLength={3000}
                         disabled={adding}
                         className={textareaClass}

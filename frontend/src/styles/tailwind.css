@@ -12,27 +12,31 @@
   --color-surface: var(--bg-surface);
   --color-surface-hover: var(--bg-surface-hover);
   --color-surface-raised: var(--bg-surface-raised);
-  --color-surface-active: var(--bg-surface-active);
-  --color-surface-tint: var(--bg-surface-tint);
   --color-panel: var(--bg-panel);
   --color-glass: var(--glass-bg);
+  --color-surface-mix: var(--bg-surface-mix);
+  --color-input-mix: var(--bg-input-mix);
+  --color-glass-elevated: var(--glass-bg-elevated);
 
   /* Typography */
   --color-primary-text: var(--text-primary);
   --color-secondary-text: var(--text-secondary);
   --color-tertiary-text: var(--text-tertiary);
   --color-inverse-text: var(--text-inverse);
+  --color-text-muted-subtle: var(--text-muted-subtle);
 
   /* Borders */
   --color-border-subtle: var(--border-subtle);
   --color-border-strong: var(--border-strong);
   --color-border-focus: var(--border-focus);
   --color-glass-border: var(--glass-border);
+  --color-glass-border-subtle: var(--glass-border-subtle);
 
   /* Brand / Primary */
   --color-brand: var(--primary-main);
   --color-brand-hover: var(--primary-hover);
   --color-brand-subtle: var(--primary-subtle);
+  --color-brand-subtle-bg: var(--primary-subtle-bg);
 
   /* Status */
   --color-success-bg: var(--success-bg);
@@ -41,13 +45,27 @@
   --color-warning-text: var(--warning-text);
   --color-error-bg: var(--error-bg);
   --color-error-text: var(--error-text);
+  --color-error-rgb: var(--error-text-rgb);
 
-  /* Layout & Spacing */
+  /* Brand RGB for manual RGBA usage */
+  --brand-rgb: var(--primary-main-rgb);
+  --brand-hover-rgb: var(--primary-hover-rgb);
+
+  /* Radius Scale Tokens */
   --radius-xs: var(--radius-xs);
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);
   --radius-full: var(--radius-full);
+  --radius-fluid-lg: var(--fluid-radius-lg);
+
+  /* UE Specific Radius (Semantic) */
+  --radius-ue-xs: var(--radius-xs);
+  --radius-ue-sm: var(--radius-sm);
+  --radius-ue-md: var(--radius-md);
+  --radius-ue-lg: var(--radius-lg);
+  --radius-ue-xl: 2rem;
+  --radius-ue-2xl: 3rem;
 
   /*
    * LEGACY MAPPINGS (Temporary for backward compatibility)
@@ -60,15 +78,69 @@
   --color-button: var(--primary-main);
   --color-button-border: var(--primary-main);
 
+  /* Component Dimensions */
+  --story-card-w: min(92vw, 420px);
+  --story-card-w-md: 420px;
+  --mobile-menu-w: 300px;
+  --news-card-h-mobile: 400px;
+  --news-card-h-desktop: 480px;
+
+  /* Spacing Scale */
+  --spacing-xs: var(--space-2);
+  --spacing-sm: var(--space-3);
+  --spacing-md: var(--space-4);
+  --spacing-lg: var(--space-6);
+  --spacing-xl: var(--space-8);
+  --spacing-2xl: var(--space-12);
+  --spacing-3xl: var(--space-16);
+  --spacing-fluid-x: var(--fluid-px);
+  --spacing-fluid-y: var(--fluid-py);
+  --spacing-fluid-gap: var(--fluid-gap);
+  --spacing-fluid-card-p: var(--fluid-card-p);
+
+  /* Typography Scale (Fluid) */
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-base: var(--fs-body);
+  --font-size-lg: 1.125rem;
+  --font-size-xl: 1.25rem;
+  --font-size-2xl: 1.5rem;
+  --font-size-3xl: var(--fs-h3);
+  --font-size-4xl: var(--fs-h2);
+  --font-size-5xl: var(--fs-h1);
+
   /* Font Family */
   --font-ui: "Inter", "Manrope", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --font-display: "Outfit", "Inter", system-ui, sans-serif;
 
   /* Shadows */
   --shadow-glass: var(--glass-shadow);
+  --shadow-focus: var(--shadow-focus);
+  --shadow-premium-lift: 0 20px 40px -12px rgba(var(--brand-rgb), 0.25);
+  --shadow-up: var(--shadow-up, 0 -4px 12px rgba(0, 0, 0, 0.05));
+
+  /* Layout & Z-Index */
+  --z-navbar: var(--z-navbar);
+  --z-overlay: var(--z-overlay);
+  --z-modal: var(--z-modal);
+  --z-toast: var(--z-toast);
+  --z-sidebar: var(--z-sidebar);
+  --z-tooltip: var(--z-tooltip);
+  --z-popover: var(--z-popover);
+  --z-sticky: var(--z-sticky);
+
+  --navbar-height: var(--navbar-h-base);
+  --navbar-height-scrolled: var(--navbar-h-scrolled);
 
   /* Gradients */
   --bg-gradient-brand: var(--gradient-brand);
+  --bg-gradient-news-hero: var(--grad-news-hero);
+
+  /* Screens / Breakpoints */
+  --breakpoint-mobile: 768px;
+  --breakpoint-tablet: 1024px;
+  --breakpoint-desktop: 1280px;
+  --breakpoint-wide: 1350px;
 
   /* Glass Tints & Effects */
   --color-glass-tint1: var(--glass-tint-1);
@@ -87,6 +159,48 @@
   --animate-msg-typing: msg-typing 1.4s ease-in-out infinite;
   --animate-msg-bubble-in: msg-bubble-in 0.2s ease-out;
   --animate-msg-send-pulse: msg-send-pulse 0.15s ease-out;
+  --animate-dash-colon-blink: dash-colon-blink 2s var(--ease-premium) infinite;
+  --animate-pulse-shadow: pulse-shadow 2s ease-in-out infinite;
+
+  /* Dashboard Specialized Gradients & Effects */
+  --dash-hero-radial-top: var(--dash-hero-radial-top, rgba(56, 189, 248, 0.15));
+  --dash-hero-radial-bottom: var(--dash-hero-radial-bottom, transparent);
+  --dash-hero-orb: var(--dash-hero-orb);
+  --dash-hero-pulse: var(--dash-hero-highlight);
+  --dash-hero-conic-primary: #38bdf8;
+  --dash-hero-conic-secondary: #818cf8;
+  --dash-hero-conic-tertiary: #c084fc;
+  --dash-hero-conic-accent: #f472b6;
+
+  /* Premium UI Gradients */
+  --bg-nav-light: radial-gradient(120% 180% at -10% -20%, rgba(36, 145, 255, 0.12), transparent 58%), linear-gradient(112deg, #ffffff 0%, #f8fafc 100%);
+  --bg-nav-dark: radial-gradient(120% 180% at -10% -20%, rgba(56, 189, 248, 0.16), transparent 58%), linear-gradient(112deg, #0a1524 0%, #0b2b47 100%);
+  --bg-footer-light: radial-gradient(120% 180% at -10% -20%, rgba(36, 145, 255, 0.14), transparent 60%), linear-gradient(112deg, var(--primary-main) 0%, var(--primary-hover) 100%);
+  --bg-footer-dark: radial-gradient(120% 180% at -10% -20%, rgba(105, 169, 220, 0.16), transparent 58%), linear-gradient(112deg, #0a1524 0%, #0b2b47 100%);
+
+  @keyframes navbar-fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes dash-colon-blink {
+
+    0%,
+    100% {
+      opacity: 1;
+    }
+
+    50% {
+      opacity: 0.3;
+    }
+  }
 
   @keyframes fade-in {
     0% {
@@ -219,24 +333,70 @@
       transform: scale(1);
     }
   }
+
+  @keyframes pulse-shadow {
+
+    0%,
+    100% {
+      box-shadow: 0 4px 16px -4px color-mix(in srgb, var(--nav-link) 40%, transparent 60%);
+    }
+
+    50% {
+      box-shadow: 0 6px 24px -4px color-mix(in srgb, var(--nav-link) 55%, transparent 45%);
+    }
+  }
 }
 
-@layer utilities {
-  .container-fluid {
-    margin-left: auto;
-    margin-right: auto;
-    width: 100%;
-    max-width: 1700px;
-    padding-left: clamp(1rem, 5vw, 4rem);
-    padding-right: clamp(1rem, 5vw, 4rem);
+@utility container-fluid {
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+  max-width: 1700px;
+  padding-inline: clamp(1rem, 5vw, 4rem);
+}
+
+@utility bg-nav {
+  background: var(--bg-nav-light);
+
+  .dark & {
+    background: var(--bg-nav-dark);
+  }
+}
+
+@utility bg-footer {
+  background: var(--bg-footer-light);
+
+  .dark & {
+    background: var(--bg-footer-dark);
+  }
+}
+
+@utility backdrop-nav {
+  -webkit-backdrop-filter: saturate(160%) blur(20px);
+  backdrop-filter: saturate(160%) blur(20px);
+}
+
+@utility footer-link-premium {
+  display: inline-block;
+  color: #ffffff;
+  text-decoration: none;
+  opacity: 0.8;
+  padding: 0.25rem 0;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+
+  &:hover {
+    opacity: 1;
+    transform: translateX(3px);
   }
 }
 
 @layer base {
   body {
-    @apply min-h-screen text-primary-text antialiased overflow-x-hidden;
+    @apply min-h-dvh text-primary-text antialiased;
     font-family: var(--font-ui);
-    font-size: clamp(0.9375rem, 0.9rem + 0.2vw, 1.0625rem);
+    font-size: var(--fs-body);
     line-height: 1.6;
     background-color: var(--bg-page);
     transition:
@@ -286,15 +446,11 @@
     @apply scale-[0.98] translate-y-0 shadow-glass;
   }
 
-  /* Fluid Layout Container */
-  .container-fluid {
-    @apply mx-auto w-full max-w-[1700px];
-    padding-inline: clamp(1rem, 5vw, 4rem);
-  }
+  /* Fluid Layout Container moved to @utility above */
 
   /* Skeleton with organic pulse */
   .skeleton {
-    @apply relative overflow-hidden rounded-2xl bg-slate-200/40 dark:bg-slate-800/40;
+    @apply relative overflow-hidden rounded-ue-md bg-slate-200/40 dark:bg-slate-800/40;
   }
 
   .skeleton::after {

@@ -10,13 +10,13 @@ export type PendingMfaState = PendingMfaResponse & { reason: "login" | "step-up"
 export type SubmitMfaChallengePayload = {
   method?: "totp" | "webauthn"
   code?: string
-  webauthnResponse?: any
+  webauthnResponse?: unknown
   challengeToken?: string
   trustDevice?: boolean
 }
 
 export type WebAuthnAuthenticationOptionsOut = {
-  publicKey: any
+  publicKey: unknown
   challenge_token: string
 }
 

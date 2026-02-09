@@ -1,4 +1,5 @@
 import { FC, ReactNode, useEffect, useState } from "react"
+import { zIndexTokens } from "@/theme/tokens"
 
 type Props = { children: ReactNode }
 type MotionModule = typeof import("framer-motion")
@@ -56,7 +57,7 @@ const PageTransition: FC<Props> = ({ children }) => {
   if (reduceMotion || !motionModule) {
     return (
       <div style={{ position: "relative", minHeight: "100%", background: "var(--page-bg)" }}>
-        <div style={{ position: "relative", zIndex: 1 }}>{children}</div>
+        <div style={{ position: "relative", zIndex: zIndexTokens.base }}>{children}</div>
       </div>
     )
   }
@@ -94,7 +95,7 @@ const PageTransition: FC<Props> = ({ children }) => {
           }}
           style={{
             position: "relative",
-            zIndex: 1,
+            zIndex: zIndexTokens.base,
             willChange: "transform, opacity, filter",
             backfaceVisibility: "hidden",
             transform: "translateZ(0)",

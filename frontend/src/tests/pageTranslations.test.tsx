@@ -6,6 +6,7 @@ import type { ReactNode } from "react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
 import { LanguageProvider, useLanguage } from "@/contexts/LanguageContext"
+import { ThemeProvider } from "@/contexts/ThemeContext"
 import UserActivity from "@/pages/Activity"
 import Schedule from "@/pages/Schedule"
 import Settings from "@/pages/Settings"
@@ -465,11 +466,13 @@ function renderWithProviders(ui: ReactNode, options: RenderOptions = {}) {
 
   const result = render(
     <QueryClientProvider client={client}>
-      <LanguageProvider>
-        <MemoryRouter initialEntries={[initialPath]}>
-          <LanguageToggleHarness>{ui}</LanguageToggleHarness>
-        </MemoryRouter>
-      </LanguageProvider>
+      <ThemeProvider>
+        <LanguageProvider>
+          <MemoryRouter initialEntries={[initialPath]}>
+            <LanguageToggleHarness>{ui}</LanguageToggleHarness>
+          </MemoryRouter>
+        </LanguageProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   )
 

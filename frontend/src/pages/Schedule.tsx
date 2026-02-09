@@ -6,8 +6,8 @@ import {
   startTransition,
   type CSSProperties,
 } from "react"
-import Layout from "../components/Layout"
-import PageFadeIn from "../components/PageFadeIn"
+import Layout from "@/components/Layout"
+import PageFadeIn from "@/components/PageFadeIn"
 import dayjs from "dayjs"
 import isoWeek from "dayjs/plugin/isoWeek"
 import "dayjs/locale/ru"
@@ -91,7 +91,7 @@ export default function Schedule() {
     currentProgress,
   } = useScheduleData()
 
-  const [snack, setSnack] = useState("")
+  const [snackbar, setSnackbar] = useState("")
   const [openDialog, setOpenDialog] = useState(false)
   const [dialogLesson, setDialogLesson] = useState<Lesson | null>(null)
   const [editing, setEditing] = useState(false)
@@ -203,13 +203,13 @@ export default function Schedule() {
     return (
       <div
         ref={tableScrollRef}
-        className="mx-auto w-full max-w-[min(98vw,1920px)] overflow-x-auto rounded-3xl border border-glass-border bg-surface/40 text-primary-text shadow-glass backdrop-blur-md scroll-smooth"
+        className="mx-auto w-full max-w-[min(98vw,1920px)] overflow-x-auto rounded-3xl border border-glass-border bg-surface/40 text-(--page-text) shadow-glass backdrop-blur-md scroll-smooth"
         style={{ minHeight: 360 }}
       >
         <table className="w-full border-collapse">
           <thead className="sticky top-0 z-5">
             <tr>
-              <th className="sticky left-0 z-10 w-[50px] bg-surface/60 px-4 py-4 text-center font-extrabold text-primary-text border-r border-glass-border shadow-md backdrop-blur-md">
+              <th className="sticky left-0 z-navbar w-[50px] bg-surface/60 px-4 py-4 text-center font-extrabold text-(--page-text) border-r border-glass-border shadow-md backdrop-blur-md">
                 №
               </th>
               {weekdayBackend.map((day, idx) => {
@@ -222,11 +222,10 @@ export default function Schedule() {
                       headRefs.current[idx] = el
                     }}
                     className={cn(
-                      "relative px-4 py-4 text-center font-extrabold text-primary-text transition-all duration-300",
                       isTodayCol
-                        ? "bg-brand/10 shadow-[inset_0_0_0_1px_rgba(var(--primary-main),0.2)]"
+                        ? "bg-brand/10 shadow-focus"
                         : "bg-surface/40",
-                      "z-5 backdrop-blur-md"
+                      "z-navbar backdrop-blur-md"
                     )}
                   >
                     <div className="flex items-center justify-center gap-2">
@@ -241,8 +240,8 @@ export default function Schedule() {
                       {(user?.role === "admin" || user?.role === "teacher") && (
                         <button
                           className="ml-1 flex h-7 w-7 items-center justify-center rounded-lg border border-glass-border bg-surface/60 text-brand hover:bg-brand hover:text-white transition-colors"
-                          onClick={(e) => {
-                            e.stopPropagation()
+                          onClick={(event) => {
+                            event.stopPropagation()
                             setAddDay(day)
                             setAddDialogOpen(true)
                           }}
@@ -272,7 +271,7 @@ export default function Schedule() {
             ) : (
               visibleRows.map((row, rowIdx) => (
                 <tr key={rowIdx}>
-                  <td className="sticky left-0 z-10 bg-surface/60 px-4 py-3 text-center font-bold border-r border-glass-border shadow-md backdrop-blur-md">
+                  <td className="sticky left-0 z-navbar bg-surface/60 px-4 py-3 text-center font-bold border-r border-glass-border shadow-md backdrop-blur-md">
                     {rowIdx + 1}
                   </td>
                   {row.map((lesson, colIdx) => {
@@ -284,11 +283,11 @@ export default function Schedule() {
                           className={cn(
                             "p-3",
                             colIsToday
-                              ? "bg-[color-mix(in_srgb,var(--nav-link)_3%,var(--card-bg)_97%)]"
+                              ? "bg-card-hover"
                               : ""
                           )}
                         >
-                          <div className="min-h-[148px] rounded-xl border border-dashed border-[color-mix(in_srgb,white_8%,var(--nav-link)_92%)]" />
+                          <div className="min-h-[148px] rounded-xl border border-dashed border-card-border" />
                         </td>
                       )
                     }
@@ -397,7 +396,7 @@ export default function Schedule() {
   )
 
   const inputClass =
-    "w-full rounded-xl border border-glass-border bg-surface/40 px-4 py-3 text-[0.98rem] font-medium text-primary-text shadow-sm focus:border-brand focus:outline-none transition-all"
+    "w-full rounded-xl border border-glass-border bg-surface/40 px-4 py-3 text-base font-medium text-(--page-text) shadow-sm focus:border-brand focus:outline-none transition-all"
 
   const activeGroupName = groups.find((g) => g.id === selectedGroup)?.name || ""
 
@@ -424,7 +423,7 @@ export default function Schedule() {
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-surface/40 border border-glass-border text-brand shadow-glass">
                 <CalendarMonthIcon className="h-7 w-7" />
               </div>
-              <h1 className="text-[clamp(1.6rem,5vw,2.75rem)] font-bold tracking-tight text-primary-text">
+              <h1 className="text-[clamp(1.6rem,5vw,2.75rem)] font-bold tracking-tight text-(--page-text)">
                 {user?.role === "student"
                   ? t("schedule:title.student")
                   : t("schedule:title.default")}
@@ -479,12 +478,12 @@ export default function Schedule() {
                 </label>
                 <select
                   value={selectedGroup ?? ""}
-                  onChange={(e) => setSelectedGroup(e.target.value || null)}
+                  onChange={(event) => setSelectedGroup(event.target.value || null)}
                   className={inputClass}
                 >
-                  {groups.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.name}
+                  {groups.map((group) => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
                     </option>
                   ))}
                 </select>
@@ -515,7 +514,7 @@ export default function Schedule() {
                     <Badge
                       style={{
                         background: getLessonTypeColor(dialogLesson.lesson_type),
-                        color: "#fff",
+                        color: "white",
                       }}
                     >
                       {getLessonTypeLabel(dialogLesson.lesson_type)}
@@ -568,8 +567,8 @@ export default function Schedule() {
                     <input
                       type="text"
                       value={editLesson.subject || ""}
-                      onChange={(e) =>
-                        setEditLesson((prev) => (prev ? { ...prev, subject: e.target.value } : null))
+                      onChange={(event) =>
+                        setEditLesson((prev) => (prev ? { ...prev, subject: event.target.value } : null))
                       }
                       className={inputClass}
                     />
@@ -581,8 +580,8 @@ export default function Schedule() {
                     <input
                       type="text"
                       value={editLesson.teacher || ""}
-                      onChange={(e) =>
-                        setEditLesson((prev) => (prev ? { ...prev, teacher: e.target.value } : null))
+                      onChange={(event) =>
+                        setEditLesson((prev) => (prev ? { ...prev, teacher: event.target.value } : null))
                       }
                       className={inputClass}
                     />
@@ -594,8 +593,8 @@ export default function Schedule() {
                     <input
                       type="text"
                       value={editLesson.room || ""}
-                      onChange={(e) =>
-                        setEditLesson((prev) => (prev ? { ...prev, room: e.target.value } : null))
+                      onChange={(event) =>
+                        setEditLesson((prev) => (prev ? { ...prev, room: event.target.value } : null))
                       }
                       className={inputClass}
                     />
@@ -606,16 +605,16 @@ export default function Schedule() {
                     </label>
                     <select
                       value={editLesson.lesson_type || ""}
-                      onChange={(e) =>
+                      onChange={(event) =>
                         setEditLesson((prev) =>
-                          prev ? { ...prev, lesson_type: e.target.value } : null
+                          prev ? { ...prev, lesson_type: event.target.value } : null
                         )
                       }
                       className={inputClass}
                     >
-                      {editingLessonTypeOptions.map((o) => (
-                        <option key={o.value} value={o.value}>
-                          {o.label}
+                      {editingLessonTypeOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
                         </option>
                       ))}
                     </select>
@@ -628,12 +627,12 @@ export default function Schedule() {
                       <input
                         type="time"
                         value={getTimeStr(editLesson)}
-                        onChange={(e) =>
+                        onChange={(event) =>
                           setEditLesson((prev) =>
                             prev
                               ? {
                                   ...prev,
-                                  start_time: dayjs().format("YYYY-MM-DDT") + e.target.value + ":00",
+                                  start_time: dayjs().format("YYYY-MM-DDT") + event.target.value + ":00",
                                 }
                               : null
                           )
@@ -648,12 +647,12 @@ export default function Schedule() {
                       <input
                         type="time"
                         value={getEndTimeStr(editLesson)}
-                        onChange={(e) =>
+                        onChange={(event) =>
                           setEditLesson((prev) =>
                             prev
                               ? {
                                   ...prev,
-                                  end_time: dayjs().format("YYYY-MM-DDT") + e.target.value + ":00",
+                                  end_time: dayjs().format("YYYY-MM-DDT") + event.target.value + ":00",
                                 }
                               : null
                           )
@@ -668,9 +667,9 @@ export default function Schedule() {
                     </label>
                     <select
                       value={editLesson.parity}
-                      onChange={(e) =>
+                      onChange={(event) =>
                         setEditLesson((prev) =>
-                          prev ? { ...prev, parity: e.target.value as LessonParity } : null
+                          prev ? { ...prev, parity: event.target.value as LessonParity } : null
                         )
                       }
                       className={inputClass}
@@ -692,23 +691,23 @@ export default function Schedule() {
                 onClick={async () => {
                   if (!editLesson) return
                   const optimisticId = editLesson.id
-                  const backup = groupSchedule.map((l) => ({ ...l }))
+                  const backup = groupSchedule.map((lesson) => ({ ...lesson }))
                   const backendLessonType = toBackendLessonType(editLesson.lesson_type)
                   const updatedLesson = { ...editLesson, lesson_type: backendLessonType }
                   applyScheduleUpdate((prev) =>
-                    prev.map((l) => (l.id === optimisticId ? updatedLesson : l))
+                    prev.map((lesson) => (lesson.id === optimisticId ? updatedLesson : lesson))
                   )
                   try {
                     await api.patch(`/schedule/${optimisticId}`, {
                       ...editLesson,
                       lesson_type: backendLessonType,
                     })
-                    setSnack(t("schedule:snackbar.updated"))
+                    setSnackbar(t("schedule:snackbar.updated"))
                     setEditing(false)
                     setOpenDialog(false)
                     refresh()
                   } catch {
-                    setSnack(t("schedule:snackbar.updateError"))
+                    setSnackbar(t("schedule:snackbar.updateError"))
                     applyScheduleUpdate(() => backup)
                   }
                 }}
@@ -733,7 +732,7 @@ export default function Schedule() {
                   </label>
                   <input
                     value={addFields.subject}
-                    onChange={(e) => setAddFields({ ...addFields, subject: e.target.value })}
+                    onChange={(event) => setAddFields({ ...addFields, subject: event.target.value })}
                     className={inputClass}
                   />
                 </div>
@@ -743,7 +742,7 @@ export default function Schedule() {
                   </label>
                   <input
                     value={addFields.teacher}
-                    onChange={(e) => setAddFields({ ...addFields, teacher: e.target.value })}
+                    onChange={(event) => setAddFields({ ...addFields, teacher: event.target.value })}
                     className={inputClass}
                   />
                 </div>
@@ -753,7 +752,7 @@ export default function Schedule() {
                   </label>
                   <input
                     value={addFields.room}
-                    onChange={(e) => setAddFields({ ...addFields, room: e.target.value })}
+                    onChange={(event) => setAddFields({ ...addFields, room: event.target.value })}
                     className={inputClass}
                   />
                 </div>
@@ -763,12 +762,12 @@ export default function Schedule() {
                   </label>
                   <select
                     value={addFields.lessonType}
-                    onChange={(e) => setAddFields({ ...addFields, lessonType: e.target.value })}
+                    onChange={(event) => setAddFields({ ...addFields, lessonType: event.target.value })}
                     className={inputClass}
                   >
-                    {lessonTypeOptions.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
+                    {lessonTypeOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
                       </option>
                     ))}
                   </select>
@@ -781,7 +780,7 @@ export default function Schedule() {
                     <input
                       type="time"
                       value={addFields.startTime}
-                      onChange={(e) => setAddFields({ ...addFields, startTime: e.target.value })}
+                      onChange={(event) => setAddFields({ ...addFields, startTime: event.target.value })}
                       className={inputClass}
                     />
                   </div>
@@ -792,7 +791,7 @@ export default function Schedule() {
                     <input
                       type="time"
                       value={addFields.endTime}
-                      onChange={(e) => setAddFields({ ...addFields, endTime: e.target.value })}
+                      onChange={(event) => setAddFields({ ...addFields, endTime: event.target.value })}
                       className={inputClass}
                     />
                   </div>
@@ -803,8 +802,8 @@ export default function Schedule() {
                   </label>
                   <select
                     value={addFields.parity}
-                    onChange={(e) =>
-                      setAddFields({ ...addFields, parity: e.target.value as LessonParity })
+                    onChange={(event) =>
+                      setAddFields({ ...addFields, parity: event.target.value as LessonParity })
                     }
                     className={inputClass}
                   >
@@ -825,11 +824,16 @@ export default function Schedule() {
             </DialogActions>
           </Dialog>
 
-          <Snackbar open={!!snack} onClose={() => setSnack("")}>
-            <Alert onClose={() => setSnack("")} severity="info">
-              {snack}
-            </Alert>
-          </Snackbar>
+          <Snackbar
+        open={!!snackbar}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar("")}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert severity="success" variant="filled" onClose={() => setSnackbar("")}>
+          {snackbar}
+        </Alert>
+      </Snackbar>
         </div>
       </PageFadeIn>
     </Layout>
@@ -838,7 +842,7 @@ export default function Schedule() {
   async function handleAddLesson() {
     const { subject, teacher, room, lessonType, startTime, endTime, parity } = addFields
     if (!subject || !teacher || !room || !addDay || !startTime || !endTime || !selectedGroup) {
-      setSnack(t("schedule:snackbar.fillAllFields"))
+      setSnackbar(t("schedule:snackbar.fillAllFields"))
       return
     }
     const backendLessonType = toBackendLessonType(lessonType)
@@ -867,11 +871,11 @@ export default function Schedule() {
         end_time: optimistic.end_time,
         parity,
       })
-      setSnack(t("schedule:snackbar.added"))
+      setSnackbar(t("schedule:snackbar.added"))
       setAddDialogOpen(false)
       refresh()
     } catch {
-      setSnack(t("schedule:snackbar.addError"))
+      setSnackbar(t("schedule:snackbar.addError"))
       applyScheduleUpdate((prev) => prev.filter((l) => l.id !== optimistic.id))
     }
   }
@@ -882,9 +886,9 @@ export default function Schedule() {
     try {
       await api.delete(`/schedule/${id}`)
       refresh()
-      setSnack(t("schedule:snackbar.deleted"))
+      setSnackbar(t("schedule:snackbar.deleted"))
     } catch {
-      setSnack(t("schedule:snackbar.deleteError"))
+      setSnackbar(t("schedule:snackbar.deleteError"))
       applyScheduleUpdate(() => backup)
     }
   }

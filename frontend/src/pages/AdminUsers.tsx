@@ -48,17 +48,17 @@ export default function AdminUsers() {
   }
 
   const fetchUsers = useCallback(async () => {
-    const params: Record<string, string> = {}
-    if (filters.full_name) params.full_name = filters.full_name
-    if (filters.group_id) params.group_id = filters.group_id
-    if (filters.role) params.role = filters.role
-    const res = await api.get<AdminUser[]>("/users", { params })
-    setUsers(Array.isArray(res.data) ? res.data : [])
+    const queryParameters: Record<string, string> = {}
+    if (filters.full_name) queryParameters.full_name = filters.full_name
+    if (filters.group_id) queryParameters.group_id = filters.group_id
+    if (filters.role) queryParameters.role = filters.role
+    const response = await api.get<AdminUser[]>("/users", { params: queryParameters })
+    setUsers(Array.isArray(response.data) ? response.data : [])
   }, [filters])
 
   const fetchGroups = useCallback(async () => {
-    const res = await api.get<Group[]>("/groups")
-    setGroups(Array.isArray(res.data) ? res.data : [])
+    const response = await api.get<Group[]>("/groups")
+    setGroups(Array.isArray(response.data) ? response.data : [])
   }, [])
 
   useEffect(() => {
@@ -82,15 +82,15 @@ export default function AdminUsers() {
   }
 
   const handleFilterChange = (field: keyof UserFilters) => (value: string) => {
-    setFilters((prev) => ({ ...prev, [field]: value }))
+    setFilters((previousFilters) => ({ ...previousFilters, [field]: value }))
   }
 
   const handleRoleChange = (value: UserRole) => {
-    setFilters((prev) => ({ ...prev, role: value }))
+    setFilters((previousFilters) => ({ ...previousFilters, role: value }))
   }
 
   const handleGroupFilterChange = (value: string) => {
-    setFilters((prev) => ({ ...prev, group_id: value }))
+    setFilters((previousFilters) => ({ ...previousFilters, group_id: value }))
   }
 
   const handleGroupSelectChange = (userId: string, value: string) => {
@@ -108,38 +108,47 @@ export default function AdminUsers() {
 
             <SectionCard className="flex flex-wrap items-end gap-4 p-6">
               <TextField
+                id="full-name-filter"
                 label={t("users.filters.fullName")}
                 value={filters.full_name}
-                onChange={(e) => handleFilterChange("full_name")(e.target.value)}
+                onChange={(event) => handleFilterChange("full_name")(event.target.value)}
                 className="min-w-[220px] flex-1"
               />
               <div className="flex flex-col gap-1.5 min-w-[180px] flex-1">
-                <label className="text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                <label
+                  htmlFor="group-filter"
+                  className="text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70"
+                >
                   {t("users.filters.group")}
                 </label>
                 <select
+                  id="group-filter"
                   value={filters.group_id}
-                  onChange={(e) => handleGroupFilterChange(e.target.value)}
+                  onChange={(event) => handleGroupFilterChange(event.target.value)}
                   className={cn(
                     "h-11 rounded-xl border border-glass-border bg-surface/50 px-3 py-2 text-sm text-primary-text shadow-sm outline-none transition-all",
                     "focus:border-brand/40 focus:ring-2 focus:ring-brand/10"
                   )}
                 >
                   <option value="">{t("users.filters.all")}</option>
-                  {groups.map((g) => (
-                    <option value={String(g.id)} key={g.id}>
-                      {g.name}
+                  {groups.map((group) => (
+                    <option value={String(group.id)} key={group.id}>
+                      {group.name}
                     </option>
                   ))}
                 </select>
               </div>
               <div className="flex flex-col gap-1.5 min-w-[180px] flex-1">
-                <label className="text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                <label
+                  htmlFor="role-filter"
+                  className="text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70"
+                >
                   {t("users.filters.role")}
                 </label>
                 <select
+                  id="role-filter"
                   value={filters.role}
-                  onChange={(e) => handleRoleChange(e.target.value as UserRole)}
+                  onChange={(event) => handleRoleChange(event.target.value as UserRole)}
                   className={cn(
                     "h-11 rounded-xl border border-glass-border bg-surface/50 px-3 py-2 text-sm text-primary-text shadow-sm outline-none transition-all",
                     "focus:border-brand/40 focus:ring-2 focus:ring-brand/10"
@@ -205,16 +214,16 @@ export default function AdminUsers() {
                         {user.role !== "teacher" && user.role !== "admin" ? (
                           <select
                             value={user.group_id ? String(user.group_id) : ""}
-                            onChange={(e) => handleGroupSelectChange(user.id, e.target.value)}
+                            onChange={(event) => handleGroupSelectChange(user.id, event.target.value)}
                             className={cn(
                               "rounded-lg border border-glass-border bg-surface/50 px-2.5 py-1 text-xs text-primary-text shadow-sm outline-none transition-all",
                               "focus:border-brand/40 focus:ring-2 focus:ring-brand/10"
                             )}
                           >
                             <option value="">-</option>
-                            {groups.map((g) => (
-                              <option value={String(g.id)} key={g.id}>
-                                {g.name}
+                            {groups.map((group) => (
+                              <option value={String(group.id)} key={group.id}>
+                                {group.name}
                               </option>
                             ))}
                           </select>
@@ -226,7 +235,8 @@ export default function AdminUsers() {
                             type="button"
                             onClick={() => handleDelete(user.id)}
                             className="inline-flex items-center rounded-lg p-2 text-error transition-colors hover:bg-error/10"
-                            title={t("users.deleteUser")}
+                            aria-label={t("users.table.deleteUser")}
+                            title={t("users.table.deleteUser")}
                           >
                             <Trash2 className="h-5 w-5" />
                           </button>
@@ -262,16 +272,16 @@ export default function AdminUsers() {
                     {user.role !== "teacher" && user.role !== "admin" && (
                       <select
                         value={user.group_id ? String(user.group_id) : ""}
-                        onChange={(e) => handleGroupSelectChange(user.id, e.target.value)}
+                        onChange={(event) => handleGroupSelectChange(user.id, event.target.value)}
                         className={cn(
                           "rounded-lg border border-glass-border bg-surface/50 px-2 py-0.5 text-[0.7rem] text-primary-text shadow-sm outline-none transition-all",
                           "focus:border-brand/40 focus:ring-2 focus:ring-brand/10"
                         )}
                       >
                         <option value="">-</option>
-                        {groups.map((g) => (
-                          <option value={String(g.id)} key={g.id}>
-                            {g.name}
+                        {groups.map((group) => (
+                          <option value={String(group.id)} key={group.id}>
+                            {group.name}
                           </option>
                         ))}
                       </select>
@@ -283,7 +293,8 @@ export default function AdminUsers() {
                     type="button"
                     onClick={() => handleDelete(user.id)}
                     className="absolute top-4 right-4 rounded-lg p-1.5 text-error transition-colors hover:bg-error/10"
-                    title={t("users.deleteUser")}
+                    aria-label={t("users.table.deleteUser")}
+                    title={t("users.table.deleteUser")}
                   >
                     <Trash2 className="h-5 w-5" />
                   </button>

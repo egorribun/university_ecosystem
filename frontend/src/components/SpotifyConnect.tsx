@@ -72,7 +72,7 @@ export default function SpotifyConnect() {
     <div className="mt-4 overflow-hidden rounded-3xl border border-glass-border bg-surface/30 backdrop-blur-xl transition-all duration-500 shadow-glass">
       <div className="px-6 py-4 border-b border-glass-border/10 bg-surface/5">
         <h3 className="text-lg font-black tracking-tight text-primary-text flex items-center gap-2">
-          <Music className="h-5 w-5 text-[#1DB954]" />
+          <Music className="h-5 w-5 text-(--color-spotify)" />
           {t("settings:integrations.spotify.title")}
         </h3>
       </div>
@@ -82,7 +82,7 @@ export default function SpotifyConnect() {
             onClick={connect}
             variant="solid"
             disabled={actionLoading}
-            className="w-full h-12 rounded-2xl bg-[#1DB954] hover:bg-[#1ed760] text-white font-black shadow-lg shadow-[#1DB954]/20"
+            className="w-full h-12 rounded-ue-xl bg-(--color-spotify) hover:bg-(--color-spotify-hover) text-white font-black shadow-lg shadow-(--color-spotify)/20"
             loading={actionLoading}
           >
             {t("settings:integrations.spotify.connect")}
@@ -90,7 +90,7 @@ export default function SpotifyConnect() {
         ) : (
           <div className="space-y-6">
             <div className="flex flex-wrap items-center gap-3">
-              <div className="inline-flex items-center rounded-full bg-[#1DB954]/10 border border-[#1DB954]/20 px-4 py-1.5 text-xs font-black text-[#1DB954] tracking-tight">
+              <div className="inline-flex items-center rounded-full bg-(--color-spotify)/10 border border-(--color-spotify)/20 px-4 py-1.5 text-xs font-black text-(--color-spotify) tracking-tight">
                 {user.spotify_display_name || t("settings:integrations.spotify.status.connectedFallback")}
               </div>
               <div className="flex gap-2">
@@ -132,7 +132,7 @@ export default function SpotifyConnect() {
                       href={now.track_url}
                       target="_blank"
                       rel="noreferrer"
-                      className="p-2 rounded-xl bg-[#1DB954]/10 text-[#1DB954] hover:bg-[#1DB954]/20 transition-colors"
+                      className="p-2 rounded-xl bg-(--color-spotify)/10 text-(--color-spotify) hover:bg-(--color-spotify-hover)/20 transition-colors"
                     >
                       <ExternalLink className="h-4 w-4" />
                     </a>

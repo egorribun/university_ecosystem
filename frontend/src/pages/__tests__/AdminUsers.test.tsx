@@ -9,6 +9,7 @@ import { setupServer } from "msw/node"
 import AdminUsers from "@/pages/AdminUsers"
 import { AuthContext } from "@/contexts/AuthContext"
 import { LanguageProvider } from "@/contexts/LanguageContext"
+import { ThemeProvider } from "@/contexts/ThemeContext"
 import type { User } from "@/types/User"
 
 import { server } from "@/tests/mocks/server"
@@ -117,13 +118,15 @@ const renderPage = () => {
 
   return render(
     <AuthContext.Provider value={authValue}>
-      <LanguageProvider>
-        <QueryClientProvider client={queryClient}>
-          <MemoryRouter>
-            <AdminUsers />
-          </MemoryRouter>
-        </QueryClientProvider>
-      </LanguageProvider>
+      <ThemeProvider>
+        <LanguageProvider>
+          <QueryClientProvider client={queryClient}>
+            <MemoryRouter>
+              <AdminUsers />
+            </MemoryRouter>
+          </QueryClientProvider>
+        </LanguageProvider>
+      </ThemeProvider>
     </AuthContext.Provider>
   )
 }
@@ -135,9 +138,9 @@ describe("AdminUsers page", () => {
 
   it("renders users and groups", async () => {
     renderPage()
-    expect(await screen.findByText("John Doe")).toBeInTheDocument()
-    expect(screen.getByText("Jane Smith")).toBeInTheDocument()
-    expect(screen.getByText("Alpha")).toBeInTheDocument()
+    expect((await screen.findAllByText("John Doe"))[0]).toBeInTheDocument()
+    expect((await screen.findAllByText("Jane Smith"))[0]).toBeInTheDocument()
+    expect((await screen.findAllByText("Alpha"))[0]).toBeInTheDocument()
   })
 
   it("filters users by name", async () => {

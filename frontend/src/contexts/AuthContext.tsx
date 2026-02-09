@@ -1,5 +1,5 @@
 import { createContext, useContext, useMemo } from "react"
-import { resetEtagCache } from "../api/client"
+import { resetEtagCache } from "@/api/client"
 import { useSessionCrypto } from "@/hooks/auth/useSessionCrypto"
 import { useProfileSync, fetchCurrentUser, currentUserQueryKey } from "@/hooks/auth/useProfileSync"
 import { useAuthApi } from "@/hooks/auth/useAuthApi"

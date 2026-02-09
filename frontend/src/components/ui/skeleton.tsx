@@ -19,7 +19,7 @@ export function Skeleton({
   ...rest
 }: SkeletonProps) {
   const borderRadius =
-    typeof rounded === "string" ? rounded : rounded ? "var(--ue-radius-md)" : undefined
+    typeof rounded === "string" ? rounded : rounded ? "var(--radius-ue-md)" : undefined
 
   return (
     <div
@@ -27,9 +27,8 @@ export function Skeleton({
       aria-live="polite"
       aria-label={ariaLabel}
       className={cn(
-        "skeleton relative overflow-hidden bg-[color:var(--skeleton-bg,theme(colors.white/5))] before:absolute before:inset-0 before:-translate-x-full before:animate-skeleton-shimmer before:bg-gradient-to-r before:from-transparent before:via-white/10 before:to-transparent dark:before:via-white/5",
+        "skeleton",
         rounded ? "rounded-ue-md" : "",
-        "motion-reduce:before:hidden",
         className
       )}
       style={{

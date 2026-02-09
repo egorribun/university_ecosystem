@@ -114,12 +114,12 @@ export function ScheduleCard({
   }
 
   const listActionBase =
-    "group relative isolate w-full overflow-hidden rounded-xl border border-transparent bg-surface/10 px-4 py-3 text-left transition-all duration-300 ease-out hover:bg-surface/20 hover:border-glass-border hover:-translate-y-0.5 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+    "group relative isolate w-full overflow-hidden rounded-xl border border-transparent bg-surface/10 px-4 py-3 text-left transition-all duration-300 ease-out hover:bg-surface/20 hover:border-glass-border hover:-translate-y-0.5 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
 
   return (
     <Card
       className={cn(
-        "group bg-glass backdrop-blur-3xl transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
+        "group bg-(--glass-bg) backdrop-blur-3xl transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
         "hover:-translate-y-1 hover:scale-[1.01] hover:shadow-glass motion-reduce:hover:transform-none motion-reduce:hover:shadow-none",
         "dash-panel-schedule border-glass-border shadow-glass",
         className
@@ -156,7 +156,7 @@ export function ScheduleCard({
                 <Badge size="sm" tone="primary" label={t("dashboard:now")} />
                 <Badge
                   size="sm"
-                  className="border-brand/20 bg-brand/5 font-mono text-xs font-medium text-brand dark:bg-brand/10"
+                  className="border-(--brand-main)/20 bg-(--brand-main)/5 font-mono text-xs font-medium text-(--brand-main) dark:bg-(--brand-main)/10"
                   label={`${fmtTime(currentLesson.start_time)}–${fmtTime(currentLesson.end_time)}`}
                 />
               </div>
@@ -197,7 +197,7 @@ export function ScheduleCard({
             {[1, 2, 3].map((i) => (
               <div
                 key={i}
-                className="flex flex-col gap-2 rounded-ue-lg border border-glass-border bg-surface/20 px-4 py-3 opacity-60"
+                className="flex flex-col gap-2 rounded-ue-lg border border-(--glass-border) bg-(--bg-surface)/20 px-4 py-3 opacity-60"
               >
                 <div className="flex items-center gap-2">
                   <Skeleton width={80} height={18} />
@@ -228,7 +228,7 @@ export function ScheduleCard({
                     </span>
                     <Badge
                       size="sm"
-                      className="flex-shrink-0 border-brand/20 bg-brand/5 font-mono text-xs font-medium text-brand dark:bg-brand/10"
+                      className="shrink-0 border-(--brand-main)/20 bg-(--brand-main)/5 font-mono text-xs font-medium text-(--brand-main) dark:bg-(--brand-main)/10"
                       label={`${fmtTime(l.start_time)}–${fmtTime(l.end_time)}`}
                     />
                   </div>

@@ -116,7 +116,7 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
             <p id={instructionsId} className="text-sm font-bold text-tertiary-text">
               {t("map.fallback.instructions")}
             </p>
-            <div className="inline-flex items-center gap-2 rounded-xl bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 text-[11px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-wider">
+            <div className="inline-flex items-center gap-2 rounded-xl bg-orange-500/10 border border-orange-500/20 px-3 py-1.5 text-xs font-black text-orange-600 dark:text-orange-400 uppercase tracking-wider">
                <AlertCircle className="h-3.5 w-3.5" />
                {t("map.fallback.offlineNotice")}
             </div>

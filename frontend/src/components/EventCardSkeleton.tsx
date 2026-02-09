@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 export function EventCardSkeleton() {
   return (
     <article
-      className="relative flex flex-col overflow-hidden rounded-ue-xl border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] text-[color:var(--page-text)] shadow-surface"
+      className="relative flex flex-col overflow-hidden rounded-ue-xl border border-white/12 bg-input-mix text-(--page-text) shadow-surface"
       style={{ width: "100%", maxWidth: "420px" }}
       aria-busy="true"
       aria-label="Loading event"

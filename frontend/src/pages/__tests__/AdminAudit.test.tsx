@@ -143,7 +143,7 @@ describe("AdminAudit page", () => {
     // Second log row expand button
     await userEvent.click(expandButtons[1])
 
-    expect(await screen.findByText("Details")).toBeInTheDocument()
+    expect(await screen.findByText(/Details/)).toBeInTheDocument()
     expect(await screen.findByText(/Jane Smith/)).toBeInTheDocument()
     expect(screen.getByText(/127\.0\.0\.1/)).toBeInTheDocument()
   })

@@ -15,7 +15,7 @@ interface ScheduleCardSkeletonProps {
 export function ScheduleCardSkeleton({ items = 3, className = "" }: ScheduleCardSkeletonProps) {
   return (
     <div
-      className={`rounded-ue-xl border border-white/12 bg-[color:color-mix(in_srgb,var(--card-bg)_94%,white_6%)] p-4 sm:p-5 ${className}`}
+      className={`rounded-ue-xl border border-white/12 bg-input-mix p-4 sm:p-5 ${className}`}
       aria-busy="true"
       aria-label="Loading schedule"
     >

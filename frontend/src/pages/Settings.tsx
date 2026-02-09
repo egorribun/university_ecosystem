@@ -1,23 +1,90 @@
 import React, {
-  useEffect,
-  useRef,
   useState,
   useCallback,
   useMemo,
-  ChangeEvent,
-  FocusEvent,
+  useRef,
+  useEffect,
   type CSSProperties,
+  type ChangeEvent,
+  type FocusEvent,
 } from "react"
-import ReactDOM from "react-dom"
-import { isAxiosError } from "axios"
-import { useAuth, currentUserQueryKey, fetchCurrentUser } from "@/contexts/AuthContext"
-import { useLanguage, type SupportedLanguage } from "@/contexts/LanguageContext"
 import { useNavigate } from "react-router-dom"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { usePushPreferences } from "@/hooks/usePushPreferences"
-import { nowPlayingQueryKey } from "@/hooks/useNowPlaying"
-import { useTheme } from "@/contexts/ThemeContext"
+import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query"
+import { useTranslation } from "react-i18next"
+import dayjs from "dayjs"
+import { isAxiosError } from "axios"
+
+import {
+  Settings as SettingsIcon,
+  Bell,
+  Lock,
+  User as UserIcon,
+  Globe,
+  Palette,
+  Monitor,
+  Sun,
+  Moon,
+  Shield,
+  Smartphone,
+  CreditCard,
+  LogOut,
+  ChevronRight,
+  Fingerprint,
+  RefreshCcw,
+  Trash2,
+  AlertTriangle,
+  Mail,
+  MoreVertical,
+  Key,
+  Smartphone as DeviceIcon,
+} from "lucide-react"
+
+import { startRegistration, browserSupportsWebAuthn } from "@simplewebauthn/browser"
+
 import api from "../api/client"
+import { useAuth } from "../contexts/AuthContext"
+import { useLanguage } from "../contexts/LanguageContext"
+import { useTheme } from "../contexts/ThemeContext"
+import { usePushPreferences } from "../hooks/usePushPreferences"
+import { useNowPlaying, nowPlayingQueryKey } from "../hooks/useNowPlaying"
+import { currentUserQueryKey, fetchCurrentUser } from "../hooks/auth/useProfileSync"
+import { type SupportedLanguage } from "../i18n/metadata"
+
+import Layout from "../components/Layout"
+import PageFadeIn from "../components/PageFadeIn"
+
+import {
+  Button,
+  TextField,
+  SwitchControl,
+  RadioGroup,
+  Radio,
+  FormControlLabel,
+  Avatar,
+  Chip,
+  Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Snackbar,
+  CircularProgress,
+  Tabs,
+  Tab,
+  SectionCard,
+  SectionTitle,
+  SectionSubtitle,
+  AccordionSection,
+  Divider,
+  SessionItem,
+  securityStatusChipClassName,
+  type ThemeMode,
+} from "../components/settings"
+
+import { TotpQrDisplay } from "../components/mfa/TotpQrDisplay"
+import { OtpEntry } from "../components/mfa/OtpEntry"
+import { StepUpDialog } from "../components/mfa/StepUpDialog"
+
 import {
   startTotpEnrollment,
   confirmTotpEnrollment,
@@ -27,66 +94,41 @@ import {
   confirmWebAuthnRegistration,
   listWebAuthnCredentials,
   deleteWebAuthnCredential,
-} from "@/api/mfa"
-import TotpQrDisplay from "@/components/mfa/TotpQrDisplay"
-import OtpEntry from "@/components/mfa/OtpEntry"
-import StepUpDialog from "@/components/mfa/StepUpDialog"
-import SmartImage from "@/components/SmartImage"
-import type { User } from "@/types/User"
-import type { ActiveSession } from "@/types/Session"
+} from "../api/mfa"
+
 import type {
   MfaTotpEnrollment,
-  TotpEnrollmentStartPayload,
   TotpEnrollmentStartResponse,
-} from "@/types/Mfa"
-import { useTranslation } from "react-i18next"
-import dayjs from "dayjs"
-import { Settings as SettingsIcon, Moon, Sun, Monitor, Fingerprint } from "lucide-react"
-import { startRegistration, browserSupportsWebAuthn } from "@simplewebauthn/browser"
-import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
-const DEFAULT_AVATAR = AVATAR_PLACEHOLDER_URL
-import spotifyLogo from "@/assets/spotify_icon.png"
-import { addVersionParam, resolveMediaUrl } from "@/utils/media"
-import { sanitizeSpotifyAuthorizeUrl } from "@/utils/spotify"
-import { cn } from "@/utils/cn"
-import { motion } from "framer-motion"
-// Removed MUI AlertProps import
-import Layout from "../components/Layout"
-import PageFadeIn from "../components/PageFadeIn"
+  TotpEnrollmentStartPayload,
+} from "../types/Mfa"
+import type { User } from "../types/User"
+import type { ActiveSession } from "../types/Session"
 
-import {
-  AccordionSection,
-  Alert,
-  Avatar,
-  Button,
-  Chip,
-  CircularProgress,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Divider,
-  FormControlLabel,
-  Radio,
-  RadioGroup,
-  SectionCard,
-  SectionSubtitle,
-  SectionTitle,
-  securityStatusChipClassName,
-  SessionItem,
-  Snackbar,
-  SwitchControl,
-  Tab,
-  Tabs,
-  TextField,
-  type ThemeMode,
-} from "../components/settings/SettingsUI"
+import { cn } from "../utils/cn"
+import { resolveMediaUrl, addVersionParam } from "../utils/media"
+import { sanitizeSpotifyAuthorizeUrl } from "../utils/spotify"
+
+const DEFAULT_AVATAR = "https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y"
+const AVATAR_PLACEHOLDER_URL = DEFAULT_AVATAR
+
+const SpotifyLogo = ({ className }: { className?: string }) => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className={className}>
+    <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.508 17.302c-.216.354-.675.464-1.03.248-2.863-1.748-6.463-2.144-10.707-1.177-.404.092-.814-.16-.906-.565-.092-.404.16-.814.565-.906 4.646-1.063 8.625-.613 11.83 1.342.354.215.465.674.248 1.058zm1.467-3.258c-.272.443-.847.584-1.29.312-3.277-2.015-8.272-2.597-12.146-1.422-.497.151-1.025-.13-1.176-.627-.151-.497.13-1.025.627-1.176 4.43-1.344 9.932-.693 13.673 1.606.443.272.584.847.312 1.307zm.126-3.395C15.222 8.243 8.818 8.03 5.072 9.168c-.596.18-1.23-.153-1.41-.749-.18-.596.153-1.23.749-1.41 4.29-1.302 11.37-1.055 15.86 1.61.536.318.713 1.008.395 1.543-.318.536-1.008.713-1.543.395z" />
+  </svg>
+)
 
 const fadeDelayStyle = (value: string): CSSProperties =>
   ({ "--fade-delay": value }) as CSSProperties
 
+const resolveDetailMessage = (error: unknown, fallback: string): string => {
+  if (isAxiosError(error) && error.response?.data?.detail) {
+    return String(error.response.data.detail)
+  }
+  return error instanceof Error ? error.message : fallback
+}
+
 const isCreationOptions = (
-  value: Record<string, unknown> | PublicKeyCredentialCreationOptionsJSON | null | undefined
+  value: unknown
 ): value is PublicKeyCredentialCreationOptionsJSON => {
   if (!value || typeof value !== "object") return false
   const candidate = value as {
@@ -115,6 +157,18 @@ const toServerTime = (value: string | null): string | null => {
   return trimmed
 }
 
+// Types duplicated or extended locally as needed
+interface PublicKeyCredentialCreationOptionsJSON {
+  challenge: string
+  pubKeyCredParams: { type: "public-key"; alg: number }[]
+  rp: { id: string; name: string }
+  user: { id: string; name: string; displayName: string }
+  timeout: number
+  attestation: AttestationConveyancePreference
+  excludeCredentials: { id: string; type: "public-key" }[]
+  authenticatorSelection?: AuthenticatorSelectionCriteria
+  extensions?: AuthenticationExtensionsClientInputs
+}
 
 // Tailwind CSS components
 
@@ -123,9 +177,9 @@ export default function Settings() {
   const { user, setUser, logout } = useAuth()
   const queryClient = useQueryClient()
   const [tab, setTab] = useState(0)
-  const [snack, setSnack] = useState<{
+  const [snackbar, setSnackbar] = useState<{
     text: string
-    sev?: "success" | "info" | "warning" | "error"
+    severity?: "success" | "info" | "warning" | "error"
   } | null>(null)
   const { language, setLanguage, available: availableLanguages } = useLanguage()
   const { t } = useTranslation(["settings", "common", "notifications", "profile"])
@@ -149,7 +203,7 @@ export default function Settings() {
     permissionText,
     enableNotifications,
     disableNotifications,
-  } = usePushPreferences({ onNotify: setSnack })
+  } = usePushPreferences({ onNotify: setSnackbar })
 
   const [dndEnabled, setDndEnabled] = useState(false)
   const [dndStart, setDndStart] = useState("")
@@ -252,7 +306,7 @@ export default function Settings() {
         return
       }
       if (nextEnabled && (!normalizedStart || !normalizedEnd)) {
-        setSnack({ text: t("settings:dnd.validation.missingRange"), sev: "warning" })
+        setSnackbar({ text: t("settings:dnd.validation.missingRange"), severity: "warning" })
         syncDndFromUser(user)
         return
       }
@@ -274,7 +328,7 @@ export default function Settings() {
         if (nextEnabled && !wasEnabled) message = t("settings:dnd.snackbar.enabled")
         else if (!nextEnabled && wasEnabled) message = t("settings:dnd.snackbar.disabled")
         else message = t("settings:dnd.snackbar.updated")
-        setSnack({ text: message, sev: "success" })
+        setSnackbar({ text: message, severity: "success" })
       } catch (error: unknown) {
         let message = t("settings:dnd.snackbar.updateFailed")
         if (isAxiosError(error)) {
@@ -292,13 +346,13 @@ export default function Settings() {
             if (collected) message = collected
           }
         }
-        setSnack({ text: message, sev: "error" })
+        setSnackbar({ text: message, severity: "error" })
         syncDndFromUser(user)
       } finally {
         setDndSaving(false)
       }
     },
-    [dndSaving, setUser, setSnack, syncDndFromUser, t, user]
+    [dndSaving, setUser, setSnackbar, syncDndFromUser, t, user]
   )
 
   const handleDndToggle = useCallback(
@@ -353,14 +407,14 @@ export default function Settings() {
     const s = sp.get("spotify")
     if (s) {
       if (s === "connected")
-        setSnack({ text: t("settings:integrations.spotify.snackbar.connected"), sev: "success" })
+        setSnackbar({ text: t("settings:integrations.spotify.snackbar.connected"), severity: "success" })
       if (s === "error")
-        setSnack({ text: t("settings:integrations.spotify.snackbar.connectFailed"), sev: "error" })
+        setSnackbar({ text: t("settings:integrations.spotify.snackbar.connectFailed"), severity: "error" })
       sp.delete("spotify")
       const next = window.location.pathname + (sp.toString() ? "?" + sp : "")
       window.history.replaceState({}, "", next)
     }
-  }, [setSnack, t])
+  }, [setSnackbar, t])
 
   const handleThemeChange = useCallback(
     (_: ChangeEvent<HTMLInputElement>, value: string) => {
@@ -388,7 +442,7 @@ export default function Settings() {
       if (!safeUrl) throw new Error("Received unsafe Spotify authorization URL")
       window.location.assign(safeUrl)
     } catch (error) {
-      setSnack({ text: t("settings:integrations.spotify.snackbar.openFailed"), sev: "error" })
+      setSnackbar({ text: t("settings:integrations.spotify.snackbar.openFailed"), severity: "error" })
     }
   }
 
@@ -414,9 +468,9 @@ export default function Settings() {
             : prev
         )
       }
-      setSnack({ text: t("settings:integrations.spotify.snackbar.disconnected"), sev: "success" })
+      setSnackbar({ text: t("settings:integrations.spotify.snackbar.disconnected"), severity: "success" })
     } catch {
-      setSnack({ text: t("settings:integrations.spotify.snackbar.disconnectFailed"), sev: "error" })
+      setSnackbar({ text: t("settings:integrations.spotify.snackbar.disconnectFailed"), severity: "error" })
     }
   }
 
@@ -604,16 +658,14 @@ export default function Settings() {
   }, [])
 
   const handleChallengeResetNotice = useCallback(() => {
-    setSnack({ text: t("settings:security.snackbar.challengeReset"), sev: "info" })
+    setSnackbar({ text: t("settings:security.snackbar.challengeReset"), severity: "info" })
   }, [t])
 
   const handleRevokeSession = useCallback(
     async (sessionId: string, options?: { skipStepUp?: boolean }) => {
       try {
-        console.log(`[settings] Revoking session ${sessionId}...`)
         const result = await revokeSessionMutation.mutateAsync(sessionId)
-        console.log(`[settings] Session ${sessionId} revoked successfully`, result)
-        setSnack({ text: t("settings:sessions.snackbar.revoked"), sev: "success" })
+        setSnackbar({ text: t("settings:sessions.snackbar.revoked"), severity: "success" })
 
         // Update cache immediately and then invalidate to be safe
         queryClient.setQueryData<ActiveSession[] | undefined>(sessionsKey, (prev) => {
@@ -621,7 +673,6 @@ export default function Settings() {
           return prev.map((s) => (s.id === result.id ? result : s))
         })
         await queryClient.invalidateQueries({ queryKey: sessionsKey })
-        console.log(`[settings] Sessions query invalidated for ${JSON.stringify(sessionsKey)}`)
         if (result?.is_current) {
           await logout()
         }
@@ -632,9 +683,9 @@ export default function Settings() {
           })
           return
         }
-        setSnack({
+        setSnackbar({
           text: resolveDetailMessage(error, t("settings:sessions.snackbar.failed")),
-          sev: "error",
+          severity: "error",
         })
       }
     },
@@ -655,11 +706,11 @@ export default function Settings() {
       try {
         const result = await revokeAllSessionsMutation.mutateAsync()
         await queryClient.invalidateQueries({ queryKey: sessionsKey })
-        setSnack({
+        setSnackbar({
           text: t("settings:sessions.snackbar.revokedAll", {
             count: result?.revoked ?? 0,
           }),
-          sev: "success",
+          severity: "success",
         })
       } catch (error) {
         if (!options?.skipStepUp && isStepUpError(error)) {
@@ -668,9 +719,9 @@ export default function Settings() {
           })
           return
         }
-        setSnack({
+        setSnackbar({
           text: resolveDetailMessage(error, t("settings:sessions.snackbar.revokeAllFailed")),
-          sev: "error",
+          severity: "error",
         })
       }
     },
@@ -717,9 +768,9 @@ export default function Settings() {
         setPendingEmail(trimmedEmail.toLowerCase())
         await refreshMe()
         setEmailPassword("")
-        setSnack({
+        setSnackbar({
           text: t("settings:security.email.confirmationSent", { email: trimmedEmail }),
-          sev: "success",
+          severity: "success",
         })
       } catch (error) {
         if (!options?.skipStepUp && isStepUpError(error)) {
@@ -744,7 +795,7 @@ export default function Settings() {
         if (!handled) {
           const message = resolveDetailMessage(error, t("settings:security.email.failed"))
           setEmailError(message)
-          setSnack({ text: message, sev: "error" })
+          setSnackbar({ text: message, severity: "error" })
         }
       } finally {
         setEmailBusy(false)
@@ -759,7 +810,7 @@ export default function Settings() {
       refreshMe,
       resolveDetailMessage,
       pendingEmail,
-      setSnack,
+      setSnackbar,
       t,
       user?.email,
     ]
@@ -799,11 +850,11 @@ export default function Settings() {
           new_password: newPasswordValue,
         })
         if (data?.ok) {
-          setSnack({
+          setSnackbar({
             text: t("settings:security.password.updated", {
               count: data.revoked_sessions ?? 0,
             }),
-            sev: "success",
+            severity: "success",
           })
         }
         setCurrentPasswordValue("")
@@ -836,7 +887,7 @@ export default function Settings() {
         }
         if (!handled) {
           setPasswordError(message)
-          setSnack({ text: message, sev: "error" })
+          setSnackbar({ text: message, severity: "error" })
         }
       } finally {
         setPasswordBusy(false)
@@ -852,7 +903,7 @@ export default function Settings() {
       queryClient,
       resolveDetailMessage,
       sessionsKey,
-      setSnack,
+      setSnackbar,
       t,
     ]
   )
@@ -874,9 +925,9 @@ export default function Settings() {
         }
         const message = resolveDetailMessage(error, t("settings:security.snackbar.totpStartFailed"))
         setTotpError(message)
-        setSnack({
+        setSnackbar({
           text: message,
-          sev: "error",
+          severity: "error",
         })
       } finally {
         setTotpBusy(false)
@@ -886,7 +937,7 @@ export default function Settings() {
       isStepUpError,
       openStepUpFor,
       resolveDetailMessage,
-      setSnack,
+      setSnackbar,
       setTotpError,
       t,
       totpBusy,
@@ -911,14 +962,14 @@ export default function Settings() {
         await confirmTotpEnrollment({ enrollment_id: enrollmentId, code })
         setTotpDraft(null)
         await refreshMe()
-        setSnack({ text: t("settings:security.snackbar.totpEnabled"), sev: "success" })
+        setSnackbar({ text: t("settings:security.snackbar.totpEnabled"), severity: "success" })
       } catch (error) {
         setTotpError(resolveDetailMessage(error, t("settings:security.snackbar.totpConfirmFailed")))
       } finally {
         setTotpBusy(false)
       }
     },
-    [pendingTotpId, refreshMe, resolveDetailMessage, t, totpDraft, setSnack]
+    [pendingTotpId, refreshMe, resolveDetailMessage, t, totpDraft, setSnackbar]
   )
 
   const handleCancelTotp = useCallback(async () => {
@@ -933,11 +984,11 @@ export default function Settings() {
     } catch (error) {
       const message = resolveDetailMessage(error, t("settings:security.snackbar.totpCancelFailed"))
       setTotpError(message)
-      setSnack({ text: message, sev: "error" })
+      setSnackbar({ text: message, severity: "error" })
     } finally {
       setTotpBusy(false)
     }
-  }, [pendingTotpId, refreshMe, resolveDetailMessage, setSnack, t, totpBusy, totpDraft])
+  }, [pendingTotpId, refreshMe, resolveDetailMessage, setSnackbar, t, totpBusy, totpDraft])
 
   const handleDisableTotp = useCallback(
     (enrollmentId: string) => {
@@ -956,17 +1007,17 @@ export default function Settings() {
             )
           }
           await refreshMe()
-          setSnack({ text: t("settings:security.snackbar.totpDisabled"), sev: "success" })
+          setSnackbar({ text: t("settings:security.snackbar.totpDisabled"), severity: "success" })
         } catch (error) {
-          setSnack({
+          setSnackbar({
             text: resolveDetailMessage(error, t("settings:security.snackbar.totpDisableFailed")),
-            sev: "error",
+            severity: "error",
           })
         }
       }
       openStepUpFor(action)
     },
-    [openStepUpFor, refreshMe, resolveDetailMessage, setSnack, setUser, t]
+    [openStepUpFor, refreshMe, resolveDetailMessage, setSnackbar, setUser, t]
   )
 
   const {
@@ -995,18 +1046,26 @@ export default function Settings() {
     async (options?: { skipStepUp?: boolean; label?: string }) => {
       if (webauthnBusy) return
       setWebauthnBusy(true)
+      setIsAddingWebAuthn(true)
       try {
         const { data: startData } = await startWebAuthnRegistration()
+
+        if (!isCreationOptions(startData.publicKey)) {
+          throw new Error("Invalid WebAuthn creation options received from server")
+        }
+
         const attestationResponse = await startRegistration({
           optionsJSON: startData.publicKey,
         })
+
         await confirmWebAuthnRegistration({
           challenge: startData.challenge_token,
           response: attestationResponse,
           label: options?.label?.trim() || webauthnLabel.trim() || undefined,
         })
+
         await Promise.all([refetchWebAuthn(), refreshMe()])
-        setSnack({ text: t("settings:security.snackbar.webauthnEnabled"), sev: "success" })
+        setSnackbar({ text: t("settings:security.snackbar.webauthnEnabled"), severity: "success" })
         setIsAddingWebAuthn(false)
         setWebauthnLabel("")
       } catch (error) {
@@ -1023,7 +1082,7 @@ export default function Settings() {
         if (error instanceof Error && error.name === "NotAllowedError") {
           message = t("settings:security.webauthn.errors.cancelled")
         }
-        setSnack({ text: message, sev: "error" })
+        setSnackbar({ text: message, severity: "error" })
       } finally {
         setWebauthnBusy(false)
       }
@@ -1034,7 +1093,7 @@ export default function Settings() {
       refetchWebAuthn,
       refreshMe,
       resolveDetailMessage,
-      setSnack,
+      setSnackbar,
       t,
       webauthnBusy,
       webauthnLabel,
@@ -1047,17 +1106,17 @@ export default function Settings() {
         try {
           await deleteWebAuthnCredential(credentialId)
           await Promise.all([refetchWebAuthn(), refreshMe()])
-          setSnack({ text: t("settings:security.snackbar.webauthnDeleted"), sev: "success" })
+          setSnackbar({ text: t("settings:security.snackbar.webauthnDeleted"), severity: "success" })
         } catch (error) {
-          setSnack({
+          setSnackbar({
             text: resolveDetailMessage(error, t("settings:security.snackbar.webauthnDeleteFailed")),
-            sev: "error",
+            severity: "error",
           })
         }
       }
       openStepUpFor(action)
     },
-    [openStepUpFor, refetchWebAuthn, refreshMe, resolveDetailMessage, setSnack, t]
+    [openStepUpFor, refetchWebAuthn, refreshMe, resolveDetailMessage, setSnackbar, t]
   )
 
   const formatSessionTimestamp = useCallback(
@@ -1080,9 +1139,9 @@ export default function Settings() {
 
   const uploadAvatar = async (file: File) => {
     if (!isImage(file))
-      return setSnack({ text: t("settings:media.validation.supportedFormats"), sev: "warning" })
+      return setSnackbar({ text: t("settings:media.validation.supportedFormats"), severity: "warning" })
     if (!withinSize(file))
-      return setSnack({ text: t("settings:media.validation.fileTooLarge"), sev: "warning" })
+      return setSnackbar({ text: t("settings:media.validation.fileTooLarge"), severity: "warning" })
     try {
       setAvatarBusy(true)
       const fd = new FormData()
@@ -1090,11 +1149,11 @@ export default function Settings() {
       await api.post("/users/me/avatar", fd, { headers: { "Content-Type": "multipart/form-data" } })
       await refreshMe()
       setAvatarVersion(Date.now())
-      setSnack({ text: t("settings:media.avatar.updated"), sev: "success" })
+      setSnackbar({ text: t("settings:media.avatar.updated"), severity: "success" })
     } catch (error) {
-      setSnack({
+      setSnackbar({
         text: resolveDetailMessage(error, t("settings:media.avatar.uploadFailed")),
-        sev: "error",
+        severity: "error",
       })
     } finally {
       setAvatarBusy(false)
@@ -1108,11 +1167,11 @@ export default function Settings() {
       await api.delete("/users/me/avatar")
       await refreshMe()
       setAvatarVersion(Date.now())
-      setSnack({ text: t("settings:media.avatar.deleted"), sev: "success" })
+      setSnackbar({ text: t("settings:media.avatar.deleted"), severity: "success" })
     } catch (error) {
-      setSnack({
+      setSnackbar({
         text: resolveDetailMessage(error, t("settings:media.avatar.deleteFailed")),
-        sev: "error",
+        severity: "error",
       })
     } finally {
       setAvatarBusy(false)
@@ -1121,9 +1180,9 @@ export default function Settings() {
 
   const uploadCover = async (file: File) => {
     if (!isImage(file))
-      return setSnack({ text: t("settings:media.validation.supportedFormats"), sev: "warning" })
+      return setSnackbar({ text: t("settings:media.validation.supportedFormats"), severity: "warning" })
     if (!withinSize(file))
-      return setSnack({ text: t("settings:media.validation.fileTooLarge"), sev: "warning" })
+      return setSnackbar({ text: t("settings:media.validation.fileTooLarge"), severity: "warning" })
     try {
       setCoverBusy(true)
       const fd = new FormData()
@@ -1131,11 +1190,11 @@ export default function Settings() {
       await api.post("/users/me/cover", fd, { headers: { "Content-Type": "multipart/form-data" } })
       await refreshMe()
       setCoverVersion(Date.now())
-      setSnack({ text: t("settings:media.cover.updated"), sev: "success" })
+      setSnackbar({ text: t("settings:media.cover.updated"), severity: "success" })
     } catch (error) {
-      setSnack({
+      setSnackbar({
         text: resolveDetailMessage(error, t("settings:media.cover.uploadFailed")),
-        sev: "error",
+        severity: "error",
       })
     } finally {
       setCoverBusy(false)
@@ -1149,11 +1208,11 @@ export default function Settings() {
       await api.delete("/users/me/cover")
       await refreshMe()
       setCoverVersion(Date.now())
-      setSnack({ text: t("settings:media.cover.deleted"), sev: "success" })
+      setSnackbar({ text: t("settings:media.cover.deleted"), severity: "success" })
     } catch (error) {
-      setSnack({
+      setSnackbar({
         text: resolveDetailMessage(error, t("settings:media.cover.deleteFailed")),
-        sev: "error",
+        severity: "error",
       })
     } finally {
       setCoverBusy(false)
@@ -1165,17 +1224,17 @@ export default function Settings() {
   return (
     <Layout>
       <PageFadeIn>
-        <div className="w-screen min-h-screen bg-[color:var(--page-bg)] text-[color:var(--page-text)] py-8 sm:py-10">
+        <div className="flex h-full w-full flex-col bg-page text-primary-text sm:h-[640px] sm:max-h-[85vh] sm:flex-row">
           <div className="px-2 md:px-4">
             <div
               data-fade
               style={fadeDelayStyle("80ms")}
               className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[color:color-mix(in_srgb,var(--glass-bg)_70%,var(--nav-link)_30%)] text-[color:var(--nav-link)] shadow-[0_6px_20px_color-mix(in_srgb,var(--nav-link)_24%,transparent)] transition-transform duration-200 hover:scale-105 dark:bg-[color:color-mix(in_srgb,var(--glass-bg)_65%,var(--nav-link)_35%)] dark:shadow-[0_8px_24px_color-mix(in_srgb,var(--nav-link)_28%,transparent)] backdrop-blur-sm [-webkit-backdrop-filter:blur(12px)]">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-subtle-bg text-brand shadow-premium transition-transform duration-200 hover:scale-105 backdrop-blur-sm [-webkit-backdrop-filter:blur(12px)]">
                 <SettingsIcon className="h-6 w-6" />
               </div>
-              <h1 className="text-[clamp(1.6rem,5vw,2.75rem)] font-bold tracking-tight text-[color:var(--page-text)]">
+              <h1 className="text-[clamp(1.6rem,5vw,2.75rem)] font-bold tracking-tight text-primary-text">
                 {t("settings:page.title")}
               </h1>
             </div>
@@ -1183,7 +1242,7 @@ export default function Settings() {
             <div data-fade style={fadeDelayStyle("140ms")} className="mb-8">
               <Tabs
                 value={tab}
-                onChange={(_, v) => setTab(v)}
+                onChange={(_, value) => setTab(value)}
                 variant="scrollable"
                 scrollButtons="auto"
               >
@@ -1195,15 +1254,20 @@ export default function Settings() {
 
             <div data-fade style={fadeDelayStyle("200ms")}>
               {tab === 0 && (
-                <div className="flex w-full flex-col gap-8 sm:gap-10 xl:max-w-[min(100%,1100px)] 2xl:gap-12">
-                  <div className="flex flex-col gap-3">
+                 <div className="flex w-full flex-col gap-8 sm:gap-10 xl:max-w-[min(100%,1100px)] 2xl:gap-12">
+                   <div className="flex flex-col gap-3">
                     <SectionTitle variant="h6">{t("settings:appearance.theme.title")}</SectionTitle>
-                    <RadioGroup row value={theme} onChange={handleThemeChange}>
+                    <RadioGroup
+                      row
+                      value={theme}
+                      onChange={(_event: React.ChangeEvent<HTMLInputElement> | null, value: string) =>
+                        handleThemeChange(_event as React.ChangeEvent<HTMLInputElement>, value)}
+                    >
                       <FormControlLabel
                         value="system"
                         control={<Radio data-testid="theme-option-system" />}
                         label={
-                          <span className="flex items-center gap-2 text-[color:color-mix(in_srgb,var(--page-text)_82%,var(--secondary-text)_18%)]">
+                          <span className="flex items-center gap-2 text-[color-mix(in_srgb,var(--page-text)_82%,var(--secondary-text)_18%)]">
                             <Monitor className="h-5 w-5" />
                             <span>{t("settings:appearance.theme.options.system")}</span>
                           </span>
@@ -1213,7 +1277,7 @@ export default function Settings() {
                         value="light"
                         control={<Radio data-testid="theme-option-light" />}
                         label={
-                          <span className="flex items-center gap-2 text-[color:color-mix(in_srgb,var(--page-text)_82%,var(--secondary-text)_18%)]">
+                          <span className="flex items-center gap-2 text-[color-mix(in_srgb,var(--page-text)_82%,var(--secondary-text)_18%)]">
                             <Sun className="h-5 w-5" />
                             <span>{t("settings:appearance.theme.options.light")}</span>
                           </span>
@@ -1223,7 +1287,7 @@ export default function Settings() {
                         value="dark"
                         control={<Radio data-testid="theme-option-dark" />}
                         label={
-                          <span className="flex items-center gap-2 text-[color:color-mix(in_srgb,var(--page-text)_82%,var(--secondary-text)_18%)]">
+                          <span className="flex items-center gap-2 text-[color-mix(in_srgb,var(--page-text)_82%,var(--secondary-text)_18%)]">
                             <Moon className="h-5 w-5" />
                             <span>{t("settings:appearance.theme.options.dark")}</span>
                           </span>
@@ -1237,7 +1301,8 @@ export default function Settings() {
                     <RadioGroup
                       row
                       value={language}
-                      onChange={(_, value) => setLanguage(value as SupportedLanguage)}
+                      onChange={(_event: React.ChangeEvent<HTMLInputElement> | null, value: string) =>
+                        setLanguage(value as SupportedLanguage)}
                       aria-label={t("settings:language.aria")}
                     >
                       {availableLanguages.map((code) => (
@@ -1246,7 +1311,7 @@ export default function Settings() {
                           value={code}
                           control={<Radio />}
                           label={
-                            <span className="text-[color:color-mix(in_srgb,var(--page-text)_84%,var(--secondary-text)_16%)]">
+                            <span className="text-[color-mix(in_srgb,var(--page-text)_84%,var(--secondary-text)_16%)]">
                               {t(`settings:language.options.${code}`)}
                             </span>
                           }
@@ -1258,8 +1323,7 @@ export default function Settings() {
                     </SectionSubtitle>
                   </div>
 
-                  <Divider />
-
+                   <Divider />
                   <div className="flex flex-col gap-4">
                     <SectionTitle variant="h6">{t("settings:notifications.title")}</SectionTitle>
                     {!pushSupported ? (
@@ -1281,15 +1345,10 @@ export default function Settings() {
                                 variant="contained"
                                 onClick={() => void enableNotifications()}
                                 disabled={pushBusy}
-                                startIcon={
-                                  pushBusy ? (
-                                    <CircularProgress size={18} color="inherit" />
-                                  ) : undefined
-                                }
                               >
                                 {t("settings:notifications.cta.checkPermission")}
                               </Button>
-                              <p className="text-sm font-semibold text-[color:color-mix(in_srgb,var(--page-text)_80%,var(--secondary-text)_20%)]">
+                              <p className="text-sm font-semibold text-text-muted-more">
                                 {t("settings:notifications.status", { status: permissionText })}
                               </p>
                             </div>
@@ -1312,21 +1371,21 @@ export default function Settings() {
                               >
                                 {t("settings:notifications.cta.allow")}
                               </Button>
-                              <p className="text-sm font-semibold text-[color:color-mix(in_srgb,var(--page-text)_80%,var(--secondary-text)_20%)]">
+                              <p className="text-sm font-semibold text-text-muted-more">
                                 {t("settings:notifications.status", { status: permissionText })}
                               </p>
                             </div>
                           </div>
                         ) : (
                           <>
-                            <label className="m-0 flex min-h-[44px] items-center gap-2.5 cursor-pointer">
+                            <label className="m-0 flex h-11 items-center gap-2.5 cursor-pointer">
                               <SwitchControl
                                 checked={notificationsEnabled}
                                 onChange={handleNotificationsToggle}
                                 disabled={pushBusy || pushInitializing}
                                 aria-label={t("settings:notifications.toggles.notifications.aria")}
                               />
-                              <span className="font-semibold text-[color:color-mix(in_srgb,var(--page-text)_88%,var(--nav-link)_12%)]">
+                              <span className="font-semibold text-text-soft">
                                 {t("settings:notifications.toggles.notifications.label")}
                               </span>
                             </label>
@@ -1338,7 +1397,7 @@ export default function Settings() {
                                 disabled={dndSaving}
                                 aria-label={t("settings:notifications.toggles.dnd.aria")}
                               />
-                              <span className="font-semibold text-[color:color-mix(in_srgb,var(--page-text)_88%,var(--nav-link)_12%)]">
+                              <span className="font-semibold text-text-soft">
                                 {t("settings:notifications.toggles.dnd.label")}
                               </span>
                             </label>
@@ -1434,13 +1493,13 @@ export default function Settings() {
                           <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
                             <div
                               data-testid="settings-cover-preview"
-                              className="h-20 w-32 rounded-xl border flex-shrink-0"
+                              className="h-20 w-32 rounded-xl border shrink-0"
                               style={{
                                 background: coverSrc
                                   ? `url(${coverSrc}) center/cover no-repeat`
-                                  : "color-mix(in srgb, var(--page-text) 6%, transparent)",
+                                  : "var(--surface-hover)",
                                 borderColor:
-                                  "color-mix(in srgb, var(--glass-border) 88%, transparent)",
+                                  "var(--glass-border-subtle)",
                               }}
                             />
                             <div className="flex flex-col sm:flex-row gap-2 flex-1">
@@ -1713,7 +1772,7 @@ export default function Settings() {
                           {sessions.length === 0 && sessionsFetching ? (
                             <div className="mt-3 flex flex-row items-center gap-2.5">
                               <CircularProgress size={18} />
-                              <p className="text-sm font-semibold text-[color:color-mix(in_srgb,var(--page-text)_84%,var(--secondary-text)_16%)]">
+                              <p className="text-sm font-semibold text-[color-mix(in_srgb,var(--page-text)_84%,var(--secondary-text)_16%)]">
                                 {t("settings:sessions.loading")}
                               </p>
                             </div>
@@ -1728,9 +1787,6 @@ export default function Settings() {
                           ) : (
                             <div className="flex flex-col gap-3 mt-3">
                               {sortedSessions.map((session, idx) => {
-                                console.log(
-                                  `[settings] Rendering sessions[${idx}]: ID=${session.id} UA=${session.user_agent} revoked=${!!session.revoked_at} (${session.revoked_at})`
-                                )
                                 const isRevoked = Boolean(session.revoked_at)
                                 const lastSeen = session.last_seen_at ?? session.created_at
                                 const timelineSource = session.revoked_at ?? lastSeen
@@ -1751,10 +1807,6 @@ export default function Settings() {
                                 const disableRevoke =
                                   session.is_current || isRevoked || revokeSessionMutation.isPending
 
-                                console.log(
-                                  `[settings] Session ${session.id} final statusLabel: ${statusLabel}`
-                                )
-
                                 return (
                                   <SessionItem
                                     key={session.id}
@@ -1763,11 +1815,11 @@ export default function Settings() {
                                     <div className="min-w-0">
                                       <p
                                         className={cn(
-                                          "text-sm break-words transition-colors",
+                                          "text-sm wrap-break-word transition-colors",
                                           session.is_current ? "font-semibold" : "font-medium",
                                           isRevoked
-                                            ? "text-[color:color-mix(in_srgb,var(--page-text)_68%,white_32%)]"
-                                            : "text-[color:color-mix(in_srgb,var(--page-text)_90%,var(--secondary-text)_10%)]"
+                                            ? "text-[color-mix(in_srgb,var(--page-text)_68%,white_32%)]"
+                                            : "text-[color-mix(in_srgb,var(--page-text)_90%,var(--secondary-text)_10%)]"
                                         )}
                                       >
                                         {session.user_agent || t("settings:sessions.unknownDevice")}
@@ -1776,8 +1828,8 @@ export default function Settings() {
                                         className={cn(
                                           "text-xs transition-colors",
                                           isRevoked
-                                            ? "italic text-[color:color-mix(in_srgb,var(--page-text)_64%,white_36%)]"
-                                            : "text-[color:color-mix(in_srgb,var(--page-text)_78%,var(--secondary-text)_22%)]"
+                                            ? "italic text-[color-mix(in_srgb,var(--page-text)_64%,white_36%)]"
+                                            : "text-[color-mix(in_srgb,var(--page-text)_78%,var(--secondary-text)_22%)]"
                                         )}
                                       >
                                         {details}
@@ -1857,7 +1909,7 @@ export default function Settings() {
                       >
                         {pendingTotpEnrollment || totpDraft ? (
                           <div className="flex flex-col gap-4">
-                            <div className="text-[11px] font-bold text-secondary-text uppercase tracking-widest opacity-60">
+                            <div className="text-xs font-bold text-(--secondary-text) uppercase tracking-widest opacity-60">
                               {t("settings:security.totp.pendingTitle")}
                             </div>
                             <SectionSubtitle className="text-sm">
@@ -1898,15 +1950,15 @@ export default function Settings() {
                                   <div
                                     key={enrollment.id}
                                     className={cn(
-                                      "flex flex-col gap-2.5 rounded-[18px] border p-3 transition-colors sm:flex-row sm:items-center sm:justify-between",
-                                      "border-[color:color-mix(in_srgb,var(--glass-border)_88%,transparent)]",
-                                      "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(15,79,170,0.05)_4%)]",
-                                      "dark:border-[rgba(148,163,184,0.24)]",
-                                      "dark:bg-[color:color-mix(in_srgb,var(--card-bg)_90%,rgba(10,18,32,0.92)_10%)]"
+                                    "flex flex-col gap-2.5 rounded-2xl border p-3 transition-colors sm:flex-row sm:items-center sm:justify-between",
+                                      "border-[color-mix(in_srgb,var(--glass-border)_88%,transparent)]",
+                                      "bg-[color-mix(in_srgb,var(--card-bg)_96%,var(--primary-main)_4%)]",
+                                      "dark:border-white/10",
+                                      "dark:bg-[color-mix(in_srgb,var(--card-bg)_90%,var(--bg-page)_10%)]"
                                     )}
                                   >
                                     <div className="flex min-w-0 flex-col gap-1">
-                                      <p className="font-semibold text-[color:color-mix(in_srgb,var(--page-text)_90%,var(--nav-link)_10%)]">
+                                      <p className="font-semibold text-[color-mix(in_srgb,var(--page-text)_90%,var(--nav-link)_10%)]">
                                         {enrollment.label ||
                                           t("settings:security.totp.unnamed", { index: index + 1 })}
                                       </p>
@@ -1961,32 +2013,32 @@ export default function Settings() {
                         <div className="flex flex-col gap-3">
                           {webauthnCredentials.length ? (
                             <div className="flex flex-col gap-2.5">
-                              {webauthnCredentials.map((cred: any, index: number) => (
+                              {webauthnCredentials.map((credential: any) => (
                                 <div
-                                  key={cred.id}
+                                  key={credential.id}
                                   className={cn(
                                     "flex flex-col gap-2.5 rounded-[18px] border p-3 transition-colors sm:flex-row sm:items-center sm:justify-between",
-                                    "border-[color:color-mix(in_srgb,var(--glass-border)_88%,transparent)]",
-                                    "bg-[color:color-mix(in_srgb,var(--card-bg)_96%,rgba(15,79,170,0.05)_4%)]",
-                                    "dark:border-[rgba(148,163,184,0.24)]",
-                                    "dark:bg-[color:color-mix(in_srgb,var(--card-bg)_90%,rgba(10,18,32,0.92)_10%)]"
+                                    "border-[color-mix(in_srgb,var(--glass-border)_88%,transparent)]",
+                                    "bg-[color-mix(in_srgb,var(--card-bg)_96%,var(--primary-main)_4%)]",
+                                    "dark:border-white/10",
+                                    "dark:bg-[color-mix(in_srgb,var(--card-bg)_90%,var(--bg-page)_10%)]"
                                   )}
                                 >
                                   <div className="flex min-w-0 items-center gap-3">
-                                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[color:color-mix(in_srgb,var(--nav-link)_10%,transparent)] text-[color:var(--nav-link)]">
+                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[color-mix(in_srgb,var(--nav-link)_10%,transparent)] text-(--nav-link)">
                                       <Fingerprint className="h-5 w-5" />
                                     </div>
                                     <div className="flex min-w-0 flex-col gap-0.5">
-                                      <p className="font-semibold text-[color:color-mix(in_srgb,var(--page-text)_90%,var(--nav-link)_10%)]">
-                                        {cred.label || t("settings:security.webauthn.defaultLabel")}
+                                      <p className="font-semibold text-[color-mix(in_srgb,var(--page-text)_90%,var(--nav-link)_10%)]">
+                                        {credential.label || t("settings:security.webauthn.defaultLabel")}
                                       </p>
-                                      <SectionSubtitle className="text-[10.5px] whitespace-nowrap overflow-hidden text-ellipsis">
+                                      <SectionSubtitle className="text-xs whitespace-nowrap overflow-hidden text-ellipsis">
                                         {t("settings:security.webauthn.added", {
-                                          value: formatDateTime(cred.created_at) ?? "—",
+                                          value: formatDateTime(credential.created_at) ?? "—",
                                         })}
-                                        {cred.last_used_at &&
+                                        {credential.last_used_at &&
                                           ` • ${t("settings:security.webauthn.lastUsed", {
-                                            value: formatDateTime(cred.last_used_at),
+                                            value: formatDateTime(credential.last_used_at),
                                           })}`}
                                       </SectionSubtitle>
                                     </div>
@@ -1995,7 +2047,7 @@ export default function Settings() {
                                     variant="outlined"
                                     color="error"
                                     size="small"
-                                    onClick={() => handleDeleteWebAuthn(cred.id)}
+                                    onClick={() => handleDeleteWebAuthn(credential.id)}
                                   >
                                     {t("common:buttons.delete")}
                                   </Button>
@@ -2051,7 +2103,7 @@ export default function Settings() {
                                       label={t("settings:security.webauthn.labelField")}
                                       placeholder={t("settings:security.webauthn.labelPlaceholder")}
                                       value={webauthnLabel}
-                                      onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                                         setWebauthnLabel(e.target.value)
                                       }
                                       disabled={webauthnBusy}
@@ -2067,7 +2119,7 @@ export default function Settings() {
                                 color="inherit"
                                 onClick={() => setIsAddingWebAuthn(false)}
                                 disabled={webauthnBusy}
-                                className="!px-5 !py-2.5"
+                                className="px-(--btn-padding-x) py-(--btn-padding-y)"
                               >
                                 {t("common:buttons.cancel")}
                               </Button>
@@ -2076,7 +2128,7 @@ export default function Settings() {
                                   variant="contained"
                                   onClick={() => void handleRegisterWebAuthn()}
                                   disabled={webauthnBusy || !webauthnLabel.trim()}
-                                  className="!px-5 !py-2.5"
+                                  className="px-(--btn-padding-x) py-(--btn-padding-y) flex-1"
                                   startIcon={
                                     webauthnBusy ? (
                                       <CircularProgress size={18} color="inherit" />
@@ -2099,16 +2151,8 @@ export default function Settings() {
                 <div className="flex w-full flex-col gap-6 sm:gap-7 xl:max-w-[min(100%,820px)]">
                   <div className="flex flex-col gap-4">
                     <div className="flex items-center gap-2">
-                      <img
-                        src={spotifyLogo}
-                        alt={t("settings:integrations.spotify.alt")}
-                        width={22}
-                        height={22}
-                        style={{ display: "block", borderRadius: "50%" }}
-                        loading="lazy"
-                        decoding="async"
-                      />
-                      <SectionTitle variant="subtitle1" className="text-[1.15rem]">
+                      <SpotifyLogo className="rounded-full" />
+                      <SectionTitle variant="subtitle1" className="text-lg">
                         {t("settings:integrations.spotify.title")}
                       </SectionTitle>
                     </div>
@@ -2158,7 +2202,7 @@ export default function Settings() {
               <p className="text-sm">{t("settings:account.logout.dialogDescription")}</p>
             </DialogContent>
             <DialogActions>
-              <Button onClick={() => setConfirmLogout(false)} className="!px-5 !py-2.5">
+              <Button onClick={() => setConfirmLogout(false)} className="px-(--btn-padding-x) py-(--btn-padding-y)">
                 {t("common:buttons.cancel")}
               </Button>
               <Button
@@ -2167,7 +2211,7 @@ export default function Settings() {
                   setConfirmLogout(false)
                   await logout()
                 }}
-                className="!px-5 !py-2.5"
+                className="px-(--btn-padding-x) py-(--btn-padding-y)"
               >
                 {t("settings:account.logout.confirm")}
               </Button>
@@ -2182,18 +2226,18 @@ export default function Settings() {
             onChallengeReset={handleChallengeResetNotice}
           />
           <Snackbar
-            open={!!snack}
+            open={!!snackbar}
             autoHideDuration={2600}
-            onClose={() => setSnack(null)}
+            onClose={() => setSnackbar(null)}
             anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
           >
             <Alert
-              onClose={() => setSnack(null)}
-              severity={snack?.sev || "info"}
+              onClose={() => setSnackbar(null)}
+              severity={snackbar?.severity || "info"}
               variant="filled"
               className="w-full"
             >
-              {snack?.text}
+              {snackbar?.text}
             </Alert>
           </Snackbar>
         </div>

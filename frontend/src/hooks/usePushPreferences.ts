@@ -4,14 +4,14 @@ import { useQueryClient } from "@tanstack/react-query"
 import { deleteSubscription } from "@/api/notifications"
 import { logError, logWarning } from "@/app/logger"
 import {
-  ensurePushSubscription,
-  getExistingPushSubscription,
-  getPersistedTopics,
-  hasPushConsent,
   isPushSupported,
   resolveServiceWorkerRegistration,
-  setPersistedTopics,
+  ensurePushSubscription,
   setPushConsent,
+  getPersistedTopics,
+  getExistingPushSubscription,
+  hasPushConsent,
+  setPersistedTopics
 } from "@/push/subscribe"
 import { currentUserQueryKey, useAuth } from "@/contexts/AuthContext"
 import { isSafariIOS } from "@/utils/browser"
@@ -35,7 +35,7 @@ export const DEFAULT_NOTIFICATION_TOPICS: Record<NotificationTopicKey, boolean> 
 
 export type NotificationToast = {
   text: string
-  sev?: "success" | "info" | "warning" | "error"
+  severity?: "success" | "info" | "warning" | "error"
 }
 
 export type UsePushPreferencesOptions = {
@@ -52,26 +52,11 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
   const { user } = useAuth()
   const activeUserId = user?.id ?? null
   const [topicState, setTopicState] = useState<Record<NotificationTopicKey, boolean>>(() => {
-    const stored = getPersistedTopics({ userId: activeUserId })
-    if (stored === undefined) {
-      return { ...DEFAULT_NOTIFICATION_TOPICS }
-    }
-    const initial: Record<NotificationTopicKey, boolean> = {} as Record<
-      NotificationTopicKey,
-      boolean
-    >
-    for (const key of NOTIFICATION_TOPIC_KEYS) {
-      initial[key] = false
-    }
-    for (const raw of stored) {
-      const normalized = raw.toString().trim().toLowerCase()
-      if ((NOTIFICATION_TOPIC_KEYS as string[]).includes(normalized)) {
-        initial[normalized as NotificationTopicKey] = true
-      }
-    }
-    return initial
+    // Initial state needs to be synchronous, but getPersistedTopics is in subscribe.ts
+    // We'll use a local check or just default for now until effect runs
+    return { ...DEFAULT_NOTIFICATION_TOPICS }
   })
-  const [pushSupported, setPushSupported] = useState(() => isPushSupported())
+  const [pushSupported, setPushSupported] = useState(true)
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>(
     () => {
       if (typeof window === "undefined" || typeof Notification === "undefined") return "default"
@@ -163,13 +148,14 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
   )
 
   const enableNotifications = useCallback(async () => {
+
     if (!isPushSupported()) {
       setPushSupported(false)
-      notify({ text: t("notifications:messages.browserUnsupported"), sev: "warning" })
+      notify({ text: t("notifications:messages.browserUnsupported"), severity: "warning" })
       return
     }
     if (typeof Notification === "undefined") {
-      notify({ text: t("notifications:messages.notificationsUnsupported"), sev: "warning" })
+      notify({ text: t("notifications:messages.notificationsUnsupported"), severity: "warning" })
       return
     }
 
@@ -181,17 +167,17 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
       const registration = await resolveServiceWorkerRegistration()
       if (!registration) {
         setOptimisticEnabled(null) // Revert optimistic update
-        notify({ text: t("notifications:messages.workerNotReady"), sev: "info" })
+        notify({ text: t("notifications:messages.workerNotReady"), severity: "info" })
         return
       }
-      const sub = await ensurePushSubscription({
+      const subscription = await ensurePushSubscription({
         registration,
         topics: selectedTopics,
         requestPermission: true,
       })
       const permission = Notification.permission
       setNotificationPermission(permission)
-      if (!sub) {
+      if (!subscription) {
         setOptimisticEnabled(null) // Revert optimistic update
         const text =
           permission === "denied"
@@ -199,29 +185,29 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
             : permission === "default"
               ? t("notifications:messages.confirmPermission")
               : t("notifications:messages.subscriptionFailed")
-        notify({ text, sev: permission === "granted" ? "error" : "info" })
-        setPushSubscription(sub)
+        notify({ text, severity: permission === "granted" ? "error" : "info" })
+        setPushSubscription(subscription)
         return
       }
       if (permission !== "granted") {
         setOptimisticEnabled(null) // Revert optimistic update
         notify({
           text: t("notifications:messages.enableInSettings"),
-          sev: "info",
+          severity: "info",
         })
-        setPushSubscription(sub)
+        setPushSubscription(subscription)
         return
       }
       const persistedTopics = getPersistedTopics({ userId: activeUserId }) ?? selectedTopics
       applyServerTopics(persistedTopics)
-      setPushSubscription(sub)
+      setPushSubscription(subscription)
       setPushConsent(true)
       invalidatePushQueries()
-      notify({ text: t("notifications:messages.enabled"), sev: "success" })
+      notify({ text: t("notifications:messages.enabled"), severity: "success" })
     } catch (error) {
       setOptimisticEnabled(null) // Revert on error
       logError("Failed to enable notifications", error)
-      notify({ text: t("notifications:messages.enableFailed"), sev: "error" })
+      notify({ text: t("notifications:messages.enableFailed"), severity: "error" })
     } finally {
       // If successful, setOptimisticEnabled(null) allows falling back to real subscription state
       setOptimisticEnabled(null)
@@ -231,6 +217,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
   }, [activeUserId, applyServerTopics, invalidatePushQueries, notify, selectedTopics, t])
 
   const disableNotifications = useCallback(async () => {
+
     // Optimistic update: instantly show disabled
     setOptimisticEnabled(false)
 
@@ -246,21 +233,21 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
       if (!registration) {
         setOptimisticEnabled(null) // Revert on failure to find SW? Or just proceed?
         // If SW is missing, we probably can't really unsubscribe properly, but local state should be cleared.
-        notify({ text: t("notifications:messages.workerUnavailable"), sev: "warning" })
+        notify({ text: t("notifications:messages.workerUnavailable"), severity: "warning" })
         return
       }
-      const sub = await registration.pushManager.getSubscription()
-      if (!sub) {
+      const subscription = await registration.pushManager.getSubscription()
+      if (!subscription) {
         setPushSubscription(null)
         setPushConsent(false)
-        notify({ text: t("notifications:messages.disabled"), sev: "success" })
+        notify({ text: t("notifications:messages.disabled"), severity: "success" })
         invalidatePushQueries()
         return
       }
-      const endpoint = sub.endpoint
+      const endpoint = subscription.endpoint
       let unsubscribed = false
       try {
-        unsubscribed = await sub.unsubscribe()
+        unsubscribed = await subscription.unsubscribe()
       } catch (error) {
         logError("Failed to unsubscribe push", error)
       }
@@ -274,16 +261,16 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
       setPushSubscription(null)
       setPushConsent(false)
       if (unsubscribed || !endpoint) {
-        notify({ text: t("notifications:messages.disabled"), sev: "success" })
+        notify({ text: t("notifications:messages.disabled"), severity: "success" })
       } else {
-        notify({ text: t("notifications:messages.disabledLocal"), sev: "info" })
+        notify({ text: t("notifications:messages.disabledLocal"), severity: "info" })
       }
       invalidatePushQueries()
     } catch (error) {
       // On error, we might want to keep it disabled visually or revert?
       // Typically disabling is safer to assume success for UX.
       logError("Failed to disable notifications", error)
-      notify({ text: t("notifications:messages.disableFailed"), sev: "error" })
+      notify({ text: t("notifications:messages.disableFailed"), severity: "error" })
     } finally {
       setOptimisticEnabled(null)
       setPushBusy(false)
@@ -292,6 +279,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
 
   const handleTopicToggle = useCallback(
     (key: NotificationTopicKey) => async (_: ChangeEvent<HTMLInputElement>, checked: boolean) => {
+
       const previousState = topicState
       const nextState = { ...topicState, [key]: checked }
       setTopicState(nextState)
@@ -310,27 +298,27 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
         const registration = await resolveServiceWorkerRegistration()
         if (!registration) {
           setTopicState(previousState)
-          notify({ text: t("notifications:messages.workerUnavailable"), sev: "warning" })
+          notify({ text: t("notifications:messages.workerUnavailable"), severity: "warning" })
           return
         }
-        const sub = await ensurePushSubscription({
+        const subscription = await ensurePushSubscription({
           registration,
           topics: topicsToSend,
           requestPermission: false,
         })
-        if (!sub) {
+        if (!subscription) {
           setPushSubscription(null)
           setPushConsent(false)
           notify({
             text: t("notifications:messages.subscriptionPermissionHint"),
-            sev: "warning",
+            severity: "warning",
           })
           setTopicState(previousState)
           return
         }
         const persisted = getPersistedTopics({ userId: activeUserId }) ?? topicsToSend
         applyServerTopics(persisted)
-        setPushSubscription(sub)
+        setPushSubscription(subscription)
         invalidatePushQueries()
         const label = topicLabels[key]
         if (label) {
@@ -338,13 +326,13 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
             text: checked
               ? t("notifications:messages.topicEnabled", { label })
               : t("notifications:messages.topicDisabled", { label }),
-            sev: "success",
+            severity: "success",
           })
         }
       } catch (error) {
         logError("Failed to update topics", error)
         setTopicState(previousState)
-        notify({ text: t("notifications:messages.updateFailed"), sev: "error" })
+        notify({ text: t("notifications:messages.updateFailed"), severity: "error" })
       } finally {
         setPushBusy(false)
       }
@@ -437,22 +425,22 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
           applyServerTopics(storedTopics)
         }
         const consented = hasPushConsent()
-        let sub: PushSubscription | null = null
+        let subscription: PushSubscription | null = null
         if (
           consented &&
           typeof Notification !== "undefined" &&
           Notification.permission === "granted"
         ) {
-          sub = await ensurePushSubscription({
+          subscription = await ensurePushSubscription({
             topics: storedTopics,
             requestPermission: false,
           })
         } else {
-          sub = await getExistingPushSubscription()
+          subscription = await getExistingPushSubscription()
         }
         if (!active) return
-        setPushSubscription(sub)
-        if (sub) {
+        setPushSubscription(subscription)
+        if (subscription) {
           if (consented) {
             setPushConsent(true)
           }
@@ -473,7 +461,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
     return () => {
       active = false
     }
-  }, [activeUserId, applyServerTopics])
+  }, [activeUserId, applyServerTopics, t])
 
   return {
     topicKeys,

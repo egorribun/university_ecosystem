@@ -32,12 +32,19 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
 
     if (theme === "system") {
-      const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)")
-      const handleChange = () => applyTheme(mediaQuery.matches ? "dark" : "light")
+      const mediaQuery = window.matchMedia?.("(prefers-color-scheme: dark)")
+      const handleChange = () => {
+        if (!mediaQuery) return
+        applyTheme(mediaQuery.matches ? "dark" : "light")
+      }
 
-      handleChange()
-      mediaQuery.addEventListener("change", handleChange)
-      return () => mediaQuery.removeEventListener("change", handleChange)
+      if (mediaQuery) {
+        handleChange()
+        mediaQuery.addEventListener("change", handleChange)
+        return () => mediaQuery.removeEventListener("change", handleChange)
+      } else {
+        applyTheme("light")
+      }
     } else {
       applyTheme(theme)
     }

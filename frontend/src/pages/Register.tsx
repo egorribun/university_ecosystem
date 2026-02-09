@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next"
 import { Eye, EyeOff, Sparkles, UsersRound, ShieldCheck, Crown } from "lucide-react"
 import { motion } from "framer-motion"
 import ParticleAuthBackground from "@/components/ui/ParticleAuthBackground"
-import api from "../api/client"
+import api from "@/api/client"
 
 const COMMON_EMAIL_DOMAINS = [
   "gmail.com",
@@ -73,14 +73,14 @@ function suggestEmailDomain(email: string) {
 }
 
 const inputBaseClass =
-  "w-full rounded-[1.2rem] border border-nav-link/10 bg-surface/95 px-4 py-3 text-base font-medium " +
-  "text-page-foreground shadow-[0_10px_30px_rgba(15,23,42,0.08)] transition-all duration-200 " +
-  "focus:border-nav-link focus:outline-none focus:ring-4 focus:ring-nav-link/20 " +
+  "w-full rounded-2xl border border-brand/10 bg-surface/95 px-4 py-3 text-base font-medium " +
+  "text-primary-text shadow-premium transition-all duration-200 " +
+  "focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/20 " +
   "placeholder:text-placeholder/75 " +
-  "dark:border-nav-link/10 dark:bg-surface/90"
+  "dark:border-brand/10 dark:bg-surface/90"
 
 const chipClass =
-  "inline-flex items-center gap-2 rounded-full border border-[color:color-mix(in_srgb,white_18%,var(--nav-link)_82%)] px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.2em]"
+  "inline-flex items-center gap-2 rounded-full border border-brand/20 px-4 py-1.5 text-xs font-semibold uppercase tracking-widest"
 
 const Spinner = () => (
   <span
@@ -124,17 +124,17 @@ const Register = () => {
     matchOk &&
     (!needsInvite || form.invite_code.trim().length > 0)
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setForm((f) => ({ ...f, [e.target.name]: e.target.value }))
+   const handleChange = (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    setForm((formState) => ({ ...formState, [event.target.name]: event.target.value }))
   }
 
   const handleEmailBlur = () => {
-    const s = suggestEmailDomain(form.email)
-    setEmailSuggestion(s && s !== form.email ? s : null)
+    const suggestion = suggestEmailDomain(form.email)
+    setEmailSuggestion(suggestion && suggestion !== form.email ? suggestion : null)
   }
 
   const handlePass = async (value: string) => {
-    setForm((f) => ({ ...f, password: value }))
+    setForm((formState) => ({ ...formState, password: value }))
     if (!value) {
       setStrength(null)
       return
@@ -143,15 +143,15 @@ const Register = () => {
       const { zxcvbn, zxcvbnOptions } = await import("@zxcvbn-ts/core")
       const zxcvbnCommon = await import("@zxcvbn-ts/language-common")
       zxcvbnOptions.setOptions(zxcvbnCommon)
-      const score = zxcvbn(value).score
-      setStrength(score)
+      const strengthScore = zxcvbn(value).score
+      setStrength(strengthScore)
     } catch {
       setStrength(null)
     }
   }
 
   const [registerState, registerAction, registerPending] = useActionState<RegisterState, FormData>(
-    async (_prev, formData) => {
+    async (_previousState, formData) => {
       const fullName = String(formData.get("full_name") ?? "").trim()
       const email = String(formData.get("email") ?? "").trim()
       const password = String(formData.get("password") ?? "")
@@ -200,17 +200,17 @@ const Register = () => {
           role,
           invite_code: inviteCode,
         })
-        navigate("/login")
+         navigate("/login")
         return { status: "success" as const }
-      } catch (err: any) {
-        const msg = err?.response?.data?.detail || t("auth:register.error")
-        const text =
-          typeof msg === "string"
-            ? msg
-            : Array.isArray(msg)
-              ? msg.join("; ")
-              : t("auth:register.error")
-        return { status: "error" as const, error: text }
+      } catch (error: unknown) {
+        let errorMessage = t("auth:register.error")
+        if (typeof error === "object" && error !== null && "response" in error) {
+          const axiosError = error as { response?: { data?: { detail?: string | string[] } } }
+          const detail = axiosError.response?.data?.detail
+          if (typeof detail === "string") errorMessage = detail
+          else if (Array.isArray(detail)) errorMessage = detail.join("; ")
+        }
+        return { status: "error" as const, error: errorMessage }
       }
     },
     { status: "idle" as const }
@@ -275,23 +275,23 @@ const Register = () => {
     : t("auth:register.inviteOptional", { defaultValue: "Приглашение необязательно" })
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-page text-page-foreground">
+    <div className="relative min-h-screen w-full overflow-hidden bg-page text-primary-text">
       <ParticleAuthBackground />
       <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col items-center justify-center gap-10 px-4 py-12 sm:px-6 lg:px-8 lg:flex-row">
         <motion.div
           initial={{ x: -200 }}
           animate={{ x: 0 }}
           transition={{ duration: 0.5, ease: "easeOut" }}
-          className="w-full rounded-[2.8rem] border border-glass-border/80 bg-surface/60 p-8 shadow-[0_35px_100px_rgba(15,23,42,0.3)] backdrop-blur-3xl lg:p-12"
+          className="w-full rounded-ue-lg border border-glass-border-subtle bg-surface/60 p-8 shadow-glass backdrop-blur-3xl lg:p-12"
         >
-          <div className="flex items-center gap-3 text-sm font-semibold uppercase tracking-[0.35em] text-page-foreground/70">
+          <div className="flex items-center gap-3 text-sm font-semibold uppercase tracking-widest text-primary-text/70">
             <Crown className="h-5 w-5" aria-hidden="true" />
             {t("auth:register.heroBadge", { defaultValue: "Добро пожаловать" })}
           </div>
-          <h1 className="mt-6 text-4xl font-extrabold leading-tight text-page-foreground sm:text-5xl">
+          <h1 className="mt-6 text-4xl font-extrabold leading-tight text-primary-text sm:text-5xl">
             {t("auth:register.title")}
           </h1>
-          <p className="mt-4 text-lg leading-relaxed text-secondary">
+          <p className="mt-4 text-lg leading-relaxed text-secondary-text">
             {t("auth:register.heroDescription", {
               defaultValue:
                 "Создайте аккаунт, чтобы управлять своей академической траекторией, посещать события и мгновенно взаимодействовать с кампусом.",
@@ -301,10 +301,10 @@ const Register = () => {
             {heroPerks.map(({ icon: Icon, title, description }) => (
               <div
                 key={title}
-                className="rounded-[1.8rem] border border-glass-border/85 bg-surface/50 px-5 py-6 shadow-[0_25px_55px_rgba(15,23,42,0.18)]"
+                className="rounded-3xl border border-glass-border/85 bg-surface/50 px-5 py-6 shadow-premium"
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex size-12 items-center justify-center rounded-2xl bg-nav-link/18 text-nav-link">
+                  <div className="flex size-12 items-center justify-center rounded-2xl bg-brand-subtle-bg text-brand">
                     <Icon className="h-5 w-5" aria-hidden="true" />
                   </div>
                   <p className="text-base font-semibold">{title}</p>
@@ -319,7 +319,7 @@ const Register = () => {
           initial={{ y: 200 }}
           animate={{ y: 0 }}
           transition={{ duration: 0.5, ease: "easeOut", delay: 0.2 }}
-          className="w-full max-w-2xl rounded-[2.4rem] border border-glass-border/80 bg-surface/80 p-6 shadow-[0_35px_80px_rgba(15,23,42,0.3)] backdrop-blur-2xl sm:p-10"
+          className="w-full max-w-2xl rounded-ue-lg border border-glass-border-subtle bg-surface/80 p-6 shadow-glass backdrop-blur-2xl sm:p-10"
         >
           <form action={registerAction} autoComplete="off" className="flex flex-col gap-6">
             <div className="grid gap-5 sm:grid-cols-2">
@@ -360,13 +360,13 @@ const Register = () => {
                     <option value="admin">{t("auth:register.role.admin")}</option>
                   </select>
                   <Sparkles
-                    className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[color:var(--nav-link)]"
+                    className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-brand"
                     aria-hidden="true"
                   />
                 </div>
-                <p className="text-xs text-[color:color-mix(in_srgb,var(--page-text)_70%,var(--secondary-text)_30%)]">
+                <span className="text-text-muted-subtle text-sm">
                   {inviteHint}
-                </p>
+                </span>
               </div>
             </div>
 
@@ -387,17 +387,17 @@ const Register = () => {
                 disabled={registerPending}
                 placeholder="name@university.edu"
               />
-              <p className="text-xs text-[color:color-mix(in_srgb,var(--page-text)_70%,var(--secondary-text)_30%)]">
+              <p className="text-secondary-text-strong text-xs font-medium">
                 {!emailValid ? t("auth:messages.invalidFormat") : " "}
               </p>
               {emailSuggestion ? (
                 <button
                   type="button"
-                  onClick={() => {
-                    setForm((f) => ({ ...f, email: emailSuggestion }))
+                  className="inline-flex items-center gap-2 rounded-full border border-brand/20 px-4 py-2 text-xs font-semibold uppercase tracking-widest text-brand transition hover:bg-brand/5"
+                   onClick={() => {
+                    setForm((formState) => ({ ...formState, email: emailSuggestion }))
                     setEmailSuggestion(null)
                   }}
-                  className="inline-flex items-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--nav-link)_60%,transparent)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--nav-link)] transition hover:bg-[color:color-mix(in_srgb,var(--nav-link)_12%,transparent)]"
                 >
                   <Sparkles className="h-4 w-4" aria-hidden="true" />
                   {t("auth:messages.emailSuggestion", { suggestion: emailSuggestion })}
@@ -432,11 +432,11 @@ const Register = () => {
                 <input
                   id="password"
                   name="password"
-                  type={showPass ? "text" : "password"}
+                   type={showPass ? "text" : "password"}
                   value={form.password}
-                  onChange={(e) => handlePass(e.target.value)}
-                  onKeyUp={(e) => setCapsPass((e as any).getModifierState?.("CapsLock"))}
-                  onKeyDown={(e) => setCapsPass((e as any).getModifierState?.("CapsLock"))}
+                  onChange={(event) => handlePass(event.target.value)}
+                  onKeyUp={(event: React.KeyboardEvent) => setCapsPass(event.getModifierState("CapsLock"))}
+                  onKeyDown={(event: React.KeyboardEvent) => setCapsPass(event.getModifierState("CapsLock"))}
                   className={inputBaseClass}
                   autoComplete="new-password"
                   ref={passwordRef}
@@ -448,7 +448,7 @@ const Register = () => {
                   onMouseUp={() => setShowPass(false)}
                   onMouseLeave={() => setShowPass(false)}
                   onClick={() => setShowPass((v) => !v)}
-                  className="absolute inset-y-0 right-4 flex items-center text-[color:var(--nav-link)]"
+                  className="absolute inset-y-0 right-4 flex items-center text-brand"
                   aria-label={t("auth:actions.showPassword") ?? undefined}
                   title={t("auth:actions.holdReveal") ?? undefined}
                 >
@@ -459,19 +459,19 @@ const Register = () => {
                   )}
                 </button>
               </div>
-              <p className="text-xs text-[color:color-mix(in_srgb,var(--page-text)_70%,var(--secondary-text)_30%)]">
+              <p className="text-xs text-text-muted-subtle">
                 {t("auth:register.passwordHint")}
               </p>
               {passwordStrengthPercent !== null ? (
                 <div className="space-y-1">
-                  <div className="h-3 w-full rounded-full bg-[color:color-mix(in_srgb,var(--progress-track)_70%,transparent)]">
+                  <div className="h-3 w-full rounded-full bg-surface-hover">
                     <div
-                      className="h-full rounded-full bg-[color:var(--nav-link)] transition-all duration-300"
+                      className="h-full rounded-full bg-brand transition-all duration-300"
                       style={{ width: `${passwordStrengthPercent}%` }}
                     />
                   </div>
                   {passwordStrengthLabel ? (
-                    <p className="text-xs font-semibold text-[color:color-mix(in_srgb,var(--page-text)_78%,var(--secondary-text)_22%)]">
+                    <p className="text-xs font-semibold text-text-muted-subtle">
                       {passwordStrengthLabel}
                     </p>
                   ) : null}
@@ -481,8 +481,8 @@ const Register = () => {
                 <span
                   className={`${chipClass} ${
                     minLenOk
-                      ? "border-[color:color-mix(in_srgb,var(--nav-link)_80%,white_20%)] text-[color:var(--nav-link)]"
-                      : "text-[color:color-mix(in_srgb,var(--page-text)_70%,var(--secondary-text)_30%)]"
+                      ? "border-brand/40 text-brand"
+                      : "text-text-muted-subtle"
                   }`}
                 >
                   {t("auth:register.passwordChip.minLength")}
@@ -490,8 +490,8 @@ const Register = () => {
                 <span
                   className={`${chipClass} ${
                     matchOk
-                      ? "border-[color:color-mix(in_srgb,var(--nav-link)_80%,white_20%)] text-[color:var(--nav-link)]"
-                      : "text-[color:color-mix(in_srgb,var(--page-text)_70%,var(--secondary-text)_30%)]"
+                      ? "border-brand/40 text-brand"
+                      : "text-text-muted-subtle"
                   }`}
                 >
                   {t("auth:register.passwordChip.match")}
@@ -512,11 +512,11 @@ const Register = () => {
                 <input
                   id="confirm"
                   name="confirm"
-                  type={showConfirm ? "text" : "password"}
+                   type={showConfirm ? "text" : "password"}
                   value={form.confirm}
                   onChange={handleChange}
-                  onKeyUp={(e) => setCapsConfirm((e as any).getModifierState?.("CapsLock"))}
-                  onKeyDown={(e) => setCapsConfirm((e as any).getModifierState?.("CapsLock"))}
+                  onKeyUp={(event: React.KeyboardEvent) => setCapsConfirm(event.getModifierState("CapsLock"))}
+                  onKeyDown={(event: React.KeyboardEvent) => setCapsConfirm(event.getModifierState("CapsLock"))}
                   className={inputBaseClass}
                   autoComplete="new-password"
                   ref={confirmRef}
@@ -528,7 +528,7 @@ const Register = () => {
                   onMouseUp={() => setShowConfirm(false)}
                   onMouseLeave={() => setShowConfirm(false)}
                   onClick={() => setShowConfirm((v) => !v)}
-                  className="absolute inset-y-0 right-4 flex items-center text-[color:var(--nav-link)]"
+                  className="absolute inset-y-0 right-4 flex items-center text-brand"
                   aria-label={t("auth:actions.showPassword") ?? undefined}
                   title={t("auth:actions.holdReveal") ?? undefined}
                 >
@@ -547,7 +547,7 @@ const Register = () => {
             </div>
 
             <div
-              className="min-h-[1.5rem] text-center text-sm font-semibold text-red-400"
+              className="min-h-6 text-center text-sm font-semibold text-red-400"
               aria-live="assertive"
             >
               {registerErrorMessage}
@@ -555,7 +555,7 @@ const Register = () => {
 
             <button
               type="submit"
-              className="inline-flex w-full items-center justify-center gap-2 rounded-[1.6rem] bg-[radial-gradient(circle_at_top,var(--nav-link),var(--nav-link-hover))] px-6 py-4 text-lg font-extrabold text-white shadow-[0_25px_50px_rgba(36,99,235,0.35)] transition hover:-translate-y-0.5 hover:shadow-[0_35px_70px_rgba(36,99,235,0.45)] disabled:opacity-60"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-brand px-6 py-4 text-lg font-extrabold text-white shadow-premium transition hover:-translate-y-0.5 hover:shadow-glass disabled:opacity-60"
               disabled={registerPending || !isValid}
             >
               {registerPending ? (
@@ -572,7 +572,7 @@ const Register = () => {
               {t("auth:register.haveAccount")}{" "}
               <Link
                 to="/login"
-                className="font-semibold text-[color:var(--nav-link)] underline-offset-4 transition hover:underline"
+                className="font-semibold text-brand underline-offset-4 transition hover:underline"
               >
                 {t("auth:register.ctaLogin")}
               </Link>

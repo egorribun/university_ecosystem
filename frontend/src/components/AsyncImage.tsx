@@ -94,14 +94,13 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
       >
         <AnimatePresence mode="wait">
           {shouldShowSkeleton && (
-            <motion.div
+            <div
               key="skeleton"
-              initial={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
               className="absolute inset-0 z-10"
+              data-testid="async-image-skeleton"
             >
               <Skeleton width="100%" height="100%" />
-            </motion.div>
+            </div>
           )}
         </AnimatePresence>
 
@@ -130,6 +129,7 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
             transition={{ duration: 0.3 }}
             className="absolute inset-0 h-full w-full block"
             style={{ objectFit }}
+            data-testid="async-image-img"
           />
         )}
 
@@ -146,7 +146,10 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
         {((shouldShowFallback && fallback) ||
           status === "error" ||
           (!hasImage && !fallbackSrc)) && (
-          <div className="absolute inset-0 flex items-center justify-center bg-surface/20 text-secondary-text">
+          <div
+            className="absolute inset-0 flex items-center justify-center bg-surface/20 text-secondary-text"
+            data-testid="async-image-fallback"
+          >
             {fallback ?? <InsertPhotoOutlinedIcon className="h-10 w-10 opacity-40 shrink-0" />}
           </div>
         )}

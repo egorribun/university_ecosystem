@@ -38,10 +38,10 @@ export const StoryCircle = <T extends ElementType = "div">({
     <Component
       className={cn(
         "group/story relative inline-flex items-center justify-center overflow-visible rounded-full text-white",
-        "bg-[linear-gradient(135deg,#1d4ed8,#60a5fa)] shadow-[0_8px_20px_rgba(37,99,235,0.18)]",
-        "transition-[box-shadow,transform] duration-200 ease-out motion-reduce:transition-[box-shadow]",
-        "hover:shadow-[0_12px_28px_rgba(37,99,235,0.28)] hover:-translate-y-0.5",
-        "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[rgba(125,172,255,0.65)]",
+        "bg-linear-to-br from-(--primary-main) to-(--primary-light) shadow-lg",
+        "transition-all duration-300 ease-premium transform-gpu",
+        "hover:shadow-xl hover:-translate-y-0.5",
+        "focus-visible:outline-(--primary-main) focus-visible:ring-4 focus-visible:ring-(--primary-main)/20",
         "motion-reduce:hover:translate-y-0",
         className
       )}
@@ -57,10 +57,10 @@ export const StoryCircle = <T extends ElementType = "div">({
     >
       <span
         aria-hidden
-        className="pointer-events-none absolute inset-0 rounded-full border border-[rgba(125,172,255,0.35)] shadow-[0_0_0_2px_rgba(125,172,255,0.5),0_0_12px_rgba(37,99,235,0.2)] opacity-0 transition-[opacity,transform] duration-200 ease-out group-focus-visible/story:opacity-100 group-hover/story:opacity-70 motion-reduce:transition-none"
+        className="pointer-events-none absolute inset-0 rounded-full border border-(--primary-main)/10 opacity-0 transition-opacity duration-300 group-focus-visible/story:opacity-100 group-hover/story:opacity-40"
         style={{ outlineOffset: 3 }}
       />
-      <span className="relative z-[1] flex h-full w-full items-center justify-center overflow-hidden rounded-full">
+      <span className="relative z-1 flex h-full w-full items-center justify-center overflow-hidden rounded-full">
         {children}
       </span>
     </Component>

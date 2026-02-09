@@ -6,7 +6,7 @@ import { cn } from "@/utils/cn"
 
 interface RadioGroupProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "onChange"> {
   value?: string
-  onChange?: (event: any, value: string) => void
+  onChange?: (event: React.ChangeEvent<HTMLInputElement> | null, value: string) => void
   disabled?: boolean
   name?: string
   row?: boolean
@@ -66,6 +66,7 @@ const RadioGroupItem = React.forwardRef<HTMLInputElement, RadioGroupItemProps>(
           type="radio"
           ref={ref}
           className="peer sr-only"
+          value={value}
           checked={isSelected}
           disabled={isDisabled}
           name={context.name}

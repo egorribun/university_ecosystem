@@ -19,7 +19,8 @@
       "email": "Email",
       "role": "Роль",
       "group": "Группа",
-      "actions": "Действия"
+      "actions": "Действия",
+      "deleteUser": "Удалить пользователя"
     }
   },
   "notifications": {
@@ -72,6 +73,40 @@
     "kinds": {
       "event": "Событие",
       "news": "Новость"
+    }
+  },
+  "audit": {
+    "title": "Защищённый аудит",
+    "subtitle": "Криптографически верифицированная система логирования активности.",
+    "filters": {
+      "resourceType": "Тип ресурса",
+      "action": "Действие"
+    },
+    "table": {
+      "time": "Время",
+      "actor": "Инициатор",
+      "action": "Действие",
+      "target": "Цель",
+      "integrity": "Целостность"
+    },
+    "details": {
+      "title": "Детали записи аудита",
+      "resourceId": "ID ресурса",
+      "subject": "Субъект",
+      "ipAddress": "IP-адрес",
+      "userAgent": "User Agent",
+      "executionContext": "Контекст выполнения",
+      "integrityVerified": "Криптографическая целостность подтверждена",
+      "integrityTampered": "ПОДПИСЬ НЕДЕЙСТВИТЕЛЬНА ИЛИ ИЗМЕНЕНА",
+      "notAvailable": "Н/A",
+      "system": "Система",
+      "unknown": "Неизвестно"
+    },
+    "pagination": {
+      "total": "Всего: {{count}} записей",
+      "previous": "Назад",
+      "next": "Вперёд",
+      "page": "Страница {{current}}"
     }
   }
 }

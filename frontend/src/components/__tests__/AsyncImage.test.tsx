@@ -47,7 +47,7 @@ describe("AsyncImage", () => {
   const src = "https://example.com/image.png"
 
   it("renders skeleton while loading and hides it after load", () => {
-    render(<AsyncImage src={src} alt="test" sx={{ width: 200, height: 120 }} />)
+    render(<AsyncImage src={src} alt="test" style={{ width: 200, height: 120 }} />)
 
     expect(screen.getByTestId("async-image-skeleton")).toBeInTheDocument()
 
@@ -58,7 +58,7 @@ describe("AsyncImage", () => {
   })
 
   it("displays fallback on error", () => {
-    render(<AsyncImage src={src} alt="error" sx={{ width: 200, height: 120 }} />)
+    render(<AsyncImage src={src} alt="error" style={{ width: 200, height: 120 }} />)
 
     const image = screen.getByTestId("async-image-img") as HTMLImageElement
     fireEvent.error(image)
@@ -68,7 +68,7 @@ describe("AsyncImage", () => {
 
   it("forces reload when version changes", () => {
     const { rerender } = render(
-      <AsyncImage src={src} version={1} alt="version" sx={{ width: 120, height: 120 }} />
+       <AsyncImage src={src} version={1} alt="version" style={{ width: 120, height: 120 }} />
     )
 
     const image = screen.getByTestId("async-image-img") as HTMLImageElement
@@ -76,7 +76,7 @@ describe("AsyncImage", () => {
 
     expect(screen.queryByTestId("async-image-skeleton")).not.toBeInTheDocument()
 
-    rerender(<AsyncImage src={src} version={2} alt="version" sx={{ width: 120, height: 120 }} />)
+    rerender(<AsyncImage src={src} version={2} alt="version" style={{ width: 120, height: 120 }} />)
 
     expect(screen.getByTestId("async-image-skeleton")).toBeInTheDocument()
   })

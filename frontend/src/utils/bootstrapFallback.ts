@@ -107,18 +107,20 @@ export function renderBootstrapFallback({
   container.style.padding = "2rem"
   container.style.gap = "1.5rem"
   container.style.textAlign = "center"
-  container.style.backgroundColor = "#f5f5f5"
+  container.style.backgroundColor = "var(--bg-page, #f8fafc)"
 
   const title = documentRef.createElement("h1")
   title.textContent = copy.title
   title.style.margin = "0"
-  title.style.fontSize = "1.75rem"
+  title.style.fontSize = "var(--fs-h3, 1.75rem)"
+  title.style.fontWeight = "800"
+  title.style.color = "var(--text-primary, #0f172a)"
 
   const description = documentRef.createElement("p")
   description.textContent = copy.description
   description.style.margin = "0"
   description.style.maxWidth = "32rem"
-  description.style.color = "#333"
+  description.style.color = "var(--text-secondary, #475569)"
 
   const actions = documentRef.createElement("div")
   actions.style.display = "flex"
@@ -129,27 +131,30 @@ export function renderBootstrapFallback({
   const reloadButton = documentRef.createElement("button")
   reloadButton.type = "button"
   reloadButton.textContent = copy.reloadButtonLabel
-  reloadButton.style.padding = "0.75rem 1.5rem"
-  reloadButton.style.fontSize = "1rem"
-  reloadButton.style.borderRadius = "9999px"
+  reloadButton.style.backgroundColor = "var(--primary-main)"
+  reloadButton.style.color = "#ffffff"
   reloadButton.style.border = "none"
+  reloadButton.style.padding = "14px 28px"
+  reloadButton.style.borderRadius = "var(--radius-xl, 14px)"
+  reloadButton.style.fontSize = "16px"
+  reloadButton.style.fontWeight = "700"
   reloadButton.style.cursor = "pointer"
-  reloadButton.style.backgroundColor = "#1976d2"
-  reloadButton.style.color = "#fff"
-  reloadButton.addEventListener("click", () => {
-    reload()
-  })
+  reloadButton.style.transition = "all 0.2s"
+  reloadButton.style.boxShadow = "var(--shadow-premium)"
 
   const clearCacheButton = documentRef.createElement("button")
   clearCacheButton.type = "button"
   clearCacheButton.textContent = copy.clearCacheButtonLabel
-  clearCacheButton.style.padding = "0.75rem 1.5rem"
-  clearCacheButton.style.fontSize = "1rem"
-  clearCacheButton.style.borderRadius = "9999px"
-  clearCacheButton.style.border = "1px solid #1976d2"
-  clearCacheButton.style.cursor = "pointer"
   clearCacheButton.style.backgroundColor = "transparent"
-  clearCacheButton.style.color = "#1976d2"
+  clearCacheButton.style.border = "2px solid var(--primary-main)"
+  clearCacheButton.style.color = "var(--primary-main)"
+  clearCacheButton.style.padding = "12px 24px"
+  clearCacheButton.style.borderRadius = "var(--radius-xl, 14px)"
+  clearCacheButton.style.fontSize = "14px"
+  clearCacheButton.style.fontWeight = "600"
+  clearCacheButton.style.cursor = "pointer"
+  clearCacheButton.style.transition = "all 0.2s"
+  clearCacheButton.style.marginTop = "12px"
   clearCacheButton.addEventListener("click", () => {
     if (clearCacheButton.disabled) {
       return

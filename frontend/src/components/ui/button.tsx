@@ -9,7 +9,7 @@ import { cn } from "@/utils/cn"
 import type { PolymorphicComponentProps, PolymorphicRef } from "@/types/polymorphic"
 import { useHaptics } from "@/hooks/useHaptics"
 
-type ButtonVariant = "solid" | "outline" | "ghost"
+type ButtonVariant = "solid" | "outline" | "ghost" | "glass" | "gradient"
 type ButtonSize = "sm" | "md" | "lg"
 
 type ButtonOwnProps = {
@@ -38,15 +38,15 @@ const sizeStyles: Record<ButtonSize, string> = {
 const variantStyles: Record<ButtonVariant, string> = {
   solid: cn(
     "bg-gradient-brand text-inverse-text shadow-surface ring-brand/20 transition-all duration-500",
-    "hover:shadow-[0_4px_20px_-6px_rgba(var(--primary-main),0.5)] hover:scale-[1.02] hover:opacity-90",
-    "active:translate-y-[1px] active:scale-[0.98]",
+    "hover:shadow-premium-lift hover:scale-[1.02] hover:opacity-95",
+    "active:scale-95",
     "motion-reduce:hover:translate-y-0 motion-reduce:hover:scale-100 motion-reduce:active:translate-y-0 motion-reduce:active:scale-100",
     "disabled:bg-slate-200 disabled:text-slate-400 dark:disabled:bg-slate-800 dark:disabled:text-slate-600"
   ),
   outline: cn(
     "border border-border-subtle text-primary-text shadow-surface bg-transparent",
     "hover:border-brand hover:text-brand hover:bg-brand-subtle hover:shadow-surface-strong",
-    "active:translate-y-[1px]",
+    "active:scale-95",
     "motion-reduce:hover:translate-y-0 motion-reduce:active:translate-y-0",
     "disabled:border-slate-200 disabled:text-slate-300 dark:disabled:border-slate-700 dark:disabled:text-slate-600"
   ),
@@ -55,6 +55,16 @@ const variantStyles: Record<ButtonVariant, string> = {
     "hover:bg-surface-hover hover:text-primary-text",
     "active:bg-surface-hover",
     "motion-reduce:transition-none"
+  ),
+  glass: cn(
+    "bg-white/10 backdrop-blur-md text-primary-text border border-white/20 shadow-premium",
+    "hover:bg-white/20 hover:scale-[1.02]",
+    "active:scale-95 transition-all duration-300"
+  ),
+  gradient: cn(
+    "bg-gradient-brand text-inverse-text shadow-surface ring-brand/20",
+    "hover:shadow-premium-lift hover:saturate-150 hover:scale-[1.02]",
+    "active:scale-95 transition-all duration-500"
   ),
 }
 
@@ -87,7 +97,7 @@ const ButtonBase = <T extends ElementType = "button">(
   const isButtonElement = typeof Component === "string" && Component === "button"
   const isDisabled = Boolean(disabled || loading)
 
-  const handleClick = (e: any) => {
+  const handleClick = (e: MouseEvent) => {
     if (isDisabled) return
     if (haptics) {
       trigger(typeof haptics === "string" ? haptics : "light")
@@ -104,7 +114,7 @@ const ButtonBase = <T extends ElementType = "button">(
     <Component
       ref={ref}
       className={cn(
-        "group/button relative inline-flex items-center justify-center gap-2 overflow-hidden rounded-ue-lg font-bold tracking-tight text-[0.95rem] transition-all duration-500 ease-out focus-visible:outline-none focus-visible:shadow-focus",
+        "group/button relative inline-flex items-center justify-center gap-2 overflow-hidden rounded-ue-lg font-bold tracking-tight text-base transition-premium focus-visible:outline-none focus-visible:shadow-focus",
         "no-underline hover:no-underline focus-visible:no-underline",
         "motion-reduce:transition-shadow motion-reduce:hover:translate-y-0 motion-reduce:active:translate-y-0",
         sizeStyles[size],

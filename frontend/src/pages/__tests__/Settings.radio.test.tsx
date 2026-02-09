@@ -145,7 +145,7 @@ describe("Settings radio buttons", () => {
       fireEvent.click(lightRadio)
       // Wait for MUI to update localStorage
       await waitFor(() => {
-        expect(localStorage.getItem("theme")).toBe("light")
+        expect(localStorage.getItem("ue-mode")).toBe("light")
       })
     }
   })

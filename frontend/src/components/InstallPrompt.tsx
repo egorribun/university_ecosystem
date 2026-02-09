@@ -235,6 +235,7 @@ export default function InstallPrompt() {
                         </div>
                         <button
                           onClick={handleInstallDismiss}
+                          aria-label={t("system:installPrompt.closeOffer")}
                           className="p-1.5 rounded-xl hover:bg-surface-hover/30 text-secondary-text transition-colors"
                         >
                           <X className="h-5 w-5" />
@@ -279,6 +280,7 @@ export default function InstallPrompt() {
                         </div>
                         <button
                           onClick={handlePushDismiss}
+                          aria-label={t("system:installPrompt.notificationsClose")}
                           className="p-1.5 rounded-xl hover:bg-surface-hover/30 text-secondary-text transition-colors"
                         >
                           <X className="h-5 w-5" />

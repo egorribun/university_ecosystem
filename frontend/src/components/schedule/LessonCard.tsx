@@ -54,12 +54,11 @@ export function LessonCard({
       role="button"
       tabIndex={0}
       className={cn(
-        "group relative cursor-pointer rounded-xl border border-[color-mix(in_srgb,white_10%,var(--nav-link)_90%)] bg-[color-mix(in_srgb,var(--card-bg)_96%,white_4%)] shadow-[0_4px_16px_rgba(0,0,0,0.08),0_2px_6px_rgba(0,0,0,0.04)] transition-all duration-300",
+        "group relative flex h-full min-h-[110px] flex-col overflow-hidden rounded-2xl border border-glass-border-subtle bg-glass-elevated p-4 shadow-premium transition-all duration-300 sm:min-h-[130px]",
         hasBreakBefore ? "mt-6" : "",
-        "hover:-translate-y-1 hover:shadow-[0_12px_32px_rgba(0,0,0,0.12),0_4px_12px_rgba(0,0,0,0.08)] hover:border-[color-mix(in_srgb,white_16%,var(--nav-link)_84%)]",
-        "dark:border-[color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color-mix(in_srgb,var(--card-bg)_94%,transparent_6%)] dark:shadow-[0_6px_20px_rgba(0,0,0,0.16),0_2px_8px_rgba(0,0,0,0.08)]",
-        "dark:hover:shadow-[0_16px_40px_rgba(0,0,0,0.24),0_6px_16px_rgba(0,0,0,0.12)] dark:hover:border-[color-mix(in_srgb,white_12%,var(--nav-link)_88%)]",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--nav-link) focus-visible:ring-offset-2 focus-visible:ring-offset-(--card-bg)"
+        "hover:-translate-y-1 hover:shadow-glass hover:border-brand/30",
+        "dark:shadow-premium-dark dark:hover:shadow-glass-strong-dark",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-page"
       )}
       style={{ minHeight: lessonCardHeight, padding: "12px" }}
       title={isConflict ? t("schedule:lesson.conflict") : undefined}
@@ -68,10 +67,10 @@ export function LessonCard({
         <div className="flex items-center justify-between gap-2">
           <Badge
             size="xs"
-            className="chip-type font-semibold shadow-[0_2px_6px_rgba(0,0,0,0.12)] dark:shadow-[0_4px_10px_rgba(0,0,0,0.24)]"
+            className="chip-type font-semibold shadow-sm"
             style={{
               background: getLessonTypeColor(lesson.lesson_type),
-              color: "#fff",
+              color: "white",
               height: "24px",
               paddingLeft: "10px",
               paddingRight: "10px",
@@ -82,7 +81,7 @@ export function LessonCard({
           <Badge
             size="xs"
             variant="outline"
-            className="chip-time font-medium border-[color-mix(in_srgb,white_14%,var(--nav-link)_86%)] bg-[color-mix(in_srgb,var(--card-bg)_92%,white_8%)] text-[color-mix(in_srgb,var(--page-text)_88%,var(--nav-link)_12%)] dark:border-[color-mix(in_srgb,white_10%,var(--nav-link)_90%)] dark:bg-[color-mix(in_srgb,var(--card-bg)_90%,transparent_10%)] dark:text-[color-mix(in_srgb,var(--page-text)_92%,var(--nav-link)_8%)]"
+            className="chip-time font-medium border-brand/20 bg-brand-subtle-bg text-brand dark:border-brand/30 dark:bg-brand-subtle-bg/80"
             leadingIcon={<AccessTimeIcon size={15} />}
           >
             {`${getTimeStr(lesson)}–${getEndTimeStr(lesson)}`}
@@ -90,7 +89,6 @@ export function LessonCard({
         </div>
         <h3
           className="text-base font-extrabold text-(--page-text) line-clamp-2 leading-tight tracking-tight"
-          style={{ fontSize: "1rem" }}
         >
           {lesson.subject}
         </h3>
@@ -98,8 +96,7 @@ export function LessonCard({
           <Badge
             size="xs"
             variant="outline"
-            leadingIcon={<SchoolIcon size={15} className="text-(--nav-link)" />}
-            className="font-medium text-[color-mix(in_srgb,var(--page-text)_88%,var(--nav-link)_12%)] border-[color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color-mix(in_srgb,var(--card-bg)_94%,white_6%)] dark:text-[color-mix(in_srgb,var(--page-text)_90%,var(--nav-link)_10%)] dark:border-[color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color-mix(in_srgb,var(--card-bg)_92%,transparent_8%)]"
+            className="font-medium text-(--page-text)/80 border-(--glass-border) bg-(--card-bg)/40 dark:text-(--page-text)/90 dark:bg-(--card-bg)/60"
           >
             {lesson.teacher}
           </Badge>
@@ -107,14 +104,14 @@ export function LessonCard({
             size="xs"
             variant="outline"
             leadingIcon={<RoomIcon size={15} className="text-(--nav-link)" />}
-            className="font-medium text-[color-mix(in_srgb,var(--page-text)_88%,var(--nav-link)_12%)] border-[color-mix(in_srgb,white_12%,var(--nav-link)_88%)] bg-[color-mix(in_srgb,var(--card-bg)_94%,white_6%)] dark:text-[color-mix(in_srgb,var(--page-text)_90%,var(--nav-link)_10%)] dark:border-[color-mix(in_srgb,white_8%,var(--nav-link)_92%)] dark:bg-[color-mix(in_srgb,var(--card-bg)_92%,transparent_8%)]"
+            className="font-medium text-(--page-text)/80 border-(--glass-border) bg-(--card-bg)/40 dark:text-(--page-text)/90 dark:bg-(--card-bg)/60"
           >
             {lesson.room}
           </Badge>
         </div>
       </div>
       <Tooltip content={t("schedule:lesson.details")}>
-        <InfoOutlinedIcon size={18} className="absolute bottom-3 right-3 text-[color-mix(in_srgb,var(--secondary-text)_60%,transparent)] opacity-0 transition-opacity duration-200 group-hover:opacity-100 dark:text-[color-mix(in_srgb,var(--secondary-text)_70%,transparent)]" />
+        <InfoOutlinedIcon size={18} className="absolute bottom-3 right-3 text-text-muted-subtle opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
       </Tooltip>
       {canEdit && (
         <button
@@ -124,13 +121,13 @@ export function LessonCard({
             onDelete()
           }}
           className={cn(
-            "absolute top-2 right-2 z-10 flex h-7 w-7 items-center justify-center rounded-lg opacity-0 transition-all duration-200",
-            "bg-[color-mix(in_srgb,var(--card-bg)_90%,#D14343_10%)] text-[#D14343]",
-            "border border-[color-mix(in_srgb,#D14343_30%,transparent)]",
-            "shadow-[0_2px_8px_rgba(209,67,67,0.16)]",
-            "hover:bg-[color-mix(in_srgb,var(--card-bg)_80%,#D14343_20%)] hover:shadow-[0_4px_12px_rgba(209,67,67,0.24)]",
+            "absolute top-2 right-2 z-10 flex h-7 w-7 items-center justify-center rounded-lg opacity-0 transition-premium",
+            "bg-(--error-bg) text-(--error-text)",
+            "border border-(--error-text)/30",
+            "shadow-sm",
+            "hover:bg-(--error-text)/20 hover:shadow-md",
             "group-hover:opacity-100",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D14343]/40"
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--error-text)/40"
           )}
         >
           <DeleteIcon size={16} />

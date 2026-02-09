@@ -39,10 +39,17 @@ const ParticleAuthBackground = () => {
 
     // Colors for different themes
     const getThemeColors = () => {
-      const isDark = document.body.classList.contains("dark")
-      return isDark
-        ? ["#4fb3ff", "#0ea5e9", "#38bdf8", "#7dd3fc"] // Bright blues for dark mode
-        : ["#0369a1", "#0284c7", "#0ea5e9", "#38bdf8"] // Darker blues for light mode
+      const styles = getComputedStyle(document.documentElement)
+      const primary = styles.getPropertyValue("--primary-main").trim() || "#0ea5e9"
+      const secondary = styles.getPropertyValue("--primary-hover").trim() || "#0284c7"
+
+      // Generate variations based on the theme primary
+      return [
+        primary,
+        `color-mix(in srgb, ${primary}, transparent 20%)`,
+        secondary,
+        `color-mix(in srgb, ${primary}, white 20%)`
+      ]
     }
 
     const initParticles = () => {
@@ -206,7 +213,7 @@ const ParticleAuthBackground = () => {
     >
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
       {/* Overlay gradient to ensure text readability */}
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[var(--page-bg)] opacity-40" />
+      <div className="absolute inset-0 bg-linear-to-b from-transparent via-transparent to-(--bg-page) opacity-60" />
     </div>
   )
 }

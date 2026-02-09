@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } f
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
 import { useTranslation } from "react-i18next"
+import type { TFunction } from "i18next"
 import { isAxiosError } from "axios"
 import {
   Mail as EmailIcon,
   Camera as PhotoCamera,
   Trash2 as DeleteIcon,
+  Check as CheckIcon,
   RefreshCw as RestartAltIcon,
   ChevronRight,
   Plus as AddIcon,
@@ -49,7 +51,7 @@ function toIso(date: string) {
 function formatTimeLeft(
   expiresAt: string,
   now: dayjs.Dayjs,
-  t: any
+  t: TFunction<"stories">
 ) {
   const expires = dayjs(expiresAt)
   if (!expires.isValid()) return t("stories:list.timeLeft.unknown")
@@ -236,7 +238,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
           <div className="flex flex-col md:flex-row gap-8">
             <div className="flex-1 flex flex-col gap-3">
               <div className="space-y-1">
-                <p className="text-[0.7rem] font-bold uppercase tracking-wider text-brand opacity-70">
+                <p className="text-xs font-bold uppercase tracking-wider text-brand opacity-70">
                   {t("stories:list.details.published", { date: "" }).split(":")[0]}
                 </p>
                 <p className="text-sm font-medium text-primary-text">
@@ -244,7 +246,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
                 </p>
               </div>
               <div className="space-y-1">
-                <p className="text-[0.7rem] font-bold uppercase tracking-wider text-brand opacity-70">
+                <p className="text-xs font-bold uppercase tracking-wider text-brand opacity-70">
                   {t("stories:list.details.expires", { date: "" }).split(":")[0]}
                 </p>
                 <p className="text-sm font-medium text-primary-text">
@@ -256,7 +258,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
               </Badge>
               {story.cta_url && (
                 <div className="mt-2 p-3 rounded-xl bg-surface/20 border border-glass-border/20">
-                   <p className="text-[0.65rem] font-bold uppercase tracking-widest text-secondary-text opacity-50 mb-1">
+                   <p className="text-xs font-bold uppercase tracking-widest text-secondary-text opacity-50 mb-1">
                      {t("stories:list.details.cta")}
                    </p>
                    <p className="text-xs font-mono break-all text-brand">{story.cta_url}</p>
@@ -264,7 +266,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
               )}
             </div>
 
-            <div className="w-full md:w-[220px] flex flex-col items-center gap-4">
+            <div className="w-full md:w-56 flex flex-col items-center gap-4">
                <div className="relative w-full aspect-9/16 rounded-2xl overflow-hidden bg-surface/20 border border-glass-border shadow-inner group">
                   {coverPreview ? (
                     <img
@@ -294,7 +296,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
                       variant="outline"
                       size="sm"
                       className="flex-1"
-                      leadingIcon={<PhotoCamera className="h-4 w-4" />}
+                      startIcon={<PhotoCamera className="h-4 w-4" />}
                     >
                       {coverFile ? t("common:buttons.changePhoto") : t("stories:list.actions.pickCover")}
                       <input
@@ -310,7 +312,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
                         variant="outline"
                         size="sm"
                         onClick={handleCoverReset}
-                        leadingIcon={<RestartAltIcon className="h-4 w-4" />}
+                        startIcon={<RestartAltIcon className="h-4 w-4" />}
                         className="text-secondary-text"
                       />
                     )}
@@ -337,13 +339,13 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
                 label={t("stories:form.publishedAt")}
                 type="datetime-local"
                 value={publishedAt}
-                onChange={(e) => setPublishedAt(e.target.value)}
+                onChange={(event) => setPublishedAt(event.target.value)}
               />
               <TextField
                 label={t("stories:form.expiresAt")}
                 type="datetime-local"
                 value={expiresAt}
-                onChange={(e) => setExpiresAt(e.target.value)}
+                onChange={(event) => setExpiresAt(event.target.value)}
               />
             </div>
             <div className="flex flex-wrap gap-3 mt-2">
@@ -370,7 +372,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
                 onClick={handleDelete}
                 disabled={deleting}
                 loading={deleting}
-                leadingIcon={<DeleteIcon className="h-4 w-4" />}
+                startIcon={<DeleteIcon className="h-4 w-4" />}
               >
                 {t("common:buttons.delete")}
               </Button>
@@ -419,8 +421,8 @@ export default function StoriesAdmin() {
     setLoading(true)
     setListError(null)
     try {
-      const res = await apiClient.get<StoryItem[]>("/stories")
-      const data = Array.isArray(res.data) ? res.data : []
+      const response = await apiClient.get<StoryItem[]>("/stories")
+      const data = Array.isArray(response.data) ? response.data : []
       setStories(data)
       setListError(null)
     } catch (error: unknown) {
@@ -542,26 +544,26 @@ export default function StoriesAdmin() {
                   <TextField
                     label={t("stories:form.titleRu")}
                     value={formState.titleRu}
-                    onChange={(e) => handleFormChange("titleRu")(e.target.value)}
+                    onChange={(event) => handleFormChange("titleRu")(event.target.value)}
                   />
                   <TextField
                     label={t("stories:form.titleEn")}
                     value={formState.titleEn}
-                    onChange={(e) => handleFormChange("titleEn")(e.target.value)}
+                    onChange={(event) => handleFormChange("titleEn")(event.target.value)}
                   />
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <TextField
                     label={t("stories:form.shortTextRu")}
                     value={formState.shortTextRu}
-                    onChange={(e) => handleFormChange("shortTextRu")(e.target.value)}
+                    onChange={(event) => handleFormChange("shortTextRu")(event.target.value)}
                     multiline
                     rows={2}
                   />
                   <TextField
                     label={t("stories:form.shortTextEn")}
                     value={formState.shortTextEn}
-                    onChange={(e) => handleFormChange("shortTextEn")(e.target.value)}
+                    onChange={(event) => handleFormChange("shortTextEn")(event.target.value)}
                     multiline
                     rows={2}
                   />
@@ -569,20 +571,20 @@ export default function StoriesAdmin() {
                 <TextField
                   label={t("stories:form.ctaUrl")}
                   value={formState.ctaUrl}
-                  onChange={(e) => handleFormChange("ctaUrl")(e.target.value)}
+                  onChange={(event) => handleFormChange("ctaUrl")(event.target.value)}
                 />
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <TextField
                     label={t("stories:form.publishedAt")}
                     type="datetime-local"
                     value={formState.publishedAt}
-                    onChange={(e) => handleFormChange("publishedAt")(e.target.value)}
+                    onChange={(event) => handleFormChange("publishedAt")(event.target.value)}
                   />
                   <TextField
                     label={t("stories:form.expiresAt")}
                     type="datetime-local"
                     value={formState.expiresAt}
-                    onChange={(e) => handleFormChange("expiresAt")(e.target.value)}
+                    onChange={(event) => handleFormChange("expiresAt")(event.target.value)}
                   />
                 </div>
 
@@ -591,7 +593,7 @@ export default function StoriesAdmin() {
                       <Button
                         as="label"
                         variant="outline"
-                        leadingIcon={<PhotoCamera className="h-4 w-4" />}
+                        startIcon={<PhotoCamera className="h-4 w-4" />}
                       >
                         {coverFile ? t("common:buttons.changePhoto") : t("common:buttons.uploadPhoto")}
                         <input
@@ -606,7 +608,7 @@ export default function StoriesAdmin() {
                         <Button
                           variant="ghost"
                           onClick={resetCoverOnly}
-                          leadingIcon={<RestartAltIcon className="h-4 w-4" />}
+                          startIcon={<RestartAltIcon className="h-4 w-4" />}
                           className="text-secondary-text"
                         >
                           {t("stories:form.resetCover")}
@@ -615,7 +617,7 @@ export default function StoriesAdmin() {
                    </div>
 
                    {coverPreview && (
-                      <div className="relative w-full sm:w-[320px] aspect-9/16 rounded-3xl overflow-hidden border border-glass-border shadow-2xl mt-2 group mx-auto md:mx-0">
+                      <div className="relative w-full sm:w-80 aspect-9/16 rounded-3xl overflow-hidden border border-glass-border shadow-2xl mt-2 group mx-auto md:mx-0">
                          <SmartImage
                            srcRaw={coverPreview || ""}
                            alt={t("stories:form.previewAlt")}
@@ -631,15 +633,18 @@ export default function StoriesAdmin() {
 
                 <div className="flex flex-wrap gap-3 pt-4 border-t border-glass-border/20">
                   <Button
-                    variant="solid"
                     onClick={handleSubmit}
                     disabled={submitting}
                     loading={submitting}
-                    leadingIcon={<AddIcon className="h-4 w-4" />}
+                    startIcon={<CheckIcon className="h-4 w-4" />}
                   >
-                    {t("stories:form.submit")}
+                    {t("common:buttons.submit")}
                   </Button>
-                  <Button variant="outline" onClick={resetForm} leadingIcon={<RestartAltIcon className="h-4 w-4" />}>
+                  <Button
+                    onClick={resetForm}
+                    variant="ghost"
+                    startIcon={<RestartAltIcon className="h-4 w-4" />}
+                  >
                     {t("common:buttons.reset")}
                   </Button>
                 </div>
@@ -662,7 +667,7 @@ export default function StoriesAdmin() {
                 variant="ghost"
                 size="sm"
                 onClick={() => void fetchStories()}
-                leadingIcon={<RestartAltIcon className={cn("h-4 w-4", loading && "animate-spin")} />}
+                startIcon={<RestartAltIcon className={cn("h-4 w-4", loading && "animate-spin")} />}
               >
                 {t("common:buttons.refresh")}
               </Button>

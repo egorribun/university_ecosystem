@@ -1,30 +1,45 @@
 export const spacingScale = {
-  "2xs": "0.25rem",
-  xs: "0.5rem",
-  sm: "0.75rem",
-  md: "1rem",
-  lg: "1.5rem",
-  xl: "2rem",
-  "2xl": "3rem",
-  "3xl": "4.5rem",
-  "4xl": "6rem",
+  "2xs": "var(--space-1)",
+  xs: "var(--space-2)",
+  sm: "var(--space-3)",
+  md: "var(--space-4)",
+  lg: "var(--space-6)",
+  xl: "var(--space-8)",
+  "2xl": "var(--space-12)",
+  "3xl": "var(--space-16)",
 } as const
 
 export const radiusScale = {
-  xs: "0.5rem",
-  sm: "0.75rem",
-  md: "1rem",
-  lg: "1.5rem",
-  xl: "2rem",
-  "2xl": "3rem",
-  pill: "9999px",
+  xs: "var(--radius-xs)",
+  sm: "var(--radius-sm)",
+  md: "var(--radius-md)",
+  lg: "var(--radius-lg)",
+  xl: "var(--radius-xl)",
+  "2xl": "var(--radius-2xl)",
+  pill: "var(--radius-full)",
+} as const
+
+export const breakpoints = {
+  mobile: "768px",
+  tablet: "1024px",
+  desktop: "1280px",
+  wide: "1350px", // Standardized Navbar breakpoint
 } as const
 
 export const zIndexTokens = {
-  navbar: 2600,
-  overlay: 2700,
-  floating: 2800,
-  toast: 3400,
+  hide: "var(--z-hide)",
+  base: "var(--z-base)",
+  deep: "var(--z-deep)",
+  surface: "var(--z-surface)",
+  sticky: "var(--z-sticky)",
+  sidebar: "var(--z-sidebar)",
+  navbar: "var(--z-navbar)",
+  overlay: "var(--z-overlay)",
+  modal: "var(--z-modal)",
+  popover: "var(--z-popover)",
+  floating: "var(--z-floating)",
+  toast: "var(--z-toast)",
+  tooltip: "var(--z-tooltip)",
 } as const
 
 export const focusRing = {

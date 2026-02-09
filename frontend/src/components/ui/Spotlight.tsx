@@ -28,7 +28,7 @@ type SpotlightOverlayProps = {
 export function SpotlightOverlay({
   mouseX,
   mouseY,
-  color = "rgba(14, 165, 233, 0.15)",
+  color = "rgba(var(--primary-main-rgb), 0.15)",
   className,
 }: SpotlightOverlayProps) {
   return (
@@ -38,13 +38,13 @@ export function SpotlightOverlay({
         className
       )}
       style={{
-        background: useMotionTemplate`
-          radial-gradient(
-            650px circle at ${mouseX}px ${mouseY}px,
-            ${color},
-            transparent 80%
-          )
-        `,
+          background: `
+            radial-gradient(
+              var(--overlay-blur) circle at ${mouseX}px ${mouseY}px,
+              var(--primary-main) 0%,
+              transparent 80%
+            )
+          `,
       }}
     />
   )

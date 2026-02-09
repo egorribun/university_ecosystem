@@ -1,4 +1,4 @@
-import { FC, memo, useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from "react"
+import { FC, memo, useState, useEffect, useCallback, useMemo, lazy, Suspense } from "react"
 import { motion } from "framer-motion"
 import {
   MoreVertical as MoreVertIcon,
@@ -18,8 +18,6 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import api from "../api/client"
 import { useNavigate } from "react-router-dom"
 import dayjs from "dayjs"
-import utc from "dayjs/plugin/utc"
-import timezone from "dayjs/plugin/timezone"
 import SmartImage from "@/components/SmartImage"
 import { cn } from "@/utils/cn"
 import { sanitizeNewsText } from "@/utils/sanitize"
@@ -27,24 +25,11 @@ import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui"
 import Dialog from "@/components/Dialog"
 import { useSpotlight, SpotlightOverlay } from "@/components/ui/Spotlight"
+import { getMoscowDate } from "@/utils/date"
+const NewsCardActions = lazy(() => import("./news/NewsCardActions").then(m => ({ default: m.NewsCardActions })))
+const NewsCardEditDialog = lazy(() => import("./news/NewsCardEditDialog").then(m => ({ default: m.NewsCardEditDialog })))
 
-dayjs.extend(utc)
-dayjs.extend(timezone)
-
-const inputClass =
-  "w-full rounded-ue-lg border border-white/12 bg-[color-mix(in_srgb,var(--card-bg)_94%,white_6%)] px-4 py-2.5 text-[0.98rem] text-(--page-text) shadow-[inset_0_1px_0_rgba(15,23,42,0.08)] transition focus:border-(--nav-link) focus:outline-none focus:shadow-focus placeholder:text-(--placeholder-fg)"
-const textareaClass = `${inputClass} min-h-[128px] resize-y leading-relaxed`
-
-const iconButtonClass =
-  "inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-white/80 text-(--nav-link) shadow-surface transition hover:bg-white focus-visible:outline-none focus-visible:shadow-focus"
-
-const menuPanelClass =
-  "absolute right-0 top-12 z-20 min-w-[180px] overflow-hidden rounded-ue-md border border-white/12 bg-[color-mix(in_srgb,var(--card-bg)_94%,white_6%)]/98 shadow-surface-strong backdrop-blur-xl"
-
-const menuItemClass =
-  "flex w-full items-center gap-2 px-4 py-2.5 text-left text-[0.95rem] font-medium text-(--page-text) transition hover:bg-(--glass-bg)/80 focus-visible:outline-none focus-visible:bg-(--glass-bg)"
-
-type NewsCardProps = {
+export type NewsCardProps = {
   id: string
   title: string
   content: string
@@ -58,35 +43,7 @@ type NewsCardProps = {
   onChange?: () => void
 }
 
-type FieldProps = {
-  label: string
-  htmlFor: string
-  children: ReactNode
-  required?: boolean
-}
-
-function Field({ label, htmlFor, children, required = false }: FieldProps) {
-  return (
-    <div className="space-y-2">
-      <label
-        htmlFor={htmlFor}
-        className="text-sm font-semibold tracking-wide text-[color-mix(in_srgb,var(--secondary-text)_85%,white_15%)]"
-      >
-        {label}
-        {required ? <span className="ml-1 text-[#f87171]">*</span> : null}
-      </label>
-      {children}
-    </div>
-  )
-}
-
-const getMoscowDate = (dateStr: string) => {
-  let parsed = dayjs(dateStr)
-  if (!/([Zz]|[+\-]\d\d:?\d\d)$/.test(dateStr)) {
-    parsed = dayjs.utc(dateStr)
-  }
-  return parsed.tz("Europe/Moscow").format("DD.MM.YYYY HH:mm")
-}
+// getMoscowDate removed, imported from @/utils/date
 
 const NewsCardComponent: FC<NewsCardProps> = ({
   id,
@@ -105,30 +62,20 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   const navigate = useNavigate()
   const { t } = useTranslation(["news", "common"])
   const { language } = useLanguage()
-
-  const [menuOpen, setMenuOpen] = useState(false)
   const isOnline = useOnlineStatus()
-  const menuButtonRef = useRef<HTMLButtonElement | null>(null)
-  const menuRef = useRef<HTMLDivElement | null>(null)
-  const firstMenuItemRef = useRef<HTMLButtonElement | null>(null)
+
   const [editOpen, setEditOpen] = useState(false)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
-  const editTitleRef = useRef<HTMLInputElement | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [cardImageReady, setCardImageReady] = useState(!image_url)
 
-  const [editData, setEditData] = useState({
+  const editData = useMemo(() => ({
     title,
     content,
     title_en: title_en ?? "",
     content_en: content_en ?? "",
     image_url: image_url || "",
-  })
-  const [loading, setLoading] = useState(false)
-
-  const [newImage, setNewImage] = useState<File | null>(null)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const [imageLoading, setImageLoading] = useState(false)
-  const imageInputRef = useRef<HTMLInputElement>(null)
-  const [cardImageReady, setCardImageReady] = useState(!image_url)
+  }), [title, content, title_en, content_en, image_url])
 
   const { interactions, toggleLike } = useNewsInteraction(id, {
     initialData: {
@@ -172,123 +119,6 @@ const NewsCardComponent: FC<NewsCardProps> = ({
 
   const handleCardImageReady = useCallback(() => setCardImageReady(true), [])
 
-  useEffect(() => {
-    if (!newImage) {
-      setPreviewUrl(null)
-      return
-    }
-    const url = URL.createObjectURL(newImage)
-    setPreviewUrl(url)
-    return () => URL.revokeObjectURL(url)
-  }, [newImage])
-
-  useEffect(() => {
-    return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl)
-    }
-  }, [previewUrl])
-
-  useEffect(() => {
-    if (!menuOpen) return
-
-    const handleClick = (event: MouseEvent) => {
-      const target = event.target as Node
-      if (menuRef.current?.contains(target) || menuButtonRef.current?.contains(target)) return
-      setMenuOpen(false)
-    }
-
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setMenuOpen(false)
-        menuButtonRef.current?.focus()
-      }
-    }
-
-    document.addEventListener("mousedown", handleClick)
-    document.addEventListener("keydown", handleKey)
-    if (firstMenuItemRef.current) firstMenuItemRef.current.focus()
-
-    return () => {
-      document.removeEventListener("mousedown", handleClick)
-      document.removeEventListener("keydown", handleKey)
-    }
-  }, [menuOpen])
-
-  const closeMenu = useCallback(() => setMenuOpen(false), [])
-
-  const openEditDialog = useCallback(() => {
-    setEditData({
-      title,
-      content,
-      title_en: title_en ?? "",
-      content_en: content_en ?? "",
-      image_url: image_url || "",
-    })
-    setEditOpen(true)
-    setNewImage(null)
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl)
-      setPreviewUrl(null)
-    }
-    if (imageInputRef.current) imageInputRef.current.value = ""
-    closeMenu()
-  }, [title, content, title_en, content_en, image_url, previewUrl, closeMenu])
-
-  const closeEditDialog = useCallback(() => {
-    setEditOpen(false)
-    setNewImage(null)
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl)
-      setPreviewUrl(null)
-    }
-    if (imageInputRef.current) imageInputRef.current.value = ""
-  }, [previewUrl])
-
-  const editImageUrl = useMemo(
-    () => previewUrl || editData.image_url || "",
-    [editData.image_url, previewUrl]
-  )
-
-  const handleImageChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) setNewImage(file)
-  }, [])
-
-  const handleEdit = useCallback(async () => {
-    setLoading(true)
-    try {
-      let imgUrl = editData.image_url
-      if (newImage) {
-        setImageLoading(true)
-        try {
-          const data = new FormData()
-          data.append("file", newImage)
-          const res = await api.post<{ url: string }>(`/news/upload_image`, data, {
-            headers: { "Content-Type": "multipart/form-data" },
-          })
-          imgUrl = res.data.url
-        } finally {
-          setImageLoading(false)
-        }
-      }
-      const payload = {
-        title: editData.title,
-        content: editData.content,
-        title_en: editData.title_en,
-        content_en: editData.content_en,
-        image_url: imgUrl,
-      }
-      await api.patch(`/news/${id}`, payload)
-      setEditData((prev) => ({ ...prev, image_url: imgUrl }))
-      closeEditDialog()
-      onChange && onChange()
-    } catch (e) {
-      console.error(e)
-    } finally {
-      setLoading(false)
-    }
-  }, [closeEditDialog, editData, id, newImage, onChange])
-
   const handleDelete = useCallback(async () => {
     setLoading(true)
     try {
@@ -302,12 +132,18 @@ const NewsCardComponent: FC<NewsCardProps> = ({
     }
   }, [id, onChange])
 
+  const openEdit = useCallback(() => setEditOpen(true), [])
+  const closeEdit = useCallback(() => setEditOpen(false), [])
+
+  const openDeletePrompt = useCallback(() => setConfirmDeleteOpen(true), [])
+  const closeDeletePrompt = useCallback(() => setConfirmDeleteOpen(false), [])
+
   const handleCardClick = useCallback(() => {
     if (editOpen) return
     navigate(`/news/${id}`)
   }, [editOpen, id, navigate])
 
-  const hoveringDisabled = editOpen || menuOpen
+  const hoveringDisabled = editOpen
 
   return (
     <motion.article
@@ -317,7 +153,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       whileHover={{ y: -4 }}
       transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
       className={cn(
-        "card-glass group relative flex flex-col transition-shadow duration-300 ease-out h-[400px] md:h-[480px] w-full transform-gpu",
+        "card-glass group relative flex flex-col transition-shadow duration-300 ease-out h-(--news-card-h-mobile) md:h-(--news-card-h-desktop) w-full transform-gpu",
         hoveringDisabled
           ? "cursor-default"
           : "cursor-pointer hover:shadow-glass-strong active:scale-[0.985]"
@@ -328,61 +164,14 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       <SpotlightOverlay mouseX={spotlight.mouseX} mouseY={spotlight.mouseY} className="z-0" />
 
       {user?.role === "admin" && (
-        <div className="absolute right-3 top-3 z-10">
-          <button
-            ref={menuButtonRef}
-            type="button"
-            id={menuButtonId}
-            aria-label={t("news:aria.cardActions") ?? ""}
-            aria-controls={menuOpen ? menuId : undefined}
-            aria-haspopup="true"
-            aria-expanded={menuOpen ? "true" : undefined}
-            className={iconButtonClass}
-            onClick={(event) => {
-              event.stopPropagation()
-              setMenuOpen((open) => !open)
-            }}
-            disabled={loading}
-            data-news-card-menu-button
-          >
-            <MoreVertIcon size={20} />
-          </button>
-          {menuOpen ? (
-            <div
-              ref={menuRef}
-              id={menuId}
-              role="menu"
-              aria-labelledby={menuButtonId}
-              data-news-card-menu
-              className={menuPanelClass}
-            >
-              <button
-                ref={firstMenuItemRef}
-                type="button"
-                className={menuItemClass}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  openEditDialog()
-                }}
-              >
-                <EditIcon size={16} className="text-(--nav-link)" />
-                {t("common:buttons.edit")}
-              </button>
-              <button
-                type="button"
-                className={cn(menuItemClass, "text-[#e11d48]")}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  setConfirmDeleteOpen(true)
-                  closeMenu()
-                }}
-              >
-                <DeleteIcon size={16} className="text-[#e11d48]" />
-                {t("common:buttons.delete")}
-              </button>
-            </div>
-          ) : null}
-        </div>
+        <Suspense fallback={null}>
+          <NewsCardActions
+            id={id}
+            onEdit={openEdit}
+            onDelete={openDeletePrompt}
+            isDisabled={loading}
+          />
+        </Suspense>
       )}
 
       <div
@@ -400,10 +189,10 @@ const NewsCardComponent: FC<NewsCardProps> = ({
           hoveringDisabled ? "cursor-default opacity-100" : "cursor-pointer"
         )}
       >
-        <div className="relative w-full h-[200px] md:h-[220px] shrink-0 overflow-hidden border-b border-white/10 bg-[linear-gradient(135deg,rgba(29,78,216,0.18),rgba(59,130,246,0.08))]">
+        <div className="relative w-full h-50 md:h-55 shrink-0 overflow-hidden border-b border-white/10 bg-linear-to-br from-blue-700/10 to-blue-400/5">
           <div
             className={cn(
-              "absolute inset-0 animate-pulse bg-[color-mix(in_srgb,var(--glass-bg)_70%,white_30%)] transition-opacity duration-300",
+              "absolute inset-0 animate-pulse bg-input-mix transition-opacity duration-300",
               cardImageReady ? "opacity-0" : "opacity-100"
             )}
             aria-hidden
@@ -423,19 +212,19 @@ const NewsCardComponent: FC<NewsCardProps> = ({
                 onError={handleCardImageReady}
               />
               <div
-                className="pointer-events-none absolute inset-0 z-1 bg-[linear-gradient(180deg,rgba(15,23,42,0)_30%,rgba(15,23,42,0.75)_95%)] opacity-100"
+                className="pointer-events-none absolute inset-0 z-2 transition-opacity duration-300 group-hover:opacity-0 bg-gradient-news-hero opacity-100"
                 aria-hidden
               />
             </>
           ) : (
-            <div className="flex h-full w-full items-center justify-center bg-glass/70 text-white/70">
+            <span className="relative z-1 flex h-full w-full items-center justify-center overflow-hidden rounded-full">
               <ArticleIcon className="h-12 w-12" fontSize="large" />
-            </div>
+            </span>
           )}
           {createdAtIso ? (
             <time
               dateTime={createdAtIso}
-              className="absolute bottom-3 left-3 z-[2] rounded-ue-pill bg-black/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/90 transition duration-300 ease-out group-hover/button:-translate-y-0.5 group-hover/button:bg-black/70"
+              className="absolute bottom-3 left-3 z-2 rounded-ue-pill bg-black/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/90 transition duration-300 ease-out group-hover/button:-translate-y-0.5 group-hover/button:bg-black/70"
             >
               {createdAtLabel}
             </time>
@@ -448,12 +237,12 @@ const NewsCardComponent: FC<NewsCardProps> = ({
           )}
         </div>
 
-        <div className="flex flex-1 flex-col gap-2 px-3 py-3 transition duration-300 ease-out group-hover:-translate-y-px group-focus-visible/button:-translate-y-px md:gap-3 md:px-5 md:py-6">
+        <div className="flex flex-1 flex-col gap-2 p-fluid-card-p transition duration-300 ease-out group-hover:-translate-y-px group-focus-visible/button:-translate-y-px md:gap-3">
           <h3 className="truncate text-[clamp(1.07rem,3vw,1.18rem)] font-semibold">
             {localizedTitle}
           </h3>
 
-          <p className="min-h-[48px] text-[clamp(0.88rem,2vw,1.08rem)] text-[color:var(--secondary-text)] line-clamp-2 md:min-h-[72px] md:line-clamp-3">
+          <p className="min-h-12 text-sm text-(--text-secondary) line-clamp-2 md:min-h-18 md:line-clamp-3">
             {sanitizedPreview}
           </p>
 
@@ -504,133 +293,26 @@ const NewsCardComponent: FC<NewsCardProps> = ({
         </div>
       </div>
 
-      <Dialog
-        open={editOpen}
-        onClose={closeEditDialog}
-        title={t("news:dialogs.edit.title")}
-        size="md"
-        fullScreenOnMobile
-        closeLabel={t("common:buttons.close")}
-        bodyClassName="space-y-4"
-        footerClassName="flex-col-reverse gap-3 sm:flex-row"
-        footer={
-          <>
-            <Button
-              variant="outline"
-              onClick={closeEditDialog}
-              disabled={loading || imageLoading}
-              className="w-full sm:w-auto"
-            >
-              {t("common:buttons.cancel")}
-            </Button>
-            <Button
-              onClick={() => {
-                void handleEdit()
-              }}
-              disabled={loading || imageLoading}
-              loading={loading}
-              className="w-full sm:w-auto"
-            >
-              {t("common:buttons.save")}
-            </Button>
-          </>
-        }
-        initialFocus={() => editTitleRef.current ?? undefined}
-      >
-        <form
-          className="space-y-4"
-          onSubmit={(event) => {
-            event.preventDefault()
-            void handleEdit()
-          }}
-        >
-          <Field label={t("news:form.title") ?? ""} htmlFor={`news-edit-title-${id}`} required>
-            <input
-              id={`news-edit-title-${id}`}
-              ref={editTitleRef}
-              type="text"
-              value={editData.title}
-              onChange={(e) => setEditData({ ...editData, title: e.target.value })}
-              className={inputClass}
-            />
-          </Field>
-
-          <Field label={t("news:form.text") ?? ""} htmlFor={`news-edit-content-${id}`} required>
-            <textarea
-              id={`news-edit-content-${id}`}
-              value={editData.content}
-              onChange={(e) => setEditData({ ...editData, content: e.target.value })}
-              className={textareaClass}
-              rows={4}
-            />
-          </Field>
-
-          <Field
-            label={t("news:form.title_en", { defaultValue: "Title (English)" }) ?? ""}
-            htmlFor={`news-edit-title-en-${id}`}
-          >
-            <input
-              id={`news-edit-title-en-${id}`}
-              type="text"
-              value={editData.title_en}
-              onChange={(e) => setEditData({ ...editData, title_en: e.target.value })}
-              className={inputClass}
-            />
-          </Field>
-
-          <Field
-            label={t("news:form.content_en", { defaultValue: "News text (English)" }) ?? ""}
-            htmlFor={`news-edit-content-en-${id}`}
-          >
-            <textarea
-              id={`news-edit-content-en-${id}`}
-              value={editData.content_en}
-              onChange={(e) => setEditData({ ...editData, content_en: e.target.value })}
-              className={textareaClass}
-              rows={4}
-            />
-          </Field>
-
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <Button
-              as="label"
-              variant="outline"
-              size="sm"
-              leadingIcon={<PhotoCamera size={20} />}
-              className="w-full sm:w-auto"
-              disabled={imageLoading}
-            >
-              {imageLoading ? t("common:statuses.uploading") : t("news:form.changePhoto")}
-              <input
-                type="file"
-                accept="image/*"
-                hidden
-                ref={imageInputRef}
-                onChange={handleImageChange}
-              />
-            </Button>
-
-            {editImageUrl ? (
-              <SmartImage
-                srcRaw={editImageUrl}
-                alt={t("news:alt.preview")}
-                className="h-20 w-full max-w-[180px] rounded-ue-md border border-white/10 object-cover shadow-surface"
-              />
-            ) : null}
-          </div>
-        </form>
-      </Dialog>
+      <Suspense fallback={null}>
+        <NewsCardEditDialog
+          id={id}
+          open={editOpen}
+          onClose={closeEdit}
+          initialData={editData}
+          onSuccess={onChange}
+        />
+      </Suspense>
 
       <Dialog
         open={confirmDeleteOpen}
-        onClose={() => setConfirmDeleteOpen(false)}
+        onClose={closeDeletePrompt}
         title={t("news:dialogs.delete.title")}
         bodyClassName="space-y-4"
         footer={
           <>
             <Button
               variant="outline"
-              onClick={() => setConfirmDeleteOpen(false)}
+              onClick={closeDeletePrompt}
               disabled={loading}
               className="w-full sm:w-auto"
             >
@@ -642,7 +324,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
               }}
               disabled={loading}
               loading={loading}
-              className="w-full bg-[linear-gradient(98deg,#dc2626,#b91c1c)] text-white hover:bg-[linear-gradient(98deg,#b91c1c,#991b1b)] sm:w-auto"
+              className="w-full bg-error-bg text-error-text hover:bg-error-bg/80 sm:w-auto"
             >
               <DeleteIcon size={18} className="mr-1" />
               {t("common:buttons.delete")}

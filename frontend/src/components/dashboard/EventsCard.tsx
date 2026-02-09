@@ -77,7 +77,7 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
   const scopedEvents = eventsScope === "today" ? todayEvents : weekEvents
 
   const listActionBase =
-    "group relative isolate w-full overflow-hidden rounded-xl border border-border-subtle bg-surface-hover/10 px-4 py-3 text-left transition-all duration-300 ease-out hover:bg-surface-hover/20 hover:border-border-strong hover:-translate-y-0.5 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus/50"
+    "group relative isolate w-full overflow-hidden rounded-xl border border-border-subtle bg-surface-hover/10 px-4 py-3 text-left transition-all duration-300 ease-out hover:bg-surface-hover/20 hover:border-border-strong hover:-translate-y-0.5 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
 
   return (
     <Card
@@ -138,7 +138,7 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
             {[1, 2, 3].map((i) => (
               <div
                 key={i}
-                className="flex flex-col gap-2 rounded-ue-lg border border-(var(--dash-panel-item-divider)) bg-(var(--dash-panel-item-bg)) px-4 py-3 opacity-60"
+                className="flex flex-col gap-2 rounded-ue-lg border border-border-subtle bg-surface/20 px-4 py-3 opacity-60"
               >
                 <Skeleton width="60%" height={20} />
                 <div className="flex items-center gap-2">
@@ -169,7 +169,7 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
                     type="button"
                     className={cn(
                       listActionBase,
-                      "flex min-h-[4.5rem] flex-col justify-center gap-2 border-0 bg-transparent px-4 py-3 hover:bg-white/5 active:scale-[0.99] sm:gap-2.5"
+                      "flex min-h-18 flex-col justify-center gap-2 border-0 bg-transparent px-4 py-3 hover:bg-white/5 active:scale-[0.99] sm:gap-2.5"
                     )}
                     onClick={() => navigate(`/events/${e.id}`)}
                     aria-label={t("dashboard:aria.eventItem", { title: e.title })}
@@ -188,7 +188,7 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
                     <span className="flex flex-wrap items-center gap-2 text-sm text-secondary">
                       <Badge
                         size="sm"
-                        className="border-primary-main/20 bg-primary-main/5 font-mono text-xs font-medium text-primary-main dark:bg-primary-main/10"
+                        className="border-brand/20 bg-brand/5 font-mono text-xs font-medium text-brand dark:bg-brand/10"
                         label={
                           d
                             ? d.toLocaleString(locale, {
