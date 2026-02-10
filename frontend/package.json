@@ -55,7 +55,7 @@
     "@tanstack/react-virtual": "^3.13.13",
     "@zxcvbn-ts/core": "^3.0.4",
     "@zxcvbn-ts/language-common": "^3.0.4",
-    "axios": "^1.12.2",
+    "axios": "^1.13.5",
     "clsx": "^2.1.1",
     "crypto-js": "^4.2.0",
     "dayjs": "^1.11.13",
