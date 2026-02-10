@@ -321,7 +321,7 @@ export default function Profile() {
       <Dialog open={qrOpen} onClose={() => setQrOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle className="text-center">{t("profile:dialog.qr.title")}</DialogTitle>
         <DialogContent className="flex flex-col items-center justify-center gap-3 min-h-[320px]">
-          <div className="bg-white p-4 rounded-2xl border border-glass-border shadow-glass">
+          <div className="bg-surface p-4 rounded-2xl border border-glass-border shadow-glass">
             <QRCodeSVG value={vCardData} size={300} level="H" includeMargin />
           </div>
           <p className="text-xs text-(--text-secondary) text-center mt-2 opacity-80">

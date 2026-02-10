@@ -28,6 +28,7 @@ import utc from "dayjs/plugin/utc"
 import timezone from "dayjs/plugin/timezone"
 import { Button, Badge } from "@/components/ui"
 import useMediaQuery from "@/hooks/useMediaQuery"
+import { breakpoints } from "@/theme/tokens"
 import { cn } from "@/utils/cn"
 
 dayjs.extend(utc)
@@ -58,7 +59,7 @@ const isCanceledRequestError = (err: unknown): boolean => {
 }
 
 const inputClass =
-  "w-full rounded-ue-lg border border-(--glass-border) bg-(--bg-surface)/50 px-4 py-3 text-[0.98rem] font-medium text-(--text-primary) shadow-sm transition-all duration-200 focus:border-(--primary-main) focus:outline-none focus:ring-4 focus:ring-(--primary-main)/15 placeholder:text-(--text-secondary)/60"
+  "w-full rounded-xl border border-(--glass-border) bg-(--bg-surface)/50 px-4 py-3 text-[0.98rem] font-medium text-(--text-primary) shadow-sm transition-all duration-200 focus:border-(--primary-main) focus:outline-none focus:ring-4 focus:ring-(--primary-main)/15 placeholder:text-(--text-secondary)/60"
 
 function Snackbar({
   open,
@@ -80,7 +81,7 @@ function Snackbar({
   if (!open || !message) return null
 
   return (
-    <div className="fixed bottom-6 left-1/2 z-navbar -translate-x-1/2 animate-in slide-in-from-bottom-4 fade-in">
+    <div className="fixed bottom-6 left-1/2 z-(--z-navbar) -translate-x-1/2 animate-in slide-in-from-bottom-4 fade-in">
       <div className="rounded-[1.25rem] border border-(--glass-border) bg-(--bg-surface)/90 px-5 py-3.5 text-sm font-semibold text-(--text-primary) shadow-premium backdrop-blur-md">
         {message}
       </div>
@@ -92,7 +93,7 @@ const EventDetail = () => {
   const { id } = useParams()
   const navigate = useNavigate()
   const { user } = useAuth()
-  const isMobile = useMediaQuery("(max-width: 900px)")
+  const isMobile = useMediaQuery(`(max-width: ${breakpoints.content})`)
   const { t, i18n } = useTranslation(["events", "common"])
   const language = i18n.language?.startsWith("en") ? "en" : "ru"
 
@@ -367,7 +368,7 @@ const EventDetail = () => {
               )}
             </div>
             {imageUrl && (
-              <div className="relative w-full overflow-hidden rounded-ue-xl border border-(--glass-border) bg-black/5 shadow-premium aspect-video">
+              <div className="relative w-full overflow-hidden rounded-2xl border border-(--glass-border) bg-black/5 shadow-premium aspect-video">
                 <SmartImage
                   srcRaw={imageUrl}
                   alt={t("events:alt.image")}
@@ -478,7 +479,7 @@ const EventDetail = () => {
                   )}
                 </form>
                 {isUploadErrorState(uploadState) && (
-                  <p className="mt-2 text-xs text-red-500">{uploadState.error}</p>
+                  <p className="mt-2 text-xs text-error-text">{uploadState.error}</p>
                 )}
               </div>
             )}
@@ -520,7 +521,7 @@ const EventDetail = () => {
                             type="button"
                             aria-label={t("events:detail.sections.files.deleteAria")}
                             disabled={isPendingFile}
-                            className="rounded-full p-1 text-red-500 transition-colors hover:bg-red-500/10 disabled:opacity-50"
+                            className="rounded-full p-1 text-error-text transition-colors hover:bg-error-bg/10 disabled:opacity-50"
                             onClick={async () => {
                               if (!isPendingFile) {
                                 await handleDeleteFile(f.id)
@@ -555,7 +556,7 @@ const EventDetail = () => {
         <div className="flex flex-row gap-8 items-start">
           <div className="w-[45%] space-y-6">
             {imageUrl && (
-              <div className="relative w-full overflow-hidden rounded-[2rem] border border-(--glass-border) bg-black/5 shadow-premium aspect-21/9">
+              <div className="relative w-full overflow-hidden rounded-4xl border border-(--glass-border) bg-black/5 shadow-premium aspect-21/9">
                 <SmartImage
                   srcRaw={imageUrl}
                   alt={t("events:alt.image")}
@@ -706,7 +707,7 @@ const EventDetail = () => {
                   )}
                 </form>
                 {isUploadErrorState(uploadState) && (
-                  <p className="mt-2 text-sm text-red-500">{uploadState.error}</p>
+                  <p className="mt-2 text-sm text-error-text">{uploadState.error}</p>
                 )}
               </div>
             )}
@@ -749,7 +750,7 @@ const EventDetail = () => {
                             type="button"
                             aria-label={t("events:detail.sections.files.deleteAria")}
                             disabled={isPendingFile}
-                            className="ml-2 rounded-full p-1 text-red-500 transition-colors hover:bg-red-500/10 disabled:opacity-50"
+                            className="ml-2 rounded-full p-1 text-error-text transition-colors hover:bg-error-bg/10 disabled:opacity-50"
                             onClick={async () => {
                               if (!isPendingFile) {
                                 await handleDeleteFile(f.id)

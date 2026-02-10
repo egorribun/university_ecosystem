@@ -67,7 +67,9 @@ async function bootstrap() {
     // 4. Initial sync
     await processOfflineQueues()
 
-    console.log("[SW] Bootstrap complete")
+    if (import.meta.env.DEV) {
+      console.log("[SW] Bootstrap complete")
+    }
   } catch (err) {
     error("SW bootstrap failed", err)
   }

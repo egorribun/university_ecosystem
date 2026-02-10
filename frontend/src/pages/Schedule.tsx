@@ -30,6 +30,7 @@ import {
   Plus as AddIcon,
 } from "lucide-react"
 import useMediaQuery from "@/hooks/useMediaQuery"
+import { breakpoints } from "@/theme/tokens"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import OfflineFallback from "@/components/OfflineFallback"
 import { cn } from "@/utils/cn"
@@ -119,7 +120,7 @@ export default function Schedule() {
   const editingLessonTypeOptions = lessonTypeOptions // Simplified as we have full list in hook
 
   const addDayLabel = addDay ? getDayLabel(addDay) : ""
-  const isMobile = useMediaQuery("(max-width:1730px)")
+  const isMobile = useMediaQuery(`(max-width: ${breakpoints.ultrawide})`)
   const tableScrollRef = useRef<HTMLDivElement | null>(null)
   const headRefs = useRef<(HTMLTableCellElement | null)[]>([])
   const dayCardRefs = useRef<(HTMLDivElement | null)[]>([])
@@ -187,7 +188,7 @@ export default function Schedule() {
     const gap = minutesDiff(prev.end_time, curr.start_time)
     if (gap <= 0) return null
     return (
-      <div className="absolute left-1/2 top-[-14px] z-3 -translate-x-1/2 pointer-events-none">
+      <div className="absolute left-1/2 top-[-14px] z-(--z-deep) -translate-x-1/2 pointer-events-none">
         <Badge
           size="xs"
           className="chip-break font-medium bg-(--bg-surface)/80 border-glass-border shadow-glass text-(--text-secondary)"
@@ -207,9 +208,9 @@ export default function Schedule() {
         style={{ minHeight: 360 }}
       >
         <table className="w-full border-collapse">
-          <thead className="sticky top-0 z-5">
+          <thead className="sticky top-0 z-(--z-content)">
             <tr>
-              <th className="sticky left-0 z-navbar w-[50px] bg-(--bg-surface)/60 px-4 py-4 text-center font-extrabold text-(--text-primary) border-r border-glass-border shadow-md backdrop-blur-md">
+              <th className="sticky left-0 z-(--z-navbar) w-[50px] bg-(--bg-surface)/60 px-4 py-4 text-center font-extrabold text-(--text-primary) border-r border-glass-border shadow-md backdrop-blur-md">
                 №
               </th>
               {weekdayBackend.map((day, idx) => {
@@ -223,7 +224,7 @@ export default function Schedule() {
                     }}
                     className={cn(
                       isTodayCol ? "bg-brand/10 shadow-focus" : "bg-(--bg-surface)/40",
-                      "z-navbar backdrop-blur-md"
+                      "z-(--z-navbar) backdrop-blur-md"
                     )}
                   >
                     <div className="flex items-center justify-center gap-2">
@@ -264,7 +265,7 @@ export default function Schedule() {
             ) : (
               visibleRows.map((row, rowIdx) => (
                 <tr key={rowIdx}>
-                  <td className="sticky left-0 z-navbar bg-(--bg-surface)/60 px-4 py-3 text-center font-bold border-r border-glass-border shadow-md backdrop-blur-md">
+                  <td className="sticky left-0 z-(--z-navbar) bg-(--bg-surface)/60 px-4 py-3 text-center font-bold border-r border-glass-border shadow-md backdrop-blur-md">
                     {rowIdx + 1}
                   </td>
                   {row.map((lesson, colIdx) => {
@@ -411,7 +412,7 @@ export default function Schedule() {
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-(--bg-surface)/40 border border-glass-border text-brand shadow-glass">
                 <CalendarMonthIcon className="h-7 w-7" />
               </div>
-              <h1 className="text-[clamp(1.6rem,5vw,2.75rem)] font-bold tracking-tight text-(--text-primary)">
+              <h1 className="text-(--fs-page-title) font-bold tracking-tight text-(--text-primary)">
                 {user?.role === "student"
                   ? t("schedule:title.student")
                   : t("schedule:title.default")}
@@ -436,7 +437,7 @@ export default function Schedule() {
               )}
             >
               {currentLesson ? (
-                <div className="relative z-1">
+                <div className="relative z-(--z-base)">
                   <div className="mb-4 flex flex-wrap items-center gap-3">
                     <Badge size="sm" tone="primary" className="font-semibold">
                       {t("schedule:chips.current")}
@@ -447,7 +448,7 @@ export default function Schedule() {
                   <ProgressBar value={currentProgress} className="mt-5 h-2.5 rounded-full" />
                 </div>
               ) : nextLesson ? (
-                <div className="relative z-1 flex flex-wrap items-center gap-3">
+                <div className="relative z-(--z-base) flex flex-wrap items-center gap-3">
                   <Badge size="sm" variant="outline" tone="primary" className="font-semibold">
                     {t("schedule:chips.next")}
                   </Badge>

@@ -136,7 +136,7 @@ export const StepUpDialog = ({
   return (
     <div
       role="presentation"
-      className="fixed inset-0 z-navbar flex items-center justify-center p-4 bg-black/50"
+      className="fixed inset-0 z-(--z-navbar) flex items-center justify-center p-4 bg-black/50"
       onClick={onClose}
     >
       <div

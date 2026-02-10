@@ -17,17 +17,17 @@ export default function Footer() {
 
   return (
     <footer
-      className="bg-footer relative overflow-hidden border-t border-white/10"
+      className="bg-footer relative overflow-hidden border-t border-border-subtle/50"
       role="contentinfo"
       style={{
         minHeight: "150px",
       }}
     >
-      <div className="relative z-10 mx-auto max-w-[1260px] px-fluid-x py-8 md:py-10">
+      <div className="relative z-(--z-surface) mx-auto max-w-[1260px] px-fluid-x py-8 md:py-10">
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr] lg:gap-8">
           <div className="flex min-w-0 flex-col gap-3">
             <div className="flex items-center gap-3">
-              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white">
+              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-(--bg-surface-raised) border border-border-subtle">
                 <SmartImage
                   srcRaw={guuLogo}
                   alt={t("navigation:brandAlt")}
@@ -109,7 +109,7 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className="mt-12 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-8">
+        <div className="mt-12 flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle/50 pt-8">
           <p className="text-sm font-medium text-white opacity-60">
             {t("navigation:footer.copyright", { year })}
           </p>

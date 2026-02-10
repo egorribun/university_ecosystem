@@ -148,14 +148,14 @@ export default function ForgotPassword() {
     <div className="min-h-screen bg-(--bg-page) text-(--text-primary) flex items-center justify-center p-6 relative overflow-hidden">
       {/* Background decorative elements */}
       <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-20">
-        <div className="absolute top-[-10%] left-[-5%] w-[40%] h-[40%] bg-brand/30 rounded-full blur-[120px]" />
-        <div className="absolute bottom-[-10%] right-[-5%] w-[40%] h-[40%] bg-brand/20 rounded-full blur-[120px]" />
+        <div className="absolute top-[-10%] left-[-5%] w-[40%] h-[40%] bg-(--glow-spotlight-primary) rounded-full blur-(--glow-blur-massive)" />
+        <div className="absolute bottom-[-10%] right-[-5%] w-[40%] h-[40%] bg-(--glow-spotlight-secondary) rounded-full blur-(--glow-blur-massive)" />
       </div>
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-[440px] z-10"
+        className="w-full max-w-[440px] z-(--z-modal)"
       >
         <SectionCard className="p-8 sm:p-10 border-glass-border shadow-2xl backdrop-blur-2xl">
           <div className="space-y-8">
@@ -179,7 +179,7 @@ export default function ForgotPassword() {
                   className="space-y-6 pt-4"
                 >
                   <div className="flex justify-center">
-                    <div className="h-20 w-20 rounded-3xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+                    <div className="h-20 w-20 rounded-3xl bg-success-bg/20 flex items-center justify-center text-success-text">
                       <CheckCircle2 className="h-10 w-10" />
                     </div>
                   </div>
@@ -264,9 +264,9 @@ export default function ForgotPassword() {
                     </div>
 
                     {forgotErrorMessage && (
-                      <p className="text-sm font-bold text-rose-500 text-center animate-bounce">
+                      <div className="min-h-6 text-center text-sm font-semibold text-error-text animate-bounce" aria-live="assertive">
                         {forgotErrorMessage}
-                      </p>
+                      </div>
                     )}
 
                     <div className="space-y-4 pt-2">

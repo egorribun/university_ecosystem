@@ -56,7 +56,7 @@ function Field({ label, htmlFor, children, required = false }: FieldProps) {
         className="text-sm font-semibold tracking-wide text-(--text-secondary)/80"
       >
         {label}
-        {required ? <span className="ml-1 text-red-500">*</span> : null}
+        {required ? <span className="ml-1 text-error-text text-sm font-bold">*</span> : null}
       </label>
       {children}
     </div>
@@ -214,7 +214,7 @@ const News = () => {
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-(--bg-surface)/40 border border-glass-border text-brand shadow-glass transition-transform duration-200 hover:scale-105 backdrop-blur-md">
                 <ArticleIcon className="h-7 w-7" />
               </div>
-              <h1 className="text-[clamp(1.6rem,5vw,2.75rem)] font-bold tracking-tight text-(--text-primary)">
+              <h1 className="text-(--fs-page-title) font-bold tracking-tight text-(--text-primary)">
                 {t("news:pageTitle")}
               </h1>
             </div>

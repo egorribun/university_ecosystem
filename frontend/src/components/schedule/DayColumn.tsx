@@ -58,6 +58,7 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
           "backdrop-blur-md"
         )}
       >
+        <div className="absolute top-3 right-3 px-3 py-1.5 rounded-lg bg-success-bg/90 backdrop-blur-sm shadow-lg flex items-center gap-1.5 text-success-text"></div>
         <div className="mb-4 flex items-center gap-2">
           <h3
             className={cn(
@@ -69,7 +70,7 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
           </h3>
           {(userRole === "admin" || userRole === "teacher") && (
             <button
-              className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg border border-primary-main/20 bg-primary-main/10 text-primary-main transition-all duration-200 hover:border-primary-main hover:bg-primary-main hover:text-white hover:shadow-[0_4px_12px_rgba(59,130,246,0.25)] hover:scale-110"
+              className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg border border-brand/20 bg-brand/10 text-brand transition-all duration-200 hover:border-brand hover:bg-brand hover:text-white hover:shadow-glass hover:scale-110"
               onClick={(e) => {
                 e.stopPropagation()
                 onAdd()
@@ -85,7 +86,7 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
             {!isOnline && !hasSchedule ? (
               <OfflineFallback onRetry={onRetry} />
             ) : (
-              <p className="text-[color-mix(in_srgb,var(--text-secondary)_65%,transparent)] text-sm font-medium dark:text-[color-mix(in_srgb,var(--text-secondary)_75%,transparent)]">
+              <p className="text-(--text-caption) text-sm font-medium">
                 {t("schedule:mobile.noLessons")}
               </p>
             )}
@@ -101,7 +102,7 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
                   {idx > 0 && gap > 0 && (
                     <Badge
                       size="xs"
-                      className="chip-break mb-2 font-medium bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400 shadow-sm"
+                      className="chip-break mb-2 font-medium bg-warning-bg/20 border border-warning-border/30 text-warning-text shadow-sm"
                     >
                       {t("schedule:break", { minutes: gap })}
                     </Badge>

@@ -277,7 +277,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center p-6 text-center">
+                  <div className="w-full h-full flex items-center justify-center p-6 text-center bg-linear-to-r from-blue-500 to-indigo-600 transition-all duration-300">
                     <p className="text-xs font-medium text-(--text-secondary) opacity-60">
                       {t("stories:list.noCover")}
                     </p>
@@ -357,7 +357,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
               </Button>
               <Button
                 variant="outline"
-                className="text-amber-500 border-amber-500/30 hover:bg-amber-500/10"
+                className="text-(--warning-text) border-(--warning-text)/30 hover:bg-(--warning-text)/10"
                 onClick={handleUnpublish}
                 disabled={unpublishing}
                 loading={unpublishing}
@@ -366,7 +366,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
               </Button>
               <Button
                 variant="outline"
-                className="text-rose-500 border-rose-500/30 hover:bg-rose-500/10 ml-auto"
+                className="text-(--error-text) border-(--error-text)/30 hover:bg-(--error-text)/10 ml-auto"
                 onClick={handleDelete}
                 disabled={deleting}
                 loading={deleting}

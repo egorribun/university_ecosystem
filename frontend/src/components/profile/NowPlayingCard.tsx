@@ -163,7 +163,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
       <motion.div
         className={cn(
           "nowplaying--spotify w-full grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 px-4 py-3.5 rounded-2xl relative overflow-hidden",
-          "border border-glass-border bg-(--bg-surface)/40 backdrop-blur-md shadow-glass text-(--text-primary)",
+          "border-glass-border bg-glass-bg backdrop-blur-glass shadow-glass text-(--text-primary)",
           "transition-all duration-300 hover:-translate-y-0.5"
         )}
         initial={isTest || prefersReduce || reduced ? false : { y: 12, opacity: 0.94, scale: 1 }}
@@ -174,7 +174,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
           isTest ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 36, mass: 0.9 }
         }
       >
-        <div className="absolute inset-0 bg-linear-to-br from-brand/10 to-transparent pointer-events-none" />
+        <div className="absolute inset-0 z-0 bg-linear-to-t from-black/80 via-black/20 to-transparent pointer-events-none" />
         <div className="relative w-14 h-14 rounded-lg overflow-hidden shadow-premium">
           {data.album_image_url && !imageError ? (
             <img
@@ -199,7 +199,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
             </div>
           )}
         </div>
-        <div className="min-w-0 flex flex-col gap-1.5 relative z-1" aria-live="polite">
+        <div className="min-w-0 flex flex-col gap-1.5 relative z-(--z-deep)" aria-live="polite">
           <h3
             className={`np-title font-bold leading-tight tracking-tight text-(--text-primary) text-base transition-opacity duration-200 ${
               imageLoaded || !data.album_image_url || imageError ? "opacity-100" : "opacity-0"
@@ -226,7 +226,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
                 aria-valuemin={0}
                 aria-valuemax={duration}
                 aria-label={t("profile:nowPlaying.progress")}
-                className="h-full bg-brand rounded-full origin-left will-change-transform shadow-[0_0_8px_color-mix(in_srgb,var(--primary-main)_40%,transparent)]"
+                className="h-full bg-brand rounded-full origin-left will-change-transform shadow-glow-primary"
                 style={{
                   transform: `scaleX(${pct / 100})`,
                   transition: progressBarTransition,

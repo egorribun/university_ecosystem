@@ -107,7 +107,7 @@ export function renderBootstrapFallback({
   container.style.padding = "2rem"
   container.style.gap = "1.5rem"
   container.style.textAlign = "center"
-  container.style.backgroundColor = "var(--bg-(--bg-page), #f8fafc)"
+  container.style.backgroundColor = "var(--bg-page, #f8fafc)"
 
   const title = documentRef.createElement("h1")
   title.textContent = copy.title
@@ -120,7 +120,7 @@ export function renderBootstrapFallback({
   description.textContent = copy.description
   description.style.margin = "0"
   description.style.maxWidth = "32rem"
-  description.style.color = "var(--text-(--text-secondary), #475569)"
+  description.style.color = "var(--text-secondary, #475569)"
 
   const actions = documentRef.createElement("div")
   actions.style.display = "flex"

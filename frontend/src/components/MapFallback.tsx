@@ -96,12 +96,12 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
       role="region"
       aria-labelledby={titleId}
       className={cn(
-        "absolute inset-0 z-40 overflow-y-auto px-6 py-8 sm:px-12 sm:py-12 flex justify-center",
+        "absolute inset-0 z-(--z-sticky) overflow-y-auto px-6 py-8 sm:px-12 sm:py-12 flex justify-center",
         "bg-linear-to-br from-background/95 to-background/85 backdrop-blur-3xl",
         "text-(--text-primary)"
       )}
     >
-      <div className="w-full max-w-(--ue-max-w-content) flex flex-col gap-10">
+      <div className="w-full max-w-2xl flex flex-col gap-10">
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <h2 id={titleId} className="text-2xl font-black tracking-tight sf-pro">
@@ -116,7 +116,7 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
             <p id={instructionsId} className="text-sm font-bold text-(--text-tertiary)">
               {t("map.fallback.instructions")}
             </p>
-            <div className="inline-flex items-center gap-2 rounded-xl bg-orange-500/10 border border-orange-500/20 px-3 py-1.5 text-xs font-black text-orange-600 dark:text-orange-400 uppercase tracking-wider">
+            <div className="inline-flex items-center gap-2 rounded-xl bg-warning-bg/20 border border-warning-border/30 px-3 py-1.5 text-xs font-black text-warning-text uppercase tracking-wider">
               <AlertCircle className="h-3.5 w-3.5" />
               {t("map.fallback.offlineNotice")}
             </div>

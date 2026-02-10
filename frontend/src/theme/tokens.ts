@@ -7,6 +7,7 @@ export const spacingScale = {
   xl: "var(--space-8)",
   "2xl": "var(--space-12)",
   "3xl": "var(--space-16)",
+  "4xl": "var(--space-18)",
 } as const
 
 export const radiusScale = {
@@ -20,21 +21,28 @@ export const radiusScale = {
 } as const
 
 export const breakpoints = {
+  small: "640px",
   mobile: "768px",
+  content: "900px",
   tablet: "1024px",
+  dashboard: "1100px",
   desktop: "1280px",
-  wide: "1350px", // Standardized Navbar breakpoint
+  wide: "1350px",
+  ultrawide: "1730px",
 } as const
 
 export const zIndexTokens = {
   hide: "var(--z-hide)",
   base: "var(--z-base)",
+  decor: "var(--z-decor)",
   deep: "var(--z-deep)",
   surface: "var(--z-surface)",
+  content: "var(--z-content)",
   sticky: "var(--z-sticky)",
   sidebar: "var(--z-sidebar)",
   navbar: "var(--z-navbar)",
   overlay: "var(--z-overlay)",
+  dropdown: "var(--z-dropdown)",
   modal: "var(--z-modal)",
   popover: "var(--z-popover)",
   floating: "var(--z-floating)",

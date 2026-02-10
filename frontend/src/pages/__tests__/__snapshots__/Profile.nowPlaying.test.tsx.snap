@@ -9,7 +9,7 @@ exports[`NowPlayingCard > matches snapshot when paused 1`] = `
   target="_blank"
 >
   <div
-    class="nowplaying--spotify w-full grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 px-4 py-3.5 rounded-2xl relative overflow-hidden border border-glass-border bg-surface/40 backdrop-blur-md shadow-glass text-primary-text transition-all duration-300 hover:-translate-y-0.5"
+    class="nowplaying--spotify w-full grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 px-4 py-3.5 rounded-2xl relative overflow-hidden border border-glass-border bg-(--bg-surface)/40 backdrop-blur-md shadow-glass text-(--text-primary) transition-all duration-300 hover:-translate-y-0.5"
     style="opacity: 1; transform: none;"
     tabindex="0"
   >
@@ -33,18 +33,18 @@ exports[`NowPlayingCard > matches snapshot when paused 1`] = `
       class="min-w-0 flex flex-col gap-1.5 relative z-1"
     >
       <h3
-        class="np-title font-bold leading-tight tracking-tight text-primary-text text-base transition-opacity duration-200 opacity-100"
+        class="np-title font-bold leading-tight tracking-tight text-(--text-primary) text-base transition-opacity duration-200 opacity-100"
       >
         Test Track
       </h3>
       <p
-        class="np-art text-sm text-secondary-text opacity-90 truncate"
+        class="np-art text-sm text-(--text-secondary) opacity-90 truncate"
       >
         Tester
       </p>
       <span
         aria-hidden="true"
-        class="inline-flex self-start px-2 py-0.5 text-[10px] font-bold uppercase bg-surface-hover/80 text-secondary-text rounded-full border border-glass-border"
+        class="inline-flex self-start px-2 py-0.5 text-[10px] font-bold uppercase bg-(--bg-surface-hover)/80 text-(--text-secondary) rounded-full border border-glass-border"
       >
         Paused
       </span>
@@ -52,7 +52,7 @@ exports[`NowPlayingCard > matches snapshot when paused 1`] = `
         class="flex items-center gap-2 w-full mt-0.5"
       >
         <div
-          class="flex-1 min-w-0 h-1.5 bg-surface-hover/80 rounded-full overflow-hidden relative"
+          class="flex-1 min-w-0 h-1.5 bg-(--bg-surface-hover)/80 rounded-full overflow-hidden relative"
         >
           <div
             aria-label="Track progress"
@@ -87,7 +87,7 @@ exports[`NowPlayingCard > matches snapshot when playing 1`] = `
   target="_blank"
 >
   <div
-    class="nowplaying--spotify w-full grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 px-4 py-3.5 rounded-2xl relative overflow-hidden border border-glass-border bg-surface/40 backdrop-blur-md shadow-glass text-primary-text transition-all duration-300 hover:-translate-y-0.5"
+    class="nowplaying--spotify w-full grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 px-4 py-3.5 rounded-2xl relative overflow-hidden border border-glass-border bg-(--bg-surface)/40 backdrop-blur-md shadow-glass text-(--text-primary) transition-all duration-300 hover:-translate-y-0.5"
     style="opacity: 1; transform: none;"
     tabindex="0"
   >
@@ -111,12 +111,12 @@ exports[`NowPlayingCard > matches snapshot when playing 1`] = `
       class="min-w-0 flex flex-col gap-1.5 relative z-1"
     >
       <h3
-        class="np-title font-bold leading-tight tracking-tight text-primary-text text-base transition-opacity duration-200 opacity-100"
+        class="np-title font-bold leading-tight tracking-tight text-(--text-primary) text-base transition-opacity duration-200 opacity-100"
       >
         Test Track
       </h3>
       <p
-        class="np-art text-sm text-secondary-text opacity-90 truncate"
+        class="np-art text-sm text-(--text-secondary) opacity-90 truncate"
       >
         Tester
       </p>
@@ -124,7 +124,7 @@ exports[`NowPlayingCard > matches snapshot when playing 1`] = `
         class="flex items-center gap-2 w-full mt-0.5"
       >
         <div
-          class="flex-1 min-w-0 h-1.5 bg-surface-hover/80 rounded-full overflow-hidden relative"
+          class="flex-1 min-w-0 h-1.5 bg-(--bg-surface-hover)/80 rounded-full overflow-hidden relative"
         >
           <div
             aria-label="Track progress"

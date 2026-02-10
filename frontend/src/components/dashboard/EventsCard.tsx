@@ -92,7 +92,7 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
       style={style}
       {...props}
     >
-      <div className="relative z-1 space-y-5">
+      <div className="relative z-(--z-base) space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-[clamp(1.1rem,2vw,1.5rem)] font-extrabold text-(--text-primary)">
             {t("dashboard:events.heading")}
@@ -138,7 +138,7 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
             {[1, 2, 3].map((i) => (
               <div
                 key={i}
-                className="flex flex-col gap-2 rounded-ue-lg border border-border-subtle bg-(--bg-surface)/20 px-4 py-3 opacity-60"
+                className="flex flex-col gap-2 rounded-xl border border-border-subtle bg-(--bg-surface)/20 px-4 py-3 opacity-60"
               >
                 <Skeleton width="60%" height={20} />
                 <div className="flex items-center gap-2">
@@ -169,7 +169,7 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
                     type="button"
                     className={cn(
                       listActionBase,
-                      "flex min-h-18 flex-col justify-center gap-2 border-0 bg-transparent px-4 py-3 hover:bg-white/5 active:scale-[0.99] sm:gap-2.5"
+                      "flex min-h-(--space-18) flex-col justify-center gap-2 border-0 bg-transparent px-4 py-3 hover:bg-white/5 active:scale-[0.99] sm:gap-2.5"
                     )}
                     onClick={() => navigate(`/events/${e.id}`)}
                     aria-label={t("dashboard:aria.eventItem", { title: e.title })}
@@ -226,7 +226,7 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
           repeat: Infinity,
           ease: "easeInOut",
         }}
-        className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top_left,var(--dash-card-events-radial),transparent_70%)] mix-blend-soft-light transition-opacity duration-500"
+        className="pointer-events-none absolute inset-0 z-(--z-hide) bg-[radial-gradient(circle_at_top_left,var(--dash-card-events-radial),transparent_70%)] mix-blend-soft-light transition-opacity duration-500"
       />
       <motion.span
         aria-hidden="true"
@@ -242,7 +242,7 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
           repeat: Infinity,
           ease: "easeInOut",
         }}
-        className="pointer-events-none absolute -top-16 left-1/4 z-0 h-40 w-40 rounded-full bg-[radial-gradient(circle,var(--dash-card-events-orb),transparent)] blur-3xl mix-blend-soft-light transition-opacity duration-700"
+        className="pointer-events-none absolute -top-16 left-1/4 z-(--z-hide) h-40 w-40 rounded-full bg-[radial-gradient(circle,var(--dash-card-events-orb),transparent)] blur-3xl mix-blend-soft-light transition-opacity duration-700"
       />
     </Card>
   )

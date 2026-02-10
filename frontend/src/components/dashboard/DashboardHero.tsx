@@ -45,14 +45,14 @@ export function DashboardHero({
   const headerGradientClass = cn(
     "transition-[background] duration-700",
     isNarrow
-      ? "bg-[linear-gradient(135deg,var(--dash-header-grad-start),var(--dash-header-grad-end))]"
-      : "bg-[linear-gradient(125deg,var(--dash-header-grad-start),var(--dash-header-grad-end))]"
+      ? "bg-(--grad-header-135)"
+      : "bg-(--grad-header-125)"
   )
 
   const heroBackdropLayers = useMemo(() => {
     const layers = [
-      "absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top,var(--dash-hero-radial-top),transparent_78%)] mix-blend-soft-light",
-      "absolute inset-0 -z-20 bg-[radial-gradient(circle_at_bottom,var(--dash-hero-radial-bottom),transparent_78%)]",
+      "absolute inset-0 z-(--z-hide) bg-[radial-gradient(circle_at_top,var(--dash-hero-radial-top),transparent_78%)] mix-blend-soft-light",
+      "absolute inset-0 z-(--z-hide) bg-[radial-gradient(circle_at_bottom,var(--dash-hero-radial-bottom),transparent_78%)]",
     ]
 
     const orbSize = isNarrow ? "h-[28rem] w-[28rem]" : "h-[46rem] w-[46rem]"
@@ -70,11 +70,11 @@ export function DashboardHero({
 
     if (!prefersReducedMotion && !isNarrow) {
       layers.push(
-        "absolute -left-28 top-1/2 h-[30rem] w-[30rem] -translate-y-1/2 animate-[spin_26s_linear_infinite] rounded-full bg-[conic-gradient(from_120deg_at_50%_50%,var(--dash-hero-conic-primary),var(--dash-hero-conic-secondary),var(--dash-hero-conic-tertiary),var(--dash-hero-conic-accent))] opacity-80 blur-[220px]"
+        "absolute -left-28 top-1/2 h-[30rem] w-[30rem] -translate-y-1/2 animate-[spin_26s_linear_infinite] rounded-full bg-(--grad-dash-conic) opacity-80 blur-[220px]"
       )
     } else if (!isNarrow) {
       layers.push(
-        "absolute -left-24 top-1/2 h-[26rem] w-[26rem] -translate-y-1/2 rounded-full bg-[conic-gradient(from_140deg_at_50%_50%,var(--dash-hero-conic-primary),var(--dash-hero-conic-secondary),transparent_85%)] opacity-60 blur-[200px]"
+        "absolute -left-24 top-1/2 h-[26rem] w-[26rem] -translate-y-1/2 rounded-full bg-(--grad-dash-conic-simple) opacity-60 blur-[200px]"
       )
     }
 
@@ -96,11 +96,11 @@ export function DashboardHero({
           <div key={index} className={layer} />
         ))}
       </div>
-      <div className="relative z-1 space-y-6">
+      <div className="relative z-(--z-deep) space-y-6">
         <ScrollReveal mode="pop" delay={0.1} width="100%">
           <header
             className={cn(
-              "group card-glass rounded-ue-lg transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
+              "group card-glass rounded-xl transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
               "hover:-translate-y-1 hover:scale-[1.01] hover:shadow-xl motion-reduce:hover:transform-none motion-reduce:hover:shadow-none",
               "p-6 md:p-9 focus-within:shadow-focus focus-visible:outline-none focus-visible:shadow-focus",
               headerGradientClass
@@ -108,7 +108,7 @@ export function DashboardHero({
           >
             <span
               aria-hidden="true"
-              className="pointer-events-none absolute inset-0 dash-highlight-veil bg-[radial-gradient(circle_at_top_left,var(--primary-subtle-bg),transparent_60%)] transition-opacity duration-700"
+              className="pointer-events-none absolute inset-0 dash-highlight-veil bg-(--flare-primary) opacity-10 transition-opacity duration-700"
             />
             {showHeaderMotion ? (
               <span
@@ -123,15 +123,15 @@ export function DashboardHero({
                 className="pointer-events-none absolute -inset-y-20 -left-1/2 w-[160%] skew-x-[-14deg] bg-linear-to-r from-transparent via-white/35 to-transparent opacity-0 transition-opacity duration-700 ease-out group-hover:opacity-45"
               />
             )}
-            <div className="pointer-events-none absolute -right-24 top-1/2 h-64 w-64 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,var(--dash-hero-highlight),transparent)] dash-highlight-veil blur-3xl" />
+            <div className="pointer-events-none absolute -right-24 top-1/2 h-64 w-64 -translate-y-1/2 rounded-full bg-(--flare-highlight) dash-highlight-veil blur-3xl" />
             {showHeaderMotion ? (
-              <div className="pointer-events-none absolute left-[-20%] top-[-40%] h-56 w-56 animate-[spin_18s_linear_infinite] rounded-full bg-[conic-gradient(from_90deg_at_50%_50%,var(--dash-hero-conic-primary),var(--dash-hero-conic-secondary),var(--dash-hero-conic-tertiary),var(--dash-hero-conic-accent))] opacity-60 blur-[120px]" />
+              <div className="pointer-events-none absolute left-[-20%] top-[-40%] h-56 w-56 animate-[spin_18s_linear_infinite] rounded-full bg-(--grad-dash-conic) opacity-60 blur-[120px]" />
             ) : (
-              <div className="pointer-events-none absolute left-[-18%] top-[-42%] h-48 w-48 rounded-full bg-[conic-gradient(from_130deg_at_50%_50%,var(--dash-hero-conic-primary),var(--dash-hero-conic-secondary),transparent_85%)] opacity-50 blur-[110px]" />
+              <div className="pointer-events-none absolute left-[-18%] top-[-42%] h-48 w-48 rounded-full bg-(--grad-dash-conic-simple) opacity-50 blur-[110px]" />
             )}
             <div className="relative grid gap-6 lg:grid-cols-12 lg:items-center">
               <div className="space-y-3 text-(--text-primary) lg:col-span-8">
-                <h1 className="font-display text-[clamp(1.5rem,2.4vw,2.6rem)] font-extrabold leading-tight">
+                <h1 className="font-display text-(--fs-hero) font-extrabold leading-tight">
                   {greeting}
                   {user?.full_name ? `, ${user.full_name.split(" ")[0]}` : ""}!
                 </h1>

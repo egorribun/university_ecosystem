@@ -98,7 +98,7 @@ export function Dialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-overlay flex items-center justify-center overflow-y-auto px-fluid-x py-fluid-y"
+      className="fixed inset-0 z-(--z-overlay) flex items-center justify-center overflow-y-auto px-fluid-x py-fluid-y"
       role="presentation"
     >
       <div
@@ -113,11 +113,11 @@ export function Dialog({
         aria-labelledby={labelledBy}
         aria-describedby={describedBy}
         className={cn(
-          "relative z-10 w-full max-w-(--dialog-max-w)",
+          "relative z-(--z-surface) w-full max-w-(--dialog-max-w)",
           sizeClassMap[size],
           fullScreenOnMobile
-            ? "h-dvh max-h-dvh overflow-y-auto rounded-none bg-(--bg-surface) pb-6 pt-5 text-(--text-primary) shadow-surface-strong ring-1 ring-white/10 sm:h-auto sm:max-h-[90vh] sm:rounded-ue-xl sm:px-6 sm:pb-7"
-            : "max-h-[92vh] overflow-y-auto rounded-ue-xl bg-(--bg-surface)/90 pb-6 pt-5 text-(--text-primary) shadow-surface-strong ring-1 ring-white/10 backdrop-blur-xl sm:px-6 sm:pb-7",
+            ? "h-dvh max-h-dvh overflow-y-auto rounded-none bg-(--bg-surface) pb-6 pt-5 text-(--text-primary) shadow-surface-strong ring-1 ring-white/10 sm:h-auto sm:max-h-[90vh] sm:rounded-2xl sm:px-6 sm:pb-7"
+            : "max-h-[92vh] overflow-y-auto rounded-2xl bg-(--bg-surface)/90 pb-6 pt-5 text-(--text-primary) shadow-surface-strong ring-1 ring-white/10 backdrop-blur-xl sm:px-6 sm:pb-7",
           "focus:outline-none",
           className
         )}

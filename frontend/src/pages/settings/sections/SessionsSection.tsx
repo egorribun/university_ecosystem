@@ -17,11 +17,11 @@ import type { SettingsSectionProps } from "../types"
 
 interface ActiveSession {
   id: string
-  user_agent: string | null
-  ip_address: string | null
+  user_agent?: string | null
+  ip_address?: string | null
   created_at: string
-  last_seen_at: string | null
-  revoked_at: string | null
+  last_seen_at?: string | null
+  revoked_at?: string | null
   is_current: boolean
 }
 
@@ -78,7 +78,7 @@ export function SessionsSection({
         {sessions.length === 0 && sessionsFetching ? (
           <div className="mt-3 flex flex-row items-center gap-2.5">
             <CircularProgress size={18} />
-            <p className="text-sm font-semibold text-[color-mix(in_srgb,var(--text-primary)_84%,var(--text-secondary)_16%)]">
+            <p className="text-sm font-semibold text-(--text-primary)">
               {t("settings:sessions.loading")}
             </p>
           </div>
@@ -124,8 +124,8 @@ export function SessionsSection({
                         "text-sm wrap-break-word transition-colors",
                         session.is_current ? "font-semibold" : "font-medium",
                         isRevoked
-                          ? "text-[color-mix(in_srgb,var(--text-primary)_68%,white_32%)]"
-                          : "text-[color-mix(in_srgb,var(--text-primary)_90%,var(--text-secondary)_10%)]"
+                          ? "text-(--text-primary)/70"
+                          : "text-(--text-secondary)"
                       )}
                     >
                       {session.user_agent || t("settings:sessions.unknownDevice")}

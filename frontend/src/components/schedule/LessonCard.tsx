@@ -56,7 +56,7 @@ export function LessonCard({
       className={cn(
         "group relative flex h-full min-h-32 flex-col overflow-hidden rounded-2xl border border-glass-border-subtle bg-glass-elevated p-3 shadow-premium transition-all duration-300 sm:min-h-[130px]",
         hasBreakBefore ? "mt-6" : "",
-        "hover:-translate-y-1 hover:shadow-glass hover:border-brand/30",
+        "hover:-translate-y-1 hover:shadow-glass hover:border-brand-subtle",
         "dark:shadow-premium-dark dark:hover:shadow-glass-strong-dark",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-page"
       )}
@@ -121,7 +121,7 @@ export function LessonCard({
             onDelete()
           }}
           className={cn(
-            "absolute top-2 right-2 z-10 flex h-7 w-7 items-center justify-center rounded-lg opacity-0 transition-premium",
+            "absolute top-2 right-2 z-(--z-surface) flex h-7 w-7 items-center justify-center rounded-lg opacity-0 transition-premium",
             "bg-(--error-bg) text-(--error-text)",
             "border border-(--error-text)/30",
             "shadow-sm",

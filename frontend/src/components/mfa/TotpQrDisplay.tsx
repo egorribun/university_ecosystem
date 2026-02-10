@@ -39,9 +39,9 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
       {label ? (
         <p className="text-sm text-(--text-secondary)">{t("mfa.totp.accountLabel", { label })}</p>
       ) : null}
-      <div className="p-4 rounded-lg border border-glass-border bg-white shadow-sm dark:bg-white min-h-[224px] flex items-center justify-center">
+      <div className="p-4 rounded-lg border border-glass-border bg-surface shadow-sm min-h-[224px] flex items-center justify-center">
         <Suspense
-          fallback={<div className="w-[192px] h-[192px] animate-pulse bg-gray-100 rounded" />}
+          fallback={<div className="w-[192px] h-[192px] animate-pulse bg-(--border-subtle) rounded" />}
         >
           {/*
             QR codes require high-contrast colors for reliable scanning.
@@ -81,13 +81,13 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
             aria-label={t("mfa.totp.copySecret") ?? ""}
             className={`
               p-2 rounded-lg transition-colors
-              ${copied ? "text-green-500 hover:bg-green-500/10" : "text-primary hover:bg-primary/10"}
+              ${copied ? "text-success-text hover:bg-success-bg/10" : "text-brand hover:bg-brand/10"}
             `}
           >
             {copied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
           </button>
           {showTooltip && (
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-gray-800 rounded whitespace-nowrap pointer-events-none">
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 text-xs text-white bg-(--text-primary) rounded whitespace-nowrap pointer-events-none">
               {copied ? t("mfa.totp.copied") : t("mfa.totp.copySecret")}
             </div>
           )}

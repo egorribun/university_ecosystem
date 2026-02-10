@@ -93,7 +93,7 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
           {shouldShowSkeleton && (
             <div
               key="skeleton"
-              className="absolute inset-0 z-10"
+              className="absolute inset-0 z-(--z-decor)"
               data-testid="async-image-skeleton"
             >
               <Skeleton width="100%" height="100%" />

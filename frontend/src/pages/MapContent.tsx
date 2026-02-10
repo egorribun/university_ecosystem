@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next"
 import MapFallback from "@/components/MapFallback"
 import { CAMPUS_COORDINATES } from "@/constants/campus"
 import useMediaQuery from "@/hooks/useMediaQuery"
+import { breakpoints } from "@/theme/tokens"
 import { cn } from "@/utils/cn"
 import { Alert, Button, Snackbar } from "@/components/settings"
 
@@ -40,7 +41,7 @@ const detectEmbedOptOut = (): boolean => {
 }
 
 export default function MapContent() {
-  const isMobile = useMediaQuery("(max-width:900px)")
+  const isMobile = useMediaQuery(`(max-width: ${breakpoints.content})`)
   const { t } = useTranslation("system")
   const [layer, setLayer] = useState<LayerMode>("map")
   const [iframeLoaded, setIframeLoaded] = useState(false)
@@ -172,7 +173,7 @@ export default function MapContent() {
         ref={containerRef}
         className="map-page bg-(--bg-canvas-light) dark:bg-(--bg-canvas-dark) transition-colors duration-300 h-full w-full relative"
       >
-        <div className="glass glass--panel glass--sheen map-head z-navbar flex items-center justify-between px-6 py-4 absolute top-0 left-0 right-0">
+        <div className="glass glass--panel glass--sheen map-head z-(--z-navbar) flex items-center justify-between px-6 py-4 absolute top-0 left-0 right-0">
           <div className="flex items-center gap-3">
             <MapIcon className={cn("text-brand", isMobile ? "h-6 w-6" : "h-8 w-8")} />
             <h1 className="map-title text-[clamp(1.1rem,3.6vw,2rem)] font-black tracking-tight text-(--text-primary)">
@@ -221,7 +222,7 @@ export default function MapContent() {
         )}
 
         {(!iframeLoaded || loadError) && !disableEmbeds && (
-          <div className="absolute inset-0 z-sidebar grid place-items-center bg-background/90 backdrop-blur-sm">
+          <div className="absolute inset-0 z-(--z-sidebar) grid place-items-center bg-background/90 backdrop-blur-sm">
             {!loadError ? (
               <div className="h-16 w-16 rounded-full border-4 border-surface/20 border-t-brand animate-spin" />
             ) : (
@@ -254,7 +255,7 @@ export default function MapContent() {
 
         <div className="map-controls-shield absolute inset-0 pointer-events-none" />
 
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-navbar pointer-events-none flex flex-col gap-3 pb-(--safe-area-bottom)">
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-(--z-navbar) pointer-events-none flex flex-col gap-3 pb-(--safe-area-bottom)">
           <div className="flex items-center gap-2 pointer-events-auto">
             <div className="glass glass--panel rounded-2xl p-1 bg-(--bg-surface)/40 backdrop-blur-xl border border-glass-border shadow-2xl flex items-center gap-1">
               <button
@@ -271,7 +272,7 @@ export default function MapContent() {
                     transition={{ type: "spring", stiffness: 400, damping: 30 }}
                   />
                 )}
-                <span className="relative z-10 flex items-center gap-2">
+                <span className="relative z-(--z-base) flex items-center gap-2">
                   <MapIcon className="h-4 w-4" />
                   {!isMobile && <span>{t("map.layer.map")}</span>}
                 </span>
@@ -290,7 +291,7 @@ export default function MapContent() {
                     transition={{ type: "spring", stiffness: 400, damping: 30 }}
                   />
                 )}
-                <span className="relative z-10 flex items-center gap-2">
+                <span className="relative z-(--z-base) flex items-center gap-2">
                   <SatelliteAltIcon className="h-4 w-4" />
                   {!isMobile && <span>{t("map.layer.hybrid")}</span>}
                 </span>

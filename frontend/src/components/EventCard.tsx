@@ -229,7 +229,7 @@ const EventCardComponent: FC<EventCardProps> = ({
           }
         }}
       >
-        <SpotlightOverlay mouseX={spotlight.mouseX} mouseY={spotlight.mouseY} className="z-0 rounded-[24px]" />
+        <SpotlightOverlay mouseX={spotlight.mouseX} mouseY={spotlight.mouseY} className="z-(--z-hide) rounded-[24px]" />
 
         {/* Admin Menu */}
         {user && (user.role === "admin" || user.role === "teacher") && (
@@ -311,7 +311,7 @@ const EventCardComponent: FC<EventCardProps> = ({
                 variant="solid"
                 onClick={handleDelete}
                 disabled={loading}
-                className="bg-red-500 hover:bg-red-600"
+                className="bg-error-text hover:bg-error-text/90"
               >
                 {t("common:buttons.delete")}
               </Button>

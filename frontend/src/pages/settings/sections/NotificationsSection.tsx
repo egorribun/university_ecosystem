@@ -82,7 +82,7 @@ export function NotificationsSection({
       >
         {pushInitializing ? (
           <div className="flex items-center gap-2 py-2">
-            <div className="animate-pulse w-4 h-4 rounded-full bg-slate-300 dark:bg-slate-700" />
+            <div className="animate-pulse w-4 h-4 rounded-full bg-(--border-strong)" />
             <span className="text-sm text-text-muted">
               {t("settings:notifications.loading")}
             </span>

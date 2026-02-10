@@ -382,7 +382,7 @@ export default function NewsDetail() {
         label: t("news:shareDialog.options.whatsapp", { defaultValue: "WhatsApp" }),
         href: `https://api.whatsapp.com/send?text=${encodedTitle}%20${encodedUrl}`,
         icon: <WhatsAppIcon className="h-4 w-4" />,
-        accent: "text-green-500",
+        accent: "text-(--success-text)",
       },
       {
         id: "email",
@@ -543,14 +543,14 @@ export default function NewsDetail() {
                     <FavoriteIcon
                       className={cn(
                         "h-4 w-4",
-                        isLiked ? "fill-rose-500 text-rose-500" : "text-(--text-secondary)"
+                        isLiked ? "fill-(--error-text) text-(--error-text)" : "text-(--text-secondary)"
                       )}
                     />
                   }
                   className={cn(
                     "w-full basis-full sm:w-auto sm:basis-auto transition-colors duration-200",
                     isLiked
-                      ? "border-rose-200/30 bg-rose-500/10"
+                      ? "border-(--error-text)/20 bg-(--error-text)/10"
                       : "border-(--glass-border)/30 bg-(--bg-surface)/40"
                   )}
                 >
@@ -678,7 +678,7 @@ export default function NewsDetail() {
                                   void deleteComment(comment.id)
                                 }
                               }}
-                              className="p-1.5 rounded-full hover:bg-rose-500/10 text-rose-500 hover:text-rose-400 transition-colors"
+                              className="p-1.5 rounded-full hover:bg-(--error-text)/10 text-(--error-text) hover:text-(--error-text)/80 transition-colors"
                               title={
                                 t("news:actions.deleteComment", { defaultValue: "Delete" }) ?? ""
                               }
@@ -788,7 +788,7 @@ export default function NewsDetail() {
                     option.id === "telegram"
                       ? "text-(--brand-main)"
                       : option.id === "whatsapp"
-                        ? "text-green-500"
+                        ? "text-success-text"
                         : "text-(--brand-main)/80"
                   )}
                 >
@@ -919,7 +919,7 @@ export default function NewsDetail() {
                     variant="ghost"
                     size="sm"
                     onClick={resetPreview}
-                    className="text-rose-500"
+                    className="text-(--error-text)"
                   >
                     {t("common:buttons.reset")}
                   </Button>
@@ -968,7 +968,7 @@ export default function NewsDetail() {
               void handleDelete()
             }}
             disabled={deleting}
-            className="w-full bg-linear-to-r from-red-600 to-red-700 text-white hover:from-red-700 hover:to-red-800 sm:w-auto"
+            className="absolute inset-0 bg-linear-to-t from-gray-900 via-gray-900/40 to-transparent text-white hover:from-red-700 hover:to-red-800 sm:w-auto"
           >
             <div className="flex items-center gap-2">
               <DeleteIcon className="h-4 w-4" />
@@ -984,7 +984,7 @@ export default function NewsDetail() {
           autoHideDuration={2400}
           onClose={() => setSnackbar("")}
           anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-          className="z-navbar"
+          className="z-(--z-navbar)"
         >
           <Alert severity="success" variant="filled" onClose={() => setSnackbar("")}>
             {snackbar}

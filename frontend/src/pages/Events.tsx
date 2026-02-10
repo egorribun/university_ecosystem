@@ -26,8 +26,11 @@ import { useTranslation } from "react-i18next"
 import { EVENTS_PAGE_SIZE, useEventsListQuery, useMyEventsQuery } from "@/api/hooks/events"
 import { Button, Badge, Skeleton } from "@/components/ui"
 import { Dialog, DialogActions, DialogContent, DialogTitle } from "@/components/settings"
+import { motion, AnimatePresence } from "framer-motion"
+import { springSoft } from "@/utils/animations"
 import { cn } from "@/utils/cn"
 import useMediaQuery from "@/hooks/useMediaQuery"
+import { breakpoints } from "@/theme/tokens"
 
 type EventTabKey = "active" | "archive" | "my"
 type EventTab = { key: EventTabKey; is_active?: boolean }
@@ -104,7 +107,7 @@ const Events = () => {
   const [imageUploading, setImageUploading] = useState(false)
   const [createPreview, setCreatePreview] = useState<string | null>(null)
 
-  const isMobile = useMediaQuery("(max-width:900px)")
+  const isMobile = useMediaQuery(`(max-width: ${breakpoints.content})`)
 
   const [filterAnchor, setFilterAnchor] = useState<HTMLElement | null>(null)
   const filtersOpen = Boolean(filterAnchor)
@@ -331,7 +334,7 @@ const Events = () => {
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-(--bg-surface)/40 border border-glass-border text-brand shadow-glass transition-transform duration-300 hover:scale-[1.08] overflow-hidden">
                 <EventNoteIcon className="h-7 w-7" />
               </div>
-              <h1 className="text-[clamp(1.6rem,5vw,2.75rem)] font-bold tracking-tight text-(--text-primary)">
+              <h1 className="text-(--fs-page-title) font-bold tracking-tight text-(--text-primary)">
                 {t("events:pageTitle")}
               </h1>
             </div>
@@ -354,42 +357,43 @@ const Events = () => {
             <div
               data-fade
               style={fadeDelayStyle("200ms")}
-              className="mb-6 lg:max-w-4xl"
+              className="w-full max-w-[440px] z-(--z-modal)"
               role="tablist"
             >
               <div
                 ref={tabContainerRef}
-                className="relative inline-flex rounded-xl border border-glass-border/30 bg-(--bg-surface)/40 p-1 shadow-glass backdrop-blur-md"
+                className={cn(
+                  "inline-flex w-full items-center gap-1 rounded-[11px] border border-glass-border bg-(--bg-surface)/40 p-1 backdrop-blur-md shadow-glass",
+                  "sm:w-auto"
+                )}
               >
-                {/* Sliding indicator */}
-                <div
-                  className="absolute bottom-1 top-1 rounded-lg border border-glass-border/20 bg-(--bg-surface) shadow-sm transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
-                  style={{
-                    left: indicatorStyle.left,
-                    width: indicatorStyle.width,
-                  }}
-                  aria-hidden="true"
-                />
                 {tabs.map((tabItem) => (
                   <button
                     key={tabItem.key}
-                    ref={(el) => {
-                      tabRefs.current.set(tabItem.key, el)
-                    }}
+                    type="button"
                     role="tab"
-                    id={`events-tab-${tabItem.key}`}
                     aria-selected={tab === tabItem.key}
                     aria-controls={`events-tabpanel-${tabItem.key}`}
                     onClick={() => handleTabChange(tabItem.key)}
                     className={cn(
-                      "relative z-1 px-4 py-2 text-[15px] font-semibold rounded-[9px] transition-colors duration-200",
+                      "relative z-(--z-base) px-4 py-2 text-[15px] font-semibold rounded-[9px] transition-colors duration-200",
                       "sm:px-6 sm:text-base",
                       tab === tabItem.key
                         ? "text-(--text-primary)"
                         : "text-(--text-secondary) hover:text-(--text-primary)"
                     )}
                   >
-                    {t(`events:tabs.${tabItem.key}`)}
+                    {tab === tabItem.key && (
+                      <motion.div
+                        layoutId="active-tab-indicator"
+                        className="absolute inset-0 bg-(--bg-surface) shadow-sm"
+                        style={{ borderRadius: "inherit", zIndex: -1 }}
+                        transition={springSoft}
+                      />
+                    )}
+                    <span className="relative z-(--z-base)">
+                      {t(`events:tabs.${tabItem.key}`)}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -448,7 +452,7 @@ const Events = () => {
             {filtersOpen && filterAnchor && (
               <div
                 ref={filterPopoverRef}
-                className="fixed z-navbar mt-2 min-w-[260px] rounded-2xl border border-glass-border bg-(--bg-surface)/90 p-4 shadow-glass backdrop-blur-xl"
+                className="fixed z-(--z-modal) mt-2 min-w-[260px] rounded-2xl border border-glass-border bg-(--bg-surface)/90 p-4 shadow-glass backdrop-blur-xl"
                 style={{
                   top: filterAnchor.getBoundingClientRect().bottom + 8,
                   right: window.innerWidth - filterAnchor.getBoundingClientRect().right,
@@ -534,7 +538,7 @@ const Events = () => {
               {!loading && normalizedEvents.length === 0 && (
                 <div className="col-span-full mt-12 flex w-full justify-center animate-in fade-in slide-in-from-bottom-4 duration-500">
                   <div className="flex w-full max-w-md flex-col items-center gap-5 rounded-3xl border border-glass-border/30 bg-(--bg-surface)/40 px-8 py-14 text-center shadow-glass backdrop-blur-md">
-                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand/10 border border-brand/20 shadow-brand/10 shadow-lg">
+                    <div className="relative z-(--z-base) flex h-16 w-16 items-center justify-center rounded-full bg-brand/10 border border-brand/20 shadow-brand/10 shadow-lg">
                       <EventNoteIcon className="h-8 w-8 text-brand" />
                     </div>
                     <div className="space-y-2">
@@ -543,10 +547,10 @@ const Events = () => {
                       </p>
                       <p className="text-sm text-(--text-secondary)">
                         {tab === "active"
-                          ? "Попробуйте посмотреть прошедшие мероприятия"
+                          ? t("events:states.emptyHint.active")
                           : tab === "archive"
-                            ? "Загляните в актуальные мероприятия"
-                            : "Зарегистрируйтесь на интересующие мероприятия"}
+                            ? t("events:states.emptyHint.archive")
+                            : t("events:states.emptyHint.my")}
                       </p>
                     </div>
                     {tab !== "my" && (
@@ -556,7 +560,7 @@ const Events = () => {
                         onClick={() => handleTabChange(tab === "active" ? "archive" : "active")}
                         className="mt-2 text-brand hover:bg-brand/10"
                       >
-                        {tab === "active" ? "Прошедшие" : "Актуальные"}
+                        {tab === "active" ? t("events:tabs.archive") : t("events:tabs.active")}
                       </Button>
                     )}
                   </div>
@@ -733,12 +737,12 @@ const Events = () => {
                           onChange={(event) =>
                             setEventData({ ...eventData, ends_at: event.target.value })
                           }
-                          className={cn(inputClass, dateError && "border-red-500")}
+                          className={cn(inputClass, dateError && "border-error-border")}
                         />
                       </div>
                     </div>
                     {dateError && (
-                      <p className="mt-1 text-sm text-red-500 font-medium">
+                      <p className="mt-1 text-sm text-error-text font-medium">
                         {t("events:form.errors.endsBeforeStarts")}
                       </p>
                     )}

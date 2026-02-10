@@ -202,10 +202,10 @@ export function EventEditDialog({
             type="datetime-local"
             value={draft.ends_at.slice(0, 16)}
             onChange={(e) => setDraft({ ...draft, ends_at: e.target.value })}
-            className={cn(inputClass, dateError && "border-red-500")}
+            className={cn(inputClass, dateError && "border-error-border")}
           />
           {dateError && (
-            <p className="mt-1 text-sm text-red-500">{t("events:form.errors.endsBeforeStarts")}</p>
+            <p className="mt-1 text-sm text-error-text">{t("events:form.errors.endsBeforeStarts")}</p>
           )}
         </div>
         <div>
@@ -236,7 +236,7 @@ export function EventEditDialog({
               <SmartImage
                 srcRaw={cardImageUrl}
                 alt={t("events:alt.preview")}
-                className="h-[140px] w-[220px] rounded-ue-lg border border-(--glass-border) object-cover shadow-surface"
+                className="h-[140px] w-[220px] rounded-xl border border-(--glass-border) object-cover shadow-surface"
               />
             </div>
           )}

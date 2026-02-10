@@ -129,9 +129,9 @@ export function ScheduleCard({
       style={style}
       {...props}
     >
-      <div className="relative z-1 space-y-5">
+      <div className="relative z-(--z-base) space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-[clamp(1.1rem,2vw,1.5rem)] font-extrabold text-(--text-primary)">
+          <h2 className="text-(--fs-card-title) font-extrabold text-(--text-primary)">
             {t("dashboard:todaySchedule")}
           </h2>
           <div className="flex items-center gap-2">
@@ -197,7 +197,7 @@ export function ScheduleCard({
             {[1, 2, 3].map((i) => (
               <div
                 key={i}
-                className="flex flex-col gap-2 rounded-ue-lg border border-(--glass-border) bg-(--bg-surface)/20 px-4 py-3 opacity-60"
+                className="flex flex-col gap-2 rounded-xl border border-(--glass-border) bg-(--bg-surface)/20 px-4 py-3 opacity-60"
               >
                 <div className="flex items-center gap-2">
                   <Skeleton width={80} height={18} />
@@ -256,7 +256,7 @@ export function ScheduleCard({
           repeat: Infinity,
           ease: "easeInOut",
         }}
-        className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top,var(--dash-card-schedule-radial),transparent_72%)] mix-blend-soft-light transition-opacity duration-500"
+        className="pointer-events-none absolute inset-0 z-(--z-hide) bg-(--grad-schedule-flare) mix-blend-soft-light transition-opacity duration-500"
       />
       <motion.span
         aria-hidden="true"
@@ -272,7 +272,7 @@ export function ScheduleCard({
           repeat: Infinity,
           ease: "easeInOut",
         }}
-        className="pointer-events-none absolute -top-24 right-10 z-0 h-36 w-36 rounded-full bg-[radial-gradient(circle,var(--dash-card-schedule-orb),transparent)] blur-3xl mix-blend-soft-light transition-opacity duration-700"
+        className="pointer-events-none absolute -top-24 right-10 z-(--z-hide) h-36 w-36 rounded-full bg-(--flare-schedule-orb) blur-3xl mix-blend-soft-light transition-opacity duration-700"
       />
     </Card>
   )

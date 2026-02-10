@@ -298,7 +298,7 @@ export default function DashboardStories({
           >
             <div
               aria-hidden
-              className="absolute inset-0 z-1 bg-linear-to-b from-black/40 via-transparent to-black/80"
+              className="pointer-events-none absolute inset-0 z-(--z-base) bg-linear-to-b from-black/0 via-black/0 to-black/60"
               onClick={closeViewer}
             />
             <div
@@ -307,13 +307,13 @@ export default function DashboardStories({
               aria-modal="true"
               aria-labelledby={viewerStory.title ? dialogTitleId : undefined}
               aria-label={storyDialogLabel}
-              className="relative z-1 flex w-full justify-center"
+              className="relative z-(--z-base) flex w-full justify-center"
             >
               <div
                 className={cn(
-                  "relative z-10 flex aspect-9/16 w-(--story-card-w) max-h-[92vh] max-w-(--story-card-w) flex-col items-stretch justify-center overflow-hidden text-white sm:aspect-video sm:w-[min(96%,960px)] sm:max-h-[80vh] sm:max-w-[min(96%,960px)]",
+                  "relative z-(--z-decor) flex aspect-9/16 w-(--story-card-w) max-h-[92vh] max-w-(--story-card-w) flex-col items-stretch justify-center overflow-hidden text-white sm:aspect-video sm:w-[min(96%,960px)] sm:max-h-[80vh] sm:max-w-[min(96%,960px)]",
                   viewerStory.cover_url ? "bg-(--bg-page)" : "bg-brand shadow-premium-lift",
-                  viewerStory.cover_url ? "rounded-none" : "rounded-ue-xl sm:rounded-ue-2xl"
+                  viewerStory.cover_url ? "rounded-none" : "rounded-2xl sm:rounded-3xl"
                 )}
                 onPointerDown={handlePointerStart}
                 onPointerUp={handlePointerEnd}
@@ -357,8 +357,8 @@ export default function DashboardStories({
                     )}
                     style={{
                       backgroundImage: viewerStory.cover_url
-                        ? "linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--primary-main) 10%, transparent) 55%, var(--bg-page) 100%)"
-                        : "linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--slate-900) 82%, transparent) 60%, var(--bg-page) 100%)",
+                        ? "linear-gradient(180deg, transparent 0%, var(--primary-subtle-bg) 55%, var(--bg-page) 100%)"
+                        : "var(--grad-story-fade)",
                       backdropFilter: viewerStory.cover_url ? "blur(var(--blur-glass))" : undefined,
                       WebkitBackdropFilter: viewerStory.cover_url
                         ? "blur(var(--blur-glass))"
@@ -425,7 +425,7 @@ export default function DashboardStories({
                   type="button"
                   onClick={closeViewer}
                   aria-label={t("stories.viewer.aria.close")}
-                  className="absolute right-4 top-9 inline-flex h-11 w-11 items-center justify-center rounded-full bg-glass/50 text-white transition-colors duration-200 ease-out hover:bg-glass/70 focus-visible:outline focus-visible:ring-2 focus-visible:ring-white/70 sm:right-6"
+                  className="absolute right-4 top-9 inline-flex h-11 w-11 items-center justify-center rounded-full bg-glass-bg/50 text-white transition-colors duration-200 ease-out hover:bg-glass-bg/70 focus-visible:outline focus-visible:ring-2 focus-visible:ring-white/70 sm:right-6"
                 >
                   <CloseIcon className="h-5 w-5" aria-hidden="true" />
                 </button>
@@ -436,7 +436,7 @@ export default function DashboardStories({
                       type="button"
                       onClick={goPrev}
                       aria-label={t("stories.viewer.aria.prev")}
-                      className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-glass/50 text-white transition-colors duration-200 ease-out hover:bg-glass/70 focus-visible:outline focus-visible:ring-2 focus-visible:ring-white/70"
+                      className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-glass-bg/50 text-white transition-colors duration-200 ease-out hover:bg-glass-bg/70 focus-visible:outline focus-visible:ring-2 focus-visible:ring-white/70"
                     >
                       <ArrowLeftIcon className="h-5 w-5" aria-hidden="true" />
                     </button>
@@ -446,7 +446,7 @@ export default function DashboardStories({
                       type="button"
                       onClick={goNext}
                       aria-label={t("stories.viewer.aria.next")}
-                      className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-glass/50 text-white transition-colors duration-200 ease-out hover:bg-glass/70 focus-visible:outline focus-visible:ring-2 focus-visible:ring-white/70"
+                      className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-glass-bg/50 text-white transition-colors duration-200 ease-out hover:bg-glass-bg/70 focus-visible:outline focus-visible:ring-2 focus-visible:ring-white/70"
                     >
                       <ArrowRightIcon className="h-5 w-5" aria-hidden="true" />
                     </button>
@@ -529,7 +529,7 @@ export default function DashboardStories({
                       "transition-transform data-[active=true]:ring-4 data-[active=true]:ring-brand/45"
                     )}
                   >
-                    <div className="relative z-1 aspect-9/16 w-[--story-card-w] overflow-hidden rounded-ue-xl bg-(--bg-surface-raised) shadow-premium md:w-[--story-card-w-md]">
+                    <div className="relative z-(--z-base) aspect-9/16 w-[--story-card-w] overflow-hidden rounded-2xl bg-(--bg-surface-raised) shadow-premium md:w-[--story-card-w-md]">
                       {renderAvatar(story)}
                     </div>
                   </StoryCircle>

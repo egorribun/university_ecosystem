@@ -15,17 +15,17 @@ export function GlassCard({
   ...rest
 }: GlassCardProps) {
   const intensities = {
-    low: "bg-[rgba(255,255,255,var(--glass-alpha-low))] backdrop-blur-md",
+    low: "bg-(--glass-bg-low) dark:bg-(--glass-bg-low-dark) backdrop-blur-md",
     medium: "bg-glass backdrop-blur-xl",
-    high: "bg-[rgba(255,255,255,var(--glass-alpha-high))] backdrop-blur-2xl",
+    high: "bg-(--glass-bg-high) backdrop-blur-2xl",
   }
 
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-ue-xl border border-glass-border shadow-glass",
+        "relative overflow-hidden rounded-2xl border border-glass-border shadow-glass",
         intensities[intensity],
-        interactive && "transition-transform duration-300 hover:scale-[1.01] hover:bg-white/15",
+        interactive && "transition-transform duration-300 hover:scale-[1.01] hover:bg-glass-tint1",
         className
       )}
       {...rest}
@@ -33,12 +33,10 @@ export function GlassCard({
       {/* Premium Sheen Effect */}
       <div className="pointer-events-none absolute inset-0 bg-linear-to-br from-white/10 via-transparent to-transparent opacity-50" />
 
-      <div className="relative z-10">{children}</div>
+      <div className="relative z-(--z-surface)">{children}</div>
     </div>
   )
 }
-
-GlassCard.displayName = "GlassCard"
 
 
 

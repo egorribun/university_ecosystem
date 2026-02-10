@@ -15,7 +15,7 @@ interface ScheduleCardSkeletonProps {
 export function ScheduleCardSkeleton({ items = 3, className = "" }: ScheduleCardSkeletonProps) {
   return (
     <div
-      className={`rounded-ue-xl border border-white/12 bg-input-mix p-4 sm:p-5 ${className}`}
+      className={`rounded-2xl border border-glass-border-subtle bg-glass-elevated p-4 sm:p-5 ${className}`}
       aria-busy="true"
       aria-label="Loading schedule"
     >
@@ -30,7 +30,7 @@ export function ScheduleCardSkeleton({ items = 3, className = "" }: ScheduleCard
         {Array.from({ length: items }).map((_, index) => (
           <div
             key={index}
-            className="flex items-start gap-3 rounded-lg border border-white/8 bg-black/20 p-3"
+            className="flex items-start gap-3 rounded-lg border border-glass-border-subtle/50 bg-black/5 dark:bg-black/20 p-3"
           >
             {/* Time column */}
             <div className="flex flex-col items-center gap-1">
@@ -39,7 +39,7 @@ export function ScheduleCardSkeleton({ items = 3, className = "" }: ScheduleCard
             </div>
 
             {/* Divider */}
-            <div className="h-12 w-[2px] bg-white/10" />
+            <div className="h-12 w-[2px] bg-glass-border-subtle/50" />
 
             {/* Content */}
             <div className="flex flex-1 flex-col gap-2">

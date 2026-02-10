@@ -97,7 +97,7 @@ export default function MobileBottomNav() {
   return (
     <>
       <nav
-        className="fixed bottom-0 left-0 right-0 z-navbar flex h-navbar-height w-full items-center justify-around border-t border-glass-border bg-nav backdrop-blur-nav pb-(--safe-area-bottom) shadow-premium transition-all md:hidden"
+        className="fixed bottom-0 left-0 right-0 z-(--z-navbar) flex h-navbar-height w-full items-center justify-around border-t border-glass-border bg-nav backdrop-blur-nav pb-(--safe-area-bottom) shadow-premium transition-all md:hidden"
         style={{
           transitionDuration: "600ms",
           transitionTimingFunction: "var(--ease-premium)",
@@ -131,12 +131,12 @@ export default function MobileBottomNav() {
                 {isActive && (
                   <motion.div
                     layoutId="bottom-nav-active-glow"
-                    className="absolute inset-[-14px] rounded-full bg-brand opacity-10 blur-xl -z-10"
+                    className="absolute inset-[-14px] rounded-full bg-brand opacity-10 blur-xl z-(--z-negative)"
                     transition={springBouncy}
                   />
                 )}
                 <motion.span
-                  className="block z-10"
+                  className="block z-(--z-decor)"
                   animate={{
                     y: isActive ? -2 : 0,
                     scale: isActive ? 1.15 : 1,
@@ -148,7 +148,7 @@ export default function MobileBottomNav() {
                 </motion.span>
               </div>
               <motion.span
-                className="z-10 text-[10px] font-black uppercase tracking-tight"
+                className="z-(--z-decor) text-[10px] font-black uppercase tracking-tight"
                 animate={{
                   opacity: isActive ? 1 : 0.6,
                 }}
@@ -162,8 +162,8 @@ export default function MobileBottomNav() {
       </nav>
       {/* Spacer for bottom nav */}
       {!pathname.startsWith("/messenger") && (
-        <div
-          className="h-navbar-height bg-transparent transition-colors duration-500 md:hidden"
+        <span
+          className="h-navbar-height bg-transparent transition-colors duration-500 md:hidden relative z-(--z-decor)"
           aria-hidden="true"
         />
       )}

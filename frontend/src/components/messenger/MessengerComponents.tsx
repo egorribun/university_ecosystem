@@ -386,7 +386,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
   }
 
   return (
-    <div className="shrink-0 p-3 z-popover relative border-t border-(--glass-border)/10 bg-(--bg-surface)/30 backdrop-blur-xl">
+    <div className="shrink-0 p-3 z-(--z-popover) relative border-t border-(--glass-border)/10 bg-(--bg-surface)/30 backdrop-blur-xl">
       {selectedFiles.length > 0 && (
         <div className="flex gap-2 mb-3 overflow-x-auto pb-2 custom-scrollbar">
           {selectedFiles.map((file, index) => (
@@ -448,19 +448,19 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
                     id: "photo",
                     icon: ImageIcon,
                     label: "Photo",
-                    color: "text-blue-500 bg-blue-500/10",
+                    color: "text-(--primary-main) bg-(--primary-main)/10",
                   },
                   {
                     id: "document",
                     icon: FileText,
                     label: "Document",
-                    color: "text-emerald-500 bg-emerald-500/10",
+                    color: "text-(--success-text) bg-(--success-text)/10",
                   },
                   {
                     id: "file",
                     icon: File,
                     label: "File",
-                    color: "text-amber-500 bg-amber-500/10",
+                    color: "text-(--warning-text) bg-(--warning-text)/10",
                   },
                 ].map((item, index) => (
                   <button
@@ -541,7 +541,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-modal p-4"
+          className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-(--z-modal) p-4"
           onClick={onClose}
         >
           <motion.div
@@ -598,7 +598,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
                   {users.map((user) => (
                     <motion.button
                       key={user.id}
-                      whileHover={{ x: 4, backgroundColor: "rgba(var(--brand-rgb), 0.05)" }}
+                      whileHover={{ x: 4, backgroundColor: "var(--bg-surface-hover)" }}
                       whileTap={{ scale: 0.98 }}
                       onClick={() => onSelect(String(user.id))}
                       className="w-full flex items-center gap-4 p-3.5 rounded-2xl transition-all text-left group"

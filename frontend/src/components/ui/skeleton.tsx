@@ -26,7 +26,7 @@ export function Skeleton({
       role="status"
       aria-live="polite"
       aria-label={ariaLabel}
-      className={cn("skeleton", rounded ? "rounded-ue-md" : "", className)}
+      className={cn("skeleton", rounded ? "rounded-lg" : "", className)}
       style={{
         width,
         height,

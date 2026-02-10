@@ -76,7 +76,7 @@ export const Badge = <T extends ElementType = "span">({
     <Component
       className={cn(
         "inline-flex items-center justify-center gap-1 font-semibold tracking-tight transition-colors duration-200 ease-out",
-        shape === "pill" ? "rounded-ue-pill" : "rounded-full",
+        shape === "pill" ? "rounded-full" : "rounded-full",
         shape === "pill" ? pillSizeMap[size] : circleSizeMap[size],
         shape === "circle" ? "aspect-square" : "",
         toneVariantStyles[tone][variant],

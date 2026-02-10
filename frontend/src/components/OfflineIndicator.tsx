@@ -57,13 +57,13 @@ export function OfflineIndicator() {
       role="status"
       aria-live="polite"
       className={cn(
-        "fixed bottom-24 left-1/2 z-[9999] -translate-x-1/2",
+        "fixed bottom-24 left-1/2 z-(--z-toast) -translate-x-1/2",
         "flex items-center gap-2 rounded-2xl px-5 py-3",
         "text-[13px] font-black uppercase tracking-widest shadow-2xl backdrop-blur-2xl border",
         "transition-all duration-500 ease-out animate-in fade-in slide-in-from-bottom-4",
         isOffline
-          ? "bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400"
-          : "bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400"
+          ? "bg-(--warning-bg) border-(--warning-text)/20 text-(--warning-text)"
+          : "bg-(--success-bg) border-(--success-text)/20 text-(--success-text)"
       )}
     >
       {isOffline ? (

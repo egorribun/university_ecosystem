@@ -169,7 +169,7 @@ export const ActionMenu = ({
           tabIndex={-1}
           onKeyDown={handleKeyDown}
           className={cn(
-            "absolute top-full z-(--z-overlay) mt-1 w-40 overflow-hidden rounded-lg border border-border-subtle bg-(--bg-surface) shadow-lg backdrop-blur-md",
+            "absolute top-full z-(--z-overlay) mt-1 w-40 overflow-hidden rounded-lg border border-glass-border-subtle bg-glass-elevated shadow-lg backdrop-blur-md",
             placementStyles[placement],
             menuClassName
           )}

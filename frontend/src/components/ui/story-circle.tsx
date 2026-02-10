@@ -60,7 +60,7 @@ export const StoryCircle = <T extends ElementType = "div">({
         className="pointer-events-none absolute inset-0 rounded-full border border-(--primary-main)/10 opacity-0 transition-opacity duration-300 group-focus-visible/story:opacity-100 group-hover/story:opacity-40"
         style={{ outlineOffset: 3 }}
       />
-      <span className="relative z-1 flex h-full w-full items-center justify-center overflow-hidden rounded-full">
+      <span className="relative z-(--z-deep) flex h-full w-full items-center justify-center overflow-hidden rounded-full">
         {children}
       </span>
     </Component>

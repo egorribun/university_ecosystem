@@ -82,9 +82,9 @@ export const fadeDelayStyle = (value: string): CSSProperties =>
 
 export const securityStatusChipClassName = cn(
   "font-bold tracking-tight px-3 py-1 rounded-full text-xs",
-  "text-(--text-primary) border border-(--glass-border) bg-(--bg-surface)/40",
-  "shadow-glass backdrop-blur-xl transition-all duration-300",
-  "dark:bg-(--bg-surface)/20 dark:border-white/10"
+  "text-(--text-primary) border-glass-border bg-glass-bg",
+  "shadow-glass backdrop-blur-glass transition-all duration-300",
+  "dark:bg-glass-tint1 dark:border-white/10"
 )
 
 // Section Components
@@ -103,8 +103,8 @@ export function SectionCard({
     <Component
       className={cn(
         "relative flex flex-col gap-3 overflow-hidden rounded-3xl px-6 py-6",
-        "border border-(--glass-border) bg-(--bg-surface)/40 text-(--text-primary)",
-        "shadow-glass transition-all duration-500",
+        "border-glass-border bg-glass-bg shadow-glass backdrop-blur-glass text-(--text-primary)",
+        "transition-all duration-500",
         "before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit] before:opacity-30",
         "before:bg-[radial-gradient(circle_at_0%_0%,var(--primary-main),transparent_60%)]",
         "dark:before:bg-[radial-gradient(circle_at_0%_0%,var(--primary-subtle),transparent_60%)]",
@@ -179,9 +179,9 @@ export function SessionItem({
     <div
       className={cn(
         "group relative flex items-stretch justify-between gap-4 rounded-2xl px-4 py-3",
-        "border border-(--glass-border) bg-(--bg-surface)/30 text-(--text-primary)",
-        "transition-all duration-500 ease-out backdrop-blur-sm",
-        "hover:-translate-y-px hover:border-(--brand-main)/30 hover:bg-(--bg-surface)/50 hover:shadow-glass",
+        "border-glass-border bg-glass-bg text-(--text-primary)",
+        "transition-all duration-500 ease-out backdrop-blur-glass",
+        "hover:-translate-y-px hover:border-(--brand-main)/30 hover:bg-glass-tint1 hover:shadow-glass",
         "max-sm:flex-col max-sm:items-start",
         "data-[revoked=true]:border-dashed data-[revoked=true]:border-(--border-subtle)",
         "data-[revoked=true]:bg-(--bg-surface)/10 data-[revoked=true]:shadow-none data-[revoked=true]:backdrop-blur-none",
@@ -214,9 +214,9 @@ export function AccordionSection({
     <div
       className={cn(
         "overflow-hidden rounded-2xl border transition-all duration-500",
-        "border-(--glass-border) bg-(--bg-surface)/30 backdrop-blur-sm",
+        "border-glass-border bg-glass-bg backdrop-blur-glass",
         expanded
-          ? "shadow-glass border-(--brand-main)/20 bg-(--bg-surface)/50"
+          ? "shadow-glass border-(--brand-main)/20 bg-glass-tint1"
           : "shadow-sm border-transparent",
         className
       )}
@@ -224,7 +224,7 @@ export function AccordionSection({
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
-        className="w-full px-4 py-3 text-left transition-colors hover:bg-brand/5"
+        className="w-full px-4 py-3 text-left transition-colors hover:bg-(--primary-main)/5"
       >
         <div className="flex items-center justify-between gap-3">
           <div className="flex flex-col gap-1 min-w-0">
@@ -336,7 +336,7 @@ export const TextField = React.forwardRef<
               placeholder={placeholder}
               rows={rows}
               className={cn(
-                "flex w-full rounded-2xl border border-(--glass-border) bg-(--bg-surface) px-4 py-3 text-base font-medium text-(--text-primary) shadow-sm transition-all duration-500",
+                "flex w-full rounded-2xl border-glass-border bg-glass-bg px-4 py-3 text-base font-medium text-(--text-primary) shadow-sm transition-all duration-500",
                 "placeholder:text-(--text-secondary)/50",
                 "focus:border-(--brand-main)/40 focus:outline-none focus:ring-4 focus:ring-(--brand-main)/10",
                 "disabled:cursor-not-allowed disabled:opacity-50",
@@ -379,7 +379,7 @@ export const TextField = React.forwardRef<
           <p
             className={cn(
               "px-1 text-xs font-medium leading-tight",
-              error ? "text-error" : "text-(--text-tertiary)/80"
+              error ? "text-(--error-text)" : "text-(--text-tertiary)/80"
             )}
           >
             {helperText}
@@ -436,7 +436,7 @@ export function FormControlLabel({
       className={cn(
         "group inline-flex items-center gap-3 rounded-xl px-2 py-1.5",
         "cursor-pointer transition-all duration-300",
-        "hover:bg-brand/5 border border-transparent",
+        "hover:bg-(--primary-main)/5 border border-transparent",
         className
       )}
     >
@@ -505,7 +505,7 @@ export function Chip({
   className?: string
 } & React.HTMLAttributes<HTMLSpanElement>) {
   const colorMap = {
-    default: "text-(--text-secondary) bg-(--bg-surface)/50 border-(--glass-border)",
+    default: "text-(--text-secondary) bg-glass-bg border-glass-border",
     success: "text-(--success-bg) bg-(--success-bg)/10 border-(--success-bg)/20",
     primary: "text-(--brand-main) bg-(--brand-main)/10 border-(--brand-main)/20",
   }
@@ -562,7 +562,7 @@ export function Avatar({
         className
       )}
     >
-      <div className="relative h-full w-full overflow-hidden rounded-full bg-(--bg-surface)">
+      <div className="relative h-full w-full overflow-hidden rounded-full bg-surface">
         <SmartImage
           srcRaw={src}
           alt={alt}
@@ -691,7 +691,7 @@ export function Dialog({
         role="dialog"
         aria-modal="true"
         className={cn(
-          "relative z-10 w-full overflow-hidden rounded-3xl border border-(--glass-border) bg-(--bg-surface) shadow-glass",
+          "relative z-(--z-surface) w-full overflow-hidden rounded-3xl border-glass-border bg-glass-bg shadow-glass backdrop-blur-glass",
           fullWidth ? "w-full" : maxWidthClasses
         )}
       >
@@ -792,7 +792,7 @@ export function Snackbar({
   return (
     <div
       className={cn(
-        "fixed pointer-events-none z-(--ue-z-index-toast)",
+        "fixed pointer-events-none z-(--z-toast)",
         positionClasses,
         horizontalClasses,
         className
@@ -881,11 +881,11 @@ export function Tab({
       {selected && (
         <motion.div
           layoutId={layoutId}
-          className="absolute inset-0 z-0 rounded-xl bg-brand/10 ring-1 ring-brand/20"
+          className="absolute inset-0 z-(--z-hide) rounded-xl bg-brand/10 ring-1 ring-brand/20"
           transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
         />
       )}
-      <span className="relative z-1">{label}</span>
+      <span className="relative z-(--z-deep)">{label}</span>
     </button>
   )
 }

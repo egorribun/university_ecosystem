@@ -59,7 +59,7 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
       style={style}
       {...props}
     >
-      <div className="relative z-1 space-y-5">
+      <div className="relative z-(--z-deep) space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-[clamp(1.1rem,2vw,1.5rem)] font-extrabold text-(--text-primary)">
             {t("dashboard:news.heading")}
@@ -85,7 +85,7 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
             {[1, 2].map((i) => (
               <div
                 key={i}
-                className="flex items-start gap-4 rounded-ue-lg border border-[--dash-panel-item-divider] bg-[--dash-panel-item-bg] px-4 py-3 opacity-60"
+                className="flex items-start gap-4 rounded-xl border border-[--dash-panel-item-divider] bg-[--dash-panel-item-bg] px-4 py-3 opacity-60"
               >
                 <Skeleton width={44} height={44} rounded="9999px" className="shrink-0" />
                 <div className="flex-1 space-y-2">
@@ -145,7 +145,7 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
           repeat: Infinity,
           ease: "easeInOut",
         }}
-        className="pointer-events-none absolute inset-0 z-0 bg-[radial-gradient(circle_at_top_right,var(--dash-card-news-radial),transparent_68%)] mix-blend-soft-light transition-opacity duration-500"
+        className="pointer-events-none absolute inset-0 z-(--z-hide) bg-[radial-gradient(circle_at_top_right,var(--dash-card-news-radial),transparent_68%)] mix-blend-soft-light transition-opacity duration-500"
       />
       <motion.span
         aria-hidden="true"
@@ -161,7 +161,7 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
           repeat: Infinity,
           ease: "easeInOut",
         }}
-        className="pointer-events-none absolute -bottom-20 left-1/3 z-0 h-44 w-44 rounded-full bg-[radial-gradient(circle,var(--dash-card-news-orb),transparent)] blur-3xl mix-blend-soft-light transition-opacity duration-700"
+        className="pointer-events-none absolute -bottom-20 left-1/3 z-(--z-hide) h-44 w-44 rounded-full bg-[radial-gradient(circle,var(--dash-card-news-orb),transparent)] blur-3xl mix-blend-soft-light transition-opacity duration-700"
       />
     </Card>
   )

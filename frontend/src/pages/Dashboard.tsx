@@ -18,10 +18,11 @@ import { EventsCard } from "@/components/dashboard/EventsCard"
 import DashboardSkeleton from "@/components/dashboard/DashboardSkeleton"
 import { ScrollReveal } from "@/components/ScrollReveal"
 import useMediaQuery from "@/hooks/useMediaQuery"
+import { breakpoints } from "@/theme/tokens"
 
 export default function Dashboard() {
   const { user, loading: authLoading } = useAuth()
-  const isNarrow = useMediaQuery("(max-width:1100px)")
+  const isNarrow = useMediaQuery(`(max-width: ${breakpoints.dashboard})`)
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const { language } = useLanguage()
   const locale = getLocaleForLanguage(language)
@@ -62,7 +63,7 @@ export default function Dashboard() {
           prefersReducedMotion={prefersReducedMotion}
         />
 
-        <div className="relative z-1 -mt-10 px-4 pb-16 sm:px-8 md:px-12 lg:px-16">
+        <div className="relative z-(--z-base) -mt-10 px-4 pb-16 sm:px-8 md:px-12 lg:px-16">
           <ScrollReveal mode="slide" direction="up" delay={0.2}>
             <DashboardStories
               stories={stories}

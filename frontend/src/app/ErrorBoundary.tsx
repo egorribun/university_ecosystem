@@ -30,7 +30,7 @@ function DefaultFallback({ onRetry }: { onRetry: () => void }) {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: "var(--bg-(--bg-page), #0b0d11)",
+          backgroundColor: "var(--bg-page, #0b0d11)",
           color: "var(--text-primary, #f5f7fa)",
         }}
       >
@@ -51,7 +51,7 @@ function DefaultFallback({ onRetry }: { onRetry: () => void }) {
         gap: "1.5rem",
         padding: "2rem",
         textAlign: "center",
-        backgroundColor: "var(--bg-(--bg-page), #0b0d11)",
+        backgroundColor: "var(--bg-page, #0b0d11)",
         color: "var(--text-primary, #f5f7fa)",
       }}
     >

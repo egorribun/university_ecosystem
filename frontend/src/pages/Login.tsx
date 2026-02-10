@@ -389,9 +389,9 @@ const Login = () => {
 
   if (loginChallenge) {
     return (
-      <div className="relative min-h-screen w-full bg-(--bg-page) text-(--text-primary)">
+      <div className="fixed inset-0 min-h-screen w-full bg-linear-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
         <ParticleAuthBackground />
-        <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
+        <div className="relative z-(--z-navbar) flex min-h-screen items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
           <div className="w-full max-w-2xl rounded-4xl glass-high-fidelity p-8">
             <div className="flex flex-col items-center gap-6 text-center">
               <div className="inline-flex items-center gap-2 rounded-full border border-glass-border-subtle bg-(--bg-surface-hover)/10 px-4 py-1 text-sm font-semibold tracking-wide text-(--text-primary)">
@@ -407,7 +407,7 @@ const Login = () => {
               </div>
 
               {generalMfaError ? (
-                <div className="w-full rounded-2xl border border-red-400/50 bg-red-400/10 px-4 py-3 text-sm font-semibold text-red-200 dark:text-red-100">
+                <div className="w-full rounded-2xl border border-error-border/50 bg-error-bg/20 px-4 py-3 text-sm font-semibold text-error-text">
                   {generalMfaError}
                 </div>
               ) : null}
@@ -427,7 +427,7 @@ const Login = () => {
                       })}
                     </button>
                   ) : (
-                    <div className="w-full rounded-2xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-sm font-semibold text-amber-200 text-center">
+                    <div className="w-full rounded-2xl border border-warning-border/40 bg-warning-bg/10 px-4 py-3 text-sm font-semibold text-warning-text text-center">
                       {t("auth:mfa.webauthn.notSupported", {
                         defaultValue:
                           "WebAuthn недоступен в этом браузере. Используйте HTTPS или код аутентификатора ниже.",
@@ -440,7 +440,7 @@ const Login = () => {
               {otpChallenge && (
                 <>
                   {webauthnChallenge && (
-                    <div className="relative w-full py-2">
+                    <div className="relative z-(--z-base) w-full py-2">
                       <div className="absolute inset-0 flex items-center">
                         <div className="w-full border-t border-glass-border-subtle"></div>
                       </div>
@@ -475,7 +475,7 @@ const Login = () => {
               )}
 
               {!otpChallenge && !webauthnChallenge && (
-                <div className="w-full rounded-2xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-sm font-semibold text-amber-200">
+                <div className="w-full rounded-2xl border border-warning-border/40 bg-warning-bg/10 px-4 py-3 text-sm font-semibold text-warning-text">
                   {t("auth:mfa.noMethods")}
                 </div>
               )}
@@ -498,7 +498,7 @@ const Login = () => {
   return (
     <div className="relative min-h-screen w-full overflow-hidden bg-(--bg-page) text-(--text-primary)">
       <ParticleAuthBackground />
-      <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col items-center justify-center gap-10 px-4 py-12 sm:px-6 lg:px-8 lg:flex-row">
+      <div className="relative z-(--z-navbar) mx-auto flex min-h-screen w-full max-w-6xl flex-col items-center justify-center gap-10 px-4 py-12 sm:px-6 lg:px-8 lg:flex-row">
         <motion.div
           initial={{ x: -200 }}
           animate={{ x: 0 }}
@@ -526,7 +526,7 @@ const Login = () => {
                 key={title}
                 className="group relative overflow-hidden rounded-3xl border border-glass-border/85 bg-(--bg-surface)/50 px-5 py-6 shadow-premium transition-transform duration-300 hover:-translate-y-1"
               >
-                <div className="flex items-center gap-3">
+                <div className="relative z-(--z-base) flex items-center gap-3">
                   <span className="flex size-12 items-center justify-center rounded-2xl bg-brand-subtle-bg text-brand">
                     <Icon className="h-5 w-5" aria-hidden="true" />
                   </span>
@@ -644,7 +644,7 @@ const Login = () => {
                   required
                 />
                 {caps ? (
-                  <span className="absolute inset-y-0 right-4 flex items-center text-xs font-semibold text-amber-400">
+                  <span className="absolute inset-y-0 right-4 flex items-center text-xs font-semibold text-warning-text">
                     {t("auth:messages.capsLock")}
                   </span>
                 ) : null}
@@ -672,7 +672,7 @@ const Login = () => {
             <div className="flex flex-col gap-3">
               <button
                 type="submit"
-                className="inline-flex w-full items-center justify-center gap-2 rounded-ue-xl bg-linear-to-b from-brand to-brand-hover px-6 py-4 text-lg font-extrabold text-white shadow-premium transition hover:translate-y-[-2px] hover:shadow-glass-strong disabled:opacity-60"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-linear-to-b from-brand to-brand-hover px-6 py-4 text-lg font-extrabold text-white shadow-premium transition hover:translate-y-[-2px] hover:shadow-glass-strong disabled:opacity-60"
                 disabled={isPending || submitting}
               >
                 {isPending || submitting ? (
@@ -690,7 +690,7 @@ const Login = () => {
                   type="button"
                   onClick={handlePasskeyLogin}
                   disabled={submitting}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-ue-xl border border-brand/40 bg-brand/5 px-6 py-4 text-lg font-extrabold text-brand shadow-surface transition hover:translate-y-[-2px] hover:bg-brand/10 disabled:opacity-60"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-brand/40 bg-brand/5 px-6 py-4 text-lg font-extrabold text-brand shadow-surface transition hover:translate-y-[-2px] hover:bg-brand/10 disabled:opacity-60"
                 >
                   <Fingerprint className="h-6 w-6" />
                   {t("auth:login.signInWithPasskey", { defaultValue: "Войти с помощью Passkey" })}

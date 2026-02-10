@@ -218,7 +218,7 @@ export default function InstallPrompt() {
             initial={{ opacity: 0, y: 50, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 50, scale: 0.95 }}
-            className="fixed bottom-24 right-4 left-4 sm:left-auto sm:right-6 z-4000 w-auto max-w-sm"
+            className="fixed bottom-24 right-4 left-4 sm:left-auto sm:right-6 z-(--z-toast) w-auto max-w-sm"
           >
             <div className="bg-(--bg-surface)/90 backdrop-blur-2xl rounded-3xl border border-glass-border shadow-2xl overflow-hidden ring-1 ring-black/5 p-6">
               <div
@@ -297,18 +297,18 @@ export default function InstallPrompt() {
                     </p>
 
                     {!pushSupported ? (
-                      <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-xs font-bold flex gap-3">
+                      <div className="p-4 rounded-2xl bg-warning-bg/20 border border-warning-border/30 text-warning-text text-xs font-bold flex gap-3">
                         <AlertTriangle className="h-4 w-4 shrink-0" />
                         {t("system:installPrompt.unsupported")}
                       </div>
                     ) : notificationPermission === "denied" ? (
                       <div className="space-y-3">
-                        <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-xs font-bold flex gap-3">
+                        <div className="p-4 rounded-2xl bg-error-bg/20 border border-error-border/30 text-error-text text-xs font-bold flex gap-3">
                           <BellOff className="h-4 w-4 shrink-0" />
                           {t("system:installPrompt.blocked", { appName })}
                         </div>
                         {safariIOS && (
-                          <div className="p-4 rounded-2xl bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 text-xs font-bold">
+                          <div className="p-4 rounded-2xl bg-info-bg/20 border border-info-border/30 text-info-text text-xs font-bold">
                             <Trans
                               i18nKey="system:installPrompt.safariGuide"
                               components={{
@@ -411,15 +411,15 @@ export default function InstallPrompt() {
             initial={{ opacity: 0, scale: 0.9, y: -20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: -20 }}
-            className="fixed top-24 left-1/2 -translate-x-1/2 z-navbar00 w-full max-w-sm px-6"
+            className="fixed top-24 left-1/2 -translate-x-1/2 z-(--z-toast) w-full max-w-sm px-6"
           >
             <div
               className={cn(
                 "flex items-center gap-3 p-4 rounded-2xl border backdrop-blur-2xl shadow-2xl",
                 feedback.severity === "error"
-                  ? "bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400"
+                  ? "bg-error-bg/20 border-error-border/30 text-error-text"
                   : feedback.severity === "success"
-                    ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400"
+                    ? "bg-success-bg/20 border-success-border/30 text-success-text"
                     : "bg-brand/10 border-brand/20 text-brand"
               )}
             >
@@ -443,7 +443,7 @@ export default function InstallPrompt() {
             initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 50 }}
-            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-navbar00 w-full max-w-md px-6"
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-(--z-toast) w-full max-w-md px-6"
           >
             <div className="flex items-center gap-4 p-4 rounded-2xl border border-brand/20 bg-brand/5 backdrop-blur-2xl shadow-2xl text-brand">
               <RefreshCw className="h-6 w-6 animate-spin-slow" />

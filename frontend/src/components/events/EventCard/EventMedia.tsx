@@ -51,7 +51,7 @@ export const EventMedia: React.FC<EventMediaProps> = ({
           onError={onReady}
         />
         {/* Gradient overlay for depth */}
-        <div className="absolute inset-0 bg-linear-to-t from-black/20 via-transparent to-white/5 pointer-events-none" />
+        <div className="absolute inset-0 bg-linear-to-t from-black/60 via-transparent to-transparent opacity-60 transition-opacity duration-300 group-hover:opacity-70" />
 
         {/* Event type badge on image */}
         {eventType && (
@@ -62,7 +62,7 @@ export const EventMedia: React.FC<EventMediaProps> = ({
 
         {/* Status indicators */}
         {timeStatus.status === "live" && (
-          <div className="absolute top-3 right-3 px-3 py-1.5 rounded-lg bg-green-500/90 backdrop-blur-sm shadow-lg flex items-center gap-1.5">
+          <div className="absolute top-3 right-3 px-3 py-1.5 rounded-lg bg-success-bg/90 backdrop-blur-sm shadow-lg flex items-center gap-1.5 text-success-text">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
               <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
@@ -72,7 +72,7 @@ export const EventMedia: React.FC<EventMediaProps> = ({
         )}
 
         {timeStatus.status === "soon" && timeStatus.timeText && (
-          <div className="absolute top-3 right-3 px-3 py-1.5 rounded-lg bg-amber-500/90 backdrop-blur-sm shadow-lg flex items-center gap-1.5">
+          <div className="absolute top-3 right-3 px-3 py-1.5 rounded-lg bg-warning-bg/90 backdrop-blur-sm shadow-lg flex items-center gap-1.5 text-warning-text">
             <span className="text-xs font-bold text-white">⏱ {t("events:card.statuses.in", { time: timeStatus.timeText })}</span>
           </div>
         )}

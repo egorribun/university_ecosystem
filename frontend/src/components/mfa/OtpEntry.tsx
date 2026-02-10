@@ -156,7 +156,7 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
                 "bg-(--bg-surface-raised)/40 text-(--text-primary) border-2 transition-all duration-300",
                 "focus:outline-none backdrop-blur-md shadow-sm",
                 derivedError
-                  ? "border-rose-500/50 focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10"
+                  ? "border-error-border/50 focus:border-error-border focus:ring-4 focus:ring-error-border/10"
                   : focusedIndex === index
                     ? "border-brand ring-4 ring-brand/10 scale-105 shadow-brand/10 shadow-lg"
                     : digit
@@ -171,8 +171,8 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
 
         {derivedError ? (
           <div className="flex items-center justify-center gap-2 animate-bounce">
-            <ShieldAlert className="h-4 w-4 text-rose-500" />
-            <p id={errorId} className="text-xs font-bold text-rose-500">
+            <ShieldAlert className="h-4 w-4 text-error-text" />
+            <p id={errorId} className="text-xs font-bold text-error-text">
               {derivedError}
             </p>
           </div>

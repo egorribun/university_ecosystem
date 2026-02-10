@@ -150,14 +150,14 @@ export default function ResetPassword() {
     <div className="min-h-screen bg-(--bg-page) text-(--text-primary) flex items-center justify-center p-6 relative overflow-hidden">
       {/* Background decorative elements */}
       <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-20">
-        <div className="absolute top-[-10%] right-[-5%] w-[40%] h-[40%] bg-brand/30 rounded-full blur-[120px]" />
-        <div className="absolute bottom-[-10%] left-[-5%] w-[40%] h-[40%] bg-brand/20 rounded-full blur-[120px]" />
+        <div className="absolute top-[-10%] right-[-5%] w-[40%] h-[40%] bg-(--glow-spotlight-primary) rounded-full blur-(--glow-blur-massive)" />
+        <div className="absolute bottom-[-10%] left-[-5%] w-[40%] h-[40%] bg-(--glow-spotlight-secondary) rounded-full blur-(--glow-blur-massive)" />
       </div>
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-[460px] z-10"
+        className="w-full max-w-[460px] z-(--z-modal)"
       >
         <SectionCard className="p-8 sm:p-10 border-glass-border shadow-2xl backdrop-blur-2xl">
           <div className="space-y-8">
@@ -170,7 +170,7 @@ export default function ResetPassword() {
                   className="space-y-6 pt-4 text-center"
                 >
                   <div className="flex justify-center">
-                    <div className="h-20 w-20 rounded-3xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+                    <div className="h-20 w-20 rounded-3xl bg-(--success-bg) flex items-center justify-center text-(--success-text)">
                       <CheckCircle2 className="h-10 w-10" />
                     </div>
                   </div>
@@ -277,9 +277,9 @@ export default function ResetPassword() {
                       </div>
 
                       {!!feedback && (
-                        <div className="flex gap-2 px-2 py-2 rounded-xl bg-blue-500/5 border border-blue-500/10">
-                          <ShieldCheck className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
-                          <p className="text-xs font-medium text-blue-500/80 leading-relaxed">
+                        <div className="flex gap-2 px-2 py-2 rounded-xl bg-(--primary-main)/5 border border-(--primary-main)/10">
+                          <ShieldCheck className="h-4 w-4 text-(--primary-main) shrink-0 mt-0.5" />
+                          <p className="text-xs font-medium text-(--primary-main)/80 leading-relaxed">
                             {feedback}
                           </p>
                         </div>
@@ -324,7 +324,7 @@ export default function ResetPassword() {
                       </div>
 
                       {(capsPass || capsConfirm) && (
-                        <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-orange-500/5 border border-orange-500/10 text-orange-500">
+                        <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-(--warning-bg) border border-(--warning-text)/10 text-(--warning-text)">
                           <AlertTriangle className="h-4 w-4" />
                           <p className="text-xs font-bold uppercase tracking-wider">
                             {t("auth:messages.capsLock")}
@@ -340,7 +340,7 @@ export default function ResetPassword() {
                     </div>
 
                     {resetErrorMessage && (
-                      <p className="text-sm font-bold text-rose-500 text-center animate-bounce">
+                      <p className="text-sm font-bold text-(--error-text) text-center animate-bounce">
                         {resetErrorMessage}
                       </p>
                     )}

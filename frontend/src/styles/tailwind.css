@@ -14,16 +14,17 @@
   --color-surface-raised: var(--bg-surface-raised);
   --color-panel: var(--bg-panel);
   --color-glass: var(--glass-bg);
-  --color-surface-mix: var(--bg-(--bg-surface)-mix);
+  --color-surface-mix: var(--bg-surface-mix);
   --color-input-mix: var(--bg-input-mix);
   --color-glass-elevated: var(--glass-bg-elevated);
 
   /* Typography */
-  --color-(--text-primary): var(--text-primary);
-  --color-(--text-secondary): var(--text-secondary);
-  --color-(--text-tertiary): var(--text-tertiary);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
   --color-inverse-text: var(--text-inverse);
   --color-text-muted-subtle: var(--text-muted-subtle);
+  --color-primary-text: var(--primary-text);
 
   /* Borders */
   --color-border-subtle: var(--border-subtle);
@@ -51,21 +52,8 @@
   --brand-rgb: var(--primary-main-rgb);
   --brand-hover-rgb: var(--primary-hover-rgb);
 
-  /* Radius Scale Tokens */
-  --radius-xs: var(--radius-xs);
-  --radius-sm: var(--radius-sm);
-  --radius-md: var(--radius-md);
-  --radius-lg: var(--radius-lg);
-  --radius-full: var(--radius-full);
+  /* Radius — sourced from theme.css :root, only fluid override here */
   --radius-fluid-lg: var(--fluid-radius-lg);
-
-  /* UE Specific Radius (Semantic) */
-  --radius-ue-xs: var(--radius-xs);
-  --radius-ue-sm: var(--radius-sm);
-  --radius-ue-md: var(--radius-md);
-  --radius-ue-lg: var(--radius-lg);
-  --radius-ue-xl: 2rem;
-  --radius-ue-2xl: 3rem;
 
   /* Component Dimensions */
   --story-card-w: min(92vw, 420px);
@@ -73,6 +61,8 @@
   --mobile-menu-w: 300px;
   --news-card-h-mobile: 400px;
   --news-card-h-desktop: 480px;
+  --news-hero-h: 12.5rem;
+  --news-hero-h-md: 13.75rem;
 
   /* Spacing Scale */
   --spacing-xs: var(--space-2);
@@ -106,26 +96,18 @@
 
   /* Shadows */
   --shadow-glass: var(--glass-shadow);
-  --shadow-focus: var(--shadow-focus);
+  --shadow-focus: 0 0 0 2px var(--bg-page), 0 0 0 4px var(--primary-main);
   --shadow-premium-lift: 0 20px 40px -12px rgba(var(--brand-rgb), 0.25);
-  --shadow-up: var(--shadow-up, 0 -4px 12px rgba(0, 0, 0, 0.05));
+  --shadow-up: 0 -4px 12px rgba(0, 0, 0, 0.05);
 
-  /* Layout & Z-Index */
-  --z-navbar: var(--z-navbar);
-  --z-overlay: var(--z-overlay);
-  --z-modal: var(--z-modal);
-  --z-toast: var(--z-toast);
-  --z-sidebar: var(--z-sidebar);
-  --z-tooltip: var(--z-tooltip);
-  --z-popover: var(--z-popover);
-  --z-sticky: var(--z-sticky);
+  /* Z-Index — sourced from theme.css :root (14-item scale) */
 
   --navbar-height: var(--navbar-h-base);
   --navbar-height-scrolled: var(--navbar-h-scrolled);
 
   /* Gradients */
-  --bg-gradient-brand: var(--gradient-brand);
-  --bg-gradient-news-hero: var(--grad-news-hero);
+  --bg-linear-brand: var(--gradient-brand);
+  --bg-linear-news-hero: var(--grad-news-hero);
 
   /* Screens / Breakpoints */
   --breakpoint-mobile: 768px;
@@ -167,24 +149,18 @@
   --dash-hero-radial-bottom: var(--dash-hero-radial-bottom, transparent);
   --dash-hero-orb: var(--dash-hero-orb);
   --dash-hero-pulse: var(--dash-hero-highlight);
-  --dash-hero-conic-primary: #38bdf8;
-  --dash-hero-conic-secondary: #818cf8;
-  --dash-hero-conic-tertiary: #c084fc;
-  --dash-hero-conic-accent: #f472b6;
+  --dash-hero-conic-primary: var(--dash-conic-1);
+  --dash-hero-conic-secondary: var(--dash-conic-2);
+  --dash-hero-conic-tertiary: var(--dash-conic-3);
+  --dash-hero-conic-accent: var(--dash-conic-accent);
 
   /* Premium UI Gradients */
-  --bg-nav-light:
-    radial-gradient(120% 180% at -10% -20%, rgba(36, 145, 255, 0.12), transparent 58%),
-    linear-gradient(112deg, #ffffff 0%, #f8fafc 100%);
-  --bg-nav-dark:
-    radial-gradient(120% 180% at -10% -20%, rgba(56, 189, 248, 0.16), transparent 58%),
-    linear-gradient(112deg, #0a1524 0%, #0b2b47 100%);
+  --bg-nav-light: var(--grad-nav-light);
+  --bg-nav-dark: var(--grad-nav-dark);
   --bg-footer-light:
     radial-gradient(120% 180% at -10% -20%, rgba(36, 145, 255, 0.14), transparent 60%),
     linear-gradient(112deg, var(--primary-main) 0%, var(--primary-hover) 100%);
-  --bg-footer-dark:
-    radial-gradient(120% 180% at -10% -20%, rgba(105, 169, 220, 0.16), transparent 58%),
-    linear-gradient(112deg, #0a1524 0%, #0b2b47 100%);
+  --bg-footer-dark: var(--grad-nav-dark);
 
   @keyframes navbar-fade-in {
     from {
@@ -347,7 +323,7 @@
   margin-left: auto;
   margin-right: auto;
   width: 100%;
-  max-width: 1700px;
+  max-width: var(--container-max, 1700px);
   padding-inline: clamp(1rem, 5vw, 4rem);
 }
 
@@ -378,7 +354,7 @@
   text-decoration: none;
   opacity: 0.8;
   padding: 0.25rem 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   transition: all 0.2s ease;
 
@@ -422,7 +398,8 @@
 
   /* Premium Glass Card - Elevated */
   .card-glass {
-    @apply relative overflow-hidden rounded-4xl border border-glass-border bg-glass backdrop-blur-2xl shadow-glass transition-all;
+    @apply relative overflow-hidden rounded-4xl border border-glass-border bg-glass backdrop-blur-2xl shadow-glass;
+    transition-property: background-color, border-color, box-shadow, opacity, transform;
     transition-duration: 500ms;
     transition-timing-function: var(--ease-premium);
   }
@@ -449,7 +426,7 @@
 
   /* Skeleton with organic pulse */
   .skeleton {
-    @apply relative overflow-hidden rounded-ue-md bg-slate-200/40 dark:bg-slate-800/40;
+    @apply relative overflow-hidden rounded-md bg-(--bg-page)/40 dark:bg-(--bg-page)/60;
   }
 
   .skeleton::after {
@@ -468,6 +445,12 @@
         rgba(255, 255, 255, 0.05) 50%,
         transparent 100%);
   }
+
+  /* Skip-link for keyboard navigation */
+  .skip-link {
+    @apply sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-(--z-navbar) focus:px-6 focus:py-3 focus:rounded-xl focus:bg-glass focus:text-brand focus:font-bold focus:shadow-glass focus:backdrop-blur-xl focus:border focus:border-glass-border focus:outline-none focus:ring-2 focus:ring-brand duration-300;
+    transition-property: opacity, transform;
+  }
 }
 
 @layer utilities {
@@ -482,7 +465,10 @@
   .dash-panel-schedule,
   .dash-panel-news,
   .dash-panel-events {
-    @apply bg-glass border-glass-border shadow-glass transition-all;
+    @apply bg-glass border-glass-border shadow-glass;
+    transition-property: background-color, border-color, box-shadow, opacity;
+    transition-duration: 300ms;
+    transition-timing-function: var(--ease-premium);
     position: relative;
     overflow: hidden;
   }
@@ -534,31 +520,4 @@
     animation: msg-bubble-in 0.5s var(--ease-back-out) forwards;
   }
 
-  @keyframes dash-colon-blink {
-
-    0%,
-    100% {
-      opacity: 1;
-    }
-
-    50% {
-      opacity: 0.3;
-    }
-  }
-
-  .animate-dash-colon-blink {
-    animation: dash-colon-blink 2s var(--ease-premium) infinite;
-  }
 }
-
-@layer components {
-  .skip-link {
-    @apply sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-navbar focus:px-6 focus:py-3 focus:rounded-xl focus:bg-glass focus:text-brand focus:font-bold focus:shadow-glass focus:backdrop-blur-xl focus:border focus:border-glass-border focus:outline-none focus:ring-2 focus:ring-brand transition-all duration-300;
-  }
-}
-
-
-
-
-
-
