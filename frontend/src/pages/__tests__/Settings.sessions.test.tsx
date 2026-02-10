@@ -117,7 +117,7 @@ describe("Settings sessions panel", () => {
     const user = userEvent.setup()
     renderSettings()
 
-    await user.click(screen.getByRole("tab", { name: tSettings("tabs.account") }))
+    await user.click(screen.getByRole("tab", { name: tSettings("tabs.security") }))
 
     await waitFor(() => {
       expect(screen.getByText(tSettings("sessions.title"))).toBeVisible()

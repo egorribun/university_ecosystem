@@ -168,15 +168,15 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor, isActive }: Setti
       {/* MFA Section */}
       <SectionCard component="section">
         <div className="flex flex-col gap-2 mb-4">
-          <SectionTitle variant="subtitle1">{t("settings:security.mfa.title")}</SectionTitle>
-          <SectionSubtitle variant="body2">{t("settings:security.mfa.subtitle")}</SectionSubtitle>
+          <SectionTitle variant="subtitle1">{t("settings:security.title")}</SectionTitle>
+          <SectionSubtitle variant="body2">{t("settings:security.subtitle")}</SectionSubtitle>
         </div>
 
         <div className="flex flex-col gap-3">
           {/* TOTP */}
           <AccordionSection
-            title={t("settings:security.mfa.totp.title")}
-            subtitle={t("settings:security.mfa.totp.subtitle")}
+            title={t("settings:security.method.totp")}
+            subtitle={t("settings:security.totp.description")}
           >
             <div className="flex flex-col gap-4">
               {totpError ? (
@@ -196,11 +196,11 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor, isActive }: Setti
                     <div className="flex flex-col">
                       <span className="font-semibold text-sm">
                         {enrollment.label ||
-                          t("settings:security.mfa.totp.defaultLabel", "Authenticator App")}
+                          t("settings:security.totp.unnamed", { index: 1 })}
                       </span>
                       <span className="text-xs text-(--text-secondary)">
-                        {t("settings:security.mfa.totp.addedOn", {
-                          date: formatDateTime(enrollment.created_at),
+                        {t("settings:security.totp.added", {
+                          value: formatDateTime(enrollment.created_at),
                         })}
                       </span>
                     </div>
@@ -212,7 +212,7 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor, isActive }: Setti
                     disabled={totpBusy}
                     onClick={() => handleDisableTotp(enrollment.id)}
                   >
-                    {t("settings:security.mfa.remove")}
+                    {t("settings:security.totp.remove")}
                   </Button>
                 </div>
               ))}
@@ -220,30 +220,49 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor, isActive }: Setti
               {/* Draft Enrollment Flow */}
               {totpDraft ? (
                 <div className="flex flex-col gap-4 p-4 rounded-lg border border-(--border-subtle) bg-(--bg-surface-active)">
+                  <div className="flex flex-col gap-1">
+                    <h4 className="text-sm font-bold text-(--text-primary)">
+                      {t("settings:security.totp.pendingTitle")}
+                    </h4>
+                    <p className="text-xs text-(--text-secondary)">
+                      {t("settings:security.totp.pendingDescription")}
+                    </p>
+                  </div>
+
                   <TotpQrDisplay secret={totpDraft.secret} otpauthUrl={totpDraft.otpauth_url} />
+
                   <div className="flex flex-col gap-2">
                     <OtpEntry loading={totpBusy} onSubmit={handleConfirmTotp} />
+
+                    <p className="text-xs text-(--text-tertiary) text-center px-2">
+                      {t("settings:security.totp.pendingHelper")}
+                    </p>
+
                     <Button
                       variant="text"
                       color="error"
                       size="small"
                       onClick={handleCancelTotp}
-                      className="self-center"
+                      className="self-center mt-1"
                     >
-                      {t("common:buttons.cancel")}
+                      {t("settings:security.totp.cancel")}
                     </Button>
                   </div>
                 </div>
               ) : (
-                activeTotp.length === 0 && (
+                activeTotp.length === 0 ? (
                   <Button
                     variant="outlined"
                     onClick={() => handleStartTotp()}
                     disabled={totpBusy}
                     className="self-start"
                   >
-                    {t("settings:security.mfa.totp.add")}
+                    {t("settings:security.totp.add")}
                   </Button>
+                ) : (
+                  <p className="text-sm text-(--text-secondary) bg-glass-tint1 border border-glass-border rounded-xl px-4 py-3 shadow-glass">
+                    {t("settings:security.totp.limitReached")}
+                  </p>
                 )
               )}
             </div>
@@ -251,13 +270,13 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor, isActive }: Setti
 
           {/* WebAuthn */}
           <AccordionSection
-            title={t("settings:security.mfa.webauthn.title")}
-            subtitle={t("settings:security.mfa.webauthn.subtitle")}
+            title={t("settings:security.method.webauthn")}
+            subtitle={t("settings:security.webauthn.description")}
           >
             <div className="flex flex-col gap-4">
               {!webauthnSupported ? (
                 <Alert severity="warning" variant="outlined">
-                  {t("settings:security.mfa.webauthn.notSupported")}
+                  {t("settings:security.webauthn.notSupported")}
                 </Alert>
               ) : (
                 <>
@@ -272,11 +291,11 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor, isActive }: Setti
                           <div className="flex flex-col">
                             <span className="font-semibold text-sm">
                               {cred.label ||
-                                t("settings:security.mfa.webauthn.defaultLabel", "Passkey")}
+                                t("settings:security.webauthn.defaultLabel")}
                             </span>
                             <span className="text-xs text-(--text-secondary)">
-                              {t("settings:security.mfa.webauthn.addedOn", {
-                                date: formatDateTime(cred.created_at),
+                              {t("settings:security.webauthn.added", {
+                                value: formatDateTime(cred.created_at),
                               })}
                             </span>
                           </div>
@@ -299,7 +318,7 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor, isActive }: Setti
                     disabled={webauthnBusy}
                     className="self-start"
                   >
-                    {t("settings:security.mfa.webauthn.add")}
+                    {t("settings:security.webauthn.add")}
                   </Button>
                 </>
               )}

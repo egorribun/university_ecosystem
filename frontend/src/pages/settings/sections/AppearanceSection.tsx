@@ -43,9 +43,9 @@ export function AppearanceSection(_props: SettingsSectionProps) {
   )
 
   const themeOptions: { value: ThemeMode; label: string; icon: typeof Moon }[] = [
-    { value: "light", label: t("settings:appearance.theme.light"), icon: Sun },
-    { value: "dark", label: t("settings:appearance.theme.dark"), icon: Moon },
-    { value: "system", label: t("settings:appearance.theme.system"), icon: Monitor },
+    { value: "light", label: t("settings:appearance.theme.options.light"), icon: Sun },
+    { value: "dark", label: t("settings:appearance.theme.options.dark"), icon: Moon },
+    { value: "system", label: t("settings:appearance.theme.options.system"), icon: Monitor },
   ]
 
   return (

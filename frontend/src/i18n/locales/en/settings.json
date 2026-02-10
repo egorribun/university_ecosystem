@@ -9,22 +9,27 @@
     "integrations": "Integrations"
   },
   "appearance": {
+    "title": "Appearance",
+    "subtitle": "Customize your interface theme and language.",
     "theme": {
       "title": "Theme",
+      "subtitle": "Choose between light, dark, or system theme.",
+      "systemHint": "Current system mode: {{value}}",
       "options": {
         "system": "System",
         "light": "Light",
         "dark": "Dark"
       }
-    }
-  },
-  "language": {
-    "title": "Interface language",
-    "aria": "Choose interface language",
-    "description": "This changes menus, navigation labels, and system messages.",
-    "options": {
-      "ru": "Russian",
-      "en": "English"
+    },
+    "language": {
+      "title": "Interface language",
+      "subtitle": "Choose your preferred language for the UI.",
+      "aria": "Choose interface language",
+      "description": "This changes menus, navigation labels, and system messages.",
+      "options": {
+        "ru": "Russian",
+        "en": "English"
+      }
     }
   },
   "notifications": {

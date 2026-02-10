@@ -10,6 +10,7 @@ import { StepUpDialog } from "../components/mfa/StepUpDialog"
 import { SettingsGeneral } from "./settings/SettingsGeneral"
 import { SettingsProfile } from "./settings/SettingsProfile"
 import { SettingsSecurity } from "./settings/SettingsSecurity"
+import { SettingsIntegrations } from "./settings/SettingsIntegrations"
 
 export default function Settings() {
   const { t } = useTranslation(["settings", "common"])
@@ -87,9 +88,11 @@ export default function Settings() {
                 onChange={(_, value) => setTab(value)}
                 variant="scrollable"
                 scrollButtons="auto"
+                className="border-b border-(--border-subtle)"
               >
                 <Tab label={t("settings:tabs.general")} />
                 <Tab label={t("settings:tabs.account")} />
+                <Tab label={t("settings:tabs.security")} />
                 <Tab label={t("settings:tabs.integrations")} />
               </Tabs>
             </div>
@@ -104,6 +107,7 @@ export default function Settings() {
                   isActive={tab === 2}
                 />
               )}
+              {tab === 3 && <SettingsIntegrations setSnackbar={setSnackbar} />}
             </div>
 
             {/* StepUp Dialog */}
