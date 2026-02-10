@@ -195,8 +195,7 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor, isActive }: Setti
                     <Smartphone className="w-5 h-5 text-(--text-secondary)" />
                     <div className="flex flex-col">
                       <span className="font-semibold text-sm">
-                        {enrollment.label ||
-                          t("settings:security.totp.unnamed", { index: 1 })}
+                        {enrollment.label || t("settings:security.totp.unnamed", { index: 1 })}
                       </span>
                       <span className="text-xs text-(--text-secondary)">
                         {t("settings:security.totp.added", {
@@ -249,21 +248,19 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor, isActive }: Setti
                     </Button>
                   </div>
                 </div>
+              ) : activeTotp.length === 0 ? (
+                <Button
+                  variant="outlined"
+                  onClick={() => handleStartTotp()}
+                  disabled={totpBusy}
+                  className="self-start"
+                >
+                  {t("settings:security.totp.add")}
+                </Button>
               ) : (
-                activeTotp.length === 0 ? (
-                  <Button
-                    variant="outlined"
-                    onClick={() => handleStartTotp()}
-                    disabled={totpBusy}
-                    className="self-start"
-                  >
-                    {t("settings:security.totp.add")}
-                  </Button>
-                ) : (
-                  <p className="text-sm text-(--text-secondary) bg-glass-tint1 border border-glass-border rounded-xl px-4 py-3 shadow-glass">
-                    {t("settings:security.totp.limitReached")}
-                  </p>
-                )
+                <p className="text-sm text-(--text-secondary) bg-glass-tint1 border border-glass-border rounded-xl px-4 py-3 shadow-glass">
+                  {t("settings:security.totp.limitReached")}
+                </p>
               )}
             </div>
           </AccordionSection>
@@ -290,8 +287,7 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor, isActive }: Setti
                           <Fingerprint className="w-5 h-5 text-(--text-secondary)" />
                           <div className="flex flex-col">
                             <span className="font-semibold text-sm">
-                              {cred.label ||
-                                t("settings:security.webauthn.defaultLabel")}
+                              {cred.label || t("settings:security.webauthn.defaultLabel")}
                             </span>
                             <span className="text-xs text-(--text-secondary)">
                               {t("settings:security.webauthn.added", {
