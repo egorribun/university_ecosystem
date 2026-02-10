@@ -116,7 +116,3 @@ describe("push topic persistence", () => {
     expect(raw.perUser["7"]).toEqual(["news"])
   })
 })
-
-
-
-

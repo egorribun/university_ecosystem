@@ -54,7 +54,3 @@ export function useIsVisible(
   const entry = useIntersectionObserver(elementRef, options)
   return !!entry?.isIntersecting
 }
-
-
-
-

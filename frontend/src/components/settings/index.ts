@@ -38,7 +38,3 @@ export {
   Tab,
   SwitchControl,
 } from "./SettingsUI"
-
-
-
-

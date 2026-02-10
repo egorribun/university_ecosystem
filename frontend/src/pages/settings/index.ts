@@ -13,7 +13,3 @@ export {
 } from "./sections"
 export { useAvatarUpload, useCoverUpload, useWebAuthn } from "./hooks"
 export type { SnackbarState, SetSnackbar, SettingsSectionProps } from "./types"
-
-
-
-

@@ -191,7 +191,16 @@ const Select = ({
         }
       }
     },
-    [disabled, isOpen, activeIndex, options.length, openListbox, closeListbox, selectOption, handleTypeAhead]
+    [
+      disabled,
+      isOpen,
+      activeIndex,
+      options.length,
+      openListbox,
+      closeListbox,
+      selectOption,
+      handleTypeAhead,
+    ]
   )
 
   return (
@@ -203,7 +212,9 @@ const Select = ({
         aria-expanded={isOpen}
         aria-haspopup="listbox"
         aria-controls={listboxId}
-        aria-activedescendant={isOpen && activeIndex >= 0 ? computeOptionId(activeIndex) : undefined}
+        aria-activedescendant={
+          isOpen && activeIndex >= 0 ? computeOptionId(activeIndex) : undefined
+        }
         aria-label={ariaLabel}
         aria-labelledby={ariaLabelledBy}
         disabled={disabled}
@@ -214,8 +225,7 @@ const Select = ({
           "border-glass-border bg-glass-bg backdrop-blur-glass shadow-glass",
           "hover:border-brand/40 hover:bg-glass-tint1",
           "focus:outline-none focus:ring-4 focus:ring-brand/10",
-          isOpen &&
-            "border-brand ring-4 ring-brand/10 shadow-glow-primary",
+          isOpen && "border-brand ring-4 ring-brand/10 shadow-glow-primary",
           error && "border-error-text bg-error-bg focus:ring-error-text/10",
           disabled && "cursor-not-allowed opacity-50 grayscale",
           !selectedOption && "text-(--text-tertiary)"
@@ -243,8 +253,8 @@ const Select = ({
             animate={{ opacity: 1, y: 4, scale: 1 }}
             exit={{ opacity: 0, y: -10, scale: 0.98 }}
             transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-              className={cn(
-                "absolute z-(--z-dropdown) mt-1 w-full overflow-hidden rounded-xl border border-glass-border-subtle bg-glass-elevated shadow-lg backdrop-blur-xl",
+            className={cn(
+              "absolute z-(--z-dropdown) mt-1 w-full overflow-hidden rounded-xl border border-glass-border-subtle bg-glass-elevated shadow-lg backdrop-blur-xl",
               "p-1.5"
             )}
           >

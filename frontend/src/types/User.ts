@@ -5,7 +5,3 @@ export type User = components["schemas"]["UserOut"] & {
   avatar_version?: number
   updated_at?: string
 }
-
-
-
-

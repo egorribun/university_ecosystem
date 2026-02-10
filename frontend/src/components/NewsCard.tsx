@@ -168,7 +168,11 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       style={{ width: "100%" }}
       onMouseMove={spotlight.onMouseMove}
     >
-      <SpotlightOverlay mouseX={spotlight.mouseX} mouseY={spotlight.mouseY} className="z-(--z-hide)" />
+      <SpotlightOverlay
+        mouseX={spotlight.mouseX}
+        mouseY={spotlight.mouseY}
+        className="z-(--z-hide)"
+      />
 
       {user?.role === "admin" && (
         <Suspense fallback={null}>
@@ -359,8 +363,3 @@ const areNewsCardPropsEqual = (prev: NewsCardProps, next: NewsCardProps) =>
   prev.onChange === next.onChange
 
 export default memo(NewsCardComponent, areNewsCardPropsEqual)
-
-
-
-
-

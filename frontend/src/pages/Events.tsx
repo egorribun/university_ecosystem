@@ -391,9 +391,7 @@ const Events = () => {
                         transition={springSoft}
                       />
                     )}
-                    <span className="relative z-(--z-base)">
-                      {t(`events:tabs.${tabItem.key}`)}
-                    </span>
+                    <span className="relative z-(--z-base)">{t(`events:tabs.${tabItem.key}`)}</span>
                   </button>
                 ))}
               </div>
@@ -778,9 +776,3 @@ const Events = () => {
 }
 
 export default Events
-
-
-
-
-
-

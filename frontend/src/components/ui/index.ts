@@ -17,7 +17,3 @@ export { default as Snackbar } from "./Snackbar"
 export { default as ParticleAuthBackground } from "./ParticleAuthBackground"
 export * from "./GlassCard"
 export * from "./Spotlight"
-
-
-
-

@@ -228,7 +228,3 @@ export const scheduleQueryKey = (groupId: string) => ["schedule", "group", group
 export type ScheduleGroupsQueryKey = typeof scheduleGroupsQueryKey
 export type InactiveScheduleQueryKey = readonly ["schedule", "group", "none"]
 export type ActiveScheduleQueryKey = ReturnType<typeof scheduleQueryKey>
-
-
-
-

@@ -24,7 +24,10 @@ const Layout = ({ children, className }: LayoutProps) => {
       animate="visible"
       exit="exit"
       variants={fadeVariants}
-      className={cn("box-border min-h-screen w-full bg-(--bg-page) text-(--text-primary)", className)}
+      className={cn(
+        "box-border min-h-screen w-full bg-(--bg-page) text-(--text-primary)",
+        className
+      )}
     >
       <AnimatePresence>
         {!isOnline && (
@@ -45,7 +48,3 @@ const Layout = ({ children, className }: LayoutProps) => {
 }
 
 export default Layout
-
-
-
-

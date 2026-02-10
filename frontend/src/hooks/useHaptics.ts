@@ -30,7 +30,3 @@ export function useHaptics() {
 
   return { trigger }
 }
-
-
-
-

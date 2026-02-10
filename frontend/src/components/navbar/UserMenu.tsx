@@ -20,11 +20,7 @@ interface UserMenuProps {
 
 export const UserMenu = ({ user, isAuth, loading, go, t }: UserMenuProps) => {
   const avatarCacheV = useMemo(() => {
-    const raw =
-      user?.avatar_updated_at ??
-      user?.avatar_version ??
-      user?.updated_at ??
-      undefined
+    const raw = user?.avatar_updated_at ?? user?.avatar_version ?? user?.updated_at ?? undefined
     return parseCacheVersion(raw)
   }, [user])
 
@@ -32,9 +28,9 @@ export const UserMenu = ({ user, isAuth, loading, go, t }: UserMenuProps) => {
   const hasAvatar = Boolean(avatarSource)
   const profileAlt = user?.full_name
     ? t("navigation:aria.profileAvatarNamed") // We can't interpolate here easily if t signature is simple, let's fix this in usage or assume t handles it.
-    // Actually, t functions usually return string. We should pass the translated string or the t function.
-    // Passing t is fine.
-    : t("navigation:aria.profileAvatar")
+    : // Actually, t functions usually return string. We should pass the translated string or the t function.
+      // Passing t is fine.
+      t("navigation:aria.profileAvatar")
 
   // NOTE: In the original code: t("navigation:aria.profileAvatarNamed", { name: user.full_name })
   // We will handle the string construction inside the component if we have access to t, or pass ready strings.

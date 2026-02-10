@@ -277,7 +277,3 @@ describe("Login page", () => {
     expect(results).toHaveNoViolations()
   })
 })
-
-
-
-

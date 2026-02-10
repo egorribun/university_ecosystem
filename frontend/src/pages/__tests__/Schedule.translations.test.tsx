@@ -232,7 +232,3 @@ describe("Schedule translations", () => {
     }
   })
 })
-
-
-
-

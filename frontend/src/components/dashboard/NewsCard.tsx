@@ -166,8 +166,3 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
     </Card>
   )
 }
-
-
-
-
-

@@ -24,7 +24,3 @@ describe("ProgressBar", () => {
     expect(progressbar).not.toHaveAttribute("aria-valuenow")
   })
 })
-
-
-
-

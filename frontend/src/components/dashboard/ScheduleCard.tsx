@@ -277,8 +277,3 @@ export function ScheduleCard({
     </Card>
   )
 }
-
-
-
-
-

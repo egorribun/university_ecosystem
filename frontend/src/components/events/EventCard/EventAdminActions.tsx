@@ -1,6 +1,10 @@
 import React from "react"
 import { Button } from "@/components/ui"
-import { MoreVertical as MoreVertIcon, Pencil as EditIcon, Trash2 as DeleteIcon } from "lucide-react"
+import {
+  MoreVertical as MoreVertIcon,
+  Pencil as EditIcon,
+  Trash2 as DeleteIcon,
+} from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 interface EventAdminActionsProps {
@@ -72,8 +76,3 @@ export const EventAdminActions: React.FC<EventAdminActionsProps> = ({
     </>
   )
 }
-
-
-
-
-

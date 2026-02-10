@@ -12,7 +12,3 @@ export { default as WeatherWidget } from "@/components/WeatherWidget"
 export { useDashboardStories } from "@/hooks/useDashboardStories"
 export { useWeather } from "@/hooks/useWeather"
 export { useNowPlaying } from "@/hooks/useNowPlaying"
-
-
-
-

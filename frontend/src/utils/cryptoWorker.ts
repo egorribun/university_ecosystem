@@ -67,7 +67,3 @@ export const cryptoWorker = {
     return bytesToHex(signature)
   },
 }
-
-
-
-

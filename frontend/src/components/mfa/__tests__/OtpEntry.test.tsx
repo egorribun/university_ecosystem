@@ -52,7 +52,3 @@ describe("OtpEntry", () => {
     expect(onSubmit).not.toHaveBeenCalled()
   })
 })
-
-
-
-

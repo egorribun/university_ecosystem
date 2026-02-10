@@ -238,8 +238,3 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
     </Dialog>
   )
 }
-
-
-
-
-

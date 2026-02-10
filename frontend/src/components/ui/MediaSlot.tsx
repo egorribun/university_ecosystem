@@ -74,10 +74,7 @@ export const MediaSlot = forwardRef<HTMLDivElement, MediaSlotProps>(
       return (
         <div
           ref={ref}
-          className={cn(
-            "relative w-full overflow-hidden bg-(--glass-bg)",
-            containerClassName
-          )}
+          className={cn("relative w-full overflow-hidden bg-(--glass-bg)", containerClassName)}
           style={{ aspectRatio }}
         >
           {fallback ?? (
@@ -106,10 +103,7 @@ export const MediaSlot = forwardRef<HTMLDivElement, MediaSlotProps>(
       return (
         <div
           ref={ref}
-          className={cn(
-            "relative w-full overflow-hidden bg-(--glass-bg)",
-            containerClassName
-          )}
+          className={cn("relative w-full overflow-hidden bg-(--glass-bg)", containerClassName)}
           style={{ aspectRatio }}
         >
           {fallback ?? (
@@ -136,10 +130,7 @@ export const MediaSlot = forwardRef<HTMLDivElement, MediaSlotProps>(
     return (
       <div
         ref={ref}
-        className={cn(
-          "relative w-full overflow-hidden bg-(--glass-bg)",
-          containerClassName
-        )}
+        className={cn("relative w-full overflow-hidden bg-(--glass-bg)", containerClassName)}
         style={{ aspectRatio }}
       >
         {/* Loading placeholder */}
@@ -174,7 +165,3 @@ export const MediaSlot = forwardRef<HTMLDivElement, MediaSlotProps>(
 )
 
 MediaSlot.displayName = "MediaSlot"
-
-
-
-

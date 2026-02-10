@@ -223,7 +223,3 @@ describe("NotificationsBell", () => {
     expect(screen.getByText("Couldn't load more notifications")).toBeInTheDocument()
   })
 })
-
-
-
-

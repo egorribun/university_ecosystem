@@ -7,10 +7,7 @@ import { currentUserQueryKey, fetchCurrentUser } from "../../hooks/auth/useProfi
 import { nowPlayingQueryKey } from "../../hooks/useNowPlaying"
 import { sanitizeSpotifyAuthorizeUrl } from "../../utils/spotify"
 
-import {
-  ProfileSection,
-  SpotifySection,
-} from "./sections"
+import { ProfileSection, SpotifySection } from "./sections"
 
 import type { SetSnackbar } from "./types"
 

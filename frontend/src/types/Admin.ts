@@ -36,7 +36,3 @@ export interface AuditLogList {
   items: AuditLog[]
   total: number
 }
-
-
-
-

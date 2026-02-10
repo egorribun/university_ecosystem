@@ -24,7 +24,3 @@ export type ThemeMode = "light" | "dark" | "system"
 
 /** Notification permission states */
 export type NotificationPermissionState = "default" | "granted" | "denied"
-
-
-
-

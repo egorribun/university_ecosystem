@@ -113,7 +113,3 @@ self.addEventListener("sync", (event) => {
     syncEvent.waitUntil(processOfflineQueues())
   }
 })
-
-
-
-

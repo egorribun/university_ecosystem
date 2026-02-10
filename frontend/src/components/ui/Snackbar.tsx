@@ -38,7 +38,3 @@ function Snackbar({ open, message, onClose, duration = 2200 }: SnackbarProps) {
 }
 
 export default memo(Snackbar)
-
-
-
-

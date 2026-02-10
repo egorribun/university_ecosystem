@@ -64,7 +64,3 @@ describe("isUploadErrorState", () => {
     expect(errors[0].error).toBe("failed to upload")
   })
 })
-
-
-
-

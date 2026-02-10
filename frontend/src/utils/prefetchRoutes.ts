@@ -32,7 +32,3 @@ export function prefetchRouteModules(loaders: Loader[], options: PrefetchOptions
     void Promise.allSettled(uniqueLoaders.map((loader) => loader()))
   }, options.timeoutMs)
 }
-
-
-
-

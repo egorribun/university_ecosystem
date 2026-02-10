@@ -106,11 +106,7 @@ export const EventActions: React.FC<EventActionsProps> = ({
                 </Button>
               </Tooltip>
 
-              <EventQrDialog
-                open={qrOpen}
-                onClose={() => setQrOpen(false)}
-                qr={qrToken}
-              />
+              <EventQrDialog open={qrOpen} onClose={() => setQrOpen(false)} qr={qrToken} />
             </>
           )}
         </div>
@@ -118,7 +114,3 @@ export const EventActions: React.FC<EventActionsProps> = ({
     </div>
   )
 }
-
-
-
-

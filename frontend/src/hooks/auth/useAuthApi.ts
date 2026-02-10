@@ -456,7 +456,3 @@ export const useAuthApi = (
     refresh,
   }
 }
-
-
-
-

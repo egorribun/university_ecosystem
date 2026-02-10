@@ -177,7 +177,10 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
             </p>
           </div>
         ) : derivedHelperText ? (
-          <p id={helperId} className="text-xs font-bold text-center text-(--text-secondary) opacity-60">
+          <p
+            id={helperId}
+            className="text-xs font-bold text-center text-(--text-secondary) opacity-60"
+          >
             {derivedHelperText}
           </p>
         ) : null}
@@ -205,8 +208,3 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
 }
 
 export default OtpEntry
-
-
-
-
-

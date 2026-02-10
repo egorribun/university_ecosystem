@@ -76,7 +76,3 @@ describe("navigation components translations", () => {
     expect(screen.getByRole("link", { name: "Расписание" })).toBeInTheDocument()
   })
 })
-
-
-
-

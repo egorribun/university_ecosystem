@@ -96,7 +96,3 @@ describe("unsubscribePush", () => {
     expect(localStorage.getItem(TOPICS_KEY)).toBe('["news"]')
   })
 })
-
-
-
-

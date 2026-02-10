@@ -12,7 +12,6 @@
     --radius-2xl: 3rem;
     --radius-full: 9999px;
 
-
     /*
      * SPACING
      * Semantic tokens for consistency
@@ -182,9 +181,15 @@
     --glass-bg-low-dark: color-mix(in srgb, var(--bg-surface) 60%, transparent);
 
     /* Core Layout Gradients (Standardized) */
-    --grad-nav-light: radial-gradient(120% 180% at -10% -20%, rgba(36, 145, 255, 0.12), transparent 58%),
-      linear-gradient(112deg, var(--bg-surface) 0%, color-mix(in srgb, var(--bg-surface) 96%, black 4%) 100%);
-    --grad-nav-dark: radial-gradient(120% 180% at -10% -20%, rgba(56, 189, 248, 0.16), transparent 58%),
+    --grad-nav-light:
+      radial-gradient(120% 180% at -10% -20%, rgba(36, 145, 255, 0.12), transparent 58%),
+      linear-gradient(
+        112deg,
+        var(--bg-surface) 0%,
+        color-mix(in srgb, var(--bg-surface) 96%, black 4%) 100%
+      );
+    --grad-nav-dark:
+      radial-gradient(120% 180% at -10% -20%, rgba(56, 189, 248, 0.16), transparent 58%),
       linear-gradient(112deg, #0a1524 0%, #0b2b47 100%);
 
     /* Semantic Transparency (Alpha Mixes) */
@@ -197,11 +202,37 @@
 
     /* Dashboard specialized flares */
     --flare-highlight: radial-gradient(circle, var(--dash-hero-highlight), transparent);
-    --grad-dash-conic: conic-gradient(from 120deg at 50% 50%, var(--dash-hero-conic-primary), var(--dash-hero-conic-secondary), var(--dash-hero-conic-tertiary), var(--dash-hero-conic-accent));
-    --grad-dash-conic-90: conic-gradient(from 90deg at 50% 50%, var(--dash-hero-conic-primary), var(--dash-hero-conic-secondary), var(--dash-hero-conic-tertiary), var(--dash-hero-conic-accent));
-    --grad-dash-conic-130: conic-gradient(from 130deg at 50% 50%, var(--dash-hero-conic-primary), var(--dash-hero-conic-secondary), transparent 85%);
-    --grad-dash-conic-simple: conic-gradient(from 140deg at 50% 50%, var(--dash-hero-conic-primary), var(--dash-hero-conic-secondary), transparent 85%);
-    --grad-schedule-flare: radial-gradient(circle at top, var(--dash-card-schedule-radial), transparent 72%);
+    --grad-dash-conic: conic-gradient(
+      from 120deg at 50% 50%,
+      var(--dash-hero-conic-primary),
+      var(--dash-hero-conic-secondary),
+      var(--dash-hero-conic-tertiary),
+      var(--dash-hero-conic-accent)
+    );
+    --grad-dash-conic-90: conic-gradient(
+      from 90deg at 50% 50%,
+      var(--dash-hero-conic-primary),
+      var(--dash-hero-conic-secondary),
+      var(--dash-hero-conic-tertiary),
+      var(--dash-hero-conic-accent)
+    );
+    --grad-dash-conic-130: conic-gradient(
+      from 130deg at 50% 50%,
+      var(--dash-hero-conic-primary),
+      var(--dash-hero-conic-secondary),
+      transparent 85%
+    );
+    --grad-dash-conic-simple: conic-gradient(
+      from 140deg at 50% 50%,
+      var(--dash-hero-conic-primary),
+      var(--dash-hero-conic-secondary),
+      transparent 85%
+    );
+    --grad-schedule-flare: radial-gradient(
+      circle at top,
+      var(--dash-card-schedule-radial),
+      transparent 72%
+    );
     --flare-schedule-orb: radial-gradient(circle, var(--dash-card-schedule-orb), transparent);
 
     /* Specialized Typography */
@@ -215,7 +246,6 @@
     --dash-hero-orb: rgba(56, 189, 248, 0.12);
     --dash-hero-highlight: rgba(168, 85, 247, 0.08);
     --dash-hero-highlight-soft: rgba(37, 99, 235, 0.05);
-
 
     /* Gradients (Phase 1 Standardization) */
     --grad-news-hero: linear-gradient(180deg, rgba(15, 23, 42, 0) 30%, rgba(15, 23, 42, 0.75) 95%);

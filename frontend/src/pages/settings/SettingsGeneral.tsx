@@ -1,9 +1,6 @@
 import React from "react"
 import { useDndSettings } from "./hooks"
-import {
-  AppearanceSection,
-  NotificationsSection,
-} from "./sections"
+import { AppearanceSection, NotificationsSection } from "./sections"
 
 import type { SetSnackbar } from "./types"
 

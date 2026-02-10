@@ -40,12 +40,8 @@ export function EmailSection({
   return (
     <SectionCard component="section">
       <div className="flex flex-col gap-2 mb-4">
-        <SectionTitle variant="subtitle1">
-          {t("settings:security.account.title")}
-        </SectionTitle>
-        <SectionSubtitle variant="body2">
-          {t("settings:security.account.subtitle")}
-        </SectionSubtitle>
+        <SectionTitle variant="subtitle1">{t("settings:security.account.title")}</SectionTitle>
+        <SectionSubtitle variant="body2">{t("settings:security.account.subtitle")}</SectionSubtitle>
       </div>
 
       <div className="flex flex-col gap-3">
@@ -95,9 +91,7 @@ export function EmailSection({
                 variant="contained"
                 disabled={emailBusy || !emailValue || !emailPassword}
                 className="h-[40px] shrink-0 w-full sm:w-auto"
-                startIcon={
-                  emailBusy ? <CircularProgress size={18} color="inherit" /> : undefined
-                }
+                startIcon={emailBusy ? <CircularProgress size={18} color="inherit" /> : undefined}
               >
                 {t("common:buttons.save")}
               </Button>

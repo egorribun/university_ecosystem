@@ -57,7 +57,3 @@ export default function MapPage() {
     </Layout>
   )
 }
-
-
-
-

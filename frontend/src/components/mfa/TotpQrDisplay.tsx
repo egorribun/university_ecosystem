@@ -41,7 +41,9 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
       ) : null}
       <div className="p-4 rounded-lg border border-glass-border bg-surface shadow-sm min-h-[224px] flex items-center justify-center">
         <Suspense
-          fallback={<div className="w-[192px] h-[192px] animate-pulse bg-(--border-subtle) rounded" />}
+          fallback={
+            <div className="w-[192px] h-[192px] animate-pulse bg-(--border-subtle) rounded" />
+          }
         >
           {/*
             QR codes require high-contrast colors for reliable scanning.
@@ -99,7 +101,3 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
 }
 
 export default TotpQrDisplay
-
-
-
-

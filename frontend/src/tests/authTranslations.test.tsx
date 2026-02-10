@@ -70,7 +70,3 @@ describe("auth page translations", () => {
     expect(screen.getByRole("link", { name: "Sign up" })).toBeInTheDocument()
   })
 })
-
-
-
-

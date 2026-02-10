@@ -220,8 +220,3 @@ const ParticleAuthBackground = () => {
 }
 
 export default ParticleAuthBackground
-
-
-
-
-

@@ -95,8 +95,3 @@ export const Badge = <T extends ElementType = "span">({
 Badge.displayName = "Badge"
 
 export const Chip = Badge
-
-
-
-
-

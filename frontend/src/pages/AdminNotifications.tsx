@@ -386,7 +386,9 @@ export default function AdminNotifications() {
               <h1 className="text-4xl font-bold tracking-tight text-(--text-primary) sm:text-5xl">
                 {t("admin:notifications.title")}
               </h1>
-              <p className="text-base text-(--text-secondary)">{t("admin:notifications.subtitle")}</p>
+              <p className="text-base text-(--text-secondary)">
+                {t("admin:notifications.subtitle")}
+              </p>
             </div>
 
             <SectionCard className="p-6">
@@ -542,8 +544,3 @@ export default function AdminNotifications() {
     </Layout>
   )
 }
-
-
-
-
-

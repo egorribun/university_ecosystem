@@ -74,8 +74,7 @@ const RadioGroupItem = React.forwardRef<HTMLInputElement, RadioGroupItemProps>(
             "border-glass-border bg-glass-bg backdrop-blur-glass shadow-glass",
             "hover:border-brand/40 hover:bg-glass-tint1",
             "peer-focus-visible:ring-4 peer-focus-visible:ring-brand/20",
-            isSelected &&
-              "border-brand bg-brand/10 shadow-glow-primary",
+            isSelected && "border-brand bg-brand/10 shadow-glow-primary",
             className
           )}
         >
@@ -98,8 +97,3 @@ const RadioGroupItem = React.forwardRef<HTMLInputElement, RadioGroupItemProps>(
 RadioGroupItem.displayName = "RadioGroupItem"
 
 export { RadioGroup, RadioGroupItem }
-
-
-
-
-

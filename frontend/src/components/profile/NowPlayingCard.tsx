@@ -247,8 +247,3 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
 })
 
 export default NowPlayingCard
-
-
-
-
-

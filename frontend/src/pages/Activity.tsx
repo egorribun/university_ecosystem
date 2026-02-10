@@ -841,17 +841,13 @@ export default function Activity() {
                                 </span>
                               </div>
                             </div>
-                            <p className="ml-4 text-xs text-(--text-label)">
-                              {formatDate(r.date)}
-                            </p>
+                            <p className="ml-4 text-xs text-(--text-label)">{formatDate(r.date)}</p>
                           </motion.div>
                         )
                       })}
                     </AnimatePresence>
                     {!loading && (!attendance?.recent || attendance.recent.length === 0) && (
-                      <p className="px-1 py-1 text-sm text-(--text-label)">
-                        {noDataText}
-                      </p>
+                      <p className="px-1 py-1 text-sm text-(--text-label)">{noDataText}</p>
                     )}
                   </div>
                 </div>
@@ -895,17 +891,13 @@ export default function Activity() {
                                 </span>
                               </div>
                             </div>
-                            <p className="ml-4 text-xs text-(--text-label)">
-                              {formatDate(r.date)}
-                            </p>
+                            <p className="ml-4 text-xs text-(--text-label)">{formatDate(r.date)}</p>
                           </motion.div>
                         )
                       })}
                     </AnimatePresence>
                     {!loading && (!grades?.recent || grades.recent.length === 0) && (
-                      <p className="px-1 py-1 text-sm text-(--text-label)">
-                        {noDataText}
-                      </p>
+                      <p className="px-1 py-1 text-sm text-(--text-label)">{noDataText}</p>
                     )}
                   </div>
                 </div>
@@ -954,9 +946,7 @@ export default function Activity() {
                       })}
                     </AnimatePresence>
                     {!loading && (!participation?.recent || participation.recent.length === 0) && (
-                      <p className="px-1 py-1 text-sm text-(--text-label)">
-                        {noDataText}
-                      </p>
+                      <p className="px-1 py-1 text-sm text-(--text-label)">{noDataText}</p>
                     )}
                   </div>
                 </div>
@@ -990,9 +980,7 @@ export default function Activity() {
                       <p className="text-sm font-semibold text-(--text-primary)">
                         {`${r.course || attendanceLessonFallback} — ${attendanceStatusLabel(r.status)}`}
                       </p>
-                      <p className="text-xs text-(--text-caption)">
-                        {formatDate(r.date)}
-                      </p>
+                      <p className="text-xs text-(--text-caption)">{formatDate(r.date)}</p>
                     </div>
                   ))}
                 </div>
@@ -1013,9 +1001,7 @@ export default function Activity() {
                       <p className="text-sm font-semibold text-(--text-primary)">
                         {`${r.course} — ${r.score}${r.max ? "/" + r.max : ""}`}
                       </p>
-                      <p className="text-xs text-(--text-caption)">
-                        {formatDate(r.date)}
-                      </p>
+                      <p className="text-xs text-(--text-caption)">{formatDate(r.date)}</p>
                     </div>
                   ))}
                 </div>
@@ -1062,9 +1048,7 @@ export default function Activity() {
                     <p className="text-sm font-semibold text-(--text-primary)">
                       {`${r.course || attendanceLessonFallback} — ${attendanceStatusLabel(r.status)}`}
                     </p>
-                    <p className="text-xs text-(--text-caption)">
-                      {formatDate(r.date)}
-                    </p>
+                    <p className="text-xs text-(--text-caption)">{formatDate(r.date)}</p>
                   </div>
                 ))}
               </div>
@@ -1076,9 +1060,7 @@ export default function Activity() {
                     <p className="text-sm font-semibold text-(--text-primary)">
                       {`${r.course} — ${r.score}${r.max ? "/" + r.max : ""}`}
                     </p>
-                    <p className="text-xs text-(--text-caption)">
-                      {formatDate(r.date)}
-                    </p>
+                    <p className="text-xs text-(--text-caption)">{formatDate(r.date)}</p>
                   </div>
                 ))}
               </div>
@@ -1106,8 +1088,3 @@ export default function Activity() {
     </Layout>
   )
 }
-
-
-
-
-

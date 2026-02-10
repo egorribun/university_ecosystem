@@ -138,7 +138,3 @@ describe("Events pagination UI", () => {
     queryClient.clear()
   })
 })
-
-
-
-

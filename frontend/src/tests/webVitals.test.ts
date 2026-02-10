@@ -72,7 +72,3 @@ describe("initWebVitals", () => {
     }
   })
 })
-
-
-
-

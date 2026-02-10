@@ -52,7 +52,3 @@ export function EventCardSkeleton() {
 }
 
 export default memo(EventCardSkeleton)
-
-
-
-

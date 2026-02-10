@@ -77,7 +77,3 @@ describe("StepUpDialog", () => {
     expect(await screen.findByText("Locked")).toBeInTheDocument()
   })
 })
-
-
-
-

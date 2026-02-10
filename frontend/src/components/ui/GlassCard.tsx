@@ -37,7 +37,3 @@ export function GlassCard({
     </div>
   )
 }
-
-
-
-

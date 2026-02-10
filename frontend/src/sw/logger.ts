@@ -14,7 +14,3 @@ export const warn = (...args: unknown[]) => {
 export const error = (...args: unknown[]) => {
   console.error("[SW]", ...args)
 }
-
-
-
-

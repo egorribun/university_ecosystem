@@ -125,7 +125,3 @@ export const NewsCardActions: FC<NewsCardActionsProps> = ({ onEdit, onDelete, is
     </div>
   )
 }
-
-
-
-

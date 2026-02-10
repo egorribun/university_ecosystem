@@ -113,55 +113,63 @@ export function useWebAuthn({ setSnackbar, tabActive, openStepUpFor }: UseWebAut
     challengeTokenRef.current = null
   }, [])
 
-  const register = useCallback(async (options?: { skipStepUp?: boolean }) => {
-    if (busy || !label.trim()) return
+  const register = useCallback(
+    async (options?: { skipStepUp?: boolean }) => {
+      if (busy || !label.trim()) return
 
-    setBusy(true)
-    try {
-      // Step 1: Start registration and get options from server
-      const startResponse = await startWebAuthnRegistration()
-      const { publicKey, challenge_token } = startResponse.data
+      setBusy(true)
+      try {
+        // Step 1: Start registration and get options from server
+        const startResponse = await startWebAuthnRegistration()
+        const { publicKey, challenge_token } = startResponse.data
 
-      if (!isCreationOptions(publicKey)) {
-        throw new Error("Invalid WebAuthn options received from server")
-      }
+        if (!isCreationOptions(publicKey)) {
+          throw new Error("Invalid WebAuthn options received from server")
+        }
 
-      challengeTokenRef.current = challenge_token
+        challengeTokenRef.current = challenge_token
 
-      // Step 2: Trigger browser WebAuthn ceremony
-      const credential = await startRegistration({ optionsJSON: publicKey })
+        // Step 2: Trigger browser WebAuthn ceremony
+        const credential = await startRegistration({ optionsJSON: publicKey })
 
-      // Step 3: Send credential back to server for verification
-      await confirmWebAuthnRegistration({
-        challenge: challenge_token,
-        response: credential,
-        label: label.trim(),
-      })
-
-      await refreshUser()
-      await fetchCredentials()
-
-      setSnackbar({
-        text: t("settings:security.webauthn.snackbar.registered"),
-        severity: "success",
-      })
-      closeDialog()
-    } catch (error) {
-      if (!options?.skipStepUp && isAxiosError(error) && error.response?.status === 428 && openStepUpFor) {
-        openStepUpFor(async () => {
-          await register({ skipStepUp: true })
+        // Step 3: Send credential back to server for verification
+        await confirmWebAuthnRegistration({
+          challenge: challenge_token,
+          response: credential,
+          label: label.trim(),
         })
-        return
+
+        await refreshUser()
+        await fetchCredentials()
+
+        setSnackbar({
+          text: t("settings:security.webauthn.snackbar.registered"),
+          severity: "success",
+        })
+        closeDialog()
+      } catch (error) {
+        if (
+          !options?.skipStepUp &&
+          isAxiosError(error) &&
+          error.response?.status === 428 &&
+          openStepUpFor
+        ) {
+          openStepUpFor(async () => {
+            await register({ skipStepUp: true })
+          })
+          return
+        }
+        const message = resolveDetailMessage(
+          error,
+          t("settings:security.webauthn.snackbar.registrationFailed")
+        )
+        setSnackbar({ text: message, severity: "error" })
+      } finally {
+        setBusy(false)
       }
-      const message = resolveDetailMessage(
-        error,
-        t("settings:security.webauthn.snackbar.registrationFailed")
-      )
-      setSnackbar({ text: message, severity: "error" })
-    } finally {
-      setBusy(false)
-    }
-  }, [busy, closeDialog, fetchCredentials, label, openStepUpFor, refreshUser, setSnackbar, t])
+    },
+    [busy, closeDialog, fetchCredentials, label, openStepUpFor, refreshUser, setSnackbar, t]
+  )
 
   const remove = useCallback(
     async (credentialId: string, options?: { skipStepUp?: boolean }) => {
@@ -174,7 +182,12 @@ export function useWebAuthn({ setSnackbar, tabActive, openStepUpFor }: UseWebAut
           severity: "success",
         })
       } catch (error) {
-        if (!options?.skipStepUp && isAxiosError(error) && error.response?.status === 428 && openStepUpFor) {
+        if (
+          !options?.skipStepUp &&
+          isAxiosError(error) &&
+          error.response?.status === 428 &&
+          openStepUpFor
+        ) {
           openStepUpFor(async () => {
             await remove(credentialId, { skipStepUp: true })
           })
@@ -206,7 +219,3 @@ export function useWebAuthn({ setSnackbar, tabActive, openStepUpFor }: UseWebAut
     fetchCredentials,
   }
 }
-
-
-
-

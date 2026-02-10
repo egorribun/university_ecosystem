@@ -115,7 +115,3 @@ export function SyncStatus() {
     </AnimatePresence>
   )
 }
-
-
-
-

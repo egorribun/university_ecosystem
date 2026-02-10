@@ -50,7 +50,3 @@ export function initObservability(env: ImportMetaEnv = import.meta.env): boolean
 export function resetObservabilityForTesting(): void {
   initialized = false
 }
-
-
-
-

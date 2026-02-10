@@ -30,7 +30,3 @@ export { WidgetErrorBoundary } from "./WidgetErrorBoundary"
 
 // Re-export existing app-level boundary
 export { ErrorBoundary as AppErrorBoundary } from "@/app/ErrorBoundary"
-
-
-
-

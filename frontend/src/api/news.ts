@@ -103,7 +103,3 @@ export const uploadNewsImage = async (file: File) => {
   )
   return parsed.url
 }
-
-
-
-

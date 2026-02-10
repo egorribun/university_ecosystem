@@ -28,7 +28,3 @@ describe("buildAvatarUrl", () => {
     expect(result).toBe(absolute)
   })
 })
-
-
-
-

@@ -73,7 +73,9 @@ export const EventMedia: React.FC<EventMediaProps> = ({
 
         {timeStatus.status === "soon" && timeStatus.timeText && (
           <div className="absolute top-3 right-3 px-3 py-1.5 rounded-lg bg-warning-bg/90 backdrop-blur-sm shadow-lg flex items-center gap-1.5 text-warning-text">
-            <span className="text-xs font-bold text-white">⏱ {t("events:card.statuses.in", { time: timeStatus.timeText })}</span>
+            <span className="text-xs font-bold text-white">
+              ⏱ {t("events:card.statuses.in", { time: timeStatus.timeText })}
+            </span>
           </div>
         )}
 
@@ -84,7 +86,3 @@ export const EventMedia: React.FC<EventMediaProps> = ({
     </div>
   )
 }
-
-
-
-

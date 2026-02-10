@@ -183,7 +183,3 @@ describe("Settings radio buttons", () => {
     }
   })
 })
-
-
-
-

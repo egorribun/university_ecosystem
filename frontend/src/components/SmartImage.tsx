@@ -109,7 +109,3 @@ export default function SmartImage({
     />
   )
 }
-
-
-
-

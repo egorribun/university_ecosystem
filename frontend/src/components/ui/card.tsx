@@ -50,7 +50,3 @@ export const Card = <T extends ElementType = "div">({
 }
 
 Card.displayName = "Card"
-
-
-
-

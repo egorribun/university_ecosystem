@@ -76,7 +76,3 @@ describe("useEventsListQuery", () => {
     await waitFor(() => expect(result.current.events).toEqual(secondUserEvents))
   })
 })
-
-
-
-

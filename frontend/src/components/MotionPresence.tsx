@@ -13,7 +13,3 @@ export default function MotionPresence({
     </AnimatePresence>
   )
 }
-
-
-
-

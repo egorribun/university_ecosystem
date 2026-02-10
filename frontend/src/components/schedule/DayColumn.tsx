@@ -127,8 +127,3 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
 )
 
 DayColumn.displayName = "DayColumn"
-
-
-
-
-

@@ -225,7 +225,9 @@ export default function NotificationsBell() {
                     <div className="w-12 h-12 rounded-full bg-error-bg/20 flex items-center justify-center text-error-text mb-2">
                       <Info className="w-6 h-6" />
                     </div>
-                    <p className="text-sm text-error-text/80">{t("system:notificationsBell.error")}</p>
+                    <p className="text-sm text-error-text/80">
+                      {t("system:notificationsBell.error")}
+                    </p>
                     <button
                       onClick={() => refetch()}
                       className="text-xs bg-(--border-subtle) hover:bg-(--border-strong) text-(--text-primary) px-3 py-1.5 rounded-lg transition-colors"
@@ -354,8 +356,3 @@ export default function NotificationsBell() {
     </>
   )
 }
-
-
-
-
-

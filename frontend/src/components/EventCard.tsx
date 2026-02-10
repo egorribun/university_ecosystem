@@ -1,4 +1,15 @@
-import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, lazy, Suspense, type FC } from "react"
+import React, {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  lazy,
+  Suspense,
+  type FC,
+} from "react"
 import { useNavigate } from "react-router-dom"
 import { isAxiosError } from "axios"
 import api from "../api/client"
@@ -27,8 +38,12 @@ import { EventMedia } from "./events/EventCard/EventMedia"
 import { EventInfo } from "./events/EventCard/EventInfo"
 import { EventActions } from "./events/EventCard/EventActions"
 
-const EventEditDialog = lazy(() => import("@/components/events/EventEditDialog").then(m => ({ default: m.EventEditDialog })))
-const EventAdminActions = lazy(() => import("./events/EventCard/EventAdminActions").then(m => ({ default: m.EventAdminActions })))
+const EventEditDialog = lazy(() =>
+  import("@/components/events/EventEditDialog").then((m) => ({ default: m.EventEditDialog }))
+)
+const EventAdminActions = lazy(() =>
+  import("./events/EventCard/EventAdminActions").then((m) => ({ default: m.EventAdminActions }))
+)
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
@@ -217,7 +232,9 @@ const EventCardComponent: FC<EventCardProps> = ({
       <div
         className={cn(
           "card-glass group relative flex flex-col transition-shadow duration-300 ease-out w-full p-fluid-card-p transform-gpu will-change-transform rounded-fluid-lg bg-glass-elevated border-glass-border-subtle shadow-premium",
-          editOpen ? "cursor-default" : "cursor-pointer hover:shadow-glass-strong active:scale-[0.985]"
+          editOpen
+            ? "cursor-default"
+            : "cursor-pointer hover:shadow-glass-strong active:scale-[0.985]"
         )}
         role="button"
         tabIndex={0}
@@ -229,11 +246,19 @@ const EventCardComponent: FC<EventCardProps> = ({
           }
         }}
       >
-        <SpotlightOverlay mouseX={spotlight.mouseX} mouseY={spotlight.mouseY} className="z-(--z-hide) rounded-[24px]" />
+        <SpotlightOverlay
+          mouseX={spotlight.mouseX}
+          mouseY={spotlight.mouseY}
+          className="z-(--z-hide) rounded-[24px]"
+        />
 
         {/* Admin Menu */}
         {user && (user.role === "admin" || user.role === "teacher") && (
-          <Suspense fallback={<div className="absolute top-3 right-3 w-8 h-8 rounded-full bg-glass animate-pulse" />}>
+          <Suspense
+            fallback={
+              <div className="absolute top-3 right-3 w-8 h-8 rounded-full bg-glass animate-pulse" />
+            }
+          >
             <EventAdminActions
               menuAnchor={menuAnchor}
               setMenuAnchor={setMenuAnchor}
@@ -339,7 +364,3 @@ const areEventCardPropsEqual = (prev: EventCardProps, next: EventCardProps) =>
   prev.participant_count === next.participant_count
 
 export default memo(EventCardComponent, areEventCardPropsEqual)
-
-
-
-

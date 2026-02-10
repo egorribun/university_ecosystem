@@ -116,7 +116,3 @@ export const chatApi = {
     return response.data
   },
 }
-
-
-
-

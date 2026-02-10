@@ -213,7 +213,3 @@ describe("InstallPrompt", () => {
     }
   })
 })
-
-
-
-

@@ -743,7 +743,3 @@ describe("page translations", () => {
     expect(await screen.findByRole("heading", { name: "Новый пароль" })).toBeInTheDocument()
   })
 })
-
-
-
-

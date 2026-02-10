@@ -63,9 +63,7 @@ export function SessionsSection({
             disabled={revokeAllPending}
             onClick={() => void onRevokeAllSessions()}
             startIcon={
-              revokeAllPending ? (
-                <CircularProgress size={18} color="inherit" />
-              ) : undefined
+              revokeAllPending ? <CircularProgress size={18} color="inherit" /> : undefined
             }
           >
             {t("settings:sessions.revokeAll")}
@@ -87,9 +85,7 @@ export function SessionsSection({
             {sessionsErrorMessage}
           </Alert>
         ) : sessions.length === 0 ? (
-          <SectionSubtitle className="mt-3 text-sm">
-            {t("settings:sessions.empty")}
-          </SectionSubtitle>
+          <SectionSubtitle className="mt-3 text-sm">{t("settings:sessions.empty")}</SectionSubtitle>
         ) : (
           <div className="flex flex-col gap-3 mt-3">
             {sortedSessions.map((session) => {
@@ -110,22 +106,16 @@ export function SessionsSection({
                 : isRevoked
                   ? t("settings:sessions.status.revoked")
                   : t("settings:sessions.status.active")
-              const disableRevoke =
-                session.is_current || isRevoked || revokeSessionPending
+              const disableRevoke = session.is_current || isRevoked || revokeSessionPending
 
               return (
-                <SessionItem
-                  key={session.id}
-                  data-revoked={isRevoked ? "true" : undefined}
-                >
+                <SessionItem key={session.id} data-revoked={isRevoked ? "true" : undefined}>
                   <div className="min-w-0">
                     <p
                       className={cn(
                         "text-sm wrap-break-word transition-colors",
                         session.is_current ? "font-semibold" : "font-medium",
-                        isRevoked
-                          ? "text-(--text-primary)/70"
-                          : "text-(--text-secondary)"
+                        isRevoked ? "text-(--text-primary)/70" : "text-(--text-secondary)"
                       )}
                     >
                       {session.user_agent || t("settings:sessions.unknownDevice")}
@@ -173,8 +163,3 @@ export function SessionsSection({
     </AccordionSection>
   )
 }
-
-
-
-
-

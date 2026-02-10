@@ -21,7 +21,3 @@ export const DetailRow = ({ label, value }: DetailRowProps) => {
 }
 
 export default DetailRow
-
-
-
-

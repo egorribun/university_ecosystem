@@ -93,7 +93,3 @@ export const useDashboardEvents = () => {
 
 export const prefetchDashboardEvents = (queryClient: QueryClient) =>
   queryClient.prefetchQuery(createDashboardEventsQueryOptions(queryClient))
-
-
-
-

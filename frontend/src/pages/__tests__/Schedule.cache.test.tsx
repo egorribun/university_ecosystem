@@ -206,7 +206,3 @@ describe("Schedule cache handling", () => {
     }
   })
 })
-
-
-
-

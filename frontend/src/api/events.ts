@@ -24,7 +24,3 @@ export const uploadEventImage = async (file: File) => {
   )
   return parsed.url
 }
-
-
-
-

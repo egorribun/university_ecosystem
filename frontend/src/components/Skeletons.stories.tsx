@@ -95,7 +95,3 @@ export const NewsCardList: StoryObj = {
     },
   },
 }
-
-
-
-

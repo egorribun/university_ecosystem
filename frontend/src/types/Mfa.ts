@@ -45,7 +45,3 @@ export type WebAuthnRegistrationVerifyIn = {
   response: unknown
   label?: string
 }
-
-
-
-

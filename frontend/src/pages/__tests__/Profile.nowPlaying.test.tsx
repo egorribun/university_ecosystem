@@ -89,7 +89,3 @@ describe("NowPlayingCard", () => {
     expect(updated).toBeGreaterThan(initial)
   })
 })
-
-
-
-

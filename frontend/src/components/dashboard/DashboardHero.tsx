@@ -44,9 +44,7 @@ export function DashboardHero({
 
   const headerGradientClass = cn(
     "transition-[background] duration-700",
-    isNarrow
-      ? "bg-(--grad-header-135)"
-      : "bg-(--grad-header-125)"
+    isNarrow ? "bg-(--grad-header-135)" : "bg-(--grad-header-125)"
   )
 
   const heroBackdropLayers = useMemo(() => {
@@ -179,8 +177,3 @@ export function DashboardHero({
     </section>
   )
 }
-
-
-
-
-

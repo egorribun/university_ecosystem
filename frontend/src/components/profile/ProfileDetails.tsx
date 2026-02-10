@@ -72,7 +72,3 @@ export const ProfileDetails = ({ user, isOpen, onToggle }: ProfileDetailsProps) 
 }
 
 export default ProfileDetails
-
-
-
-

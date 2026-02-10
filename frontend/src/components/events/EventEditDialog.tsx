@@ -205,7 +205,9 @@ export function EventEditDialog({
             className={cn(inputClass, dateError && "border-error-border")}
           />
           {dateError && (
-            <p className="mt-1 text-sm text-error-text">{t("events:form.errors.endsBeforeStarts")}</p>
+            <p className="mt-1 text-sm text-error-text">
+              {t("events:form.errors.endsBeforeStarts")}
+            </p>
           )}
         </div>
         <div>
@@ -245,8 +247,3 @@ export function EventEditDialog({
     </Dialog>
   )
 }
-
-
-
-
-

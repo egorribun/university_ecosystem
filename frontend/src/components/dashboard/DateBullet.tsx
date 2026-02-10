@@ -40,8 +40,3 @@ export function DateBullet({ date, locale }: DateBulletProps) {
     </Tooltip>
   )
 }
-
-
-
-
-

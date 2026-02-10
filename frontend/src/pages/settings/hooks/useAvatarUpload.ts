@@ -123,7 +123,3 @@ export function useAvatarUpload(setSnackbar: SetSnackbar) {
     handleError,
   }
 }
-
-
-
-

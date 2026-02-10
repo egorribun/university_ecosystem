@@ -473,9 +473,3 @@ export default function InstallPrompt() {
     </>
   )
 }
-
-
-
-
-
-

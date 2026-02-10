@@ -146,7 +146,10 @@ export const StepUpDialog = ({
         className="bg-card rounded-2xl shadow-2xl w-full max-w-sm"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 id="step-up-dialog-title" className="text-xl font-bold text-(--text-primary) px-6 pt-6 pb-2">
+        <h2
+          id="step-up-dialog-title"
+          className="text-xl font-bold text-(--text-primary) px-6 pt-6 pb-2"
+        >
           {title ?? t("mfa.stepUp.title")}
         </h2>
         <div className="px-6 py-4">
@@ -178,8 +181,3 @@ export const StepUpDialog = ({
 }
 
 export default StepUpDialog
-
-
-
-
-

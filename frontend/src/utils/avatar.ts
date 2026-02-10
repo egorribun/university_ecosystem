@@ -65,7 +65,3 @@ export function buildAvatarUrl(
   const origin = resolveBackendOrigin(options)
   return origin ? `${origin}${relativeWithUid}` : relativeWithUid
 }
-
-
-
-

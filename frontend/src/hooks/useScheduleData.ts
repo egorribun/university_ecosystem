@@ -579,7 +579,3 @@ export function useScheduleData() {
     currentProgress,
   }
 }
-
-
-
-

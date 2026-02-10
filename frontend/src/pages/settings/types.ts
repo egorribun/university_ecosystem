@@ -8,7 +8,3 @@ export type SetSnackbar = (value: SnackbarState) => void
 export interface SettingsSectionProps {
   setSnackbar: SetSnackbar
 }
-
-
-
-

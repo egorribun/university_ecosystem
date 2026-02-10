@@ -31,7 +31,3 @@ export async function renderWithA11y(ui: ReactElement, options: RenderWithAxeOpt
   await checkA11y(renderResult.container, options.axeOptions)
   return renderResult
 }
-
-
-
-

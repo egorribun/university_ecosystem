@@ -116,7 +116,3 @@ export function useCoverUpload(setSnackbar: SetSnackbar) {
     remove,
   }
 }
-
-
-
-

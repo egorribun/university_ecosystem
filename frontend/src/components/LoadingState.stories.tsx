@@ -82,7 +82,3 @@ export const LoadingProfile: Story = {
     },
   },
 }
-
-
-
-

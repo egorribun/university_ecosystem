@@ -35,7 +35,3 @@ export function AppProviders({ children }: AppProvidersProps) {
     </LanguageProvider>
   )
 }
-
-
-
-

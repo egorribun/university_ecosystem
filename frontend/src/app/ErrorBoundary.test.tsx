@@ -78,7 +78,3 @@ describe("ErrorBoundary", () => {
     expect(screen.getByText("recovered")).toBeInTheDocument()
   })
 })
-
-
-
-

@@ -109,7 +109,3 @@ if (webVitalsEnabled) {
     window.setTimeout(report, 0)
   }
 }
-
-
-
-

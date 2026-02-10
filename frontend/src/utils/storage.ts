@@ -83,7 +83,3 @@ export class StorageItem<T> {
 // Pre-defined storage keys for non-React contexts
 export const pushConsentStorage = new StorageItem<"granted" | "denied">("push-notification-consent")
 export const profileCacheStorage = new StorageItem<unknown>("sub-profile-cache")
-
-
-
-

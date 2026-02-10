@@ -74,7 +74,3 @@ describe("ResetPassword page", () => {
     expect(payloads).toEqual([{ password: "Password123!", token: "token123" }])
   })
 })
-
-
-
-

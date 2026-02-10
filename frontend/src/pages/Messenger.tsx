@@ -84,7 +84,9 @@ function ConfirmDialog({
           >
             <div className="p-8 space-y-4">
               <h3 className="text-xl font-bold tracking-tight sf-pro">{title}</h3>
-              <p className="text-base text-(--text-secondary) font-medium leading-relaxed">{message}</p>
+              <p className="text-base text-(--text-secondary) font-medium leading-relaxed">
+                {message}
+              </p>
               <div className="flex gap-3 justify-end pt-4">
                 <motion.button
                   whileHover={{ scale: 1.05, backgroundColor: "var(--bg-surface-hover)" }}
@@ -472,9 +474,7 @@ export default function Messenger() {
             transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
             className="w-full md:w-80 lg:w-96 flex flex-col border-r border-msg-border h-full relative z-deep bg-msg-sidebar"
           >
-            <div
-              className="p-4 flex justify-between items-center sticky top-0 z-deep backdrop-blur-xl bg-msg-header border-b border-msg-border"
-            >
+            <div className="p-4 flex justify-between items-center sticky top-0 z-deep backdrop-blur-xl bg-msg-header border-b border-msg-border">
               <h1 className="text-2xl font-bold tracking-tight sf-pro">
                 {t("messenger:title", "Messages")}
               </h1>
@@ -793,8 +793,8 @@ export default function Messenger() {
                     viewBox="0 0 24 24"
                     strokeWidth={1}
                     stroke="currentColor"
-                  className="w-16 h-16 text-msg-active opacity-60"
-                >
+                    className="w-16 h-16 text-msg-active opacity-60"
+                  >
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -837,9 +837,7 @@ export default function Messenger() {
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
               className="bg-(--bg-surface) dark:bg-(--bg-page) rounded-4xl shadow-2xl w-full max-w-lg overflow-hidden border border-white/10 z-(--z-modal)"
             >
-              <div
-                className="p-6 pb-4 flex items-center justify-between border-b border-msg-border"
-              >
+              <div className="p-6 pb-4 flex items-center justify-between border-b border-msg-border">
                 <h3 className="text-xl font-bold tracking-tight sf-pro">
                   {profileUser?.full_name || t("messenger:profile", "Profile")}
                 </h3>
@@ -878,9 +876,7 @@ export default function Messenger() {
 
                 {profileError && (
                   <div className="p-4 bg-(--error-text)/10 rounded-xl text-center">
-                    <p className="text-sm font-semibold text-(--error-text)">
-                      {profileError}
-                    </p>
+                    <p className="text-sm font-semibold text-(--error-text)">{profileError}</p>
                   </div>
                 )}
 
@@ -901,9 +897,7 @@ export default function Messenger() {
                       <h4 className="text-2xl font-bold tracking-tight sf-pro">
                         {profileUser.full_name}
                       </h4>
-                      <p className="text-(--text-secondary) font-medium">
-                        {profileUser.email}
-                      </p>
+                      <p className="text-(--text-secondary) font-medium">{profileUser.email}</p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-3 pb-2">
@@ -963,9 +957,3 @@ export default function Messenger() {
     </div>
   )
 }
-
-
-
-
-
-

@@ -214,7 +214,3 @@ describe("Navbar", () => {
     expect(screen.getByTestId("location-display")).toHaveTextContent("/news")
   })
 })
-
-
-
-

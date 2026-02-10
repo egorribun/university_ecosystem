@@ -58,7 +58,3 @@ void i18n
 export { defaultNS, fallbackLng, supportedLngs, namespaces, localeMeta }
 
 export default i18n
-
-
-
-

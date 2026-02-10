@@ -39,7 +39,3 @@ export function Skeleton({
 }
 
 Skeleton.displayName = "Skeleton"
-
-
-
-

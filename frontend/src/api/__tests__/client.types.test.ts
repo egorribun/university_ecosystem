@@ -36,7 +36,3 @@ describe("typed api client", () => {
     >()
   })
 })
-
-
-
-

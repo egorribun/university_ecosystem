@@ -25,7 +25,3 @@ export const persistAccessToken = (token: string | null | undefined) => {
 export const clearAccessToken = () => {
   persistAccessToken(null)
 }
-
-
-
-

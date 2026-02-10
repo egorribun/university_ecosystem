@@ -16,7 +16,3 @@ export const sanitizeSpotifyAuthorizeUrl = (raw: string | null | undefined): str
     return null
   }
 }
-
-
-
-

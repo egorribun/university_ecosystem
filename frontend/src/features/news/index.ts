@@ -12,7 +12,3 @@ export { useDashboardNews } from "@/hooks/useDashboardNews"
 export { useNewsInteraction } from "@/hooks/useNewsInteraction"
 
 // Types
-
-
-
-

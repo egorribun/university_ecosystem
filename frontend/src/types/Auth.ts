@@ -45,7 +45,3 @@ export class ChallengeLockedError extends Error {
     Object.setPrototypeOf(this, ChallengeLockedError.prototype)
   }
 }
-
-
-
-

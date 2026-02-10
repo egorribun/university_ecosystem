@@ -17,10 +17,7 @@ import { DesktopNav } from "@/components/navbar/DesktopNav"
 import { UserMenu } from "@/components/navbar/UserMenu"
 import { motion, useScroll, useMotionValueEvent } from "framer-motion"
 import { breakpoints } from "@/theme/tokens"
-import {
-  springSoft,
-  hoverScale,
-} from "@/utils/animations"
+import { springSoft, hoverScale } from "@/utils/animations"
 import { NAVBAR_SCROLL_THRESHOLD } from "@/constants/scroll"
 
 import { parseCacheVersion } from "@/utils/cache"
@@ -65,11 +62,7 @@ const Navbar = () => {
   }, [location.pathname])
 
   const avatarCacheV = useMemo(() => {
-    const raw =
-      user?.avatar_updated_at ??
-      user?.avatar_version ??
-      user?.updated_at ??
-      undefined
+    const raw = user?.avatar_updated_at ?? user?.avatar_version ?? user?.updated_at ?? undefined
     return parseCacheVersion(raw)
   }, [user])
 
@@ -253,13 +246,7 @@ const Navbar = () => {
                 markScrollFromBottom={markScrollFromBottom}
                 prefersReducedMotion={prefersReducedMotion}
               />
-              <UserMenu
-                user={user}
-                isAuth={!!isAuth}
-                loading={loading}
-                go={go}
-                t={t}
-              />
+              <UserMenu user={user} isAuth={!!isAuth} loading={loading} go={go} t={t} />
             </>
           )}
         </div>
@@ -283,9 +270,3 @@ const Navbar = () => {
 }
 
 export default Navbar
-
-
-
-
-
-

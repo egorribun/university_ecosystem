@@ -206,7 +206,3 @@ export function usePasswordChange({
     handlePasswordSubmit,
   }
 }
-
-
-
-

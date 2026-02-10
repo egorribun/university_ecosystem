@@ -83,14 +83,10 @@ export function NotificationsSection({
         {pushInitializing ? (
           <div className="flex items-center gap-2 py-2">
             <div className="animate-pulse w-4 h-4 rounded-full bg-(--border-strong)" />
-            <span className="text-sm text-text-muted">
-              {t("settings:notifications.loading")}
-            </span>
+            <span className="text-sm text-text-muted">{t("settings:notifications.loading")}</span>
           </div>
         ) : !pushSupported ? (
-          <p className="text-sm text-text-muted-more">
-            {t("settings:notifications.notSupported")}
-          </p>
+          <p className="text-sm text-text-muted-more">{t("settings:notifications.notSupported")}</p>
         ) : permissionDenied ? (
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2.5">
@@ -154,7 +150,3 @@ export function NotificationsSection({
     </SectionCard>
   )
 }
-
-
-
-

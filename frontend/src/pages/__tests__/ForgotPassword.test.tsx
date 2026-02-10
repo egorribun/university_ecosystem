@@ -64,7 +64,3 @@ describe("ForgotPassword page", () => {
     expect(results).toHaveNoViolations()
   })
 })
-
-
-
-

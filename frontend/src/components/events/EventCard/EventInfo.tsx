@@ -63,8 +63,3 @@ export const EventInfo: React.FC<EventInfoProps> = ({
     </>
   )
 }
-
-
-
-
-

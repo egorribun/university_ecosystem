@@ -27,7 +27,6 @@ export function usePushSync(isAuthenticated: boolean) {
 
     const syncPush = async () => {
       try {
-
         // Dynamically import to avoid loading push code when not needed
         const {
           isPushSupported,
@@ -86,7 +85,3 @@ export function usePushSync(isAuthenticated: boolean) {
     }
   }, [isAuthenticated])
 }
-
-
-
-

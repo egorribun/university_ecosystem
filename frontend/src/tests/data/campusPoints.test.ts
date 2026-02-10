@@ -54,7 +54,3 @@ describe("campus points data", () => {
     }
   })
 })
-
-
-
-

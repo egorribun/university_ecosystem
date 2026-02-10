@@ -186,7 +186,3 @@ export function renderBootstrapFallback({
     clearCacheButton,
   }
 }
-
-
-
-

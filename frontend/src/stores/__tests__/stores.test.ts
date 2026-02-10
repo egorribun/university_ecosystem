@@ -257,7 +257,3 @@ describe("appShellStore", () => {
     expect(useAppShellStore.getState().themeMode).toBe("dark")
   })
 })
-
-
-
-

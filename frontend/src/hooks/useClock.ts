@@ -36,7 +36,3 @@ export function useClock(locale: string) {
   })
   return { hh, mm, dateStr, time }
 }
-
-
-
-

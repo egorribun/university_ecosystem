@@ -704,7 +704,3 @@ describe.skip("service worker media cache controls", () => {
     await expect(second.text()).resolves.toBe("signed-media")
   })
 })
-
-
-
-

@@ -59,8 +59,3 @@ export function ScheduleSkeleton() {
     </div>
   )
 }
-
-
-
-
-

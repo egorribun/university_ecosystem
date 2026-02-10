@@ -175,7 +175,6 @@
   }
 
   @keyframes dash-colon-blink {
-
     0%,
     100% {
       opacity: 1;
@@ -266,7 +265,6 @@
   }
 
   @keyframes msg-online-pulse {
-
     0%,
     100% {
       box-shadow: 0 0 0 0 var(--msg-online-pulse);
@@ -278,7 +276,6 @@
   }
 
   @keyframes msg-typing {
-
     0%,
     60%,
     100% {
@@ -307,7 +304,6 @@
   }
 
   @keyframes pulse-shadow {
-
     0%,
     100% {
       box-shadow: 0 4px 16px -4px color-mix(in srgb, var(--primary-main) 40%, transparent 60%);
@@ -395,7 +391,6 @@
 }
 
 @layer components {
-
   /* Premium Glass Card - Elevated */
   .card-glass {
     @apply relative overflow-hidden rounded-4xl border border-glass-border bg-glass backdrop-blur-2xl shadow-glass;
@@ -432,18 +427,22 @@
   .skeleton::after {
     content: "";
     @apply absolute inset-0;
-    background: linear-gradient(90deg,
-        transparent 0%,
-        rgba(255, 255, 255, 0.25) 50%,
-        transparent 100%);
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.25) 50%,
+      transparent 100%
+    );
     animation: skeleton-shimmer 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
   }
 
   .dark .skeleton::after {
-    background: linear-gradient(90deg,
-        transparent 0%,
-        rgba(255, 255, 255, 0.05) 50%,
-        transparent 100%);
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.05) 50%,
+      transparent 100%
+    );
   }
 
   /* Skip-link for keyboard navigation */
@@ -519,5 +518,4 @@
   .animate-msg-bubble-in {
     animation: msg-bubble-in 0.5s var(--ease-back-out) forwards;
   }
-
 }

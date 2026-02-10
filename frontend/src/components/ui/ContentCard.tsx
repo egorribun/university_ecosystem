@@ -247,8 +247,3 @@ export const ContentCard = Object.assign(ContentCardRoot, {
   Meta,
   Badge: BadgeSlot,
 })
-
-
-
-
-

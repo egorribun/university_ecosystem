@@ -41,8 +41,3 @@ export default function LoadingState({ label }: LoadingStateProps) {
     </Layout>
   )
 }
-
-
-
-
-

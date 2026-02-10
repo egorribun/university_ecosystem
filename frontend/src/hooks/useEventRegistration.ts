@@ -9,8 +9,7 @@ import { useTranslation } from "react-i18next"
 const regKey = (eventId: string, userId: number | string | undefined) =>
   `event:reg:${eventId}:${userId ?? "anon"}`
 
-const qrKey = (eventId: string, user: User | null) =>
-  `event:qr:${eventId}:${user?.id ?? "anon"}`
+const qrKey = (eventId: string, user: User | null) => `event:qr:${eventId}:${user?.id ?? "anon"}`
 
 interface UseEventRegistrationOptions {
   eventId: string
@@ -210,7 +209,3 @@ export function useEventRegistration({
     sync,
   }
 }
-
-
-
-

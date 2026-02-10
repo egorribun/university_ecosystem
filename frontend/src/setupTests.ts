@@ -103,7 +103,3 @@ if (typeof HTMLCanvasElement !== "undefined") {
       }) as any
   )
 }
-
-
-
-

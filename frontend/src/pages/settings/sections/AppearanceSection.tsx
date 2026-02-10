@@ -127,7 +127,3 @@ export function AppearanceSection(_props: SettingsSectionProps) {
     </div>
   )
 }
-
-
-
-

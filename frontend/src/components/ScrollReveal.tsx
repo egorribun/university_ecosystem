@@ -97,7 +97,3 @@ export const ScrollReveal = ({
     </div>
   )
 }
-
-
-
-

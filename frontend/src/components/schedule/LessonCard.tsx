@@ -138,7 +138,3 @@ export function LessonCard({
 }
 
 export default LessonCard
-
-
-
-

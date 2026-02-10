@@ -99,7 +99,3 @@ describe("addVersionParam", () => {
     expect(addVersionParam("https://example.com/image.png")).toBe("https://example.com/image.png")
   })
 })
-
-
-
-

@@ -46,7 +46,3 @@ export default function useScrollRestoration(currentPath: string): ScrollRestora
 
   return { scrollToTop, markScrollFromBottom, isSamePath }
 }
-
-
-
-

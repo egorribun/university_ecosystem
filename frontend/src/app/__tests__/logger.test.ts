@@ -66,7 +66,3 @@ describe("logger", () => {
     expect(console.warn).toHaveBeenCalledWith("Careful!", { context: true })
   })
 })
-
-
-
-

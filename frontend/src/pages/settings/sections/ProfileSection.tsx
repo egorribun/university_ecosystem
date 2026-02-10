@@ -27,9 +27,7 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
   return (
     <SectionCard component="section">
       <div className="flex flex-col gap-2 mb-4">
-        <SectionTitle variant="subtitle1">
-          {t("settings:account.profile.title")}
-        </SectionTitle>
+        <SectionTitle variant="subtitle1">{t("settings:account.profile.title")}</SectionTitle>
         <SectionSubtitle variant="body2">
           Управление вашим профилем и медиа контентом
         </SectionSubtitle>
@@ -170,9 +168,3 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
     </SectionCard>
   )
 }
-
-
-
-
-
-

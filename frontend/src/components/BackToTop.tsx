@@ -49,7 +49,3 @@ export default function BackToTop() {
     </AnimatePresence>
   )
 }
-
-
-
-

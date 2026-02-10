@@ -22,7 +22,3 @@ const NewsCardSkeleton = () => {
 }
 
 export default memo(NewsCardSkeleton)
-
-
-
-

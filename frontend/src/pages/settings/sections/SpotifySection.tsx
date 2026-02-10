@@ -53,12 +53,7 @@ export function SpotifySection({
             {t("settings:integrations.spotify.connect")}
           </Button>
         ) : (
-          <Button
-            variant="outlined"
-            color="error"
-            onClick={onDisconnect}
-            className="self-start"
-          >
+          <Button variant="outlined" color="error" onClick={onDisconnect} className="self-start">
             {t("settings:integrations.spotify.disconnect")}
           </Button>
         )}
@@ -66,7 +61,3 @@ export function SpotifySection({
     </div>
   )
 }
-
-
-
-

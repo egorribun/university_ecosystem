@@ -71,7 +71,3 @@ export const glass = {
   tint2: "var(--glass-tint2)",
   tint3: "var(--glass-tint3)",
 } as const
-
-
-
-

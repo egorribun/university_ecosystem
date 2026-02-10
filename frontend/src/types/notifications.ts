@@ -17,7 +17,3 @@ export type AdminUserTopicsResponse = {
   allowed_topics: string[]
   updated_at?: string | null
 }
-
-
-
-

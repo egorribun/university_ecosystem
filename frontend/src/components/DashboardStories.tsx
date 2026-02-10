@@ -592,8 +592,3 @@ function ArrowRightIcon(props: SVGProps<SVGSVGElement>) {
     </svg>
   )
 }
-
-
-
-
-

@@ -70,7 +70,3 @@ export function ProfileCardSkeleton({
 }
 
 export default memo(ProfileCardSkeleton)
-
-
-
-

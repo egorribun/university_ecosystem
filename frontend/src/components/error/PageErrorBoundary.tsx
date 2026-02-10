@@ -203,7 +203,3 @@ class PageErrorBoundaryClass extends Component<
 
 export const PageErrorBoundary = PageErrorBoundaryInner
 export default PageErrorBoundary
-
-
-
-

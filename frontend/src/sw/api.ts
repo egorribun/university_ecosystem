@@ -160,7 +160,3 @@ export async function clearSessionCaches() {
   log("Clearing session caches", sessionCaches)
   await Promise.all(sessionCaches.map((name) => caches.delete(name)))
 }
-
-
-
-

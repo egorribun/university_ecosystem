@@ -212,7 +212,3 @@ export function useDndSettings(setSnackbar: SetSnackbar): UseDndSettingsReturn {
     handleDndEndBlur,
   }
 }
-
-
-
-

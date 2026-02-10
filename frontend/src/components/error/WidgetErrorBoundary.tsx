@@ -105,7 +105,3 @@ export class WidgetErrorBoundary extends Component<
 }
 
 export default WidgetErrorBoundary
-
-
-
-

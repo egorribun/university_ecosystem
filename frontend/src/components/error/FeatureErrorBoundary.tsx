@@ -70,14 +70,8 @@ function FeatureErrorFallback({
         </h3>
         <p className="text-xs text-[--text-primary]/60">Something went wrong</p>
       </div>
-      <button
-        type="button"
-        onClick={onRetry}
-        className="hover:underline"
-      >
-        <span className="text-xs font-black text-[--accent]">
-          Try again
-        </span>
+      <button type="button" onClick={onRetry} className="hover:underline">
+        <span className="text-xs font-black text-[--accent]">Try again</span>
       </button>
     </div>
   )
@@ -152,7 +146,3 @@ export class FeatureErrorBoundary extends Component<
 }
 
 export default FeatureErrorBoundary
-
-
-
-

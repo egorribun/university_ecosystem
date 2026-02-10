@@ -48,7 +48,3 @@ export type {
   ScheduleViewMode,
   ThemeMode,
 } from "./types"
-
-
-
-

@@ -40,7 +40,3 @@ export function initPushHandlers() {
     )
   })
 }
-
-
-
-

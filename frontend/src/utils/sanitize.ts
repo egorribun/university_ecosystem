@@ -116,7 +116,3 @@ export const sanitizeTelegramUrl = (raw: string | null | undefined): string => {
   if (!withoutPrefix) return ""
   return `https://t.me/${encodeURIComponent(withoutPrefix)}`
 }
-
-
-
-

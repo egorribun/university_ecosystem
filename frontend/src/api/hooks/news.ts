@@ -220,7 +220,3 @@ export const useNewsListQuery = (
     queryKey,
   }
 }
-
-
-
-

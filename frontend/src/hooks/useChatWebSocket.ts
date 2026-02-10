@@ -341,7 +341,3 @@ export function useChatWebSocket({
     reconnect: connect,
   }
 }
-
-
-
-

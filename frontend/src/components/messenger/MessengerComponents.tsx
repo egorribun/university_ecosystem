@@ -630,9 +630,3 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
     </AnimatePresence>
   )
 }
-
-
-
-
-
-

@@ -18,7 +18,10 @@ export type NavigationItem = {
   icon: React.ElementType
 }
 
-export const getNavigationConfig = (t: (key: string) => string, role?: string): NavigationItem[] => {
+export const getNavigationConfig = (
+  t: (key: string) => string,
+  role?: string
+): NavigationItem[] => {
   const base = [
     { to: "/dashboard", label: t("navigation:menu.dashboard"), icon: DashboardIcon },
     { to: "/news", label: t("navigation:menu.news"), icon: ArticleIcon },
@@ -56,7 +59,3 @@ export const getNavigationConfig = (t: (key: string) => string, role?: string): 
   }
   return base
 }
-
-
-
-

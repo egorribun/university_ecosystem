@@ -729,7 +729,9 @@ export function DialogContent({
   className?: string
 }) {
   return (
-    <div className={cn("px-6 py-4 text-(--text-secondary) leading-relaxed", className)}>{children}</div>
+    <div className={cn("px-6 py-4 text-(--text-secondary) leading-relaxed", className)}>
+      {children}
+    </div>
   )
 }
 
@@ -889,9 +891,3 @@ export function Tab({
     </button>
   )
 }
-
-
-
-
-
-

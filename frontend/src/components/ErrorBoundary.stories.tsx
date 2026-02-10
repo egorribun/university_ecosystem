@@ -95,7 +95,3 @@ export const CustomFallback: Story = {
     },
   },
 }
-
-
-
-

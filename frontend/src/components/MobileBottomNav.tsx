@@ -170,7 +170,3 @@ export default function MobileBottomNav() {
     </>
   )
 }
-
-
-
-

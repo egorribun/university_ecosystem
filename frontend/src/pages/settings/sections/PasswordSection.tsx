@@ -1,11 +1,6 @@
 import { useTranslation } from "react-i18next"
 
-import {
-  Button,
-  TextField,
-  CircularProgress,
-  AccordionSection,
-} from "../../../components/settings"
+import { Button, TextField, CircularProgress, AccordionSection } from "../../../components/settings"
 
 import type { SettingsSectionProps } from "../types"
 
@@ -92,11 +87,7 @@ export function PasswordSection({
             type="submit"
             variant="contained"
             disabled={passwordBusy}
-            startIcon={
-              passwordBusy ? (
-                <CircularProgress size={18} color="inherit" />
-              ) : undefined
-            }
+            startIcon={passwordBusy ? <CircularProgress size={18} color="inherit" /> : undefined}
           >
             {passwordBusy
               ? t("settings:security.password.updating")
@@ -107,7 +98,3 @@ export function PasswordSection({
     </AccordionSection>
   )
 }
-
-
-
-

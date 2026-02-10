@@ -49,8 +49,3 @@ export const AchievementsSection = ({
 }
 
 export default AchievementsSection
-
-
-
-
-

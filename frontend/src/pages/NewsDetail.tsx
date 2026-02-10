@@ -543,7 +543,9 @@ export default function NewsDetail() {
                     <FavoriteIcon
                       className={cn(
                         "h-4 w-4",
-                        isLiked ? "fill-(--error-text) text-(--error-text)" : "text-(--text-secondary)"
+                        isLiked
+                          ? "fill-(--error-text) text-(--error-text)"
+                          : "text-(--text-secondary)"
                       )}
                     />
                   }
@@ -994,9 +996,3 @@ export default function NewsDetail() {
     </Layout>
   )
 }
-
-
-
-
-
-

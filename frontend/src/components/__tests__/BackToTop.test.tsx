@@ -73,7 +73,3 @@ describe("BackToTop", () => {
     expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" })
   })
 })
-
-
-
-

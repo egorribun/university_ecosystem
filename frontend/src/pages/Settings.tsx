@@ -1,19 +1,10 @@
-import React, {
-  useState,
-  useCallback,
-  useRef,
-  useEffect,
-} from "react"
+import React, { useState, useCallback, useRef, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { Settings as SettingsIcon } from "lucide-react"
 
 import Layout from "../components/Layout"
 import PageFadeIn from "../components/PageFadeIn"
-import {
-  Tabs,
-  Tab,
-  Snackbar,
-} from "../components/settings"
+import { Tabs, Tab, Snackbar } from "../components/settings"
 import { StepUpDialog } from "../components/mfa/StepUpDialog"
 
 import { SettingsGeneral } from "./settings/SettingsGeneral"
@@ -104,22 +95,22 @@ export default function Settings() {
             </div>
 
             <div data-fade className="animate-fade-in delay-200">
-               {tab === 0 && <SettingsGeneral setSnackbar={setSnackbar} />}
-               {tab === 1 && <SettingsProfile setSnackbar={setSnackbar} />}
-               {tab === 2 && (
-                 <SettingsSecurity
-                    setSnackbar={setSnackbar}
-                    openStepUpFor={openStepUpFor}
-                    isActive={tab === 2}
-                 />
-               )}
+              {tab === 0 && <SettingsGeneral setSnackbar={setSnackbar} />}
+              {tab === 1 && <SettingsProfile setSnackbar={setSnackbar} />}
+              {tab === 2 && (
+                <SettingsSecurity
+                  setSnackbar={setSnackbar}
+                  openStepUpFor={openStepUpFor}
+                  isActive={tab === 2}
+                />
+              )}
             </div>
 
             {/* StepUp Dialog */}
             <StepUpDialog
-               open={stepUpOpen}
-               onClose={handleStepUpClose}
-               onCompleted={handleStepUpCompleted}
+              open={stepUpOpen}
+              onClose={handleStepUpClose}
+              onCompleted={handleStepUpCompleted}
             />
 
             {/* Global Snackbar for Settings Page */}

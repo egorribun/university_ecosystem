@@ -173,7 +173,3 @@ class MetricsBuffer {
 }
 
 export const metricsBuffer = new MetricsBuffer()
-
-
-
-

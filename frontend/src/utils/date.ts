@@ -18,7 +18,3 @@ export const formatLocalDateTime = (dateStr?: string) => {
   if (!dateStr) return ""
   return dayjs(normalizeDate(dateStr).replace(" ", "T")).format("DD.MM.YYYY HH:mm")
 }
-
-
-
-

@@ -191,7 +191,10 @@ export default function AdminUsers() {
                 </thead>
                 <tbody className="divide-y divide-glass-border/10">
                   {users.map((user) => (
-                    <tr key={user.id} className="transition-colors hover:bg-(--bg-surface-hover)/10">
+                    <tr
+                      key={user.id}
+                      className="transition-colors hover:bg-(--bg-surface-hover)/10"
+                    >
                       <td className="whitespace-nowrap px-6 py-4">
                         <Avatar
                           src={buildAvatarUrl(user.avatar_url, user.id)}
@@ -307,8 +310,3 @@ export default function AdminUsers() {
     </Layout>
   )
 }
-
-
-
-
-

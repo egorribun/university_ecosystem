@@ -77,7 +77,3 @@ describe("chatApi", () => {
     expect(client.delete).toHaveBeenCalledWith("/chats/chat1")
   })
 })
-
-
-
-

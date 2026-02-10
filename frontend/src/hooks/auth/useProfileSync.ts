@@ -837,7 +837,3 @@ export const useProfileSync = (
     setAuthOperation,
   }
 }
-
-
-
-

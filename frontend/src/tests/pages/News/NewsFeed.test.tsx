@@ -141,7 +141,3 @@ describe.skip("News page interaction", () => {
     expect(screen.getByText("Headline 2")).toBeInTheDocument()
   })
 })
-
-
-
-

@@ -36,8 +36,7 @@ const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
             "border-glass-border bg-glass-bg backdrop-blur-glass shadow-glass",
             "hover:border-brand/40 hover:bg-glass-tint1",
             "peer-focus-visible:ring-4 peer-focus-visible:ring-brand/20",
-            isChecked &&
-              "border-brand bg-brand/10 shadow-glow-primary",
+            isChecked && "border-brand bg-brand/10 shadow-glow-primary",
             disabled && "cursor-not-allowed opacity-40 grayscale",
             className
           )}
@@ -67,8 +66,3 @@ const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
 Checkbox.displayName = "Checkbox"
 
 export { Checkbox }
-
-
-
-
-

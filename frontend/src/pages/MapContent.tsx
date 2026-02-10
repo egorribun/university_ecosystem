@@ -262,7 +262,9 @@ export default function MapContent() {
                 onClick={() => setLayer("map")}
                 className={cn(
                   "relative flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-all",
-                  layer === "map" ? "text-white" : "text-(--text-secondary) hover:bg-(--bg-surface)/20"
+                  layer === "map"
+                    ? "text-white"
+                    : "text-(--text-secondary) hover:bg-(--bg-surface)/20"
                 )}
               >
                 {layer === "map" && (
@@ -281,7 +283,9 @@ export default function MapContent() {
                 onClick={() => setLayer("hybrid")}
                 className={cn(
                   "relative flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-all",
-                  layer === "hybrid" ? "text-white" : "text-(--text-secondary) hover:bg-(--bg-surface)/20"
+                  layer === "hybrid"
+                    ? "text-white"
+                    : "text-(--text-secondary) hover:bg-(--bg-surface)/20"
                 )}
               >
                 {layer === "hybrid" && (
@@ -303,8 +307,3 @@ export default function MapContent() {
     </div>
   )
 }
-
-
-
-
-

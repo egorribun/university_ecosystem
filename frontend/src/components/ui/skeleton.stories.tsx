@@ -85,7 +85,3 @@ export const MultipleLines: Story = {
     </div>
   ),
 }
-
-
-
-

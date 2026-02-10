@@ -247,8 +247,3 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
     </Card>
   )
 }
-
-
-
-
-

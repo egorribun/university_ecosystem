@@ -58,8 +58,3 @@ export const WeekSelector = ({ currentParity, setCurrentParity }: WeekSelectorPr
     </div>
   )
 }
-
-
-
-
-

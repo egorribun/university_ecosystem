@@ -264,7 +264,10 @@ export default function ForgotPassword() {
                     </div>
 
                     {forgotErrorMessage && (
-                      <div className="min-h-6 text-center text-sm font-semibold text-error-text animate-bounce" aria-live="assertive">
+                      <div
+                        className="min-h-6 text-center text-sm font-semibold text-error-text animate-bounce"
+                        aria-live="assertive"
+                      >
                         {forgotErrorMessage}
                       </div>
                     )}
@@ -301,8 +304,3 @@ export default function ForgotPassword() {
     </div>
   )
 }
-
-
-
-
-
