@@ -14,7 +14,7 @@ export const WeekSelector = ({ currentParity, setCurrentParity }: WeekSelectorPr
 
   return (
     <div className="flex flex-wrap items-center gap-5">
-      <span className="text-sm font-semibold tracking-wide text-(--text-secondary)/80">
+      <span className="text-sm font-semibold tracking-wide text-(--text-secondary)/(--opacity-hover)">
         {t("schedule:week.label")}
       </span>
       <div className="relative inline-flex items-center gap-1 rounded-xl border border-glass-border bg-glass-subtle p-1 shadow-sm md:shadow-glass">
@@ -24,7 +24,7 @@ export const WeekSelector = ({ currentParity, setCurrentParity }: WeekSelectorPr
             "relative min-w-[72px] rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors duration-150",
             currentParity === "odd"
               ? "text-white"
-              : "text-(--text-secondary)/80 hover:bg-surface-elevated/40 dark:text-(--text-secondary)/70 dark:hover:bg-surface-elevated/20"
+              : "text-(--text-secondary)/(--opacity-hover) hover:bg-surface-elevated/(--opacity-dim) dark:text-(--text-secondary)/(--opacity-strong) dark:hover:bg-surface-elevated/(--opacity-dim)"
           )}
         >
           {currentParity === "odd" && (
@@ -42,7 +42,7 @@ export const WeekSelector = ({ currentParity, setCurrentParity }: WeekSelectorPr
             "relative min-w-[72px] rounded-lg px-3 py-1.5 text-sm font-semibold transition-colors duration-150",
             currentParity === "even"
               ? "text-white"
-              : "text-(--text-secondary)/80 hover:bg-surface-elevated/40 dark:text-(--text-secondary)/70 dark:hover:bg-surface-elevated/20"
+              : "text-(--text-secondary)/(--opacity-hover) hover:bg-surface-elevated/(--opacity-dim) dark:text-(--text-secondary)/(--opacity-strong) dark:hover:bg-surface-elevated/(--opacity-dim)"
           )}
         >
           {currentParity === "even" && (

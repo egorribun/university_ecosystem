@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from "react"
+import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { Settings as SettingsIcon } from "lucide-react"
 
@@ -14,6 +15,7 @@ import { SettingsIntegrations } from "./settings/SettingsIntegrations"
 
 export default function Settings() {
   const { t } = useTranslation(["settings", "common"])
+  const [searchParams, setSearchParams] = useSearchParams()
   const [tab, setTab] = useState(0)
 
   // Shared Snackbar State
@@ -46,24 +48,27 @@ export default function Settings() {
   }, [])
 
   useEffect(() => {
-    const sp = new URLSearchParams(window.location.search)
-    const s = sp.get("spotify")
-    if (s) {
-      if (s === "connected")
+    const spotifyStatus = searchParams.get("spotify")
+    if (spotifyStatus) {
+      if (spotifyStatus === "connected")
         setSnackbar({
           text: t("settings:integrations.spotify.snackbar.connected"),
           severity: "success",
         })
-      if (s === "error")
+      if (spotifyStatus === "error")
         setSnackbar({
           text: t("settings:integrations.spotify.snackbar.connectFailed"),
           severity: "error",
         })
-      sp.delete("spotify")
-      const next = window.location.pathname + (sp.toString() ? "?" + sp : "")
-      window.history.replaceState({}, "", next)
+
+      // Clean up the URL param without refreshing
+      setSearchParams((prev) => {
+        const newParams = new URLSearchParams(prev)
+        newParams.delete("spotify")
+        return newParams
+      })
     }
-  }, [t])
+  }, [searchParams, setSearchParams, t])
 
   return (
     <Layout>
@@ -74,7 +79,7 @@ export default function Settings() {
               data-fade
               className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5 animate-fade-in delay-100"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-subtle-bg text-brand shadow-premium transition-transform duration-200 hover:scale-105 backdrop-blur-sm [-webkit-backdrop-filter:blur(12px)]">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-subtle-bg text-brand shadow-premium transition-transform duration-200 hover:scale-105 backdrop-blur-sm">
                 <SettingsIcon className="h-6 w-6" />
               </div>
               <h1 className="text-(length:--fs-page-title) font-bold tracking-tight text-(--text-primary)">
@@ -126,12 +131,12 @@ export default function Settings() {
             >
               {snackbar ? (
                 <div
-                  className={`px-4 py-3 rounded-lg shadow-lg text-sm font-medium ${
+                  className={`px-4 py-3 rounded-lg shadow-lg text-sm font-medium border ${
                     snackbar.severity === "error"
-                      ? "bg-red-500 text-white"
+                      ? "bg-error-bg text-error-text border-error-text/20"
                       : snackbar.severity === "success"
-                        ? "bg-green-500 text-white"
-                        : "bg-gray-800 text-white"
+                        ? "bg-success-bg text-success-text border-success-text/20"
+                        : "bg-surface-raised text-text-primary border-border-subtle"
                   }`}
                 >
                   {snackbar.text}

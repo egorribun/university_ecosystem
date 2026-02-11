@@ -93,11 +93,11 @@ export function SyncStatus() {
         className={cn(
           "flex items-center gap-1.5 px-2.5 py-1 rounded-full transition-all duration-300",
           "bg-glass-subtle border border-border-subtle shadow-sm",
-          !isOnline && "border-warning-border/40 bg-warning-bg/10"
+          !isOnline && "border-warning-border/(--opacity-dim) bg-warning-bg/(--opacity-subtle)"
         )}
       >
         {isOnline ? (
-          <Cloud className="h-4 w-4 text-white/40" />
+          <Cloud className="h-4 w-4 text-white/(--opacity-medium)" />
         ) : (
           <motion.div
             animate={{ opacity: [1, 0.5, 1] }}
@@ -107,7 +107,7 @@ export function SyncStatus() {
           </motion.div>
         )}
         {pendingCount > 0 && (
-          <span className="z-(--z-deep) text-xs font-black uppercase tracking-tight text-(--text-primary)/80 tabular-nums sf-pro">
+          <span className="z-(--z-deep) text-xs font-black uppercase tracking-tight text-(--text-primary)/(--opacity-strong) tabular-nums sf-pro">
             {pendingCount}
           </span>
         )}

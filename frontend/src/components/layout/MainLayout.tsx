@@ -27,7 +27,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     <div className="flex min-h-dvh flex-col">
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-(--z-tooltip) focus:rounded-2xl focus:bg-primary-main focus:px-6 focus:py-3 focus:text-white focus:shadow-premium-lift focus:outline-none focus:ring-4 focus:ring-primary-main/20"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-(--z-tooltip) focus:rounded-2xl focus:bg-primary-main focus:px-6 focus:py-3 focus:text-white focus:shadow-premium-lift focus:outline-none focus:ring-4 focus:ring-primary-main/(--opacity-dim)"
       >
         {t("navigation:aria.skipLink")}
       </a>

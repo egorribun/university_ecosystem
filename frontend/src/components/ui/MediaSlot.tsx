@@ -80,7 +80,7 @@ export const MediaSlot = forwardRef<HTMLDivElement, MediaSlotProps>(
           {fallback ?? (
             <div className="absolute inset-0 flex items-center justify-center">
               <svg
-                className="h-12 w-12 text-(--text-primary)/20"
+                className="h-12 w-12 text-(--text-primary)/(--opacity-dim)"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"

@@ -224,8 +224,8 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
   }
 
   return (
-    <Card className="overflow-hidden border-glass-border bg-(--bg-surface)/40 shadow-glass backdrop-blur-md">
-      <div className="px-6 py-5 border-b border-glass-border/30">
+    <Card className="overflow-hidden border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass backdrop-blur-md">
+      <div className="px-6 py-5 border-b border-glass-border/(--opacity-soft)">
         <h3 className="text-lg font-extrabold text-(--text-primary)">{story.title}</h3>
         <p className="text-sm text-(--text-secondary) mt-0.5">{story.short_text}</p>
       </div>
@@ -234,7 +234,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
           <div className="flex flex-col md:flex-row gap-8">
             <div className="flex-1 flex flex-col gap-3">
               <div className="space-y-1">
-                <p className="text-xs font-bold uppercase tracking-wider text-brand opacity-70">
+                <p className="text-xs font-bold uppercase tracking-wider text-brand opacity-(--opacity-strong)">
                   {t("stories:list.details.published", { date: "" }).split(":")[0]}
                 </p>
                 <p className="text-sm font-medium text-(--text-primary)">
@@ -242,7 +242,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
                 </p>
               </div>
               <div className="space-y-1">
-                <p className="text-xs font-bold uppercase tracking-wider text-brand opacity-70">
+                <p className="text-xs font-bold uppercase tracking-wider text-brand opacity-(--opacity-strong)">
                   {t("stories:list.details.expires", { date: "" }).split(":")[0]}
                 </p>
                 <p className="text-sm font-medium text-(--text-primary)">
@@ -253,8 +253,8 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
                 {timeLeft}
               </Badge>
               {story.cta_url && (
-                <div className="mt-2 p-3 rounded-xl bg-(--bg-surface)/20 border border-glass-border/20">
-                  <p className="text-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-50 mb-1">
+                <div className="mt-2 p-3 rounded-xl bg-(--bg-surface)/(--opacity-dim) border border-glass-border/(--opacity-dim)">
+                  <p className="text-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-(--opacity-medium) mb-1">
                     {t("stories:list.details.cta")}
                   </p>
                   <p className="text-xs font-mono break-all text-brand">{story.cta_url}</p>
@@ -263,7 +263,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
             </div>
 
             <div className="w-full md:w-56 flex flex-col items-center gap-4">
-              <div className="relative w-full aspect-9/16 rounded-2xl overflow-hidden bg-(--bg-surface)/20 border border-glass-border shadow-inner group">
+              <div className="relative w-full aspect-9/16 rounded-2xl overflow-hidden bg-(--bg-surface)/(--opacity-dim) border border-glass-border shadow-inner group">
                 {coverPreview ? (
                   <img
                     src={sanitizeUrl(coverPreview) ?? ""}
@@ -278,7 +278,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center p-6 text-center bg-linear-to-r from-blue-500 to-indigo-600 transition-all duration-300">
-                    <p className="text-xs font-medium text-(--text-secondary) opacity-60">
+                    <p className="text-xs font-medium text-(--text-secondary) opacity-(--opacity-strong)">
                       {t("stories:list.noCover")}
                     </p>
                   </div>
@@ -329,7 +329,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
             </div>
           </div>
 
-          <Divider className="opacity-10" />
+          <Divider className="opacity-(--opacity-subtle)" />
 
           <div className="flex flex-col gap-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -357,7 +357,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
               </Button>
               <Button
                 variant="outline"
-                className="text-(--warning-text) border-(--warning-text)/30 hover:bg-(--warning-text)/10"
+                className="text-(--warning-text) border-(--warning-text)/(--opacity-soft) hover:bg-(--warning-text)/(--opacity-subtle)"
                 onClick={handleUnpublish}
                 disabled={unpublishing}
                 loading={unpublishing}
@@ -366,7 +366,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
               </Button>
               <Button
                 variant="outline"
-                className="text-(--error-text) border-(--error-text)/30 hover:bg-(--error-text)/10 ml-auto"
+                className="text-(--error-text) border-(--error-text)/(--opacity-soft) hover:bg-(--error-text)/(--opacity-subtle) ml-auto"
                 onClick={handleDelete}
                 disabled={deleting}
                 loading={deleting}
@@ -511,7 +511,9 @@ export default function StoriesAdmin() {
       <Layout>
         <PageFadeIn>
           <div className="flex min-h-[70vh] items-center justify-center px-4">
-            <h2 className="text-2xl font-bold opacity-40">{t("stories:notAuthorized")}</h2>
+            <h2 className="text-2xl font-bold opacity-(--opacity-medium)">
+              {t("stories:notAuthorized")}
+            </h2>
           </div>
         </PageFadeIn>
       </Layout>
@@ -523,7 +525,7 @@ export default function StoriesAdmin() {
       <PageFadeIn>
         <div className="mx-auto max-w-[1100px] px-4 py-8 md:py-12">
           <div className="mb-10 flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand/10 text-brand">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand/(--opacity-subtle) text-brand">
               <RestartAltIcon className="h-7 w-7" />
             </div>
             <h1 className="text-3xl font-extrabold tracking-tight text-(--text-primary)">
@@ -532,7 +534,7 @@ export default function StoriesAdmin() {
           </div>
 
           <SectionCard className="mb-12">
-            <div className="px-6 py-5 border-b border-glass-border/30">
+            <div className="px-6 py-5 border-b border-glass-border/(--opacity-soft)">
               <h2 className="text-lg font-bold text-(--text-primary)">{t("stories:form.title")}</h2>
               <p className="text-sm text-(--text-secondary) mt-0.5">{t("stories:form.subtitle")}</p>
             </div>
@@ -623,11 +625,11 @@ export default function StoriesAdmin() {
                         alt={t("stories:form.previewAlt")}
                         className="w-full h-full object-cover"
                       />
-                      <div className="absolute inset-x-0 bottom-0 p-6 bg-linear-to-t from-black/80 to-transparent">
+                      <div className="absolute inset-x-0 bottom-0 p-6 bg-linear-to-t from-black/(--opacity-hover) to-transparent">
                         <h4 className="text-white font-bold text-lg">
                           {formState.titleRu || "Title"}
                         </h4>
-                        <p className="text-white/70 text-sm line-clamp-2">
+                        <p className="text-white/(--opacity-strong) text-sm line-clamp-2">
                           {formState.shortTextRu || "Text"}
                         </p>
                       </div>
@@ -635,7 +637,7 @@ export default function StoriesAdmin() {
                   )}
                 </div>
 
-                <div className="flex flex-wrap gap-3 pt-4 border-t border-glass-border/20">
+                <div className="flex flex-wrap gap-3 pt-4 border-t border-glass-border/(--opacity-dim)">
                   <Button
                     onClick={handleSubmit}
                     disabled={submitting}
@@ -663,7 +665,7 @@ export default function StoriesAdmin() {
             <div className="flex items-center justify-between px-2">
               <h2 className="text-2xl font-extrabold text-(--text-primary) flex items-center gap-3">
                 {t("stories:list.title")}
-                <span className="px-2 py-0.5 rounded-full bg-brand/10 border border-brand/20 text-xs font-bold tabular-nums text-brand">
+                <span className="px-2 py-0.5 rounded-full bg-brand/(--opacity-subtle) border border-brand/(--opacity-dim) text-xs font-bold tabular-nums text-brand">
                   {stories.length}
                 </span>
               </h2>
@@ -688,7 +690,7 @@ export default function StoriesAdmin() {
                 <CircularProgress size={40} />
               </div>
             ) : stories.length === 0 ? (
-              <div className="text-center py-20 bg-(--bg-surface)/10 rounded-3xl border border-dashed border-glass-border/30">
+              <div className="text-center py-20 bg-(--bg-surface)/(--opacity-subtle) rounded-3xl border border-dashed border-glass-border/(--opacity-soft)">
                 <p className="text-(--text-secondary) italic">{t("stories:list.empty")}</p>
               </div>
             ) : (

@@ -1,7 +1,7 @@
 import { FC, useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from "react"
 import { Camera as PhotoCamera } from "lucide-react"
 import { useTranslation } from "react-i18next"
-import api from "../../api/client"
+import api from "@/api/client"
 import { Button } from "../ui"
 import Dialog from "../Dialog"
 import SmartImage from "../SmartImage"
@@ -23,7 +23,7 @@ interface NewsCardEditDialogProps {
 }
 
 const inputClass =
-  "w-full rounded-xl border border-glass-border bg-input-mix px-4 py-2.5 text-[0.98rem] text-(--text-primary) shadow-inner-premium transition focus:border-(--primary-main) focus:outline-none focus:shadow-focus placeholder:text-(--text-secondary)"
+  "w-full rounded-xl border border-glass-border bg-input-mix px-4 py-2.5 text-input text-(--text-primary) shadow-inner-premium transition focus:border-(--primary-main) focus:outline-none focus:shadow-focus placeholder:text-(--text-secondary)"
 const textareaClass = `${inputClass} min-h-(--space-32) resize-y leading-relaxed`
 
 type FieldProps = {
@@ -36,10 +36,7 @@ type FieldProps = {
 function Field({ label, htmlFor, children, required = false }: FieldProps) {
   return (
     <div className="space-y-2">
-      <label
-        htmlFor={htmlFor}
-        className="text-sm font-semibold tracking-wide text-[color-mix(in_srgb,var(--text-secondary)_85%,white_15%)]"
-      >
+      <label htmlFor={htmlFor} className="text-sm font-semibold tracking-wide text-field-label">
         {label}
         {required ? <span className="ml-1 text-(--error-text)">*</span> : null}
       </label>

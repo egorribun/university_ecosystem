@@ -1,20 +1,31 @@
 import type { ComponentPropsWithoutRef, ElementType } from "react"
+import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/utils/cn"
 
-type CardPadding = "none" | "sm" | "md" | "lg"
+const cardVariants = cva(
+  "relative flex flex-col rounded-2xl border border-border-subtle bg-(--bg-surface) text-(--text-primary) shadow-surface transition-premium",
+  {
+    variants: {
+      padding: {
+        none: "p-0",
+        sm: "p-3",
+        md: "p-4",
+        lg: "p-6",
+      },
+      hoverable: {
+        true: "hover:-translate-y-1.5 hover:scale-[1.015] hover:shadow-premium-lift focus-visible:outline-none focus-visible:shadow-focus motion-reduce:hover:translate-y-0 motion-reduce:hover:scale-100 motion-reduce:transition-shadow",
+        false: "",
+      },
+    },
+    defaultVariants: {
+      padding: "md",
+      hoverable: false,
+    },
+  }
+)
 
-const paddingClasses: Record<CardPadding, string> = {
-  none: "p-0",
-  sm: "p-3",
-  md: "p-4",
-  lg: "p-6",
-}
-
-type CardOwnProps = {
+type CardOwnProps = VariantProps<typeof cardVariants> & {
   as?: ElementType
-  hoverable?: boolean
-  padding?: CardPadding
-  className?: string
 }
 
 export type CardProps<T extends ElementType = "div"> = CardOwnProps &
@@ -22,8 +33,8 @@ export type CardProps<T extends ElementType = "div"> = CardOwnProps &
 
 export const Card = <T extends ElementType = "div">({
   as,
-  hoverable = false,
-  padding = "md",
+  hoverable,
+  padding,
   className,
   children,
   style,
@@ -33,14 +44,7 @@ export const Card = <T extends ElementType = "div">({
 
   return (
     <Component
-      className={cn(
-        "relative flex flex-col rounded-2xl border border-border-subtle bg-(--bg-surface) text-(--text-primary) shadow-surface transition-premium",
-        paddingClasses[padding],
-        hoverable
-          ? "hover:-translate-y-1.5 hover:scale-[1.015] hover:shadow-premium-lift focus-visible:outline-none focus-visible:shadow-focus motion-reduce:hover:translate-y-0 motion-reduce:hover:scale-100 motion-reduce:transition-shadow"
-          : "",
-        className
-      )}
+      className={cn(cardVariants({ padding, hoverable }), className)}
       style={style}
       {...rest}
     >

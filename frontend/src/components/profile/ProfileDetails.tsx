@@ -16,10 +16,10 @@ export const ProfileDetails = ({ user, isOpen, onToggle }: ProfileDetailsProps) 
   const { t } = useTranslation(["profile"])
 
   return (
-    <SectionCard className="p-0 border-none bg-(--bg-surface)/10 rounded-3xl overflow-hidden">
+    <SectionCard className="p-0 border-none bg-(--bg-surface)/(--opacity-subtle) rounded-3xl overflow-hidden">
       <button
         onClick={onToggle}
-        className="w-full flex items-center justify-between px-6 py-5 hover:bg-(--bg-surface)/20 transition-colors"
+        className="w-full flex items-center justify-between px-6 py-5 hover:bg-(--bg-surface)/(--opacity-dim) transition-colors"
       >
         <h2 className="text-lg font-bold tracking-tight text-(--text-primary)">
           {t("profile:titles.details")}
@@ -40,23 +40,23 @@ export const ProfileDetails = ({ user, isOpen, onToggle }: ProfileDetailsProps) 
       >
         <div className="px-3 pb-6 flex flex-col gap-1">
           <DetailRow label={t("profile:labels.institute")} value={user?.institute} />
-          <Divider className="opacity-10 mx-4" />
+          <Divider className="opacity-(--opacity-subtle) mx-4" />
           <DetailRow label={t("profile:labels.educationLevel")} value={user?.education_level} />
-          <Divider className="opacity-10 mx-4" />
+          <Divider className="opacity-(--opacity-subtle) mx-4" />
           <DetailRow
             label={
               user?.role === "teacher" ? t("profile:labels.department") : t("profile:labels.track")
             }
             value={user?.role === "teacher" ? user?.department : user?.track}
           />
-          <Divider className="opacity-10 mx-4" />
+          <Divider className="opacity-(--opacity-subtle) mx-4" />
           <DetailRow
             label={
               user?.role === "teacher" ? t("profile:labels.position") : t("profile:labels.program")
             }
             value={user?.role === "teacher" ? user?.position : user?.program}
           />
-          <Divider className="opacity-10 mx-4" />
+          <Divider className="opacity-(--opacity-subtle) mx-4" />
           <DetailRow
             label={t("profile:labels.about")}
             value={

@@ -21,7 +21,7 @@ export default function MessengerButton() {
       onClick={() => navigate("/messenger")}
       className={cn(
         "relative flex items-center justify-center rounded-lg transition-all duration-300 outline-none group focus-visible:shadow-focus",
-        "w-11 h-11 border border-transparent hover:border-brand/30 bg-transparent glass-morphism shadow-sm"
+        "w-11 h-11 border border-transparent hover:border-brand/(--opacity-soft) bg-transparent glass-morphism shadow-sm"
       )}
       aria-label={t("navigation:aria.messenger")}
     >
@@ -35,8 +35,8 @@ export default function MessengerButton() {
           animate={{ scale: 1 }}
           className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center"
         >
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand/40 opacity-40"></span>
-          <span className="relative inline-flex rounded-full h-4 w-4 bg-(--brand-main) border-2 border-(--bg-surface) dark:border-(--bg-page) text-[0.55rem] font-bold text-white items-center justify-center">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand/(--opacity-dim) opacity-(--opacity-dim)"></span>
+          <span className="relative inline-flex rounded-full h-4 w-4 bg-(--brand-main) border-2 border-(--bg-surface) dark:border-(--bg-page) text-label-xs font-bold text-white items-center justify-center">
             {unreadCount}
           </span>
         </motion.span>

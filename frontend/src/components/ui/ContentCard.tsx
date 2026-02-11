@@ -96,7 +96,7 @@ const Media = forwardRef<HTMLDivElement, MediaProps>(
           src={src}
           alt={alt}
           loading="lazy"
-          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          className="h-full w-full object-cover transition-premium group-hover:scale-hover"
           {...props}
         />
       </div>
@@ -147,7 +147,7 @@ interface ActionsProps extends HTMLAttributes<HTMLDivElement> {
 
 const Actions = forwardRef<HTMLDivElement, ActionsProps>(
   ({ children, className, ...props }, ref) => (
-    <div ref={ref} className={cn("flex-shrink-0", className)} {...props}>
+    <div ref={ref} className={cn("shrink-0", className)} {...props}>
       {children}
     </div>
   )
@@ -195,7 +195,7 @@ const Meta = forwardRef<HTMLDivElement, MetaProps>(({ children, className, ...pr
   <div
     ref={ref}
     className={cn(
-      "flex flex-wrap items-center gap-2 px-4 pb-2 text-xs text-(--text-secondary)/80",
+      "flex flex-wrap items-center gap-2 px-4 pb-2 text-xs text-(--text-secondary)/(--opacity-hover)",
       className
     )}
     {...props}
@@ -205,31 +205,35 @@ const Meta = forwardRef<HTMLDivElement, MetaProps>(({ children, className, ...pr
 ))
 Meta.displayName = "ContentCard.Meta"
 
+import { cva, type VariantProps } from "class-variance-authority"
+
+const badgeSlotVariants = cva(
+  "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+  {
+    variants: {
+      variant: {
+        default: "bg-(--bg-surface-hover) text-(--text-primary)",
+        success: "bg-success-bg text-success-text",
+        warning: "bg-warning-bg text-warning-text",
+        error: "bg-error-bg text-error-text",
+        info: "bg-brand-subtle text-brand",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+    },
+  }
+)
+
 /** Badge for status indicators */
-interface BadgeSlotProps extends HTMLAttributes<HTMLSpanElement> {
-  variant?: "default" | "success" | "warning" | "error" | "info"
+interface BadgeSlotProps
+  extends HTMLAttributes<HTMLSpanElement>, VariantProps<typeof badgeSlotVariants> {
   children: ReactNode
 }
 
-const variantStyles = {
-  default: "bg-(--bg-surface-hover) text-(--text-primary)",
-  success: "bg-success-bg text-success-text",
-  warning: "bg-warning-bg text-warning-text",
-  error: "bg-error-bg text-error-text",
-  info: "bg-brand-subtle text-brand",
-}
-
 const BadgeSlot = forwardRef<HTMLSpanElement, BadgeSlotProps>(
-  ({ variant = "default", children, className, ...props }, ref) => (
-    <span
-      ref={ref}
-      className={cn(
-        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-        variantStyles[variant],
-        className
-      )}
-      {...props}
-    >
+  ({ variant, children, className, ...props }, ref) => (
+    <span ref={ref} className={cn(badgeSlotVariants({ variant }), className)} {...props}>
       {children}
     </span>
   )

@@ -30,7 +30,7 @@ export const EventInfo: React.FC<EventInfoProps> = ({
       </h3>
 
       {speaker && (
-        <p className="mb-2 text-[15px] font-semibold text-(--text-secondary)">
+        <p className="mb-2 text-body-sm font-semibold text-(--text-secondary)">
           {t("events:form.speaker")}: {speaker}
         </p>
       )}
@@ -57,7 +57,7 @@ export const EventInfo: React.FC<EventInfoProps> = ({
         <span className="text-base text-(--text-secondary)">{location}</span>
       </div>
 
-      <div className="my-3 h-px bg-linear-to-r from-transparent via-[color-mix(in_srgb,var(--primary-main)_20%,transparent_80%)] to-transparent" />
+      <div className="my-3 h-px bg-linear-to-r from-transparent via-event-divider to-transparent" />
 
       <p className="mb-4 line-clamp-3 text-base text-(--text-primary) grow-0">{description}</p>
     </>

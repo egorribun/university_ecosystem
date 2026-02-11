@@ -153,16 +153,16 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
               onBlur={() => setFocusedIndex(null)}
               className={cn(
                 "w-11 h-14 sm:w-14 sm:h-18 text-center text-2xl font-black rounded-2xl",
-                "bg-(--bg-surface-raised)/40 text-(--text-primary) border-2 transition-all duration-300",
+                "bg-(--bg-surface-raised)/(--opacity-medium) text-(--text-primary) border-2 transition-all duration-300",
                 "focus:outline-none backdrop-blur-md shadow-sm",
                 derivedError
-                  ? "border-error-border/50 focus:border-error-border focus:ring-4 focus:ring-error-border/10"
+                  ? "border-error-border/(--opacity-medium) focus:border-error-border focus:ring-4 focus:ring-error-border/(--opacity-subtle)"
                   : focusedIndex === index
-                    ? "border-brand ring-4 ring-brand/10 scale-105 shadow-brand/10 shadow-lg"
+                    ? "border-brand ring-4 ring-brand/(--opacity-subtle) scale-105 shadow-brand/(--opacity-subtle) shadow-lg"
                     : digit
-                      ? "border-brand/40 bg-brand/5"
-                      : "border-glass-border/20 hover:border-glass-border/40 hover:bg-(--bg-surface-hover)/5",
-                "disabled:opacity-40 disabled:cursor-not-allowed disabled:grayscale"
+                      ? "border-brand/(--opacity-medium) bg-brand/(--opacity-faint)"
+                      : "border-glass-border/(--opacity-dim) hover:border-glass-border/(--opacity-medium) hover:bg-(--bg-surface-hover)/(--opacity-faint)",
+                "disabled:opacity-(--opacity-dim) disabled:cursor-not-allowed disabled:grayscale"
               )}
               aria-invalid={derivedError ? "true" : "false"}
             />
@@ -179,7 +179,7 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
         ) : derivedHelperText ? (
           <p
             id={helperId}
-            className="text-xs font-bold text-center text-(--text-secondary) opacity-60"
+            className="text-xs font-bold text-center text-(--text-secondary) opacity-(--opacity-medium)"
           >
             {derivedHelperText}
           </p>
@@ -187,7 +187,7 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
 
         {loading && (
           <div className="flex justify-center items-center py-4">
-            <div className="h-8 w-8 rounded-full border-4 border-brand/10 border-t-brand animate-spin" />
+            <div className="h-8 w-8 rounded-full border-4 border-brand/(--opacity-subtle) border-t-brand animate-spin" />
           </div>
         )}
 
@@ -196,7 +196,7 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
             variant="solid"
             onClick={() => void submitCode()}
             disabled={loading || code.length !== 6}
-            className="w-full max-w-xs h-14 rounded-2xl font-black shadow-lg shadow-brand/20"
+            className="w-full max-w-xs h-14 rounded-2xl font-black shadow-lg shadow-brand/(--opacity-dim)"
             loading={loading}
           >
             {t("mfa.otp.submit")}

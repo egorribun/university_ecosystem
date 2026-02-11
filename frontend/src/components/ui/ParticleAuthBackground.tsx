@@ -41,8 +41,10 @@ const ParticleAuthBackground = () => {
     // Note: Hex fallbacks are required for Canvas API when CSS variables aren't computed yet
     const getThemeColors = () => {
       const styles = getComputedStyle(document.documentElement)
-      const primary = styles.getPropertyValue("--primary-main").trim() || "#0ea5e9"
-      const secondary = styles.getPropertyValue("--primary-hover").trim() || "#0284c7"
+      const primary =
+        styles.getPropertyValue("--primary-main").trim() || "var(--primary-main, #0ea5e9)"
+      const secondary =
+        styles.getPropertyValue("--primary-hover").trim() || "var(--primary-hover, #0284c7)"
 
       // Generate variations based on the theme primary
       return [
@@ -214,7 +216,7 @@ const ParticleAuthBackground = () => {
     >
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
       {/* Overlay gradient to ensure text readability */}
-      <div className="absolute inset-0 bg-linear-to-b from-transparent via-transparent to-(--bg-page) opacity-60" />
+      <div className="absolute inset-0 bg-linear-to-b from-transparent via-transparent to-(--bg-page) opacity-(--opacity-strong)" />
     </div>
   )
 }

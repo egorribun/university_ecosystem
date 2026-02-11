@@ -73,18 +73,18 @@ function suggestEmailDomain(email: string) {
 }
 
 const inputBaseClass =
-  "w-full rounded-2xl border border-brand/10 bg-(--bg-surface)/95 px-4 py-3 text-base font-medium " +
+  "w-full rounded-2xl border border-brand/(--opacity-subtle) bg-(--bg-surface)/(--opacity-heavy) px-4 py-3 text-base font-medium " +
   "text-(--text-primary) shadow-premium transition-all duration-200 " +
-  "focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/20 " +
-  "placeholder:text-(--text-secondary)/75 " +
-  "dark:border-brand/10 dark:bg-(--bg-surface)/90"
+  "focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/(--opacity-dim) " +
+  "placeholder:text-(--text-secondary)/(--opacity-strong) " +
+  "dark:border-brand/(--opacity-subtle) dark:bg-(--bg-surface)/(--opacity-heavy)"
 
 const chipClass =
-  "inline-flex items-center gap-2 rounded-full border border-brand/20 px-4 py-1.5 text-xs font-semibold uppercase tracking-widest"
+  "inline-flex items-center gap-2 rounded-full border border-brand/(--opacity-dim) px-4 py-1.5 text-xs font-semibold uppercase tracking-widest"
 
 const Spinner = () => (
   <span
-    className="inline-flex h-5 w-5 animate-spin rounded-full border-2 border-current/60 border-t-transparent"
+    className="inline-flex h-5 w-5 animate-spin rounded-full border-2 border-current/(--opacity-strong) border-t-transparent"
     aria-hidden="true"
   />
 )
@@ -282,9 +282,9 @@ const Register = () => {
           initial={{ x: -200 }}
           animate={{ x: 0 }}
           transition={{ duration: 0.5, ease: "easeOut" }}
-          className="w-full rounded-xl border border-glass-border-subtle bg-(--bg-surface)/60 p-8 shadow-glass backdrop-blur-3xl lg:p-12"
+          className="w-full rounded-xl border border-glass-border-subtle bg-(--bg-surface)/(--opacity-strong) p-8 shadow-glass backdrop-blur-3xl lg:p-12"
         >
-          <div className="flex items-center gap-3 text-sm font-semibold uppercase tracking-widest text-(--text-primary)/70">
+          <div className="flex items-center gap-3 text-sm font-semibold uppercase tracking-widest text-(--text-primary)/(--opacity-strong)">
             <Crown className="h-5 w-5" aria-hidden="true" />
             {t("auth:register.heroBadge", { defaultValue: "Добро пожаловать" })}
           </div>
@@ -301,7 +301,7 @@ const Register = () => {
             {heroPerks.map(({ icon: Icon, title, description }) => (
               <div
                 key={title}
-                className="rounded-3xl border border-glass-border/85 bg-(--bg-surface)/50 px-5 py-6 shadow-premium"
+                className="rounded-3xl border border-glass-border/(--opacity-heavy) bg-(--bg-surface)/(--opacity-medium) px-5 py-6 shadow-premium"
               >
                 <div className="flex items-center gap-3">
                   <div className="flex size-12 items-center justify-center rounded-2xl bg-brand-subtle-bg text-brand">
@@ -319,7 +319,7 @@ const Register = () => {
           initial={{ y: 200 }}
           animate={{ y: 0 }}
           transition={{ duration: 0.5, ease: "easeOut", delay: 0.2 }}
-          className="w-full max-w-2xl rounded-xl border border-glass-border-subtle bg-(--bg-surface)/80 p-6 shadow-glass backdrop-blur-2xl sm:p-10"
+          className="w-full max-w-2xl rounded-xl border border-glass-border-subtle bg-(--bg-surface)/(--opacity-hover) p-6 shadow-glass backdrop-blur-2xl sm:p-10"
         >
           <form action={registerAction} autoComplete="off" className="flex flex-col gap-6">
             <div className="grid gap-5 sm:grid-cols-2">
@@ -391,7 +391,7 @@ const Register = () => {
               {emailSuggestion ? (
                 <button
                   type="button"
-                  className="inline-flex items-center gap-2 rounded-full border border-brand/20 px-4 py-2 text-xs font-semibold uppercase tracking-widest text-brand transition hover:bg-brand/5"
+                  className="inline-flex items-center gap-2 rounded-full border border-brand/(--opacity-dim) px-4 py-2 text-xs font-semibold uppercase tracking-widest text-brand transition hover:bg-brand/(--opacity-subtle)"
                   onClick={() => {
                     setForm((formState) => ({ ...formState, email: emailSuggestion }))
                     setEmailSuggestion(null)
@@ -480,14 +480,18 @@ const Register = () => {
               <div className="flex flex-wrap gap-2">
                 <span
                   className={`${chipClass} ${
-                    minLenOk ? "border-brand/40 text-brand" : "text-text-muted-subtle"
+                    minLenOk
+                      ? "border-brand/(--opacity-medium) text-brand"
+                      : "text-text-muted-subtle"
                   }`}
                 >
                   {t("auth:register.passwordChip.minLength")}
                 </span>
                 <span
                   className={`${chipClass} ${
-                    matchOk ? "border-brand/40 text-brand" : "text-text-muted-subtle"
+                    matchOk
+                      ? "border-brand/(--opacity-medium) text-brand"
+                      : "text-text-muted-subtle"
                   }`}
                 >
                   {t("auth:register.passwordChip.match")}
@@ -555,7 +559,7 @@ const Register = () => {
 
             <button
               type="submit"
-              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-brand px-6 py-4 text-lg font-extrabold text-white shadow-premium transition hover:-translate-y-0.5 hover:shadow-glass disabled:opacity-60"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-brand px-6 py-4 text-lg font-extrabold text-white shadow-premium transition hover:-translate-y-0.5 hover:shadow-glass disabled:opacity-(--opacity-strong)"
               disabled={registerPending || !isValid}
             >
               {registerPending ? (

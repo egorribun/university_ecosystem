@@ -36,7 +36,6 @@ import SmartImage from "@/components/SmartImage"
 import { Button } from "@/components/ui"
 import { useAuth } from "@/contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
-// import { invalidateNewsFeed } from "@/hooks/useNewsFeed"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
 
@@ -44,10 +43,10 @@ dayjs.extend(utc)
 dayjs.extend(timezone)
 
 const inputClass =
-  "w-full rounded-xl border border-(--glass-border) bg-(--bg-surface)/40 px-4 py-2.5 text-base text-(--text-primary) shadow-sm focus:border-(--brand-main) focus:outline-none transition placeholder:text-(--text-secondary)/50"
+  "w-full rounded-xl border border-(--glass-border) bg-(--bg-surface)/(--opacity-medium) px-4 py-2.5 text-base text-(--text-primary) shadow-sm focus:border-(--brand-main) focus:outline-none transition placeholder:text-(--text-secondary)/(--opacity-medium)"
 const textareaClass = cn(inputClass, "min-h-40 resize-y leading-relaxed")
 const iconButtonClass =
-  "inline-flex h-10 w-10 items-center justify-center rounded-full border border-(--glass-border) bg-(--bg-surface)/80 text-(--text-secondary) shadow-sm transition hover:bg-(--bg-surface) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--brand-main)"
+  "inline-flex h-10 w-10 items-center justify-center rounded-full border border-(--glass-border) bg-(--bg-surface)/(--opacity-hover) text-(--text-secondary) shadow-sm transition hover:bg-(--bg-surface) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--brand-main)"
 
 type FieldProps = {
   label: ReactNode
@@ -61,7 +60,7 @@ function Field({ label, htmlFor, children, required = false }: FieldProps) {
     <div className="space-y-2">
       <label
         htmlFor={htmlFor}
-        className="text-sm font-semibold tracking-wide text-(--text-secondary)/80"
+        className="text-sm font-semibold tracking-wide text-(--text-secondary)/(--opacity-hover)"
       >
         {label}
         {required ? <span className="ml-1 text-(--error-text)">*</span> : null}
@@ -148,9 +147,9 @@ export default function NewsDetail() {
   const heroFrame = useMemo(() => {
     if (!heroRatio || !Number.isFinite(heroRatio) || heroRatio <= 0) {
       return {
-        container: "h-[50vh] min-h-80 max-h-[520px]",
+        container: "h-(length:--h-hero-sm) min-h-80 max-h-[520px]",
         image: "object-cover object-[50%_40%]",
-        backdrop: "bg-black/20",
+        backdrop: "bg-black/(--opacity-dim)",
       }
     }
 
@@ -160,7 +159,7 @@ export default function NewsDetail() {
       return {
         container: "min-h-[440px] max-h-[82vh] aspect-3/4",
         image: "object-contain object-center",
-        backdrop: "bg-black/25",
+        backdrop: "bg-black/(--opacity-soft)",
       }
     }
 
@@ -168,22 +167,22 @@ export default function NewsDetail() {
       return {
         container: "min-h-[360px] max-h-[76vh] aspect-5/4",
         image: "object-cover object-[50%_38%]",
-        backdrop: "bg-(--bg-surface)/20",
+        backdrop: "bg-(--bg-surface)/(--opacity-dim)",
       }
     }
 
     if (ratio > 2.6) {
       return {
-        container: "min-h-[260px] max-h-[60vh] aspect-21/9",
+        container: "min-h-[260px] max-h-(length:--h-hero-md) aspect-21/9",
         image: "object-cover object-[50%_46%]",
-        backdrop: "bg-black/20",
+        backdrop: "bg-black/(--opacity-dim)",
       }
     }
 
     return {
       container: "min-h-[300px] max-h-[68vh] aspect-video",
       image: "object-cover object-[50%_40%]",
-      backdrop: "bg-(--bg-surface)/20",
+      backdrop: "bg-(--bg-surface)/(--opacity-dim)",
     }
   }, [heroRatio])
 
@@ -389,7 +388,7 @@ export default function NewsDetail() {
         label: t("news:shareDialog.options.email", { defaultValue: "Email" }),
         href: `mailto:?subject=${encodedTitle}&body=${encodedTitle}%0A${encodedUrl}`,
         icon: <AlternateEmailIcon className="h-4 w-4" />,
-        accent: "text-brand/80",
+        accent: "text-brand/(--opacity-hover)",
       },
     ]
   }, [displayTitle, shareUrl, t])
@@ -471,7 +470,7 @@ export default function NewsDetail() {
   return (
     <Layout>
       <div className="flex min-h-[60vh] items-center justify-center">
-        <span className="h-12 w-12 animate-spin rounded-full border-2 border-white/30 border-t-(--brand-main)" />
+        <span className="h-12 w-12 animate-spin rounded-full border-2 border-white/(--opacity-soft) border-t-(--brand-main)" />
       </div>
     </Layout>
   )
@@ -492,21 +491,21 @@ export default function NewsDetail() {
           variant="outline"
           onClick={handleBack}
           leadingIcon={<ArrowBackIcon className="text-lg" />}
-          className="w-fit justify-start border-white/20 text-base"
+          className="w-fit justify-start border-white/(--opacity-dim) text-base"
         >
           {t("common:buttons.back")}
         </Button>
 
         <article className="flex w-full flex-col items-start gap-8">
           <header className="flex w-full flex-col gap-4 text-left">
-            <h1 className="max-w-5xl text-[clamp(1.6rem,4vw,2.4rem)] font-extrabold tracking-tight text-(--text-primary)">
+            <h1 className="max-w-5xl text-(length:--fs-fluid-h1) font-extrabold tracking-tight text-(--text-primary)">
               {displayTitle}
             </h1>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
               <div className="flex flex-wrap items-center gap-2 text-sm text-(--text-secondary)">
                 {createdAt ? (
-                  <span className="inline-flex items-center gap-2 rounded-full border border-(--glass-border) bg-(--bg-surface)/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-(--text-secondary)">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-(--glass-border) bg-(--bg-surface)/(--opacity-subtle) px-3 py-1 text-xs font-semibold uppercase tracking-widest text-(--text-secondary)">
                     <span>{t("news:meta.published")}</span>
                     <span aria-hidden>•</span>
                     <time dateTime={createdAtIso} className="text-(--text-primary)">
@@ -516,7 +515,7 @@ export default function NewsDetail() {
                 ) : null}
 
                 {readingTimeMinutes !== null && (
-                  <span className="inline-flex items-center gap-2 rounded-full border border-(--glass-border)/20 bg-(--bg-surface)/10 px-3 py-1 text-xs font-medium tracking-wide text-(--text-primary)">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-(--glass-border)/(--opacity-dim) bg-(--bg-surface)/(--opacity-subtle) px-3 py-1 text-xs font-medium tracking-wide text-(--text-primary)">
                     {t("news:meta.readingTime", { count: readingTimeMinutes ?? undefined })}
                   </span>
                 )}
@@ -552,8 +551,8 @@ export default function NewsDetail() {
                   className={cn(
                     "w-full basis-full sm:w-auto sm:basis-auto transition-colors duration-200",
                     isLiked
-                      ? "border-(--error-text)/20 bg-(--error-text)/10"
-                      : "border-(--glass-border)/30 bg-(--bg-surface)/40"
+                      ? "border-(--error-text)/(--opacity-dim) bg-(--error-text)/(--opacity-subtle)"
+                      : "border-(--glass-border)/(--opacity-soft) bg-(--bg-surface)/(--opacity-medium)"
                   )}
                 >
                   <span className="tabular-nums">{likesCount}</span>
@@ -577,7 +576,7 @@ export default function NewsDetail() {
                   onClick={() => setConfirmDeleteOpen(true)}
                   className={cn(
                     iconButtonClass,
-                    "text-(--error-text) hover:text-(--error-text)/80"
+                    "text-(--error-text) hover:text-(--error-text)/(--opacity-hover)"
                   )}
                   aria-label={t("news:aria.deleteNews") ?? ""}
                   disabled={deleting || saving}
@@ -588,7 +587,7 @@ export default function NewsDetail() {
             ) : null}
           </header>
 
-          <figure className="w-full max-w-5xl self-start overflow-hidden rounded-3xl border border-(--glass-border) bg-(--bg-surface)/40 shadow-glass backdrop-blur-md">
+          <figure className="w-full max-w-5xl self-start overflow-hidden rounded-3xl border border-(--glass-border) bg-(--bg-surface)/(--opacity-medium) shadow-glass backdrop-blur-md">
             <div
               className={cn(
                 "flex w-full items-center justify-center overflow-hidden",
@@ -608,7 +607,7 @@ export default function NewsDetail() {
               />
             </div>
             {displayTitle ? null : (
-              <figcaption className="border-t border-(--glass-border) bg-(--bg-surface)/10 px-5 py-3 text-sm font-medium text-(--text-secondary)">
+              <figcaption className="border-t border-(--glass-border) bg-(--bg-surface)/(--opacity-subtle) px-5 py-3 text-sm font-medium text-(--text-secondary)">
                 {t("news:alt.heroFallback")}
               </figcaption>
             )}
@@ -624,13 +623,13 @@ export default function NewsDetail() {
             })}
           </section>
 
-          <footer className="w-full max-w-4xl mt-12 border-t border-glass-border/30 pt-10">
+          <footer className="w-full max-w-4xl mt-12 border-t border-glass-border/(--opacity-soft) pt-10">
             <div className="flex items-center gap-3 mb-8">
               <ChatBubbleOutlineIcon className="h-6 w-6 text-brand" />
               <h2 className="text-xl font-bold text-(--text-primary)">
                 {t("news:sections.comments", { defaultValue: "Комментарии" })}
               </h2>
-              <span className="px-2 py-0.5 rounded-full bg-brand/10 border border-brand/20 text-xs font-bold tabular-nums text-brand">
+              <span className="px-2 py-0.5 rounded-full bg-brand/(--opacity-subtle) border border-brand/(--opacity-dim) text-xs font-bold tabular-nums text-brand">
                 {comments.length}
               </span>
             </div>
@@ -646,7 +645,7 @@ export default function NewsDetail() {
                 comments.map((comment) => (
                   <div
                     key={comment.id}
-                    className="flex flex-col gap-2 p-4 rounded-2xl bg-(--bg-surface)/20 border border-glass-border/30 shadow-sm"
+                    className="flex flex-col gap-2 p-4 rounded-2xl bg-(--bg-surface)/(--opacity-dim) border border-glass-border/(--opacity-soft) shadow-sm"
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-sm text-(--text-primary)">
@@ -663,7 +662,7 @@ export default function NewsDetail() {
                                 setEditingCommentId(comment.id)
                                 setEditingCommentText(comment.content)
                               }}
-                              className="p-1.5 rounded-full hover:bg-(--bg-surface)/60 text-(--text-secondary) hover:text-(--text-primary) transition-colors"
+                              className="p-1.5 rounded-full hover:bg-(--bg-surface)/(--opacity-strong) text-(--text-secondary) hover:text-(--text-primary) transition-colors"
                               title={t("news:actions.editComment", { defaultValue: "Edit" }) ?? ""}
                             >
                               <EditIcon className="h-3.5 w-3.5" />
@@ -680,7 +679,7 @@ export default function NewsDetail() {
                                   void deleteComment(comment.id)
                                 }
                               }}
-                              className="p-1.5 rounded-full hover:bg-(--error-text)/10 text-(--error-text) hover:text-(--error-text)/80 transition-colors"
+                              className="p-1.5 rounded-full hover:bg-(--error-text)/(--opacity-subtle) text-(--error-text) hover:text-(--error-text)/(--opacity-hover) transition-colors"
                               title={
                                 t("news:actions.deleteComment", { defaultValue: "Delete" }) ?? ""
                               }
@@ -782,16 +781,16 @@ export default function NewsDetail() {
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => setShareDialogOpen(false)}
-                className="group flex items-center gap-3 rounded-2xl border border-(--glass-border)/20 bg-(--bg-surface)/40 px-4 py-3 transition hover:border-(--glass-border)/40 hover:bg-(--bg-surface)/60"
+                className="group flex items-center gap-3 rounded-2xl border border-(--glass-border)/(--opacity-dim) bg-(--bg-surface)/(--opacity-medium) px-4 py-3 transition hover:border-(--glass-border)/(--opacity-soft) hover:bg-(--bg-surface)/(--opacity-strong)"
               >
                 <span
                   className={cn(
-                    "inline-flex h-10 w-10 items-center justify-center rounded-full bg-(--bg-surface)/80 text-xl shadow-sm transition group-hover:scale-105",
+                    "inline-flex h-10 w-10 items-center justify-center rounded-full bg-(--bg-surface)/(--opacity-hover) text-xl shadow-sm transition group-hover:scale-105",
                     option.id === "telegram"
                       ? "text-(--brand-main)"
                       : option.id === "whatsapp"
                         ? "text-success-text"
-                        : "text-(--brand-main)/80"
+                        : "text-(--brand-main)/(--opacity-hover)"
                   )}
                 >
                   {option.id === "telegram" ? (
@@ -890,7 +889,7 @@ export default function NewsDetail() {
                   <Button
                     as="label"
                     variant="outline"
-                    className="w-full sm:w-auto bg-(--bg-surface)/20 border-glass-border"
+                    className="w-full sm:w-auto bg-(--bg-surface)/(--opacity-dim) border-glass-border"
                     disabled={saving}
                   >
                     <div className="flex items-center gap-2">
@@ -970,7 +969,7 @@ export default function NewsDetail() {
               void handleDelete()
             }}
             disabled={deleting}
-            className="absolute inset-0 bg-linear-to-t from-gray-900 via-gray-900/40 to-transparent text-white hover:from-red-700 hover:to-red-800 sm:w-auto"
+            className="absolute inset-0 bg-linear-to-t from-gray-900 via-gray-900/(--opacity-soft) to-transparent text-white hover:from-red-700 hover:to-red-800 sm:w-auto"
           >
             <div className="flex items-center gap-2">
               <DeleteIcon className="h-4 w-4" />

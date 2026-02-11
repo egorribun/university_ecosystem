@@ -208,7 +208,7 @@ export default function DashboardStories({
     }
     const initials = story.title.slice(0, 2).toUpperCase()
     return (
-      <div className="flex h-full w-full items-center justify-center text-lg font-semibold uppercase tracking-wide text-white/95">
+      <div className="flex h-full w-full items-center justify-center text-lg font-semibold uppercase tracking-wide text-white/(--opacity-heavy)">
         {initials}
       </div>
     )
@@ -298,7 +298,7 @@ export default function DashboardStories({
           >
             <div
               aria-hidden
-              className="pointer-events-none absolute inset-0 z-(--z-base) bg-linear-to-b from-black/0 via-black/0 to-black/60"
+              className="pointer-events-none absolute inset-0 z-(--z-base) bg-linear-to-b from-black/0 via-black/0 to-black/(--opacity-strong)"
               onClick={closeViewer}
             />
             <div
@@ -311,7 +311,7 @@ export default function DashboardStories({
             >
               <div
                 className={cn(
-                  "relative z-(--z-decor) flex aspect-9/16 w-(--story-card-w) max-h-[92vh] max-w-(--story-card-w) flex-col items-stretch justify-center overflow-hidden text-white sm:aspect-video sm:w-[min(96%,960px)] sm:max-h-[80vh] sm:max-w-[min(96%,960px)]",
+                  "relative z-(--z-decor) flex aspect-9/16 w-(--story-card-w) max-h-[92vh] max-w-(--story-card-w) flex-col items-stretch justify-center overflow-hidden text-white sm:aspect-video sm:w-[min(96%,960px)] sm:max-h-(--h-hero-lg) sm:max-w-[min(96%,960px)]",
                   viewerStory.cover_url ? "bg-(--bg-page)" : "bg-brand shadow-premium-lift",
                   viewerStory.cover_url ? "rounded-none" : "rounded-2xl sm:rounded-3xl"
                 )}
@@ -340,7 +340,7 @@ export default function DashboardStories({
                   />
                 ) : (
                   <div className="flex w-full items-center justify-between px-fluid-x">
-                    <span className="text-[clamp(2.2rem,12vw,3.2rem)] font-extrabold uppercase">
+                    <span className="text-(length:--fs-fluid-display) font-extrabold uppercase">
                       {viewerStory.title.slice(0, 2).toUpperCase()}
                     </span>
                   </div>
@@ -371,7 +371,9 @@ export default function DashboardStories({
                       </h2>
                     )}
                     {viewerStory.short_text && (
-                      <p className="text-base opacity-95">{viewerStory.short_text}</p>
+                      <p className="text-base opacity-(--opacity-heavy)">
+                        {viewerStory.short_text}
+                      </p>
                     )}
                     {viewerStoryLink &&
                       ("to" in viewerStoryLink ? (
@@ -408,7 +410,7 @@ export default function DashboardStories({
                         total: displayStories.length,
                         title: story.title,
                       })}
-                      className="h-[3px] flex-1 bg-white/35"
+                      className="h-[3px] flex-1 bg-white/(--opacity-soft)"
                       barClassName={cn(
                         "bg-white",
                         prefersReducedMotion
@@ -425,7 +427,7 @@ export default function DashboardStories({
                   type="button"
                   onClick={closeViewer}
                   aria-label={t("stories.viewer.aria.close")}
-                  className="absolute right-4 top-9 inline-flex h-11 w-11 items-center justify-center rounded-full bg-glass-bg/50 text-white transition-colors duration-200 ease-out hover:bg-glass-bg/70 focus-visible:outline focus-visible:ring-2 focus-visible:ring-white/70 sm:right-6"
+                  className="absolute right-4 top-9 inline-flex h-11 w-11 items-center justify-center rounded-full bg-glass-bg/(--opacity-medium) text-white transition-colors duration-200 ease-out hover:bg-glass-bg/(--opacity-strong) focus-visible:outline focus-visible:ring-2 focus-visible:ring-white/(--opacity-strong) sm:right-6"
                 >
                   <CloseIcon className="h-5 w-5" aria-hidden="true" />
                 </button>
@@ -436,7 +438,7 @@ export default function DashboardStories({
                       type="button"
                       onClick={goPrev}
                       aria-label={t("stories.viewer.aria.prev")}
-                      className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-glass-bg/50 text-white transition-colors duration-200 ease-out hover:bg-glass-bg/70 focus-visible:outline focus-visible:ring-2 focus-visible:ring-white/70"
+                      className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-glass-bg/(--opacity-medium) text-white transition-colors duration-200 ease-out hover:bg-glass-bg/(--opacity-strong) focus-visible:outline focus-visible:ring-2 focus-visible:ring-white/(--opacity-strong)"
                     >
                       <ArrowLeftIcon className="h-5 w-5" aria-hidden="true" />
                     </button>
@@ -446,7 +448,7 @@ export default function DashboardStories({
                       type="button"
                       onClick={goNext}
                       aria-label={t("stories.viewer.aria.next")}
-                      className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-glass-bg/50 text-white transition-colors duration-200 ease-out hover:bg-glass-bg/70 focus-visible:outline focus-visible:ring-2 focus-visible:ring-white/70"
+                      className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-glass-bg/(--opacity-medium) text-white transition-colors duration-200 ease-out hover:bg-glass-bg/(--opacity-strong) focus-visible:outline focus-visible:ring-2 focus-visible:ring-white/(--opacity-strong)"
                     >
                       <ArrowRightIcon className="h-5 w-5" aria-hidden="true" />
                     </button>
@@ -526,7 +528,7 @@ export default function DashboardStories({
                     title={tooltip ?? undefined}
                     data-active={viewerStory?.id === story.id ? "true" : undefined}
                     className={cn(
-                      "transition-transform data-[active=true]:ring-4 data-[active=true]:ring-brand/45"
+                      "transition-transform data-[active=true]:ring-4 data-[active=true]:ring-brand/(--opacity-medium)"
                     )}
                   >
                     <div className="relative z-(--z-base) aspect-9/16 w-[--story-card-w] overflow-hidden rounded-2xl bg-(--bg-surface-raised) shadow-premium md:w-[--story-card-w-md]">

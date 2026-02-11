@@ -54,7 +54,7 @@ export const EventActions: React.FC<EventActionsProps> = ({
   return (
     <div className="mt-auto">
       <div className="mb-4 flex items-center gap-2 group/part">
-        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-warning-bg/20 text-warning-text">
+        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-warning-bg/(--opacity-dim) text-warning-text">
           <Tooltip content={t("events:form.participants")}>
             <PeopleAltIcon
               size={19}
@@ -62,13 +62,13 @@ export const EventActions: React.FC<EventActionsProps> = ({
             />
           </Tooltip>
         </div>
-        <span className="text-[15px] text-(--text-primary)">
+        <span className="text-body-sm text-(--text-primary)">
           {t("events:card.participants", { count: participantCount })}
         </span>
       </div>
 
       {isEnded && (
-        <span className="inline-flex mb-4 py-1.5 px-3 rounded-lg bg-error-bg/20 border border-error-border/30 text-sm font-semibold text-error-text">
+        <span className="inline-flex mb-4 py-1.5 px-3 rounded-lg bg-error-bg/(--opacity-dim) border border-error-border/(--opacity-soft) text-sm font-semibold text-error-text">
           {t("events:card.statuses.ended")}
         </span>
       )}

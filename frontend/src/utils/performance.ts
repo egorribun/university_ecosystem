@@ -90,7 +90,6 @@ export function getWebVitals(): WebVitals {
 export function reportMetric(name: string, value: number, tags?: Record<string, string>): void {
   // Send to OpenTelemetry if configured
   if (typeof window !== "undefined" && "otel" in window) {
-    // @ts-expect-error - otel may be injected
     window.otel?.recordMetric?.(name, value, tags)
   }
 

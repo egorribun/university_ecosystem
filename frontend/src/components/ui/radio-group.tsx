@@ -54,7 +54,7 @@ const RadioGroupItem = React.forwardRef<HTMLInputElement, RadioGroupItemProps>(
       <label
         className={cn(
           "relative inline-flex cursor-pointer items-center p-1",
-          isDisabled && "cursor-not-allowed opacity-40 grayscale"
+          isDisabled && "cursor-not-allowed opacity-(--opacity-medium) grayscale"
         )}
       >
         <input
@@ -72,9 +72,9 @@ const RadioGroupItem = React.forwardRef<HTMLInputElement, RadioGroupItemProps>(
           className={cn(
             "flex h-6 w-6 items-center justify-center rounded-full border-2 transition-all duration-300",
             "border-glass-border bg-glass-bg backdrop-blur-glass shadow-glass",
-            "hover:border-brand/40 hover:bg-glass-tint1",
-            "peer-focus-visible:ring-4 peer-focus-visible:ring-brand/20",
-            isSelected && "border-brand bg-brand/10 shadow-glow-primary",
+            "hover:border-brand/(--opacity-medium) hover:bg-glass-tint1",
+            "peer-focus-visible:ring-4 peer-focus-visible:ring-brand/(--opacity-dim)",
+            isSelected && "border-brand bg-brand/(--opacity-subtle) shadow-glow-primary",
             className
           )}
         >

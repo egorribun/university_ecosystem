@@ -11,7 +11,7 @@ import { prefetchEventsListQuery, EVENTS_PAGE_SIZE } from "@/api/hooks/events"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useQueryClient } from "@tanstack/react-query"
 import type { Event } from "@/types/Event"
-import { startOfDay, endOfDay, parseLocalDate } from "@/utils/dateUtils"
+import dayjs from "dayjs"
 
 interface EventsCardProps {
   locale: string
@@ -51,33 +51,43 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
   }
 
   const todayEvents = useMemo(() => {
-    const now = new Date()
-    const from = startOfDay(now)
-    const to = endOfDay(now)
+    const now = dayjs()
+    const from = now.startOf("day")
+    const to = now.endOf("day")
     return events
       .filter((e) => e.starts_at)
-      .map((e) => ({ ...e, d: parseLocalDate(String(e.starts_at))! }))
-      .filter((e) => e.d && e.d >= from && e.d <= to)
-      .sort((a, b) => +a.d - +b.d)
+      .map((e) => ({ ...e, d: dayjs(e.starts_at) }))
+      .filter(
+        (e) =>
+          e.d.isValid() &&
+          (e.d.isSame(from) || e.d.isAfter(from)) &&
+          (e.d.isSame(to) || e.d.isBefore(to))
+      )
+      .sort((a, b) => a.d.diff(b.d))
       .slice(0, 6)
   }, [events])
 
   const weekEvents = useMemo(() => {
-    const now = new Date()
-    const from = startOfDay(now)
-    const to = endOfDay(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7))
+    const now = dayjs()
+    const from = now.startOf("day")
+    const to = now.add(7, "day").endOf("day")
     return events
       .filter((e) => e.starts_at)
-      .map((e) => ({ ...e, d: parseLocalDate(String(e.starts_at))! }))
-      .filter((e) => e.d && e.d >= from && e.d <= to)
-      .sort((a, b) => +a.d - +b.d)
+      .map((e) => ({ ...e, d: dayjs(e.starts_at) }))
+      .filter(
+        (e) =>
+          e.d.isValid() &&
+          (e.d.isSame(from) || e.d.isAfter(from)) &&
+          (e.d.isSame(to) || e.d.isBefore(to))
+      )
+      .sort((a, b) => a.d.diff(b.d))
       .slice(0, 6)
   }, [events])
 
   const scopedEvents = eventsScope === "today" ? todayEvents : weekEvents
 
   const listActionBase =
-    "group relative isolate w-full overflow-hidden rounded-xl border border-border-subtle bg-(--bg-surface-hover)/10 px-4 py-3 text-left transition-all duration-300 ease-out hover:bg-(--bg-surface-hover)/20 hover:border-border-strong hover:-translate-y-0.5 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+    "group relative isolate w-full overflow-hidden rounded-xl border border-border-subtle bg-(--bg-surface-hover)/(--opacity-subtle) px-4 py-3 text-left transition-all duration-300 ease-out hover:bg-(--bg-surface-hover)/(--opacity-dim) hover:border-border-strong hover:-translate-y-0.5 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/(--opacity-medium)"
 
   return (
     <Card
@@ -94,7 +104,7 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
     >
       <div className="relative z-(--z-base) space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-[clamp(1.1rem,2vw,1.5rem)] font-extrabold text-(--text-primary)">
+          <h2 className="text-(length:--fs-fluid-h2) font-extrabold text-(--text-primary)">
             {t("dashboard:events.heading")}
           </h2>
           <Button
@@ -138,7 +148,7 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
             {[1, 2, 3].map((i) => (
               <div
                 key={i}
-                className="flex flex-col gap-2 rounded-xl border border-border-subtle bg-(--bg-surface)/20 px-4 py-3 opacity-60"
+                className="flex flex-col gap-2 rounded-xl border border-border-subtle bg-(--bg-surface)/(--opacity-dim) px-4 py-3 opacity-(--opacity-medium)"
               >
                 <Skeleton width="60%" height={20} />
                 <div className="flex items-center gap-2">
@@ -162,14 +172,14 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
             }
           >
             {scopedEvents.map((e) => {
-              const d = parseLocalDate(String(e.starts_at))
+              // e.d is now a dayjs object from the useMemo above
               return (
                 <li key={e.id} className="dash-list-item px-0 py-0">
                   <button
                     type="button"
                     className={cn(
                       listActionBase,
-                      "flex min-h-(--space-18) flex-col justify-center gap-2 border-0 bg-transparent px-4 py-3 hover:bg-white/5 active:scale-[0.99] sm:gap-2.5"
+                      "flex min-h-(--space-18) flex-col justify-center gap-2 border-0 bg-transparent px-4 py-3 hover:bg-white/(--opacity-faint) active:scale-[0.99] sm:gap-2.5"
                     )}
                     onClick={() => navigate(`/events/${e.id}`)}
                     aria-label={t("dashboard:aria.eventItem", { title: e.title })}
@@ -178,24 +188,15 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
                       <span className="text-base font-semibold leading-tight text-(--text-primary) line-clamp-2">
                         {e.title}
                       </span>
-                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-glass-border bg-(--bg-surface)/20 text-brand transition-all duration-300 group-hover:bg-brand/10">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-glass-border bg-(--bg-surface)/(--opacity-dim) text-brand transition-all duration-300 group-hover:bg-brand/(--opacity-subtle)">
                         <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
                       </span>
                     </span>
                     <span className="flex flex-wrap items-center gap-2 text-sm text-(--text-secondary)">
                       <Badge
                         size="sm"
-                        className="border-brand/20 bg-brand/5 font-mono text-xs font-medium text-brand dark:bg-brand/10"
-                        label={
-                          d
-                            ? d.toLocaleString(locale, {
-                                day: "2-digit",
-                                month: "short",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })
-                            : ""
-                        }
+                        className="border-brand/(--opacity-dim) bg-brand/(--opacity-faint) font-mono text-xs font-medium text-brand dark:bg-brand/(--opacity-subtle)"
+                        label={e.d.isValid() ? e.d.format("DD MMM HH:mm") : ""}
                       />
                       {!!e.location && (
                         <Badge
@@ -216,7 +217,7 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
       <motion.span
         aria-hidden="true"
         initial={{ opacity: 0 }}
-        whileHover={{ opacity: 0.8 }}
+        whileHover={{ opacity: "var(--opacity-hover)" }}
         animate={{
           scale: [1, 1.12, 1],
           rotate: [0, 5, 0],
@@ -230,8 +231,8 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
       />
       <motion.span
         aria-hidden="true"
-        initial={{ opacity: 0.3 }}
-        whileHover={{ opacity: 0.65 }}
+        initial={{ opacity: "var(--opacity-soft)" }}
+        whileHover={{ opacity: "var(--opacity-strong)" }}
         animate={{
           scale: [1, 1.2, 1],
           x: [0, -10, 0],

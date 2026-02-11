@@ -31,6 +31,7 @@ import { springSoft } from "@/utils/animations"
 import { cn } from "@/utils/cn"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
+import { useDebounced } from "@/hooks/useDebounced"
 
 type EventTabKey = "active" | "archive" | "my"
 type EventTab = { key: EventTabKey; is_active?: boolean }
@@ -75,20 +76,12 @@ const initialEvent: EventDraft = {
   about_en: "",
 }
 
-function useDebounced<T>(value: T, delay = 350) {
-  const [debouncedValue, setDebouncedValue] = useState(value)
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedValue(value), delay)
-    return () => clearTimeout(timer)
-  }, [value, delay])
-  return debouncedValue
-}
 
 const fadeDelayStyle = (value: string): CSSProperties =>
   ({ "--fade-delay": value }) as CSSProperties
 
 const inputClass =
-  "w-full rounded-xl border border-glass-border bg-(--bg-surface)/40 px-4 py-3 text-md font-medium text-(--text-primary) shadow-sm focus:border-brand focus:outline-none transition-all placeholder:text-(--text-secondary)/50"
+  "w-full rounded-xl border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-4 py-3 text-md font-medium text-(--text-primary) shadow-sm focus:border-brand focus:outline-none transition-all placeholder:text-(--text-secondary)/(--opacity-medium)"
 
 const Events = () => {
   const { user } = useAuth()
@@ -331,10 +324,10 @@ const Events = () => {
               style={fadeDelayStyle("80ms")}
               className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-(--bg-surface)/40 border border-glass-border text-brand shadow-glass transition-transform duration-300 hover:scale-[1.08] overflow-hidden">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-(--bg-surface)/(--opacity-medium) border border-glass-border text-brand shadow-glass transition-transform duration-300 hover:scale-[1.08] overflow-hidden">
                 <EventNoteIcon className="h-7 w-7" />
               </div>
-              <h1 className="text-(--fs-page-title) font-bold tracking-tight text-(--text-primary)">
+              <h1 className="text-(length:--fs-page-title) font-bold tracking-tight text-(--text-primary)">
                 {t("events:pageTitle")}
               </h1>
             </div>
@@ -346,7 +339,7 @@ const Events = () => {
                   size="lg"
                   onClick={() => setCreateOpen(true)}
                   disabled={imageUploading || loading}
-                  className="px-6 text-[clamp(1rem,2.2vw,1.1rem)]"
+                  className="px-6 text-fluid-title-sm"
                 >
                   {t("events:actions.openCreate")}
                 </Button>
@@ -363,7 +356,7 @@ const Events = () => {
               <div
                 ref={tabContainerRef}
                 className={cn(
-                  "inline-flex w-full items-center gap-1 rounded-[11px] border border-glass-border bg-(--bg-surface)/40 p-1 backdrop-blur-md shadow-glass",
+                  "inline-flex w-full items-center gap-1 rounded-[11px] border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-1 backdrop-blur-md shadow-glass",
                   "sm:w-auto"
                 )}
               >
@@ -376,7 +369,7 @@ const Events = () => {
                     aria-controls={`events-tabpanel-${tabItem.key}`}
                     onClick={() => handleTabChange(tabItem.key)}
                     className={cn(
-                      "relative z-(--z-base) px-4 py-2 text-[15px] font-semibold rounded-[9px] transition-colors duration-200",
+                      "relative z-(--z-base) px-4 py-2 text-body-sm font-semibold rounded-[9px] transition-colors duration-200",
                       "sm:px-6 sm:text-base",
                       tab === tabItem.key
                         ? "text-(--text-primary)"
@@ -400,7 +393,7 @@ const Events = () => {
             {/* Search and filters */}
             <div data-fade style={fadeDelayStyle("240ms")} className="mb-6 lg:max-w-4xl">
               <div className="relative">
-                <SearchIcon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-(--text-secondary) pointer-events-none opacity-60" />
+                <SearchIcon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-(--text-secondary) pointer-events-none opacity-(--opacity-strong)" />
                 <input
                   type="text"
                   value={search}
@@ -408,10 +401,10 @@ const Events = () => {
                   placeholder={t("events:filters.search")}
                   className={cn(
                     "w-full rounded-2xl px-4 py-3.5 pl-11 pr-20 text-base text-(--text-primary)",
-                    "bg-(--bg-surface)/40 border border-glass-border shadow-glass backdrop-blur-md",
-                    "placeholder:text-(--text-secondary)/50",
+                    "bg-(--bg-surface)/(--opacity-medium) border border-glass-border shadow-glass backdrop-blur-md",
+                    "placeholder:text-(--text-secondary)/(--opacity-medium)",
                     "outline-none transition-all duration-200",
-                    "focus:border-brand/40 focus:ring-4 focus:ring-brand/10"
+                    "focus:border-brand/(--opacity-medium) focus:ring-4 focus:ring-brand/(--opacity-subtle)"
                   )}
                 />
                 <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
@@ -419,7 +412,7 @@ const Events = () => {
                     <button
                       type="button"
                       onClick={() => setSearch("")}
-                      className="rounded-full p-2 text-(--text-secondary) transition-all duration-150 hover:bg-(--bg-surface)/20 active:scale-95"
+                      className="rounded-full p-2 text-(--text-secondary) transition-all duration-150 hover:bg-(--bg-surface)/(--opacity-dim) active:scale-95"
                       aria-label={t("events:aria.clearSearch")}
                     >
                       <ClearIcon className="h-4 w-4" />
@@ -429,7 +422,7 @@ const Events = () => {
                     type="button"
                     onClick={(event) => setFilterAnchor(event.currentTarget)}
                     className={cn(
-                      "relative rounded-full p-2 transition-all duration-150 hover:bg-(--bg-surface)/20 active:scale-95",
+                      "relative rounded-full p-2 transition-all duration-150 hover:bg-(--bg-surface)/(--opacity-dim) active:scale-95",
                       filtersActive ? "text-brand" : "text-(--text-secondary)"
                     )}
                     aria-label={t("events:aria.openFilters")}
@@ -450,7 +443,7 @@ const Events = () => {
             {filtersOpen && filterAnchor && (
               <div
                 ref={filterPopoverRef}
-                className="fixed z-(--z-modal) mt-2 min-w-[260px] rounded-2xl border border-glass-border bg-(--bg-surface)/90 p-4 shadow-glass backdrop-blur-xl"
+                className="fixed z-(--z-modal) mt-2 min-w-[260px] rounded-2xl border border-glass-border bg-(--bg-surface)/(--opacity-heavy) p-4 shadow-glass backdrop-blur-xl"
                 style={{
                   top: filterAnchor.getBoundingClientRect().bottom + 8,
                   right: window.innerWidth - filterAnchor.getBoundingClientRect().right,
@@ -510,7 +503,7 @@ const Events = () => {
               {loading &&
                 Array.from({ length: skeletonCount }).map((_, i) => (
                   <div key={`event-skel-${i}`} className="w-full">
-                    <div className="w-full space-y-4 rounded-3xl border border-glass-border bg-(--bg-surface)/40 p-5 shadow-glass backdrop-blur-md">
+                    <div className="w-full space-y-4 rounded-3xl border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-5 shadow-glass backdrop-blur-md">
                       <Skeleton height={isMobile ? 180 : 200} className="rounded-2xl" />
                       <Skeleton height={28} className="rounded-lg" />
                       <Skeleton height={20} width="75%" className="rounded-lg" />
@@ -535,8 +528,8 @@ const Events = () => {
 
               {!loading && normalizedEvents.length === 0 && (
                 <div className="col-span-full mt-12 flex w-full justify-center animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  <div className="flex w-full max-w-md flex-col items-center gap-5 rounded-3xl border border-glass-border/30 bg-(--bg-surface)/40 px-8 py-14 text-center shadow-glass backdrop-blur-md">
-                    <div className="relative z-(--z-base) flex h-16 w-16 items-center justify-center rounded-full bg-brand/10 border border-brand/20 shadow-brand/10 shadow-lg">
+                  <div className="flex w-full max-w-md flex-col items-center gap-5 rounded-3xl border border-glass-border/(--opacity-soft) bg-(--bg-surface)/(--opacity-medium) px-8 py-14 text-center shadow-glass backdrop-blur-md">
+                    <div className="relative z-(--z-base) flex h-16 w-16 items-center justify-center rounded-full bg-brand/(--opacity-subtle) border border-brand/(--opacity-dim) shadow-brand/(--opacity-subtle) shadow-lg">
                       <EventNoteIcon className="h-8 w-8 text-brand" />
                     </div>
                     <div className="space-y-2">
@@ -556,7 +549,7 @@ const Events = () => {
                         variant="ghost"
                         size="sm"
                         onClick={() => handleTabChange(tab === "active" ? "archive" : "active")}
-                        className="mt-2 text-brand hover:bg-brand/10"
+                        className="mt-2 text-brand hover:bg-brand/(--opacity-subtle)"
                       >
                         {tab === "active" ? t("events:tabs.archive") : t("events:tabs.active")}
                       </Button>
@@ -679,7 +672,7 @@ const Events = () => {
                         as="label"
                         variant="outline"
                         disabled={imageUploading}
-                        className="w-full justify-start gap-2 bg-(--bg-surface)/20"
+                        className="w-full justify-start gap-2 bg-(--bg-surface)/(--opacity-dim)"
                       >
                         {imageUploading ? (
                           t("common:statuses.uploading")
@@ -762,7 +755,7 @@ const Events = () => {
                     imageUploading ||
                     dateError
                   }
-                  className="w-full sm:w-auto min-w-[120px]"
+                  className="w-full sm:w-auto min-w-(--min-w-btn)"
                 >
                   {t("common:buttons.create")}
                 </Button>

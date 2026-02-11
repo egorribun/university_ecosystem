@@ -21,7 +21,7 @@ import { StorageItem } from "@/utils/storage"
 import { cn } from "@/utils/cn"
 
 const inputClass =
-  "w-full rounded-xl border border-glass-border bg-(--bg-surface)/40 px-4 py-2.5 text-[0.98rem] text-(--text-primary) shadow-sm focus:border-brand focus:outline-none transition placeholder:text-(--text-secondary)/50"
+  "w-full rounded-xl border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-4 py-2.5 text-input text-(--text-primary) shadow-sm focus:border-brand focus:outline-none transition placeholder:text-(--text-secondary)/(--opacity-medium)"
 const textareaClass = cn(inputClass, "min-h-[148px] resize-y leading-relaxed")
 
 const fadeDelayStyle = (value: string): CSSProperties =>
@@ -53,7 +53,7 @@ function Field({ label, htmlFor, children, required = false }: FieldProps) {
     <div className="space-y-2">
       <label
         htmlFor={htmlFor}
-        className="text-sm font-semibold tracking-wide text-(--text-secondary)/80"
+        className="text-sm font-semibold tracking-wide text-(--text-secondary)/(--opacity-hover)"
       >
         {label}
         {required ? <span className="ml-1 text-error-text text-sm font-bold">*</span> : null}
@@ -211,10 +211,10 @@ const News = () => {
               style={fadeDelayStyle("80ms")}
               className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-(--bg-surface)/40 border border-glass-border text-brand shadow-glass transition-transform duration-200 hover:scale-105 backdrop-blur-md">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-(--bg-surface)/(--opacity-medium) border border-glass-border text-brand shadow-glass transition-transform duration-200 hover:scale-105 backdrop-blur-md">
                 <ArticleIcon className="h-7 w-7" />
               </div>
-              <h1 className="text-(--fs-page-title) font-bold tracking-tight text-(--text-primary)">
+              <h1 className="text-(--fs-page-title) font-bold tracking-tight">
                 {t("news:pageTitle")}
               </h1>
             </div>
@@ -225,7 +225,7 @@ const News = () => {
                   size="lg"
                   onClick={() => setAddOpen(true)}
                   disabled={adding}
-                  className="px-6 text-[clamp(1rem,2.2vw,1.1rem)]"
+                  className="px-6 text-fluid-title-sm"
                 >
                   {t("news:actions.add")}
                 </Button>
@@ -260,8 +260,8 @@ const News = () => {
                   {!isOnline && newsList.length === 0 ? (
                     <OfflineFallback onRetry={refreshNews} />
                   ) : (
-                    <div className="flex w-full max-w-md flex-col items-center gap-5 rounded-3xl border border-glass-border/30 bg-(--bg-surface)/40 px-8 py-14 text-center shadow-glass backdrop-blur-md">
-                      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand/10 border border-brand/20 shadow-brand/10 shadow-lg">
+                    <div className="flex w-full max-w-md flex-col items-center gap-5 rounded-3xl border border-glass-border/(--opacity-soft) bg-(--bg-surface)/(--opacity-medium) px-8 py-14 text-center shadow-glass backdrop-blur-md">
+                      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand/(--opacity-subtle) border border-brand/(--opacity-dim) shadow-brand/(--opacity-subtle) shadow-lg">
                         <ArticleIcon className="h-8 w-8 text-brand" />
                       </div>
                       <div className="space-y-2">
@@ -391,7 +391,7 @@ const News = () => {
                           as="label"
                           variant="outline"
                           size="sm"
-                          className="w-full sm:w-auto bg-(--bg-surface)/20 border-glass-border"
+                          className="w-full sm:w-auto bg-(--bg-surface)/(--opacity-dim) border-glass-border"
                           disabled={adding}
                         >
                           <div className="flex items-center gap-2">
@@ -438,7 +438,7 @@ const News = () => {
                     void handleAddNews()
                   }}
                   disabled={!newsData.title.trim() || !newsData.content.trim() || adding}
-                  className="w-full sm:w-auto min-w-[120px]"
+                  className="w-full sm:w-auto min-w-(--min-w-btn)"
                 >
                   {adding ? t("common:statuses.publishing") : t("news:actions.publish")}
                 </Button>

@@ -176,7 +176,7 @@ export default function MapContent() {
         <div className="glass glass--panel glass--sheen map-head z-(--z-navbar) flex items-center justify-between px-6 py-4 absolute top-0 left-0 right-0">
           <div className="flex items-center gap-3">
             <MapIcon className={cn("text-brand", isMobile ? "h-6 w-6" : "h-8 w-8")} />
-            <h1 className="map-title text-[clamp(1.1rem,3.6vw,2rem)] font-black tracking-tight text-(--text-primary)">
+            <h1 className="map-title text-fluid-map-title font-black tracking-tight text-(--text-primary)">
               {t("map.title")}
             </h1>
           </div>
@@ -185,7 +185,7 @@ export default function MapContent() {
               variant="ghost"
               size="sm"
               onClick={openInYandex}
-              className="h-10 w-10 p-0 rounded-xl bg-(--bg-surface)/20 border border-glass-border/20"
+              className="h-10 w-10 p-0 rounded-xl bg-(--bg-surface)/(--opacity-dim) border border-glass-border/(--opacity-dim)"
               title={t("map.openInYandex") ?? ""}
             >
               <OpenInNewIcon className="h-5 w-5" />
@@ -194,7 +194,7 @@ export default function MapContent() {
               variant="ghost"
               size="sm"
               onClick={reset}
-              className="h-10 w-10 p-0 rounded-xl bg-(--bg-surface)/20 border border-glass-border/20 text-brand"
+              className="h-10 w-10 p-0 rounded-xl bg-(--bg-surface)/(--opacity-dim) border border-glass-border/(--opacity-dim) text-brand"
               title={t("map.reset") ?? ""}
             >
               <RestartAltIcon className="h-5 w-5" />
@@ -222,9 +222,9 @@ export default function MapContent() {
         )}
 
         {(!iframeLoaded || loadError) && !disableEmbeds && (
-          <div className="absolute inset-0 z-(--z-sidebar) grid place-items-center bg-background/90 backdrop-blur-sm">
+          <div className="absolute inset-0 z-(--z-sidebar) grid place-items-center bg-background/(--opacity-heavy) backdrop-blur-sm">
             {!loadError ? (
-              <div className="h-16 w-16 rounded-full border-4 border-surface/20 border-t-brand animate-spin" />
+              <div className="h-16 w-16 rounded-full border-4 border-surface/(--opacity-dim) border-t-brand animate-spin" />
             ) : (
               <div className="flex flex-col items-center gap-4">
                 <p className="text-sm font-medium text-(--text-secondary)">{t("map.loadError")}</p>
@@ -257,20 +257,20 @@ export default function MapContent() {
 
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-(--z-navbar) pointer-events-none flex flex-col gap-3 pb-(--safe-area-bottom)">
           <div className="flex items-center gap-2 pointer-events-auto">
-            <div className="glass glass--panel rounded-2xl p-1 bg-(--bg-surface)/40 backdrop-blur-xl border border-glass-border shadow-2xl flex items-center gap-1">
+            <div className="glass glass--panel rounded-2xl p-1 bg-(--bg-surface)/(--opacity-medium) backdrop-blur-xl border border-glass-border shadow-2xl flex items-center gap-1">
               <button
                 onClick={() => setLayer("map")}
                 className={cn(
                   "relative flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-all",
                   layer === "map"
                     ? "text-white"
-                    : "text-(--text-secondary) hover:bg-(--bg-surface)/20"
+                    : "text-(--text-secondary) hover:bg-(--bg-surface)/(--opacity-dim)"
                 )}
               >
                 {layer === "map" && (
                   <motion.div
                     layoutId="map-layer-indicator"
-                    className="absolute inset-0 bg-brand rounded-xl shadow-lg shadow-brand/20"
+                    className="absolute inset-0 bg-brand rounded-xl shadow-lg shadow-brand/(--opacity-dim)"
                     transition={{ type: "spring", stiffness: 400, damping: 30 }}
                   />
                 )}
@@ -285,13 +285,13 @@ export default function MapContent() {
                   "relative flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-all",
                   layer === "hybrid"
                     ? "text-white"
-                    : "text-(--text-secondary) hover:bg-(--bg-surface)/20"
+                    : "text-(--text-secondary) hover:bg-(--bg-surface)/(--opacity-dim)"
                 )}
               >
                 {layer === "hybrid" && (
                   <motion.div
                     layoutId="map-layer-indicator"
-                    className="absolute inset-0 bg-brand rounded-xl shadow-lg shadow-brand/20"
+                    className="absolute inset-0 bg-brand rounded-xl shadow-lg shadow-brand/(--opacity-dim)"
                     transition={{ type: "spring", stiffness: 400, damping: 30 }}
                   />
                 )}

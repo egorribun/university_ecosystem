@@ -70,7 +70,7 @@ export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, 
               "msg-contact-item flex items-center gap-3 p-3 mb-1 rounded-2xl cursor-pointer transition-all duration-300",
               selectedId === contact.id
                 ? "active bg-(--brand-main) text-white"
-                : "hover:bg-(--bg-surface-hover)/10"
+                : "hover:bg-(--bg-surface-hover)/(--opacity-subtle)"
             )}
           >
             <div className="relative shrink-0">
@@ -98,8 +98,8 @@ export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, 
                   className={cn(
                     "text-xs shrink-0 ml-2 font-medium uppercase tracking-tight",
                     selectedId === contact.id
-                      ? "text-white/70"
-                      : "text-(--text-secondary) opacity-60"
+                      ? "text-white/(--opacity-strong)"
+                      : "text-(--text-secondary) opacity-(--opacity-medium)"
                   )}
                 >
                   {contact.lastMessageTime}
@@ -109,7 +109,9 @@ export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, 
                 <p
                   className={cn(
                     "text-sm truncate flex-1 leading-tight",
-                    selectedId === contact.id ? "text-white/80" : "text-(--text-secondary)"
+                    selectedId === contact.id
+                      ? "text-white/(--opacity-hover)"
+                      : "text-(--text-secondary)"
                   )}
                 >
                   {contact.lastMessage}
@@ -118,7 +120,7 @@ export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, 
                   <motion.span
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
-                    className="msg-unread-badge min-w-5 h-5 px-1 bg-(--error-text) text-white rounded-full text-[0.6rem] font-black flex items-center justify-center shadow-lg shadow-(--error-text)/20"
+                    className="msg-unread-badge min-w-5 h-5 px-1 bg-(--error-text) text-white rounded-full text-label-xs font-black flex items-center justify-center shadow-lg shadow-(--error-text)/(--opacity-dim)"
                   >
                     {contact.unread > 99 ? "99+" : contact.unread}
                   </motion.span>
@@ -205,7 +207,7 @@ const ChatWindow: React.FC<ChatWindowProps> = memo(({ messages }) => {
                     srcRaw={message.senderAvatar || AVATAR_PLACEHOLDER_URL}
                     fallback={AVATAR_PLACEHOLDER_URL}
                     alt={message.senderName || ""}
-                    className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover shadow-sm ring-1 ring-black/5 dark:ring-white/5"
+                    className="w-8 h-8 md:w-9 md:h-9 rounded-full object-cover shadow-sm ring-1 ring-black/(--opacity-faint) dark:ring-white/(--opacity-faint)"
                   />
                 </div>
 
@@ -226,7 +228,7 @@ const ChatWindow: React.FC<ChatWindowProps> = memo(({ messages }) => {
                               <SmartImage
                                 srcRaw={attachment.url}
                                 alt={attachment.name}
-                                className="w-full h-auto max-h-72 object-cover cursor-pointer hover:scale-[1.02] transition-transform duration-500"
+                                className="w-full h-auto max-h-72 object-cover cursor-pointer hover:scale-hover transition-transform duration-500"
                                 onClick={() => {
                                   const safe = sanitizeUrl(attachment.url)
                                   if (safe) window.open(safe, "_blank", "noopener,noreferrer")
@@ -239,18 +241,18 @@ const ChatWindow: React.FC<ChatWindowProps> = memo(({ messages }) => {
                               target="_blank"
                               rel="noopener noreferrer"
                               className={cn(
-                                "flex items-center gap-3 p-3 rounded-xl transition-colors border border-white/5",
+                                "flex items-center gap-3 p-3 rounded-xl transition-colors border border-white/(--opacity-faint)",
                                 message.isMe
-                                  ? "bg-white/15 hover:bg-white/25"
-                                  : "bg-(--bg-surface-raised)/50 hover:bg-(--bg-surface-hover)/50"
+                                  ? "bg-white/(--opacity-subtle) hover:bg-white/(--opacity-soft)"
+                                  : "bg-(--bg-surface-raised)/(--opacity-medium) hover:bg-(--bg-surface-hover)/(--opacity-medium)"
                               )}
                             >
-                              <div className="p-2 rounded-lg bg-white/10 text-(--brand-main)">
+                              <div className="p-2 rounded-lg bg-white/(--opacity-subtle) text-(--brand-main)">
                                 <File className="w-5 h-5" />
                               </div>
                               <div className="flex-1 min-w-0">
                                 <p className="truncate text-sm font-bold">{attachment.name}</p>
-                                <p className="text-[0.65rem] opacity-60 font-medium">
+                                <p className="text-micro opacity-(--opacity-medium) font-medium">
                                   {(attachment.size / 1024).toFixed(1)} KB
                                 </p>
                               </div>
@@ -263,9 +265,9 @@ const ChatWindow: React.FC<ChatWindowProps> = memo(({ messages }) => {
                   <p className="wrap-break-word leading-relaxed whitespace-pre-wrap">
                     {message.text}
                   </p>
-                  <div className="flex items-center justify-end gap-1.5 mt-1 opacity-80">
+                  <div className="flex items-center justify-end gap-1.5 mt-1 opacity-(--opacity-hover)">
                     <span
-                      className="text-[0.65rem] font-bold uppercase tracking-wider"
+                      className="text-micro font-bold uppercase tracking-wider"
                       style={{
                         color: message.isMe ? "var(--primary-subtle)" : "var(--text-secondary)",
                       }}
@@ -273,7 +275,7 @@ const ChatWindow: React.FC<ChatWindowProps> = memo(({ messages }) => {
                       {message.timestamp}
                     </span>
                     {message.isMe && (
-                      <span className="flex items-center opacity-80">
+                      <span className="flex items-center opacity-(--opacity-hover)">
                         {message.status === "read" ? (
                           <svg
                             viewBox="0 0 16 16"
@@ -291,7 +293,7 @@ const ChatWindow: React.FC<ChatWindowProps> = memo(({ messages }) => {
                             fill="none"
                             stroke="currentColor"
                             strokeWidth={2.5}
-                            className="w-3 h-3 text-white opacity-60"
+                            className="w-3 h-3 text-white opacity-(--opacity-medium)"
                           >
                             <polyline points="4,12 8,16 16,8" />
                           </svg>
@@ -386,7 +388,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
   }
 
   return (
-    <div className="shrink-0 p-3 z-(--z-popover) relative border-t border-(--glass-border)/10 bg-(--bg-surface)/30 backdrop-blur-xl">
+    <div className="shrink-0 p-3 z-(--z-popover) relative border-t border-(--glass-border)/(--opacity-subtle) bg-(--bg-surface)/(--opacity-soft) backdrop-blur-xl">
       {selectedFiles.length > 0 && (
         <div className="flex gap-2 mb-3 overflow-x-auto pb-2 custom-scrollbar">
           {selectedFiles.map((file, index) => (
@@ -395,16 +397,16 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
                 <SmartImage
                   srcRaw={URL.createObjectURL(file)}
                   alt={file.name}
-                  className="w-16 h-16 object-cover rounded-xl border border-(--glass-border)/20 shadow-sm"
+                  className="w-16 h-16 object-cover rounded-xl border border-(--glass-border)/(--opacity-dim) shadow-sm"
                 />
               ) : (
-                <div className="shrink-0 flex items-center justify-center h-10 w-10 md:h-12 md:w-12 bg-(--bg-surface-raised) rounded-xl border border-(--glass-border)/20 shadow-sm text-(--text-secondary)">
+                <div className="shrink-0 flex items-center justify-center h-10 w-10 md:h-12 md:w-12 bg-(--bg-surface-raised) rounded-xl border border-(--glass-border)/(--opacity-dim) shadow-sm text-(--text-secondary)">
                   <FileText className="w-8 h-8" />
                 </div>
               )}
               <button
                 onClick={() => removeFile(index)}
-                className="absolute -top-1.5 -right-1.5 bg-(--error-text) text-white rounded-full p-1 shadow-lg hover:bg-(--error-text)/80 transition-colors"
+                className="absolute -top-1.5 -right-1.5 bg-(--error-text) text-white rounded-full p-1 shadow-lg hover:bg-(--error-text)/(--opacity-hover) transition-colors"
                 aria-label="Remove"
               >
                 <X className="w-3 h-3" strokeWidth={3} />
@@ -413,16 +415,16 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
           ))}
         </div>
       )}
-      <div className="flex items-end gap-2 bg-(--bg-surface-hover)/10 rounded-2xl border border-(--glass-border)/20 p-2 focus-within:ring-4 focus-within:ring-(--brand-main)/5 focus-within:border-(--brand-main)/30 transition-all duration-300">
+      <div className="flex items-end gap-2 bg-(--bg-surface-hover)/(--opacity-subtle) rounded-2xl border border-(--glass-border)/(--opacity-dim) p-2 focus-within:ring-4 focus-within:ring-(--brand-main)/(--opacity-faint) focus-within:border-(--brand-main)/(--opacity-dim) transition-all duration-300">
         <div className="relative">
           <motion.button
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             onClick={() => setShowAttachMenu(!showAttachMenu)}
             className={cn(
-              "p-2.5 rounded-xl transition-colors hover:bg-(--bg-surface-hover)/30",
+              "p-2.5 rounded-xl transition-colors hover:bg-(--bg-surface-hover)/(--opacity-soft)",
               showAttachMenu
-                ? "text-(--brand-main) bg-(--brand-main)/10"
+                ? "text-(--brand-main) bg-(--brand-main)/(--opacity-subtle)"
                 : "text-(--text-secondary)"
             )}
             aria-label="Attachments"
@@ -441,26 +443,26 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
                 initial={{ opacity: 0, scale: 0.95, y: 10 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                className="absolute bottom-full left-0 mb-4 py-2 min-w-[200px] bg-(--bg-surface)/90 backdrop-blur-2xl rounded-2xl border border-(--glass-border) shadow-2xl overflow-hidden ring-1 ring-black/5"
+                className="absolute bottom-full left-0 mb-4 py-2 min-w-(--min-w-column) bg-(--bg-surface)/(--opacity-heavy) backdrop-blur-2xl rounded-2xl border border-(--glass-border) shadow-premium overflow-hidden ring-1 ring-black/(--opacity-faint)"
               >
                 {[
                   {
                     id: "photo",
                     icon: ImageIcon,
                     label: "Photo",
-                    color: "text-(--primary-main) bg-(--primary-main)/10",
+                    color: "text-(--primary-main) bg-(--primary-main)/(--opacity-subtle)",
                   },
                   {
                     id: "document",
                     icon: FileText,
                     label: "Document",
-                    color: "text-(--success-text) bg-(--success-text)/10",
+                    color: "text-(--success-text) bg-(--success-text)/(--opacity-subtle)",
                   },
                   {
                     id: "file",
                     icon: File,
                     label: "File",
-                    color: "text-(--warning-text) bg-(--warning-text)/10",
+                    color: "text-(--warning-text) bg-(--warning-text)/(--opacity-subtle)",
                   },
                 ].map((item, index) => (
                   <button
@@ -492,7 +494,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={t("messenger:typeMessage", "Message...")}
-          className="flex-1 bg-transparent border-none focus:ring-0 outline-none resize-none max-h-48 py-2 md:py-2.5 px-1 text-base text-(--text-primary) placeholder:text-(--text-secondary) placeholder:opacity-50"
+          className="flex-1 bg-transparent border-none focus:ring-0 outline-none resize-none max-h-48 py-2 md:py-2.5 px-1 text-base text-(--text-primary) placeholder:text-(--text-secondary) placeholder:opacity-(--opacity-medium)"
           rows={1}
         />
         <motion.button
@@ -503,8 +505,8 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
           className={cn(
             "p-2.5 rounded-xl transition-all duration-300",
             text.trim() || selectedFiles.length > 0
-              ? "bg-(--brand-main) text-white shadow-lg shadow-(--brand-main)/30"
-              : "bg-(--bg-surface-hover)/10 text-(--text-secondary) opacity-30 cursor-not-allowed"
+              ? "bg-(--brand-main) text-white shadow-lg shadow-(--brand-main)/(--opacity-soft)"
+              : "bg-(--bg-surface-hover)/(--opacity-subtle) text-(--text-secondary) opacity-(--opacity-soft) cursor-not-allowed"
           )}
         >
           <Send className="w-5 h-5" fill="currentColor" />
@@ -541,23 +543,23 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-(--z-modal) p-4"
+          className="fixed inset-0 bg-black/(--opacity-strong) backdrop-blur-md flex items-center justify-center z-(--z-modal) p-4"
           onClick={onClose}
         >
           <motion.div
             initial={{ scale: 0.95, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.95, opacity: 0, y: 20 }}
-            className="bg-(--bg-surface)/90 backdrop-blur-2xl rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-(--glass-border) ring-1 ring-white/10"
+            className="bg-(--bg-surface)/(--opacity-heavy) backdrop-blur-2xl rounded-3xl shadow-premium w-full max-w-md overflow-hidden border border-(--glass-border) ring-1 ring-white/(--opacity-subtle)"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="p-6 pb-4 flex items-center justify-between border-b border-(--glass-border)/10 bg-(--bg-surface)/50">
+            <div className="p-6 pb-4 flex items-center justify-between border-b border-(--glass-border)/(--opacity-subtle) bg-(--bg-surface)/(--opacity-medium)">
               <h3 className="text-xl font-black tracking-tight text-(--text-primary) sf-pro">
                 {t("messenger:newChat", "New Chat")}
               </h3>
               <button
                 onClick={onClose}
-                className="p-2 rounded-xl hover:bg-(--bg-surface-hover)/50 text-(--text-secondary) transition-colors"
+                className="p-2 rounded-xl hover:bg-(--bg-surface-hover)/(--opacity-medium) text-(--text-secondary) transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -572,23 +574,23 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
                   placeholder={t("messenger:searchUsers", "Search users by name or email...")}
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
-                  className="w-full pl-11 pr-4 py-3 rounded-2xl border border-(--glass-border)/20 bg-(--bg-surface-raised)/40 focus:ring-4 focus:ring-(--brand-main)/10 focus:border-(--brand-main)/40 outline-none transition-all text-base font-medium text-(--text-primary) placeholder:text-(--text-secondary) placeholder:opacity-50"
+                  className="w-full pl-11 pr-4 py-3 rounded-2xl border border-(--glass-border)/(--opacity-dim) bg-(--bg-surface-raised)/(--opacity-medium) focus:ring-4 focus:ring-(--brand-main)/(--opacity-subtle) focus:border-(--brand-main)/(--opacity-soft) outline-none transition-all text-base font-medium text-(--text-primary) placeholder:text-(--text-secondary) placeholder:opacity-(--opacity-medium)"
                 />
               </div>
 
               <div className="max-h-[350px] overflow-y-auto custom-scrollbar pr-1 -mr-1">
                 {isLoading && (
                   <div className="flex flex-col items-center py-10">
-                    <div className="w-10 h-10 border-4 border-(--brand-main)/10 border-t-(--brand-main) rounded-full animate-spin"></div>
+                    <div className="w-10 h-10 border-4 border-(--brand-main)/(--opacity-subtle) border-t-(--brand-main) rounded-full animate-spin"></div>
                   </div>
                 )}
 
                 {!isLoading && users.length === 0 && search.length > 1 && (
                   <div className="text-center py-12 px-4 space-y-2">
-                    <div className="w-16 h-16 rounded-full bg-(--bg-surface-raised) mx-auto flex items-center justify-center text-(--text-secondary) opacity-20">
+                    <div className="w-16 h-16 rounded-full bg-(--bg-surface-raised) mx-auto flex items-center justify-center text-(--text-secondary) opacity-(--opacity-dim)">
                       <Search className="w-8 h-8" />
                     </div>
-                    <p className="text-sm font-bold text-(--text-secondary) opacity-60">
+                    <p className="text-sm font-bold text-(--text-secondary) opacity-(--opacity-medium)">
                       {t("messenger:noUsersFound", "No users found matching your search")}
                     </p>
                   </div>
@@ -615,7 +617,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
                         <p className="text-base font-black truncate leading-tight text-(--text-primary) group-hover:text-(--brand-main) transition-colors sf-pro">
                           {user.full_name}
                         </p>
-                        <p className="text-xs text-(--text-secondary) truncate font-medium opacity-60">
+                        <p className="text-xs text-(--text-secondary) truncate font-medium opacity-(--opacity-medium)">
                           {user.email}
                         </p>
                       </div>

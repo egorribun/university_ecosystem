@@ -1,5 +1,6 @@
 import { FC, ReactNode, useEffect, useState } from "react"
 import { zIndexTokens } from "@/theme/tokens"
+import { DURATIONS, EASING } from "@/utils/motion"
 
 type Props = { children: ReactNode }
 type MotionModule = typeof import("framer-motion")
@@ -89,8 +90,8 @@ const PageTransition: FC<Props> = ({ children }) => {
             y: -12,
             filter: "blur(2px)",
             transition: {
-              duration: 0.4,
-              ease: [0.22, 1, 0.36, 1],
+              duration: DURATIONS.medium,
+              ease: EASING.premium,
             },
           }}
           style={{

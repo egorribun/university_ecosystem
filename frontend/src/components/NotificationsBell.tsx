@@ -123,7 +123,7 @@ export default function NotificationsBell() {
         className={cn(
           "relative flex items-center justify-center p-2 rounded-xl transition-all",
           isOpen
-            ? "bg-(--primary-main)/10 border-(--glass-border) shadow-sm"
+            ? "bg-(--primary-main)/(--opacity-subtle) border-(--glass-border) shadow-sm"
             : "hover:bg-(--glass-tint-2) hover:border-(--glass-border)",
           isOpen ? "text-(--primary-main)" : "text-(--nav-text)"
         )}
@@ -138,7 +138,7 @@ export default function NotificationsBell() {
         />
         {unreadCount ? (
           <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-error-border opacity-75"></span>
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-error-border opacity-(--opacity-strong)"></span>
             <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-(--error-text) border-2 border-(--bg-surface) dark:border-(--bg-page)"></span>
           </span>
         ) : null}
@@ -168,13 +168,13 @@ export default function NotificationsBell() {
               ref={dropdownRef}
             >
               {/* Header */}
-              <div className="p-4 border-b border-glass-border flex items-center justify-between bg-(--bg-surface)/30">
+              <div className="p-4 border-b border-glass-border flex items-center justify-between bg-(--bg-surface)/(--opacity-soft)">
                 <div className="flex items-center gap-2">
                   <h3 className="font-semibold text-(--text-primary) tracking-tight">
                     {t("system:notificationsBell.title")}
                   </h3>
                   {unreadCount > 0 && (
-                    <span className="bg-brand-subtle-bg text-brand text-xs px-2 py-0.5 rounded-full font-medium border border-brand/20">
+                    <span className="bg-brand-subtle-bg text-brand text-xs px-2 py-0.5 rounded-full font-medium border border-brand/(--opacity-dim)">
                       {unreadCount} New
                     </span>
                   )}
@@ -184,7 +184,7 @@ export default function NotificationsBell() {
                   <button
                     onClick={() => markAll()}
                     disabled={actionsDisabled}
-                    className="p-1.5 text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--text-secondary)/5 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+                    className="p-1.5 text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--text-secondary)/(--opacity-faint) rounded-lg transition-colors disabled:opacity-(--opacity-soft) disabled:hover:bg-transparent"
                     title={t("system:notificationsBell.markAll")}
                   >
                     <svg
@@ -210,7 +210,7 @@ export default function NotificationsBell() {
                       })
                     }
                     disabled={actionsDisabled}
-                    className="p-1.5 text-(--text-secondary) hover:text-error-text hover:bg-error-bg/10 rounded-lg transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+                    className="p-1.5 text-(--text-secondary) hover:text-error-text hover:bg-error-bg/(--opacity-subtle) rounded-lg transition-colors disabled:opacity-(--opacity-soft) disabled:hover:bg-transparent"
                     title={t("system:notificationsBell.clear")}
                   >
                     <Trash2 className="w-4 h-4" />
@@ -219,13 +219,13 @@ export default function NotificationsBell() {
               </div>
 
               {/* Content */}
-              <div className="max-h-[80vh] sm:max-h-[60vh] overflow-y-auto custom-scrollbar">
+              <div className="max-h-(--h-hero-lg) sm:max-h-(--h-hero-md) overflow-y-auto custom-scrollbar">
                 {isError && !isRefetching ? (
                   <div className="p-8 text-center flex flex-col items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-error-bg/20 flex items-center justify-center text-error-text mb-2">
+                    <div className="w-12 h-12 rounded-full bg-error-bg/(--opacity-dim) flex items-center justify-center text-error-text mb-2">
                       <Info className="w-6 h-6" />
                     </div>
-                    <p className="text-sm text-error-text/80">
+                    <p className="text-sm text-error-text/(--opacity-hover)">
                       {t("system:notificationsBell.error")}
                     </p>
                     <button
@@ -241,10 +241,10 @@ export default function NotificationsBell() {
                   </div>
                 ) : data.length === 0 ? (
                   <div className="p-12 text-center text-(--text-secondary) flex flex-col items-center gap-3">
-                    <div className="w-16 h-16 rounded-2xl bg-(--text-secondary)/5 flex items-center justify-center mb-2">
-                      <Bell className="w-8 h-8 opacity-20" />
+                    <div className="w-16 h-16 rounded-2xl bg-(--text-secondary)/(--opacity-faint) flex items-center justify-center mb-2">
+                      <Bell className="w-8 h-8 opacity-(--opacity-dim)" />
                     </div>
-                    <p className="text-sm opacity-60 font-medium">
+                    <p className="text-sm opacity-(--opacity-medium) font-medium">
                       {t("system:notificationsBell.empty")}
                     </p>
                   </div>
@@ -255,7 +255,7 @@ export default function NotificationsBell() {
                         key={n.id}
                         variants={itemVariants}
                         className={cn(
-                          "relative group border-b border-glass-border last:border-0 p-4 transition-all hover:bg-(--text-secondary)/5",
+                          "relative group border-b border-glass-border last:border-0 p-4 transition-all hover:bg-(--text-secondary)/(--opacity-faint)",
                           !n.read ? "bg-brand/5" : ""
                         )}
                       >
@@ -273,7 +273,7 @@ export default function NotificationsBell() {
                             className={cn(
                               "w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-opacity",
                               !n.read
-                                ? "bg-brand/10 text-brand dark:text-brand"
+                                ? "bg-brand/(--opacity-subtle) text-brand dark:text-brand"
                                 : "bg-(--border-subtle) text-(--text-secondary)"
                             )}
                           >
@@ -310,7 +310,7 @@ export default function NotificationsBell() {
                               e.stopPropagation()
                               markRead(n.id)
                             }}
-                            className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-all p-1.5 rounded-lg text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--border-strong) bg-(--bg-surface)/50 backdrop-blur-sm"
+                            className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-all p-1.5 rounded-lg text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--border-strong) bg-(--bg-surface)/(--opacity-medium) backdrop-blur-sm"
                             title={t("system:notificationsBell.markRead")}
                           >
                             <CheckCheck className="w-3.5 h-3.5" />
@@ -320,7 +320,7 @@ export default function NotificationsBell() {
                     ))}
 
                     {hasMore && (
-                      <div className="p-3 border-t border-glass-border bg-(--text-secondary)/5">
+                      <div className="p-3 border-t border-glass-border bg-(--text-secondary)/(--opacity-faint)">
                         {isFetchMoreError && (
                           <p className="text-xs text-error-text text-center mb-2">
                             {t("system:notificationsBell.loadMoreError")}
@@ -329,7 +329,7 @@ export default function NotificationsBell() {
                         <button
                           onClick={() => fetchMore(nextCursor)}
                           disabled={!nextCursor || isFetchingMore}
-                          className="w-full py-2 flex items-center justify-center gap-2 text-xs font-medium text-(--text-secondary) hover:text-(--text-primary) bg-(--text-secondary)/5 hover:bg-(--border-strong) rounded-lg transition-all disabled:opacity-50"
+                          className="w-full py-2 flex items-center justify-center gap-2 text-xs font-medium text-(--text-secondary) hover:text-(--text-primary) bg-(--text-secondary)/(--opacity-faint) hover:bg-(--border-strong) rounded-lg transition-all disabled:opacity-(--opacity-medium)"
                         >
                           {isFetchingMore ? (
                             <>

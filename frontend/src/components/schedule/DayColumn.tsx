@@ -53,12 +53,12 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
         className={cn(
           "group relative isolate mb-2 rounded-2xl border border-glass-border p-4 sm:p-6 shadow-premium [content-visibility:auto] [contain-intrinsic-size:400px] transition-all duration-300",
           isToday
-            ? "bg-primary-main/5 ring-2 ring-primary-main/20 dark:bg-primary-main/10 dark:ring-primary-main/30"
-            : "bg-(--bg-surface)/80 dark:bg-(--bg-surface)/90 shadow-md dark:shadow-xl",
+            ? "bg-primary-main/(--opacity-faint) ring-2 ring-primary-main/(--opacity-dim) dark:bg-primary-main/(--opacity-subtle) dark:ring-primary-main/(--opacity-soft)"
+            : "bg-(--bg-surface)/(--opacity-hover) dark:bg-(--bg-surface)/(--opacity-heavy) shadow-md dark:shadow-xl",
           "backdrop-blur-md"
         )}
       >
-        <div className="absolute top-3 right-3 px-3 py-1.5 rounded-lg bg-success-bg/90 backdrop-blur-sm shadow-lg flex items-center gap-1.5 text-success-text"></div>
+        <div className="absolute top-3 right-3 px-3 py-1.5 rounded-lg bg-success-bg/(--opacity-heavy) backdrop-blur-sm shadow-lg flex items-center gap-1.5 text-success-text"></div>
         <div className="mb-4 flex items-center gap-2">
           <h3
             className={cn(
@@ -70,7 +70,7 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
           </h3>
           {(userRole === "admin" || userRole === "teacher") && (
             <button
-              className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg border border-brand/20 bg-brand/10 text-brand transition-all duration-200 hover:border-brand hover:bg-brand hover:text-white hover:shadow-glass hover:scale-110"
+              className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg border border-brand/(--opacity-dim) bg-brand/(--opacity-subtle) text-brand transition-all duration-200 hover:border-brand hover:bg-brand hover:text-white hover:shadow-glass hover:scale-110"
               onClick={(e) => {
                 e.stopPropagation()
                 onAdd()
@@ -102,7 +102,7 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
                   {idx > 0 && gap > 0 && (
                     <Badge
                       size="xs"
-                      className="chip-break mb-2 font-medium bg-warning-bg/20 border border-warning-border/30 text-warning-text shadow-sm"
+                      className="chip-break mb-2 font-medium bg-warning-bg/(--opacity-dim) border border-warning-border/(--opacity-soft) text-warning-text shadow-sm"
                     >
                       {t("schedule:break", { minutes: gap })}
                     </Badge>

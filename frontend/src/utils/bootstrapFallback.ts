@@ -132,7 +132,7 @@ export function renderBootstrapFallback({
   reloadButton.type = "button"
   reloadButton.textContent = copy.reloadButtonLabel
   reloadButton.style.backgroundColor = "var(--primary-main)"
-  reloadButton.style.color = "#ffffff"
+  reloadButton.style.color = "var(--color-white, #ffffff)"
   reloadButton.style.border = "none"
   reloadButton.style.padding = "14px 28px"
   reloadButton.style.borderRadius = "var(--radius-xl, 14px)"

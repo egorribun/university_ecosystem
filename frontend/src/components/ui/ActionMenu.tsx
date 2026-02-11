@@ -155,7 +155,7 @@ export const ActionMenu = ({
         aria-haspopup="menu"
         aria-expanded={isOpen}
         className={cn(
-          "flex h-8 w-8 items-center justify-center rounded-full text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus",
+          "flex h-8 w-8 items-center justify-center rounded-full text-(--text-secondary) transition-fast hover:bg-(--bg-surface-hover) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus",
           triggerClassName
         )}
       >
@@ -184,12 +184,12 @@ export const ActionMenu = ({
               onKeyDown={(e) => handleItemKeyDown(e, index)}
               aria-label={item.ariaLabel}
               className={cn(
-                "flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium transition-colors",
+                "flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium transition-fast",
                 "hover:bg-(--bg-surface-hover) focus-visible:bg-(--bg-surface-hover) focus-visible:outline-none",
                 item.variant === "danger"
                   ? "text-error-text hover:bg-error-bg"
                   : "text-(--text-primary)",
-                item.disabled && "cursor-not-allowed opacity-50"
+                item.disabled && "cursor-not-allowed opacity-(--opacity-medium)"
               )}
             >
               {item.icon && (

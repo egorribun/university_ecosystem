@@ -115,7 +115,9 @@ export function SessionsSection({
                       className={cn(
                         "text-sm wrap-break-word transition-colors",
                         session.is_current ? "font-semibold" : "font-medium",
-                        isRevoked ? "text-(--text-primary)/70" : "text-(--text-secondary)"
+                        isRevoked
+                          ? "text-(--text-primary)/(--opacity-strong)"
+                          : "text-(--text-secondary)"
                       )}
                     >
                       {session.user_agent || t("settings:sessions.unknownDevice")}
@@ -123,9 +125,7 @@ export function SessionsSection({
                     <p
                       className={cn(
                         "text-xs transition-colors",
-                        isRevoked
-                          ? "italic text-[color-mix(in_srgb,var(--text-primary)_64%,white_36%)]"
-                          : "text-[color-mix(in_srgb,var(--text-primary)_78%,var(--text-secondary)_22%)]"
+                        isRevoked ? "italic text-session-revoked" : "text-session-meta"
                       )}
                     >
                       {details}
@@ -139,7 +139,7 @@ export function SessionsSection({
                       label={statusLabel}
                       variant="outlined"
                       color={session.is_current ? "primary" : "default"}
-                      className={cn("font-semibold", isRevoked && "opacity-80")}
+                      className={cn("font-semibold", isRevoked && "opacity-(--opacity-hover)")}
                     />
                     {!session.is_current && !isRevoked && (
                       <Button

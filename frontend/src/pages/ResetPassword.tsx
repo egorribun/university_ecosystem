@@ -149,7 +149,7 @@ export default function ResetPassword() {
   return (
     <div className="min-h-screen bg-(--bg-page) text-(--text-primary) flex items-center justify-center p-6 relative overflow-hidden">
       {/* Background decorative elements */}
-      <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-20">
+      <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-(--opacity-dim)">
         <div className="absolute top-[-10%] right-[-5%] w-[40%] h-[40%] bg-(--glow-spotlight-primary) rounded-full blur-(--glow-blur-massive)" />
         <div className="absolute bottom-[-10%] left-[-5%] w-[40%] h-[40%] bg-(--glow-spotlight-secondary) rounded-full blur-(--glow-blur-massive)" />
       </div>
@@ -237,7 +237,7 @@ export default function ResetPassword() {
                             <button
                               type="button"
                               onClick={() => setShowPass(!showPass)}
-                              className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded-md transition-colors"
+                              className="p-1 hover:bg-black/(--opacity-subtle) dark:hover:bg-white/(--opacity-subtle) rounded-md transition-colors"
                               tabIndex={-1}
                             >
                               {showPass ? (
@@ -257,10 +257,10 @@ export default function ResetPassword() {
                               className="h-1.5"
                             />
                             <div className="flex justify-between items-center">
-                              <p className="text-[10px] font-bold uppercase tracking-widest text-(--text-secondary) opacity-60">
+                              <p className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-(--opacity-strong)">
                                 {t("auth:register.passwordStrength")}
                               </p>
-                              <p className="text-[10px] font-bold text-brand uppercase tracking-widest">
+                              <p className="text-label-xs font-bold text-brand uppercase tracking-widest">
                                 {
                                   [
                                     t("common:strength.very_weak"),
@@ -277,9 +277,9 @@ export default function ResetPassword() {
                       </div>
 
                       {!!feedback && (
-                        <div className="flex gap-2 px-2 py-2 rounded-xl bg-(--primary-main)/5 border border-(--primary-main)/10">
+                        <div className="flex gap-2 px-2 py-2 rounded-xl bg-(--primary-main)/(--opacity-subtle) border border-(--primary-main)/(--opacity-subtle)">
                           <ShieldCheck className="h-4 w-4 text-(--primary-main) shrink-0 mt-0.5" />
-                          <p className="text-xs font-medium text-(--primary-main)/80 leading-relaxed">
+                          <p className="text-xs font-medium text-(--primary-main)/(--opacity-hover) leading-relaxed">
                             {feedback}
                           </p>
                         </div>
@@ -310,7 +310,7 @@ export default function ResetPassword() {
                             <button
                               type="button"
                               onClick={() => setShowConfirm(!showConfirm)}
-                              className="p-1 hover:bg-black/5 dark:hover:bg-white/5 rounded-md transition-colors"
+                              className="p-1 hover:bg-black/(--opacity-subtle) dark:hover:bg-white/(--opacity-subtle) rounded-md transition-colors"
                               tabIndex={-1}
                             >
                               {showConfirm ? (
@@ -324,7 +324,7 @@ export default function ResetPassword() {
                       </div>
 
                       {(capsPass || capsConfirm) && (
-                        <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-(--warning-bg) border border-(--warning-text)/10 text-(--warning-text)">
+                        <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-(--warning-bg) border border-(--warning-text)/(--opacity-subtle) text-(--warning-text)">
                           <AlertTriangle className="h-4 w-4" />
                           <p className="text-xs font-bold uppercase tracking-wider">
                             {t("auth:messages.capsLock")}
@@ -349,7 +349,7 @@ export default function ResetPassword() {
                       <Button
                         type="submit"
                         variant="solid"
-                        className="w-full h-14 rounded-2xl text-base font-black shadow-lg shadow-brand/20"
+                        className="w-full h-14 rounded-2xl text-base font-black shadow-lg shadow-brand/(--opacity-dim)"
                         disabled={!canSubmit || resetPending}
                         loading={resetPending}
                         startIcon={<LockIcon className="h-5 w-5" />}

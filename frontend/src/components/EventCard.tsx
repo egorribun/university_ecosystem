@@ -22,7 +22,8 @@ import { useTranslation } from "react-i18next"
 import Dialog from "@/components/Dialog"
 import { useSpotlight, SpotlightOverlay } from "@/components/ui/Spotlight"
 import useMediaQuery from "@/hooks/useMediaQuery"
-import { breakpoints } from "@/theme/tokens"
+import { breakpoints, motion as motionTokens } from "@/theme/tokens"
+import { EASING } from "@/utils/motion"
 
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
@@ -221,11 +222,14 @@ const EventCardComponent: FC<EventCardProps> = ({
       initial={{ opacity: 0, y: 16, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{
-        duration: 0.45,
-        delay: (animationIndex % 10) * 0.06,
-        ease: [0.22, 1, 0.36, 1],
+        duration: motionTokens.durationMedium,
+        delay: (animationIndex % 10) * motionTokens.staggerDelay,
+        ease: EASING.premium,
       }}
-      whileHover={{ y: -4, transition: { duration: 0.2 } }}
+      whileHover={{
+        y: -4,
+        transition: { duration: motionTokens.durationFast, ease: EASING.premium },
+      }}
       className="w-full"
       onMouseMove={spotlight.onMouseMove}
     >
@@ -234,7 +238,7 @@ const EventCardComponent: FC<EventCardProps> = ({
           "card-glass group relative flex flex-col transition-shadow duration-300 ease-out w-full p-fluid-card-p transform-gpu will-change-transform rounded-fluid-lg bg-glass-elevated border-glass-border-subtle shadow-premium",
           editOpen
             ? "cursor-default"
-            : "cursor-pointer hover:shadow-glass-strong active:scale-[0.985]"
+            : "cursor-pointer hover:shadow-glass-strong active:scale-active"
         )}
         role="button"
         tabIndex={0}
@@ -336,7 +340,7 @@ const EventCardComponent: FC<EventCardProps> = ({
                 variant="solid"
                 onClick={handleDelete}
                 disabled={loading}
-                className="bg-error-text hover:bg-error-text/90"
+                className="bg-error-text hover:bg-error-text/(--opacity-heavy)"
               >
                 {t("common:buttons.delete")}
               </Button>

@@ -1,52 +1,79 @@
 import { cn } from "@/utils/cn"
+import { cva, type VariantProps } from "class-variance-authority"
 import type { ComponentPropsWithoutRef, ElementType, ReactNode } from "react"
 
-type BadgeVariant = "solid" | "outline"
-type BadgeTone = "default" | "primary" | "success" | "danger" | "info"
-type BadgeShape = "pill" | "circle"
-type BadgeSize = "xs" | "sm" | "md"
+const badgeVariants = cva(
+  "inline-flex items-center justify-center gap-1 font-semibold tracking-tight transition-colors duration-200 ease-out leading-none",
+  {
+    variants: {
+      variant: {
+        solid: "shadow-sm",
+        outline: "bg-transparent border",
+      },
+      tone: {
+        default: "",
+        primary: "",
+        success: "",
+        danger: "",
+        info: "",
+      },
+      shape: {
+        pill: "rounded-full",
+        circle: "rounded-full aspect-square",
+      },
+      size: {
+        xs: "",
+        sm: "",
+        md: "",
+      },
+    },
+    compoundVariants: [
+      // --- Sizing ---
+      // Pill shape
+      { shape: "pill", size: "xs", class: "min-h-6 px-2 text-badge" },
+      { shape: "pill", size: "sm", class: "min-h-7 px-2.5 text-badge-sm" },
+      { shape: "pill", size: "md", class: "min-h-8 px-3 text-sm" },
+      // Circle shape
+      { shape: "circle", size: "xs", class: "h-7 w-7 text-badge" },
+      { shape: "circle", size: "sm", class: "h-8 w-8 text-sm" },
+      { shape: "circle", size: "md", class: "h-10 w-10 text-base" },
 
-const pillSizeMap: Record<BadgeSize, string> = {
-  xs: "min-h-6 px-2 text-[0.7rem]",
-  sm: "min-h-7 px-2.5 text-[0.78rem]",
-  md: "min-h-8 px-3 text-sm",
-}
+      // --- Tones & Variants ---
+      // Default
+      {
+        tone: "default",
+        variant: "solid",
+        class: "bg-(--bg-surface-hover) text-(--text-primary) shadow-none",
+      },
+      {
+        tone: "default",
+        variant: "outline",
+        class: "border-border-strong text-(--text-secondary)",
+      },
+      // Primary
+      { tone: "primary", variant: "solid", class: "bg-brand text-inverse-text" },
+      { tone: "primary", variant: "outline", class: "border-brand text-brand" },
+      // Success
+      { tone: "success", variant: "solid", class: "bg-success-bg text-success-text" },
+      { tone: "success", variant: "outline", class: "border-success-text text-success-text" },
+      // Danger
+      { tone: "danger", variant: "solid", class: "bg-error-bg text-error-text" },
+      { tone: "danger", variant: "outline", class: "border-error-text text-error-text" },
+      // Info
+      { tone: "info", variant: "solid", class: "bg-brand-subtle text-brand shadow-none" },
+      { tone: "info", variant: "outline", class: "border-brand text-brand" },
+    ],
+    defaultVariants: {
+      variant: "solid",
+      tone: "default",
+      shape: "pill",
+      size: "sm",
+    },
+  }
+)
 
-const circleSizeMap: Record<BadgeSize, string> = {
-  xs: "h-7 w-7 text-[0.7rem]",
-  sm: "h-8 w-8 text-sm",
-  md: "h-10 w-10 text-base",
-}
-
-const toneVariantStyles: Record<BadgeTone, Record<BadgeVariant, string>> = {
-  default: {
-    solid: "bg-(--bg-surface-hover) text-(--text-primary)",
-    outline: "border border-border-strong text-(--text-secondary)",
-  },
-  primary: {
-    solid: "bg-brand text-inverse-text shadow-sm",
-    outline: "border border-brand text-brand",
-  },
-  success: {
-    solid: "bg-success-bg text-success-text",
-    outline: "border border-success-text text-success-text",
-  },
-  danger: {
-    solid: "bg-error-bg text-error-text",
-    outline: "border border-error-text text-error-text",
-  },
-  info: {
-    solid: "bg-brand-subtle text-brand",
-    outline: "border border-brand text-brand",
-  },
-}
-
-type BadgeOwnProps = {
+type BadgeOwnProps = VariantProps<typeof badgeVariants> & {
   as?: ElementType
-  variant?: BadgeVariant
-  tone?: BadgeTone
-  shape?: BadgeShape
-  size?: BadgeSize
   leadingIcon?: ReactNode
   trailingIcon?: ReactNode
   label?: ReactNode
@@ -58,10 +85,10 @@ export type BadgeProps<T extends ElementType = "span"> = BadgeOwnProps &
 
 export const Badge = <T extends ElementType = "span">({
   as,
-  variant = "solid",
-  tone = "default",
-  shape = "pill",
-  size = "sm",
+  variant,
+  tone,
+  shape,
+  size,
   leadingIcon,
   trailingIcon,
   className,
@@ -73,20 +100,9 @@ export const Badge = <T extends ElementType = "span">({
   const content = children ?? label
 
   return (
-    <Component
-      className={cn(
-        "inline-flex items-center justify-center gap-1 font-semibold tracking-tight transition-colors duration-200 ease-out",
-        shape === "pill" ? "rounded-full" : "rounded-full",
-        shape === "pill" ? pillSizeMap[size] : circleSizeMap[size],
-        shape === "circle" ? "aspect-square" : "",
-        toneVariantStyles[tone][variant],
-        variant === "outline" ? "bg-transparent" : "",
-        className
-      )}
-      {...rest}
-    >
+    <Component className={cn(badgeVariants({ variant, tone, shape, size }), className)} {...rest}>
       {leadingIcon ? <span className="inline-flex items-center">{leadingIcon}</span> : null}
-      <span className="leading-none">{content}</span>
+      <span>{content}</span>
       {trailingIcon ? <span className="inline-flex items-center">{trailingIcon}</span> : null}
     </Component>
   )

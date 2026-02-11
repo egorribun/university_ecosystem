@@ -6,7 +6,7 @@ export function isOnline(): boolean {
   return self.navigator.onLine !== false
 }
 
-export async function broadcastMessage(message: any): Promise<void> {
+export async function broadcastMessage(message: unknown): Promise<void> {
   const clients = await self.clients.matchAll({ type: "window" })
   for (const client of clients) {
     client.postMessage(message)

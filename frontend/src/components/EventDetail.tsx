@@ -59,7 +59,7 @@ const isCanceledRequestError = (err: unknown): boolean => {
 }
 
 const inputClass =
-  "w-full rounded-xl border border-(--glass-border) bg-(--bg-surface)/50 px-4 py-3 text-[0.98rem] font-medium text-(--text-primary) shadow-sm transition-all duration-200 focus:border-(--primary-main) focus:outline-none focus:ring-4 focus:ring-(--primary-main)/15 placeholder:text-(--text-secondary)/60"
+  "w-full rounded-xl border border-(--glass-border) bg-(--bg-surface)/(--opacity-medium) px-4 py-3 text-input font-medium text-(--text-primary) shadow-sm transition-all duration-200 focus:border-(--primary-main) focus:outline-none focus:ring-4 focus:ring-(--primary-main)/(--opacity-faint) placeholder:text-(--text-secondary)/(--opacity-medium)"
 
 function Snackbar({
   open,
@@ -82,7 +82,7 @@ function Snackbar({
 
   return (
     <div className="fixed bottom-6 left-1/2 z-(--z-navbar) -translate-x-1/2 animate-in slide-in-from-bottom-4 fade-in">
-      <div className="rounded-[1.25rem] border border-(--glass-border) bg-(--bg-surface)/90 px-5 py-3.5 text-sm font-semibold text-(--text-primary) shadow-premium backdrop-blur-md">
+      <div className="rounded-[1.25rem] border border-(--glass-border) bg-(--bg-surface)/(--opacity-heavy) px-5 py-3.5 text-sm font-semibold text-(--text-primary) shadow-premium backdrop-blur-md">
         {message}
       </div>
     </div>
@@ -292,7 +292,7 @@ const EventDetail = () => {
   if (loading) {
     return (
       <Layout>
-        <div className="flex min-h-[80vh] items-center justify-center">
+        <div className="flex min-h-(--h-hero-lg) items-center justify-center">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-(--primary-main) border-t-transparent" />
         </div>
       </Layout>
@@ -302,7 +302,7 @@ const EventDetail = () => {
   if (!event) {
     return (
       <Layout>
-        <div className="flex min-h-[80vh] items-center justify-center">
+        <div className="flex min-h-(--h-hero-lg) items-center justify-center">
           <p className="text-(--text-primary)">{t("events:detail.messages.notFound")}</p>
         </div>
       </Layout>
@@ -316,7 +316,7 @@ const EventDetail = () => {
       className={cn(
         "mb-6 w-full font-bold sm:w-auto",
         "bg-linear-to-r from-(--primary-main) via-(--primary-main) to-(--primary-main) text-white",
-        "shadow-premium ring-1 ring-white/10",
+        "shadow-premium ring-1 ring-white/(--opacity-subtle)",
         "transition-all duration-300 transform-gpu",
         "hover:scale-105 hover:shadow-glass-strong",
         "active:scale-95",
@@ -330,7 +330,7 @@ const EventDetail = () => {
   if (isMobile) {
     return (
       <Layout>
-        <div className="w-full min-h-[calc(100vh-56px)] bg-(--bg-page) px-4 py-4 sm:px-6 md:px-8 lg:px-12">
+        <div className="w-full min-h-(--h-screen-offset) bg-(--bg-page) px-4 py-4 sm:px-6 md:px-8 lg:px-12">
           {BackButton}
           <div className="space-y-6">
             <h1 className="text-2xl font-extrabold text-(--text-primary) sm:text-3xl">
@@ -345,7 +345,7 @@ const EventDetail = () => {
               <Badge
                 size="sm"
                 leadingIcon={<PeopleAltIcon size={16} className="text-(--primary-main)" />}
-                className="border-(--glass-border) bg-(--primary-main)/5 text-(--primary-main)"
+                className="border-(--glass-border) bg-(--primary-main)/(--opacity-faint) text-(--primary-main)"
               >
                 {t("events:card.participants", { count: event.participant_count || 0 })}
               </Badge>
@@ -368,7 +368,7 @@ const EventDetail = () => {
               )}
             </div>
             {imageUrl && (
-              <div className="relative w-full overflow-hidden rounded-2xl border border-(--glass-border) bg-black/5 shadow-premium aspect-video">
+              <div className="relative w-full overflow-hidden rounded-2xl border border-(--glass-border) bg-black/(--opacity-faint) shadow-premium aspect-video">
                 <SmartImage
                   srcRaw={imageUrl}
                   alt={t("events:alt.image")}
@@ -405,7 +405,7 @@ const EventDetail = () => {
                     onChange={(e) => setAboutDraft(e.target.value)}
                     disabled={savingAbout}
                     rows={3}
-                    className={cn(inputClass, "min-h-[100px] resize-y")}
+                    className={cn(inputClass, "min-h-(--min-h-textarea) resize-y")}
                     placeholder={
                       language === "en"
                         ? t("events:detail.sections.about.fieldLabel_en", {
@@ -521,7 +521,7 @@ const EventDetail = () => {
                             type="button"
                             aria-label={t("events:detail.sections.files.deleteAria")}
                             disabled={isPendingFile}
-                            className="rounded-full p-1 text-error-text transition-colors hover:bg-error-bg/10 disabled:opacity-50"
+                            className="rounded-full p-1 text-error-text transition-colors hover:bg-error-bg/(--opacity-subtle) disabled:opacity-(--opacity-medium)"
                             onClick={async () => {
                               if (!isPendingFile) {
                                 await handleDeleteFile(f.id)
@@ -551,12 +551,12 @@ const EventDetail = () => {
 
   return (
     <Layout>
-      <div className="flex w-full min-h-[calc(100vh-56px)] flex-col bg-(--bg-page) px-4 py-4 sm:px-6 md:px-8 lg:px-12">
+      <div className="flex w-full min-h-(--h-screen-offset) flex-col bg-(--bg-page) px-4 py-4 sm:px-6 md:px-8 lg:px-12">
         {BackButton}
         <div className="flex flex-row gap-8 items-start">
           <div className="w-[45%] space-y-6">
             {imageUrl && (
-              <div className="relative w-full overflow-hidden rounded-4xl border border-(--glass-border) bg-black/5 shadow-premium aspect-21/9">
+              <div className="relative w-full overflow-hidden rounded-4xl border border-(--glass-border) bg-black/(--opacity-faint) shadow-premium aspect-21/9">
                 <SmartImage
                   srcRaw={imageUrl}
                   alt={t("events:alt.image")}
@@ -594,7 +594,7 @@ const EventDetail = () => {
                     onChange={(e) => setAboutDraft(e.target.value)}
                     disabled={savingAbout}
                     rows={3}
-                    className={cn(inputClass, "min-h-[100px] resize-y")}
+                    className={cn(inputClass, "min-h-(--min-h-textarea) resize-y")}
                     placeholder={
                       language === "en"
                         ? t("events:detail.sections.about.fieldLabel_en", {
@@ -750,7 +750,7 @@ const EventDetail = () => {
                             type="button"
                             aria-label={t("events:detail.sections.files.deleteAria")}
                             disabled={isPendingFile}
-                            className="ml-2 rounded-full p-1 text-error-text transition-colors hover:bg-error-bg/10 disabled:opacity-50"
+                            className="ml-2 rounded-full p-1 text-error-text transition-colors hover:bg-error-bg/(--opacity-subtle) disabled:opacity-(--opacity-medium)"
                             onClick={async () => {
                               if (!isPendingFile) {
                                 await handleDeleteFile(f.id)

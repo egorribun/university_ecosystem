@@ -229,9 +229,9 @@ function AnimatedRing({
   }
 
   const bgColorClasses = {
-    success: "stroke-success-text/15",
-    info: "stroke-brand/15",
-    warning: "stroke-warning-text/15",
+    success: "stroke-success-text/(--opacity-dim)",
+    info: "stroke-brand/(--opacity-dim)",
+    warning: "stroke-warning-text/(--opacity-dim)",
   }
 
   return (
@@ -486,9 +486,9 @@ export default function Activity() {
         tone={value >= 0 ? "success" : "danger"}
         leadingIcon={
           value >= 0 ? (
-            <TrendingUpIcon className="text-[0.7rem]!" />
+            <TrendingUpIcon className="text-badge!" />
           ) : (
-            <TrendingDownIcon className="text-[0.7rem]!" />
+            <TrendingDownIcon className="text-badge!" />
           )
         }
         className="font-extrabold"
@@ -528,10 +528,10 @@ export default function Activity() {
     const toneClasses = {
       neutral: "bg-glass-elevated",
       success:
-        "bg-linear-to-b from-success-bg/30 to-success-bg/50 dark:from-success-bg/20 dark:to-success-bg/40",
-      info: "bg-linear-to-b from-brand/10 to-brand/20 dark:from-brand/15 dark:to-brand/25",
+        "bg-linear-to-b from-success-bg/(--opacity-soft) to-success-bg/(--opacity-medium) dark:from-success-bg/(--opacity-dim) dark:to-success-bg/(--opacity-medium)",
+      info: "bg-linear-to-b from-brand/(--opacity-subtle) to-brand/(--opacity-dim) dark:from-brand/(--opacity-dim) dark:to-brand/(--opacity-soft)",
       warning:
-        "bg-linear-to-b from-warning-bg/30 to-warning-bg/50 dark:from-warning-bg/20 dark:to-warning-bg/40",
+        "bg-linear-to-b from-warning-bg/(--opacity-soft) to-warning-bg/(--opacity-medium) dark:from-warning-bg/(--opacity-dim) dark:to-warning-bg/(--opacity-medium)",
     }
 
     return (
@@ -628,9 +628,9 @@ export default function Activity() {
               className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5"
             >
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-subtle-bg text-brand shadow-glass transition-transform duration-200 hover:scale-105 backdrop-blur-sm">
-                <TimelineIcon className="text-[2rem]" />
+                <TimelineIcon className="text-3xl" />
               </div>
-              <h1 className="text-[clamp(1.6rem,5vw,2.75rem)] font-bold tracking-tight text-(--text-primary)">
+              <h1 className="text-page-title font-bold tracking-tight text-(--text-primary)">
                 {t("activity:title")}
               </h1>
             </div>
@@ -643,7 +643,7 @@ export default function Activity() {
                 ...(reduce ? {} : { willChange: "transform, opacity", transform: "translateZ(0)" }),
                 ...fadeDelayStyle("140ms"),
               }}
-              className="mb-6 inline-flex items-center gap-1 rounded-full border border-glass-border bg-(--bg-surface)/40 p-1 shadow-premium backdrop-blur-xl [-webkit-backdrop-filter:blur(12px)] dark:border-glass-border dark:bg-(--bg-page)/40 dark:shadow-premium"
+              className="mb-6 inline-flex items-center gap-1 rounded-full border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-1 shadow-premium backdrop-blur-xl [-webkit-backdrop-filter:blur(12px)] dark:border-glass-border dark:bg-(--bg-page)/(--opacity-medium) dark:shadow-premium"
             >
               {periodOptions.map((option) => (
                 <button
@@ -683,11 +683,11 @@ export default function Activity() {
                 <div className="flex items-center gap-4">
                   <AnimatedRing value={attendance?.percent ?? 0} size={ringSize} tone="success" />
                   <div className="flex min-w-0 flex-1 flex-col gap-1">
-                    <p className="text-[0.65rem] font-semibold uppercase tracking-wider text-(--text-tertiary)">
+                    <p className="text-micro font-semibold uppercase tracking-wider text-(--text-tertiary)">
                       {t("activity:sections.attendance.title")}
                     </p>
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-(--fs-card-stat) font-black tracking-tighter tabular-nums lining-nums text-(--text-primary)">
+                      <span className="text-(--fs-card-stat) font-black tracking-tighter tabular-nums lining-nums">
                         {attendancePctAnimated}%
                       </span>
                       <TrendChip value={attendance?.trend} />
@@ -710,11 +710,11 @@ export default function Activity() {
 
               <CardShell tone="info" onClick={() => setDetail("grades")}>
                 <div className="flex flex-col gap-1">
-                  <p className="text-[0.65rem] font-semibold uppercase tracking-wider text-(--text-label)">
+                  <p className="text-micro font-semibold uppercase tracking-wider text-(--text-label)">
                     {t("activity:sections.grades.title")}
                   </p>
                   <div className="flex items-center gap-2">
-                    <span className="text-(--fs-card-stat) font-black tracking-tighter tabular-nums lining-nums text-(--text-primary)">
+                    <span className="text-(--fs-card-stat) font-black tracking-tighter tabular-nums lining-nums">
                       {grades?.scale === "gpa"
                         ? `GPA ${gradesAnimated}`
                         : grades?.scale === "100"
@@ -731,11 +731,11 @@ export default function Activity() {
 
               <CardShell tone="warning" onClick={() => setDetail("participation")}>
                 <div className="flex flex-col gap-1">
-                  <p className="text-[0.65rem] font-semibold uppercase tracking-wider text-(--text-label)">
+                  <p className="text-micro font-semibold uppercase tracking-wider text-(--text-label)">
                     {t("activity:sections.participation.title")}
                   </p>
                   <div className="flex items-center gap-2">
-                    <span className="text-[clamp(1.75rem,2vw,2.25rem)] font-black tracking-tighter tabular-nums lining-nums text-(--text-primary)">
+                    <span className="text-card-stat font-black tracking-tighter tabular-nums lining-nums text-(--text-primary)">
                       {t("activity:sections.participation.eventsCount", {
                         value: partEventsAnimated,
                         count: participation?.events ?? 0,
@@ -882,7 +882,7 @@ export default function Activity() {
                             }
                           >
                             <div className="flex items-center gap-2">
-                              <div className="h-2 w-2 rounded-full bg-(--primary-main)/90 shadow-pulse-primary" />
+                              <div className="h-2 w-2 rounded-full bg-(--primary-main)/(--opacity-heavy) shadow-pulse-primary" />
                               <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-1.5">
                                 <span className="font-bold text-(--text-primary)">{r.course}</span>
                                 <span className="text-sm text-(--text-label)">
@@ -933,7 +933,7 @@ export default function Activity() {
                             }
                           >
                             <div className="flex items-center gap-2">
-                              <div className="h-2 w-2 rounded-full bg-(--warning-text)/90 shadow-pulse-warning" />
+                              <div className="h-2 w-2 rounded-full bg-(--warning-text)/(--opacity-heavy) shadow-pulse-warning" />
                               <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-1.5">
                                 <span className="font-bold text-(--text-primary)">{r.title}</span>
                                 <span className="text-sm text-(--text-label)">

@@ -24,8 +24,9 @@ function buildSrcSet(rawUrl: string, widths: readonly number[]): string {
   return uniqueWidths
     .map((width) => {
       const proxyUrl = resolveProxyImageUrl(rawUrl, width)
-      return `${proxyUrl} ${width}w`
+      return proxyUrl ? `${proxyUrl} ${width}w` : null
     })
+    .filter((src): src is string => src !== null)
     .join(", ")
 }
 

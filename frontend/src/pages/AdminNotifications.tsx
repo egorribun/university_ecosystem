@@ -263,61 +263,61 @@ export default function AdminNotifications() {
     }
 
     return (
-      <div className="mt-4 overflow-hidden rounded-2xl border border-glass-border bg-(--bg-surface)/40 shadow-glass">
+      <div className="mt-4 overflow-hidden rounded-2xl border border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass">
         <div className="overflow-x-auto">
           <table
             className="w-full text-left border-collapse"
             aria-label={t("admin:notifications.table.aria") ?? "Dead-letter queue"}
           >
             <thead>
-              <tr className="border-b border-glass-border/10 bg-(--bg-surface-hover)/20">
+              <tr className="border-b border-glass-border/(--opacity-subtle) bg-(--bg-surface-hover)/(--opacity-dim)">
                 <th className="px-4 py-3">
                   <input
                     type="checkbox"
-                    className="h-4 w-4 rounded border-glass-border bg-(--bg-surface)/50 text-brand focus:ring-brand/30"
+                    className="h-4 w-4 rounded border-glass-border bg-(--bg-surface)/(--opacity-medium) text-brand focus:ring-brand/(--opacity-soft)"
                     checked={allSelected}
                     onChange={handleSelectAll}
                     aria-label={t("admin:notifications.table.selectAll") ?? "Select all"}
                   />
                 </th>
-                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
                   {t("admin:notifications.table.columns.kind")}
                 </th>
-                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
                   {t("admin:notifications.table.columns.record")}
                 </th>
-                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
                   {t("admin:notifications.table.columns.locale")}
                 </th>
-                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
                   {t("admin:notifications.table.columns.enqueued")}
                 </th>
-                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
                   {t("admin:notifications.table.columns.attempts")}
                 </th>
-                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
+                <th className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
                   {t("admin:notifications.table.columns.lastError")}
                 </th>
-                <th className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
+                <th className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
                   {t("admin:notifications.table.columns.actions")}
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-glass-border/10">
+            <tbody className="divide-y divide-glass-border/(--opacity-subtle)">
               {jobs.map((job) => {
                 const isSelected = selected.has(job.id)
                 return (
                   <tr
                     key={job.id}
                     className={cn(
-                      "transition-colors hover:bg-(--bg-surface-hover)/10",
-                      isSelected && "bg-brand/5"
+                      "transition-colors hover:bg-(--bg-surface-hover)/(--opacity-subtle)",
+                      isSelected && "bg-brand/(--opacity-subtle)"
                     )}
                   >
                     <td className="px-4 py-3">
                       <input
                         type="checkbox"
-                        className="h-4 w-4 rounded border-glass-border bg-(--bg-surface)/50 text-brand focus:ring-brand/30"
+                        className="h-4 w-4 rounded border-glass-border bg-(--bg-surface)/(--opacity-medium) text-brand focus:ring-brand/(--opacity-soft)"
                         checked={isSelected}
                         onChange={() => toggleSelect(job.id)}
                         aria-label={
@@ -351,7 +351,7 @@ export default function AdminNotifications() {
                           type="button"
                           onClick={() => retryMutation.mutate([job.id])}
                           disabled={retryMutation.isPending || purgeMutation.isPending}
-                          className="p-1.5 text-brand hover:bg-brand/10 rounded-lg transition-colors disabled:opacity-50"
+                          className="p-1.5 text-brand hover:bg-brand/(--opacity-subtle) rounded-lg transition-colors disabled:opacity-(--opacity-medium)"
                           title={t("admin:notifications.actions.retry")}
                         >
                           <RotateCcw className="h-4 w-4" />
@@ -360,7 +360,7 @@ export default function AdminNotifications() {
                           type="button"
                           onClick={() => purgeMutation.mutate([job.id])}
                           disabled={retryMutation.isPending || purgeMutation.isPending}
-                          className="p-1.5 text-error hover:bg-error/10 rounded-lg transition-colors disabled:opacity-50"
+                          className="p-1.5 text-error hover:bg-error/(--opacity-subtle) rounded-lg transition-colors disabled:opacity-(--opacity-medium)"
                           title={t("admin:notifications.actions.purge")}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -379,7 +379,7 @@ export default function AdminNotifications() {
 
   return (
     <Layout>
-      <div className="min-h-screen w-full bg-background/50 py-8">
+      <div className="min-h-screen w-full bg-background/(--opacity-medium) py-8">
         <PageFadeIn>
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="mb-8 flex flex-col gap-2">
@@ -408,12 +408,12 @@ export default function AdminNotifications() {
                     resetTopicFeedback()
                   }}
                   disabled={topicsBusy}
-                  className="sm:min-w-[240px]"
+                  className="sm:min-w-(--min-w-filter)"
                 />
                 <Button
                   onClick={handleLoadTopics}
                   disabled={topicsBusy}
-                  className="sm:min-w-[120px]"
+                  className="sm:min-w-(--min-w-btn)"
                 >
                   {topicsBusy ? (
                     <div className="flex items-center gap-2">
@@ -462,7 +462,7 @@ export default function AdminNotifications() {
                         return (
                           <div
                             key={topic}
-                            className="flex items-center gap-3 rounded-xl border border-glass-border/10 bg-(--bg-surface)/20 px-4 py-3 transition-colors hover:bg-(--bg-surface)/30"
+                            className="flex items-center gap-3 rounded-xl border border-glass-border/(--opacity-subtle) bg-(--bg-surface)/(--opacity-dim) px-4 py-3 transition-colors hover:bg-(--bg-surface)/(--opacity-soft)"
                           >
                             <input
                               type="checkbox"
@@ -472,7 +472,7 @@ export default function AdminNotifications() {
                                 handleTopicToggle(topic)(null as any, e.target.checked)
                               }
                               disabled={topicsBusy}
-                              className="h-5 w-5 rounded border-glass-border bg-(--bg-surface)/50 text-brand focus:ring-brand/30"
+                              className="h-5 w-5 rounded border-glass-border bg-(--bg-surface)/(--opacity-medium) text-brand focus:ring-brand/(--opacity-soft)"
                             />
                             <label
                               htmlFor={`topic-${normalized}`}
@@ -522,7 +522,7 @@ export default function AdminNotifications() {
                     onClick={handlePurgeSelected}
                     disabled={disableActions}
                     variant="outline"
-                    className="flex-1 border-error/20 text-error hover:bg-error/5 sm:flex-initial"
+                    className="flex-1 border-error/(--opacity-dim) text-error hover:bg-error/(--opacity-subtle) sm:flex-initial"
                   >
                     <Trash2 className="mr-2 h-4 w-4" />
                     {t("admin:notifications.actions.purgeSelected")}

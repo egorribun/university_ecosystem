@@ -1,3 +1,5 @@
+import { logWarning } from "@/app/logger"
+
 /**
  * Storage Utility
  *
@@ -26,7 +28,7 @@ export class StorageItem<T> {
       if (raw === null) return this.fallback
       return JSON.parse(raw) as T
     } catch (error) {
-      console.warn(`[Storage] Failed to parse key "${this.key}":`, error)
+      logWarning(`[Storage] Failed to parse key "${this.key}":`, { error })
       return this.fallback
     }
   }
@@ -48,7 +50,7 @@ export class StorageItem<T> {
         })
       )
     } catch (error) {
-      console.warn(`[Storage] Failed to set key "${this.key}":`, error)
+      logWarning(`[Storage] Failed to set key "${this.key}":`, { error })
     }
   }
 
@@ -67,7 +69,7 @@ export class StorageItem<T> {
         })
       )
     } catch (error) {
-      console.warn(`[Storage] Failed to remove key "${this.key}":`, error)
+      logWarning(`[Storage] Failed to remove key "${this.key}":`, { error })
     }
   }
 

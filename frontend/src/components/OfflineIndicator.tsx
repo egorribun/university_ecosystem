@@ -59,11 +59,11 @@ export function OfflineIndicator() {
       className={cn(
         "fixed bottom-24 left-1/2 z-(--z-toast) -translate-x-1/2",
         "flex items-center gap-2 rounded-2xl px-5 py-3",
-        "text-[13px] font-black uppercase tracking-widest shadow-2xl backdrop-blur-2xl border",
+        "text-xs font-black uppercase tracking-widest shadow-2xl backdrop-blur-2xl border",
         "transition-all duration-500 ease-out animate-in fade-in slide-in-from-bottom-4",
         isOffline
-          ? "bg-(--warning-bg) border-(--warning-text)/20 text-(--warning-text)"
-          : "bg-(--success-bg) border-(--success-text)/20 text-(--success-text)"
+          ? "bg-(--warning-bg) border-(--warning-text)/(--opacity-dim) text-(--warning-text)"
+          : "bg-(--success-bg) border-(--success-text)/(--opacity-dim) text-(--success-text)"
       )}
     >
       {isOffline ? (

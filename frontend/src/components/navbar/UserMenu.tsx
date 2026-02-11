@@ -41,8 +41,8 @@ export const UserMenu = ({ user, isAuth, loading, go, t }: UserMenuProps) => {
   if (loading) {
     return (
       <div className="ml-auto flex items-center gap-4" aria-hidden="true">
-        <Skeleton className="rounded-full w-(--space-10) h-(--space-10) bg-brand/20" />
-        <Skeleton className="w-24 h-5 rounded-md bg-brand/20" />
+        <Skeleton className="rounded-full w-(--space-10) h-(--space-10) bg-brand/(--opacity-dim)" />
+        <Skeleton className="w-24 h-5 rounded-md bg-brand/(--opacity-dim)" />
       </div>
     )
   }

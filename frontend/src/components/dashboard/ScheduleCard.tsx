@@ -114,7 +114,7 @@ export function ScheduleCard({
   }
 
   const listActionBase =
-    "group relative isolate w-full overflow-hidden rounded-xl border border-transparent bg-(--bg-surface)/10 px-4 py-3 text-left transition-all duration-300 ease-out hover:bg-(--bg-surface)/20 hover:border-glass-border hover:-translate-y-0.5 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+    "group relative isolate w-full overflow-hidden rounded-xl border border-transparent bg-(--bg-surface)/(--opacity-subtle) px-4 py-3 text-left transition-all duration-300 ease-out hover:bg-(--bg-surface)/(--opacity-dim) hover:border-glass-border hover:-translate-y-0.5 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/(--opacity-medium)"
 
   return (
     <Card
@@ -131,9 +131,7 @@ export function ScheduleCard({
     >
       <div className="relative z-(--z-base) space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-(--fs-card-title) font-extrabold text-(--text-primary)">
-            {t("dashboard:todaySchedule")}
-          </h2>
+          <h2 className="text-(--fs-card-title) font-extrabold">{t("dashboard:todaySchedule")}</h2>
           <div className="flex items-center gap-2">
             <Button
               as={Link}
@@ -156,7 +154,7 @@ export function ScheduleCard({
                 <Badge size="sm" tone="primary" label={t("dashboard:now")} />
                 <Badge
                   size="sm"
-                  className="border-(--brand-main)/20 bg-(--brand-main)/5 font-mono text-xs font-medium text-(--brand-main) dark:bg-(--brand-main)/10"
+                  className="border-(--brand-main)/(--opacity-dim) bg-(--brand-main)/(--opacity-faint) font-mono text-xs font-medium text-(--brand-main) dark:bg-(--brand-main)/(--opacity-subtle)"
                   label={`${fmtTime(currentLesson.start_time)}–${fmtTime(currentLesson.end_time)}`}
                 />
               </div>
@@ -186,7 +184,7 @@ export function ScheduleCard({
               </span>
               <Badge
                 size="sm"
-                className="self-start border-brand/20 bg-brand/5 font-mono text-xs font-medium text-brand dark:bg-brand/10"
+                className="self-start border-brand/(--opacity-dim) bg-brand/(--opacity-faint) font-mono text-xs font-medium text-brand dark:bg-brand/(--opacity-subtle)"
                 label={`${fmtTime(nextLesson.start_time)}–${fmtTime(nextLesson.end_time)}`}
               />
             </div>
@@ -197,7 +195,7 @@ export function ScheduleCard({
             {[1, 2, 3].map((i) => (
               <div
                 key={i}
-                className="flex flex-col gap-2 rounded-xl border border-(--glass-border) bg-(--bg-surface)/20 px-4 py-3 opacity-60"
+                className="flex flex-col gap-2 rounded-xl border border-(--glass-border) bg-(--bg-surface)/(--opacity-dim) px-4 py-3 opacity-(--opacity-medium)"
               >
                 <div className="flex items-center gap-2">
                   <Skeleton width={80} height={18} />
@@ -218,7 +216,7 @@ export function ScheduleCard({
                 <div
                   className={cn(
                     listActionBase,
-                    "flex flex-col gap-2 border border-transparent bg-(--bg-surface)/10 px-4 py-3 pb-4 hover:bg-(--bg-surface)/20 sm:gap-2.5",
+                    "flex flex-col gap-2 border border-transparent bg-(--bg-surface)/(--opacity-subtle) px-4 py-3 pb-4 hover:bg-(--bg-surface)/(--opacity-dim) sm:gap-2.5",
                     "cursor-default"
                   )}
                 >
@@ -228,13 +226,13 @@ export function ScheduleCard({
                     </span>
                     <Badge
                       size="sm"
-                      className="shrink-0 border-(--brand-main)/20 bg-(--brand-main)/5 font-mono text-xs font-medium text-(--brand-main) dark:bg-(--brand-main)/10"
+                      className="shrink-0 border-(--brand-main)/(--opacity-dim) bg-(--brand-main)/(--opacity-faint) font-mono text-xs font-medium text-(--brand-main) dark:bg-(--brand-main)/(--opacity-subtle)"
                       label={`${fmtTime(l.start_time)}–${fmtTime(l.end_time)}`}
                     />
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-sm text-(--text-secondary)">
                     <Badge size="sm" tone="default" variant="outline" label={l.lesson_type} />
-                    <span className="truncate max-w-[150px] opacity-80">
+                    <span className="truncate max-w-[150px] opacity-(--opacity-heavy)">
                       {t("dashboard:lessonMeta", { teacher: l.teacher, room: l.room })}
                     </span>
                   </div>
@@ -247,7 +245,7 @@ export function ScheduleCard({
       <motion.span
         aria-hidden="true"
         initial={{ opacity: 0 }}
-        whileHover={{ opacity: 0.8 }}
+        whileHover={{ opacity: "var(--opacity-heavy)" }}
         animate={{
           scale: [1, 1.1, 1],
         }}
@@ -260,8 +258,8 @@ export function ScheduleCard({
       />
       <motion.span
         aria-hidden="true"
-        initial={{ opacity: 0.3 }}
-        whileHover={{ opacity: 0.7 }}
+        initial={{ opacity: "var(--opacity-medium)" }}
+        whileHover={{ opacity: "var(--opacity-strong)" }}
         animate={{
           scale: [1, 1.15, 1],
           x: [0, 8, 0],

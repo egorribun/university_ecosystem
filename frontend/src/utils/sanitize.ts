@@ -1,6 +1,6 @@
 import type { TrustedHTML, TrustedTypePolicyFactory } from "trusted-types/lib"
 
-let dompurifyInstance: any = null
+let dompurifyInstance: typeof import("dompurify")["default"] | null = null
 async function getDOMPurify() {
   if (dompurifyInstance) return dompurifyInstance
   const DOMPurify = (await import("dompurify")).default

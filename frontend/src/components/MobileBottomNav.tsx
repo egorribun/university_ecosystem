@@ -123,7 +123,7 @@ export default function MobileBottomNav() {
                 "group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--text-primary) transition-all outline-none select-none " +
                 (isActive
                   ? "active text-brand font-bold scale-110"
-                  : "opacity-60 hover:opacity-100")
+                  : "opacity-(--opacity-strong) hover:opacity-100")
               }
               aria-label={it.label}
             >
@@ -131,7 +131,7 @@ export default function MobileBottomNav() {
                 {isActive && (
                   <motion.div
                     layoutId="bottom-nav-active-glow"
-                    className="absolute inset-[-14px] rounded-full bg-brand opacity-10 blur-xl z-(--z-negative)"
+                    className="absolute inset-[-14px] rounded-full bg-brand opacity-(--opacity-subtle) blur-xl z-(--z-negative)"
                     transition={springBouncy}
                   />
                 )}
@@ -148,9 +148,9 @@ export default function MobileBottomNav() {
                 </motion.span>
               </div>
               <motion.span
-                className="z-(--z-decor) text-[10px] font-black uppercase tracking-tight"
+                className="z-(--z-decor) text-label-xs font-black uppercase tracking-tight"
                 animate={{
-                  opacity: isActive ? 1 : 0.6,
+                  opacity: isActive ? 1 : 0.7,
                 }}
                 transition={springSoft}
               >

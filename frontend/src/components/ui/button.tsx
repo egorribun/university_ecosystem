@@ -5,17 +5,66 @@ import {
   type ReactNode,
   type MouseEvent,
 } from "react"
+import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/utils/cn"
 import type { PolymorphicComponentProps, PolymorphicRef } from "@/types/polymorphic"
 import { useHaptics } from "@/hooks/useHaptics"
 
-type ButtonVariant = "solid" | "outline" | "ghost" | "glass" | "gradient"
-type ButtonSize = "sm" | "md" | "lg"
+const buttonVariants = cva(
+  "group/button relative inline-flex items-center justify-center gap-2 overflow-hidden rounded-(--radius-md) font-bold tracking-tight text-base transition-premium focus-visible:outline-none focus-visible:shadow-focus no-underline hover:no-underline focus-visible:no-underline motion-reduce:transition-shadow motion-reduce:hover:translate-y-0 motion-reduce:active:translate-y-0",
+  {
+    variants: {
+      variant: {
+        solid: cn(
+          "bg-linear-brand text-inverse-text shadow-surface ring-brand/(--opacity-dim) transition-all duration-500",
+          "hover:shadow-premium-lift hover:scale-hover hover:opacity-(--opacity-heavy)",
+          "active:scale-95",
+          "motion-reduce:hover:translate-y-0 motion-reduce:hover:scale-100 motion-reduce:active:translate-y-0 motion-reduce:active:scale-100",
+          "disabled:bg-(--border-subtle) disabled:text-(--text-tertiary)"
+        ),
+        outline: cn(
+          "border border-border-subtle text-(--text-primary) shadow-surface bg-transparent",
+          "hover:border-brand hover:text-brand hover:bg-brand-subtle hover:shadow-surface-strong",
+          "active:scale-95",
+          "motion-reduce:hover:translate-y-0 motion-reduce:active:translate-y-0",
+          "disabled:border-(--border-subtle) disabled:text-(--text-tertiary)"
+        ),
+        ghost: cn(
+          "bg-transparent text-(--text-secondary)",
+          "hover:bg-(--bg-surface-hover) hover:text-(--text-primary)",
+          "active:bg-(--bg-surface-hover)",
+          "motion-reduce:transition-none"
+        ),
+        glass: cn(
+          "bg-glass backdrop-blur-glass text-(--text-primary) border border-glass-border shadow-glass",
+          "hover:bg-(--glass-tint1) hover:scale-hover",
+          "active:scale-95 transition-all duration-300"
+        ),
+        gradient: cn(
+          "bg-linear-brand text-inverse-text shadow-lg border-none",
+          "hover:shadow-premium-lift hover:saturate-150 hover:scale-hover hover:opacity-(--opacity-heavy)",
+          "active:scale-95 transition-all duration-500"
+        ),
+      },
+      size: {
+        sm: "min-h-10 px-3 py-2 text-sm",
+        md: "min-h-(--space-12) px-5 py-2.5 text-base",
+        lg: "min-h-14 px-7 py-3 text-lg",
+      },
+      fullWidth: {
+        true: "w-full",
+        false: "w-auto",
+      },
+    },
+    defaultVariants: {
+      variant: "solid",
+      size: "md",
+      fullWidth: false,
+    },
+  }
+)
 
-type ButtonOwnProps = {
-  variant?: ButtonVariant
-  size?: ButtonSize
-  fullWidth?: boolean
+type ButtonOwnProps = VariantProps<typeof buttonVariants> & {
   loading?: boolean
   leadingIcon?: ReactNode
   trailingIcon?: ReactNode
@@ -29,51 +78,12 @@ export type ButtonProps<T extends ElementType = "button"> = PolymorphicComponent
   ButtonOwnProps
 >
 
-const sizeStyles: Record<ButtonSize, string> = {
-  sm: "min-h-10 px-3 py-2 text-sm",
-  md: "min-h-(--space-12) px-5 py-2.5 text-base",
-  lg: "min-h-14 px-7 py-3 text-lg",
-}
-
-const variantStyles: Record<ButtonVariant, string> = {
-  solid: cn(
-    "bg-linear-brand text-inverse-text shadow-surface ring-brand/20 transition-all duration-500",
-    "hover:shadow-premium-lift hover:scale-[1.02] hover:opacity-95",
-    "active:scale-95",
-    "motion-reduce:hover:translate-y-0 motion-reduce:hover:scale-100 motion-reduce:active:translate-y-0 motion-reduce:active:scale-100",
-    "disabled:bg-(--border-subtle) disabled:text-(--text-tertiary)"
-  ),
-  outline: cn(
-    "border border-border-subtle text-(--text-primary) shadow-surface bg-transparent",
-    "hover:border-brand hover:text-brand hover:bg-brand-subtle hover:shadow-surface-strong",
-    "active:scale-95",
-    "motion-reduce:hover:translate-y-0 motion-reduce:active:translate-y-0",
-    "disabled:border-(--border-subtle) disabled:text-(--text-tertiary)"
-  ),
-  ghost: cn(
-    "bg-transparent text-(--text-secondary)",
-    "hover:bg-(--bg-surface-hover) hover:text-(--text-primary)",
-    "active:bg-(--bg-surface-hover)",
-    "motion-reduce:transition-none"
-  ),
-  glass: cn(
-    "bg-glass backdrop-blur-glass text-(--text-primary) border border-glass-border shadow-glass",
-    "hover:bg-(--glass-tint1) hover:scale-[1.02]",
-    "active:scale-95 transition-all duration-300"
-  ),
-  gradient: cn(
-    "bg-linear-to-r from-blue-500 to-indigo-600 text-white hover:from-blue-600 hover:to-indigo-700 shadow-lg hover:shadow-xl border-none",
-    "hover:shadow-premium-lift hover:saturate-150 hover:scale-[1.02]",
-    "active:scale-95 transition-all duration-500"
-  ),
-}
-
 const ButtonBase = <T extends ElementType = "button">(
   {
     as,
-    variant = "solid",
-    size = "md",
-    fullWidth = false,
+    variant,
+    size,
+    fullWidth,
     loading = false,
     leadingIcon,
     trailingIcon,
@@ -114,13 +124,8 @@ const ButtonBase = <T extends ElementType = "button">(
     <Component
       ref={ref}
       className={cn(
-        "group/button relative inline-flex items-center justify-center gap-2 overflow-hidden rounded-xl font-bold tracking-tight text-base transition-premium focus-visible:outline-none focus-visible:shadow-focus",
-        "no-underline hover:no-underline focus-visible:no-underline",
-        "motion-reduce:transition-shadow motion-reduce:hover:translate-y-0 motion-reduce:active:translate-y-0",
-        sizeStyles[size],
-        variantStyles[variant],
-        fullWidth ? "w-full" : "w-auto",
-        isDisabled && "pointer-events-none opacity-60",
+        buttonVariants({ variant, size, fullWidth }),
+        isDisabled && "pointer-events-none opacity-(--opacity-strong)",
         className
       )}
       disabled={isButtonElement ? isDisabled : undefined}
@@ -137,7 +142,7 @@ const ButtonBase = <T extends ElementType = "button">(
           className="pointer-events-none absolute inset-0 flex items-center justify-center"
           aria-hidden
         >
-          <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent opacity-50" />
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent opacity-(--opacity-medium)" />
         </span>
       ) : null}
     </Component>
