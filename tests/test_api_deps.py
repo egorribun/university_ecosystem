@@ -307,27 +307,29 @@ async def test_get_locale_header_fallback(mock_request):
 
 
 @pytest.mark.asyncio
-async def test_require_fresh_mfa_confirmed(mock_request):
+async def test_require_fresh_mfa_confirmed(mock_request, db_session):
     user = MagicMock(spec=User)
     with patch("app.auth.mfa.user_has_confirmed_interactive_factor", return_value=True):
-        with patch("app.api.deps._enforce_fresh_mfa") as mock_enforce:
-            from app.api.deps import require_fresh_mfa
+        with patch("app.api.deps.ensure_mfa_relationships_loaded"):
+            with patch("app.api.deps._enforce_fresh_mfa") as mock_enforce:
+                from app.api.deps import require_fresh_mfa
 
-            require_fresh_mfa(mock_request, user)
-            mock_enforce.assert_called_once()
+                await require_fresh_mfa(mock_request, user, db_session)
+                mock_enforce.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_require_fresh_mfa_not_confirmed(mock_request):
+async def test_require_fresh_mfa_not_confirmed(mock_request, db_session):
     user = MagicMock(spec=User)
     with patch(
         "app.auth.mfa.user_has_confirmed_interactive_factor", return_value=False
     ):
-        with patch("app.api.deps._enforce_fresh_mfa") as mock_enforce:
-            from app.api.deps import require_fresh_mfa
+        with patch("app.api.deps.ensure_mfa_relationships_loaded"):
+            with patch("app.api.deps._enforce_fresh_mfa") as mock_enforce:
+                from app.api.deps import require_fresh_mfa
 
-            require_fresh_mfa(mock_request, user)
-            mock_enforce.assert_not_called()
+                await require_fresh_mfa(mock_request, user, db_session)
+                mock_enforce.assert_not_called()
 
 
 @pytest.mark.asyncio
