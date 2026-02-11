@@ -28,6 +28,17 @@ USER_MFA_LOAD_OPTIONS: tuple = (
     joinedload(User.education_path),
 )
 
+# [NEW] Lightweight options for EVERY request (Auth only)
+# We use joinedload for 1-to-1 relationships to avoid N+1 'selectin' queries
+# caused by model-level defaults.
+# We intentionally DO NOT load MFA collections (totp, challenges, etc.) here.
+USER_AUTH_LOAD_OPTIONS: tuple = (
+    joinedload(User.preferences),
+    joinedload(User.spotify),
+    joinedload(User.profile_detail),
+    joinedload(User.education_path),
+)
+
 
 async def ensure_mfa_relationships_loaded(
     db: AsyncSession, user: User | None

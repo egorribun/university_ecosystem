@@ -1,6 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react"
 import * as Sentry from "@sentry/react"
-import "./ErrorBoundary.css"
 
 interface ErrorBoundaryProps {
   children: ReactNode
@@ -76,38 +75,51 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       }
 
       return (
-        <div className="error-boundary">
-          <div className="error-boundary__content">
-            <h1 className="error-boundary__title">Что-то пошло не так</h1>
-            <p className="error-boundary__message">
+        <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-(--bg-page) px-fluid-x">
+          {/* Ambient radial glow */}
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(var(--primary-main-rgb),0.1)_0%,transparent_70%)]" />
+
+          <div className="relative z-(--z-deep) w-full max-w-[480px] rounded-2xl border border-border-subtle bg-(--bg-surface) p-10 text-center shadow-premium backdrop-blur-md">
+            <h1 className="mb-4 text-3xl font-black tracking-tight text-(--text-primary)">
+              Что-то пошло не так
+            </h1>
+            <p className="mb-8 text-base leading-relaxed text-(--text-secondary)">
               Произошла непредвиденная ошибка. Мы уже работаем над её исправлением.
             </p>
             {import.meta.env.DEV && this.state.error && (
-              <details className="error-boundary__details">
-                <summary>Подробности ошибки</summary>
-                <pre>{this.state.error.toString()}</pre>
-                {this.state.errorInfo && <pre>{this.state.errorInfo.componentStack}</pre>}
+              <details className="mb-8 rounded-lg border border-border-subtle bg-(--bg-surface-hover) p-4 text-left">
+                <summary className="cursor-pointer text-sm font-semibold text-(--text-tertiary)">
+                  Подробности ошибки
+                </summary>
+                <pre className="mt-4 overflow-x-auto whitespace-pre-wrap break-words rounded-md border border-error-text bg-black/5 p-3 text-xs text-error-text">
+                  {this.state.error.toString()}
+                </pre>
+                {this.state.errorInfo && (
+                  <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-words rounded-md border border-error-text bg-black/5 p-3 text-xs text-error-text">
+                    {this.state.errorInfo.componentStack}
+                  </pre>
+                )}
               </details>
             )}
-            <div className="error-boundary__actions">
+            <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
               <button
                 type="button"
                 onClick={this.handleRetry}
-                className="error-boundary__button error-boundary__button--primary"
+                className="rounded-xl bg-brand px-6 py-3.5 text-base font-extrabold text-inverse-text shadow-glass transition-all duration-500 hover:-translate-y-0.5 hover:bg-brand-hover hover:shadow-premium-lift active:scale-95"
               >
                 Попробовать снова
               </button>
               <button
                 type="button"
                 onClick={this.handleReload}
-                className="error-boundary__button error-boundary__button--secondary"
+                className="rounded-xl border border-border-subtle bg-(--bg-surface-hover) px-6 py-3.5 text-base font-extrabold text-(--text-primary) transition-all duration-500 hover:-translate-y-0.5 hover:bg-(--bg-surface-raised) active:scale-95"
               >
                 Перезагрузить страницу
               </button>
               <button
                 type="button"
                 onClick={this.handleGoHome}
-                className="error-boundary__button error-boundary__button--secondary"
+                className="rounded-xl border border-border-subtle bg-(--bg-surface-hover) px-6 py-3.5 text-base font-extrabold text-(--text-primary) transition-all duration-500 hover:-translate-y-0.5 hover:bg-(--bg-surface-raised) active:scale-95"
               >
                 На главную
               </button>

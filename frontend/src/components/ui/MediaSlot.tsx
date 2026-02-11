@@ -74,16 +74,13 @@ export const MediaSlot = forwardRef<HTMLDivElement, MediaSlotProps>(
       return (
         <div
           ref={ref}
-          className={cn(
-            "relative w-full overflow-hidden bg-[color:var(--glass-bg)]",
-            containerClassName
-          )}
+          className={cn("relative w-full overflow-hidden bg-(--glass-bg)", containerClassName)}
           style={{ aspectRatio }}
         >
           {fallback ?? (
             <div className="absolute inset-0 flex items-center justify-center">
               <svg
-                className="h-12 w-12 text-[color:var(--page-text)]/20"
+                className="h-12 w-12 text-(--text-primary)/20"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -106,16 +103,13 @@ export const MediaSlot = forwardRef<HTMLDivElement, MediaSlotProps>(
       return (
         <div
           ref={ref}
-          className={cn(
-            "relative w-full overflow-hidden bg-[color:var(--glass-bg)]",
-            containerClassName
-          )}
+          className={cn("relative w-full overflow-hidden bg-(--glass-bg)", containerClassName)}
           style={{ aspectRatio }}
         >
           {fallback ?? (
             <div className="absolute inset-0 flex items-center justify-center">
               <svg
-                className="h-12 w-12 text-[color:var(--page-text)]/20"
+                className="h-12 w-12 text-(--text-tertiary)"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -136,18 +130,15 @@ export const MediaSlot = forwardRef<HTMLDivElement, MediaSlotProps>(
     return (
       <div
         ref={ref}
-        className={cn(
-          "relative w-full overflow-hidden bg-[color:var(--glass-bg)]",
-          containerClassName
-        )}
+        className={cn("relative w-full overflow-hidden bg-(--glass-bg)", containerClassName)}
         style={{ aspectRatio }}
       >
         {/* Loading placeholder */}
         {isLoading && (
-          <div className="absolute inset-0 animate-pulse bg-[color:var(--glass-bg)]">
+          <div className="absolute inset-0 animate-pulse bg-(--glass-bg)">
             {loadingPlaceholder ?? (
               <div className="absolute inset-0 flex items-center justify-center">
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-[color:var(--accent)] border-t-transparent" />
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-(--primary-main) border-t-transparent" />
               </div>
             )}
           </div>

@@ -32,14 +32,14 @@ export function ProgressBar({
       aria-valuenow={normalized ?? undefined}
       aria-label={ariaLabel}
       className={cn(
-        "relative h-2.5 w-full overflow-hidden rounded-ue-pill bg-progress-track",
+        "relative h-2.5 w-full overflow-hidden rounded-full bg-progress-track",
         className
       )}
       {...rest}
     >
       <div
         className={cn(
-          "h-full rounded-ue-pill bg-progress-bar",
+          "h-full rounded-full bg-progress-bar",
           animated ? "transition-[width] duration-300 ease-out motion-reduce:transition-none" : "",
           barClassName
         )}

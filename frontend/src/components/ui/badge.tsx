@@ -20,8 +20,8 @@ const circleSizeMap: Record<BadgeSize, string> = {
 
 const toneVariantStyles: Record<BadgeTone, Record<BadgeVariant, string>> = {
   default: {
-    solid: "bg-surface-hover text-primary-text",
-    outline: "border border-border-strong text-secondary-text",
+    solid: "bg-(--bg-surface-hover) text-(--text-primary)",
+    outline: "border border-border-strong text-(--text-secondary)",
   },
   primary: {
     solid: "bg-brand text-inverse-text shadow-sm",
@@ -76,7 +76,7 @@ export const Badge = <T extends ElementType = "span">({
     <Component
       className={cn(
         "inline-flex items-center justify-center gap-1 font-semibold tracking-tight transition-colors duration-200 ease-out",
-        shape === "pill" ? "rounded-ue-pill" : "rounded-full",
+        shape === "pill" ? "rounded-full" : "rounded-full",
         shape === "pill" ? pillSizeMap[size] : circleSizeMap[size],
         shape === "circle" ? "aspect-square" : "",
         toneVariantStyles[tone][variant],

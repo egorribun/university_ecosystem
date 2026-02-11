@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next"
 import MapFallback from "@/components/MapFallback"
 import { CAMPUS_COORDINATES } from "@/constants/campus"
 import useMediaQuery from "@/hooks/useMediaQuery"
+import { breakpoints } from "@/theme/tokens"
 import { cn } from "@/utils/cn"
 import { Alert, Button, Snackbar } from "@/components/settings"
 
@@ -40,7 +41,7 @@ const detectEmbedOptOut = (): boolean => {
 }
 
 export default function MapContent() {
-  const isMobile = useMediaQuery("(max-width:900px)")
+  const isMobile = useMediaQuery(`(max-width: ${breakpoints.content})`)
   const { t } = useTranslation("system")
   const [layer, setLayer] = useState<LayerMode>("map")
   const [iframeLoaded, setIframeLoaded] = useState(false)
@@ -167,15 +168,15 @@ export default function MapContent() {
   }
 
   return (
-    <div className="w-full bg-(--card-bg) text-(--page-text) rounded-none shadow-2xl overflow-hidden relative">
+    <div className="w-full bg-(--bg-surface) text-(--text-primary) rounded-none shadow-2xl overflow-hidden relative">
       <div
         ref={containerRef}
-        className="map-page bg-surface-alt dark:bg-canvas-dark transition-colors duration-300 h-full w-full relative"
+        className="map-page bg-(--bg-canvas-light) dark:bg-(--bg-canvas-dark) transition-colors duration-300 h-full w-full relative"
       >
-        <div className="glass glass--panel glass--sheen map-head z-navbar flex items-center justify-between px-6 py-4 absolute top-0 left-0 right-0">
+        <div className="glass glass--panel glass--sheen map-head z-(--z-navbar) flex items-center justify-between px-6 py-4 absolute top-0 left-0 right-0">
           <div className="flex items-center gap-3">
             <MapIcon className={cn("text-brand", isMobile ? "h-6 w-6" : "h-8 w-8")} />
-            <h1 className="map-title text-[clamp(1.1rem,3.6vw,2rem)] font-black tracking-tight text-primary-text">
+            <h1 className="map-title text-[clamp(1.1rem,3.6vw,2rem)] font-black tracking-tight text-(--text-primary)">
               {t("map.title")}
             </h1>
           </div>
@@ -184,7 +185,7 @@ export default function MapContent() {
               variant="ghost"
               size="sm"
               onClick={openInYandex}
-              className="h-10 w-10 p-0 rounded-xl bg-surface/20 border border-glass-border/20"
+              className="h-10 w-10 p-0 rounded-xl bg-(--bg-surface)/20 border border-glass-border/20"
               title={t("map.openInYandex") ?? ""}
             >
               <OpenInNewIcon className="h-5 w-5" />
@@ -193,7 +194,7 @@ export default function MapContent() {
               variant="ghost"
               size="sm"
               onClick={reset}
-              className="h-10 w-10 p-0 rounded-xl bg-surface/20 border border-glass-border/20 text-brand"
+              className="h-10 w-10 p-0 rounded-xl bg-(--bg-surface)/20 border border-glass-border/20 text-brand"
               title={t("map.reset") ?? ""}
             >
               <RestartAltIcon className="h-5 w-5" />
@@ -221,12 +222,12 @@ export default function MapContent() {
         )}
 
         {(!iframeLoaded || loadError) && !disableEmbeds && (
-          <div className="absolute inset-0 z-sidebar grid place-items-center bg-background/90 backdrop-blur-sm">
+          <div className="absolute inset-0 z-(--z-sidebar) grid place-items-center bg-background/90 backdrop-blur-sm">
             {!loadError ? (
               <div className="h-16 w-16 rounded-full border-4 border-surface/20 border-t-brand animate-spin" />
             ) : (
               <div className="flex flex-col items-center gap-4">
-                <p className="text-sm font-medium text-secondary-text">{t("map.loadError")}</p>
+                <p className="text-sm font-medium text-(--text-secondary)">{t("map.loadError")}</p>
                 <Button
                   variant="outline"
                   size="sm"
@@ -254,14 +255,16 @@ export default function MapContent() {
 
         <div className="map-controls-shield absolute inset-0 pointer-events-none" />
 
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-navbar pointer-events-none flex flex-col gap-3 pb-(--safe-area-bottom)">
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-(--z-navbar) pointer-events-none flex flex-col gap-3 pb-(--safe-area-bottom)">
           <div className="flex items-center gap-2 pointer-events-auto">
-            <div className="glass glass--panel rounded-2xl p-1 bg-surface/40 backdrop-blur-xl border border-glass-border shadow-2xl flex items-center gap-1">
+            <div className="glass glass--panel rounded-2xl p-1 bg-(--bg-surface)/40 backdrop-blur-xl border border-glass-border shadow-2xl flex items-center gap-1">
               <button
                 onClick={() => setLayer("map")}
                 className={cn(
                   "relative flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-all",
-                  layer === "map" ? "text-white" : "text-secondary-text hover:bg-surface/20"
+                  layer === "map"
+                    ? "text-white"
+                    : "text-(--text-secondary) hover:bg-(--bg-surface)/20"
                 )}
               >
                 {layer === "map" && (
@@ -271,7 +274,7 @@ export default function MapContent() {
                     transition={{ type: "spring", stiffness: 400, damping: 30 }}
                   />
                 )}
-                <span className="relative z-10 flex items-center gap-2">
+                <span className="relative z-(--z-base) flex items-center gap-2">
                   <MapIcon className="h-4 w-4" />
                   {!isMobile && <span>{t("map.layer.map")}</span>}
                 </span>
@@ -280,7 +283,9 @@ export default function MapContent() {
                 onClick={() => setLayer("hybrid")}
                 className={cn(
                   "relative flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-all",
-                  layer === "hybrid" ? "text-white" : "text-secondary-text hover:bg-surface/20"
+                  layer === "hybrid"
+                    ? "text-white"
+                    : "text-(--text-secondary) hover:bg-(--bg-surface)/20"
                 )}
               >
                 {layer === "hybrid" && (
@@ -290,7 +295,7 @@ export default function MapContent() {
                     transition={{ type: "spring", stiffness: 400, damping: 30 }}
                   />
                 )}
-                <span className="relative z-10 flex items-center gap-2">
+                <span className="relative z-(--z-base) flex items-center gap-2">
                   <SatelliteAltIcon className="h-4 w-4" />
                   {!isMobile && <span>{t("map.layer.hybrid")}</span>}
                 </span>

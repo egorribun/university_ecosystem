@@ -16,7 +16,10 @@ from app.core.container import get_vector_service
 from app.core.database import get_db, get_read_db
 from app.core.localization import resolve_locale, translate
 from app.models.models import ActiveSession, User
-from app.models.user_loaders import USER_MFA_LOAD_OPTIONS
+from app.models.user_loaders import (
+    USER_AUTH_LOAD_OPTIONS,
+    ensure_mfa_relationships_loaded,
+)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
@@ -74,7 +77,7 @@ async def get_current_user(
 
         # 3. Load User from DB (Simple PK lookup, no joins needed for basic auth)
         # Note: We still need user roles/options.
-        user = await db.get(User, user_id, options=USER_MFA_LOAD_OPTIONS)
+        user = await db.get(User, user_id, options=USER_AUTH_LOAD_OPTIONS)
         if not user or not user.is_active:
             fail_auth()
 
@@ -104,7 +107,7 @@ async def get_current_user(
             .where(User.id == user_id, User.is_active.is_(True))
             .where(ActiveSession.jti == jti)
             .where(ActiveSession.revoked_at.is_(None))
-            .options(*USER_MFA_LOAD_OPTIONS)
+            .options(*USER_AUTH_LOAD_OPTIONS)
         )
         row = res.first()
         if not row:
@@ -290,6 +293,18 @@ async def get_current_user_optional(
         return None
 
 
+async def get_current_user_full(
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> User:
+    """
+    Get current user with ALL MFA and Profile relationships loaded.
+    Use this for endpoints that return full user profile (UserOut).
+    """
+    await ensure_mfa_relationships_loaded(db, user)
+    return user
+
+
 async def get_current_admin_user(
     request: Request,
     user: Annotated[User, Depends(get_current_user)],
@@ -341,19 +356,23 @@ def _enforce_fresh_mfa(request: Request) -> None:
         )
 
 
-def require_fresh_mfa(
+async def require_fresh_mfa(
     request: Request,
     user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
+    await ensure_mfa_relationships_loaded(db, user)
     if not mfa.user_has_confirmed_interactive_factor(user):
         return
     _enforce_fresh_mfa(request)
 
 
-def require_fresh_mfa_for_enrollment(
+async def require_fresh_mfa_for_enrollment(
     request: Request,
     user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
+    await ensure_mfa_relationships_loaded(db, user)
     if not mfa.user_has_confirmed_interactive_factor(user):
         return
     _enforce_fresh_mfa(request)

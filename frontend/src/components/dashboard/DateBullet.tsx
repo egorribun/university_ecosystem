@@ -33,7 +33,7 @@ export function DateBullet({ date, locale }: DateBulletProps) {
         )}
       >
         <span className="text-[0.85rem] font-black leading-none tracking-tight">{dd}</span>
-        <span className="text-[0.65rem] font-semibold leading-tight text-secondary-text/70">
+        <span className="text-[0.65rem] font-semibold leading-tight text-(--text-secondary)/70">
           {mm}
         </span>
       </span>

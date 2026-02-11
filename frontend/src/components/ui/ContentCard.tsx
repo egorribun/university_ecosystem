@@ -131,7 +131,7 @@ const Title = forwardRef<HTMLHeadingElement, TitleProps>(
   ({ as: Component = "h3", children, className, ...props }, ref) => (
     <Component
       ref={ref}
-      className={cn("line-clamp-2 text-lg font-semibold text-primary-text", className)}
+      className={cn("line-clamp-2 text-lg font-semibold text-(--text-primary)", className)}
       {...props}
     >
       {children}
@@ -162,7 +162,7 @@ interface BodyProps extends HTMLAttributes<HTMLDivElement> {
 const Body = forwardRef<HTMLDivElement, BodyProps>(({ children, className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("flex-1 px-4 py-3 text-sm text-secondary-text", className)}
+    className={cn("flex-1 px-4 py-3 text-sm text-(--text-secondary)", className)}
     {...props}
   >
     {children}
@@ -195,7 +195,7 @@ const Meta = forwardRef<HTMLDivElement, MetaProps>(({ children, className, ...pr
   <div
     ref={ref}
     className={cn(
-      "flex flex-wrap items-center gap-2 px-4 pb-2 text-xs text-secondary-text/80",
+      "flex flex-wrap items-center gap-2 px-4 pb-2 text-xs text-(--text-secondary)/80",
       className
     )}
     {...props}
@@ -212,7 +212,7 @@ interface BadgeSlotProps extends HTMLAttributes<HTMLSpanElement> {
 }
 
 const variantStyles = {
-  default: "bg-surface-hover text-primary-text",
+  default: "bg-(--bg-surface-hover) text-(--text-primary)",
   success: "bg-success-bg text-success-text",
   warning: "bg-warning-bg text-warning-text",
   error: "bg-error-bg text-error-text",

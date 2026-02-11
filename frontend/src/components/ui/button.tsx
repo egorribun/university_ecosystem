@@ -30,39 +30,39 @@ export type ButtonProps<T extends ElementType = "button"> = PolymorphicComponent
 >
 
 const sizeStyles: Record<ButtonSize, string> = {
-  sm: "min-h-10 px-3 py-2 text-sm", // ~40px
-  md: "min-h-12 px-5 py-2.5 text-base", // ~48px
-  lg: "min-h-14 px-7 py-3 text-lg", // ~56px
+  sm: "min-h-10 px-3 py-2 text-sm",
+  md: "min-h-(--space-12) px-5 py-2.5 text-base",
+  lg: "min-h-14 px-7 py-3 text-lg",
 }
 
 const variantStyles: Record<ButtonVariant, string> = {
   solid: cn(
-    "bg-gradient-brand text-inverse-text shadow-surface ring-brand/20 transition-all duration-500",
+    "bg-linear-brand text-inverse-text shadow-surface ring-brand/20 transition-all duration-500",
     "hover:shadow-premium-lift hover:scale-[1.02] hover:opacity-95",
     "active:scale-95",
     "motion-reduce:hover:translate-y-0 motion-reduce:hover:scale-100 motion-reduce:active:translate-y-0 motion-reduce:active:scale-100",
-    "disabled:bg-slate-200 disabled:text-slate-400 dark:disabled:bg-slate-800 dark:disabled:text-slate-600"
+    "disabled:bg-(--border-subtle) disabled:text-(--text-tertiary)"
   ),
   outline: cn(
-    "border border-border-subtle text-primary-text shadow-surface bg-transparent",
+    "border border-border-subtle text-(--text-primary) shadow-surface bg-transparent",
     "hover:border-brand hover:text-brand hover:bg-brand-subtle hover:shadow-surface-strong",
     "active:scale-95",
     "motion-reduce:hover:translate-y-0 motion-reduce:active:translate-y-0",
-    "disabled:border-slate-200 disabled:text-slate-300 dark:disabled:border-slate-700 dark:disabled:text-slate-600"
+    "disabled:border-(--border-subtle) disabled:text-(--text-tertiary)"
   ),
   ghost: cn(
-    "bg-transparent text-secondary-text",
-    "hover:bg-surface-hover hover:text-primary-text",
-    "active:bg-surface-hover",
+    "bg-transparent text-(--text-secondary)",
+    "hover:bg-(--bg-surface-hover) hover:text-(--text-primary)",
+    "active:bg-(--bg-surface-hover)",
     "motion-reduce:transition-none"
   ),
   glass: cn(
-    "bg-white/10 backdrop-blur-md text-primary-text border border-white/20 shadow-premium",
-    "hover:bg-white/20 hover:scale-[1.02]",
+    "bg-glass backdrop-blur-glass text-(--text-primary) border border-glass-border shadow-glass",
+    "hover:bg-(--glass-tint1) hover:scale-[1.02]",
     "active:scale-95 transition-all duration-300"
   ),
   gradient: cn(
-    "bg-gradient-brand text-inverse-text shadow-surface ring-brand/20",
+    "bg-linear-to-r from-blue-500 to-indigo-600 text-white hover:from-blue-600 hover:to-indigo-700 shadow-lg hover:shadow-xl border-none",
     "hover:shadow-premium-lift hover:saturate-150 hover:scale-[1.02]",
     "active:scale-95 transition-all duration-500"
   ),
@@ -114,7 +114,7 @@ const ButtonBase = <T extends ElementType = "button">(
     <Component
       ref={ref}
       className={cn(
-        "group/button relative inline-flex items-center justify-center gap-2 overflow-hidden rounded-ue-lg font-bold tracking-tight text-base transition-premium focus-visible:outline-none focus-visible:shadow-focus",
+        "group/button relative inline-flex items-center justify-center gap-2 overflow-hidden rounded-xl font-bold tracking-tight text-base transition-premium focus-visible:outline-none focus-visible:shadow-focus",
         "no-underline hover:no-underline focus-visible:no-underline",
         "motion-reduce:transition-shadow motion-reduce:hover:translate-y-0 motion-reduce:active:translate-y-0",
         sizeStyles[size],
@@ -137,7 +137,7 @@ const ButtonBase = <T extends ElementType = "button">(
           className="pointer-events-none absolute inset-0 flex items-center justify-center"
           aria-hidden
         >
-          <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent opacity-50" />
         </span>
       ) : null}
     </Component>

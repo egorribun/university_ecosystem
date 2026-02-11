@@ -44,10 +44,10 @@ dayjs.extend(utc)
 dayjs.extend(timezone)
 
 const inputClass =
-  "w-full rounded-xl border border-(--glass-border) bg-(--bg-surface)/40 px-4 py-2.5 text-base text-(--primary-text) shadow-sm focus:border-(--brand-main) focus:outline-none transition placeholder:text-(--secondary-text)/50"
+  "w-full rounded-xl border border-(--glass-border) bg-(--bg-surface)/40 px-4 py-2.5 text-base text-(--text-primary) shadow-sm focus:border-(--brand-main) focus:outline-none transition placeholder:text-(--text-secondary)/50"
 const textareaClass = cn(inputClass, "min-h-40 resize-y leading-relaxed")
 const iconButtonClass =
-  "inline-flex h-10 w-10 items-center justify-center rounded-full border border-(--glass-border) bg-(--bg-surface)/80 text-(--secondary-text) shadow-sm transition hover:bg-(--bg-surface) hover:text-(--primary-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--brand-main)"
+  "inline-flex h-10 w-10 items-center justify-center rounded-full border border-(--glass-border) bg-(--bg-surface)/80 text-(--text-secondary) shadow-sm transition hover:bg-(--bg-surface) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--brand-main)"
 
 type FieldProps = {
   label: ReactNode
@@ -61,7 +61,7 @@ function Field({ label, htmlFor, children, required = false }: FieldProps) {
     <div className="space-y-2">
       <label
         htmlFor={htmlFor}
-        className="text-sm font-semibold tracking-wide text-(--secondary-text)/80"
+        className="text-sm font-semibold tracking-wide text-(--text-secondary)/80"
       >
         {label}
         {required ? <span className="ml-1 text-(--error-text)">*</span> : null}
@@ -168,7 +168,7 @@ export default function NewsDetail() {
       return {
         container: "min-h-[360px] max-h-[76vh] aspect-5/4",
         image: "object-cover object-[50%_38%]",
-        backdrop: "bg-surface/20",
+        backdrop: "bg-(--bg-surface)/20",
       }
     }
 
@@ -183,7 +183,7 @@ export default function NewsDetail() {
     return {
       container: "min-h-[300px] max-h-[68vh] aspect-video",
       image: "object-cover object-[50%_40%]",
-      backdrop: "bg-surface/20",
+      backdrop: "bg-(--bg-surface)/20",
     }
   }, [heroRatio])
 
@@ -382,7 +382,7 @@ export default function NewsDetail() {
         label: t("news:shareDialog.options.whatsapp", { defaultValue: "WhatsApp" }),
         href: `https://api.whatsapp.com/send?text=${encodedTitle}%20${encodedUrl}`,
         icon: <WhatsAppIcon className="h-4 w-4" />,
-        accent: "text-green-500",
+        accent: "text-(--success-text)",
       },
       {
         id: "email",
@@ -499,24 +499,24 @@ export default function NewsDetail() {
 
         <article className="flex w-full flex-col items-start gap-8">
           <header className="flex w-full flex-col gap-4 text-left">
-            <h1 className="max-w-5xl text-[clamp(1.6rem,4vw,2.4rem)] font-extrabold tracking-tight text-(--page-text)">
+            <h1 className="max-w-5xl text-[clamp(1.6rem,4vw,2.4rem)] font-extrabold tracking-tight text-(--text-primary)">
               {displayTitle}
             </h1>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-              <div className="flex flex-wrap items-center gap-2 text-sm text-(--secondary-text)">
+              <div className="flex flex-wrap items-center gap-2 text-sm text-(--text-secondary)">
                 {createdAt ? (
-                  <span className="inline-flex items-center gap-2 rounded-full border border-(--glass-border) bg-(--bg-surface)/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-(--secondary-text)">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-(--glass-border) bg-(--bg-surface)/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-(--text-secondary)">
                     <span>{t("news:meta.published")}</span>
                     <span aria-hidden>•</span>
-                    <time dateTime={createdAtIso} className="text-(--primary-text)">
+                    <time dateTime={createdAtIso} className="text-(--text-primary)">
                       {createdAtLabel}
                     </time>
                   </span>
                 ) : null}
 
                 {readingTimeMinutes !== null && (
-                  <span className="inline-flex items-center gap-2 rounded-full border border-(--glass-border)/20 bg-(--bg-surface)/10 px-3 py-1 text-xs font-medium tracking-wide text-(--primary-text)">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-(--glass-border)/20 bg-(--bg-surface)/10 px-3 py-1 text-xs font-medium tracking-wide text-(--text-primary)">
                     {t("news:meta.readingTime", { count: readingTimeMinutes ?? undefined })}
                   </span>
                 )}
@@ -543,14 +543,16 @@ export default function NewsDetail() {
                     <FavoriteIcon
                       className={cn(
                         "h-4 w-4",
-                        isLiked ? "fill-rose-500 text-rose-500" : "text-(--secondary-text)"
+                        isLiked
+                          ? "fill-(--error-text) text-(--error-text)"
+                          : "text-(--text-secondary)"
                       )}
                     />
                   }
                   className={cn(
                     "w-full basis-full sm:w-auto sm:basis-auto transition-colors duration-200",
                     isLiked
-                      ? "border-rose-200/30 bg-rose-500/10"
+                      ? "border-(--error-text)/20 bg-(--error-text)/10"
                       : "border-(--glass-border)/30 bg-(--bg-surface)/40"
                   )}
                 >
@@ -606,13 +608,13 @@ export default function NewsDetail() {
               />
             </div>
             {displayTitle ? null : (
-              <figcaption className="border-t border-(--glass-border) bg-(--bg-surface)/10 px-5 py-3 text-sm font-medium text-(--secondary-text)">
+              <figcaption className="border-t border-(--glass-border) bg-(--bg-surface)/10 px-5 py-3 text-sm font-medium text-(--text-secondary)">
                 {t("news:alt.heroFallback")}
               </figcaption>
             )}
           </figure>
 
-          <section className="max-w-4xl self-start space-y-6 text-lg leading-8 text-(--secondary-text)">
+          <section className="max-w-4xl self-start space-y-6 text-lg leading-8 text-(--text-secondary)">
             {content?.split(/\n{2,}/).map((chunk: string, index: number) => {
               const text = chunk.trim()
 
@@ -625,7 +627,7 @@ export default function NewsDetail() {
           <footer className="w-full max-w-4xl mt-12 border-t border-glass-border/30 pt-10">
             <div className="flex items-center gap-3 mb-8">
               <ChatBubbleOutlineIcon className="h-6 w-6 text-brand" />
-              <h2 className="text-xl font-bold text-primary-text">
+              <h2 className="text-xl font-bold text-(--text-primary)">
                 {t("news:sections.comments", { defaultValue: "Комментарии" })}
               </h2>
               <span className="px-2 py-0.5 rounded-full bg-brand/10 border border-brand/20 text-xs font-bold tabular-nums text-brand">
@@ -635,7 +637,7 @@ export default function NewsDetail() {
 
             <div className="space-y-6 mb-10">
               {comments.length === 0 ? (
-                <p className="text-secondary-text italic py-4">
+                <p className="text-(--text-secondary) italic py-4">
                   {t("news:states.noComments", {
                     defaultValue: "Пока нет ни одного комментария. Будьте первым!",
                   })}
@@ -644,14 +646,14 @@ export default function NewsDetail() {
                 comments.map((comment) => (
                   <div
                     key={comment.id}
-                    className="flex flex-col gap-2 p-4 rounded-2xl bg-surface/20 border border-glass-border/30 shadow-sm"
+                    className="flex flex-col gap-2 p-4 rounded-2xl bg-(--bg-surface)/20 border border-glass-border/30 shadow-sm"
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-sm text-(--primary-text)">
+                      <span className="font-bold text-sm text-(--text-primary)">
                         {comment.user_name}
                       </span>
                       <div className="flex items-center gap-3">
-                        <time className="text-xs text-(--secondary-text) uppercase font-semibold">
+                        <time className="text-xs text-(--text-secondary) uppercase font-semibold">
                           {getMoscowDate(comment.created_at)}
                         </time>
                         {(user?.id === comment.user_id || user?.role === "admin") && (
@@ -661,7 +663,7 @@ export default function NewsDetail() {
                                 setEditingCommentId(comment.id)
                                 setEditingCommentText(comment.content)
                               }}
-                              className="p-1.5 rounded-full hover:bg-surface/60 text-secondary-text hover:text-primary-text transition-colors"
+                              className="p-1.5 rounded-full hover:bg-(--bg-surface)/60 text-(--text-secondary) hover:text-(--text-primary) transition-colors"
                               title={t("news:actions.editComment", { defaultValue: "Edit" }) ?? ""}
                             >
                               <EditIcon className="h-3.5 w-3.5" />
@@ -678,7 +680,7 @@ export default function NewsDetail() {
                                   void deleteComment(comment.id)
                                 }
                               }}
-                              className="p-1.5 rounded-full hover:bg-rose-500/10 text-rose-500 hover:text-rose-400 transition-colors"
+                              className="p-1.5 rounded-full hover:bg-(--error-text)/10 text-(--error-text) hover:text-(--error-text)/80 transition-colors"
                               title={
                                 t("news:actions.deleteComment", { defaultValue: "Delete" }) ?? ""
                               }
@@ -720,7 +722,7 @@ export default function NewsDetail() {
                         </div>
                       </div>
                     ) : (
-                      <p className="text-base leading-relaxed whitespace-pre-wrap">
+                      <p className="text-base leading-relaxed whitespace-pre-wrap text-(--text-primary)">
                         {comment.content}
                       </p>
                     )}
@@ -768,7 +770,7 @@ export default function NewsDetail() {
       >
         <DialogTitle>{t("news:shareDialog.title")}</DialogTitle>
         <DialogContent className="space-y-6 pt-4">
-          <p className="text-base leading-relaxed text-(--secondary-text)">
+          <p className="text-base leading-relaxed text-(--text-secondary)">
             {t("news:shareDialog.description")}
           </p>
 
@@ -788,7 +790,7 @@ export default function NewsDetail() {
                     option.id === "telegram"
                       ? "text-(--brand-main)"
                       : option.id === "whatsapp"
-                        ? "text-green-500"
+                        ? "text-success-text"
                         : "text-(--brand-main)/80"
                   )}
                 >
@@ -800,7 +802,7 @@ export default function NewsDetail() {
                     <AlternateEmailIcon className="h-5 w-5" />
                   )}
                 </span>
-                <span className="text-sm font-semibold text-(--primary-text)">{option.label}</span>
+                <span className="text-sm font-semibold text-(--text-primary)">{option.label}</span>
               </a>
             ))}
           </div>
@@ -881,14 +883,14 @@ export default function NewsDetail() {
               </Field>
 
               <div className="space-y-3">
-                <label className="block text-sm font-semibold text-secondary-text">
+                <label className="block text-sm font-semibold text-(--text-secondary)">
                   {t("news:form.image", { defaultValue: "Cover Image" })}
                 </label>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                   <Button
                     as="label"
                     variant="outline"
-                    className="w-full sm:w-auto bg-surface/20 border-glass-border"
+                    className="w-full sm:w-auto bg-(--bg-surface)/20 border-glass-border"
                     disabled={saving}
                   >
                     <div className="flex items-center gap-2">
@@ -919,7 +921,7 @@ export default function NewsDetail() {
                     variant="ghost"
                     size="sm"
                     onClick={resetPreview}
-                    className="text-rose-500"
+                    className="text-(--error-text)"
                   >
                     {t("common:buttons.reset")}
                   </Button>
@@ -951,7 +953,7 @@ export default function NewsDetail() {
       >
         <DialogTitle>{t("news:dialogs.delete.title")}</DialogTitle>
         <DialogContent className="space-y-4">
-          <p className="text-md text-secondary-text">{t("news:dialogs.delete.description")}</p>
+          <p className="text-md text-(--text-secondary)">{t("news:dialogs.delete.description")}</p>
         </DialogContent>
         <DialogActions className="flex-col-reverse gap-3 sm:flex-row p-6">
           <Button
@@ -968,7 +970,7 @@ export default function NewsDetail() {
               void handleDelete()
             }}
             disabled={deleting}
-            className="w-full bg-linear-to-r from-red-600 to-red-700 text-white hover:from-red-700 hover:to-red-800 sm:w-auto"
+            className="absolute inset-0 bg-linear-to-t from-gray-900 via-gray-900/40 to-transparent text-white hover:from-red-700 hover:to-red-800 sm:w-auto"
           >
             <div className="flex items-center gap-2">
               <DeleteIcon className="h-4 w-4" />
@@ -984,7 +986,7 @@ export default function NewsDetail() {
           autoHideDuration={2400}
           onClose={() => setSnackbar("")}
           anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-          className="z-50"
+          className="z-(--z-navbar)"
         >
           <Alert severity="success" variant="filled" onClose={() => setSnackbar("")}>
             {snackbar}

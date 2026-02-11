@@ -29,7 +29,7 @@ function Row({ log }: { log: AuditLog }) {
       return "text-brand bg-brand/10 border-brand/20"
     if (action.includes("update") || action.includes("modify"))
       return "text-warning bg-warning/10 border-warning/20"
-    return "text-secondary-text bg-surface-hover/20 border-glass-border/10"
+    return "text-(--text-secondary) bg-(--bg-surface-hover)/20 border-glass-border/10"
   }
 
   return (
@@ -37,24 +37,24 @@ function Row({ log }: { log: AuditLog }) {
       <tr
         className={cn(
           "transition-colors group",
-          log.is_valid ? "hover:bg-surface-hover/5" : "bg-error/5 hover:bg-error/10",
-          open && "bg-surface-hover/10"
+          log.is_valid ? "hover:bg-(--bg-surface-hover)/5" : "bg-error/5 hover:bg-error/10",
+          open && "bg-(--bg-surface-hover)/10"
         )}
       >
         <td className="px-4 py-4">
           <button
             onClick={() => setOpen(!open)}
-            className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-surface-hover/20"
+            className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-(--bg-surface-hover)/20"
           >
             {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </button>
         </td>
         <td className="px-4 py-4">
           <div className="flex flex-col">
-            <span className="text-sm font-bold text-primary-text">
+            <span className="text-sm font-bold text-(--text-primary)">
               {dayjs(log.created_at).format("MMM D")}
             </span>
-            <span className="text-xs text-secondary-text opacity-70">
+            <span className="text-xs text-(--text-secondary) opacity-70">
               {dayjs(log.created_at).format("HH:mm:ss")}
             </span>
           </div>
@@ -65,10 +65,10 @@ function Row({ log }: { log: AuditLog }) {
               <User className="h-4 w-4" />
             </div>
             <div className="flex flex-col min-w-0">
-              <span className="truncate text-sm font-bold text-primary-text">
+              <span className="truncate text-sm font-bold text-(--text-primary)">
                 {log.actor_name || t("audit.details.system")}
               </span>
-              <span className="truncate text-[10px] uppercase tracking-wider text-secondary-text opacity-50">
+              <span className="truncate text-[10px] uppercase tracking-wider text-(--text-secondary) opacity-50">
                 {log.actor_user_id || "SYSTEM"}
               </span>
             </div>
@@ -85,7 +85,7 @@ function Row({ log }: { log: AuditLog }) {
           </span>
         </td>
         <td className="px-4 py-4">
-          <div className="flex items-center gap-1.5 text-sm text-secondary-text">
+          <div className="flex items-center gap-1.5 text-sm text-(--text-secondary)">
             <Activity className="h-3.5 w-3.5 opacity-50" />
             <span>{log.resource_type}</span>
           </div>
@@ -121,26 +121,26 @@ function Row({ log }: { log: AuditLog }) {
                 transition={{ duration: 0.2 }}
                 className="overflow-hidden"
               >
-                <div className="mx-4 mb-4 mt-2 rounded-2xl border border-glass-border bg-surface/50 p-6 shadow-sm">
-                  <div className="mb-4 flex items-center gap-2 text-sm font-bold text-primary-text">
+                <div className="mx-4 mb-4 mt-2 rounded-2xl border border-glass-border bg-(--bg-surface)/50 p-6 shadow-sm">
+                  <div className="mb-4 flex items-center gap-2 text-sm font-bold text-(--text-primary)">
                     <Info className="h-4 w-4 text-brand" />
                     <span>{t("audit.details.title")}</span>
                   </div>
 
                   <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
                     <div className="space-y-1">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-secondary-text opacity-50">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-(--text-secondary) opacity-50">
                         {t("audit.details.resourceId")}
                       </span>
-                      <p className="text-sm font-mono text-primary-text select-all">
+                      <p className="text-sm font-mono text-(--text-primary) select-all">
                         {log.resource_id || t("audit.details.notAvailable")}
                       </p>
                     </div>
                     <div className="space-y-1">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-secondary-text opacity-50">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-(--text-secondary) opacity-50">
                         {t("audit.details.subject")}
                       </span>
-                      <p className="text-sm text-primary-text">
+                      <p className="text-sm text-(--text-primary)">
                         {log.subject_name || t("audit.details.notAvailable")}
                         <span className="ml-1 text-xs opacity-50">
                           ({log.subject_user_id || t("audit.details.notAvailable")})
@@ -148,18 +148,18 @@ function Row({ log }: { log: AuditLog }) {
                       </p>
                     </div>
                     <div className="space-y-1">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-secondary-text opacity-50">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-(--text-secondary) opacity-50">
                         {t("audit.details.ipAddress")}
                       </span>
-                      <p className="text-sm font-mono text-primary-text">
+                      <p className="text-sm font-mono text-(--text-primary)">
                         {log.ip_address || t("audit.details.unknown")}
                       </p>
                     </div>
                     <div className="space-y-1">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-secondary-text opacity-50">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-(--text-secondary) opacity-50">
                         {t("audit.details.userAgent")}
                       </span>
-                      <p className="text-xs text-secondary-text line-clamp-1 hover:line-clamp-none transition-all cursor-help">
+                      <p className="text-xs text-(--text-secondary) line-clamp-1 hover:line-clamp-none transition-all cursor-help">
                         {log.user_agent || t("audit.details.notAvailable")}
                       </p>
                     </div>
@@ -167,7 +167,7 @@ function Row({ log }: { log: AuditLog }) {
 
                   {log.context && Object.keys(log.context).length > 0 && (
                     <div className="mt-6">
-                      <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-secondary-text opacity-50">
+                      <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-(--text-secondary) opacity-50">
                         <Terminal className="h-3 w-3" />
                         <span>{t("audit.details.executionContext")}</span>
                       </div>
@@ -234,10 +234,10 @@ export default function AdminAudit() {
             animate={{ opacity: 1, y: 0 }}
             className="mb-8"
           >
-            <h1 className="text-4xl font-bold tracking-tight text-primary-text sm:text-5xl">
+            <h1 className="text-4xl font-bold tracking-tight text-(--text-primary) sm:text-5xl">
               {t("audit.title")}
             </h1>
-            <p className="mt-2 text-base text-secondary-text">{t("audit.subtitle")}</p>
+            <p className="mt-2 text-base text-(--text-secondary)">{t("audit.subtitle")}</p>
           </motion.div>
 
           {/* Filters */}
@@ -268,7 +268,7 @@ export default function AdminAudit() {
             />
           </SectionCard>
 
-          <div className="overflow-hidden rounded-3xl border border-glass-border bg-surface/40 shadow-glass">
+          <div className="overflow-hidden rounded-3xl border border-glass-border bg-(--bg-surface)/40 shadow-glass">
             {loading && logs.length === 0 ? (
               <div className="flex justify-center p-20">
                 <div className="h-10 w-10 animate-spin rounded-full border-4 border-brand border-t-transparent" />
@@ -278,21 +278,21 @@ export default function AdminAudit() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
                     <thead>
-                      <tr className="border-b border-glass-border/10 bg-surface-hover/20">
+                      <tr className="border-b border-glass-border/10 bg-(--bg-surface-hover)/20">
                         <th className="w-12 px-4 py-4" />
-                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
                           {t("audit.table.time")}
                         </th>
-                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
                           {t("audit.table.actor")}
                         </th>
-                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
                           {t("audit.table.action")}
                         </th>
-                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
                           {t("audit.table.target")}
                         </th>
-                        <th className="px-4 py-4 text-center text-xs font-bold uppercase tracking-wider text-secondary-text opacity-70">
+                        <th className="px-4 py-4 text-center text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
                           {t("audit.table.integrity")}
                         </th>
                       </tr>
@@ -309,8 +309,8 @@ export default function AdminAudit() {
 
                 {/* Pagination placeholder as standard table pagination is complex to rewrite from scratch,
                     using a simple layout for now or keeping it minimal */}
-                <div className="flex items-center justify-between border-t border-glass-border/10 bg-surface/20 px-6 py-4">
-                  <div className="text-sm text-secondary-text">
+                <div className="flex items-center justify-between border-t border-glass-border/10 bg-(--bg-surface)/20 px-6 py-4">
+                  <div className="text-sm text-(--text-secondary)">
                     {t("audit.pagination.total", { count: total })}
                   </div>
                   <div className="flex gap-2">
@@ -322,7 +322,7 @@ export default function AdminAudit() {
                     >
                       {t("audit.pagination.previous")}
                     </Button>
-                    <span className="flex items-center px-4 text-sm font-medium text-primary-text">
+                    <span className="flex items-center px-4 text-sm font-medium text-(--text-primary)">
                       {t("audit.pagination.page", { current: page + 1 })}
                     </span>
                     <Button

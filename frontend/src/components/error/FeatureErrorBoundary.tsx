@@ -47,11 +47,11 @@ function FeatureErrorFallback({
   return (
     <div
       role="alert"
-      className="flex flex-col items-center justify-center gap-3 rounded-xl border border-[color:var(--page-text)]/10 bg-[color:var(--glass-bg)] p-6 text-center"
+      className="flex flex-col items-center justify-center gap-3 rounded-xl border border-(--text-primary)/10 bg-(--glass-bg) p-6 text-center"
     >
-      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/20">
+      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-warning-bg/20 text-warning-text">
         <svg
-          className="h-5 w-5 text-amber-400"
+          className="h-5 w-5 text-warning-text"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -65,17 +65,13 @@ function FeatureErrorFallback({
         </svg>
       </div>
       <div>
-        <p className="text-sm font-medium text-[color:var(--page-text)]">
+        <h3 className="text-sm font-bold text-[--text-primary]">
           {featureName ? `${featureName} unavailable` : "Feature unavailable"}
-        </p>
-        <p className="text-xs text-[color:var(--page-text)]/60">Something went wrong</p>
+        </h3>
+        <p className="text-xs text-[--text-primary]/60">Something went wrong</p>
       </div>
-      <button
-        type="button"
-        onClick={onRetry}
-        className="text-sm font-medium text-[color:var(--accent)] hover:underline"
-      >
-        Try again
+      <button type="button" onClick={onRetry} className="hover:underline">
+        <span className="text-xs font-black text-[--accent]">Try again</span>
       </button>
     </div>
   )

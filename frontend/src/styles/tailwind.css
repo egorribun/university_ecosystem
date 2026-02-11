@@ -19,11 +19,12 @@
   --color-glass-elevated: var(--glass-bg-elevated);
 
   /* Typography */
-  --color-primary-text: var(--text-primary);
-  --color-secondary-text: var(--text-secondary);
-  --color-tertiary-text: var(--text-tertiary);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
   --color-inverse-text: var(--text-inverse);
   --color-text-muted-subtle: var(--text-muted-subtle);
+  --color-primary-text: var(--primary-text);
 
   /* Borders */
   --color-border-subtle: var(--border-subtle);
@@ -51,32 +52,8 @@
   --brand-rgb: var(--primary-main-rgb);
   --brand-hover-rgb: var(--primary-hover-rgb);
 
-  /* Radius Scale Tokens */
-  --radius-xs: var(--radius-xs);
-  --radius-sm: var(--radius-sm);
-  --radius-md: var(--radius-md);
-  --radius-lg: var(--radius-lg);
-  --radius-full: var(--radius-full);
+  /* Radius — sourced from theme.css :root, only fluid override here */
   --radius-fluid-lg: var(--fluid-radius-lg);
-
-  /* UE Specific Radius (Semantic) */
-  --radius-ue-xs: var(--radius-xs);
-  --radius-ue-sm: var(--radius-sm);
-  --radius-ue-md: var(--radius-md);
-  --radius-ue-lg: var(--radius-lg);
-  --radius-ue-xl: 2rem;
-  --radius-ue-2xl: 3rem;
-
-  /*
-   * LEGACY MAPPINGS (Temporary for backward compatibility)
-   * These map old utility names to new tokens where possible
-   */
-  --color-nav: var(--bg-surface);
-  --color-nav-text: var(--text-primary);
-  --color-nav-link: var(--primary-main);
-  --color-nav-hover: var(--primary-hover);
-  --color-button: var(--primary-main);
-  --color-button-border: var(--primary-main);
 
   /* Component Dimensions */
   --story-card-w: min(92vw, 420px);
@@ -84,6 +61,8 @@
   --mobile-menu-w: 300px;
   --news-card-h-mobile: 400px;
   --news-card-h-desktop: 480px;
+  --news-hero-h: 12.5rem;
+  --news-hero-h-md: 13.75rem;
 
   /* Spacing Scale */
   --spacing-xs: var(--space-2);
@@ -117,26 +96,18 @@
 
   /* Shadows */
   --shadow-glass: var(--glass-shadow);
-  --shadow-focus: var(--shadow-focus);
+  --shadow-focus: 0 0 0 2px var(--bg-page), 0 0 0 4px var(--primary-main);
   --shadow-premium-lift: 0 20px 40px -12px rgba(var(--brand-rgb), 0.25);
-  --shadow-up: var(--shadow-up, 0 -4px 12px rgba(0, 0, 0, 0.05));
+  --shadow-up: 0 -4px 12px rgba(0, 0, 0, 0.05);
 
-  /* Layout & Z-Index */
-  --z-navbar: var(--z-navbar);
-  --z-overlay: var(--z-overlay);
-  --z-modal: var(--z-modal);
-  --z-toast: var(--z-toast);
-  --z-sidebar: var(--z-sidebar);
-  --z-tooltip: var(--z-tooltip);
-  --z-popover: var(--z-popover);
-  --z-sticky: var(--z-sticky);
+  /* Z-Index — sourced from theme.css :root (14-item scale) */
 
   --navbar-height: var(--navbar-h-base);
   --navbar-height-scrolled: var(--navbar-h-scrolled);
 
   /* Gradients */
-  --bg-gradient-brand: var(--gradient-brand);
-  --bg-gradient-news-hero: var(--grad-news-hero);
+  --bg-linear-brand: var(--gradient-brand);
+  --bg-linear-news-hero: var(--grad-news-hero);
 
   /* Screens / Breakpoints */
   --breakpoint-mobile: 768px;
@@ -145,10 +116,19 @@
   --breakpoint-wide: 1350px;
 
   /* Glass Tints & Effects */
-  --color-glass-tint1: var(--glass-tint-1);
-  --color-glass-tint2: var(--glass-tint-2);
-  --color-glass-tint3: var(--glass-tint-3);
+  --color-glass-tint1: var(--glass-tint1);
+  --color-glass-tint2: var(--glass-tint2);
+  --color-glass-tint3: var(--glass-tint3);
   --blur-glass: var(--glass-blur);
+
+  /* Messenger Utilities */
+  --color-msg-sidebar: var(--msg-sidebar-bg);
+  --color-msg-chat: var(--msg-chat-bg);
+  --color-msg-header: var(--msg-header-bg);
+  --color-msg-border: var(--msg-header-border);
+  --color-msg-hover: var(--msg-sidebar-hover);
+  --color-msg-active: var(--msg-sidebar-active);
+  --color-msg-online: var(--msg-online-color);
 
   /* Animations & Keyframes */
   --animate-fade-in: fade-in var(--anim-med, 0.3s cubic-bezier(0.42, 0, 0.58, 1)) both;
@@ -169,24 +149,18 @@
   --dash-hero-radial-bottom: var(--dash-hero-radial-bottom, transparent);
   --dash-hero-orb: var(--dash-hero-orb);
   --dash-hero-pulse: var(--dash-hero-highlight);
-  --dash-hero-conic-primary: #38bdf8;
-  --dash-hero-conic-secondary: #818cf8;
-  --dash-hero-conic-tertiary: #c084fc;
-  --dash-hero-conic-accent: #f472b6;
+  --dash-hero-conic-primary: var(--dash-conic-1);
+  --dash-hero-conic-secondary: var(--dash-conic-2);
+  --dash-hero-conic-tertiary: var(--dash-conic-3);
+  --dash-hero-conic-accent: var(--dash-conic-accent);
 
   /* Premium UI Gradients */
-  --bg-nav-light:
-    radial-gradient(120% 180% at -10% -20%, rgba(36, 145, 255, 0.12), transparent 58%),
-    linear-gradient(112deg, #ffffff 0%, #f8fafc 100%);
-  --bg-nav-dark:
-    radial-gradient(120% 180% at -10% -20%, rgba(56, 189, 248, 0.16), transparent 58%),
-    linear-gradient(112deg, #0a1524 0%, #0b2b47 100%);
+  --bg-nav-light: var(--grad-nav-light);
+  --bg-nav-dark: var(--grad-nav-dark);
   --bg-footer-light:
     radial-gradient(120% 180% at -10% -20%, rgba(36, 145, 255, 0.14), transparent 60%),
     linear-gradient(112deg, var(--primary-main) 0%, var(--primary-hover) 100%);
-  --bg-footer-dark:
-    radial-gradient(120% 180% at -10% -20%, rgba(105, 169, 220, 0.16), transparent 58%),
-    linear-gradient(112deg, #0a1524 0%, #0b2b47 100%);
+  --bg-footer-dark: var(--grad-nav-dark);
 
   @keyframes navbar-fade-in {
     from {
@@ -315,18 +289,6 @@
     }
   }
 
-  @keyframes msg-bubble-in {
-    from {
-      opacity: 0;
-      transform: translateY(10px) scale(0.95);
-    }
-
-    to {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-    }
-  }
-
   @keyframes msg-send-pulse {
     0% {
       transform: scale(1);
@@ -344,11 +306,11 @@
   @keyframes pulse-shadow {
     0%,
     100% {
-      box-shadow: 0 4px 16px -4px color-mix(in srgb, var(--nav-link) 40%, transparent 60%);
+      box-shadow: 0 4px 16px -4px color-mix(in srgb, var(--primary-main) 40%, transparent 60%);
     }
 
     50% {
-      box-shadow: 0 6px 24px -4px color-mix(in srgb, var(--nav-link) 55%, transparent 45%);
+      box-shadow: 0 6px 24px -4px color-mix(in srgb, var(--primary-main) 55%, transparent 45%);
     }
   }
 }
@@ -357,7 +319,7 @@
   margin-left: auto;
   margin-right: auto;
   width: 100%;
-  max-width: 1700px;
+  max-width: var(--container-max, 1700px);
   padding-inline: clamp(1rem, 5vw, 4rem);
 }
 
@@ -388,7 +350,7 @@
   text-decoration: none;
   opacity: 0.8;
   padding: 0.25rem 0;
-  font-size: 14px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   transition: all 0.2s ease;
 
@@ -400,7 +362,7 @@
 
 @layer base {
   body {
-    @apply min-h-dvh text-primary-text antialiased;
+    @apply min-h-dvh text-(--text-primary) antialiased;
     font-family: var(--font-ui);
     font-size: var(--fs-body);
     line-height: 1.6;
@@ -419,14 +381,20 @@
   h4,
   h5,
   h6 {
-    @apply font-display tracking-tight;
+    @apply font-display tracking-tight text-(--text-primary);
+  }
+
+  ::selection {
+    background: var(--primary-main);
+    color: var(--color-white);
   }
 }
 
 @layer components {
   /* Premium Glass Card - Elevated */
   .card-glass {
-    @apply relative overflow-hidden rounded-4xl border border-glass-border bg-glass backdrop-blur-2xl shadow-glass transition-all;
+    @apply relative overflow-hidden rounded-4xl border border-glass-border bg-glass backdrop-blur-2xl shadow-glass;
+    transition-property: background-color, border-color, box-shadow, opacity, transform;
     transition-duration: 500ms;
     transition-timing-function: var(--ease-premium);
   }
@@ -451,11 +419,9 @@
     @apply scale-[0.98] translate-y-0 shadow-glass;
   }
 
-  /* Fluid Layout Container moved to @utility above */
-
   /* Skeleton with organic pulse */
   .skeleton {
-    @apply relative overflow-hidden rounded-ue-md bg-slate-200/40 dark:bg-slate-800/40;
+    @apply relative overflow-hidden rounded-md bg-(--bg-page)/40 dark:bg-(--bg-page)/60;
   }
 
   .skeleton::after {
@@ -478,21 +444,30 @@
       transparent 100%
     );
   }
+
+  /* Skip-link for keyboard navigation */
+  .skip-link {
+    @apply sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-(--z-navbar) focus:px-6 focus:py-3 focus:rounded-xl focus:bg-glass focus:text-brand focus:font-bold focus:shadow-glass focus:backdrop-blur-xl focus:border focus:border-glass-border focus:outline-none focus:ring-2 focus:ring-brand duration-300;
+    transition-property: opacity, transform;
+  }
 }
 
 @layer utilities {
   .glass-high-fidelity {
-    @apply border border-glass-border bg-surface/60 shadow-glass backdrop-blur-3xl;
+    @apply border border-glass-border bg-(--bg-surface)/60 shadow-glass backdrop-blur-3xl;
   }
 
   .surface-raised {
-    @apply bg-surface-raised shadow-sm border border-border-subtle;
+    @apply bg-(--bg-surface-raised) shadow-sm border border-border-subtle;
   }
 
   .dash-panel-schedule,
   .dash-panel-news,
   .dash-panel-events {
-    @apply bg-glass border-glass-border shadow-glass transition-all;
+    @apply bg-glass border-glass-border shadow-glass;
+    transition-property: background-color, border-color, box-shadow, opacity;
+    transition-duration: 300ms;
+    transition-timing-function: var(--ease-premium);
     position: relative;
     overflow: hidden;
   }
@@ -542,26 +517,5 @@
 
   .animate-msg-bubble-in {
     animation: msg-bubble-in 0.5s var(--ease-back-out) forwards;
-  }
-
-  @keyframes dash-colon-blink {
-    0%,
-    100% {
-      opacity: 1;
-    }
-
-    50% {
-      opacity: 0.3;
-    }
-  }
-
-  .animate-dash-colon-blink {
-    animation: dash-colon-blink 2s var(--ease-premium) infinite;
-  }
-}
-
-@layer components {
-  .skip-link {
-    @apply sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-6 focus:py-3 focus:rounded-xl focus:bg-glass focus:text-brand focus:font-bold focus:shadow-glass focus:backdrop-blur-xl focus:border focus:border-glass-border focus:outline-none focus:ring-2 focus:ring-brand transition-all duration-300;
   }
 }

@@ -18,6 +18,7 @@ import {
   Snackbar,
 } from "@/components/settings"
 import { motion, useReducedMotion } from "framer-motion"
+import { breakpoints } from "@/theme/tokens"
 
 import { useNowPlaying } from "@/hooks/useNowPlaying"
 import { addVersionParam, resolveMediaUrl } from "@/utils/media"
@@ -60,7 +61,7 @@ export default function Profile() {
   const isMobile =
     typeof window !== "undefined" &&
     typeof window.matchMedia === "function" &&
-    window.matchMedia("(max-width: 600px)").matches
+    window.matchMedia(`(max-width: ${breakpoints.mobile})`).matches
   const reduced = useReducedMotion()
   const { t } = useTranslation(["profile", "common"])
   const [qrOpen, setQrOpen] = useState(false)
@@ -320,10 +321,10 @@ export default function Profile() {
       <Dialog open={qrOpen} onClose={() => setQrOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle className="text-center">{t("profile:dialog.qr.title")}</DialogTitle>
         <DialogContent className="flex flex-col items-center justify-center gap-3 min-h-[320px]">
-          <div className="bg-white p-4 rounded-2xl border border-glass-border shadow-glass">
+          <div className="bg-surface p-4 rounded-2xl border border-glass-border shadow-glass">
             <QRCodeSVG value={vCardData} size={300} level="H" includeMargin />
           </div>
-          <p className="text-xs text-secondary-text text-center mt-2 opacity-80">
+          <p className="text-xs text-(--text-secondary) text-center mt-2 opacity-80">
             {t("profile:dialog.qr.hint")}
           </p>
         </DialogContent>
@@ -348,7 +349,7 @@ export default function Profile() {
               <span className="text-[10px] font-bold uppercase tracking-wider text-brand opacity-70">
                 {t("profile:fields.organizer")}
               </span>
-              <p className="text-primary-text font-medium">{achievementOpen.issuer}</p>
+              <p className="text-(--text-primary) font-medium">{achievementOpen.issuer}</p>
             </div>
           )}
           {achievementOpen?.url && (

@@ -120,11 +120,11 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
   return (
     <div className="w-full">
       <div className="flex flex-col gap-6 items-stretch">
-        <h3 className="text-lg font-black tracking-tight text-center text-primary-text">
+        <h3 className="text-lg font-black tracking-tight text-center text-(--text-primary)">
           {t("mfa.otp.methods.totp")}
         </h3>
 
-        <p className="text-sm text-center text-secondary-text font-medium leading-relaxed">
+        <p className="text-sm text-center text-(--text-secondary) font-medium leading-relaxed">
           {t("mfa.otp.descriptions.totp")}
         </p>
 
@@ -153,15 +153,15 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
               onBlur={() => setFocusedIndex(null)}
               className={cn(
                 "w-11 h-14 sm:w-14 sm:h-18 text-center text-2xl font-black rounded-2xl",
-                "bg-surface-raised/40 text-primary-text border-2 transition-all duration-300",
+                "bg-(--bg-surface-raised)/40 text-(--text-primary) border-2 transition-all duration-300",
                 "focus:outline-none backdrop-blur-md shadow-sm",
                 derivedError
-                  ? "border-rose-500/50 focus:border-rose-500 focus:ring-4 focus:ring-rose-500/10"
+                  ? "border-error-border/50 focus:border-error-border focus:ring-4 focus:ring-error-border/10"
                   : focusedIndex === index
                     ? "border-brand ring-4 ring-brand/10 scale-105 shadow-brand/10 shadow-lg"
                     : digit
                       ? "border-brand/40 bg-brand/5"
-                      : "border-glass-border/20 hover:border-glass-border/40 hover:bg-surface-hover/5",
+                      : "border-glass-border/20 hover:border-glass-border/40 hover:bg-(--bg-surface-hover)/5",
                 "disabled:opacity-40 disabled:cursor-not-allowed disabled:grayscale"
               )}
               aria-invalid={derivedError ? "true" : "false"}
@@ -171,13 +171,16 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
 
         {derivedError ? (
           <div className="flex items-center justify-center gap-2 animate-bounce">
-            <ShieldAlert className="h-4 w-4 text-rose-500" />
-            <p id={errorId} className="text-xs font-bold text-rose-500">
+            <ShieldAlert className="h-4 w-4 text-error-text" />
+            <p id={errorId} className="text-xs font-bold text-error-text">
               {derivedError}
             </p>
           </div>
         ) : derivedHelperText ? (
-          <p id={helperId} className="text-xs font-bold text-center text-secondary-text opacity-60">
+          <p
+            id={helperId}
+            className="text-xs font-bold text-center text-(--text-secondary) opacity-60"
+          >
             {derivedHelperText}
           </p>
         ) : null}

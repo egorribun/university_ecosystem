@@ -4,7 +4,7 @@ import { Skeleton } from "@/components/ui"
 const NewsCardSkeleton = () => {
   return (
     <article
-      className="relative flex h-full flex-col overflow-hidden rounded-ue-xl border border-white/12 bg-input-mix text-(--page-text) shadow-surface"
+      className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-white/12 bg-input-mix text-(--text-primary) shadow-surface"
       style={{ maxWidth: "500px", width: "100%" }}
     >
       <Skeleton width="100%" height="220px" className="h-[180px] sm:h-[220px]" aria-hidden />

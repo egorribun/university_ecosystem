@@ -223,14 +223,14 @@ export default function LivePushToasts() {
   }[severity]
 
   const severityClasses = {
-    success: "bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400",
-    info: "bg-blue-500/10 border-blue-500/20 text-blue-600 dark:text-blue-400",
-    warning: "bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400",
-    error: "bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400",
+    success: "bg-success-bg/10 border-success-border/20 text-success-text",
+    info: "bg-info-bg/10 border-info-border/20 text-info-text",
+    warning: "bg-warning-bg/10 border-warning-border/20 text-warning-text",
+    error: "bg-error-bg/10 border-error-border/20 text-error-text",
   }[severity]
 
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] w-full max-w-sm px-6 pointer-events-none">
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-(--z-toast) w-full max-w-sm px-6 pointer-events-none">
       <AnimatePresence>
         {open && current && (
           <motion.div

@@ -8,6 +8,7 @@ import { Button, TextField, SectionCard, Chip } from "@/components/settings"
 import { motion, AnimatePresence } from "framer-motion"
 import { Mail as EmailIcon, ChevronLeft, Send as SendIcon, CheckCircle2 } from "lucide-react"
 import { Input } from "@/components/ui"
+import { breakpoints } from "@/theme/tokens"
 
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const COMMON_EMAIL_DOMAINS = [
@@ -77,7 +78,7 @@ export default function ForgotPassword() {
   const [emailSuggestion, setEmailSuggestion] = useState<string | null>(null)
   const [cooldown, setCooldown] = useState(0)
   const emailInputRef = useRef<HTMLInputElement | null>(null)
-  const isMobile = useMediaQuery("(max-width:600px)")
+  const isMobile = useMediaQuery(`(max-width: ${breakpoints.mobile})`)
   const emailValid = useMemo(() => email.length === 0 || emailRe.test(email), [email])
 
   useEffect(() => {
@@ -144,25 +145,25 @@ export default function ForgotPassword() {
   }
 
   return (
-    <div className="min-h-screen bg-(--page-bg) text-(--page-text) flex items-center justify-center p-6 relative overflow-hidden">
+    <div className="min-h-screen bg-(--bg-page) text-(--text-primary) flex items-center justify-center p-6 relative overflow-hidden">
       {/* Background decorative elements */}
       <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-20">
-        <div className="absolute top-[-10%] left-[-5%] w-[40%] h-[40%] bg-brand/30 rounded-full blur-[120px]" />
-        <div className="absolute bottom-[-10%] right-[-5%] w-[40%] h-[40%] bg-brand/20 rounded-full blur-[120px]" />
+        <div className="absolute top-[-10%] left-[-5%] w-[40%] h-[40%] bg-(--glow-spotlight-primary) rounded-full blur-(--glow-blur-massive)" />
+        <div className="absolute bottom-[-10%] right-[-5%] w-[40%] h-[40%] bg-(--glow-spotlight-secondary) rounded-full blur-(--glow-blur-massive)" />
       </div>
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-[440px] z-10"
+        className="w-full max-w-[440px] z-(--z-modal)"
       >
         <SectionCard className="p-8 sm:p-10 border-glass-border shadow-2xl backdrop-blur-2xl">
           <div className="space-y-8">
             <div className="text-center space-y-2">
-              <h1 className="text-3xl font-black tracking-tight text-primary-text sm:text-4xl">
+              <h1 className="text-3xl font-black tracking-tight text-(--text-primary) sm:text-4xl">
                 {t("auth:forgot.title")}
               </h1>
-              <p className="text-sm text-secondary-text font-medium">
+              <p className="text-sm text-(--text-secondary) font-medium">
                 {forgotStatus === "success"
                   ? t("auth:forgot.successSent")
                   : t("auth:forgot.subtitle")}
@@ -178,18 +179,18 @@ export default function ForgotPassword() {
                   className="space-y-6 pt-4"
                 >
                   <div className="flex justify-center">
-                    <div className="h-20 w-20 rounded-3xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+                    <div className="h-20 w-20 rounded-3xl bg-success-bg/20 flex items-center justify-center text-success-text">
                       <CheckCircle2 className="h-10 w-10" />
                     </div>
                   </div>
                   <div className="text-center space-y-4">
-                    <p className="text-[15px] leading-relaxed text-secondary-text">
+                    <p className="text-[15px] leading-relaxed text-(--text-secondary)">
                       <Trans
                         ns="auth"
                         i18nKey="forgot.success"
                         values={{ email }}
                         components={{
-                          strong: <span className="font-extrabold text-primary-text" />,
+                          strong: <span className="font-extrabold text-(--text-primary)" />,
                         }}
                       />
                     </p>
@@ -211,7 +212,7 @@ export default function ForgotPassword() {
                       variant="ghost"
                       onClick={resetRequest}
                       disabled={cooldown > 0}
-                      className="w-full text-secondary-text hover:text-primary-text"
+                      className="w-full text-(--text-secondary) hover:text-(--text-primary)"
                     >
                       {t("auth:forgot.enterAnother")}
                       {cooldown > 0 ? ` (${cooldown}s)` : ""}
@@ -263,9 +264,12 @@ export default function ForgotPassword() {
                     </div>
 
                     {forgotErrorMessage && (
-                      <p className="text-sm font-bold text-rose-500 text-center animate-bounce">
+                      <div
+                        className="min-h-6 text-center text-sm font-semibold text-error-text animate-bounce"
+                        aria-live="assertive"
+                      >
                         {forgotErrorMessage}
-                      </p>
+                      </div>
                     )}
 
                     <div className="space-y-4 pt-2">
@@ -283,7 +287,7 @@ export default function ForgotPassword() {
                       <div className="pt-2 text-center">
                         <Link
                           to="/login"
-                          className="inline-flex items-center gap-2 text-sm font-bold text-secondary-text hover:text-brand transition-colors group"
+                          className="inline-flex items-center gap-2 text-sm font-bold text-(--text-secondary) hover:text-brand transition-colors group"
                         >
                           <ChevronLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
                           {t("auth:actions.backToLogin")}

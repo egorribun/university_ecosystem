@@ -9,7 +9,7 @@ export interface ScrollRestorationApi {
   isSamePath: (target: string) => boolean
 }
 
-type ScrollBehavior = "auto" | "smooth"
+export type ScrollBehavior = "auto" | "smooth"
 
 export default function useScrollRestoration(currentPath: string): ScrollRestorationApi {
   const {

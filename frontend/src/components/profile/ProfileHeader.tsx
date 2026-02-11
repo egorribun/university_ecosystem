@@ -59,7 +59,7 @@ export const ProfileHeader = ({
     <div className="flex flex-col gap-4 sm:gap-5 md:gap-6 lg:gap-8 items-stretch">
       {/* Hero Card with Cover and Avatar */}
       <div
-        className="relative rounded-xl sm:rounded-2xl md:rounded-3xl overflow-hidden min-h-[280px] xs:min-h-[300px] sm:min-h-[320px] md:min-h-[340px] lg:min-h-[360px] xl:min-h-[380px] flex items-end justify-center bg-surface-alt/10 shadow-glass border border-glass-border/20"
+        className="relative rounded-xl sm:rounded-2xl md:rounded-3xl overflow-hidden min-h-[280px] xs:min-h-[300px] sm:min-h-[320px] md:min-h-[340px] lg:min-h-[360px] xl:min-h-[380px] flex items-end justify-center bg-glass-bg shadow-glass border-glass-border"
         style={{ paddingBottom: heroPaddingBottom }}
       >
         {/* Cover Image with Parallax */}
@@ -89,7 +89,7 @@ export const ProfileHeader = ({
           className="absolute left-1/2 top-8 xs:top-10 sm:top-12 md:top-14 -translate-x-1/2 flex items-center justify-center p-0.5 sm:p-1"
           style={{ width: avatarSize, height: avatarSize }}
         >
-          <div className="relative w-full h-full rounded-full bg-white/10 overflow-hidden shadow-2xl ring-2 ring-white/50 backdrop-blur-sm">
+          <div className="relative w-full h-full rounded-full bg-white/10 overflow-hidden shadow-2xl ring-2 ring-white/50 backdrop-blur-glass">
             <SmartImage
               srcRaw={user?.avatar_url ?? undefined}
               fallback={DEFAULT_AVATAR}
@@ -129,22 +129,23 @@ export const ProfileHeader = ({
       </div>
 
       {/* Stats Panel */}
-      <div className="grid grid-cols-2 gap-4 rounded-xl sm:rounded-2xl md:rounded-3xl p-4 bg-(--bg-surface)/30 border border-(--glass-border)/10 backdrop-blur-sm shadow-glass">
-        <div className="flex flex-col items-center justify-center py-2 text-center border-r border-(--glass-border)/10">
+      {/* Stats Panel */}
+      <div className="grid grid-cols-2 gap-4 rounded-xl sm:rounded-2xl md:rounded-3xl p-4 bg-glass-bg border-glass-border backdrop-blur-glass shadow-glass">
+        <div className="flex flex-col items-center justify-center py-2 text-center border-r border-glass-border">
           <span className="text-xl font-bold text-(--brand-main)">{user?.course || "—"}</span>
-          <span className="text-[10px] font-bold uppercase tracking-widest text-(--secondary-text) opacity-60">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-(--text-secondary) opacity-60">
             {t("profile:labels.course")}
           </span>
         </div>
         <div className="flex flex-col items-center justify-center py-2 text-center">
-          <div className="relative z-2">
+          <div className="relative z-(--z-deep)">
             <div className="flex items-center gap-1">
               <span className="text-xl font-bold text-(--brand-main)">
                 {user?.record_book_number || "—"}
               </span>
             </div>
           </div>
-          <span className="text-[10px] font-bold uppercase tracking-widest text-(--secondary-text) opacity-60">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-(--text-secondary) opacity-60">
             {t("profile:labels.recordBook")}
           </span>
         </div>
@@ -157,7 +158,7 @@ export const ProfileHeader = ({
           leadingIcon={<EmailIcon className="shrink-0" />}
           onClick={onEmailClick}
           ref={emailButtonRef}
-          className="justify-start h-12 rounded-xl bg-(--bg-surface)/20 border border-(--glass-border)/10 hover:bg-(--bg-surface)/40 hover:border-(--brand-main)/30"
+          className="justify-start h-12 rounded-xl bg-glass-bg border-glass-border hover:bg-glass-tint1 hover:border-brand/30"
         >
           <span className="truncate text-sm font-medium">
             {user?.email || t("profile:placeholders.email")}
@@ -169,7 +170,7 @@ export const ProfileHeader = ({
             leadingIcon={<TelegramIcon className="shrink-0" />}
             onClick={onTelegramClick}
             ref={telegramButtonRef}
-            className="justify-start h-12 rounded-xl bg-(--bg-surface)/20 border border-(--glass-border)/10 hover:bg-(--bg-surface)/40 hover:border-(--brand-main)/30"
+            className="justify-start h-12 rounded-xl bg-glass-bg border-glass-border hover:bg-glass-tint1 hover:border-brand/30"
           >
             <span className="truncate text-sm font-medium">
               {user?.telegram || t("profile:placeholders.telegram")}
@@ -180,7 +181,7 @@ export const ProfileHeader = ({
 
       {/* vCard QR Section */}
       <SectionCard className="p-5 flex flex-col gap-4">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-(--secondary-text) opacity-60 flex items-center gap-2">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-60 flex items-center gap-2">
           <QrCodeIcon className="h-3.5 w-3.5" />
           {t("profile:labels.vcard")}
         </h2>
@@ -194,7 +195,7 @@ export const ProfileHeader = ({
             <QRCodeSVG value={vCardData} size={64} />
           </button>
           <div className="flex flex-col gap-2">
-            <p className="text-xs text-secondary-text leading-relaxed">
+            <p className="text-xs text-(--text-secondary) leading-relaxed">
               {t("profile:tooltips.scanToSave")}
             </p>
             <Button

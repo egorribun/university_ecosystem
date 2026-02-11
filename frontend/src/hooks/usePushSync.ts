@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react"
-import { logWarning } from "@/app/logger"
+import { logWarning, logDebug, logError } from "@/app/logger"
 
 /**
  * Global push subscription sync hook.
@@ -27,8 +27,6 @@ export function usePushSync(isAuthenticated: boolean) {
 
     const syncPush = async () => {
       try {
-        // console.log("[usePushSync] Starting push sync...")
-
         // Dynamically import to avoid loading push code when not needed
         const {
           isPushSupported,
@@ -41,33 +39,28 @@ export function usePushSync(isAuthenticated: boolean) {
 
         // Check if push is supported
         if (!isPushSupported()) {
-          console.log("[usePushSync] Push not supported")
+          if (import.meta.env.DEV) logDebug("[usePushSync] Push not supported")
           return
         }
         if (typeof Notification === "undefined") {
-          console.log("[usePushSync] Notification API undefined")
+          if (import.meta.env.DEV) logDebug("[usePushSync] Notification API undefined")
           return
         }
 
-        // console.log("[usePushSync] Notification.permission:", Notification.permission)
-        // console.log("[usePushSync] hasPushConsent before recover:", hasPushConsent())
-
         // Try to recover consent if localStorage was cleared
         const recovered = await recoverPushConsentFromBrowser()
-        // console.log("[usePushSync] Recovered consent:", recovered)
 
         if (cancelled) return
 
         const hasConsent = hasPushConsent()
-        // console.log("[usePushSync] hasPushConsent after recover:", hasConsent)
 
         // If we have consent (either existing or recovered), sync the subscription
         if (recovered || hasConsent) {
-          console.log("[usePushSync] Syncing subscription with server...")
+          if (import.meta.env.DEV) logDebug("[usePushSync] Syncing subscription with server...")
           await softSyncPushSubscription()
-          console.log("[usePushSync] Sync complete")
+          if (import.meta.env.DEV) logDebug("[usePushSync] Sync complete")
         } else {
-          console.log("[usePushSync] No consent, skipping sync")
+          if (import.meta.env.DEV) logDebug("[usePushSync] No consent, skipping sync")
         }
 
         if (!cancelled) {
@@ -76,7 +69,7 @@ export function usePushSync(isAuthenticated: boolean) {
       } catch (error) {
         if (!cancelled) {
           logWarning("Failed to sync push subscription on app load", error)
-          console.error("[usePushSync] Error:", error)
+          logError("[usePushSync] Error:", error)
         }
       }
     }

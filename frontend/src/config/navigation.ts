@@ -12,7 +12,16 @@ import {
   ShieldCheck as SecurityIcon,
 } from "lucide-react"
 
-export const getNavigationConfig = (t: (key: string) => string, role?: string) => {
+export type NavigationItem = {
+  to: string
+  label: string
+  icon: React.ElementType
+}
+
+export const getNavigationConfig = (
+  t: (key: string) => string,
+  role?: string
+): NavigationItem[] => {
   const base = [
     { to: "/dashboard", label: t("navigation:menu.dashboard"), icon: DashboardIcon },
     { to: "/news", label: t("navigation:menu.news"), icon: ArticleIcon },

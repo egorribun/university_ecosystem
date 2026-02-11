@@ -200,7 +200,7 @@ export function buildTable(
 // CONSTANTS
 // ============================================================================
 
-export const defaultLessonTypeColor = "#888"
+export const defaultLessonTypeColor = "var(--lesson-type-default)"
 
 export const minimalLessonTypeFallback: LessonTypeConfig = {
   id: "lesson",

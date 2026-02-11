@@ -21,7 +21,7 @@ export const ProfileDetails = ({ user, isOpen, onToggle }: ProfileDetailsProps) 
         onClick={onToggle}
         className="w-full flex items-center justify-between px-6 py-5 hover:bg-(--bg-surface)/20 transition-colors"
       >
-        <h2 className="text-lg font-bold tracking-tight text-(--primary-text)">
+        <h2 className="text-lg font-bold tracking-tight text-(--text-primary)">
           {t("profile:titles.details")}
         </h2>
         <ExpandMoreIcon

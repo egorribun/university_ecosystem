@@ -224,10 +224,10 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
   }
 
   return (
-    <Card className="overflow-hidden border-glass-border bg-surface/40 shadow-glass backdrop-blur-md">
+    <Card className="overflow-hidden border-glass-border bg-(--bg-surface)/40 shadow-glass backdrop-blur-md">
       <div className="px-6 py-5 border-b border-glass-border/30">
-        <h3 className="text-lg font-extrabold text-primary-text">{story.title}</h3>
-        <p className="text-sm text-secondary-text mt-0.5">{story.short_text}</p>
+        <h3 className="text-lg font-extrabold text-(--text-primary)">{story.title}</h3>
+        <p className="text-sm text-(--text-secondary) mt-0.5">{story.short_text}</p>
       </div>
       <div className="p-6">
         <div className="flex flex-col gap-6">
@@ -237,7 +237,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
                 <p className="text-xs font-bold uppercase tracking-wider text-brand opacity-70">
                   {t("stories:list.details.published", { date: "" }).split(":")[0]}
                 </p>
-                <p className="text-sm font-medium text-primary-text">
+                <p className="text-sm font-medium text-(--text-primary)">
                   {formatDate(new Date(story.published_at))}
                 </p>
               </div>
@@ -245,7 +245,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
                 <p className="text-xs font-bold uppercase tracking-wider text-brand opacity-70">
                   {t("stories:list.details.expires", { date: "" }).split(":")[0]}
                 </p>
-                <p className="text-sm font-medium text-primary-text">
+                <p className="text-sm font-medium text-(--text-primary)">
                   {formatDate(new Date(story.expires_at))}
                 </p>
               </div>
@@ -253,8 +253,8 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
                 {timeLeft}
               </Badge>
               {story.cta_url && (
-                <div className="mt-2 p-3 rounded-xl bg-surface/20 border border-glass-border/20">
-                  <p className="text-xs font-bold uppercase tracking-widest text-secondary-text opacity-50 mb-1">
+                <div className="mt-2 p-3 rounded-xl bg-(--bg-surface)/20 border border-glass-border/20">
+                  <p className="text-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-50 mb-1">
                     {t("stories:list.details.cta")}
                   </p>
                   <p className="text-xs font-mono break-all text-brand">{story.cta_url}</p>
@@ -263,7 +263,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
             </div>
 
             <div className="w-full md:w-56 flex flex-col items-center gap-4">
-              <div className="relative w-full aspect-9/16 rounded-2xl overflow-hidden bg-surface/20 border border-glass-border shadow-inner group">
+              <div className="relative w-full aspect-9/16 rounded-2xl overflow-hidden bg-(--bg-surface)/20 border border-glass-border shadow-inner group">
                 {coverPreview ? (
                   <img
                     src={sanitizeUrl(coverPreview) ?? ""}
@@ -277,8 +277,8 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center p-6 text-center">
-                    <p className="text-xs font-medium text-secondary-text opacity-60">
+                  <div className="w-full h-full flex items-center justify-center p-6 text-center bg-linear-to-r from-blue-500 to-indigo-600 transition-all duration-300">
+                    <p className="text-xs font-medium text-(--text-secondary) opacity-60">
                       {t("stories:list.noCover")}
                     </p>
                   </div>
@@ -311,7 +311,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
                       size="sm"
                       onClick={handleCoverReset}
                       startIcon={<RestartAltIcon className="h-4 w-4" />}
-                      className="text-secondary-text"
+                      className="text-(--text-secondary)"
                     />
                   )}
                 </div>
@@ -357,7 +357,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
               </Button>
               <Button
                 variant="outline"
-                className="text-amber-500 border-amber-500/30 hover:bg-amber-500/10"
+                className="text-(--warning-text) border-(--warning-text)/30 hover:bg-(--warning-text)/10"
                 onClick={handleUnpublish}
                 disabled={unpublishing}
                 loading={unpublishing}
@@ -366,7 +366,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
               </Button>
               <Button
                 variant="outline"
-                className="text-rose-500 border-rose-500/30 hover:bg-rose-500/10 ml-auto"
+                className="text-(--error-text) border-(--error-text)/30 hover:bg-(--error-text)/10 ml-auto"
                 onClick={handleDelete}
                 disabled={deleting}
                 loading={deleting}
@@ -526,15 +526,15 @@ export default function StoriesAdmin() {
             <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand/10 text-brand">
               <RestartAltIcon className="h-7 w-7" />
             </div>
-            <h1 className="text-3xl font-extrabold tracking-tight text-primary-text">
+            <h1 className="text-3xl font-extrabold tracking-tight text-(--text-primary)">
               {t("stories:pageTitle")}
             </h1>
           </div>
 
           <SectionCard className="mb-12">
             <div className="px-6 py-5 border-b border-glass-border/30">
-              <h2 className="text-lg font-bold text-primary-text">{t("stories:form.title")}</h2>
-              <p className="text-sm text-secondary-text mt-0.5">{t("stories:form.subtitle")}</p>
+              <h2 className="text-lg font-bold text-(--text-primary)">{t("stories:form.title")}</h2>
+              <p className="text-sm text-(--text-secondary) mt-0.5">{t("stories:form.subtitle")}</p>
             </div>
             <div className="p-6">
               <div className="flex flex-col gap-6">
@@ -609,7 +609,7 @@ export default function StoriesAdmin() {
                         variant="ghost"
                         onClick={resetCoverOnly}
                         startIcon={<RestartAltIcon className="h-4 w-4" />}
-                        className="text-secondary-text"
+                        className="text-(--text-secondary)"
                       >
                         {t("stories:form.resetCover")}
                       </Button>
@@ -661,7 +661,7 @@ export default function StoriesAdmin() {
 
           <div className="space-y-6">
             <div className="flex items-center justify-between px-2">
-              <h2 className="text-2xl font-extrabold text-primary-text flex items-center gap-3">
+              <h2 className="text-2xl font-extrabold text-(--text-primary) flex items-center gap-3">
                 {t("stories:list.title")}
                 <span className="px-2 py-0.5 rounded-full bg-brand/10 border border-brand/20 text-xs font-bold tabular-nums text-brand">
                   {stories.length}
@@ -688,8 +688,8 @@ export default function StoriesAdmin() {
                 <CircularProgress size={40} />
               </div>
             ) : stories.length === 0 ? (
-              <div className="text-center py-20 bg-surface/10 rounded-3xl border border-dashed border-glass-border/30">
-                <p className="text-secondary-text italic">{t("stories:list.empty")}</p>
+              <div className="text-center py-20 bg-(--bg-surface)/10 rounded-3xl border border-dashed border-glass-border/30">
+                <p className="text-(--text-secondary) italic">{t("stories:list.empty")}</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

@@ -34,7 +34,7 @@ export const Card = <T extends ElementType = "div">({
   return (
     <Component
       className={cn(
-        "relative flex flex-col rounded-ue-xl border border-border-subtle bg-surface text-primary-text shadow-surface transition-premium",
+        "relative flex flex-col rounded-2xl border border-border-subtle bg-(--bg-surface) text-(--text-primary) shadow-surface transition-premium",
         paddingClasses[padding],
         hoverable
           ? "hover:-translate-y-1.5 hover:scale-[1.015] hover:shadow-premium-lift focus-visible:outline-none focus-visible:shadow-focus motion-reduce:hover:translate-y-0 motion-reduce:hover:scale-100 motion-reduce:transition-shadow"

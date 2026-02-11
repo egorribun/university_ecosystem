@@ -168,7 +168,11 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       style={{ width: "100%" }}
       onMouseMove={spotlight.onMouseMove}
     >
-      <SpotlightOverlay mouseX={spotlight.mouseX} mouseY={spotlight.mouseY} className="z-0" />
+      <SpotlightOverlay
+        mouseX={spotlight.mouseX}
+        mouseY={spotlight.mouseY}
+        className="z-(--z-hide)"
+      />
 
       {user?.role === "admin" && (
         <Suspense fallback={null}>
@@ -196,7 +200,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
           hoveringDisabled ? "cursor-default opacity-100" : "cursor-pointer"
         )}
       >
-        <div className="relative w-full h-50 md:h-55 shrink-0 overflow-hidden border-b border-white/10 bg-linear-to-br from-blue-700/10 to-blue-400/5">
+        <div className="relative w-full h-(--news-hero-h) md:h-(--news-hero-h-md) shrink-0 overflow-hidden border-b border-glass-border bg-linear-to-br from-brand/10 to-brand/5">
           <div
             className={cn(
               "absolute inset-0 animate-pulse bg-input-mix transition-opacity duration-300",
@@ -219,25 +223,26 @@ const NewsCardComponent: FC<NewsCardProps> = ({
                 onError={handleCardImageReady}
               />
               <div
-                className="pointer-events-none absolute inset-0 z-2 transition-opacity duration-300 group-hover:opacity-0 bg-gradient-news-hero opacity-100"
+                className="pointer-events-none absolute inset-0 z-(--z-decor) transition-opacity duration-300 group-hover:opacity-0 bg-linear-to-t from-black/90 via-black/40 to-transparent opacity-80"
                 aria-hidden
               />
             </>
           ) : (
-            <span className="relative z-1 flex h-full w-full items-center justify-center overflow-hidden rounded-full">
+            <span className="relative z-(--z-deep) flex h-full w-full items-center justify-center overflow-hidden rounded-full">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand/40 opacity-40"></span>
               <ArticleIcon className="h-12 w-12" fontSize="large" />
             </span>
           )}
           {createdAtIso ? (
             <time
               dateTime={createdAtIso}
-              className="absolute bottom-3 left-3 z-2 rounded-ue-pill bg-black/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/90 transition duration-300 ease-out group-hover/button:-translate-y-0.5 group-hover/button:bg-black/70"
+              className="absolute bottom-3 left-3 z-(--z-decor) rounded-full bg-black/60 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/90 transition duration-300 ease-out group-hover/button:-translate-y-0.5 group-hover/button:bg-black/70"
             >
               {createdAtLabel}
             </time>
           ) : null}
           {!isOnline && (
-            <div className="absolute top-3 left-3 z-2 flex items-center gap-1 rounded-ue-pill bg-amber-500/90 px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wider text-amber-950 shadow-surface backdrop-blur-sm">
+            <div className="absolute top-3 left-3 z-(--z-decor) flex items-center gap-1 rounded-full bg-warning-bg/90 px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wider text-warning-text shadow-surface backdrop-blur-sm">
               <Cloud size={12} />
               <span>{t("common:statuses.cached", { defaultValue: "Кэш" })}</span>
             </div>
@@ -249,11 +254,11 @@ const NewsCardComponent: FC<NewsCardProps> = ({
             {localizedTitle}
           </h3>
 
-          <p className="min-h-12 text-sm text-(--text-secondary) line-clamp-2 md:min-h-18 md:line-clamp-3">
+          <p className="min-h-(--space-12) text-sm text-(--text-secondary) line-clamp-2 md:min-h-(--space-18) md:line-clamp-3">
             {sanitizedPreview}
           </p>
 
-          <div className="flex items-center gap-4 mt-1 border-t border-white/5 pt-3">
+          <div className="flex items-center gap-4 mt-1 border-t border-glass-border pt-3">
             <motion.button
               type="button"
               whileTap={{ scale: 0.85 }}
@@ -263,7 +268,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
               }}
               className={cn(
                 "flex items-center gap-1.5 transition-colors duration-200",
-                isLiked ? "text-rose-500" : "text-(--secondary-text) hover:text-rose-400"
+                isLiked ? "text-error-text" : "text-(--text-secondary) hover:text-error-text/80"
               )}
             >
               <div className="relative">
@@ -282,19 +287,19 @@ const NewsCardComponent: FC<NewsCardProps> = ({
               <span className="text-xs font-bold tabular-nums">{likesCount}</span>
             </motion.button>
 
-            <div className="flex items-center gap-1.5 text-(--secondary-text)">
+            <div className="flex items-center gap-1.5 text-(--text-secondary)">
               <ChatBubbleOutlineIcon size={18} />
               <span className="text-xs font-bold tabular-nums">{commentsCount}</span>
             </div>
           </div>
 
-          <div className="mt-auto flex items-center gap-2 pt-2 text-(--nav-link)">
+          <div className="mt-auto flex items-center gap-2 pt-2 text-(--primary-main)">
             <span className="translate-y-1 text-sm font-semibold tracking-wide opacity-0 transition duration-300 ease-out group-focus-visible/button:translate-y-0 group-focus-visible/button:opacity-100 group-hover:translate-y-0 group-hover:opacity-100">
               {t("common:cta.learnMore", { defaultValue: "Подробнее" })}
             </span>
             <ArrowOutwardIcon
               size={16}
-              className="translate-x-0 text-(--nav-link) opacity-0 transition duration-300 ease-out group-focus-visible/button:translate-x-1 group-focus-visible/button:opacity-100 group-hover:translate-x-1 group-hover:opacity-100"
+              className="translate-x-0 text-(--primary-main) opacity-0 transition duration-300 ease-out group-focus-visible/button:translate-x-1 group-focus-visible/button:opacity-100 group-hover:translate-x-1 group-hover:opacity-100"
             />
           </div>
         </div>
@@ -339,7 +344,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
           </>
         }
       >
-        <p className="text-[0.98rem] text-(--secondary-text)">
+        <p className="text-[0.98rem] text-(--text-secondary)">
           {t("news:dialogs.delete.description")}
         </p>
       </Dialog>

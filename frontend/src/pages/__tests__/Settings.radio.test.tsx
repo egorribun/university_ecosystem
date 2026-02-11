@@ -122,7 +122,7 @@ describe("Settings radio buttons", () => {
 
     // Wait for page to render with theme section
     await waitFor(() => {
-      expect(screen.getByText(/theme/i)).toBeInTheDocument()
+      expect(screen.getByRole("heading", { name: /^theme$/i })).toBeInTheDocument()
     })
 
     // Find theme radio buttons

@@ -15,13 +15,13 @@ interface NewsCardActionsProps {
 }
 
 const iconButtonClass =
-  "inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-white/80 text-(--nav-link) shadow-surface transition hover:bg-white focus-visible:outline-none focus-visible:shadow-focus"
+  "inline-flex h-(--space-9) w-(--space-9) items-center justify-center rounded-full border border-glass-border-subtle bg-glass-elevated text-(--primary-main) shadow-surface transition hover:bg-surface focus-visible:outline-none focus-visible:shadow-focus"
 
 const menuPanelClass =
-  "absolute right-0 top-12 z-20 min-w-[180px] overflow-hidden rounded-ue-md border border-white/12 bg-input-mix/98 shadow-surface-strong backdrop-blur-xl"
+  "absolute right-0 top-12 z-(--z-dropdown) min-w-[180px] overflow-hidden rounded-lg border border-glass-border-subtle bg-input-mix/98 shadow-surface-strong backdrop-blur-xl"
 
 const menuItemClass =
-  "flex w-full items-center gap-2 px-4 py-2.5 text-left text-[0.95rem] font-medium text-(--page-text) transition hover:bg-(--glass-bg)/80 focus-visible:outline-none focus-visible:bg-(--glass-bg)"
+  "flex w-full items-center gap-2 px-4 py-2.5 text-left text-[0.95rem] font-medium text-(--text-primary) transition hover:bg-glass/80 focus-visible:outline-none focus-visible:bg-glass"
 
 export const NewsCardActions: FC<NewsCardActionsProps> = ({ onEdit, onDelete, isDisabled, id }) => {
   const { t } = useTranslation(["news", "common"])
@@ -66,7 +66,7 @@ export const NewsCardActions: FC<NewsCardActionsProps> = ({ onEdit, onDelete, is
 
   return (
     <div
-      className="absolute right-3 top-3 z-10"
+      className="absolute right-3 top-3 z-(--z-decor)"
       onClick={(e) => e.stopPropagation()}
       role="presentation"
     >
@@ -105,7 +105,7 @@ export const NewsCardActions: FC<NewsCardActionsProps> = ({ onEdit, onDelete, is
               setMenuOpen(false)
             }}
           >
-            <EditIcon size={16} className="text-(--nav-link)" />
+            <EditIcon size={16} className="text-(--primary-main)" />
             {t("common:buttons.edit")}
           </button>
           <button

@@ -56,7 +56,7 @@ const PageTransition: FC<Props> = ({ children }) => {
 
   if (reduceMotion || !motionModule) {
     return (
-      <div style={{ position: "relative", minHeight: "100%", background: "var(--page-bg)" }}>
+      <div style={{ position: "relative", minHeight: "100%", background: "var(--bg-page)" }}>
         <div style={{ position: "relative", zIndex: zIndexTokens.base }}>{children}</div>
       </div>
     )
@@ -67,7 +67,7 @@ const PageTransition: FC<Props> = ({ children }) => {
 
   return (
     <LazyMotion features={domAnimation}>
-      <div style={{ position: "relative", minHeight: "100%", background: "var(--page-bg)" }}>
+      <div style={{ position: "relative", minHeight: "100%", background: "var(--bg-page)" }}>
         <motion.div
           initial={initial}
           animate={{

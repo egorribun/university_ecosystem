@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import type { Message, MessagesListResponse } from "../api/chat"
 import { readAccessToken } from "./auth/tokenStorage"
+import { logDebug, logError } from "@/app/logger"
 
 // Reconnection configuration
 const RECONNECT_BASE_DELAY_MS = 1000 // 1 second
@@ -109,7 +110,7 @@ export function useChatWebSocket({
 
     // Prevent duplicate connections (important for React StrictMode)
     if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
-      console.log("[WebSocket] Already connected or connecting, skipping")
+      if (import.meta.env.DEV) logDebug("[WebSocket] Already connected or connecting, skipping")
       return
     }
 
@@ -125,7 +126,7 @@ export function useChatWebSocket({
       wsRef.current = ws
 
       ws.onopen = () => {
-        console.log("[WebSocket] Connected")
+        if (import.meta.env.DEV) logDebug("[WebSocket] Connected")
         setIsConnected(true)
         // Reset reconnect attempts on successful connection
         reconnectAttemptRef.current = 0
@@ -230,16 +231,16 @@ export function useChatWebSocket({
               break
 
             case "error":
-              console.error("[WebSocket] Server error:", data)
+              logError("[WebSocket] Server error:", data)
               break
           }
         } catch (e) {
-          console.error("[WebSocket] Failed to parse message:", e)
+          logError("[WebSocket] Failed to parse message:", e)
         }
       }
 
       ws.onclose = (event) => {
-        console.log("[WebSocket] Disconnected:", event.code, event.reason)
+        if (import.meta.env.DEV) logDebug("[WebSocket] Disconnected:", event.code, event.reason)
         setIsConnected(false)
         cleanup()
 
@@ -248,9 +249,11 @@ export function useChatWebSocket({
         if (event.code !== 1000 && event.code !== 4001 && event.code !== 4003) {
           const delay = calculateReconnectDelay(reconnectAttemptRef.current)
           reconnectAttemptRef.current += 1
-          console.log(
-            `[WebSocket] Reconnecting in ${delay}ms (attempt ${reconnectAttemptRef.current})`
-          )
+          if (import.meta.env.DEV) {
+            logDebug(
+              `[WebSocket] Reconnecting in ${delay}ms (attempt ${reconnectAttemptRef.current})`
+            )
+          }
           reconnectTimeoutRef.current = setTimeout(() => {
             connect()
           }, delay)
@@ -258,10 +261,10 @@ export function useChatWebSocket({
       }
 
       ws.onerror = (error) => {
-        console.error("[WebSocket] Error:", error)
+        logError("[WebSocket] Error:", error)
       }
     } catch (e) {
-      console.error("[WebSocket] Failed to connect:", e)
+      logError("[WebSocket] Failed to connect:", e)
     }
   }, [cleanup, queryClient])
 

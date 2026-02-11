@@ -21,7 +21,7 @@ import { StorageItem } from "@/utils/storage"
 import { cn } from "@/utils/cn"
 
 const inputClass =
-  "w-full rounded-xl border border-glass-border bg-surface/40 px-4 py-2.5 text-[0.98rem] text-primary-text shadow-sm focus:border-brand focus:outline-none transition placeholder:text-secondary-text/50"
+  "w-full rounded-xl border border-glass-border bg-(--bg-surface)/40 px-4 py-2.5 text-[0.98rem] text-(--text-primary) shadow-sm focus:border-brand focus:outline-none transition placeholder:text-(--text-secondary)/50"
 const textareaClass = cn(inputClass, "min-h-[148px] resize-y leading-relaxed")
 
 const fadeDelayStyle = (value: string): CSSProperties =>
@@ -53,10 +53,10 @@ function Field({ label, htmlFor, children, required = false }: FieldProps) {
     <div className="space-y-2">
       <label
         htmlFor={htmlFor}
-        className="text-sm font-semibold tracking-wide text-secondary-text/80"
+        className="text-sm font-semibold tracking-wide text-(--text-secondary)/80"
       >
         {label}
-        {required ? <span className="ml-1 text-red-500">*</span> : null}
+        {required ? <span className="ml-1 text-error-text text-sm font-bold">*</span> : null}
       </label>
       {children}
     </div>
@@ -204,17 +204,17 @@ const News = () => {
   return (
     <Layout>
       <PageFadeIn>
-        <div className="w-full min-h-screen bg-transparent text-primary-text py-8 sm:py-10">
+        <div className="w-full min-h-screen bg-transparent text-(--text-primary) py-8 sm:py-10">
           <div className="px-4">
             <div
               data-fade
               style={fadeDelayStyle("80ms")}
               className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-surface/40 border border-glass-border text-brand shadow-glass transition-transform duration-200 hover:scale-105 backdrop-blur-md">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-(--bg-surface)/40 border border-glass-border text-brand shadow-glass transition-transform duration-200 hover:scale-105 backdrop-blur-md">
                 <ArticleIcon className="h-7 w-7" />
               </div>
-              <h1 className="text-[clamp(1.6rem,5vw,2.75rem)] font-bold tracking-tight text-primary-text">
+              <h1 className="text-(--fs-page-title) font-bold tracking-tight text-(--text-primary)">
                 {t("news:pageTitle")}
               </h1>
             </div>
@@ -260,15 +260,15 @@ const News = () => {
                   {!isOnline && newsList.length === 0 ? (
                     <OfflineFallback onRetry={refreshNews} />
                   ) : (
-                    <div className="flex w-full max-w-md flex-col items-center gap-5 rounded-3xl border border-glass-border/30 bg-surface/40 px-8 py-14 text-center shadow-glass backdrop-blur-md">
+                    <div className="flex w-full max-w-md flex-col items-center gap-5 rounded-3xl border border-glass-border/30 bg-(--bg-surface)/40 px-8 py-14 text-center shadow-glass backdrop-blur-md">
                       <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand/10 border border-brand/20 shadow-brand/10 shadow-lg">
                         <ArticleIcon className="h-8 w-8 text-brand" />
                       </div>
                       <div className="space-y-2">
-                        <p className="text-lg font-semibold text-primary-text">
+                        <p className="text-lg font-semibold text-(--text-primary)">
                           {t("news:states.empty")}
                         </p>
-                        <p className="text-sm text-secondary-text">
+                        <p className="text-sm text-(--text-secondary)">
                           {t("news:states.checkLater", {
                             defaultValue: "Check back later for updates",
                           })}
@@ -383,7 +383,7 @@ const News = () => {
                     </Field>
 
                     <div className="space-y-3">
-                      <label className="block text-sm font-semibold text-secondary-text">
+                      <label className="block text-sm font-semibold text-(--text-secondary)">
                         {t("news:form.image", { defaultValue: "Cover Image" })}
                       </label>
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -391,7 +391,7 @@ const News = () => {
                           as="label"
                           variant="outline"
                           size="sm"
-                          className="w-full sm:w-auto bg-surface/20 border-glass-border"
+                          className="w-full sm:w-auto bg-(--bg-surface)/20 border-glass-border"
                           disabled={adding}
                         >
                           <div className="flex items-center gap-2">

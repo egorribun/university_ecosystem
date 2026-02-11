@@ -73,11 +73,11 @@ function suggestEmailDomain(email: string) {
 }
 
 const inputBaseClass =
-  "w-full rounded-2xl border border-brand/10 bg-surface/95 px-4 py-3 text-base font-medium " +
-  "text-primary-text shadow-premium transition-all duration-200 " +
+  "w-full rounded-2xl border border-brand/10 bg-(--bg-surface)/95 px-4 py-3 text-base font-medium " +
+  "text-(--text-primary) shadow-premium transition-all duration-200 " +
   "focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/20 " +
-  "placeholder:text-placeholder/75 " +
-  "dark:border-brand/10 dark:bg-surface/90"
+  "placeholder:text-(--text-secondary)/75 " +
+  "dark:border-brand/10 dark:bg-(--bg-surface)/90"
 
 const chipClass =
   "inline-flex items-center gap-2 rounded-full border border-brand/20 px-4 py-1.5 text-xs font-semibold uppercase tracking-widest"
@@ -275,23 +275,23 @@ const Register = () => {
     : t("auth:register.inviteOptional", { defaultValue: "Приглашение необязательно" })
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-page text-primary-text">
+    <div className="relative min-h-screen w-full overflow-hidden bg-(--bg-page) text-(--text-primary)">
       <ParticleAuthBackground />
-      <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col items-center justify-center gap-10 px-4 py-12 sm:px-6 lg:px-8 lg:flex-row">
+      <div className="relative z-(--z-surface) mx-auto flex min-h-screen w-full max-w-6xl flex-col items-center justify-center gap-10 px-4 py-12 sm:px-6 lg:px-8 lg:flex-row">
         <motion.div
           initial={{ x: -200 }}
           animate={{ x: 0 }}
           transition={{ duration: 0.5, ease: "easeOut" }}
-          className="w-full rounded-ue-lg border border-glass-border-subtle bg-surface/60 p-8 shadow-glass backdrop-blur-3xl lg:p-12"
+          className="w-full rounded-xl border border-glass-border-subtle bg-(--bg-surface)/60 p-8 shadow-glass backdrop-blur-3xl lg:p-12"
         >
-          <div className="flex items-center gap-3 text-sm font-semibold uppercase tracking-widest text-primary-text/70">
+          <div className="flex items-center gap-3 text-sm font-semibold uppercase tracking-widest text-(--text-primary)/70">
             <Crown className="h-5 w-5" aria-hidden="true" />
             {t("auth:register.heroBadge", { defaultValue: "Добро пожаловать" })}
           </div>
-          <h1 className="mt-6 text-4xl font-extrabold leading-tight text-primary-text sm:text-5xl">
+          <h1 className="mt-6 text-4xl font-extrabold leading-tight text-(--text-primary) sm:text-5xl">
             {t("auth:register.title")}
           </h1>
-          <p className="mt-4 text-lg leading-relaxed text-secondary-text">
+          <p className="mt-4 text-lg leading-relaxed text-(--text-secondary)">
             {t("auth:register.heroDescription", {
               defaultValue:
                 "Создайте аккаунт, чтобы управлять своей академической траекторией, посещать события и мгновенно взаимодействовать с кампусом.",
@@ -301,7 +301,7 @@ const Register = () => {
             {heroPerks.map(({ icon: Icon, title, description }) => (
               <div
                 key={title}
-                className="rounded-3xl border border-glass-border/85 bg-surface/50 px-5 py-6 shadow-premium"
+                className="rounded-3xl border border-glass-border/85 bg-(--bg-surface)/50 px-5 py-6 shadow-premium"
               >
                 <div className="flex items-center gap-3">
                   <div className="flex size-12 items-center justify-center rounded-2xl bg-brand-subtle-bg text-brand">
@@ -309,7 +309,7 @@ const Register = () => {
                   </div>
                   <p className="text-base font-semibold">{title}</p>
                 </div>
-                <p className="mt-4 text-sm text-secondary">{description}</p>
+                <p className="mt-4 text-sm text-(--text-secondary)">{description}</p>
               </div>
             ))}
           </div>
@@ -319,7 +319,7 @@ const Register = () => {
           initial={{ y: 200 }}
           animate={{ y: 0 }}
           transition={{ duration: 0.5, ease: "easeOut", delay: 0.2 }}
-          className="w-full max-w-2xl rounded-ue-lg border border-glass-border-subtle bg-surface/80 p-6 shadow-glass backdrop-blur-2xl sm:p-10"
+          className="w-full max-w-2xl rounded-xl border border-glass-border-subtle bg-(--bg-surface)/80 p-6 shadow-glass backdrop-blur-2xl sm:p-10"
         >
           <form action={registerAction} autoComplete="off" className="flex flex-col gap-6">
             <div className="grid gap-5 sm:grid-cols-2">
@@ -379,13 +379,13 @@ const Register = () => {
                 value={form.email}
                 onChange={handleChange}
                 onBlur={handleEmailBlur}
-                className={`${inputBaseClass} ${!emailValid ? "border-red-400 focus:border-red-400" : ""}`}
+                className={`${inputBaseClass} ${!emailValid ? "border-(--error-text) focus:border-(--error-text)" : ""}`}
                 autoComplete="email"
                 ref={emailRef}
                 disabled={registerPending}
                 placeholder="name@university.edu"
               />
-              <p className="text-secondary-text-strong text-xs font-medium">
+              <p className="text-(--text-secondary) text-xs font-medium">
                 {!emailValid ? t("auth:messages.invalidFormat") : " "}
               </p>
               {emailSuggestion ? (
@@ -464,7 +464,7 @@ const Register = () => {
               <p className="text-xs text-text-muted-subtle">{t("auth:register.passwordHint")}</p>
               {passwordStrengthPercent !== null ? (
                 <div className="space-y-1">
-                  <div className="h-3 w-full rounded-full bg-surface-hover">
+                  <div className="h-3 w-full rounded-full bg-(--bg-surface-hover)">
                     <div
                       className="h-full rounded-full bg-brand transition-all duration-300"
                       style={{ width: `${passwordStrengthPercent}%` }}
@@ -494,7 +494,7 @@ const Register = () => {
                 </span>
               </div>
               {capsPass ? (
-                <p className="text-xs font-semibold text-amber-400">
+                <p className="text-xs font-semibold text-(--warning-text)">
                   {t("auth:messages.capsLock")}
                 </p>
               ) : null}
@@ -540,14 +540,14 @@ const Register = () => {
                 </button>
               </div>
               {capsConfirm ? (
-                <p className="text-xs font-semibold text-amber-400">
+                <p className="text-xs font-semibold text-(--warning-text)">
                   {t("auth:messages.capsLock")}
                 </p>
               ) : null}
             </div>
 
             <div
-              className="min-h-6 text-center text-sm font-semibold text-red-400"
+              className="min-h-6 text-center text-sm font-semibold text-(--error-text)"
               aria-live="assertive"
             >
               {registerErrorMessage}

@@ -18,7 +18,7 @@ export function ProfileCardSkeleton({
 }: ProfileCardSkeletonProps) {
   return (
     <div
-      className={`rounded-ue-xl border border-white/12 bg-input-mix overflow-hidden ${className}`}
+      className={`rounded-2xl border border-white/12 bg-input-mix overflow-hidden ${className}`}
       aria-busy="true"
       aria-label="Loading profile"
     >

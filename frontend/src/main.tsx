@@ -12,7 +12,6 @@ import { initObservability } from "./app/observability"
 import { queryClient } from "./app/queryClient"
 import { initWebVitals, reportBootstrapTTI } from "./app/webVitals"
 import "./styles/tailwind.css"
-import "./assets/themes.css"
 import { ensureTrustedTypesPolicies } from "./utils/trustedTypes"
 import { ThemeProvider } from "./contexts/ThemeContext"
 

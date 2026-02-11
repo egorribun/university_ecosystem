@@ -92,8 +92,8 @@ export function SyncStatus() {
         title={statusTitle}
         className={cn(
           "flex items-center gap-1.5 px-2.5 py-1 rounded-full transition-all duration-300",
-          "bg-white/5 dark:bg-black/20 backdrop-blur-md border border-white/10 shadow-sm",
-          !isOnline && "border-amber-500/30 bg-amber-500/5"
+          "bg-glass-subtle border border-border-subtle shadow-sm",
+          !isOnline && "border-warning-border/40 bg-warning-bg/10"
         )}
       >
         {isOnline ? (
@@ -103,11 +103,11 @@ export function SyncStatus() {
             animate={{ opacity: [1, 0.5, 1] }}
             transition={{ repeat: Infinity, duration: 2 }}
           >
-            <CloudUpload className="h-4 w-4 text-amber-500" />
+            <CloudUpload className="h-4 w-4 text-(--warning-text)" />
           </motion.div>
         )}
         {pendingCount > 0 && (
-          <span className="z-1 text-xs font-black uppercase tracking-tight text-white/80 tabular-nums sf-pro">
+          <span className="z-(--z-deep) text-xs font-black uppercase tracking-tight text-(--text-primary)/80 tabular-nums sf-pro">
             {pendingCount}
           </span>
         )}

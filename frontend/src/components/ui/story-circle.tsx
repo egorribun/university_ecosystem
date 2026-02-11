@@ -38,7 +38,7 @@ export const StoryCircle = <T extends ElementType = "div">({
     <Component
       className={cn(
         "group/story relative inline-flex items-center justify-center overflow-visible rounded-full text-white",
-        "bg-linear-to-br from-(--primary-main) to-(--primary-light) shadow-lg",
+        "bg-linear-to-br from-(--primary-main) to-(--primary-main) shadow-lg",
         "transition-all duration-300 ease-premium transform-gpu",
         "hover:shadow-xl hover:-translate-y-0.5",
         "focus-visible:outline-(--primary-main) focus-visible:ring-4 focus-visible:ring-(--primary-main)/20",
@@ -50,7 +50,7 @@ export const StoryCircle = <T extends ElementType = "div">({
         height: dimension,
         minWidth: dimension,
         minHeight: dimension,
-        border: `${borderWidth}px solid color-mix(in srgb, var(--page-text) 16%, transparent)`,
+        border: `${borderWidth}px solid color-mix(in srgb, var(--text-primary) 16%, transparent)`,
         ...style,
       }}
       {...rest}
@@ -60,7 +60,7 @@ export const StoryCircle = <T extends ElementType = "div">({
         className="pointer-events-none absolute inset-0 rounded-full border border-(--primary-main)/10 opacity-0 transition-opacity duration-300 group-focus-visible/story:opacity-100 group-hover/story:opacity-40"
         style={{ outlineOffset: 3 }}
       />
-      <span className="relative z-1 flex h-full w-full items-center justify-center overflow-hidden rounded-full">
+      <span className="relative z-(--z-deep) flex h-full w-full items-center justify-center overflow-hidden rounded-full">
         {children}
       </span>
     </Component>

@@ -85,7 +85,7 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
         ref={(el) => {
           containerRef.current = el
         }}
-        className={cn("relative overflow-hidden rounded-lg bg-surface/10", className)}
+        className={cn("relative overflow-hidden rounded-lg bg-(--bg-surface)/10", className)}
         style={style}
         {...rest}
       >
@@ -93,7 +93,7 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
           {shouldShowSkeleton && (
             <div
               key="skeleton"
-              className="absolute inset-0 z-10"
+              className="absolute inset-0 z-(--z-decor)"
               data-testid="async-image-skeleton"
             >
               <Skeleton width="100%" height="100%" />
@@ -144,7 +144,7 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
           status === "error" ||
           (!hasImage && !fallbackSrc)) && (
           <div
-            className="absolute inset-0 flex items-center justify-center bg-surface/20 text-secondary-text"
+            className="absolute inset-0 flex items-center justify-center bg-(--bg-surface)/20 text-(--text-secondary)"
             data-testid="async-image-fallback"
           >
             {fallback ?? <InsertPhotoOutlinedIcon className="h-10 w-10 opacity-40 shrink-0" />}

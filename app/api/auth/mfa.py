@@ -404,6 +404,10 @@ async def request_step_up(
 
     capabilities = await login_service._resolve_mfa_capabilities(user)
 
+    from app.models.user_loaders import ensure_mfa_relationships_loaded
+
+    await ensure_mfa_relationships_loaded(db, user)
+
     if not mfa.user_has_confirmed_interactive_factor(user):
         raise_http_error(
             status.HTTP_400_BAD_REQUEST,

@@ -57,7 +57,7 @@ export function EventEditDialog({
   const imageInputRef = useRef<HTMLInputElement>(null)
 
   const inputClass =
-    "w-full rounded-lg bg-(--input-bg) border border-(--input-border) px-3 py-2 text-sm text-(--page-text) placeholder:text-(--input-placeholder) focus:border-(--nav-link) focus:outline-none focus:ring-1 focus:ring-(--nav-link) transition-colors duration-200"
+    "w-full rounded-lg bg-(--input-bg) border border-(--input-border) px-3 py-2 text-sm text-(--text-primary) placeholder:text-(--input-placeholder) focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand transition-colors duration-200"
 
   const getLocalizedEditValue = (field: "title" | "description" | "event_type" | "location") => {
     if (language === "en") {
@@ -124,7 +124,7 @@ export function EventEditDialog({
     >
       <div className="space-y-4">
         <div>
-          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--secondary-text) opacity-85">
+          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-85">
             {language === "en"
               ? t("events:form.title_en", {
                   defaultValue: `${t("events:form.title")} (English)`,
@@ -139,7 +139,7 @@ export function EventEditDialog({
           />
         </div>
         <div>
-          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--secondary-text) opacity-85">
+          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-85">
             {language === "en"
               ? t("events:form.description_en", {
                   defaultValue: `${t("events:form.description")} (English)`,
@@ -154,7 +154,7 @@ export function EventEditDialog({
           />
         </div>
         <div>
-          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--secondary-text) opacity-85">
+          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-85">
             {language === "en"
               ? t("events:form.type_en", {
                   defaultValue: `${t("events:form.type")} (English)`,
@@ -169,7 +169,7 @@ export function EventEditDialog({
           />
         </div>
         <div>
-          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--secondary-text) opacity-85">
+          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-85">
             {language === "en"
               ? t("events:form.location_en", {
                   defaultValue: `${t("events:form.location")} (English)`,
@@ -184,7 +184,7 @@ export function EventEditDialog({
           />
         </div>
         <div>
-          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--secondary-text) opacity-85">
+          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-85">
             {t("events:form.start")}
           </label>
           <input
@@ -195,21 +195,23 @@ export function EventEditDialog({
           />
         </div>
         <div>
-          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--secondary-text) opacity-85">
+          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-85">
             {t("events:form.end")}
           </label>
           <input
             type="datetime-local"
             value={draft.ends_at.slice(0, 16)}
             onChange={(e) => setDraft({ ...draft, ends_at: e.target.value })}
-            className={cn(inputClass, dateError && "border-red-500")}
+            className={cn(inputClass, dateError && "border-error-border")}
           />
           {dateError && (
-            <p className="mt-1 text-sm text-red-500">{t("events:form.errors.endsBeforeStarts")}</p>
+            <p className="mt-1 text-sm text-error-text">
+              {t("events:form.errors.endsBeforeStarts")}
+            </p>
           )}
         </div>
         <div>
-          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--secondary-text) opacity-85">
+          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-85">
             {t("events:form.speaker")}
           </label>
           <input
@@ -236,7 +238,7 @@ export function EventEditDialog({
               <SmartImage
                 srcRaw={cardImageUrl}
                 alt={t("events:alt.preview")}
-                className="h-[140px] w-[220px] rounded-ue-lg border border-(--glass-border) object-cover shadow-surface"
+                className="h-[140px] w-[220px] rounded-xl border border-(--glass-border) object-cover shadow-surface"
               />
             </div>
           )}

@@ -105,6 +105,7 @@ const renderSettings = (options?: RenderSettingsOptions) => {
 const matchTotpAddButton = /Set up authenticator app|Настроить приложение/i
 const matchTotpSubmit = /Verify|Подтвердить/i
 const matchAccountTab = /Account|Аккаунт/i
+const matchSecurityTab = /Security|Безопасность/i
 const matchSecurityHeading = /Security & MFA|Безопасность и MFA/i
 
 describe("Settings TOTP enrollment", () => {
@@ -118,7 +119,7 @@ describe("Settings TOTP enrollment", () => {
     const user = userEvent.setup()
     renderSettings()
 
-    await user.click(await screen.findByRole("tab", { name: matchAccountTab }))
+    await user.click(await screen.findByRole("tab", { name: matchSecurityTab }))
     await screen.findByRole("heading", { name: matchSecurityHeading })
     await user.click(await screen.findByRole("button", { name: matchTotpAddButton }))
 
@@ -150,7 +151,7 @@ describe("Settings TOTP enrollment", () => {
     const user = userEvent.setup()
     renderSettings()
 
-    await user.click(await screen.findByRole("tab", { name: matchAccountTab }))
+    await user.click(await screen.findByRole("tab", { name: matchSecurityTab }))
     await screen.findByRole("heading", { name: matchSecurityHeading })
     await user.click(await screen.findByRole("button", { name: matchTotpAddButton }))
 
@@ -167,7 +168,7 @@ describe("Settings TOTP enrollment", () => {
     const user = userEvent.setup()
     renderSettings()
 
-    await user.click(await screen.findByRole("tab", { name: matchAccountTab }))
+    await user.click(await screen.findByRole("tab", { name: matchSecurityTab }))
     await screen.findByRole("heading", { name: matchSecurityHeading })
     await user.click(await screen.findByRole("button", { name: matchTotpAddButton }))
 
@@ -190,7 +191,7 @@ describe("Settings TOTP enrollment", () => {
     const user = userEvent.setup()
     renderSettings()
 
-    await user.click(await screen.findByRole("tab", { name: matchAccountTab }))
+    await user.click(await screen.findByRole("tab", { name: matchSecurityTab }))
     await screen.findByRole("heading", { name: matchSecurityHeading })
     await user.click(await screen.findByRole("button", { name: matchTotpAddButton }))
 
@@ -217,7 +218,7 @@ describe("Settings TOTP enrollment", () => {
     const user = userEvent.setup()
     renderSettings({ initialUser })
 
-    await user.click(await screen.findByRole("tab", { name: matchAccountTab }))
+    await user.click(await screen.findByRole("tab", { name: matchSecurityTab }))
     await screen.findByRole("heading", { name: matchSecurityHeading })
 
     await screen.findByText(/Finish setup|Завершите настройку/i)
@@ -246,7 +247,7 @@ describe("Settings TOTP enrollment", () => {
     const user = userEvent.setup()
     renderSettings({ initialUser })
 
-    await user.click(await screen.findByRole("tab", { name: matchAccountTab }))
+    await user.click(await screen.findByRole("tab", { name: matchSecurityTab }))
     await screen.findByRole("heading", { name: matchSecurityHeading })
 
     expect(

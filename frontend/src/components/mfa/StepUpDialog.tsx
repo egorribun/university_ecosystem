@@ -136,7 +136,7 @@ export const StepUpDialog = ({
   return (
     <div
       role="presentation"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+      className="fixed inset-0 z-(--z-navbar) flex items-center justify-center p-4 bg-black/50"
       onClick={onClose}
     >
       <div
@@ -146,12 +146,15 @@ export const StepUpDialog = ({
         className="bg-card rounded-2xl shadow-2xl w-full max-w-sm"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 id="step-up-dialog-title" className="text-xl font-bold text-page-text px-6 pt-6 pb-2">
+        <h2
+          id="step-up-dialog-title"
+          className="text-xl font-bold text-(--text-primary) px-6 pt-6 pb-2"
+        >
           {title ?? t("mfa.stepUp.title")}
         </h2>
         <div className="px-6 py-4">
           <div className="flex flex-col gap-6 mt-2">
-            <p className="text-sm text-page-text/70">
+            <p className="text-sm text-(--text-secondary)">
               {description ?? t("mfa.stepUp.description")}
             </p>
             {challenge ? (
@@ -167,7 +170,7 @@ export const StepUpDialog = ({
         <div className="flex gap-2 justify-end px-6 pb-6 pt-2">
           <button
             onClick={onClose}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 text-base font-bold rounded-lg transition-all duration-200 text-page-text hover:bg-page-text/10"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 text-base font-bold rounded-lg transition-all duration-200 text-(--text-primary) hover:bg-(--text-primary)/10"
           >
             {t("common:buttons.cancel")}
           </button>

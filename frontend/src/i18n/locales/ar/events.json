@@ -1,7 +1,12 @@
 {
   "pageTitle": "Events",
   "states": {
-    "empty": "No events match your filters"
+    "empty": "No events match your filters",
+    "emptyHint": {
+      "active": "Try browsing past events",
+      "archive": "Check out upcoming events",
+      "my": "Register for events that interest you"
+    }
   },
   "tabs": {
     "active": "Upcoming",

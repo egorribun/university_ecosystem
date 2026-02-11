@@ -132,15 +132,16 @@ async def test_require_fresh_mfa():
         ),
         patch("app.api.deps.settings") as mock_settings,
         patch("app.api.deps.resolve_locale"),
+        patch("app.api.deps.ensure_mfa_relationships_loaded"),
     ):
         mock_settings.mfa_step_up_ttl_seconds = 300
         # Should not raise
-        require_fresh_mfa(request, user)
+        await require_fresh_mfa(request, user, AsyncMock())
 
         # Expired
         mock_settings.mfa_step_up_ttl_seconds = 30
         with pytest.raises(HTTPException) as exc:
-            require_fresh_mfa(request, user)
+            await require_fresh_mfa(request, user, AsyncMock())
         assert exc.value.status_code == 428
 
 

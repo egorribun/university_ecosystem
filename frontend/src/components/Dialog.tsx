@@ -98,7 +98,7 @@ export function Dialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-overlay flex items-center justify-center overflow-y-auto px-fluid-x py-fluid-y"
+      className="fixed inset-0 z-(--z-overlay) flex items-center justify-center overflow-y-auto px-fluid-x py-fluid-y"
       role="presentation"
     >
       <div
@@ -113,11 +113,11 @@ export function Dialog({
         aria-labelledby={labelledBy}
         aria-describedby={describedBy}
         className={cn(
-          "relative z-10 w-full max-w-(--dialog-max-w)",
+          "relative z-(--z-surface) w-full max-w-(--dialog-max-w)",
           sizeClassMap[size],
           fullScreenOnMobile
-            ? "h-dvh max-h-dvh overflow-y-auto rounded-none bg-(--bg-surface) pb-6 pt-5 text-(--text-primary) shadow-surface-strong ring-1 ring-white/10 sm:h-auto sm:max-h-[90vh] sm:rounded-ue-xl sm:px-6 sm:pb-7"
-            : "max-h-[92vh] overflow-y-auto rounded-ue-xl bg-(--bg-surface)/90 pb-6 pt-5 text-(--text-primary) shadow-surface-strong ring-1 ring-white/10 backdrop-blur-xl sm:px-6 sm:pb-7",
+            ? "h-dvh max-h-dvh overflow-y-auto rounded-none bg-(--bg-surface) pb-6 pt-5 text-(--text-primary) shadow-surface-strong ring-1 ring-white/10 sm:h-auto sm:max-h-[90vh] sm:rounded-2xl sm:px-6 sm:pb-7"
+            : "max-h-[92vh] overflow-y-auto rounded-2xl bg-(--bg-surface)/90 pb-6 pt-5 text-(--text-primary) shadow-surface-strong ring-1 ring-white/10 backdrop-blur-xl sm:px-6 sm:pb-7",
           "focus:outline-none",
           className
         )}
@@ -133,7 +133,7 @@ export function Dialog({
               </h2>
             ) : null}
             {subtitle ? (
-              <p id={dialogSubtitleId} className="text-sm font-medium text-(--secondary-text)">
+              <p id={dialogSubtitleId} className="text-sm font-medium text-(--text-secondary)">
                 {subtitle}
               </p>
             ) : null}
@@ -142,14 +142,14 @@ export function Dialog({
             ref={closeButtonRef}
             type="button"
             onClick={onClose}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-(--glass-bg)/70 text-(--nav-link) shadow-surface transition hover:bg-(--glass-bg) focus-visible:outline-none focus-visible:shadow-focus"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-(--glass-bg)/70 text-(--primary-main) shadow-surface transition hover:bg-(--glass-bg) focus-visible:outline-none focus-visible:shadow-focus"
           >
             <span className="sr-only">{closeLabel}</span>
             <svg
               viewBox="0 0 20 20"
               fill="none"
               xmlns="http://www.w3.org/2000/svg"
-              className="h-4 w-4 text-(--nav-link)"
+              className="h-4 w-4 text-(--primary-main)"
               aria-hidden
             >
               <path

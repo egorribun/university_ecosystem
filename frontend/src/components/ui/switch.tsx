@@ -60,7 +60,7 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
         <motion.span
           className={cn(
             "absolute inset-0 rounded-full border border-border-subtle transition-colors duration-300",
-            "bg-surface-tint backdrop-blur-sm",
+            "bg-(--bg-surface)-tint backdrop-blur-sm",
             checked && "bg-brand/20 border-brand/30"
           )}
           animate={{
@@ -87,10 +87,10 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
           }}
           transition={{ type: "spring", stiffness: 500, damping: 30 }}
           className={cn(
-            "relative z-10 block h-5.5 w-5.5 rounded-full bg-white shadow-surface",
-            "border border-white/20",
-            "dark:bg-slate-100",
-            checked && "bg-white"
+            "relative z-(--z-deep) block h-5.5 w-5.5 rounded-full bg-surface shadow-surface",
+            "border border-glass-border-subtle",
+            "bg-surface",
+            checked && "bg-surface"
           )}
           style={{
             transformOrigin: (checked ? "left center" : "right center") as any,

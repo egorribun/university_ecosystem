@@ -82,9 +82,9 @@ export const fadeDelayStyle = (value: string): CSSProperties =>
 
 export const securityStatusChipClassName = cn(
   "font-bold tracking-tight px-3 py-1 rounded-full text-xs",
-  "text-(--primary-text) border border-(--glass-border) bg-(--bg-surface)/40",
-  "shadow-glass backdrop-blur-xl transition-all duration-300",
-  "dark:bg-(--bg-surface)/20 dark:border-white/10"
+  "text-(--text-primary) border-glass-border bg-glass-bg",
+  "shadow-glass backdrop-blur-glass transition-all duration-300",
+  "dark:bg-glass-tint1 dark:border-white/10"
 )
 
 // Section Components
@@ -103,8 +103,8 @@ export function SectionCard({
     <Component
       className={cn(
         "relative flex flex-col gap-3 overflow-hidden rounded-3xl px-6 py-6",
-        "border border-(--glass-border) bg-(--bg-surface)/40 text-(--primary-text)",
-        "shadow-glass transition-all duration-500",
+        "border-glass-border bg-glass-bg shadow-glass backdrop-blur-glass text-(--text-primary)",
+        "transition-all duration-500",
         "before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit] before:opacity-30",
         "before:bg-[radial-gradient(circle_at_0%_0%,var(--primary-main),transparent_60%)]",
         "dark:before:bg-[radial-gradient(circle_at_0%_0%,var(--primary-subtle),transparent_60%)]",
@@ -140,7 +140,7 @@ export function SectionTitle({
           : "text-base"
   return (
     <Component
-      className={cn("font-bold tracking-tight text-primary-text", sizeClasses, className)}
+      className={cn("font-bold tracking-tight text-(--text-primary)", sizeClasses, className)}
       {...props}
     >
       {children}
@@ -161,7 +161,7 @@ export function SectionSubtitle({
   const sizeClasses =
     variant === "body2" ? "text-sm" : variant === "caption" ? "text-xs" : "text-sm"
   return (
-    <p className={cn("text-secondary-text leading-relaxed", sizeClasses, className)} {...props}>
+    <p className={cn("text-(--text-secondary) leading-relaxed", sizeClasses, className)} {...props}>
       {children}
     </p>
   )
@@ -179,9 +179,9 @@ export function SessionItem({
     <div
       className={cn(
         "group relative flex items-stretch justify-between gap-4 rounded-2xl px-4 py-3",
-        "border border-(--glass-border) bg-(--bg-surface)/30 text-(--primary-text)",
-        "transition-all duration-500 ease-out backdrop-blur-sm",
-        "hover:-translate-y-px hover:border-(--brand-main)/30 hover:bg-(--bg-surface)/50 hover:shadow-glass",
+        "border-glass-border bg-glass-bg text-(--text-primary)",
+        "transition-all duration-500 ease-out backdrop-blur-glass",
+        "hover:-translate-y-px hover:border-(--brand-main)/30 hover:bg-glass-tint1 hover:shadow-glass",
         "max-sm:flex-col max-sm:items-start",
         "data-[revoked=true]:border-dashed data-[revoked=true]:border-(--border-subtle)",
         "data-[revoked=true]:bg-(--bg-surface)/10 data-[revoked=true]:shadow-none data-[revoked=true]:backdrop-blur-none",
@@ -214,9 +214,9 @@ export function AccordionSection({
     <div
       className={cn(
         "overflow-hidden rounded-2xl border transition-all duration-500",
-        "border-(--glass-border) bg-(--bg-surface)/30 backdrop-blur-sm",
+        "border-glass-border bg-glass-bg backdrop-blur-glass",
         expanded
-          ? "shadow-glass border-(--brand-main)/20 bg-(--bg-surface)/50"
+          ? "shadow-glass border-(--brand-main)/20 bg-glass-tint1"
           : "shadow-sm border-transparent",
         className
       )}
@@ -224,12 +224,12 @@ export function AccordionSection({
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
-        className="w-full px-4 py-3 text-left transition-colors hover:bg-brand/5"
+        className="w-full px-4 py-3 text-left transition-colors hover:bg-(--primary-main)/5"
       >
         <div className="flex items-center justify-between gap-3">
           <div className="flex flex-col gap-1 min-w-0">
-            <h3 className="text-sm font-bold text-primary-text">{title}</h3>
-            {subtitle && <p className="text-xs text-secondary-text">{subtitle}</p>}
+            <h3 className="text-sm font-bold text-(--text-primary)">{title}</h3>
+            {subtitle && <p className="text-xs text-(--text-secondary)">{subtitle}</p>}
           </div>
           <motion.svg
             animate={{ rotate: expanded ? 180 : 0 }}
@@ -311,14 +311,14 @@ export const TextField = React.forwardRef<
         {label && (
           <label
             htmlFor={props.id}
-            className="mb-0.5 block px-1 text-xs font-bold uppercase tracking-widest text-secondary-text"
+            className="mb-0.5 block px-1 text-xs font-bold uppercase tracking-widest text-(--text-secondary)"
           >
             {label}
           </label>
         )}
         <div className="relative">
           {leadingIcon && (
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-tertiary-text">
+            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-(--text-tertiary)">
               {leadingIcon}
             </div>
           )}
@@ -336,8 +336,8 @@ export const TextField = React.forwardRef<
               placeholder={placeholder}
               rows={rows}
               className={cn(
-                "flex w-full rounded-2xl border border-(--glass-border) bg-(--bg-surface) px-4 py-3 text-base font-medium text-(--primary-text) shadow-sm transition-all duration-500",
-                "placeholder:text-(--secondary-text)/50",
+                "flex w-full rounded-2xl border-glass-border bg-glass-bg px-4 py-3 text-base font-medium text-(--text-primary) shadow-sm transition-all duration-500",
+                "placeholder:text-(--text-secondary)/50",
                 "focus:border-(--brand-main)/40 focus:outline-none focus:ring-4 focus:ring-(--brand-main)/10",
                 "disabled:cursor-not-allowed disabled:opacity-50",
                 error
@@ -370,7 +370,7 @@ export const TextField = React.forwardRef<
             />
           )}
           {trailingIcon && (
-            <div className="absolute right-4 top-1/2 -translate-y-1/2 text-tertiary-text">
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 text-(--text-tertiary)">
               {trailingIcon}
             </div>
           )}
@@ -379,7 +379,7 @@ export const TextField = React.forwardRef<
           <p
             className={cn(
               "px-1 text-xs font-medium leading-tight",
-              error ? "text-error" : "text-tertiary-text/80"
+              error ? "text-(--error-text)" : "text-(--text-tertiary)/80"
             )}
           >
             {helperText}
@@ -436,14 +436,14 @@ export function FormControlLabel({
       className={cn(
         "group inline-flex items-center gap-3 rounded-xl px-2 py-1.5",
         "cursor-pointer transition-all duration-300",
-        "hover:bg-brand/5 border border-transparent",
+        "hover:bg-(--primary-main)/5 border border-transparent",
         className
       )}
     >
       {React.isValidElement(control)
         ? React.cloneElement(control as React.ReactElement<{ value?: string }>, { value })
         : control}
-      <span className="text-sm font-bold text-primary-text transition-colors">{label}</span>
+      <span className="text-sm font-bold text-(--text-primary) transition-colors">{label}</span>
     </label>
   )
 }
@@ -505,7 +505,7 @@ export function Chip({
   className?: string
 } & React.HTMLAttributes<HTMLSpanElement>) {
   const colorMap = {
-    default: "text-(--secondary-text) bg-(--bg-surface)/50 border-(--glass-border)",
+    default: "text-(--text-secondary) bg-glass-bg border-glass-border",
     success: "text-(--success-bg) bg-(--success-bg)/10 border-(--success-bg)/20",
     primary: "text-(--brand-main) bg-(--brand-main)/10 border-(--brand-main)/20",
   }
@@ -675,7 +675,7 @@ export function Dialog({
   return ReactDOM.createPortal(
     <div
       role="presentation"
-      className="fixed inset-0 z-(--ue-z-index-overlay) flex items-center justify-center p-4"
+      className="fixed inset-0 z-(--z-overlay) flex items-center justify-center p-4"
     >
       <motion.div
         initial={{ opacity: 0 }}
@@ -691,7 +691,7 @@ export function Dialog({
         role="dialog"
         aria-modal="true"
         className={cn(
-          "relative z-10 w-full overflow-hidden rounded-3xl border border-(--glass-border) bg-(--bg-surface) shadow-glass",
+          "relative z-(--z-surface) w-full overflow-hidden rounded-3xl border-glass-border bg-glass-bg shadow-glass backdrop-blur-glass",
           fullWidth ? "w-full" : maxWidthClasses
         )}
       >
@@ -712,7 +712,7 @@ export function DialogTitle({
   return (
     <h2
       className={cn(
-        "px-6 pt-6 pb-2 text-xl font-bold tracking-tight text-(--primary-text) border-b border-(--glass-border)/10",
+        "px-6 pt-6 pb-2 text-xl font-bold tracking-tight text-(--text-primary) border-b border-(--glass-border)/10",
         className
       )}
     >
@@ -729,7 +729,9 @@ export function DialogContent({
   className?: string
 }) {
   return (
-    <div className={cn("px-6 py-4 text-secondary-text leading-relaxed", className)}>{children}</div>
+    <div className={cn("px-6 py-4 text-(--text-secondary) leading-relaxed", className)}>
+      {children}
+    </div>
   )
 }
 
@@ -792,7 +794,7 @@ export function Snackbar({
   return (
     <div
       className={cn(
-        "fixed pointer-events-none z-(--ue-z-index-toast)",
+        "fixed pointer-events-none z-(--z-toast)",
         positionClasses,
         horizontalClasses,
         className
@@ -874,18 +876,18 @@ export function Tab({
       className={cn(
         "relative flex h-10 items-center justify-center rounded-xl px-5 text-sm font-black transition-all duration-500",
         selected
-          ? "text-primary-text"
-          : "text-secondary-text opacity-70 hover:opacity-100 hover:bg-surface-hover/20"
+          ? "text-(--text-primary)"
+          : "text-(--text-secondary) opacity-70 hover:opacity-100 hover:bg-(--bg-surface-hover)/20"
       )}
     >
       {selected && (
         <motion.div
           layoutId={layoutId}
-          className="absolute inset-0 z-0 rounded-xl bg-brand/10 ring-1 ring-brand/20"
+          className="absolute inset-0 z-(--z-hide) rounded-xl bg-brand/10 ring-1 ring-brand/20"
           transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
         />
       )}
-      <span className="relative z-1">{label}</span>
+      <span className="relative z-(--z-deep)">{label}</span>
     </button>
   )
 }

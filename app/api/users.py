@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
     get_current_user,
+    get_current_user_full,
     require_fresh_mfa,
 )
 from app.api.validation import raise_validation_error, require_admin
@@ -141,7 +142,7 @@ async def reset_password(
 async def me(
     request: Request,
     db: AsyncSession = Depends(get_read_db),
-    user: models.User = Depends(get_current_user),
+    user: models.User = Depends(get_current_user_full),
     auth_service: AuthService = Depends(get_auth_service),
 ):
     _enforce_profile_cache_integrity(request)
@@ -162,7 +163,7 @@ async def me(
 async def update_me(
     data: schemas.UserProfileUpdate,
     request: Request,
-    user: models.User = Depends(get_current_user),
+    user: models.User = Depends(get_current_user_full),
     service: UserProfileService = Depends(get_user_profile_service),
 ):
     return await service.update_user_profile(user, data, request)
@@ -250,7 +251,7 @@ async def upload_avatar(
     file: UploadFile = File(...),
     *,
     request: Request,
-    user: models.User = Depends(get_current_user),
+    user: models.User = Depends(get_current_user_full),
     service: UserProfileService = Depends(get_user_profile_service),
 ):
     return await service.upload_avatar(user, file)
@@ -261,7 +262,7 @@ async def upload_cover(
     file: UploadFile = File(...),
     *,
     request: Request,
-    user: models.User = Depends(get_current_user),
+    user: models.User = Depends(get_current_user_full),
     service: UserProfileService = Depends(get_user_profile_service),
 ):
     return await service.upload_cover(user, file)
@@ -270,7 +271,7 @@ async def upload_cover(
 @users_router.delete("/me/avatar", response_model=schemas.UserOut)
 async def delete_avatar(
     request: Request,
-    user: models.User = Depends(get_current_user),
+    user: models.User = Depends(get_current_user_full),
     service: UserProfileService = Depends(get_user_profile_service),
 ):
     return await service.delete_avatar(user)
@@ -279,7 +280,7 @@ async def delete_avatar(
 @users_router.delete("/me/cover", response_model=schemas.UserOut)
 async def delete_cover(
     request: Request,
-    user: models.User = Depends(get_current_user),
+    user: models.User = Depends(get_current_user_full),
     service: UserProfileService = Depends(get_user_profile_service),
 ):
     return await service.delete_cover(user)

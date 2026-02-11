@@ -30,6 +30,7 @@ import {
   Plus as AddIcon,
 } from "lucide-react"
 import useMediaQuery from "@/hooks/useMediaQuery"
+import { breakpoints } from "@/theme/tokens"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import OfflineFallback from "@/components/OfflineFallback"
 import { cn } from "@/utils/cn"
@@ -119,7 +120,7 @@ export default function Schedule() {
   const editingLessonTypeOptions = lessonTypeOptions // Simplified as we have full list in hook
 
   const addDayLabel = addDay ? getDayLabel(addDay) : ""
-  const isMobile = useMediaQuery("(max-width:1730px)")
+  const isMobile = useMediaQuery(`(max-width: ${breakpoints.ultrawide})`)
   const tableScrollRef = useRef<HTMLDivElement | null>(null)
   const headRefs = useRef<(HTMLTableCellElement | null)[]>([])
   const dayCardRefs = useRef<(HTMLDivElement | null)[]>([])
@@ -187,10 +188,10 @@ export default function Schedule() {
     const gap = minutesDiff(prev.end_time, curr.start_time)
     if (gap <= 0) return null
     return (
-      <div className="absolute left-1/2 top-[-14px] z-3 -translate-x-1/2 pointer-events-none">
+      <div className="absolute left-1/2 top-[-14px] z-(--z-deep) -translate-x-1/2 pointer-events-none">
         <Badge
           size="xs"
-          className="chip-break font-medium bg-surface/80 border-glass-border shadow-glass text-secondary-text"
+          className="chip-break font-medium bg-(--bg-surface)/80 border-glass-border shadow-glass text-(--text-secondary)"
         >
           {t("schedule:break", { minutes: gap })}
         </Badge>
@@ -203,13 +204,13 @@ export default function Schedule() {
     return (
       <div
         ref={tableScrollRef}
-        className="mx-auto w-full max-w-[min(98vw,1920px)] overflow-x-auto rounded-3xl border border-glass-border bg-surface/40 text-(--page-text) shadow-glass backdrop-blur-md scroll-smooth"
+        className="mx-auto w-full max-w-[min(98vw,1920px)] overflow-x-auto rounded-3xl border border-glass-border bg-(--bg-surface)/40 text-(--text-primary) shadow-glass backdrop-blur-md scroll-smooth"
         style={{ minHeight: 360 }}
       >
         <table className="w-full border-collapse">
-          <thead className="sticky top-0 z-5">
+          <thead className="sticky top-0 z-(--z-content)">
             <tr>
-              <th className="sticky left-0 z-navbar w-[50px] bg-surface/60 px-4 py-4 text-center font-extrabold text-(--page-text) border-r border-glass-border shadow-md backdrop-blur-md">
+              <th className="sticky left-0 z-(--z-navbar) w-[50px] bg-(--bg-surface)/60 px-4 py-4 text-center font-extrabold text-(--text-primary) border-r border-glass-border shadow-md backdrop-blur-md">
                 №
               </th>
               {weekdayBackend.map((day, idx) => {
@@ -222,17 +223,17 @@ export default function Schedule() {
                       headRefs.current[idx] = el
                     }}
                     className={cn(
-                      isTodayCol ? "bg-brand/10 shadow-focus" : "bg-surface/40",
-                      "z-navbar backdrop-blur-md"
+                      isTodayCol ? "bg-brand/10 shadow-focus" : "bg-(--bg-surface)/40",
+                      "z-(--z-navbar) backdrop-blur-md"
                     )}
                   >
                     <div className="flex items-center justify-center gap-2">
-                      <span className={cn("tracking-tight", isTodayCol && "text-(--nav-link)")}>
+                      <span className={cn("tracking-tight", isTodayCol && "text-brand")}>
                         {label}
                       </span>
                       {(user?.role === "admin" || user?.role === "teacher") && (
                         <button
-                          className="ml-1 flex h-7 w-7 items-center justify-center rounded-lg border border-glass-border bg-surface/60 text-brand hover:bg-brand hover:text-white transition-colors"
+                          className="ml-1 flex h-7 w-7 items-center justify-center rounded-lg border border-glass-border bg-(--bg-surface)/60 text-brand hover:bg-brand hover:text-white transition-colors"
                           onClick={(event) => {
                             event.stopPropagation()
                             setAddDay(day)
@@ -264,7 +265,7 @@ export default function Schedule() {
             ) : (
               visibleRows.map((row, rowIdx) => (
                 <tr key={rowIdx}>
-                  <td className="sticky left-0 z-navbar bg-surface/60 px-4 py-3 text-center font-bold border-r border-glass-border shadow-md backdrop-blur-md">
+                  <td className="sticky left-0 z-(--z-navbar) bg-(--bg-surface)/60 px-4 py-3 text-center font-bold border-r border-glass-border shadow-md backdrop-blur-md">
                     {rowIdx + 1}
                   </td>
                   {row.map((lesson, colIdx) => {
@@ -384,7 +385,7 @@ export default function Schedule() {
   )
 
   const inputClass =
-    "w-full rounded-xl border border-glass-border bg-surface/40 px-4 py-3 text-base font-medium text-(--page-text) shadow-sm focus:border-brand focus:outline-none transition-all"
+    "w-full rounded-xl border border-glass-border bg-(--bg-surface)/40 px-4 py-3 text-base font-medium text-(--text-primary) shadow-sm focus:border-brand focus:outline-none transition-all"
 
   const activeGroupName = groups.find((g) => g.id === selectedGroup)?.name || ""
 
@@ -401,17 +402,17 @@ export default function Schedule() {
   return (
     <Layout>
       <PageFadeIn>
-        <div className="w-full min-h-screen bg-transparent text-primary-text py-8 sm:py-10">
+        <div className="w-full min-h-screen bg-transparent text-(--text-primary) py-8 sm:py-10">
           <div className="mb-6 mt-0 px-2 md:px-4">
             <div
               data-fade
               style={fadeDelayStyle("80ms")}
               className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-surface/40 border border-glass-border text-brand shadow-glass">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-(--bg-surface)/40 border border-glass-border text-brand shadow-glass">
                 <CalendarMonthIcon className="h-7 w-7" />
               </div>
-              <h1 className="text-[clamp(1.6rem,5vw,2.75rem)] font-bold tracking-tight text-(--page-text)">
+              <h1 className="text-(--fs-page-title) font-bold tracking-tight text-(--text-primary)">
                 {user?.role === "student"
                   ? t("schedule:title.student")
                   : t("schedule:title.default")}
@@ -431,12 +432,12 @@ export default function Schedule() {
               data-fade
               style={fadeDelayStyle("200ms")}
               className={cn(
-                "no-print group relative isolate mb-6 overflow-hidden rounded-3xl border border-glass-border bg-surface/40 p-6 shadow-glass backdrop-blur-md transition-all hover:shadow-xl",
+                "no-print group relative isolate mb-6 overflow-hidden rounded-3xl border border-glass-border bg-(--bg-surface)/40 p-6 shadow-glass backdrop-blur-md transition-all hover:shadow-xl",
                 !isMobile && "max-w-4xl"
               )}
             >
               {currentLesson ? (
-                <div className="relative z-1">
+                <div className="relative z-(--z-base)">
                   <div className="mb-4 flex flex-wrap items-center gap-3">
                     <Badge size="sm" tone="primary" className="font-semibold">
                       {t("schedule:chips.current")}
@@ -447,7 +448,7 @@ export default function Schedule() {
                   <ProgressBar value={currentProgress} className="mt-5 h-2.5 rounded-full" />
                 </div>
               ) : nextLesson ? (
-                <div className="relative z-1 flex flex-wrap items-center gap-3">
+                <div className="relative z-(--z-base) flex flex-wrap items-center gap-3">
                   <Badge size="sm" variant="outline" tone="primary" className="font-semibold">
                     {t("schedule:chips.next")}
                   </Badge>

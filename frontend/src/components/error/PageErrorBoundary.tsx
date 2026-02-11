@@ -60,18 +60,18 @@ function PageErrorFallback({
       className="flex min-h-[50vh] flex-col items-center justify-center gap-6 p-8 text-center"
     >
       <div className="max-w-md">
-        <h1 className="mb-2 text-2xl font-bold text-[color:var(--page-text)]">
+        <h1 className="mb-2 text-2xl font-bold text-(--text-primary)">
           {t("system:pageError.title", "Page Error")}
         </h1>
-        <p className="text-[color:var(--page-text)]/70">
+        <p className="text-(--text-primary)/70">
           {t("system:pageError.description", "Something went wrong loading this page.")}
         </p>
         {import.meta.env.DEV && error && (
           <details className="mt-4 text-left">
-            <summary className="cursor-pointer text-sm text-[color:var(--page-text)]/50">
+            <summary className="cursor-pointer text-sm text-(--text-primary)/50">
               Error details
             </summary>
-            <pre className="mt-2 overflow-auto rounded bg-[color:var(--glass-bg)] p-2 text-xs">
+            <pre className="mt-2 overflow-auto rounded bg-(--glass-bg) p-2 text-xs">
               {error.message}
             </pre>
           </details>
@@ -81,14 +81,14 @@ function PageErrorFallback({
         <button
           type="button"
           onClick={onRetry}
-          className="rounded-full bg-[color:var(--accent)] px-6 py-2 font-medium text-white transition-opacity hover:opacity-90"
+          className="rounded-full bg-(--primary-main) px-6 py-2 font-medium text-white transition-opacity hover:opacity-90"
         >
           {t("system:pageError.retry", "Try Again")}
         </button>
         <button
           type="button"
           onClick={onGoHome}
-          className="rounded-full border border-[color:var(--page-text)]/30 px-6 py-2 font-medium text-[color:var(--page-text)] transition-colors hover:bg-[color:var(--glass-bg)]"
+          className="rounded-full border border-(--text-primary)/30 px-6 py-2 font-medium text-(--text-primary) transition-colors hover:bg-(--glass-bg)"
         >
           {t("system:pageError.home", "Go Home")}
         </button>
