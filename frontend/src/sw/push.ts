@@ -2,7 +2,6 @@
 declare const self: ServiceWorkerGlobalScope
 
 import { buildNotificationDetails, parsePushEventData } from "@/push/notification-helpers"
-import { log } from "./logger"
 
 /**
  * Initialize Push Notification handlers.

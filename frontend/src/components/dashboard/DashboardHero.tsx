@@ -2,7 +2,6 @@ import { useMemo, type ReactNode } from "react"
 import type { User } from "@/types/User"
 import { useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { motion } from "framer-motion"
 import { Badge, Button } from "@/components/ui"
 import WeatherWidget from "@/components/WeatherWidget"
 import Magnetic from "@/components/Magnetic"
@@ -98,7 +97,7 @@ export function DashboardHero({
         <ScrollReveal mode="pop" delay={0.1} width="100%">
           <header
             className={cn(
-              "group card-glass rounded-xl transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
+              "group card-glass rounded-sm transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
               "hover:-translate-y-1 hover:scale-[1.01] hover:shadow-xl motion-reduce:hover:transform-none motion-reduce:hover:shadow-none",
               "p-6 md:p-9 focus-within:shadow-focus focus-visible:outline-none focus-visible:shadow-focus",
               headerGradientClass

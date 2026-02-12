@@ -5,9 +5,6 @@ import { logError, logWarning } from "@/app/logger"
 const SUBSCRIPTION_EXPIRY_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000 // 3 days
 const PERSIST_MAX_ATTEMPTS = 3
 const PERSIST_BASE_DELAY_MS = 500
-const PUSH_LAST_SYNC_STORAGE_KEY = "push:last_sync"
-const PUSH_SUB_STORAGE_KEY = "push:last_payload"
-const PUSH_TOPICS_STORAGE_KEY = "push:last_topics"
 const PUSH_TOPICS_STORAGE_VERSION = 2
 import { StorageItem, profileCacheStorage, pushConsentStorage } from "@/utils/storage"
 

@@ -1,6 +1,5 @@
 import {
   useInfiniteQuery,
-  useQuery,
   useQueryClient,
   type InfiniteData,
   type QueryClient,

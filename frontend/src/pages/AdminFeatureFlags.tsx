@@ -2,20 +2,12 @@ import { useCallback, useEffect, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import {
-  Activity,
-  Shield,
-  Settings,
   Info,
-  Lock,
-  Unlock,
-  Users,
   Percent,
-  ToggleLeft,
 } from "lucide-react"
 import api from "../api/client"
 import Layout from "../components/Layout"
-import { cn } from "@/utils/cn"
-import { SectionCard, SwitchControl, Chip, Button, Divider } from "@/components/settings"
+import { SwitchControl, Chip } from "@/components/settings"
 import { FeatureFlag, FlagStatus } from "../types/Admin"
 
 export default function AdminFeatureFlags() {
@@ -89,7 +81,7 @@ export default function AdminFeatureFlags() {
             </p>
           </motion.div>
 
-          <div className="overflow-hidden rounded-3xl border border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass">
+          <div className="overflow-hidden rounded-lg border border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>

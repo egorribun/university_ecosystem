@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode, type MouseEvent } from "react"
+import { useRef, type ReactNode, type MouseEvent } from "react"
 import { motion, useSpring, useMotionValue } from "framer-motion"
 
 interface MagneticProps {

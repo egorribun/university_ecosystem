@@ -1,4 +1,3 @@
-import type { EventFile } from "@/types/Event"
 
 type UploadIdleState = { status: "idle" }
 type UploadSuccessState = { status: "success" }

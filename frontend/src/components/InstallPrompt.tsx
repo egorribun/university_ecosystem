@@ -220,7 +220,7 @@ export default function InstallPrompt() {
             exit={{ opacity: 0, y: 50, scale: 0.95 }}
             className="fixed bottom-24 right-4 left-4 sm:left-auto sm:right-6 z-(--z-toast) w-auto max-w-sm"
           >
-            <div className="bg-(--bg-surface)/(--opacity-heavy) backdrop-blur-2xl rounded-3xl border border-glass-border shadow-2xl overflow-hidden ring-1 ring-black/(--opacity-faint) p-6">
+            <div className="bg-(--bg-surface)/(--opacity-heavy) backdrop-blur-2xl rounded-lg border border-glass-border shadow-2xl overflow-hidden ring-1 ring-black/(--opacity-faint) p-6">
               <div
                 className={cn(
                   "flex flex-col",

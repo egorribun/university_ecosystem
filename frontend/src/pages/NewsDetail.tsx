@@ -5,8 +5,6 @@ import {
   ArrowLeft as ArrowBackIcon,
   Edit2 as EditIcon,
   Trash2 as DeleteIcon,
-  Save as SaveIcon,
-  X as CloseIcon,
   Camera as PhotoCamera,
   Share2 as IosShareIcon,
   Copy as ContentCopyIcon,
@@ -31,7 +29,6 @@ import utc from "dayjs/plugin/utc"
 import timezone from "dayjs/plugin/timezone"
 import { deleteNews, fetchNewsItem, updateNews, uploadNewsImage, type NewsItem } from "@/api/news"
 import Layout from "@/components/Layout"
-import PageFadeIn from "@/components/PageFadeIn"
 import SmartImage from "@/components/SmartImage"
 import { Button } from "@/components/ui"
 import { useAuth } from "@/contexts/AuthContext"
@@ -43,7 +40,7 @@ dayjs.extend(utc)
 dayjs.extend(timezone)
 
 const inputClass =
-  "w-full rounded-xl border border-(--glass-border) bg-(--bg-surface)/(--opacity-medium) px-4 py-2.5 text-base text-(--text-primary) shadow-sm focus:border-(--brand-main) focus:outline-none transition placeholder:text-(--text-secondary)/(--opacity-medium)"
+  "w-full rounded-sm border border-(--glass-border) bg-(--bg-surface)/(--opacity-medium) px-4 py-2.5 text-base text-(--text-primary) shadow-sm focus:border-(--brand-main) focus:outline-none transition placeholder:text-(--text-secondary)/(--opacity-medium)"
 const textareaClass = cn(inputClass, "min-h-40 resize-y leading-relaxed")
 const iconButtonClass =
   "inline-flex h-10 w-10 items-center justify-center rounded-full border border-(--glass-border) bg-(--bg-surface)/(--opacity-hover) text-(--text-secondary) shadow-sm transition hover:bg-(--bg-surface) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--brand-main)"
@@ -587,7 +584,7 @@ export default function NewsDetail() {
             ) : null}
           </header>
 
-          <figure className="w-full max-w-5xl self-start overflow-hidden rounded-3xl border border-(--glass-border) bg-(--bg-surface)/(--opacity-medium) shadow-glass backdrop-blur-md">
+          <figure className="w-full max-w-5xl self-start overflow-hidden rounded-lg border border-(--glass-border) bg-(--bg-surface)/(--opacity-medium) shadow-glass backdrop-blur-md">
             <div
               className={cn(
                 "flex w-full items-center justify-center overflow-hidden",
@@ -645,7 +642,7 @@ export default function NewsDetail() {
                 comments.map((comment) => (
                   <div
                     key={comment.id}
-                    className="flex flex-col gap-2 p-4 rounded-2xl bg-(--bg-surface)/(--opacity-dim) border border-glass-border/(--opacity-soft) shadow-sm"
+                    className="flex flex-col gap-2 p-4 rounded-md bg-(--bg-surface)/(--opacity-dim) border border-glass-border/(--opacity-soft) shadow-sm"
                   >
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-sm text-(--text-primary)">
@@ -781,7 +778,7 @@ export default function NewsDetail() {
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => setShareDialogOpen(false)}
-                className="group flex items-center gap-3 rounded-2xl border border-(--glass-border)/(--opacity-dim) bg-(--bg-surface)/(--opacity-medium) px-4 py-3 transition hover:border-(--glass-border)/(--opacity-soft) hover:bg-(--bg-surface)/(--opacity-strong)"
+                className="group flex items-center gap-3 rounded-md border border-(--glass-border)/(--opacity-dim) bg-(--bg-surface)/(--opacity-medium) px-4 py-3 transition hover:border-(--glass-border)/(--opacity-soft) hover:bg-(--bg-surface)/(--opacity-strong)"
               >
                 <span
                   className={cn(
@@ -906,7 +903,7 @@ export default function NewsDetail() {
                   </Button>
 
                   {imageUrl ? (
-                    <div className="overflow-hidden rounded-xl border border-glass-border shadow-sm">
+                    <div className="overflow-hidden rounded-sm border border-glass-border shadow-sm">
                       <SmartImage
                         srcRaw={imageUrl}
                         alt={t("news:alt.editPreview")}
@@ -987,7 +984,7 @@ export default function NewsDetail() {
           anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
           className="z-(--z-navbar)"
         >
-          <Alert severity="success" variant="filled" onClose={() => setSnackbar("")}>
+          <Alert severity="success" onClose={() => setSnackbar("")}>
             {snackbar}
           </Alert>
         </Snackbar>

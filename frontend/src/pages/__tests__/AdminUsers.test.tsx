@@ -1,10 +1,9 @@
-import { render, screen, waitFor, fireEvent } from "@testing-library/react"
+import { render, screen, fireEvent } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { HttpResponse, http } from "msw"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { setupServer } from "msw/node"
 
 import AdminUsers from "@/pages/AdminUsers"
 import { AuthContext } from "@/contexts/AuthContext"

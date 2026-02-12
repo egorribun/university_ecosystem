@@ -10,8 +10,6 @@ import { log } from "./logger"
 
 const API_CACHE = "api-cache"
 const API_CACHE_SESSION_PREFIX = `${API_CACHE}:`
-const MEDIA_PRIVATE_PREFIX = "media-private:"
-const MEDIA_PUBLIC = "media-public"
 
 let currentSessionHash: string | null = null
 

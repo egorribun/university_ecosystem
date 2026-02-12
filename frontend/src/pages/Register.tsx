@@ -73,7 +73,7 @@ function suggestEmailDomain(email: string) {
 }
 
 const inputBaseClass =
-  "w-full rounded-2xl border border-brand/(--opacity-subtle) bg-(--bg-surface)/(--opacity-heavy) px-4 py-3 text-base font-medium " +
+  "w-full rounded-md border border-brand/(--opacity-subtle) bg-(--bg-surface)/(--opacity-heavy) px-4 py-3 text-base font-medium " +
   "text-(--text-primary) shadow-premium transition-all duration-200 " +
   "focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/(--opacity-dim) " +
   "placeholder:text-(--text-secondary)/(--opacity-strong) " +
@@ -277,16 +277,16 @@ const Register = () => {
   return (
     <div className="relative min-h-screen w-full overflow-hidden bg-(--bg-page) text-(--text-primary)">
       <ParticleAuthBackground />
-      <div className="relative z-(--z-surface) mx-auto flex min-h-screen w-full max-w-6xl flex-col items-center justify-center gap-10 px-4 py-12 sm:px-6 lg:px-8 lg:flex-row">
+      <div className="relative z-(--z-surface) mx-auto grid min-h-screen w-full max-w-7xl grid-cols-1 items-stretch gap-10 px-4 py-12 sm:px-6 lg:grid-cols-2 lg:px-8">
         <motion.div
           initial={{ x: -200 }}
           animate={{ x: 0 }}
           transition={{ duration: 0.5, ease: "easeOut" }}
-          className="w-full rounded-xl border border-glass-border-subtle bg-(--bg-surface)/(--opacity-strong) p-8 shadow-glass backdrop-blur-3xl lg:p-12"
+          className="flex w-full min-w-0 flex-col justify-center rounded-sm border border-glass-border-subtle bg-(--bg-surface)/(--opacity-strong) p-8 shadow-glass backdrop-blur-3xl lg:p-12"
         >
           <div className="flex items-center gap-3 text-sm font-semibold uppercase tracking-widest text-(--text-primary)/(--opacity-strong)">
             <Crown className="h-5 w-5" aria-hidden="true" />
-            {t("auth:register.heroBadge", { defaultValue: "Добро пожаловать" })}
+            {t("auth:register.heroBadge", { defaultValue: "Добро пожаловать в систему" })}
           </div>
           <h1 className="mt-6 text-4xl font-extrabold leading-tight text-(--text-primary) sm:text-5xl">
             {t("auth:register.title")}
@@ -301,10 +301,10 @@ const Register = () => {
             {heroPerks.map(({ icon: Icon, title, description }) => (
               <div
                 key={title}
-                className="rounded-3xl border border-glass-border/(--opacity-heavy) bg-(--bg-surface)/(--opacity-medium) px-5 py-6 shadow-premium"
+                className="rounded-lg border border-glass-border/(--opacity-heavy) bg-(--bg-surface)/(--opacity-medium) px-5 py-6 shadow-premium"
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex size-12 items-center justify-center rounded-2xl bg-brand-subtle-bg text-brand">
+                  <div className="flex size-12 items-center justify-center rounded-md bg-brand-subtle-bg text-brand">
                     <Icon className="h-5 w-5" aria-hidden="true" />
                   </div>
                   <p className="text-base font-semibold">{title}</p>
@@ -319,7 +319,7 @@ const Register = () => {
           initial={{ y: 200 }}
           animate={{ y: 0 }}
           transition={{ duration: 0.5, ease: "easeOut", delay: 0.2 }}
-          className="w-full max-w-2xl rounded-xl border border-glass-border-subtle bg-(--bg-surface)/(--opacity-hover) p-6 shadow-glass backdrop-blur-2xl sm:p-10"
+          className="flex w-full min-w-0 flex-col justify-center rounded-sm border border-glass-border-subtle bg-(--bg-surface)/(--opacity-hover) p-6 shadow-glass backdrop-blur-2xl sm:p-10"
         >
           <form action={registerAction} autoComplete="off" className="flex flex-col gap-6">
             <div className="grid gap-5 sm:grid-cols-2">
@@ -559,7 +559,7 @@ const Register = () => {
 
             <button
               type="submit"
-              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-brand px-6 py-4 text-lg font-extrabold text-white shadow-premium transition hover:-translate-y-0.5 hover:shadow-glass disabled:opacity-(--opacity-strong)"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-brand px-6 py-4 text-lg font-extrabold text-white shadow-premium transition hover:-translate-y-0.5 hover:shadow-glass disabled:opacity-(--opacity-strong)"
               disabled={registerPending || !isValid}
             >
               {registerPending ? (

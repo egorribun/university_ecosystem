@@ -7,17 +7,12 @@
 import React, {
   useState,
   useEffect,
-  useMemo,
-  useCallback,
   ChangeEvent,
   FocusEvent,
   type CSSProperties,
-  type ReactNode,
-  forwardRef,
-  useId,
 } from "react"
 import ReactDOM from "react-dom"
-import { motion, AnimatePresence } from "framer-motion"
+import { motion } from "framer-motion"
 import { cn } from "@/utils/cn"
 import SmartImage from "@/components/SmartImage"
 import {
@@ -102,7 +97,7 @@ export function SectionCard({
   return (
     <Component
       className={cn(
-        "relative flex flex-col gap-3 overflow-hidden rounded-3xl px-6 py-6",
+        "relative flex flex-col gap-3 overflow-hidden rounded-2xl px-6 py-6",
         "border-glass-border bg-glass-bg shadow-glass backdrop-blur-glass text-(--text-primary)",
         "transition-all duration-500",
         "before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit] before:opacity-(--opacity-soft)",
@@ -178,7 +173,7 @@ export function SessionItem({
   return (
     <div
       className={cn(
-        "group relative flex items-stretch justify-between gap-4 rounded-2xl px-4 py-3",
+        "group relative flex items-stretch justify-between gap-4 rounded-xl px-4 py-3",
         "border-glass-border bg-glass-bg text-(--text-primary)",
         "transition-all duration-500 ease-out backdrop-blur-glass",
         "hover:-translate-y-px hover:border-(--brand-main)/(--opacity-soft) hover:bg-glass-tint1 hover:shadow-glass",
@@ -213,7 +208,7 @@ export function AccordionSection({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-2xl border transition-all duration-500",
+        "overflow-hidden rounded-xl border transition-all duration-500",
         "border-glass-border bg-glass-bg backdrop-blur-glass",
         expanded
           ? "shadow-glass border-(--brand-main)/(--opacity-dim) bg-glass-tint1"
@@ -304,7 +299,7 @@ export const TextField = React.forwardRef<
     },
     ref
   ) => {
-    const InputComponent = multiline ? "textarea" : Input
+    // InputComponent removed as it was unused
 
     return (
       <div className={cn("flex flex-col gap-1.5", fullWidth && "w-full", className)}>
@@ -336,7 +331,7 @@ export const TextField = React.forwardRef<
               placeholder={placeholder}
               rows={rows}
               className={cn(
-                "flex w-full rounded-2xl border-glass-border bg-glass-bg px-4 py-3 text-base font-medium text-(--text-primary) shadow-sm transition-all duration-500",
+                "flex w-full rounded-xl border-glass-border bg-glass-bg px-4 py-3 text-base font-medium text-(--text-primary) shadow-sm transition-all duration-500",
                 "placeholder:text-(--text-secondary)/(--opacity-medium)",
                 "focus:border-(--brand-main)/(--opacity-medium) focus:outline-none focus:ring-4 focus:ring-(--brand-main)/(--opacity-subtle)",
                 "disabled:cursor-not-allowed disabled:opacity-(--opacity-medium)",
@@ -434,7 +429,7 @@ export function FormControlLabel({
   return (
     <label
       className={cn(
-        "group inline-flex items-center gap-3 rounded-xl px-2 py-1.5",
+        "group inline-flex items-center gap-3 rounded-sm px-2 py-1.5",
         "cursor-pointer transition-all duration-300",
         "hover:bg-(--primary-main)/5 border border-transparent",
         className
@@ -451,13 +446,11 @@ export function FormControlLabel({
 // Feedback Components
 export function Alert({
   severity = "info",
-  variant = "filled",
   children,
   onClose,
   className = "",
 }: {
   severity?: "info" | "error" | "warning" | "success"
-  variant?: "filled" | "outlined"
   children: React.ReactNode
   onClose?: () => void
   className?: string
@@ -476,7 +469,7 @@ export function Alert({
     <div
       role="alert"
       className={cn(
-        "flex items-center gap-3 rounded-2xl border px-4 py-3 backdrop-blur-md shadow-sm",
+        "flex items-center gap-3 rounded-xl border px-4 py-3 backdrop-blur-md shadow-sm",
         palette[severity],
         className
       )}
@@ -485,7 +478,7 @@ export function Alert({
       {onClose && (
         <button
           onClick={onClose}
-          className="rounded-lg p-1 transition hover:bg-black/5 dark:hover:bg-white/5"
+          className="rounded-xs p-1 transition hover:bg-black/(--opacity-faint) dark:hover:bg-white/(--opacity-faint)"
         >
           ×
         </button>
@@ -601,7 +594,7 @@ export function Skeleton({
         variant === "circular"
           ? "rounded-full"
           : variant === "rounded"
-            ? "rounded-2xl"
+            ? "rounded-xl"
             : "rounded-none",
         className
       )}
@@ -703,7 +696,7 @@ export function Dialog({
         role="dialog"
         aria-modal="true"
         className={cn(
-          "relative z-(--z-surface) w-full overflow-hidden rounded-3xl border-glass-border bg-glass-bg shadow-glass backdrop-blur-glass",
+          "relative z-(--z-surface) w-full overflow-hidden rounded-2xl border-glass-border bg-glass-bg shadow-glass backdrop-blur-glass",
           fullWidth ? "w-full" : maxWidthClasses
         )}
       >

@@ -115,7 +115,7 @@ describe("ensureSessionSigningKey request configuration", () => {
 
   it("passes skipRateLimitQueue when requesting the session signing key", async () => {
     const { queryClient, wrapper } = setup()
-    const getSpy = vi.spyOn(api, "get").mockImplementation((url, config) => {
+    const getSpy = vi.spyOn(api, "get").mockImplementation((url) => {
       if (url === "/users/me") {
         return Promise.resolve({ data: testUser } as any)
       }

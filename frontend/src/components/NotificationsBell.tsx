@@ -159,7 +159,7 @@ export default function NotificationsBell() {
                 // Desktop styles
                 "sm:w-[400px]",
                 // Glass styles applied directly to motion component for immediate effect
-                "bg-glass backdrop-blur-xl border border-glass-border rounded-2xl shadow-glass overflow-hidden ring-1 ring-black/5"
+                "bg-glass backdrop-blur-xl border border-glass-border rounded-2xl shadow-glass overflow-hidden ring-1 ring-black/(--opacity-faint)"
               )}
               style={{
                 top: coords.top,
@@ -256,7 +256,7 @@ export default function NotificationsBell() {
                         variants={itemVariants}
                         className={cn(
                           "relative group border-b border-glass-border last:border-0 p-4 transition-all hover:bg-(--text-secondary)/(--opacity-faint)",
-                          !n.read ? "bg-brand/5" : ""
+                          !n.read ? "bg-brand/(--opacity-faint)" : ""
                         )}
                       >
                         <a

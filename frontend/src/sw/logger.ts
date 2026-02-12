@@ -8,7 +8,9 @@ export const log = (...args: unknown[]) => {
 }
 
 export const warn = (...args: unknown[]) => {
-  console.warn("[SW]", ...args)
+  if (import.meta.env.DEV) {
+    console.warn("[SW]", ...args)
+  }
 }
 
 export const error = (...args: unknown[]) => {

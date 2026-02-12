@@ -37,7 +37,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       <main
         id="main-content"
         className={cn(
-          "flex-1 outline-none",
+          "flex-1 w-full outline-none",
           path.startsWith("/messenger") ? "overflow-hidden" : "overflow-y-auto"
         )}
       >

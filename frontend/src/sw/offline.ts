@@ -2,7 +2,7 @@
 declare const self: ServiceWorkerGlobalScope
 
 import { openDB, type IDBPDatabase } from "idb"
-import { log, warn, error } from "./logger"
+import { log, warn } from "./logger"
 
 const CLICK_DB_NAME = "notification-interactions"
 const DB_VERSION = 3

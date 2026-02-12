@@ -1,8 +1,6 @@
-import React from "react"
 import { useTranslation } from "react-i18next"
 import { motion } from "framer-motion"
 import { cn } from "@/utils/cn"
-import { type LessonParity } from "./scheduleUtils"
 
 interface WeekSelectorProps {
   currentParity: "odd" | "even"

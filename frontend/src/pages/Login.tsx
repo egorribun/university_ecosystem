@@ -10,7 +10,6 @@ import {
   Zap,
   ShieldCheck,
   Sparkles,
-  Check as CheckIcon,
 } from "lucide-react"
 import { motion } from "framer-motion"
 import { ChallengeLockedError, useAuth } from "@/contexts/AuthContext"
@@ -22,47 +21,12 @@ import { Input } from "@/components/ui/input"
 import { startAuthentication, browserSupportsWebAuthn } from "@simplewebauthn/browser"
 import { Fingerprint } from "lucide-react"
 import { useLocalStorage } from "@/hooks/useLocalStorage"
+import { levenshtein } from "@/utils/levenshtein"
+import { COMMON_EMAIL_DOMAINS } from "@/constants/emailDomains"
 
 type ChallengeMethod = PendingMfaState["methods"][number]
 type ChallengeWithAttempts = ChallengeMethod &
   Partial<{ attempt_limit: number | null; remaining_attempts: number | null }>
-
-function levenshtein(a: string, b: string) {
-  const m = a.length
-  const n = b.length
-  if (!m) return n
-  if (!n) return m
-
-  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0))
-  for (let i = 0; i <= m; i++) dp[i][0] = i
-  for (let j = 0; j <= n; j++) dp[0][j] = j
-
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1
-      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost)
-    }
-  }
-  return dp[m][n]
-}
-
-const COMMON_EMAIL_DOMAINS = [
-  "gmail.com",
-  "googlemail.com",
-  "yahoo.com",
-  "outlook.com",
-  "hotmail.com",
-  "live.com",
-  "icloud.com",
-  "mail.ru",
-  "bk.ru",
-  "list.ru",
-  "inbox.ru",
-  "yandex.ru",
-  "yandex.com",
-  "rambler.ru",
-  "proton.me",
-]
 
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -77,7 +41,7 @@ function suggestEmailDomain(email: string) {
     .toLowerCase()
 
   if (!localPart || !domain) return null
-  if (COMMON_EMAIL_DOMAINS.includes(domain)) return null
+  if ((COMMON_EMAIL_DOMAINS as ReadonlyArray<string>).includes(domain)) return null
 
   let bestMatch: { domain: string; distance: number } | null = null
   for (const candidate of COMMON_EMAIL_DOMAINS) {
@@ -147,7 +111,7 @@ const Login = () => {
   const [submitting, setSubmitting] = useState(false)
 
   const [submitError, submitAction, isPending] = useActionState(
-    async (previousState: string | null, formData: FormData) => {
+    async (_previousState: string | null, formData: FormData) => {
       const username = String(formData.get("username") ?? "").trim()
       const passwordValue = String(formData.get("password") ?? "")
 
@@ -406,7 +370,7 @@ const Login = () => {
               </div>
 
               {generalMfaError ? (
-                <div className="w-full rounded-2xl border border-error-border/(--opacity-medium) bg-error-bg/(--opacity-dim) px-4 py-3 text-sm font-semibold text-error-text">
+                <div className="w-full rounded-md border border-error-border/(--opacity-medium) bg-error-bg/(--opacity-dim) px-4 py-3 text-sm font-semibold text-error-text">
                   {generalMfaError}
                 </div>
               ) : null}
@@ -418,7 +382,7 @@ const Login = () => {
                       type="button"
                       onClick={handleWebAuthnVerify}
                       disabled={mfaBusy}
-                      className="inline-flex w-full items-center justify-center gap-3 rounded-[1.2rem] bg-brand/(--opacity-subtle) px-6 py-4 text-lg font-bold text-brand transition hover:bg-brand/(--opacity-dim) disabled:opacity-(--opacity-medium)"
+                      className="inline-flex w-full items-center justify-center gap-3 rounded-xl bg-brand/(--opacity-subtle) px-6 py-4 text-lg font-bold text-brand transition hover:bg-brand/(--opacity-dim) disabled:opacity-(--opacity-medium)"
                     >
                       <Fingerprint className="h-6 w-6" />
                       {t("auth:mfa.webauthn.useSecurityKey", {
@@ -426,7 +390,7 @@ const Login = () => {
                       })}
                     </button>
                   ) : (
-                    <div className="w-full rounded-2xl border border-warning-border/(--opacity-medium) bg-warning-bg/(--opacity-subtle) px-4 py-3 text-sm font-semibold text-warning-text text-center">
+                    <div className="w-full rounded-md border border-warning-border/(--opacity-medium) bg-warning-bg/(--opacity-subtle) px-4 py-3 text-sm font-semibold text-warning-text text-center">
                       {t("auth:mfa.webauthn.notSupported", {
                         defaultValue:
                           "WebAuthn недоступен в этом браузере. Используйте HTTPS или код аутентификатора ниже.",
@@ -474,7 +438,7 @@ const Login = () => {
               )}
 
               {!otpChallenge && !webauthnChallenge && (
-                <div className="w-full rounded-2xl border border-warning-border/(--opacity-medium) bg-warning-bg/(--opacity-subtle) px-4 py-3 text-sm font-semibold text-warning-text">
+                <div className="w-full rounded-md border border-warning-border/(--opacity-medium) bg-warning-bg/(--opacity-subtle) px-4 py-3 text-sm font-semibold text-warning-text">
                   {t("auth:mfa.noMethods")}
                 </div>
               )}
@@ -497,19 +461,19 @@ const Login = () => {
   return (
     <div className="relative min-h-screen w-full overflow-hidden bg-(--bg-page) text-(--text-primary)">
       <ParticleAuthBackground />
-      <div className="relative z-(--z-navbar) mx-auto flex min-h-screen w-full max-w-6xl flex-col items-center justify-center gap-10 px-4 py-12 sm:px-6 lg:px-8 lg:flex-row">
+      <div className="relative z-(--z-navbar) mx-auto grid min-h-screen w-full max-w-7xl grid-cols-1 items-stretch gap-12 px-4 py-12 sm:px-6 lg:grid-cols-2 lg:px-8">
         <motion.div
           initial={{ x: -200 }}
           animate={{ x: 0 }}
           transition={{ duration: 0.5, ease: "easeOut" }}
-          className="w-full rounded-4xl border border-glass-border/(--opacity-hover) bg-(--bg-surface)/(--opacity-strong) p-8 shadow-glass backdrop-blur-3xl lg:p-12"
+          className="flex w-full min-w-0 flex-col justify-center rounded-4xl border border-glass-border/(--opacity-hover) bg-(--bg-surface)/(--opacity-strong) p-8 shadow-glass backdrop-blur-3xl lg:p-12"
         >
           <p className="text-sm font-semibold uppercase tracking-[0.3em] text-(--text-primary)/(--opacity-strong)">
             {t("auth:login.heroBadge", { defaultValue: "University Ecosystem" })}
           </p>
           <h1 className="mt-4 text-4xl font-extrabold leading-tight text-(--text-primary) sm:text-5xl">
             {t("auth:login.heroHeading", {
-              defaultValue: "Добро пожаловать в Экосистему Университета",
+              defaultValue: "Добро пожаловать в систему Университета",
             })}
           </h1>
           <p className="mt-4 text-lg leading-relaxed text-(--text-secondary)">
@@ -523,10 +487,10 @@ const Login = () => {
             {heroHighlights.map(({ icon: Icon, title, description }) => (
               <div
                 key={title}
-                className="group relative overflow-hidden rounded-3xl border border-glass-border/(--opacity-heavy) bg-(--bg-surface)/(--opacity-medium) px-5 py-6 shadow-premium transition-transform duration-300 hover:-translate-y-1"
+                className="group relative overflow-hidden rounded-lg border border-glass-border/(--opacity-heavy) bg-(--bg-surface)/(--opacity-medium) px-5 py-6 shadow-premium transition-transform duration-300 hover:-translate-y-1"
               >
                 <div className="relative z-(--z-base) flex items-center gap-3">
-                  <span className="flex size-12 items-center justify-center rounded-2xl bg-brand-subtle-bg text-brand">
+                  <span className="flex size-12 items-center justify-center rounded-md bg-brand-subtle-bg text-brand">
                     <Icon className="h-5 w-5" aria-hidden="true" />
                   </span>
                   <p className="text-base font-semibold">{title}</p>
@@ -557,7 +521,7 @@ const Login = () => {
           initial={{ y: 200 }}
           animate={{ y: 0 }}
           transition={{ duration: 0.5, ease: "easeOut", delay: 0.2 }}
-          className="w-full max-w-xl rounded-4xl border border-glass-border/(--opacity-hover) bg-(--bg-surface)/(--opacity-hover) p-6 shadow-glass backdrop-blur-2xl sm:p-10"
+          className="flex w-full min-w-0 flex-col justify-center rounded-4xl border border-glass-border/(--opacity-hover) bg-(--bg-surface)/(--opacity-hover) p-6 shadow-glass backdrop-blur-2xl sm:p-10"
         >
           <form noValidate autoComplete="on" action={submitAction} className="flex flex-col gap-6">
             <div className="space-y-2 text-center">
@@ -614,7 +578,7 @@ const Login = () => {
                   onMouseUp={() => setShowPassword(false)}
                   onMouseLeave={() => setShowPassword(false)}
                   onClick={() => setShowPassword((v) => !v)}
-                  className="inline-flex items-center gap-2 rounded-full border border-transparent px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-brand transition hover:border-brand/(--opacity-medium)"
+                  className="inline-flex items-center gap-2 rounded-full border border-transparent px-3 py-1 text-xs font-bold uppercase tracking-widest text-brand transition hover:bg-brand/5 focus:outline-none focus:ring-2 focus:ring-brand/20"
                   title={t("auth:actions.holdReveal") ?? undefined}
                   aria-label={t("auth:actions.showPassword") ?? undefined}
                 >
@@ -671,7 +635,7 @@ const Login = () => {
             <div className="flex flex-col gap-3">
               <button
                 type="submit"
-                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-linear-to-b from-brand to-brand-hover px-6 py-4 text-lg font-extrabold text-white shadow-premium transition hover:translate-y-[-2px] hover:shadow-glass-strong disabled:opacity-(--opacity-strong)"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-linear-to-b from-brand to-brand-hover px-6 py-4 text-lg font-extrabold text-white shadow-premium transition hover:-translate-y-0.5 hover:shadow-glass-strong disabled:opacity-(--opacity-strong)"
                 disabled={isPending || submitting}
               >
                 {isPending || submitting ? (
@@ -689,7 +653,7 @@ const Login = () => {
                   type="button"
                   onClick={handlePasskeyLogin}
                   disabled={submitting}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-brand/(--opacity-medium) bg-brand/(--opacity-subtle) px-6 py-4 text-lg font-extrabold text-brand shadow-surface transition hover:translate-y-[-2px] hover:bg-brand/(--opacity-dim) disabled:opacity-(--opacity-strong)"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-brand/(--opacity-medium) bg-brand/(--opacity-subtle) px-6 py-4 text-lg font-extrabold text-brand shadow-surface transition hover:-translate-y-0.5 hover:bg-brand/(--opacity-dim) disabled:opacity-(--opacity-strong)"
                 >
                   <Fingerprint className="h-6 w-6" />
                   {t("auth:login.signInWithPasskey", { defaultValue: "Войти с помощью Passkey" })}

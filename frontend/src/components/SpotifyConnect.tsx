@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import api from "@/api/client"
 import { useAuth, currentUserQueryKey } from "@/contexts/AuthContext"

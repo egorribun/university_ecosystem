@@ -1,4 +1,3 @@
-import React from "react"
 import api from "../../api/client"
 import { useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"

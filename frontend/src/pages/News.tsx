@@ -2,10 +2,10 @@ import Layout from "../components/Layout"
 import PageFadeIn from "../components/PageFadeIn"
 import NewsCard from "../components/NewsCard"
 import NewsCardSkeleton from "../components/NewsCardSkeleton"
-import { useState, useRef, useCallback, useEffect, type ReactNode, type CSSProperties } from "react"
+import { useState, useRef, useCallback, useEffect, type ReactNode } from "react"
 import { isAxiosError } from "axios"
 import { createNews, uploadNewsImage } from "@/api/news"
-import { Newspaper as ArticleIcon, Camera as PhotoCamera, Search as SearchIcon } from "lucide-react"
+import { Newspaper as ArticleIcon, Camera as PhotoCamera } from "lucide-react"
 import SmartImage from "@/components/SmartImage"
 import { Button } from "@/components/ui"
 import { Alert, Dialog, DialogActions, DialogContent, DialogTitle } from "@/components/settings"
@@ -19,13 +19,11 @@ import { useNewsListQuery } from "@/api/hooks/news"
 import { resetEtagCache } from "@/api/client"
 import { StorageItem } from "@/utils/storage"
 import { cn } from "@/utils/cn"
+import FadeSection from "@/components/FadeSection"
 
 const inputClass =
-  "w-full rounded-xl border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-4 py-2.5 text-input text-(--text-primary) shadow-sm focus:border-brand focus:outline-none transition placeholder:text-(--text-secondary)/(--opacity-medium)"
+  "w-full rounded-sm border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-4 py-2.5 text-input text-(--text-primary) shadow-sm focus:border-brand focus:outline-none transition placeholder:text-(--text-secondary)/(--opacity-medium)"
 const textareaClass = cn(inputClass, "min-h-[148px] resize-y leading-relaxed")
-
-const fadeDelayStyle = (value: string): CSSProperties =>
-  ({ "--fade-delay": value }) as CSSProperties
 
 type NewsFormState = {
   title: string
@@ -77,7 +75,6 @@ const News = () => {
     isFetchingNextPage,
     hasNextPage,
     fetchNextPage,
-    refetch: refetchNews,
   } = useNewsListQuery({ language })
 
   const isOnline = useOnlineStatus()
@@ -206,84 +203,83 @@ const News = () => {
       <PageFadeIn>
         <div className="w-full min-h-screen bg-transparent text-(--text-primary) py-8 sm:py-10">
           <div className="px-4">
-            <div
-              data-fade
-              style={fadeDelayStyle("80ms")}
-              className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5"
-            >
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-(--bg-surface)/(--opacity-medium) border border-glass-border text-brand shadow-glass transition-transform duration-200 hover:scale-105 backdrop-blur-md">
-                <ArticleIcon className="h-7 w-7" />
-              </div>
-              <h1 className="text-(--fs-page-title) font-bold tracking-tight">
-                {t("news:pageTitle")}
-              </h1>
-            </div>
-
-            {user?.role === "admin" && (
-              <div data-fade style={fadeDelayStyle("140ms")} className="mb-6 flex justify-start">
-                <Button
-                  size="lg"
-                  onClick={() => setAddOpen(true)}
-                  disabled={adding}
-                  className="px-6 text-fluid-title-sm"
-                >
-                  {t("news:actions.add")}
-                </Button>
-              </div>
-            )}
-
-            <div
-              data-fade
-              style={fadeDelayStyle("200ms")}
-              className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
-            >
-              {isInitialLoading
-                ? Array.from({ length: skeletonCount }).map((_, index) => (
-                    <div key={`news-skeleton-${index}`} className="flex h-full w-full">
-                      <NewsCardSkeleton />
-                    </div>
-                  ))
-                : newsList.map((news) => (
-                    <div key={news.id} className="flex h-full w-full">
-                      <NewsCard
-                        {...news}
-                        image_url={news.image_url ?? undefined}
-                        onChange={() => {
-                          void refreshNews()
-                        }}
-                      />
-                    </div>
-                  ))}
-
-              {showEmptyState && (
-                <div className="col-span-full mt-12 flex w-full justify-center">
-                  {!isOnline && newsList.length === 0 ? (
-                    <OfflineFallback onRetry={refreshNews} />
-                  ) : (
-                    <div className="flex w-full max-w-md flex-col items-center gap-5 rounded-3xl border border-glass-border/(--opacity-soft) bg-(--bg-surface)/(--opacity-medium) px-8 py-14 text-center shadow-glass backdrop-blur-md">
-                      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand/(--opacity-subtle) border border-brand/(--opacity-dim) shadow-brand/(--opacity-subtle) shadow-lg">
-                        <ArticleIcon className="h-8 w-8 text-brand" />
-                      </div>
-                      <div className="space-y-2">
-                        <p className="text-lg font-semibold text-(--text-primary)">
-                          {t("news:states.empty")}
-                        </p>
-                        <p className="text-sm text-(--text-secondary)">
-                          {t("news:states.checkLater", {
-                            defaultValue: "Check back later for updates",
-                          })}
-                        </p>
-                      </div>
-                      {user?.role === "admin" && (
-                        <Button size="lg" onClick={() => setAddOpen(true)} className="mt-2 px-6">
-                          {t("news:actions.add")}
-                        </Button>
-                      )}
-                    </div>
-                  )}
+            <header>
+              <FadeSection delay="80ms" className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-(--bg-surface)/(--opacity-medium) border border-glass-border text-brand shadow-glass transition-transform duration-200 hover:scale-105 backdrop-blur-md">
+                  <ArticleIcon className="h-7 w-7" />
                 </div>
+                <h1 className="text-(--fs-page-title) font-bold tracking-tight">
+                  {t("news:pageTitle")}
+                </h1>
+              </FadeSection>
+
+              {user?.role === "admin" && (
+                <FadeSection delay="140ms" className="mb-6 flex justify-start">
+                  <Button
+                    size="lg"
+                    onClick={() => setAddOpen(true)}
+                    disabled={adding}
+                    className="px-6 text-fluid-title-sm"
+                  >
+                    {t("news:actions.add")}
+                  </Button>
+                </FadeSection>
               )}
-            </div>
+            </header>
+
+            <section aria-label={t("news:pageTitle")}>
+              <FadeSection
+                delay="200ms"
+                className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+              >
+                {isInitialLoading
+                  ? Array.from({ length: skeletonCount }).map((_, index) => (
+                      <div key={`news-skeleton-${index}`} className="flex h-full w-full">
+                        <NewsCardSkeleton />
+                      </div>
+                    ))
+                  : newsList.map((news) => (
+                      <div key={news.id} className="flex h-full w-full">
+                        <NewsCard
+                          {...news}
+                          image_url={news.image_url ?? undefined}
+                          onChange={() => {
+                            void refreshNews()
+                          }}
+                        />
+                      </div>
+                    ))}
+
+                {showEmptyState && (
+                  <div className="col-span-full mt-12 flex w-full justify-center">
+                    {!isOnline && newsList.length === 0 ? (
+                      <OfflineFallback onRetry={refreshNews} />
+                    ) : (
+                      <div className="flex w-full max-w-md flex-col items-center gap-5 rounded-lg border border-glass-border/(--opacity-soft) bg-(--bg-surface)/(--opacity-medium) px-8 py-14 text-center shadow-glass backdrop-blur-md">
+                        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand/(--opacity-subtle) border border-brand/(--opacity-dim) shadow-brand/(--opacity-subtle) shadow-lg">
+                          <ArticleIcon className="h-8 w-8 text-brand" />
+                        </div>
+                        <div className="space-y-2">
+                          <p className="text-lg font-semibold text-(--text-primary)">
+                            {t("news:states.empty")}
+                          </p>
+                          <p className="text-sm text-(--text-secondary)">
+                            {t("news:states.checkLater", {
+                              defaultValue: "Check back later for updates",
+                            })}
+                          </p>
+                        </div>
+                        {user?.role === "admin" && (
+                          <Button size="lg" onClick={() => setAddOpen(true)} className="mt-2 px-6">
+                            {t("news:actions.add")}
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </FadeSection>
+            </section>
 
             {/* Load more */}
             {hasNextPage && (
@@ -410,7 +406,7 @@ const News = () => {
                         </Button>
 
                         {imagePreview ? (
-                          <div className="overflow-hidden rounded-xl border border-glass-border shadow-sm">
+                          <div className="overflow-hidden rounded-sm border border-glass-border shadow-sm">
                             <SmartImage
                               srcRaw={imagePreview}
                               alt={t("news:alt.newCover")}

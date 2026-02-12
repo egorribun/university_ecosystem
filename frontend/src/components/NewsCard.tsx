@@ -1,31 +1,28 @@
-import { FC, memo, useState, useEffect, useCallback, useMemo, lazy, Suspense } from "react"
+import Dialog from "@/components/Dialog"
+import SmartImage from "@/components/SmartImage"
+import { Button } from "@/components/ui"
+import { SpotlightOverlay, useSpotlight } from "@/components/ui/Spotlight"
+import { useLanguage } from "@/contexts/LanguageContext"
+import { useNewsInteraction } from "@/hooks/useNewsInteraction"
+import { useOnlineStatus } from "@/hooks/useOnlineStatus"
+import { cn } from "@/utils/cn"
+import { getMoscowDate } from "@/utils/date"
+import { sanitizeNewsText } from "@/utils/sanitize"
+import dayjs from "dayjs"
 import { motion } from "framer-motion"
 import {
-  MoreVertical as MoreVertIcon,
-  Pencil as EditIcon,
-  Trash2 as DeleteIcon,
-  Camera as PhotoCamera,
   ArrowUpRight as ArrowOutwardIcon,
   FileText as ArticleIcon,
-  Heart as FavoriteIcon,
   MessageCircle as ChatBubbleOutlineIcon,
   Cloud,
+  Trash2 as DeleteIcon,
+  Heart as FavoriteIcon,
 } from "lucide-react"
-import { useNewsInteraction } from "@/hooks/useNewsInteraction"
-import { useAuth } from "../contexts/AuthContext"
-import { useLanguage } from "@/contexts/LanguageContext"
-import { useOnlineStatus } from "@/hooks/useOnlineStatus"
-import api from "../api/client"
-import { Link } from "react-router-dom"
-import dayjs from "dayjs"
-import SmartImage from "@/components/SmartImage"
-import { cn } from "@/utils/cn"
-import { sanitizeNewsText } from "@/utils/sanitize"
+import { FC, lazy, memo, Suspense, useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Button } from "@/components/ui"
-import Dialog from "@/components/Dialog"
-import { useSpotlight, SpotlightOverlay } from "@/components/ui/Spotlight"
-import { getMoscowDate } from "@/utils/date"
+import { Link } from "react-router-dom"
+import api from "../api/client"
+import { useAuth } from "../contexts/AuthContext"
 const NewsCardActions = lazy(() =>
   import("./news/NewsCardActions").then((m) => ({ default: m.NewsCardActions }))
 )
@@ -96,8 +93,8 @@ const NewsCardComponent: FC<NewsCardProps> = ({
 
   const spotlight = useSpotlight()
 
-  const menuId = `news-card-menu-${id}`
-  const menuButtonId = `${menuId}-button`
+
+
 
   const localizedTitle = useMemo(() => {
     const english = title_en ?? ""
@@ -154,12 +151,9 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       whileHover={{ y: -4 }}
       transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
       className={cn(
-        "card-glass group relative flex flex-col transition-shadow duration-300 ease-out h-(--news-card-h-mobile) md:h-(--news-card-h-desktop) w-full transform-gpu",
-        hoveringDisabled
-          ? "cursor-default"
-          : "cursor-pointer hover:shadow-glass-strong active:scale-[0.985]"
+        "card-glass card-news group",
+        hoveringDisabled ? "cursor-default" : "card-interactive"
       )}
-      style={{ width: "100%" }}
       onMouseMove={spotlight.onMouseMove}
     >
       <SpotlightOverlay

@@ -1,8 +1,7 @@
-import { Skeleton, Card } from "@/components/ui"
-import { useTranslation } from "react-i18next"
+import { Skeleton } from "@/components/ui"
+
 
 export function ScheduleSkeleton() {
-  const { t } = useTranslation("schedule")
 
   return (
     <div className="w-screen min-h-screen bg-(--bg-page) py-8 sm:py-10">

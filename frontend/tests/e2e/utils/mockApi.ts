@@ -384,17 +384,14 @@ export async function useMockApi(page: Page) {
       const postData = route.request().postData() ?? ""
       const headers = route.request().headers()
       let username = ""
-      let password = ""
 
       try {
         if ((headers["content-type"] ?? "").includes("application/json")) {
           const parsed = JSON.parse(postData)
           username = parsed.username || ""
-          password = parsed.password || ""
         } else {
           const params = new URLSearchParams(postData)
           username = params.get("username") || ""
-          password = params.get("password") || ""
         }
       } catch {}
 

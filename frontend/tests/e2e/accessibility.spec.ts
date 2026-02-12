@@ -1,5 +1,4 @@
 import { expect, test } from "@playwright/test"
-import AxeBuilder from "@axe-core/playwright"
 import { useMockApi } from "./utils/mockApi"
 
 // Skip: All accessibility tests timeout during login in mock environment

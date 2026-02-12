@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { useNotifications } from "@/hooks/useNotifications"
@@ -133,7 +133,7 @@ describe("NotificationsBell", () => {
     useNotificationsMock.mockImplementation(() => state)
 
     const user = userEvent.setup()
-    const { rerender } = render(<NotificationsBell />)
+    render(<NotificationsBell />)
 
     const openButton = screen.getByRole("button", { name: "Open notifications" })
     await user.click(openButton)

@@ -4,12 +4,11 @@
  * A card component for displaying a lesson in the schedule.
  * Used in both desktop table and mobile card views.
  */
-import React from "react"
+
 import {
   Trash2 as DeleteIcon,
   Info as InfoOutlinedIcon,
   Clock as AccessTimeIcon,
-  GraduationCap as SchoolIcon,
   MapPin as RoomIcon,
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
@@ -35,7 +34,6 @@ export function LessonCard({
   onDelete,
   onOpen,
   hasBreakBefore = false,
-  lessonCardHeight = 148,
   getLessonTypeColor,
   getLessonTypeLabel,
   canEdit = false,

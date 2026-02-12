@@ -11,12 +11,11 @@ import {
   Terminal,
   User,
   Activity,
-  Calendar,
 } from "lucide-react"
 import api from "../api/client"
 import Layout from "../components/Layout"
 import { cn } from "@/utils/cn"
-import { SectionCard, TextField, Button, Divider } from "@/components/settings"
+import { SectionCard, TextField, Button } from "@/components/settings"
 import { AuditLog, AuditLogList } from "../types/Admin"
 
 function Row({ log }: { log: AuditLog }) {
@@ -124,7 +123,7 @@ function Row({ log }: { log: AuditLog }) {
                 transition={{ duration: 0.2 }}
                 className="overflow-hidden"
               >
-                <div className="mx-4 mb-4 mt-2 rounded-2xl border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-6 shadow-sm">
+                <div className="mx-4 mb-4 mt-2 rounded-md border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-6 shadow-sm">
                   <div className="mb-4 flex items-center gap-2 text-sm font-bold text-(--text-primary)">
                     <Info className="h-4 w-4 text-brand" />
                     <span>{t("audit.details.title")}</span>
@@ -174,7 +173,7 @@ function Row({ log }: { log: AuditLog }) {
                         <Terminal className="h-3 w-3" />
                         <span>{t("audit.details.executionContext")}</span>
                       </div>
-                      <div className="rounded-xl border border-glass-border/(--opacity-subtle) bg-black/(--opacity-medium) p-4 font-mono text-xs text-brand-light">
+                      <div className="rounded-sm border border-glass-border/(--opacity-subtle) bg-black/(--opacity-medium) p-4 font-mono text-xs text-brand-light">
                         <pre className="overflow-x-auto whitespace-pre-wrap">
                           {JSON.stringify(log.context, null, 2)}
                         </pre>
@@ -196,7 +195,7 @@ export default function AdminAudit() {
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(0)
-  const [rowsPerPage, setRowsPerPage] = useState(50)
+  const rowsPerPage = 50
   const [filters, setFilters] = useState({ resource_type: "", action: "" })
 
   const { t } = useTranslation("admin")
@@ -223,10 +222,6 @@ export default function AdminAudit() {
     void fetchLogs()
   }, [fetchLogs])
 
-  const handleChangePage = (direction: "previous" | "next") => {
-    if (direction === "previous") setPage(Math.max(0, page - 1))
-    else setPage(page + 1)
-  }
 
   return (
     <Layout>
@@ -271,7 +266,7 @@ export default function AdminAudit() {
             />
           </SectionCard>
 
-          <div className="overflow-hidden rounded-3xl border border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass">
+          <div className="overflow-hidden rounded-lg border border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass">
             {loading && logs.length === 0 ? (
               <div className="flex justify-center p-20">
                 <div className="h-10 w-10 animate-spin rounded-full border-4 border-brand border-t-transparent" />

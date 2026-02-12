@@ -1,4 +1,4 @@
-import { motion, useMotionTemplate, useMotionValue, MotionValue } from "framer-motion"
+import { motion, useMotionValue, MotionValue } from "framer-motion"
 import { MouseEvent, PropsWithChildren, useCallback } from "react"
 import { cn } from "@/utils/cn"
 
@@ -21,14 +21,12 @@ export function useSpotlight() {
 type SpotlightOverlayProps = {
   mouseX: MotionValue<number>
   mouseY: MotionValue<number>
-  color?: string
   className?: string
 }
 
 export function SpotlightOverlay({
   mouseX,
   mouseY,
-  color = "color-mix(in srgb, var(--primary-main) var(--opacity-dim), transparent)",
   className,
 }: SpotlightOverlayProps) {
   return (
@@ -52,15 +50,14 @@ export function SpotlightOverlay({
 
 type SpotlightProps = PropsWithChildren<{
   className?: string
-  spotlightColor?: string
 }>
 
-export function Spotlight({ children, className = "", spotlightColor }: SpotlightProps) {
+export function Spotlight({ children, className = "" }: SpotlightProps) {
   const { mouseX, mouseY, onMouseMove } = useSpotlight()
 
   return (
     <div className={cn("group relative overflow-hidden", className)} onMouseMove={onMouseMove}>
-      <SpotlightOverlay mouseX={mouseX} mouseY={mouseY} color={spotlightColor} />
+      <SpotlightOverlay mouseX={mouseX} mouseY={mouseY} />
       {children}
     </div>
   )

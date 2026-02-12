@@ -1,6 +1,6 @@
 import { memo } from "react"
 import { Skeleton, Card } from "@/components/ui"
-import { cn } from "@/utils/cn"
+
 
 /**
  * DashboardSkeleton - Full-page loading state for the Dashboard.

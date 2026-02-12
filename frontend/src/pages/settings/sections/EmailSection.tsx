@@ -57,7 +57,7 @@ export function EmailSection({
             }}
           >
             {pendingEmail ? (
-              <Alert severity="info" variant="outlined">
+              <Alert severity="info">
                 {t("settings:security.email.pendingNotice", { email: pendingEmail })}
               </Alert>
             ) : null}

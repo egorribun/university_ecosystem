@@ -1,16 +1,15 @@
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useState } from "react"
 import type { ChangeEvent } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { isAxiosError } from "axios"
 import { useTranslation } from "react-i18next"
-import { RotateCcw, Trash2, Loader2, Info, AlertTriangle } from "lucide-react"
+import { RotateCcw, Trash2, Loader2 } from "lucide-react"
 import { cn } from "@/utils/cn"
 import {
   Alert,
   Button,
   TextField,
   SectionCard,
-  Divider,
   CircularProgress,
 } from "@/components/settings"
 
@@ -263,7 +262,7 @@ export default function AdminNotifications() {
     }
 
     return (
-      <div className="mt-4 overflow-hidden rounded-2xl border border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass">
+      <div className="mt-4 overflow-hidden rounded-md border border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass">
         <div className="overflow-x-auto">
           <table
             className="w-full text-left border-collapse"
@@ -462,7 +461,7 @@ export default function AdminNotifications() {
                         return (
                           <div
                             key={topic}
-                            className="flex items-center gap-3 rounded-xl border border-glass-border/(--opacity-subtle) bg-(--bg-surface)/(--opacity-dim) px-4 py-3 transition-colors hover:bg-(--bg-surface)/(--opacity-soft)"
+                            className="flex items-center gap-3 rounded-sm border border-glass-border/(--opacity-subtle) bg-(--bg-surface)/(--opacity-dim) px-4 py-3 transition-colors hover:bg-(--bg-surface)/(--opacity-soft)"
                           >
                             <input
                               type="checkbox"

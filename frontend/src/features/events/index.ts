@@ -6,7 +6,7 @@
 
 // Re-export components from existing locations
 export { default as EventCard } from "@/components/EventCard"
-export { default as EventDetail } from "@/components/EventDetail"
+export { default as EventDetail } from "@/pages/EventDetail"
 export { EventEditDialog } from "@/components/events/EventEditDialog"
 export { EventQrDialog } from "@/components/events/EventQrDialog"
 

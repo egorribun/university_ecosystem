@@ -8,10 +8,7 @@ import { AuthContext } from "@/contexts/AuthContext"
 import Settings from "@/pages/Settings"
 import type { User } from "@/types/User"
 import { LanguageProvider } from "@/contexts/LanguageContext"
-import i18n from "../../i18n/config"
 
-const tSettings = (key: string, options?: Record<string, unknown>) =>
-  i18n.t(`settings:${key}`, options)
 
 vi.mock("@/hooks/useNotifications", () => ({
   useNotifications: () => ({ unreadCount: 0 }),

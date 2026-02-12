@@ -12,13 +12,15 @@ import { CAMPUS_COORDINATES } from "@/constants/campus"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
 import { cn } from "@/utils/cn"
-import { Alert, Button, Snackbar } from "@/components/settings"
+import { Button } from "@/components/settings"
 
 type LayerMode = "map" | "hybrid"
 
 const MAP_ID = "128006a9ca6ecba0793cdcd05524ff66e1c0b5187d421dfcae39dd12345e4b57" // trufflehog:ignore
 const Z_DEFAULT = 16
 const LOAD_TIMEOUT_MS = 12000
+/** Vertical offset to hide the Yandex Maps embed branding chrome */
+const MAP_IFRAME_OFFSET = "45px"
 
 const detectEmbedOptOut = (): boolean => {
   if (typeof window === "undefined") return false
@@ -185,7 +187,7 @@ export default function MapContent() {
               variant="ghost"
               size="sm"
               onClick={openInYandex}
-              className="h-10 w-10 p-0 rounded-xl bg-(--bg-surface)/(--opacity-dim) border border-glass-border/(--opacity-dim)"
+              className="h-10 w-10 p-0 rounded-sm bg-(--bg-surface)/(--opacity-dim) border border-glass-border/(--opacity-dim)"
               title={t("map.openInYandex") ?? ""}
             >
               <OpenInNewIcon className="h-5 w-5" />
@@ -194,7 +196,7 @@ export default function MapContent() {
               variant="ghost"
               size="sm"
               onClick={reset}
-              className="h-10 w-10 p-0 rounded-xl bg-(--bg-surface)/(--opacity-dim) border border-glass-border/(--opacity-dim) text-brand"
+              className="h-10 w-10 p-0 rounded-sm bg-(--bg-surface)/(--opacity-dim) border border-glass-border/(--opacity-dim) text-brand"
               title={t("map.reset") ?? ""}
             >
               <RestartAltIcon className="h-5 w-5" />
@@ -208,8 +210,8 @@ export default function MapContent() {
             src={mapSrc}
             title={t("map.iframeTitle")}
             width="100%"
-            height="calc(100% + 45px)"
-            className="absolute border-none top-[-45px] left-0 right-0 bottom-[-45px] block"
+            height={`calc(100% + ${MAP_IFRAME_OFFSET})`}
+            className={`absolute border-none left-0 right-0 block top-[-${MAP_IFRAME_OFFSET}] bottom-[-${MAP_IFRAME_OFFSET}]`}
             allowFullScreen
             loading="lazy"
             onLoad={() => {
@@ -257,11 +259,11 @@ export default function MapContent() {
 
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-(--z-navbar) pointer-events-none flex flex-col gap-3 pb-(--safe-area-bottom)">
           <div className="flex items-center gap-2 pointer-events-auto">
-            <div className="glass glass--panel rounded-2xl p-1 bg-(--bg-surface)/(--opacity-medium) backdrop-blur-xl border border-glass-border shadow-2xl flex items-center gap-1">
+            <div className="glass glass--panel rounded-md p-1 bg-(--bg-surface)/(--opacity-medium) backdrop-blur-xl border border-glass-border shadow-2xl flex items-center gap-1">
               <button
                 onClick={() => setLayer("map")}
                 className={cn(
-                  "relative flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-all",
+                  "relative flex items-center gap-2 rounded-sm px-4 py-2 text-sm font-bold transition-all",
                   layer === "map"
                     ? "text-white"
                     : "text-(--text-secondary) hover:bg-(--bg-surface)/(--opacity-dim)"
@@ -270,7 +272,7 @@ export default function MapContent() {
                 {layer === "map" && (
                   <motion.div
                     layoutId="map-layer-indicator"
-                    className="absolute inset-0 bg-brand rounded-xl shadow-lg shadow-brand/(--opacity-dim)"
+                    className="absolute inset-0 bg-brand rounded-sm shadow-lg shadow-brand/(--opacity-dim)"
                     transition={{ type: "spring", stiffness: 400, damping: 30 }}
                   />
                 )}
@@ -282,7 +284,7 @@ export default function MapContent() {
               <button
                 onClick={() => setLayer("hybrid")}
                 className={cn(
-                  "relative flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-all",
+                  "relative flex items-center gap-2 rounded-sm px-4 py-2 text-sm font-bold transition-all",
                   layer === "hybrid"
                     ? "text-white"
                     : "text-(--text-secondary) hover:bg-(--bg-surface)/(--opacity-dim)"
@@ -291,7 +293,7 @@ export default function MapContent() {
                 {layer === "hybrid" && (
                   <motion.div
                     layoutId="map-layer-indicator"
-                    className="absolute inset-0 bg-brand rounded-xl shadow-lg shadow-brand/(--opacity-dim)"
+                    className="absolute inset-0 bg-brand rounded-sm shadow-lg shadow-brand/(--opacity-dim)"
                     transition={{ type: "spring", stiffness: 400, damping: 30 }}
                   />
                 )}

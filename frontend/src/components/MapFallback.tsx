@@ -1,6 +1,5 @@
 import { useCallback, useId, useMemo, useRef, useState, type KeyboardEvent } from "react"
 import { useTranslation } from "react-i18next"
-import { useTheme } from "@/contexts/ThemeContext"
 import { cn } from "@/utils/cn"
 import { Button, Chip } from "@/components/settings/SettingsUI"
 import { getCampusPointsForLocale } from "@/data/campusPoints"
@@ -14,7 +13,6 @@ interface MapFallbackProps {
 }
 
 export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
-  const { theme, resolvedTheme } = useTheme()
   const { t, i18n } = useTranslation("system")
   const baseId = useId()
   const instructionsId = `${baseId}-instructions`
@@ -116,7 +114,7 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
             <p id={instructionsId} className="text-sm font-bold text-(--text-tertiary)">
               {t("map.fallback.instructions")}
             </p>
-            <div className="inline-flex items-center gap-2 rounded-xl bg-warning-bg/(--opacity-dim) border border-warning-border/(--opacity-soft) px-3 py-1.5 text-xs font-black text-warning-text uppercase tracking-wider">
+            <div className="inline-flex items-center gap-2 rounded-sm bg-warning-bg/(--opacity-dim) border border-warning-border/(--opacity-soft) px-3 py-1.5 text-xs font-black text-warning-text uppercase tracking-wider">
               <AlertCircle className="h-3.5 w-3.5" />
               {t("map.fallback.offlineNotice")}
             </div>
@@ -126,7 +124,7 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
             <Button
               variant="outline"
               onClick={onRetry}
-              className="mt-2 self-start rounded-2xl h-12 px-8 font-black shadow-lg shadow-brand/(--opacity-subtle)"
+              className="mt-2 self-start rounded-md h-12 px-8 font-black shadow-lg shadow-brand/(--opacity-subtle)"
               startIcon={<RefreshCw className="h-4 w-4" />}
             >
               {t("map.fallback.retry")}
@@ -163,7 +161,7 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
                 onFocus={() => setActiveIndex(index)}
                 onClick={() => focusIndex(index)}
                 className={cn(
-                  "group relative flex flex-col gap-3 rounded-3xl p-6 transition-all duration-500 cursor-pointer outline-none",
+                  "group relative flex flex-col gap-3 rounded-lg p-6 transition-all duration-500 cursor-pointer outline-none",
                   "border backdrop-blur-xl shadow-glass",
                   isActive
                     ? "border-brand/(--opacity-soft) bg-(--bg-surface-raised)/(--opacity-medium) ring-1 ring-brand/(--opacity-dim) -translate-y-1"
@@ -182,7 +180,7 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
                   </div>
                   <div
                     className={cn(
-                      "p-2 rounded-2xl transition-all duration-500",
+                      "p-2 rounded-md transition-all duration-500",
                       isActive
                         ? "bg-brand text-white shadow-lg shadow-brand/(--opacity-medium)"
                         : "bg-(--bg-surface-hover)/(--opacity-dim) text-(--text-tertiary) opacity-(--opacity-dim) group-hover:opacity-100"
@@ -202,7 +200,7 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
                       key={tag.key}
                       label={tag.label}
                       className={cn(
-                        "rounded-xl border shadow-sm",
+                        "rounded-sm border shadow-sm",
                         isActive
                           ? "bg-brand/(--opacity-subtle) border-brand/(--opacity-dim) text-brand"
                           : "bg-(--bg-surface-hover)/(--opacity-subtle) border-glass-border text-(--text-tertiary)"

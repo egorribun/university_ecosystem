@@ -11,7 +11,7 @@ import type { PolymorphicComponentProps, PolymorphicRef } from "@/types/polymorp
 import { useHaptics } from "@/hooks/useHaptics"
 
 const buttonVariants = cva(
-  "group/button relative inline-flex items-center justify-center gap-2 overflow-hidden rounded-(--radius-md) font-bold tracking-tight text-base transition-premium focus-visible:outline-none focus-visible:shadow-focus no-underline hover:no-underline focus-visible:no-underline motion-reduce:transition-shadow motion-reduce:hover:translate-y-0 motion-reduce:active:translate-y-0",
+  "group/button relative inline-flex items-center justify-center gap-2 overflow-hidden rounded-md font-bold tracking-tight text-base transition-premium focus-visible:outline-none focus-visible:shadow-focus no-underline hover:no-underline focus-visible:no-underline motion-reduce:transition-shadow motion-reduce:hover:translate-y-0 motion-reduce:active:translate-y-0",
   {
     variants: {
       variant: {

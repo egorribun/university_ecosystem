@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type SyntheticEvent } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { sanitizeHttpUrl } from "@/utils/sanitize"
@@ -269,7 +269,7 @@ export default function LivePushToasts() {
 
             <button
               onClick={handleClose}
-              className="shrink-0 p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+              className="shrink-0 p-1 rounded-lg hover:bg-black/(--opacity-faint) dark:hover:bg-white/(--opacity-faint) transition-colors"
             >
               <X className="h-4 w-4" />
             </button>

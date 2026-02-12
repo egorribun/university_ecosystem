@@ -2,27 +2,23 @@ import React, {
   memo,
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
-  useRef,
   useState,
   lazy,
   Suspense,
   type FC,
 } from "react"
 import { useNavigate } from "react-router-dom"
-import { isAxiosError } from "axios"
 import api from "../api/client"
 import type { Event } from "@/types/Event"
-import { Trash2 as DeleteIcon } from "lucide-react"
+
 import { useAuth } from "../contexts/AuthContext"
 import { motion } from "framer-motion"
 import { cn } from "@/utils/cn"
 import { useTranslation } from "react-i18next"
 import Dialog from "@/components/Dialog"
 import { useSpotlight, SpotlightOverlay } from "@/components/ui/Spotlight"
-import useMediaQuery from "@/hooks/useMediaQuery"
-import { breakpoints, motion as motionTokens } from "@/theme/tokens"
+import { motion as motionTokens } from "@/theme/tokens"
 import { EASING } from "@/utils/motion"
 
 import dayjs from "dayjs"
@@ -84,9 +80,7 @@ const EventCardComponent: FC<EventCardProps> = ({
 }) => {
   const { user } = useAuth()
   const navigate = useNavigate()
-  const isMobile = useMediaQuery(`(max-width: ${breakpoints.mobile})`)
-  const { t, i18n } = useTranslation(["events", "common"])
-  const language = i18n.language?.startsWith("en") ? "en" : "ru"
+  const { t } = useTranslation(["events", "common"])
 
   const [snackbar, setSnackbar] = useState<string>("")
   const spotlight = useSpotlight()
@@ -236,9 +230,7 @@ const EventCardComponent: FC<EventCardProps> = ({
       <div
         className={cn(
           "card-glass group relative flex flex-col transition-shadow duration-300 ease-out w-full p-fluid-card-p transform-gpu will-change-transform rounded-fluid-lg bg-glass-elevated border-glass-border-subtle shadow-premium",
-          editOpen
-            ? "cursor-default"
-            : "cursor-pointer hover:shadow-glass-strong active:scale-active"
+          editOpen ? "cursor-default" : "card-interactive"
         )}
         role="button"
         tabIndex={0}
@@ -253,7 +245,7 @@ const EventCardComponent: FC<EventCardProps> = ({
         <SpotlightOverlay
           mouseX={spotlight.mouseX}
           mouseY={spotlight.mouseY}
-          className="z-(--z-hide) rounded-[24px]"
+          className="z-(--z-hide) rounded-3xl"
         />
 
         {/* Admin Menu */}
@@ -318,7 +310,7 @@ const EventCardComponent: FC<EventCardProps> = ({
             onSave={handleEdit}
             loading={loading}
             imageLoading={imageLoading}
-            dateError={false} // Simplified for now
+            dateError={false}
             normalizedTitle={title || ""}
             normalizedLocation={location || ""}
             newImage={newImage}

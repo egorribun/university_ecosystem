@@ -1,12 +1,8 @@
 import { Suspense, lazy, useEffect, type ReactElement } from "react"
 import { Routes, Route, Navigate, useLocation } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
-import { useTranslation } from "react-i18next"
 
 import MainLayout from "./components/layout/MainLayout"
-import Navbar from "./components/Navbar"
-import Footer from "./components/Footer"
-import MobileBottomNav from "./components/MobileBottomNav"
 import BackToTop from "./components/BackToTop"
 import InstallPrompt from "./components/InstallPrompt"
 import LivePushToasts from "./components/LivePushToasts"
@@ -17,7 +13,6 @@ import { useAuth, currentUserQueryKey } from "./contexts/AuthContext"
 import { usePushSync } from "./hooks/usePushSync"
 import { nowPlayingQueryKey } from "./hooks/useNowPlaying"
 import { prefetchRouteModules } from "./utils/prefetchRoutes"
-import { cn } from "@/utils/cn"
 import useMediaQuery from "@/hooks/useMediaQuery"
 
 import PageTransition from "./components/PageTransition"
@@ -29,7 +24,7 @@ const routeModules = {
   Schedule: () => import("./pages/Schedule"),
   UserActivity: () => import("./pages/Activity"),
   Events: () => import("./pages/Events"),
-  EventDetail: () => import("./components/EventDetail"),
+  EventDetail: () => import("./pages/EventDetail"),
   MapPage: () => import("./pages/Map"),
   Profile: () => import("./pages/Profile"),
   Login: () => import("./pages/Login"),

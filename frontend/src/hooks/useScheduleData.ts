@@ -35,7 +35,7 @@ export function useScheduleData() {
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
   const [currentParity, setCurrentParity] = useState<"odd" | "even">("odd")
   const [nowTick, setNowTick] = useState(dayjs())
-  const [, startTransition] = useTransition()
+  const [, _startTransition] = useTransition()
 
   // Update time ticker
   useEffect(() => {
