@@ -35,11 +35,45 @@
     --fs-h3: clamp(1.5rem, 1.1rem + 2vw, 2.25rem);
     --fs-body: clamp(0.9375rem, 0.9rem + 0.2vw, 1.125rem);
 
+    /* Font Stacks */
+    --font-sf: "SF Pro Display", "SF Pro Icons", "Helvetica Neue", "Helvetica", "Arial", sans-serif;
+
     /* Specialized Fluid Scale */
     --fs-page-title: clamp(1.6rem, 5vw, 2.75rem);
     --fs-card-stat: clamp(1.75rem, 2vw, 2.25rem);
     --fs-detail-title: clamp(1.2rem, 3vw, 1.45rem);
     --fs-label-sm: 10px;
+
+    /* Micro-Label Typography (Phase 2 Standardization) */
+    --fs-label-xs: 10px;
+    --fs-label-md: 11px;
+    --fs-micro: 0.65rem;
+    --fs-badge: 0.7rem;
+    --fs-badge-sm: 0.78rem;
+    --fs-input: 0.98rem;
+    --fs-fluid-title-sm: clamp(1rem, 2.2vw, 1.1rem);
+    --fs-fluid-map-title: clamp(1.1rem, 3.6vw, 2rem);
+    --fs-body-sm: 0.9375rem;
+    --fs-date-day: 0.85rem;
+    --fs-icon-lg: 1.375rem;
+
+    /* Phase 2: Fluid Typography Standardization */
+    --fs-fluid-display: clamp(2.2rem, 12vw, 3.2rem);
+    --fs-fluid-h1: clamp(1.6rem, 4vw, 2.4rem);
+    --fs-fluid-h2: clamp(1.1rem, 2vw, 1.5rem);
+    --fs-fluid-h3: clamp(1.07rem, 3vw, 1.18rem);
+
+    /* Semantic Color Mixtures (Phase 2) */
+    --text-session-revoked: color-mix(in srgb, var(--text-primary) 64%, white 36%);
+    --text-session-meta: color-mix(in srgb, var(--text-primary) 78%, var(--text-secondary) 22%);
+    --text-field-label: color-mix(in srgb, var(--text-secondary) 85%, white 15%);
+    --cover-fade-light: color-mix(in srgb, var(--bg-page) 85%, transparent);
+    --cover-fade-dark: color-mix(in srgb, var(--bg-page) 92%, transparent);
+    --event-media-tint-from: color-mix(in srgb, var(--primary-main) 20%, var(--bg-surface) 80%);
+    --event-media-tint-to: color-mix(in srgb, var(--primary-main) 10%, var(--bg-surface) 90%);
+    --event-media-border: color-mix(in srgb, var(--primary-main) 12%, transparent 88%);
+    --event-media-pulse: color-mix(in srgb, var(--primary-main) 15%, var(--bg-surface) 85%);
+    --event-divider: color-mix(in srgb, var(--primary-main) 20%, transparent 80%);
 
     /* Systemic Layout Tokens */
     --navbar-h-base: 64px;
@@ -52,6 +86,31 @@
     --layout-max-page: 1100px;
     --layout-max-content: 820px;
     --layout-max-wide: 1400px;
+    --layout-max-modal: 460px;
+    --layout-max-dialog: 440px;
+    --layout-max-sidebar: 400px;
+    --layout-max-dropdown: 220px;
+
+    /* Phase 2: Semantic Dimensions */
+    --h-hero-lg: 80vh;
+    --h-hero-md: 60vh;
+    --h-hero-sm: 50vh;
+    --h-screen-offset: calc(100vh - var(--navbar-height));
+
+    --size-avatar-xl: 120px;
+    --w-card-sm: 200px;
+    --w-card-md: 220px;
+
+    /* Dimension Tokens (Phase 3) */
+    --min-w-btn: 120px;
+    --min-w-field: 180px;
+    --min-w-column: 200px;
+    --min-w-sidebar: 220px;
+    --min-w-dropdown: 160px;
+    --min-w-filter: 240px;
+    --min-h-touch: 44px;
+    --min-h-textarea: 100px;
+    --min-h-hero-cover: clamp(280px, 50vw, 380px);
 
     /* Unified Z-Index Scale - Single Source of Truth */
     --z-hide: -1;
@@ -83,6 +142,7 @@
     --ease-premium: cubic-bezier(0.16, 1, 0.3, 1);
     --transition-premium: 500ms var(--ease-premium);
     --transition-fast: 200ms var(--ease-premium);
+    --scale-hover: 1.02;
 
     /* Glassmorphism Standard Scale */
     --glass-blur: 24px;
@@ -90,7 +150,17 @@
     --glass-alpha-med: 0.12;
     --glass-alpha-high: 0.25;
 
-    --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+    --glass-shadow: 0 8px 32px 0 color-mix(in srgb, #1f2687 var(--opacity-subtle), transparent);
+
+    /* Opacity Scale */
+    --opacity-faint: 0.05;
+    --opacity-subtle: 0.1;
+    --opacity-dim: 0.2;
+    --opacity-soft: 0.3;
+    --opacity-medium: 0.5;
+    --opacity-strong: 0.7;
+    --opacity-hover: 0.8;
+    --opacity-heavy: 0.9;
   }
 
   /*
@@ -102,8 +172,8 @@
     --bg-surface: var(--color-white);
     --bg-surface-hover: var(--color-slate-100);
     --bg-surface-raised: var(--color-white);
-    --bg-surface-tint: rgba(var(--primary-main-rgb), 0.05);
-    --bg-panel: rgba(255, 255, 255, 0.7);
+    --bg-surface-tint: color-mix(in srgb, var(--primary-main) var(--opacity-faint), transparent);
+    --bg-panel: color-mix(in srgb, white var(--opacity-strong), transparent);
     /* Glassy panel bg */
 
     /* Text */
@@ -138,19 +208,30 @@
     --warning-text: var(--color-amber-700);
 
     /* Status: Error */
-    --error-bg: rgba(var(--error-text-rgb), 0.1);
+    --error-bg: color-mix(in srgb, var(--error-text) var(--opacity-subtle), transparent);
     --error-text: var(--color-red-600);
     --error-text-rgb: 153, 27, 27;
 
     /* Brand Gradients */
     --gradient-brand: linear-gradient(135deg, var(--primary-main), var(--primary-hover));
 
-    /* Shadows - Gold Standard */
-    --shadow-premium: 0 20px 50px rgba(0, 0, 0, 0.12), 0 8px 16px rgba(0, 0, 0, 0.08);
-    --shadow-glass: 0 35px 80px rgba(0, 0, 0, 0.25);
-    --shadow-inner-premium: inset 0 1px 0 rgba(255, 255, 255, 0.1);
-    --shadow-glow-blue: 0 0 20px rgba(59, 130, 246, 0.4);
-    --shadow-glow-green: 0 0 16px rgba(34, 197, 94, 0.35);
+    /* Shadow Scale — Single Source of Truth */
+    --shadow-sm:
+      0 1px 3px color-mix(in srgb, black var(--opacity-subtle), transparent),
+      0 1px 2px color-mix(in srgb, black var(--opacity-faint), transparent);
+    --shadow-md:
+      0 4px 12px color-mix(in srgb, black var(--opacity-subtle), transparent),
+      0 2px 4px color-mix(in srgb, black var(--opacity-faint), transparent);
+    --shadow-premium:
+      0 20px 50px color-mix(in srgb, black var(--opacity-subtle), transparent),
+      0 8px 16px color-mix(in srgb, black var(--opacity-faint), transparent);
+    --shadow-glass: 0 35px 80px color-mix(in srgb, black var(--opacity-dim), transparent);
+    --shadow-inner-premium: inset 0 1px 0
+      color-mix(in srgb, white var(--opacity-subtle), transparent);
+    --shadow-glow-blue: 0 0 20px
+      color-mix(in srgb, var(--color-blue-500) var(--opacity-soft), transparent);
+    --shadow-glow-green: 0 0 16px
+      color-mix(in srgb, var(--color-green-500) var(--opacity-soft), transparent);
     --shadow-focus: 0 0 0 2px var(--bg-page), 0 0 0 4px var(--primary-main);
 
     /* Brand Specifics */
@@ -158,13 +239,20 @@
     --color-spotify-hover: #1ed760;
 
     /* Semantic Glows & Shadows */
-    --shadow-glow-primary: 0 0 12px rgba(var(--primary-main-rgb), 0.15);
-    --shadow-glow-error: 0 0 12px rgba(var(--error-text-rgb), 0.15);
-    --shadow-glow-warning: 0 0 12px rgba(var(--warning-text-rgb), 0.15);
-    --shadow-glow-success: 0 0 12px rgba(var(--success-text-rgb), 0.15);
-    --shadow-pulse-primary: 0 0 0 3px rgba(var(--primary-main-rgb), 0.18);
-    --shadow-pulse-warning: 0 0 0 3px rgba(var(--warning-text-rgb), 0.18);
-    --shadow-pulse-brand: 0 0 0 2px rgba(var(--brand-main-rgb, var(--primary-main-rgb)), 0.15);
+    --shadow-glow-primary: 0 0 12px
+      color-mix(in srgb, var(--primary-main) var(--opacity-dim), transparent);
+    --shadow-glow-error: 0 0 12px
+      color-mix(in srgb, var(--error-text) var(--opacity-dim), transparent);
+    --shadow-glow-warning: 0 0 12px
+      color-mix(in srgb, var(--warning-text) var(--opacity-dim), transparent);
+    --shadow-glow-success: 0 0 12px
+      color-mix(in srgb, var(--success-text) var(--opacity-dim), transparent);
+    --shadow-pulse-primary: 0 0 0 3px
+      color-mix(in srgb, var(--primary-main) var(--opacity-dim), transparent);
+    --shadow-pulse-warning: 0 0 0 3px
+      color-mix(in srgb, var(--warning-text) var(--opacity-dim), transparent);
+    --shadow-pulse-brand: 0 0 0 2px
+      color-mix(in srgb, var(--primary-main) var(--opacity-subtle), transparent);
 
     /* Dashboard & Feature Gradients */
     --dash-conic-1: #38bdf8;
@@ -182,14 +270,22 @@
 
     /* Core Layout Gradients (Standardized) */
     --grad-nav-light:
-      radial-gradient(120% 180% at -10% -20%, rgba(36, 145, 255, 0.12), transparent 58%),
+      radial-gradient(
+        120% 180% at -10% -20%,
+        color-mix(in srgb, #2491ff var(--opacity-medium)),
+        transparent 58%
+      ),
       linear-gradient(
         112deg,
         var(--bg-surface) 0%,
         color-mix(in srgb, var(--bg-surface) 96%, black 4%) 100%
       );
     --grad-nav-dark:
-      radial-gradient(120% 180% at -10% -20%, rgba(56, 189, 248, 0.16), transparent 58%),
+      radial-gradient(
+        120% 180% at -10% -20%,
+        color-mix(in srgb, #38bdf8 var(--opacity-dim)),
+        transparent 58%
+      ),
       linear-gradient(112deg, #0a1524 0%, #0b2b47 100%);
 
     /* Semantic Transparency (Alpha Mixes) */
@@ -242,16 +338,40 @@
     /* Dashboard Specialized Effects */
     --hero-grad-start: var(--color-slate-50);
     --hero-grad-end: var(--color-sky-100);
-    --dash-hero-radial-top: rgba(56, 189, 248, 0.15);
-    --dash-hero-orb: rgba(56, 189, 248, 0.12);
-    --dash-hero-highlight: rgba(168, 85, 247, 0.08);
-    --dash-hero-highlight-soft: rgba(37, 99, 235, 0.05);
+    --dash-hero-radial-top: color-mix(in srgb, #38bdf8 var(--opacity-dim), transparent);
+    --dash-hero-orb: color-mix(in srgb, #38bdf8 var(--glass-alpha-med), transparent);
+    --dash-hero-highlight: color-mix(in srgb, #a855f7 var(--opacity-subtle), transparent);
+    --dash-hero-highlight-soft: color-mix(
+      in srgb,
+      var(--primary-main) var(--opacity-faint),
+      transparent
+    );
+
+    /* Dashboard Schedule Card Gradients */
+    --dash-card-schedule-radial: color-mix(
+      in srgb,
+      var(--primary-main) var(--opacity-subtle),
+      transparent
+    );
+    --dash-card-schedule-orb: color-mix(
+      in srgb,
+      var(--primary-main) var(--opacity-dim),
+      transparent
+    );
 
     /* Gradients (Phase 1 Standardization) */
-    --grad-news-hero: linear-gradient(180deg, rgba(15, 23, 42, 0) 30%, rgba(15, 23, 42, 0.75) 95%);
-    --grad-overlay: linear-gradient(180deg, rgba(15, 23, 42, 0) 0%, rgba(15, 23, 42, 0.8) 100%);
+    --grad-news-hero: linear-gradient(
+      180deg,
+      transparent 30%,
+      color-mix(in srgb, #0f172a var(--opacity-strong), transparent) 95%
+    );
+    --grad-overlay: linear-gradient(
+      180deg,
+      transparent 0%,
+      color-mix(in srgb, #0f172a var(--opacity-hover), transparent) 100%
+    );
 
-    --msg-online-pulse: rgba(var(--success-text-rgb, 34, 197, 94), 0.4);
+    --msg-online-pulse: color-mix(in srgb, var(--success-text) var(--opacity-soft), transparent);
 
     /* Badge & Chip Semantic Colors (Light) */
     --badge-lec: var(--color-blue-500);
@@ -260,18 +380,27 @@
     --badge-proj: var(--color-indigo-500);
 
     /* UI Specialty Colors (Light) */
-    --bg-nav-light: rgba(255, 255, 255, 0.82);
-    --bg-nav-dark: rgba(2, 6, 23, 0.85);
+    --bg-nav-light: color-mix(in srgb, white var(--opacity-heavy), transparent);
+    --bg-nav-dark: color-mix(in srgb, #020617 var(--opacity-heavy), transparent);
     --bg-footer-light: var(--color-slate-50);
     --bg-footer-dark: var(--color-slate-950);
 
+    /* Messenger Semantic Colors (Light) */
+    --msg-sidebar-bg: var(--color-slate-50);
+    --msg-chat-bg: var(--color-white);
+    --msg-header-bg: color-mix(in srgb, white var(--opacity-heavy), transparent);
+    --msg-header-border: var(--color-slate-200);
+    --msg-sidebar-hover: var(--color-slate-100);
+    --msg-sidebar-active: var(--color-blue-50);
+    --msg-online-color: var(--color-green-500);
+
     /* Glass Tints (Default Light) */
-    --glass-bg: rgba(255, 255, 255, var(--glass-alpha-med));
-    --glass-border: rgba(255, 255, 255, 0.2);
-    --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
-    --glass-tint1: rgba(255, 255, 255, 0.1);
-    --glass-tint2: rgba(255, 255, 255, 0.05);
-    --glass-tint3: rgba(255, 255, 255, 0.02);
+    --glass-bg: color-mix(in srgb, white var(--opacity-subtle), transparent);
+    --glass-border: color-mix(in srgb, white var(--opacity-dim), transparent);
+    --glass-shadow: 0 8px 32px 0 color-mix(in srgb, #1f2687 var(--opacity-subtle), transparent);
+    --glass-tint1: color-mix(in srgb, white var(--opacity-subtle), transparent);
+    --glass-tint2: color-mix(in srgb, white var(--opacity-faint), transparent);
+    --glass-tint3: color-mix(in srgb, white var(--opacity-faint), transparent);
   }
 
   /*
@@ -282,7 +411,8 @@
     --bg-page: var(--color-slate-950);
     --bg-surface: var(--color-slate-800);
     --bg-surface-hover: var(--color-slate-700);
-    --bg-panel: rgba(30, 41, 59, 0.7);
+    --bg-surface-raised: var(--color-slate-800);
+    --bg-panel: color-mix(in srgb, #1e293b var(--opacity-strong), transparent);
     /* Glassy panel bg */
 
     /* Text */
@@ -305,15 +435,15 @@
     --primary-main-rgb: 56, 189, 248;
     --primary-hover: var(--color-sky-300);
     --primary-hover-rgb: 125, 211, 252;
-    --primary-subtle: rgba(56, 189, 248, 0.1);
+    --primary-subtle: color-mix(in srgb, #38bdf8 var(--opacity-subtle), transparent);
     --primary-text: var(--color-sky-400);
 
     /* Status: Success */
-    --success-bg: rgba(16, 185, 129, 0.2);
+    --success-bg: color-mix(in srgb, #10b981 var(--opacity-dim), transparent);
     --success-text: var(--color-emerald-400);
 
     /* Status: Warning */
-    --warning-bg: rgba(245, 158, 11, 0.2);
+    --warning-bg: color-mix(in srgb, #f59e0b var(--opacity-dim), transparent);
     --warning-text: var(--color-amber-400);
 
     --error-text: var(--color-red-400);
@@ -338,21 +468,29 @@
     /* Dashboard Specialized Effects */
     --hero-grad-start: var(--color-slate-950);
     --hero-grad-end: var(--color-slate-900);
-    --dash-hero-radial-top: rgba(56, 189, 248, 0.25);
-    --dash-hero-orb: rgba(56, 189, 248, 0.2);
-    --dash-hero-highlight: rgba(139, 92, 246, 0.12);
-    --dash-hero-highlight-soft: rgba(56, 189, 248, 0.08);
+    --dash-hero-radial-top: color-mix(in srgb, #38bdf8 var(--opacity-dim), transparent);
+    --dash-hero-orb: color-mix(in srgb, #38bdf8 var(--opacity-dim), transparent);
+    --dash-hero-highlight: color-mix(in srgb, #8b5cf6 var(--opacity-subtle), transparent);
+    --dash-hero-highlight-soft: color-mix(in srgb, #38bdf8 var(--opacity-subtle), transparent);
 
     /* Auth & Spotlight Glows */
-    --glow-spotlight-primary: rgba(var(--primary-main-rgb), 0.3);
-    --glow-spotlight-secondary: rgba(var(--primary-main-rgb), 0.2);
+    --glow-spotlight-primary: color-mix(
+      in srgb,
+      var(--primary-main) var(--opacity-soft),
+      transparent
+    );
+    --glow-spotlight-secondary: color-mix(
+      in srgb,
+      var(--primary-main) var(--opacity-dim),
+      transparent
+    );
     --glow-blur-massive: blur(120px);
 
     /* Overlay & Backdrop */
-    --overlay-bg: rgba(0, 0, 0, 0.8);
+    --overlay-bg: color-mix(in srgb, black var(--opacity-hover), transparent);
     --overlay-blur: 16px;
 
-    --msg-online-pulse: rgba(52, 211, 153, 0.4);
+    --msg-online-pulse: color-mix(in srgb, #34d399 var(--opacity-soft), transparent);
 
     /* Badge & Chip Semantic Colors (Dark) */
     --badge-lec: var(--color-blue-400);
@@ -360,12 +498,29 @@
     --badge-lab: var(--color-amber-400);
     --badge-proj: var(--color-indigo-400);
 
+    /* Messenger Semantic Colors (Dark) */
+    --msg-sidebar-bg: var(--color-slate-900);
+    --msg-chat-bg: var(--color-slate-950);
+    --msg-header-bg: color-mix(in srgb, var(--color-slate-900) var(--opacity-heavy), transparent);
+    --msg-header-border: var(--color-slate-700);
+    --msg-sidebar-hover: var(--color-slate-800);
+    --msg-sidebar-active: color-mix(
+      in srgb,
+      var(--primary-main) var(--opacity-subtle),
+      transparent
+    );
+    --msg-online-color: var(--color-emerald-400);
+
+    /* Dashboard Schedule Card Gradients (Dark) */
+    --dash-card-schedule-radial: color-mix(in srgb, #38bdf8 var(--opacity-subtle), transparent);
+    --dash-card-schedule-orb: color-mix(in srgb, #38bdf8 var(--opacity-dim), transparent);
+
     /* Glass Tints (Dark Mode) */
-    --glass-bg: rgba(15, 23, 42, var(--glass-alpha-med));
-    --glass-border: rgba(255, 255, 255, 0.08);
-    --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-    --glass-tint1: rgba(56, 189, 248, 0.05);
-    --glass-tint2: rgba(139, 92, 246, 0.05);
-    --glass-tint3: rgba(0, 0, 0, 0.3);
+    --glass-bg: color-mix(in srgb, #0f172a var(--opacity-subtle), transparent);
+    --glass-border: color-mix(in srgb, white var(--opacity-subtle), transparent);
+    --glass-shadow: 0 8px 32px 0 color-mix(in srgb, black var(--opacity-soft), transparent);
+    --glass-tint1: color-mix(in srgb, #38bdf8 var(--opacity-faint), transparent);
+    --glass-tint2: color-mix(in srgb, #8b5cf6 var(--opacity-faint), transparent);
+    --glass-tint3: color-mix(in srgb, black var(--opacity-soft), transparent);
   }
 }

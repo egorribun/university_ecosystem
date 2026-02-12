@@ -24,12 +24,13 @@ function Row({ log }: { log: AuditLog }) {
   const { t } = useTranslation("admin")
 
   const getActionColor = (action: string) => {
-    if (action.includes("delete")) return "text-error bg-error/10 border-error/20"
+    if (action.includes("delete"))
+      return "text-error bg-error/(--opacity-subtle) border-error/(--opacity-dim)"
     if (action.includes("create") || action.includes("add"))
-      return "text-brand bg-brand/10 border-brand/20"
+      return "text-brand bg-brand/(--opacity-subtle) border-brand/(--opacity-dim)"
     if (action.includes("update") || action.includes("modify"))
-      return "text-warning bg-warning/10 border-warning/20"
-    return "text-(--text-secondary) bg-(--bg-surface-hover)/20 border-glass-border/10"
+      return "text-warning bg-warning/(--opacity-subtle) border-warning/(--opacity-dim)"
+    return "text-(--text-secondary) bg-(--bg-surface-hover)/(--opacity-dim) border-glass-border/(--opacity-subtle)"
   }
 
   return (
@@ -37,14 +38,16 @@ function Row({ log }: { log: AuditLog }) {
       <tr
         className={cn(
           "transition-colors group",
-          log.is_valid ? "hover:bg-(--bg-surface-hover)/5" : "bg-error/5 hover:bg-error/10",
-          open && "bg-(--bg-surface-hover)/10"
+          log.is_valid
+            ? "hover:bg-(--bg-surface-hover)/(--opacity-subtle)"
+            : "bg-error/(--opacity-subtle) hover:bg-error/(--opacity-subtle)",
+          open && "bg-(--bg-surface-hover)/(--opacity-subtle)"
         )}
       >
         <td className="px-4 py-4">
           <button
             onClick={() => setOpen(!open)}
-            className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-(--bg-surface-hover)/20"
+            className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-(--bg-surface-hover)/(--opacity-dim)"
           >
             {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </button>
@@ -54,21 +57,21 @@ function Row({ log }: { log: AuditLog }) {
             <span className="text-sm font-bold text-(--text-primary)">
               {dayjs(log.created_at).format("MMM D")}
             </span>
-            <span className="text-xs text-(--text-secondary) opacity-70">
+            <span className="text-xs text-(--text-secondary) opacity-(--opacity-strong)">
               {dayjs(log.created_at).format("HH:mm:ss")}
             </span>
           </div>
         </td>
         <td className="px-4 py-4">
           <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand/10 text-brand">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand/(--opacity-subtle) text-brand">
               <User className="h-4 w-4" />
             </div>
             <div className="flex flex-col min-w-0">
               <span className="truncate text-sm font-bold text-(--text-primary)">
                 {log.actor_name || t("audit.details.system")}
               </span>
-              <span className="truncate text-[10px] uppercase tracking-wider text-(--text-secondary) opacity-50">
+              <span className="truncate text-label-xs uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-medium)">
                 {log.actor_user_id || "SYSTEM"}
               </span>
             </div>
@@ -77,7 +80,7 @@ function Row({ log }: { log: AuditLog }) {
         <td className="px-4 py-4">
           <span
             className={cn(
-              "inline-flex items-center rounded-lg border px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wider",
+              "inline-flex items-center rounded-lg border px-2 py-0.5 text-micro font-bold uppercase tracking-wider",
               getActionColor(log.action)
             )}
           >
@@ -86,7 +89,7 @@ function Row({ log }: { log: AuditLog }) {
         </td>
         <td className="px-4 py-4">
           <div className="flex items-center gap-1.5 text-sm text-(--text-secondary)">
-            <Activity className="h-3.5 w-3.5 opacity-50" />
+            <Activity className="h-3.5 w-3.5 opacity-(--opacity-medium)" />
             <span>{log.resource_type}</span>
           </div>
         </td>
@@ -94,14 +97,14 @@ function Row({ log }: { log: AuditLog }) {
           <div className="flex justify-center">
             {log.is_valid ? (
               <div
-                className="flex h-6 w-6 items-center justify-center rounded-full bg-brand/10 text-brand"
+                className="flex h-6 w-6 items-center justify-center rounded-full bg-brand/(--opacity-subtle) text-brand"
                 title={t("audit.details.integrityVerified")}
               >
                 <ShieldCheck className="h-4 w-4" />
               </div>
             ) : (
               <div
-                className="flex h-6 w-6 items-center justify-center rounded-full bg-error/10 text-error"
+                className="flex h-6 w-6 items-center justify-center rounded-full bg-error/(--opacity-subtle) text-error"
                 title={t("audit.details.integrityTampered")}
               >
                 <ShieldAlert className="h-4 w-4" />
@@ -121,7 +124,7 @@ function Row({ log }: { log: AuditLog }) {
                 transition={{ duration: 0.2 }}
                 className="overflow-hidden"
               >
-                <div className="mx-4 mb-4 mt-2 rounded-2xl border border-glass-border bg-(--bg-surface)/50 p-6 shadow-sm">
+                <div className="mx-4 mb-4 mt-2 rounded-2xl border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-6 shadow-sm">
                   <div className="mb-4 flex items-center gap-2 text-sm font-bold text-(--text-primary)">
                     <Info className="h-4 w-4 text-brand" />
                     <span>{t("audit.details.title")}</span>
@@ -129,7 +132,7 @@ function Row({ log }: { log: AuditLog }) {
 
                   <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
                     <div className="space-y-1">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-(--text-secondary) opacity-50">
+                      <span className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-(--opacity-medium)">
                         {t("audit.details.resourceId")}
                       </span>
                       <p className="text-sm font-mono text-(--text-primary) select-all">
@@ -137,18 +140,18 @@ function Row({ log }: { log: AuditLog }) {
                       </p>
                     </div>
                     <div className="space-y-1">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-(--text-secondary) opacity-50">
+                      <span className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-(--opacity-medium)">
                         {t("audit.details.subject")}
                       </span>
                       <p className="text-sm text-(--text-primary)">
                         {log.subject_name || t("audit.details.notAvailable")}
-                        <span className="ml-1 text-xs opacity-50">
+                        <span className="ml-1 text-xs opacity-(--opacity-medium)">
                           ({log.subject_user_id || t("audit.details.notAvailable")})
                         </span>
                       </p>
                     </div>
                     <div className="space-y-1">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-(--text-secondary) opacity-50">
+                      <span className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-(--opacity-medium)">
                         {t("audit.details.ipAddress")}
                       </span>
                       <p className="text-sm font-mono text-(--text-primary)">
@@ -156,7 +159,7 @@ function Row({ log }: { log: AuditLog }) {
                       </p>
                     </div>
                     <div className="space-y-1">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-(--text-secondary) opacity-50">
+                      <span className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-(--opacity-medium)">
                         {t("audit.details.userAgent")}
                       </span>
                       <p className="text-xs text-(--text-secondary) line-clamp-1 hover:line-clamp-none transition-all cursor-help">
@@ -167,11 +170,11 @@ function Row({ log }: { log: AuditLog }) {
 
                   {log.context && Object.keys(log.context).length > 0 && (
                     <div className="mt-6">
-                      <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-(--text-secondary) opacity-50">
+                      <div className="mb-2 flex items-center gap-2 text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-(--opacity-medium)">
                         <Terminal className="h-3 w-3" />
                         <span>{t("audit.details.executionContext")}</span>
                       </div>
-                      <div className="rounded-xl border border-glass-border/10 bg-black/40 p-4 font-mono text-xs text-brand-light">
+                      <div className="rounded-xl border border-glass-border/(--opacity-subtle) bg-black/(--opacity-medium) p-4 font-mono text-xs text-brand-light">
                         <pre className="overflow-x-auto whitespace-pre-wrap">
                           {JSON.stringify(log.context, null, 2)}
                         </pre>
@@ -227,7 +230,7 @@ export default function AdminAudit() {
 
   return (
     <Layout>
-      <div className="min-h-screen w-full bg-background/50 py-12">
+      <div className="min-h-screen w-full bg-background/(--opacity-medium) py-12">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <motion.div
             initial={{ opacity: 0, y: -20 }}
@@ -252,7 +255,7 @@ export default function AdminAudit() {
                   resource_type: event.target.value,
                 }))
               }
-              className="min-w-[200px] flex-1"
+              className="min-w-(--min-w-column) flex-1"
             />
             <TextField
               id="action-filter"
@@ -264,11 +267,11 @@ export default function AdminAudit() {
                   action: event.target.value,
                 }))
               }
-              className="min-w-[200px] flex-1"
+              className="min-w-(--min-w-column) flex-1"
             />
           </SectionCard>
 
-          <div className="overflow-hidden rounded-3xl border border-glass-border bg-(--bg-surface)/40 shadow-glass">
+          <div className="overflow-hidden rounded-3xl border border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass">
             {loading && logs.length === 0 ? (
               <div className="flex justify-center p-20">
                 <div className="h-10 w-10 animate-spin rounded-full border-4 border-brand border-t-transparent" />
@@ -278,26 +281,26 @@ export default function AdminAudit() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
                     <thead>
-                      <tr className="border-b border-glass-border/10 bg-(--bg-surface-hover)/20">
+                      <tr className="border-b border-glass-border/(--opacity-subtle) bg-(--bg-surface-hover)/(--opacity-dim)">
                         <th className="w-12 px-4 py-4" />
-                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
+                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
                           {t("audit.table.time")}
                         </th>
-                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
+                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
                           {t("audit.table.actor")}
                         </th>
-                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
+                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
                           {t("audit.table.action")}
                         </th>
-                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
+                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
                           {t("audit.table.target")}
                         </th>
-                        <th className="px-4 py-4 text-center text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
+                        <th className="px-4 py-4 text-center text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
                           {t("audit.table.integrity")}
                         </th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-glass-border/10">
+                    <tbody className="divide-y divide-glass-border/(--opacity-subtle)">
                       <AnimatePresence mode="popLayout">
                         {logs.map((log) => (
                           <Row key={log.id} log={log} />
@@ -309,7 +312,7 @@ export default function AdminAudit() {
 
                 {/* Pagination placeholder as standard table pagination is complex to rewrite from scratch,
                     using a simple layout for now or keeping it minimal */}
-                <div className="flex items-center justify-between border-t border-glass-border/10 bg-(--bg-surface)/20 px-6 py-4">
+                <div className="flex items-center justify-between border-t border-glass-border/(--opacity-subtle) bg-(--bg-surface)/(--opacity-dim) px-6 py-4">
                   <div className="text-sm text-(--text-secondary)">
                     {t("audit.pagination.total", { count: total })}
                   </div>

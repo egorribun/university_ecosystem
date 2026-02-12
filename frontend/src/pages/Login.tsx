@@ -90,13 +90,13 @@ function suggestEmailDomain(email: string) {
 }
 
 const badgeClass =
-  "inline-flex w-40 items-baseline justify-center gap-2 rounded-full border border-glass-border-subtle/80 " +
+  "inline-flex w-40 items-baseline justify-center gap-2 rounded-full border border-glass-border-subtle/(--opacity-hover) " +
   "bg-glass backdrop-blur-md px-4 py-2 text-sm font-semibold " +
-  "text-(--text-primary)/90 shadow-sm"
+  "text-(--text-primary)/(--opacity-heavy) shadow-sm"
 
 const Spinner = () => (
   <span
-    className="inline-flex h-5 w-5 animate-spin rounded-full border-2 border-current/60 border-t-transparent"
+    className="inline-flex h-5 w-5 animate-spin rounded-full border-2 border-current/(--opacity-strong) border-t-transparent"
     aria-hidden="true"
   />
 )
@@ -145,7 +145,6 @@ const Login = () => {
   const [mfaErrorSource, setMfaErrorSource] = useState<"totp" | "general" | null>(null)
 
   const [submitting, setSubmitting] = useState(false)
-  // const [submitError, setSubmitError] = useState<string | null>(null) // Replaced by action state
 
   const [submitError, submitAction, isPending] = useActionState(
     async (previousState: string | null, formData: FormData) => {
@@ -394,7 +393,7 @@ const Login = () => {
         <div className="relative z-(--z-navbar) flex min-h-screen items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
           <div className="w-full max-w-2xl rounded-4xl glass-high-fidelity p-8">
             <div className="flex flex-col items-center gap-6 text-center">
-              <div className="inline-flex items-center gap-2 rounded-full border border-glass-border-subtle bg-(--bg-surface-hover)/10 px-4 py-1 text-sm font-semibold tracking-wide text-(--text-primary)">
+              <div className="inline-flex items-center gap-2 rounded-full border border-glass-border-subtle bg-(--bg-surface-hover)/(--opacity-subtle) px-4 py-1 text-sm font-semibold tracking-wide text-(--text-primary)">
                 <ShieldCheck className="h-4 w-4" aria-hidden="true" />
                 {t("auth:mfa.verifyTitle")}
               </div>
@@ -407,7 +406,7 @@ const Login = () => {
               </div>
 
               {generalMfaError ? (
-                <div className="w-full rounded-2xl border border-error-border/50 bg-error-bg/20 px-4 py-3 text-sm font-semibold text-error-text">
+                <div className="w-full rounded-2xl border border-error-border/(--opacity-medium) bg-error-bg/(--opacity-dim) px-4 py-3 text-sm font-semibold text-error-text">
                   {generalMfaError}
                 </div>
               ) : null}
@@ -419,7 +418,7 @@ const Login = () => {
                       type="button"
                       onClick={handleWebAuthnVerify}
                       disabled={mfaBusy}
-                      className="inline-flex w-full items-center justify-center gap-3 rounded-[1.2rem] bg-brand/10 px-6 py-4 text-lg font-bold text-brand transition hover:bg-brand/20 disabled:opacity-50"
+                      className="inline-flex w-full items-center justify-center gap-3 rounded-[1.2rem] bg-brand/(--opacity-subtle) px-6 py-4 text-lg font-bold text-brand transition hover:bg-brand/(--opacity-dim) disabled:opacity-(--opacity-medium)"
                     >
                       <Fingerprint className="h-6 w-6" />
                       {t("auth:mfa.webauthn.useSecurityKey", {
@@ -427,7 +426,7 @@ const Login = () => {
                       })}
                     </button>
                   ) : (
-                    <div className="w-full rounded-2xl border border-warning-border/40 bg-warning-bg/10 px-4 py-3 text-sm font-semibold text-warning-text text-center">
+                    <div className="w-full rounded-2xl border border-warning-border/(--opacity-medium) bg-warning-bg/(--opacity-subtle) px-4 py-3 text-sm font-semibold text-warning-text text-center">
                       {t("auth:mfa.webauthn.notSupported", {
                         defaultValue:
                           "WebAuthn недоступен в этом браузере. Используйте HTTPS или код аутентификатора ниже.",
@@ -464,7 +463,7 @@ const Login = () => {
                   <label className="flex items-center gap-3 text-sm font-medium text-(--text-primary)">
                     <input
                       type="checkbox"
-                      className="size-5 rounded-lg border-brand/50 bg-transparent accent-brand"
+                      className="size-5 rounded-lg border-brand/(--opacity-medium) bg-transparent accent-brand"
                       checked={trustDevice}
                       onChange={(event) => setTrustDevice(event.target.checked)}
                       disabled={mfaBusy}
@@ -475,7 +474,7 @@ const Login = () => {
               )}
 
               {!otpChallenge && !webauthnChallenge && (
-                <div className="w-full rounded-2xl border border-warning-border/40 bg-warning-bg/10 px-4 py-3 text-sm font-semibold text-warning-text">
+                <div className="w-full rounded-2xl border border-warning-border/(--opacity-medium) bg-warning-bg/(--opacity-subtle) px-4 py-3 text-sm font-semibold text-warning-text">
                   {t("auth:mfa.noMethods")}
                 </div>
               )}
@@ -483,7 +482,7 @@ const Login = () => {
               <button
                 type="button"
                 onClick={() => window.location.reload()}
-                className="inline-flex items-center gap-2 rounded-full border border-brand/50 px-5 py-2 text-sm font-semibold text-brand transition hover:bg-brand/10"
+                className="inline-flex items-center gap-2 rounded-full border border-brand/(--opacity-medium) px-5 py-2 text-sm font-semibold text-brand transition hover:bg-brand/(--opacity-subtle)"
               >
                 <Zap className="h-4 w-4" aria-hidden="true" />
                 {t("auth:mfa.startOver")}
@@ -503,9 +502,9 @@ const Login = () => {
           initial={{ x: -200 }}
           animate={{ x: 0 }}
           transition={{ duration: 0.5, ease: "easeOut" }}
-          className="w-full rounded-4xl border border-glass-border/80 bg-(--bg-surface)/60 p-8 shadow-glass backdrop-blur-3xl lg:p-12"
+          className="w-full rounded-4xl border border-glass-border/(--opacity-hover) bg-(--bg-surface)/(--opacity-strong) p-8 shadow-glass backdrop-blur-3xl lg:p-12"
         >
-          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-(--text-primary)/70">
+          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-(--text-primary)/(--opacity-strong)">
             {t("auth:login.heroBadge", { defaultValue: "University Ecosystem" })}
           </p>
           <h1 className="mt-4 text-4xl font-extrabold leading-tight text-(--text-primary) sm:text-5xl">
@@ -524,7 +523,7 @@ const Login = () => {
             {heroHighlights.map(({ icon: Icon, title, description }) => (
               <div
                 key={title}
-                className="group relative overflow-hidden rounded-3xl border border-glass-border/85 bg-(--bg-surface)/50 px-5 py-6 shadow-premium transition-transform duration-300 hover:-translate-y-1"
+                className="group relative overflow-hidden rounded-3xl border border-glass-border/(--opacity-heavy) bg-(--bg-surface)/(--opacity-medium) px-5 py-6 shadow-premium transition-transform duration-300 hover:-translate-y-1"
               >
                 <div className="relative z-(--z-base) flex items-center gap-3">
                   <span className="flex size-12 items-center justify-center rounded-2xl bg-brand-subtle-bg text-brand">
@@ -558,7 +557,7 @@ const Login = () => {
           initial={{ y: 200 }}
           animate={{ y: 0 }}
           transition={{ duration: 0.5, ease: "easeOut", delay: 0.2 }}
-          className="w-full max-w-xl rounded-4xl border border-glass-border/80 bg-(--bg-surface)/80 p-6 shadow-glass backdrop-blur-2xl sm:p-10"
+          className="w-full max-w-xl rounded-4xl border border-glass-border/(--opacity-hover) bg-(--bg-surface)/(--opacity-hover) p-6 shadow-glass backdrop-blur-2xl sm:p-10"
         >
           <form noValidate autoComplete="on" action={submitAction} className="flex flex-col gap-6">
             <div className="space-y-2 text-center">
@@ -589,14 +588,14 @@ const Login = () => {
                 inputMode="email"
                 required
               />
-              <p className="text-xs text-(--text-secondary)/80">
+              <p className="text-xs text-(--text-secondary)/(--opacity-hover)">
                 {!emailValid ? t("auth:messages.invalidFormat") : " "}
               </p>
               {emailSuggestion ? (
                 <button
                   type="button"
                   onClick={applySuggestion}
-                  className="inline-flex items-center gap-2 rounded-full border border-border-focus/60 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-brand transition hover:bg-brand-subtle"
+                  className="inline-flex items-center gap-2 rounded-full border border-border-focus/(--opacity-strong) px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-brand transition hover:bg-brand-subtle"
                 >
                   <Sparkles className="h-4 w-4" aria-hidden="true" />
                   {t("auth:messages.emailSuggestion", { suggestion: emailSuggestion })}
@@ -615,7 +614,7 @@ const Login = () => {
                   onMouseUp={() => setShowPassword(false)}
                   onMouseLeave={() => setShowPassword(false)}
                   onClick={() => setShowPassword((v) => !v)}
-                  className="inline-flex items-center gap-2 rounded-full border border-transparent px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-brand transition hover:border-brand/50"
+                  className="inline-flex items-center gap-2 rounded-full border border-transparent px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-brand transition hover:border-brand/(--opacity-medium)"
                   title={t("auth:actions.holdReveal") ?? undefined}
                   aria-label={t("auth:actions.showPassword") ?? undefined}
                 >
@@ -661,7 +660,7 @@ const Login = () => {
             <label className="flex items-center gap-3 text-sm font-medium text-(--text-primary)">
               <input
                 type="checkbox"
-                className="size-5 rounded-lg border-brand/50 bg-transparent accent-brand"
+                className="size-5 rounded-lg border-brand/(--opacity-medium) bg-transparent accent-brand"
                 checked={trustDevice}
                 onChange={(e) => setTrustDevice(e.target.checked)}
                 disabled={isPending || submitting}
@@ -672,7 +671,7 @@ const Login = () => {
             <div className="flex flex-col gap-3">
               <button
                 type="submit"
-                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-linear-to-b from-brand to-brand-hover px-6 py-4 text-lg font-extrabold text-white shadow-premium transition hover:translate-y-[-2px] hover:shadow-glass-strong disabled:opacity-60"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-linear-to-b from-brand to-brand-hover px-6 py-4 text-lg font-extrabold text-white shadow-premium transition hover:translate-y-[-2px] hover:shadow-glass-strong disabled:opacity-(--opacity-strong)"
                 disabled={isPending || submitting}
               >
                 {isPending || submitting ? (
@@ -690,7 +689,7 @@ const Login = () => {
                   type="button"
                   onClick={handlePasskeyLogin}
                   disabled={submitting}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-brand/40 bg-brand/5 px-6 py-4 text-lg font-extrabold text-brand shadow-surface transition hover:translate-y-[-2px] hover:bg-brand/10 disabled:opacity-60"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-brand/(--opacity-medium) bg-brand/(--opacity-subtle) px-6 py-4 text-lg font-extrabold text-brand shadow-surface transition hover:translate-y-[-2px] hover:bg-brand/(--opacity-dim) disabled:opacity-(--opacity-strong)"
                 >
                   <Fingerprint className="h-6 w-6" />
                   {t("auth:login.signInWithPasskey", { defaultValue: "Войти с помощью Passkey" })}

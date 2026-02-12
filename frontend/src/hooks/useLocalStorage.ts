@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react"
+import { logWarning } from "@/app/logger"
 
 export interface UseLocalStorageOptions<T> {
   serializer?: (value: T) => string
@@ -45,7 +46,7 @@ export function useLocalStorage<T>(
       }
       return deserializer.current(raw)
     } catch (e) {
-      console.warn(`[useLocalStorage] Error reading key "${key}":`, e)
+      logWarning(`[useLocalStorage] Error reading key "${key}":`, { error: e })
       return initial
     }
   }, [initialValue, key])
@@ -79,7 +80,7 @@ export function useLocalStorage<T>(
           )
         }
       } catch (e) {
-        console.warn(`[useLocalStorage] Error setting key "${key}":`, e)
+        logWarning(`[useLocalStorage] Error setting key "${key}":`, { error: e })
       }
     },
     [key, storedValue]
@@ -99,7 +100,7 @@ export function useLocalStorage<T>(
         )
       }
     } catch (e) {
-      console.warn(`[useLocalStorage] Error removing key "${key}":`, e)
+      logWarning(`[useLocalStorage] Error removing key "${key}":`, { error: e })
     }
   }, [key, initialValue])
 
@@ -116,7 +117,7 @@ export function useLocalStorage<T>(
           try {
             setStoredValue(deserializer.current(e.newValue))
           } catch (err) {
-            console.warn("[useLocalStorage] Sync error", err)
+            logWarning("[useLocalStorage] Sync error", { error: err })
           }
         }
       }

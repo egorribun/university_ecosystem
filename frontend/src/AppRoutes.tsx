@@ -131,8 +131,10 @@ export function AppRoutes() {
       aria-hidden="false"
       style={{
         minHeight: "100dvh",
-        background: isLHCI ? "#FFFFFF" : "var(--bg-page, var(--initial-bg, #060B14))",
-        color: isLHCI ? "#000000" : "var(--text-primary)",
+        background: isLHCI
+          ? "var(--color-white, #FFFFFF)"
+          : "var(--bg-page, var(--initial-bg, #060B14))",
+        color: isLHCI ? "var(--color-black, #000000)" : "var(--text-primary)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",

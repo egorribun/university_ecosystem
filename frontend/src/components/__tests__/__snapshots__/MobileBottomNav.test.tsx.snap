@@ -18,7 +18,7 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
       class="relative"
     >
       <div
-        class="absolute inset-[-14px] rounded-full bg-brand opacity-10 blur-xl z-(--z-negative)"
+        class="absolute inset-[-14px] rounded-full bg-brand opacity-(--opacity-subtle) blur-xl z-(--z-negative)"
       />
       <span
         class="block z-(--z-decor)"
@@ -69,14 +69,14 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
       </span>
     </div>
     <span
-      class="z-(--z-decor) text-[10px] font-black uppercase tracking-tight"
+      class="z-(--z-decor) text-label-xs font-black uppercase tracking-tight"
     >
       Home
     </span>
   </a>
   <a
     aria-label="News"
-    class="group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--text-primary) transition-all outline-none select-none opacity-60 hover:opacity-100"
+    class="group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--text-primary) transition-all outline-none select-none opacity-(--opacity-strong) hover:opacity-100"
     data-discover="true"
     href="/news"
   >
@@ -120,14 +120,14 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
       </span>
     </div>
     <span
-      class="z-(--z-decor) text-[10px] font-black uppercase tracking-tight"
+      class="z-(--z-decor) text-label-xs font-black uppercase tracking-tight"
     >
       News
     </span>
   </a>
   <a
     aria-label="Events"
-    class="group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--text-primary) transition-all outline-none select-none opacity-60 hover:opacity-100"
+    class="group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--text-primary) transition-all outline-none select-none opacity-(--opacity-strong) hover:opacity-100"
     data-discover="true"
     href="/events"
   >
@@ -171,14 +171,14 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
       </span>
     </div>
     <span
-      class="z-(--z-decor) text-[10px] font-black uppercase tracking-tight"
+      class="z-(--z-decor) text-label-xs font-black uppercase tracking-tight"
     >
       Events
     </span>
   </a>
   <a
     aria-label="Schedule"
-    class="group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--text-primary) transition-all outline-none select-none opacity-60 hover:opacity-100"
+    class="group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--text-primary) transition-all outline-none select-none opacity-(--opacity-strong) hover:opacity-100"
     data-discover="true"
     href="/schedule"
   >
@@ -240,14 +240,14 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
       </span>
     </div>
     <span
-      class="z-(--z-decor) text-[10px] font-black uppercase tracking-tight"
+      class="z-(--z-decor) text-label-xs font-black uppercase tracking-tight"
     >
       Schedule
     </span>
   </a>
   <a
     aria-label="Profile"
-    class="group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--text-primary) transition-all outline-none select-none opacity-60 hover:opacity-100"
+    class="group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--text-primary) transition-all outline-none select-none opacity-(--opacity-strong) hover:opacity-100"
     data-discover="true"
     href="/profile"
   >
@@ -283,7 +283,7 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
       </span>
     </div>
     <span
-      class="z-(--z-decor) text-[10px] font-black uppercase tracking-tight"
+      class="z-(--z-decor) text-label-xs font-black uppercase tracking-tight"
     >
       Profile
     </span>
@@ -310,7 +310,7 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
         class="relative"
       >
         <div
-          class="absolute inset-[-14px] rounded-full bg-brand opacity-10 blur-xl z-(--z-negative)"
+          class="absolute inset-[-14px] rounded-full bg-brand opacity-(--opacity-subtle) blur-xl z-(--z-negative)"
         />
         <span
           class="block z-(--z-decor)"
@@ -361,14 +361,14 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
         </span>
       </div>
       <span
-        class="z-(--z-decor) text-[10px] font-black uppercase tracking-tight"
+        class="z-(--z-decor) text-label-xs font-black uppercase tracking-tight"
       >
         Home
       </span>
     </a>
     <a
       aria-label="News"
-      class="group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--text-primary) transition-all outline-none select-none opacity-60 hover:opacity-100"
+      class="group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--text-primary) transition-all outline-none select-none opacity-(--opacity-strong) hover:opacity-100"
       data-discover="true"
       href="/news"
     >
@@ -412,14 +412,14 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
         </span>
       </div>
       <span
-        class="z-(--z-decor) text-[10px] font-black uppercase tracking-tight"
+        class="z-(--z-decor) text-label-xs font-black uppercase tracking-tight"
       >
         News
       </span>
     </a>
     <a
       aria-label="Events"
-      class="group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--text-primary) transition-all outline-none select-none opacity-60 hover:opacity-100"
+      class="group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--text-primary) transition-all outline-none select-none opacity-(--opacity-strong) hover:opacity-100"
       data-discover="true"
       href="/events"
     >
@@ -463,14 +463,14 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
         </span>
       </div>
       <span
-        class="z-(--z-decor) text-[10px] font-black uppercase tracking-tight"
+        class="z-(--z-decor) text-label-xs font-black uppercase tracking-tight"
       >
         Events
       </span>
     </a>
     <a
       aria-label="Schedule"
-      class="group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--text-primary) transition-all outline-none select-none opacity-60 hover:opacity-100"
+      class="group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--text-primary) transition-all outline-none select-none opacity-(--opacity-strong) hover:opacity-100"
       data-discover="true"
       href="/schedule"
     >
@@ -532,14 +532,14 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
         </span>
       </div>
       <span
-        class="z-(--z-decor) text-[10px] font-black uppercase tracking-tight"
+        class="z-(--z-decor) text-label-xs font-black uppercase tracking-tight"
       >
         Schedule
       </span>
     </a>
     <a
       aria-label="Profile"
-      class="group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--text-primary) transition-all outline-none select-none opacity-60 hover:opacity-100"
+      class="group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--text-primary) transition-all outline-none select-none opacity-(--opacity-strong) hover:opacity-100"
       data-discover="true"
       href="/profile"
     >
@@ -575,7 +575,7 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
         </span>
       </div>
       <span
-        class="z-(--z-decor) text-[10px] font-black uppercase tracking-tight"
+        class="z-(--z-decor) text-label-xs font-black uppercase tracking-tight"
       >
         Profile
       </span>

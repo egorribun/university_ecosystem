@@ -47,9 +47,9 @@ function FeatureErrorFallback({
   return (
     <div
       role="alert"
-      className="flex flex-col items-center justify-center gap-3 rounded-xl border border-(--text-primary)/10 bg-(--glass-bg) p-6 text-center"
+      className="flex flex-col items-center justify-center gap-3 rounded-xl border border-(--text-primary)/(--opacity-subtle) bg-(--glass-bg) p-6 text-center"
     >
-      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-warning-bg/20 text-warning-text">
+      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-warning-bg/(--opacity-dim) text-warning-text">
         <svg
           className="h-5 w-5 text-warning-text"
           fill="none"
@@ -68,7 +68,7 @@ function FeatureErrorFallback({
         <h3 className="text-sm font-bold text-[--text-primary]">
           {featureName ? `${featureName} unavailable` : "Feature unavailable"}
         </h3>
-        <p className="text-xs text-[--text-primary]/60">Something went wrong</p>
+        <p className="text-xs text-[--text-primary]/(--opacity-medium)">Something went wrong</p>
       </div>
       <button type="button" onClick={onRetry} className="hover:underline">
         <span className="text-xs font-black text-[--accent]">Try again</span>

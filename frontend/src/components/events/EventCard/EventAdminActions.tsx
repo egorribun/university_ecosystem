@@ -43,14 +43,14 @@ export const EventAdminActions: React.FC<EventAdminActionsProps> = ({
       </Button>
       {menuAnchor && (
         <div
-          className="absolute right-0 top-12 z-(--z-navbar) min-w-[160px] rounded-xl border border-(--glass-border) bg-(--bg-surface) shadow-surface-strong"
+          className="absolute right-0 top-12 z-(--z-navbar) min-w-(--min-w-dropdown) rounded-xl border border-(--glass-border) bg-(--bg-surface) shadow-surface-strong"
           onClick={(e) => e.stopPropagation()}
           role="presentation"
         >
           <div className="py-1">
             <button
               type="button"
-              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-(--text-primary) transition-colors hover:bg-(--glass-bg)/80"
+              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-(--text-primary) transition-colors hover:bg-(--glass-bg)/(--opacity-heavy)"
               onClick={() => {
                 setMenuAnchor(null)
                 onEdit()
@@ -61,7 +61,7 @@ export const EventAdminActions: React.FC<EventAdminActionsProps> = ({
             </button>
             <button
               type="button"
-              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-(--text-primary) transition-colors hover:bg-(--glass-bg)/80"
+              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-(--text-primary) transition-colors hover:bg-(--glass-bg)/(--opacity-heavy)"
               onClick={() => {
                 setMenuAnchor(null)
                 onDelete()

@@ -201,16 +201,16 @@ export default function Profile() {
 
   return (
     <Layout className="bg-transparent!">
-      <div className="fixed inset-0 z-hide pointer-events-none overflow-hidden" aria-hidden>
+      <div className="fixed inset-0 z-(--z-hide) pointer-events-none overflow-hidden" aria-hidden>
         <div
-          className="absolute inset-0 bg-repeat bg-size-[clamp(180px,22vw,360px)] opacity-40 mix-blend-soft-light dark:opacity-20 translate-z-0"
+          className="absolute inset-0 bg-repeat bg-size-[clamp(180px,22vw,360px)] opacity-(--opacity-medium) mix-blend-soft-light dark:opacity-(--opacity-dim) translate-z-0"
           style={{ backgroundImage: `url(${profileBg})` }}
         />
       </div>
 
       <PageFadeIn>
         <motion.div
-          initial={isTest ? false : { opacity: reduceMotion ? 1 : 0.96, y: reduceMotion ? 0 : 8 }}
+          initial={isTest ? false : { opacity: "var(--opacity-strong)", y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={isTest ? { duration: 0 } : { type: "spring", stiffness: 460, damping: 34 }}
         >
@@ -219,10 +219,10 @@ export default function Profile() {
             data-testid="profile-root"
             aria-label={t("profile:aria.page")}
           >
-            <div className="max-w-full sm:max-w-[98%] md:max-w-[96%] lg:max-w-[95%] xl:max-w-[1400px] mx-auto w-full relative z-base">
+            <div className="max-w-full sm:max-w-[98%] md:max-w-[96%] lg:max-w-[95%] xl:max-w-(--layout-max-wide) mx-auto w-full relative z-(--z-base)">
               <motion.div
-                className="px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-8 sm:py-10 md:py-12 lg:py-14 rounded-xl sm:rounded-2xl md:rounded-3xl relative overflow-hidden bg-primary-subtle-bg/10 shadow-glass border border-glass-border-subtle/20 backdrop-blur-md"
-                initial={isTest ? false : { opacity: reduced ? 1 : 0.98, y: reduced ? 0 : 10 }}
+                className="px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-8 sm:py-10 md:py-12 lg:py-14 rounded-xl sm:rounded-2xl md:rounded-3xl relative overflow-hidden bg-primary-subtle-bg/(--opacity-subtle) shadow-glass border border-glass-border-subtle/(--opacity-dim) backdrop-blur-md"
+                initial={isTest ? false : { opacity: "var(--opacity-strong)", y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={
                   isTest ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 34 }
@@ -321,10 +321,10 @@ export default function Profile() {
       <Dialog open={qrOpen} onClose={() => setQrOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle className="text-center">{t("profile:dialog.qr.title")}</DialogTitle>
         <DialogContent className="flex flex-col items-center justify-center gap-3 min-h-[320px]">
-          <div className="bg-surface p-4 rounded-2xl border border-glass-border shadow-glass">
+          <div className="w-full md:w-80 lg:w-96 flex flex-col border-r border-msg-border h-full relative z-(--z-deep) bg-msg-sidebar">
             <QRCodeSVG value={vCardData} size={300} level="H" includeMargin />
           </div>
-          <p className="text-xs text-(--text-secondary) text-center mt-2 opacity-80">
+          <p className="text-xs text-(--text-secondary) text-center mt-2 opacity-(--opacity-hover)">
             {t("profile:dialog.qr.hint")}
           </p>
         </DialogContent>
@@ -346,7 +346,7 @@ export default function Profile() {
         <DialogContent className="grid gap-4 py-4">
           {achievementOpen?.issuer && (
             <div className="flex flex-col gap-0.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-brand opacity-70">
+              <span className="text-label-xs font-bold uppercase tracking-wider text-brand opacity-(--opacity-strong)">
                 {t("profile:fields.organizer")}
               </span>
               <p className="text-(--text-primary) font-medium">{achievementOpen.issuer}</p>

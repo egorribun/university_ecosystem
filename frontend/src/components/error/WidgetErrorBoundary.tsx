@@ -35,8 +35,8 @@ interface WidgetErrorBoundaryState {
 /** Minimal fallback for widget errors */
 function WidgetPlaceholder() {
   return (
-    <div className="flex h-full min-h-[60px] items-center justify-center rounded-lg bg-(--glass-bg)/50">
-      <span className="text-xs text-(--text-primary)/30">—</span>
+    <div className="flex h-full min-h-[60px] items-center justify-center rounded-lg bg-(--glass-bg)/(--opacity-medium)">
+      <span className="text-xs text-(--text-primary)/(--opacity-medium)">—</span>
     </div>
   )
 }

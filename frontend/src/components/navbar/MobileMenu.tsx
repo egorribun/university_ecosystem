@@ -59,7 +59,9 @@ export function MobileMenu({
       id="mobile-drawer"
       className={cn(
         "mobile-drawer fixed inset-0 z-(--z-overlay) flex h-screen w-screen",
-        isOpen ? "pointer-events-auto bg-black/40" : "pointer-events-none bg-transparent", // Darker overlay
+        isOpen
+          ? "pointer-events-auto bg-black/(--opacity-dim)"
+          : "pointer-events-none bg-transparent", // Darker overlay
         !prefersReducedMotion && "transition-colors duration-200"
       )}
       style={{
@@ -90,16 +92,16 @@ export function MobileMenu({
                     to={item.to}
                     onClick={onClose}
                     className={cn(
-                      "flex items-center gap-4 rounded-2xl px-5 py-4 text-[16px] font-semibold transition-all duration-300",
+                      "flex items-center gap-4 rounded-2xl px-5 py-4 text-base font-semibold transition-all duration-300",
                       active
-                        ? "bg-(--primary-main)/10 text-(--primary-main) shadow-sm"
+                        ? "bg-(--primary-main)/(--opacity-subtle) text-(--primary-main) shadow-sm"
                         : "text-(--nav-text) hover:bg-(--glass-tint-1) hover:translate-x-1"
                     )}
                   >
                     {Icon && (
                       <Icon
                         className={cn(
-                          "text-[22px] transition-colors",
+                          "text-icon-lg transition-colors",
                           active ? "text-(--primary-main)" : "text-(--text-secondary)"
                         )}
                       />
@@ -114,9 +116,9 @@ export function MobileMenu({
                 <button
                   type="button"
                   className={cn(
-                    "flex w-full items-center gap-4 rounded-2xl px-5 py-4 text-[16px] font-semibold transition-all duration-300",
+                    "flex w-full items-center gap-4 rounded-2xl px-5 py-4 text-base font-semibold transition-all duration-300",
                     isActive("/settings")
-                      ? "bg-(--primary-main)/10 text-(--primary-main) shadow-sm"
+                      ? "bg-(--primary-main)/(--opacity-subtle) text-(--primary-main) shadow-sm"
                       : "text-(--nav-text) hover:bg-(--glass-tint-1) hover:translate-x-1"
                   )}
                   onClick={(e) => {
@@ -128,7 +130,7 @@ export function MobileMenu({
                 >
                   <Settings
                     className={cn(
-                      "text-[22px] transition-colors",
+                      "text-icon-lg transition-colors",
                       isActive("/settings") ? "text-(--primary-main)" : "text-(--text-secondary)"
                     )}
                   />
@@ -140,7 +142,7 @@ export function MobileMenu({
         </div>
 
         <div className="border-t border-(--glass-border) p-8">
-          <div className="text-center text-xs font-medium text-(--text-secondary) opacity-60">
+          <div className="text-center text-xs font-medium text-(--text-secondary) opacity-(--opacity-medium)">
             © {new Date().getFullYear()} {t("navigation:brandName")}
           </div>
         </div>

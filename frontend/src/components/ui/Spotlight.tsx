@@ -28,7 +28,7 @@ type SpotlightOverlayProps = {
 export function SpotlightOverlay({
   mouseX,
   mouseY,
-  color = "rgba(var(--primary-main-rgb), 0.15)",
+  color = "color-mix(in srgb, var(--primary-main) var(--opacity-dim), transparent)",
   className,
 }: SpotlightOverlayProps) {
   return (

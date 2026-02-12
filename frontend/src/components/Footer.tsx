@@ -17,7 +17,7 @@ export default function Footer() {
 
   return (
     <footer
-      className="bg-footer relative overflow-hidden border-t border-border-subtle/50"
+      className="bg-footer relative overflow-hidden border-t border-border-subtle/(--opacity-medium)"
       role="contentinfo"
       style={{
         minHeight: "150px",
@@ -44,7 +44,7 @@ export default function Footer() {
                 {t("navigation:brandName")}
               </h2>
             </div>
-            <p className="max-w-[640px] text-white opacity-85">
+            <p className="max-w-[640px] text-white opacity-(--opacity-hover)">
               {t("navigation:brandDescription")}
             </p>
             <div className="mt-4 flex gap-3">
@@ -76,7 +76,7 @@ export default function Footer() {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <h3 className="mb-1.5 text-sm font-extrabold tracking-widest text-white uppercase opacity-95">
+            <h3 className="mb-1.5 text-sm font-extrabold tracking-widest text-white uppercase opacity-(--opacity-heavy)">
               {t("navigation:footer.navigationTitle")}
             </h3>
             <Link to="/dashboard" className="footer-link-premium">
@@ -97,7 +97,7 @@ export default function Footer() {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <h3 className="mb-1.5 text-sm font-extrabold tracking-widest text-white uppercase opacity-95">
+            <h3 className="mb-1.5 text-sm font-extrabold tracking-widest text-white uppercase opacity-(--opacity-heavy)">
               {t("navigation:footer.profileTitle")}
             </h3>
             <Link to="/profile" className="footer-link-premium">
@@ -109,11 +109,13 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className="mt-12 flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle/50 pt-8">
-          <p className="text-sm font-medium text-white opacity-60">
+        <div className="mt-12 flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle/(--opacity-medium) pt-8">
+          <p className="text-sm font-medium text-white opacity-(--opacity-medium)">
             {t("navigation:footer.copyright", { year })}
           </p>
-          <p className="text-xs text-white opacity-40">{t("navigation:footer.careNote")}</p>
+          <p className="text-xs text-white opacity-(--opacity-dim)">
+            {t("navigation:footer.careNote")}
+          </p>
         </div>
       </div>
     </footer>

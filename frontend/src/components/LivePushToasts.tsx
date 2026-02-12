@@ -223,10 +223,12 @@ export default function LivePushToasts() {
   }[severity]
 
   const severityClasses = {
-    success: "bg-success-bg/10 border-success-border/20 text-success-text",
-    info: "bg-info-bg/10 border-info-border/20 text-info-text",
-    warning: "bg-warning-bg/10 border-warning-border/20 text-warning-text",
-    error: "bg-error-bg/10 border-error-border/20 text-error-text",
+    success:
+      "bg-success-bg/(--opacity-subtle) border-success-border/(--opacity-dim) text-success-text",
+    info: "bg-info-bg/(--opacity-subtle) border-info-border/(--opacity-dim) text-info-text",
+    warning:
+      "bg-warning-bg/(--opacity-subtle) border-warning-border/(--opacity-dim) text-warning-text",
+    error: "bg-error-bg/(--opacity-subtle) border-error-border/(--opacity-dim) text-error-text",
   }[severity]
 
   return (
@@ -250,12 +252,14 @@ export default function LivePushToasts() {
               <h4 className="text-sm font-black tracking-tight mb-0.5 truncate uppercase">
                 {title}
               </h4>
-              <p className="text-xs font-semibold opacity-80 leading-relaxed text-pretty">{body}</p>
+              <p className="text-xs font-semibold opacity-(--opacity-hover) leading-relaxed text-pretty">
+                {body}
+              </p>
 
               {current.url && (
                 <button
                   onClick={handleAction}
-                  className="mt-3 inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-widest hover:underline"
+                  className="mt-3 inline-flex items-center gap-1.5 text-label-md font-black uppercase tracking-widest hover:underline"
                 >
                   {t("notifications:toast.open")}
                   <ExternalLink className="h-3 w-3" />
@@ -272,7 +276,7 @@ export default function LivePushToasts() {
 
             {/* Progress bar for auto-hide */}
             <motion.div
-              className="absolute bottom-0 left-0 h-0.5 bg-current opacity-30"
+              className="absolute bottom-0 left-0 h-0.5 bg-current opacity-(--opacity-soft)"
               initial={{ width: "100%" }}
               animate={{ width: "0%" }}
               transition={{ duration: 6, ease: "linear" }}

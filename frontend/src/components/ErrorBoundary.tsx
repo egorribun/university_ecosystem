@@ -77,7 +77,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       return (
         <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-(--bg-page) px-fluid-x">
           {/* Ambient radial glow */}
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(var(--primary-main-rgb),0.1)_0%,transparent_70%)]" />
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,color-mix(in_srgb,var(--primary-main)_var(--opacity-subtle),transparent)_0%,transparent_70%)]" />
 
           <div className="relative z-(--z-deep) w-full max-w-[480px] rounded-2xl border border-border-subtle bg-(--bg-surface) p-10 text-center shadow-premium backdrop-blur-md">
             <h1 className="mb-4 text-3xl font-black tracking-tight text-(--text-primary)">
@@ -91,11 +91,11 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 <summary className="cursor-pointer text-sm font-semibold text-(--text-tertiary)">
                   Подробности ошибки
                 </summary>
-                <pre className="mt-4 overflow-x-auto whitespace-pre-wrap break-words rounded-md border border-error-text bg-black/5 p-3 text-xs text-error-text">
+                <pre className="mt-4 overflow-x-auto whitespace-pre-wrap wrap-break-word rounded-md border border-error-text bg-black/5 p-3 text-xs text-error-text">
                   {this.state.error.toString()}
                 </pre>
                 {this.state.errorInfo && (
-                  <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-words rounded-md border border-error-text bg-black/5 p-3 text-xs text-error-text">
+                  <pre className="mt-2 overflow-x-auto whitespace-pre-wrap wrap-break-word rounded-md border border-error-text bg-black/5 p-3 text-xs text-error-text">
                     {this.state.errorInfo.componentStack}
                   </pre>
                 )}
@@ -105,7 +105,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               <button
                 type="button"
                 onClick={this.handleRetry}
-                className="rounded-xl bg-brand px-6 py-3.5 text-base font-extrabold text-inverse-text shadow-glass transition-all duration-500 hover:-translate-y-0.5 hover:bg-brand-hover hover:shadow-premium-lift active:scale-95"
+                className="rounded-xl bg-(--primary-main) px-6 py-3.5 text-base font-extrabold text-(--text-inverse) shadow-glass transition-all duration-500 hover:-translate-y-0.5 hover:bg-(--primary-hover) hover:shadow-premium-lift active:scale-95"
               >
                 Попробовать снова
               </button>

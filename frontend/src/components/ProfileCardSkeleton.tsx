@@ -18,7 +18,7 @@ export function ProfileCardSkeleton({
 }: ProfileCardSkeletonProps) {
   return (
     <div
-      className={`rounded-2xl border border-white/12 bg-input-mix overflow-hidden ${className}`}
+      className={`rounded-2xl border border-white/(--opacity-subtle) bg-input-mix overflow-hidden ${className}`}
       aria-busy="true"
       aria-label="Loading profile"
     >
@@ -56,7 +56,7 @@ export function ProfileCardSkeleton({
         </div>
 
         {/* Stats row */}
-        <div className="flex gap-6 pt-3 border-t border-white/10">
+        <div className="flex gap-6 pt-3 border-t border-white/(--opacity-subtle)">
           {[1, 2, 3].map((i) => (
             <div key={i} className="flex flex-col items-center gap-1">
               <Skeleton width={32} height={20} />

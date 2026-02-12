@@ -59,7 +59,7 @@ export const ProfileHeader = ({
     <div className="flex flex-col gap-4 sm:gap-5 md:gap-6 lg:gap-8 items-stretch">
       {/* Hero Card with Cover and Avatar */}
       <div
-        className="relative rounded-xl sm:rounded-2xl md:rounded-3xl overflow-hidden min-h-[280px] xs:min-h-[300px] sm:min-h-[320px] md:min-h-[340px] lg:min-h-[360px] xl:min-h-[380px] flex items-end justify-center bg-glass-bg shadow-glass border-glass-border"
+        className="relative rounded-xl sm:rounded-2xl md:rounded-3xl overflow-hidden min-h-(--min-h-hero-cover) flex items-end justify-center bg-glass-bg shadow-glass border-glass-border"
         style={{ paddingBottom: heroPaddingBottom }}
       >
         {/* Cover Image with Parallax */}
@@ -82,14 +82,14 @@ export const ProfileHeader = ({
         </div>
 
         {/* Dark Matte Overlay */}
-        <div className="absolute inset-0 bg-linear-to-b from-transparent via-transparent to-[color-mix(in_srgb,var(--bg-page)_85%,transparent)] dark:to-[color-mix(in_srgb,var(--bg-page)_92%,transparent)] from-35%" />
+        <div className="absolute inset-0 bg-linear-to-b from-transparent via-transparent to-cover-fade-light dark:to-cover-fade-dark from-35%" />
 
         {/* Avatar Container */}
         <div
           className="absolute left-1/2 top-8 xs:top-10 sm:top-12 md:top-14 -translate-x-1/2 flex items-center justify-center p-0.5 sm:p-1"
           style={{ width: avatarSize, height: avatarSize }}
         >
-          <div className="relative w-full h-full rounded-full bg-white/10 overflow-hidden shadow-2xl ring-2 ring-white/50 backdrop-blur-glass">
+          <div className="relative w-full h-full rounded-full bg-white/(--opacity-subtle) overflow-hidden shadow-2xl ring-2 ring-white/(--opacity-medium) backdrop-blur-glass">
             <SmartImage
               srcRaw={user?.avatar_url ?? undefined}
               fallback={DEFAULT_AVATAR}
@@ -102,7 +102,7 @@ export const ProfileHeader = ({
           {/* Online Status Indicator */}
           {isOnline && (
             <div
-              className="absolute z-deep rounded-full bg-(--success-bg) shadow-glow-green pointer-events-none"
+              className="absolute z-(--z-deep) rounded-full bg-(--success-bg) shadow-glow-green pointer-events-none"
               style={{
                 right: `${statusOffset}px`,
                 bottom: `${statusOffset}px`,
@@ -110,7 +110,7 @@ export const ProfileHeader = ({
                 height: `${statusSize}px`,
               }}
             >
-              <div className="absolute inset-0 animate-online-pulse rounded-full bg-(--success-bg)/60" />
+              <div className="absolute inset-0 animate-online-pulse rounded-full bg-(--success-bg)/(--opacity-strong)" />
             </div>
           )}
         </div>
@@ -121,7 +121,7 @@ export const ProfileHeader = ({
             <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-white drop-shadow-lg">
               {user?.full_name}
             </h1>
-            <p className="text-sm sm:text-base text-white/80 font-medium drop-shadow-md mt-1">
+            <p className="text-sm sm:text-base text-white/(--opacity-hover) font-medium drop-shadow-md mt-1">
               {user?.status || t("profile:placeholders.status")}
             </p>
           </div>
@@ -133,7 +133,7 @@ export const ProfileHeader = ({
       <div className="grid grid-cols-2 gap-4 rounded-xl sm:rounded-2xl md:rounded-3xl p-4 bg-glass-bg border-glass-border backdrop-blur-glass shadow-glass">
         <div className="flex flex-col items-center justify-center py-2 text-center border-r border-glass-border">
           <span className="text-xl font-bold text-(--brand-main)">{user?.course || "—"}</span>
-          <span className="text-[10px] font-bold uppercase tracking-widest text-(--text-secondary) opacity-60">
+          <span className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-(--opacity-medium)">
             {t("profile:labels.course")}
           </span>
         </div>
@@ -145,7 +145,7 @@ export const ProfileHeader = ({
               </span>
             </div>
           </div>
-          <span className="text-[10px] font-bold uppercase tracking-widest text-(--text-secondary) opacity-60">
+          <span className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-(--opacity-medium)">
             {t("profile:labels.recordBook")}
           </span>
         </div>
@@ -158,7 +158,7 @@ export const ProfileHeader = ({
           leadingIcon={<EmailIcon className="shrink-0" />}
           onClick={onEmailClick}
           ref={emailButtonRef}
-          className="justify-start h-12 rounded-xl bg-glass-bg border-glass-border hover:bg-glass-tint1 hover:border-brand/30"
+          className="justify-start h-12 rounded-xl bg-glass-bg border-glass-border hover:bg-glass-tint1 hover:border-brand/(--opacity-soft)"
         >
           <span className="truncate text-sm font-medium">
             {user?.email || t("profile:placeholders.email")}
@@ -170,7 +170,7 @@ export const ProfileHeader = ({
             leadingIcon={<TelegramIcon className="shrink-0" />}
             onClick={onTelegramClick}
             ref={telegramButtonRef}
-            className="justify-start h-12 rounded-xl bg-glass-bg border-glass-border hover:bg-glass-tint1 hover:border-brand/30"
+            className="justify-start h-12 rounded-xl bg-glass-bg border-glass-border hover:bg-glass-tint1 hover:border-brand/(--opacity-soft)"
           >
             <span className="truncate text-sm font-medium">
               {user?.telegram || t("profile:placeholders.telegram")}
@@ -181,7 +181,7 @@ export const ProfileHeader = ({
 
       {/* vCard QR Section */}
       <SectionCard className="p-5 flex flex-col gap-4">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-60 flex items-center gap-2">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-medium) flex items-center gap-2">
           <QrCodeIcon className="h-3.5 w-3.5" />
           {t("profile:labels.vcard")}
         </h2>
@@ -202,7 +202,7 @@ export const ProfileHeader = ({
               variant="outline"
               size="sm"
               onClick={onQrClick}
-              className="h-8 rounded-lg text-[10px] font-bold uppercase tracking-wider"
+              className="h-8 rounded-lg text-label-xs font-bold uppercase tracking-wider"
             >
               {t("profile:buttons.viewQR")}
             </Button>

@@ -42,7 +42,9 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
         className={cn(
           "relative inline-flex h-7 w-14 cursor-pointer items-center rounded-full p-0.5",
           "touch-manipulation select-none transition-premium",
-          disabled ? "cursor-not-allowed opacity-50" : "hover:scale-105 active:scale-95",
+          disabled
+            ? "cursor-not-allowed opacity-(--opacity-medium)"
+            : "hover:scale-105 active:scale-95",
           className
         )}
         onMouseEnter={() => !disabled && setHover(true)}
@@ -52,7 +54,9 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
         <span
           className={cn(
             "pointer-events-none absolute -inset-1 rounded-full transition-premium",
-            focus && !disabled ? "scale-100 opacity-100 ring-4 ring-brand/20" : "scale-90 opacity-0"
+            focus && !disabled
+              ? "scale-100 opacity-100 ring-4 ring-brand/(--opacity-dim)"
+              : "scale-90 opacity-0"
           )}
         />
 
@@ -61,7 +65,7 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
           className={cn(
             "absolute inset-0 rounded-full border border-border-subtle transition-colors duration-300",
             "bg-(--bg-surface)-tint backdrop-blur-sm",
-            checked && "bg-brand/20 border-brand/30"
+            checked && "bg-brand/(--opacity-dim) border-brand/(--opacity-soft)"
           )}
           animate={{
             borderColor: checked
@@ -70,7 +74,7 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
                 ? "var(--primary-hover)"
                 : "var(--border-subtle)",
             backgroundColor: checked
-              ? "color-mix(in srgb, var(--primary-main) 20%, transparent)"
+              ? "color-mix(in srgb, var(--primary-main) 15%, transparent)"
               : hover && !disabled
                 ? "var(--bg-surface-hover)"
                 : "var(--bg-surface)",

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useOptimistic } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useTranslation } from "react-i18next"
-import { useNavigate, useParams } from "react-router-dom"
+import { useNavigate } from "react-router-dom"
 import {
   ContactList,
   ChatWindow,
@@ -13,7 +13,7 @@ import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
 import { cn } from "@/utils/cn"
 import { useAuth } from "../contexts/AuthContext"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMessengerController } from "@/hooks/features/useMessengerController"
 import {
   chatApi,
   type Chat,
@@ -74,13 +74,13 @@ function ConfirmDialog({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-overlay/60 backdrop-blur-md flex items-center justify-center z-(--z-modal) p-4"
+          className="fixed inset-0 bg-overlay/(--opacity-strong) backdrop-blur-md flex items-center justify-center z-(--z-modal) p-4"
         >
           <motion.div
             initial={{ scale: 0.9, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.9, opacity: 0, y: 20 }}
-            className="bg-(--bg-surface) dark:bg-(--bg-page) rounded-4xl shadow-2xl w-full max-w-md overflow-hidden border border-glass-border"
+            className="bg-(--bg-surface) dark:bg-(--bg-page) rounded-4xl shadow-premium w-full max-w-md overflow-hidden border border-glass-border"
           >
             <div className="p-8 space-y-4">
               <h3 className="text-xl font-bold tracking-tight sf-pro">{title}</h3>
@@ -101,7 +101,7 @@ function ConfirmDialog({
                   whileTap={{ scale: 0.95 }}
                   onClick={onConfirm}
                   className={cn(
-                    "px-6 py-2.5 text-sm font-bold rounded-xl shadow-lg transition-all text-white",
+                    "px-6 py-2.5 text-sm font-bold rounded-xl shadow-surface transition-all text-white",
                     variant === "danger"
                       ? "bg-(--error-text) shadow-glow-error"
                       : variant === "warning"
@@ -123,336 +123,52 @@ function ConfirmDialog({
 export default function Messenger() {
   const { t } = useTranslation(["messenger", "common"])
   const { user } = useAuth()
-  const { chatId } = useParams<{ chatId: string }>()
+  const {
+    // State
+    selectedChatId,
+    activeChat,
+    isNewChatModalOpen,
+    setIsNewChatModalOpen,
+    showSearchInChat,
+    setShowSearchInChat,
+    searchQuery,
+    setSearchQuery,
+    showChatMenu,
+    setShowChatMenu,
+
+    // Data
+    contacts,
+    messages,
+
+    // Profile
+    profileUser,
+    setProfileUser,
+    isProfileLoading,
+    profileError,
+    activeChat: _activeChat, // alias if needed or just use activeChat
+    handleViewProfile,
+    handleCloseProfile,
+    getOtherParticipant,
+    presenceMap,
+
+    // Dialogs
+    confirmDialog,
+    setConfirmDialog,
+
+    // Actions
+    handleSendMessage,
+    handleCreateChat,
+    handleClearChat,
+    handleDeleteChat,
+  } = useMessengerController()
+
   const navigate = useNavigate()
   const isMobile = useMediaQuery(`(max-width: ${breakpoints.mobile})`)
-  const queryClient = useQueryClient()
-  const { presenceMap, sendTyping, getTypingUsersForChat } = useMessenger()
-
-  const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
-  const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false)
-  const [showSearchInChat, setShowSearchInChat] = useState(false)
-  const [searchQuery, setSearchQuery] = useState("")
-  const [showChatMenu, setShowChatMenu] = useState(false)
-  const [profileUser, setProfileUser] = useState<User | null>(null)
-  const [isProfileLoading, setIsProfileLoading] = useState(false)
-  const [profileError, setProfileError] = useState<string | null>(null)
-  const [confirmDialog, setConfirmDialog] = useState<{
-    open: boolean
-    title: string
-    message: string
-    variant: "danger" | "warning" | "default"
-    onConfirm: () => void
-  } | null>(null)
-
-  // Fetch Chats with paginated response
-  const { data: chatsData, isLoading: chatsLoading } = useQuery({
-    queryKey: ["chats"],
-    queryFn: () => chatApi.getChats(),
-  })
-  const chats = chatsData?.items ?? []
-
-  // Fetch single chat data if specified via URL but not in the first page of chats
-  const { data: singleChatData } = useQuery({
-    queryKey: ["chats", chatId],
-    queryFn: () => (chatId ? chatApi.getChat(chatId) : Promise.reject("No chatId")),
-    enabled: !!chatId && !chats.some((c) => c.id === chatId),
-    retry: false,
-  })
-
-  // Ensure selectedChatId stays in sync with URL
-  useEffect(() => {
-    if (chatId) {
-      setSelectedChatId(chatId)
-    } else {
-      setSelectedChatId(null)
-    }
-  }, [chatId])
-
-  // Get current active chat object (either from list or direct fetch)
-  const activeChat = useMemo(() => {
-    if (!selectedChatId) return null
-    const inList = chats.find((c) => c.id === selectedChatId)
-    if (inList) return inList
-    if (singleChatData && singleChatData.id === selectedChatId) return singleChatData
-    return null
-  }, [selectedChatId, chats, singleChatData])
-
-  // Fetch Messages for selected chat with paginated response
-  const { data: messagesData, isLoading: messagesLoading } = useQuery({
-    queryKey: ["messages", selectedChatId],
-    queryFn: () =>
-      selectedChatId
-        ? chatApi.getMessages(selectedChatId)
-        : Promise.resolve({ items: [], has_more: false, next_cursor: null }),
-    enabled: !!selectedChatId,
-    // No more polling needed - WebSocket handles real-time updates
-  })
-  const messages = messagesData?.items ?? []
-
-  // Memoize transformed messages to prevent infinite re-renders in ChatWindow
-  const transformedMessages = useMemo(() => {
-    return messages.map((m) => {
-      const isMe = m.sender_id === user?.id
-      return {
-        id: m.id,
-        senderId: String(m.sender_id),
-        senderName: isMe ? (user?.full_name ?? "Me") : (m.sender?.full_name ?? "User"),
-        senderAvatar: isMe ? user?.avatar_url || "" : m.sender?.avatar_url || "",
-        text: m.content,
-        timestamp: formatMessageTime(m.created_at),
-        isMe,
-        status: (m.read_status ? "read" : "sent") as "read" | "sent",
-        attachments: m.attachments?.map((a) => ({
-          id: a.id,
-          url: a.url,
-          type: a.file_type,
-          name: a.filename,
-          size: a.size,
-        })),
-      }
-    })
-  }, [messages, user?.id, user?.full_name, user?.avatar_url])
-
-  // React 19 useOptimistic for instant message feedback
-  const [optimisticMessages, addOptimisticMessage] = useOptimistic(
-    transformedMessages,
-    (state: UiMessage[], newMessage: UiMessage) => [...state, newMessage]
-  )
-
-  // Send Message Mutation
-  const sendMessageMutation = useMutation({
-    mutationFn: ({ chatId, content, files }: { chatId: string; content: string; files?: File[] }) =>
-      chatApi.sendMessage(chatId, content, files),
-    onSuccess: (newMessage) => {
-      queryClient.setQueryData<MessagesListResponse | undefined>(
-        ["messages", selectedChatId],
-        (old) => {
-          const items = old?.items ?? []
-          // Check if message already exists (from optimistic to real update ideally, but here simplicity)
-          if (items.some((m) => m.id === newMessage.id)) return old
-
-          return {
-            has_more: old?.has_more ?? false,
-            next_cursor: old?.next_cursor ?? null,
-            items: [...items, newMessage],
-          }
-        }
-      )
-      queryClient.invalidateQueries({ queryKey: ["chats"] })
-    },
-  })
-
-  // Mark Read Mutation
-  const markReadMutation = useMutation({
-    mutationFn: (chatId: string) => chatApi.markRead(chatId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["chats"] })
-    },
-  })
-
-  // Create Chat Mutation
-  const createChatMutation = useMutation({
-    mutationFn: (participantId: string) => chatApi.createChat(participantId),
-    onSuccess: (newChat) => {
-      queryClient.invalidateQueries({ queryKey: ["chats"] })
-      setSelectedChatId(newChat.id)
-      setIsNewChatModalOpen(false)
-    },
-  })
-
-  const clearChatMutation = useMutation({
-    mutationFn: (chatId: string) => chatApi.clearChat(chatId),
-    onMutate: async (chatId) => {
-      await queryClient.cancelQueries({ queryKey: ["messages", chatId] })
-      await queryClient.cancelQueries({ queryKey: ["chats"] })
-
-      const previousMessages = queryClient.getQueryData<MessagesListResponse>(["messages", chatId])
-      const previousChats = queryClient.getQueryData<ChatsListResponse>(["chats"])
-
-      queryClient.setQueryData<MessagesListResponse>(["messages", chatId], {
-        items: [],
-        has_more: false,
-        next_cursor: null,
-      })
-
-      if (previousChats) {
-        queryClient.setQueryData<ChatsListResponse>(["chats"], {
-          ...previousChats,
-          items: previousChats.items.map((chat) =>
-            chat.id === chatId
-              ? {
-                  ...chat,
-                  last_message: undefined,
-                  unread_count: 0,
-                  updated_at: new Date().toISOString(),
-                }
-              : chat
-          ),
-        })
-      }
-
-      return { previousMessages, previousChats }
-    },
-    onError: (_error, chatId, context) => {
-      if (context?.previousMessages) {
-        queryClient.setQueryData(["messages", chatId], context.previousMessages)
-      }
-      if (context?.previousChats) {
-        queryClient.setQueryData(["chats"], context.previousChats)
-      }
-    },
-    onSuccess: () => {
-      setShowChatMenu(false)
-    },
-    onSettled: (data, error, chatId) => {
-      queryClient.invalidateQueries({ queryKey: ["messages", chatId] })
-      queryClient.invalidateQueries({ queryKey: ["chats"] })
-    },
-  })
-
-  const deleteChatMutation = useMutation({
-    mutationFn: (chatId: string) => chatApi.deleteChat(chatId),
-    onMutate: async (chatId) => {
-      await queryClient.cancelQueries({ queryKey: ["chats"] })
-      const previousChats = queryClient.getQueryData<ChatsListResponse>(["chats"])
-
-      if (previousChats) {
-        queryClient.setQueryData<ChatsListResponse>(["chats"], {
-          ...previousChats,
-          items: previousChats.items.filter((chat) => chat.id !== chatId),
-        })
-      }
-
-      if (selectedChatId === chatId) {
-        setSelectedChatId(null)
-      }
-
-      return { previousChats }
-    },
-    onError: (_error, chatId, context) => {
-      if (context?.previousChats) {
-        queryClient.setQueryData(["chats"], context.previousChats)
-      }
-    },
-    onSuccess: (_data: ChatMaintenanceResult, chatId) => {
-      queryClient.removeQueries({ queryKey: ["messages", chatId] })
-      setShowChatMenu(false)
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["chats"] })
-    },
-  })
-
-  // Stable callback for marking messages as read
-  const markAsRead = useCallback((chatId: string) => {
-    markReadMutation.mutate(chatId)
-  }, [])
-
-  // Mark messages as read when opening a chat
-  useEffect(() => {
-    if (selectedChatId) {
-      markAsRead(selectedChatId)
-    }
-  }, [selectedChatId, markAsRead])
-
-  // Helper to get the other participant
-  const getOtherParticipant = (chat: Chat) => {
-    return chat.participants.find((p) => p.id !== user?.id)
-  }
-
-  const handleSendMessage = (text: string, files: File[]) => {
-    if (!selectedChatId) return
-
-    // Optimistic update
-    const tempId = crypto.randomUUID()
-    const now = new Date()
-    addOptimisticMessage({
-      id: tempId,
-      senderId: String(user?.id),
-      senderName: user?.full_name ?? undefined,
-      senderAvatar: user?.avatar_url || "",
-      text,
-      timestamp: formatMessageTime(now.toISOString()),
-      isMe: true,
-      status: "sent",
-      attachments: files.map((f, i) => ({
-        id: `${tempId}-${i}`,
-        url: URL.createObjectURL(f), // Temporary preview URL
-        type: f.type.startsWith("image/") ? "image" : "file",
-        name: f.name,
-        size: f.size,
-      })),
-    } as any) // Type cast as our optimistic message shape matches UI needs
-
-    sendMessageMutation.mutate({ chatId: selectedChatId, content: text, files })
-  }
-
-  const handleClearChat = () => {
-    if (!selectedChatId) return
-    const chatId = selectedChatId
-    setConfirmDialog({
-      open: true,
-      title: t("messenger:clearChatTitle", "Clear Chat"),
-      message: t("messenger:confirmClear", "Clear chat history for everyone?"),
-      variant: "warning",
-      onConfirm: () => {
-        clearChatMutation.mutate(chatId)
-        setConfirmDialog(null)
-      },
-    })
-  }
-
-  const handleDeleteChat = () => {
-    if (!selectedChatId) return
-    const chatId = selectedChatId
-    setConfirmDialog({
-      open: true,
-      title: t("messenger:deleteChatTitle", "Delete Chat"),
-      message: t("messenger:confirmDelete", "Delete this chat for all participants?"),
-      variant: "danger",
-      onConfirm: () => {
-        deleteChatMutation.mutate(chatId)
-        setConfirmDialog(null)
-      },
-    })
-  }
-
-  const handleViewProfile = () => {
-    setShowChatMenu(false)
-    const other = activeChat && getOtherParticipant(activeChat)
-    if (!other) return
-    setIsProfileLoading(true)
-    setProfileError(null)
-    client
-      .get<User>(`/users/${other.id}`)
-      .then((response) => setProfileUser(response.data))
-      .catch(() =>
-        setProfileError(t("messenger:profileLoadError", "Unable to load participant profile"))
-      )
-      .finally(() => setIsProfileLoading(false))
-  }
-
-  // Transform chats for ContactList component
-  const contacts = chats.map((chat) => {
-    const other = getOtherParticipant(chat)
-    const status = other ? presenceMap[other.id] : undefined
-    return {
-      id: chat.id,
-      name: other?.full_name || "Unknown User",
-      avatar: other?.avatar_url || "",
-      lastMessage: chat.last_message?.content || "",
-      lastMessageTime: chat.last_message ? formatMessageTime(chat.last_message.created_at) : "",
-      unread: chat.unread_count,
-      online: status?.active ?? false,
-    }
-  })
 
   // Mobile view logic
   const showList = !isMobile || !selectedChatId
   const showChat = !isMobile || selectedChatId
-
-  const isBottomNavVisible = useMediaQuery(`(max-width: ${breakpoints.mobile})`)
+  const isBottomNavVisible = isMobile
 
   return (
     <div
@@ -472,9 +188,9 @@ export default function Messenger() {
             animate={{ x: 0, opacity: 1 }}
             exit={isMobile ? { x: -300, opacity: 0 } : undefined}
             transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-            className="w-full md:w-80 lg:w-96 flex flex-col border-r border-msg-border h-full relative z-deep bg-msg-sidebar"
+            className="w-full md:w-80 lg:w-96 flex flex-col border-r border-msg-border h-full relative z-(--z-deep) bg-msg-sidebar"
           >
-            <div className="p-4 flex justify-between items-center sticky top-0 z-deep backdrop-blur-xl bg-msg-header border-b border-msg-border">
+            <div className="p-4 flex justify-between items-center sticky top-0 z-(--z-deep) backdrop-blur-xl bg-msg-header border-b border-msg-border">
               <h1 className="text-2xl font-bold tracking-tight sf-pro">
                 {t("messenger:title", "Messages")}
               </h1>
@@ -482,7 +198,7 @@ export default function Messenger() {
                 whileHover={{ scale: 1.1, backgroundColor: "var(--msg-sidebar-hover)" }}
                 whileTap={{ scale: 0.9 }}
                 onClick={() => setIsNewChatModalOpen(true)}
-                className="p-2 rounded-full transition-colors bg-(--primary-main)/10 text-msg-active"
+                className="p-2 rounded-full transition-colors bg-(--primary-main)/(--opacity-subtle) text-msg-active"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -520,7 +236,7 @@ export default function Messenger() {
                 <input
                   type="text"
                   placeholder={t("messenger:search", "Search")}
-                  className="w-full pl-10 pr-4 py-2.5 rounded-2xl border-none focus:ring-2 focus:ring-(--brand-main)/30 outline-none transition-all text-md shadow-sm bg-black/5 dark:bg-white/5"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-2xl border-none focus:ring-2 focus:ring-(--brand-main)/(--opacity-soft) outline-none transition-all text-md shadow-sm bg-black/(--opacity-subtle) dark:bg-white/(--opacity-subtle)"
                 />
               </div>
             </div>
@@ -541,7 +257,7 @@ export default function Messenger() {
             animate={{ x: 0, opacity: 1 }}
             exit={isMobile ? { x: 300, opacity: 0 } : undefined}
             transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-            className="flex-1 flex flex-col overflow-hidden h-full relative z-base bg-msg-chat"
+            className="flex-1 flex flex-col overflow-hidden h-full relative z-(--z-base) bg-msg-chat"
           >
             {selectedChatId && activeChat ? (
               <>
@@ -552,14 +268,14 @@ export default function Messenger() {
                       initial={{ y: -20, opacity: 0 }}
                       animate={{ y: 0, opacity: 1 }}
                       exit={{ y: -20, opacity: 0 }}
-                      className="msg-header shrink-0 h-16 flex items-center px-4 justify-between z-deep"
+                      className="msg-header shrink-0 h-16 flex items-center px-4 justify-between z-(--z-deep)"
                     >
                       <div className="flex items-center gap-3">
                         {isMobile && (
                           <motion.button
                             whileTap={{ scale: 0.9 }}
                             onClick={() => navigate("/messenger")}
-                            className="p-1.5 -ml-1 rounded-full hover:bg-(--bg-surface-hover)/50 transition-colors"
+                            className="p-1.5 -ml-1 rounded-full hover:bg-(--bg-surface-hover)/(--opacity-medium) transition-colors"
                           >
                             <svg
                               xmlns="http://www.w3.org/2000/svg"
@@ -633,7 +349,7 @@ export default function Messenger() {
                           whileHover={{ scale: 1.05 }}
                           whileTap={{ scale: 0.95 }}
                           onClick={() => setShowSearchInChat(true)}
-                          className="p-2.5 rounded-full hover:bg-(--bg-surface-hover)/50 transition-colors"
+                          className="p-2.5 rounded-full hover:bg-(--bg-surface-hover)/(--opacity-medium) transition-colors"
                         >
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
@@ -655,7 +371,7 @@ export default function Messenger() {
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.95 }}
                             onClick={() => setShowChatMenu(!showChatMenu)}
-                            className={`p-2.5 rounded-full transition-colors ${showChatMenu ? "bg-(--bg-surface-hover)" : "hover:bg-(--bg-surface-hover)/50"}`}
+                            className={`p-2.5 rounded-full transition-colors ${showChatMenu ? "bg-(--bg-surface-hover)" : "hover:bg-(--bg-surface-hover)/(--opacity-medium)"}`}
                           >
                             <svg
                               xmlns="http://www.w3.org/2000/svg"
@@ -678,7 +394,7 @@ export default function Messenger() {
                                 initial={{ opacity: 0, scale: 0.9, y: 10, x: 5 }}
                                 animate={{ opacity: 1, scale: 1, y: 0, x: 0 }}
                                 exit={{ opacity: 0, scale: 0.9, y: 10 }}
-                                className="absolute right-0 top-full mt-2 bg-glass-elevated backdrop-blur-xl rounded-2xl shadow-premium border border-glass-border-subtle py-2 min-w-[220px] z-(--z-navbar) overflow-hidden"
+                                className="absolute right-0 top-full mt-2 bg-glass-elevated backdrop-blur-xl rounded-2xl shadow-premium border border-glass-border-subtle py-2 min-w-(--min-w-sidebar) z-(--z-navbar) overflow-hidden"
                               >
                                 {[
                                   {
@@ -734,7 +450,7 @@ export default function Messenger() {
                       initial={{ y: -20, opacity: 0 }}
                       animate={{ y: 0, opacity: 1 }}
                       exit={{ y: -20, opacity: 0 }}
-                      className="shrink-0 h-16 border-b border-glass-border-subtle flex items-center px-4 bg-glass-elevated backdrop-blur-xl z-deep"
+                      className="shrink-0 h-16 border-b border-glass-border-subtle flex items-center px-4 bg-glass-elevated backdrop-blur-xl z-(--z-deep)"
                     >
                       <motion.button
                         whileTap={{ scale: 0.9 }}
@@ -764,23 +480,23 @@ export default function Messenger() {
                         value={searchQuery}
                         onChange={(event) => setSearchQuery(event.target.value)}
                         placeholder={t("messenger:searchMessages", "Search messages...")}
-                        className="flex-1 px-4 py-2.5 rounded-2xl bg-black/5 dark:bg-white/5 border-none focus:ring-2 focus:ring-(--brand-main)/50 outline-none transition-all text-md"
+                        className="flex-1 px-4 py-2.5 rounded-2xl bg-black/(--opacity-subtle) dark:bg-white/(--opacity-subtle) border-none focus:ring-2 focus:ring-(--brand-main)/(--opacity-medium) outline-none transition-all text-md"
                         autoFocus
                       />
                     </motion.div>
                   )}
                 </AnimatePresence>
 
-                <ChatWindow messages={optimisticMessages} />
+                <ChatWindow messages={messages} />
                 <MessageInput onSend={handleSendMessage} />
               </>
             ) : (
-              <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-(--bg-surface-hover)/30">
+              <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-(--bg-surface-hover)/(--opacity-soft)">
                 <motion.div
                   initial={{ scale: 0.8, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   whileHover={{ rotate: 5, scale: 1.1 }}
-                  className="w-32 h-32 rounded-4xl flex items-center justify-center mb-8 shadow-2xl"
+                  className="w-32 h-32 rounded-4xl flex items-center justify-center mb-8 shadow-premium"
                   style={{
                     background:
                       "linear-gradient(135deg, var(--msg-sidebar-hover), var(--msg-header-bg))",
@@ -793,7 +509,7 @@ export default function Messenger() {
                     viewBox="0 0 24 24"
                     strokeWidth={1}
                     stroke="currentColor"
-                    className="w-16 h-16 text-msg-active opacity-60"
+                    className="w-16 h-16 text-msg-active opacity-(--opacity-strong)"
                   >
                     <path
                       strokeLinecap="round"
@@ -820,7 +536,7 @@ export default function Messenger() {
       <NewChatModal
         open={isNewChatModalOpen}
         onClose={() => setIsNewChatModalOpen(false)}
-        onSelect={(userId) => createChatMutation.mutate(userId)}
+        onSelect={(userId) => handleCreateChat(userId)}
       />
 
       {(profileUser || isProfileLoading || profileError) && (
@@ -829,13 +545,13 @@ export default function Messenger() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-overlay/60 backdrop-blur-md flex items-center justify-center z-(--z-overlay) p-4"
+            className="fixed inset-0 bg-overlay/(--opacity-strong) backdrop-blur-md flex items-center justify-center z-(--z-overlay) p-4"
           >
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="bg-(--bg-surface) dark:bg-(--bg-page) rounded-4xl shadow-2xl w-full max-w-lg overflow-hidden border border-white/10 z-(--z-modal)"
+              className="bg-(--bg-surface) dark:bg-(--bg-page) rounded-4xl shadow-2xl w-full max-w-lg overflow-hidden border border-white/(--opacity-subtle) z-(--z-modal)"
             >
               <div className="p-6 pb-4 flex items-center justify-between border-b border-msg-border">
                 <h3 className="text-xl font-bold tracking-tight sf-pro">
@@ -844,11 +560,7 @@ export default function Messenger() {
                 <motion.button
                   whileHover={{ rotate: 90, scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
-                  onClick={() => {
-                    setProfileUser(null)
-                    setIsProfileLoading(false)
-                    setProfileError(null)
-                  }}
+                  onClick={handleCloseProfile}
                   className="p-2 rounded-full hover:bg-(--bg-surface-hover) transition-colors"
                 >
                   <svg
@@ -867,7 +579,7 @@ export default function Messenger() {
               <div className="p-8">
                 {isProfileLoading && (
                   <div className="flex flex-col items-center py-8">
-                    <div className="w-12 h-12 border-4 border-(--primary-main)/20 border-t-(--primary-main) rounded-full animate-spin"></div>
+                    <div className="w-12 h-12 border-4 border-(--primary-main)/(--opacity-dim) border-t-(--primary-main) rounded-full animate-spin"></div>
                     <p className="mt-4 text-sm font-medium text-(--text-secondary)">
                       {t("messenger:loadingProfile", "Loading profile...")}
                     </p>
@@ -875,7 +587,7 @@ export default function Messenger() {
                 )}
 
                 {profileError && (
-                  <div className="p-4 bg-(--error-text)/10 rounded-xl text-center">
+                  <div className="p-4 bg-(--error-text)/(--opacity-subtle) rounded-xl text-center">
                     <p className="text-sm font-semibold text-(--error-text)">{profileError}</p>
                   </div>
                 )}
@@ -901,8 +613,8 @@ export default function Messenger() {
                     </div>
 
                     <div className="grid grid-cols-2 gap-3 pb-2">
-                      <div className="p-4 rounded-2xl bg-(--bg-surface-hover)/50 border border-subtle">
-                        <p className="text-xs font-bold uppercase tracking-widest text-(--text-secondary)/60 mb-1">
+                      <div className="p-4 rounded-2xl bg-(--bg-surface-hover)/(--opacity-medium) border border-subtle">
+                        <p className="text-xs font-bold uppercase tracking-widest text-(--text-secondary)/(--opacity-strong) mb-1">
                           {t("messenger:status", "Status")}
                         </p>
                         <p className="text-sm font-bold flex items-center gap-1.5">
@@ -924,7 +636,7 @@ export default function Messenger() {
                           href={profileUser.avatar_url}
                           target="_blank"
                           rel="noreferrer"
-                          className="p-4 rounded-2xl bg-(--primary-main)/5 border border-(--primary-main)/10 hover:bg-(--primary-main)/10 transition-colors"
+                          className="p-4 rounded-2xl bg-(--primary-main)/(--opacity-subtle) border border-(--primary-main)/(--opacity-subtle) hover:bg-(--primary-main)/(--opacity-subtle) transition-colors"
                         >
                           <p className="text-xs font-bold uppercase tracking-widest text-(--primary-main) mb-1">
                             {t("messenger:avatar", "Avatar")}
@@ -948,8 +660,8 @@ export default function Messenger() {
         open={confirmDialog?.open ?? false}
         title={confirmDialog?.title ?? ""}
         message={confirmDialog?.message ?? ""}
-        confirmText={t("common:confirm", "Confirm")}
-        cancelText={t("common:cancel", "Cancel")}
+        confirmText={confirmDialog?.confirmText || t("common:confirm", "Confirm")}
+        cancelText={confirmDialog?.cancelText || t("common:cancel", "Cancel")}
         variant={confirmDialog?.variant}
         onConfirm={confirmDialog?.onConfirm ?? (() => {})}
         onCancel={() => setConfirmDialog(null)}

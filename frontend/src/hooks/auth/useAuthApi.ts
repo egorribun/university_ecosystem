@@ -18,6 +18,7 @@ import { fetchCurrentUser } from "./useProfileSync"
 import i18n from "@/i18n/config"
 import type { WebAuthnAuthenticationOptionsOut } from "@/types/Auth"
 import { clearAccessToken, persistAccessToken } from "./tokenStorage"
+import { logWarning, logError } from "@/app/logger"
 
 type TokenWithProfileResponse = {
   access_token: string
@@ -114,7 +115,7 @@ export const useAuthApi = (
         }
       } catch (error) {
         if (import.meta.env.DEV) {
-          console.warn("Failed to prefetch dashboard data", error)
+          logWarning("Failed to prefetch dashboard data", { error })
         }
       }
     },
@@ -226,7 +227,7 @@ export const useAuthApi = (
         await api.post("/auth/logout")
       }
     } catch (error) {
-      console.error("Logout failed", error)
+      logError("Logout failed", { error })
     } finally {
       clearAccessToken()
       handleUnauthorized()

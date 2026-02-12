@@ -1,4 +1,5 @@
 import { Link, useNavigate, useLocation } from "react-router-dom"
+import { Menu, X } from "lucide-react"
 import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { useAuth } from "../contexts/AuthContext"
 import guuLogo from "../assets/guu_logo.png"
@@ -16,7 +17,7 @@ import { MobileMenu } from "@/components/navbar/MobileMenu"
 import { DesktopNav } from "@/components/navbar/DesktopNav"
 import { UserMenu } from "@/components/navbar/UserMenu"
 import { motion, useScroll, useMotionValueEvent } from "framer-motion"
-import { breakpoints } from "@/theme/tokens"
+import { breakpoints, motion as motionTokens } from "@/theme/tokens"
 import { springSoft, hoverScale } from "@/utils/animations"
 import { NAVBAR_SCROLL_THRESHOLD } from "@/constants/scroll"
 
@@ -109,12 +110,12 @@ const Navbar = () => {
         ref={navRef}
         initial={{ y: -100, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
+        transition={{ duration: motionTokens.navTransition, ease: [0.16, 1, 0.3, 1] }}
         className={cn(
           "sticky top-0 z-(--z-navbar) w-full flex flex-col justify-center",
           "border-b border-glass-border transition-all duration-500",
           isScrolled
-            ? "bg-nav/80 shadow-glass backdrop-nav h-(--navbar-height-scrolled)"
+            ? "bg-nav/(--opacity-hover) shadow-glass backdrop-nav h-(--navbar-height-scrolled)"
             : "bg-transparent h-(--navbar-height)",
           "items-center",
           "pt-(--safe-area-top)",
@@ -126,7 +127,7 @@ const Navbar = () => {
             to="/dashboard"
             aria-label={t("navigation:aria.homeLink")}
             className={cn(
-              "inline-flex min-w-0 items-center rounded-2xl px-3 py-1.5 no-underline group transition-all duration-300 hover:bg-(--bg-surface-hover)/30",
+              "inline-flex min-w-0 items-center rounded-2xl px-3 py-1.5 no-underline group transition-all duration-300 hover:bg-(--bg-surface-hover)/(--opacity-soft)",
               isMobile ? "gap-fluid-gap" : "gap-4"
             )}
             onPointerDown={markScrollFromBottom}
@@ -149,13 +150,13 @@ const Navbar = () => {
                 className="object-contain w-[65%] h-[65%]"
                 loading="eager"
                 fetchPriority="high"
-                sizes="(min-width: 1351px) 44px, (min-width: 768px) 36px, 26px"
+                sizes={`(min-width: ${breakpoints.wide}) 44px, (min-width: ${breakpoints.mobile}) 36px, 26px`}
                 responsiveWidths={[28, 48, 64]}
                 decoding="async"
               />
             </motion.div>
             <div className="flex flex-col justify-center">
-              <span className="whitespace-nowrap font-black tracking-tight text-lg group-hover:opacity-80 transition-all duration-300 leading-tight text-brand">
+              <span className="whitespace-nowrap font-black tracking-tight text-lg group-hover:opacity-(--opacity-strong) transition-all duration-300 leading-tight text-brand">
                 {t("navigation:brandName")}
               </span>
             </div>
@@ -173,18 +174,18 @@ const Navbar = () => {
                     fallback={avatarFallback}
                     alt={profileAlt}
                     title={profileTitle}
-                    className="block cursor-pointer rounded-full border-2 border-brand/50 shadow-sm object-cover w-9 h-9 shrink-0"
+                    className="block cursor-pointer rounded-full border-2 border-brand/(--opacity-medium) shadow-sm object-cover w-9 h-9 shrink-0"
                     onClick={() => go("/profile")}
                   />
                 </motion.div>
               ) : (
-                <div className="rounded-full shrink-0 w-9 h-9 bg-brand/30 animate-pulse" />
+                <div className="rounded-full shrink-0 w-9 h-9 bg-brand/(--opacity-soft) animate-pulse" />
               )}
               <motion.button
                 whileTap={{ scale: 0.9 }}
                 transition={springSoft}
                 type="button"
-                className="flex shrink-0 cursor-pointer items-center justify-center rounded-2xl border border-(--glass-border) bg-(--bg-surface-hover)/10 p-0 shadow-sm backdrop-blur-md transition-all duration-300 hover:bg-(--bg-surface-hover)/20 w-11 h-11 text-(--text-primary)"
+                className="flex shrink-0 cursor-pointer items-center justify-center rounded-2xl border border-(--glass-border) bg-(--bg-surface-hover)/(--opacity-subtle) p-0 shadow-sm backdrop-blur-md transition-all duration-300 hover:bg-(--bg-surface-hover)/(--opacity-dim) w-11 h-11 text-(--text-primary)"
                 onClick={() => setMobileMenu((v) => !v)}
                 aria-label={
                   mobileMenu ? t("navigation:aria.closeMenu") : t("navigation:aria.openMenu")
@@ -193,47 +194,32 @@ const Navbar = () => {
                 aria-controls="mobile-drawer"
                 ref={burgerBtnRef}
               >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                  className="overflow-visible stroke-(--text-primary) w-[20px] h-[20px]"
-                >
-                  <motion.line
-                    x1="4"
-                    y1="8"
-                    x2="20"
-                    y2="8"
+                <div className="relative w-6 h-6 flex items-center justify-center">
+                  <motion.div
+                    initial={false}
                     animate={{
-                      y: mobileMenu ? 4 : 0,
-                      rotate: mobileMenu ? 45 : 0,
+                      opacity: mobileMenu ? 0 : 1,
+                      rotate: mobileMenu ? 90 : 0,
+                      scale: mobileMenu ? 0.5 : 1,
                     }}
-                    transition={springSoft}
-                  />
-                  <motion.line
-                    x1="4"
-                    y1="12"
-                    x2="20"
-                    y2="12"
-                    animate={{ opacity: mobileMenu ? 0 : 1 }}
                     transition={{ duration: 0.2 }}
-                  />
-                  <motion.line
-                    x1="4"
-                    y1="16"
-                    x2="20"
-                    y2="16"
+                    className="absolute inset-0 flex items-center justify-center"
+                  >
+                    <Menu className="w-6 h-6 stroke-(--text-primary)" strokeWidth={2.5} />
+                  </motion.div>
+                  <motion.div
+                    initial={false}
                     animate={{
-                      y: mobileMenu ? -4 : 0,
-                      rotate: mobileMenu ? -45 : 0,
+                      opacity: mobileMenu ? 1 : 0,
+                      rotate: mobileMenu ? 0 : -90,
+                      scale: mobileMenu ? 1 : 0.5,
                     }}
-                    transition={springSoft}
-                  />
-                </svg>
+                    transition={{ duration: 0.2 }}
+                    className="absolute inset-0 flex items-center justify-center"
+                  >
+                    <X className="w-6 h-6 stroke-(--text-primary)" strokeWidth={2.5} />
+                  </motion.div>
+                </div>
               </motion.button>
             </div>
           ) : (

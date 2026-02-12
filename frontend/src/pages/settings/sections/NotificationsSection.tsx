@@ -112,7 +112,7 @@ export function NotificationsSection({
               </span>
             </label>
 
-            <label className="m-0 flex min-h-[44px] items-center gap-2.5 cursor-pointer">
+            <label className="m-0 flex min-h-(--min-h-touch) items-center gap-2.5 cursor-pointer">
               <SwitchControl
                 checked={dndEnabled}
                 onChange={onDndToggle}

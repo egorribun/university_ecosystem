@@ -80,7 +80,7 @@ export function LessonCard({
           <Badge
             size="xs"
             variant="outline"
-            className="chip-time font-medium border-brand/20 bg-brand-subtle-bg text-brand dark:border-brand/30 dark:bg-brand-subtle-bg/80"
+            className="chip-time font-medium border-brand/(--opacity-dim) bg-brand-subtle-bg text-brand dark:border-brand/(--opacity-soft) dark:bg-brand-subtle-bg/(--opacity-hover)"
             leadingIcon={<AccessTimeIcon size={15} />}
           >
             {`${getTimeStr(lesson)}–${getEndTimeStr(lesson)}`}
@@ -93,7 +93,7 @@ export function LessonCard({
           <Badge
             size="xs"
             variant="outline"
-            className="font-medium text-(--text-primary)/80 border-(--glass-border) bg-(--bg-surface)/40 dark:text-(--text-primary)/90 dark:bg-(--bg-surface)/60"
+            className="font-medium text-(--text-primary)/(--opacity-hover) border-(--glass-border) bg-(--bg-surface)/(--opacity-dim) dark:text-(--text-primary)/(--opacity-heavy) dark:bg-(--bg-surface)/(--opacity-medium)"
           >
             {lesson.teacher}
           </Badge>
@@ -101,7 +101,7 @@ export function LessonCard({
             size="xs"
             variant="outline"
             leadingIcon={<RoomIcon size={15} className="text-(--primary-main)" />}
-            className="font-medium text-(--text-primary)/80 border-(--glass-border) bg-(--bg-surface)/40 dark:text-(--text-primary)/90 dark:bg-(--bg-surface)/60"
+            className="font-medium text-(--text-primary)/(--opacity-hover) border-(--glass-border) bg-(--bg-surface)/(--opacity-dim) dark:text-(--text-primary)/(--opacity-heavy) dark:bg-(--bg-surface)/(--opacity-medium)"
           >
             {lesson.room}
           </Badge>
@@ -123,11 +123,11 @@ export function LessonCard({
           className={cn(
             "absolute top-2 right-2 z-(--z-surface) flex h-7 w-7 items-center justify-center rounded-lg opacity-0 transition-premium",
             "bg-(--error-bg) text-(--error-text)",
-            "border border-(--error-text)/30",
+            "border border-(--error-text)/(--opacity-soft)",
             "shadow-sm",
-            "hover:bg-(--error-text)/20 hover:shadow-md",
+            "hover:bg-(--error-text)/(--opacity-dim) hover:shadow-md",
             "group-hover:opacity-100",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--error-text)/40"
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--error-text)/(--opacity-soft)"
           )}
         >
           <DeleteIcon size={16} />

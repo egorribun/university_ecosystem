@@ -63,7 +63,7 @@ export default function Dashboard() {
           prefersReducedMotion={prefersReducedMotion}
         />
 
-        <div className="relative z-(--z-base) -mt-10 px-4 pb-16 sm:px-8 md:px-12 lg:px-16">
+        <div className="relative z-(--z-base) -mt-(--space-10) px-4 pb-16 sm:px-8 md:px-12 lg:px-16">
           <ScrollReveal mode="slide" direction="up" delay={0.2}>
             <DashboardStories
               stories={stories}

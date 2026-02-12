@@ -54,8 +54,8 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
             value={otpauthUrl}
             size={192}
             includeMargin
-            bgColor="#ffffff"
-            fgColor="#111827"
+            bgColor="var(--color-white, #ffffff)"
+            fgColor="var(--color-slate-900, #111827)"
           />
         </Suspense>
       </div>
@@ -72,7 +72,7 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
             type="text"
             readOnly
             value={normalizedSecret}
-            className="w-full px-3 py-1.5 text-sm rounded-lg border-(--text-primary)/25 bg-card text-(--text-primary) font-mono tracking-wider text-center select-all cursor-text"
+            className="w-full px-3 py-1.5 text-sm rounded-lg border-(--text-primary)/(--opacity-dim) bg-card text-(--text-primary) font-mono tracking-wider text-center select-all cursor-text"
           />
         </div>
         <div className="relative mt-5">
@@ -83,7 +83,7 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
             aria-label={t("mfa.totp.copySecret") ?? ""}
             className={`
               p-2 rounded-lg transition-colors
-              ${copied ? "text-success-text hover:bg-success-bg/10" : "text-brand hover:bg-brand/10"}
+              ${copied ? "text-success-text hover:bg-success-bg/(--opacity-subtle)" : "text-brand hover:bg-brand/(--opacity-subtle)"}
             `}
           >
             {copied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}

@@ -84,7 +84,7 @@ export const securityStatusChipClassName = cn(
   "font-bold tracking-tight px-3 py-1 rounded-full text-xs",
   "text-(--text-primary) border-glass-border bg-glass-bg",
   "shadow-glass backdrop-blur-glass transition-all duration-300",
-  "dark:bg-glass-tint1 dark:border-white/10"
+  "dark:bg-glass-tint1 dark:border-white/(--opacity-subtle)"
 )
 
 // Section Components
@@ -105,7 +105,7 @@ export function SectionCard({
         "relative flex flex-col gap-3 overflow-hidden rounded-3xl px-6 py-6",
         "border-glass-border bg-glass-bg shadow-glass backdrop-blur-glass text-(--text-primary)",
         "transition-all duration-500",
-        "before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit] before:opacity-30",
+        "before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit] before:opacity-(--opacity-soft)",
         "before:bg-[radial-gradient(circle_at_0%_0%,var(--primary-main),transparent_60%)]",
         "dark:before:bg-[radial-gradient(circle_at_0%_0%,var(--primary-subtle),transparent_60%)]",
         className
@@ -181,10 +181,10 @@ export function SessionItem({
         "group relative flex items-stretch justify-between gap-4 rounded-2xl px-4 py-3",
         "border-glass-border bg-glass-bg text-(--text-primary)",
         "transition-all duration-500 ease-out backdrop-blur-glass",
-        "hover:-translate-y-px hover:border-(--brand-main)/30 hover:bg-glass-tint1 hover:shadow-glass",
+        "hover:-translate-y-px hover:border-(--brand-main)/(--opacity-soft) hover:bg-glass-tint1 hover:shadow-glass",
         "max-sm:flex-col max-sm:items-start",
         "data-[revoked=true]:border-dashed data-[revoked=true]:border-(--border-subtle)",
-        "data-[revoked=true]:bg-(--bg-surface)/10 data-[revoked=true]:shadow-none data-[revoked=true]:backdrop-blur-none",
+        "data-[revoked=true]:bg-(--bg-surface)/(--opacity-dim) data-[revoked=true]:shadow-none data-[revoked=true]:backdrop-blur-none",
         "data-[revoked=true]:hover:translate-y-0",
         className
       )}
@@ -216,7 +216,7 @@ export function AccordionSection({
         "overflow-hidden rounded-2xl border transition-all duration-500",
         "border-glass-border bg-glass-bg backdrop-blur-glass",
         expanded
-          ? "shadow-glass border-(--brand-main)/20 bg-glass-tint1"
+          ? "shadow-glass border-(--brand-main)/(--opacity-dim) bg-glass-tint1"
           : "shadow-sm border-transparent",
         className
       )}
@@ -337,11 +337,11 @@ export const TextField = React.forwardRef<
               rows={rows}
               className={cn(
                 "flex w-full rounded-2xl border-glass-border bg-glass-bg px-4 py-3 text-base font-medium text-(--text-primary) shadow-sm transition-all duration-500",
-                "placeholder:text-(--text-secondary)/50",
-                "focus:border-(--brand-main)/40 focus:outline-none focus:ring-4 focus:ring-(--brand-main)/10",
-                "disabled:cursor-not-allowed disabled:opacity-50",
+                "placeholder:text-(--text-secondary)/(--opacity-medium)",
+                "focus:border-(--brand-main)/(--opacity-medium) focus:outline-none focus:ring-4 focus:ring-(--brand-main)/(--opacity-subtle)",
+                "disabled:cursor-not-allowed disabled:opacity-(--opacity-medium)",
                 error
-                  ? "border-(--error-text) focus:border-(--error-text) focus:ring-(--error-text)/10"
+                  ? "border-(--error-text) focus:border-(--error-text) focus:ring-(--error-text)/(--opacity-subtle)"
                   : "",
                 !fullWidth ? "w-auto" : "",
                 "resize-none",
@@ -379,7 +379,7 @@ export const TextField = React.forwardRef<
           <p
             className={cn(
               "px-1 text-xs font-medium leading-tight",
-              error ? "text-(--error-text)" : "text-(--text-tertiary)/80"
+              error ? "text-(--error-text)" : "text-(--text-tertiary)/(--opacity-strong)"
             )}
           >
             {helperText}
@@ -463,10 +463,13 @@ export function Alert({
   className?: string
 }) {
   const palette = {
-    info: "bg-(--brand-main)/10 text-(--brand-main) border-(--brand-main)/20",
-    error: "bg-(--error-text)/10 text-(--error-text) border-(--error-text)/20",
-    warning: "bg-(--warning-text)/10 text-(--warning-text) border-(--warning-text)/20",
-    success: "bg-(--success-bg)/10 text-(--success-bg) border-(--success-bg)/20",
+    info: "bg-(--brand-main)/(--opacity-dim) text-(--brand-main) border-(--brand-main)/(--opacity-dim)",
+    error:
+      "bg-(--error-text)/(--opacity-dim) text-(--error-text) border-(--error-text)/(--opacity-dim)",
+    warning:
+      "bg-(--warning-text)/(--opacity-dim) text-(--warning-text) border-(--warning-text)/(--opacity-dim)",
+    success:
+      "bg-(--success-bg)/(--opacity-dim) text-(--success-bg) border-(--success-bg)/(--opacity-dim)",
   }
 
   return (
@@ -506,8 +509,10 @@ export function Chip({
 } & React.HTMLAttributes<HTMLSpanElement>) {
   const colorMap = {
     default: "text-(--text-secondary) bg-glass-bg border-glass-border",
-    success: "text-(--success-bg) bg-(--success-bg)/10 border-(--success-bg)/20",
-    primary: "text-(--brand-main) bg-(--brand-main)/10 border-(--brand-main)/20",
+    success:
+      "text-(--success-bg) bg-(--success-bg)/(--opacity-subtle) border-(--success-bg)/(--opacity-dim)",
+    primary:
+      "text-(--brand-main) bg-(--brand-main)/(--opacity-subtle) border-(--brand-main)/(--opacity-dim)",
   }
 
   return (
@@ -535,7 +540,7 @@ export function Divider({
   return (
     <hr
       className={cn(
-        "h-px w-full border-0 bg-glass-border opacity-50",
+        "h-px w-full border-0 bg-glass-border opacity-(--opacity-medium)",
         flexItem ? "self-stretch" : "",
         className
       )}
@@ -558,7 +563,7 @@ export function Avatar({
     <div
       className={cn(
         "relative overflow-hidden rounded-full p-1",
-        "bg-linear-to-tr from-brand to-brand/20 shadow-glass",
+        "bg-linear-to-tr from-brand to-brand/(--opacity-dim) shadow-glass",
         className
       )}
     >
@@ -592,7 +597,7 @@ export function Skeleton({
   return (
     <div
       className={cn(
-        "animate-pulse bg-white/5 dark:bg-white/10",
+        "animate-pulse bg-white/(--opacity-subtle) dark:bg-white/(--opacity-dim)",
         variant === "circular"
           ? "rounded-full"
           : variant === "rounded"
@@ -626,7 +631,14 @@ export function CircularProgress({
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
-      <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+      <circle
+        className="opacity-(--opacity-dim)"
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        strokeWidth="3"
+      />
       <path
         className="opacity-100"
         fill="currentColor"
@@ -681,7 +693,7 @@ export function Dialog({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-background/80 backdrop-blur-xl"
+        className="fixed inset-0 bg-background/(--opacity-strong) backdrop-blur-xl"
         onClick={onClose}
       />
       <motion.div
@@ -712,7 +724,7 @@ export function DialogTitle({
   return (
     <h2
       className={cn(
-        "px-6 pt-6 pb-2 text-xl font-bold tracking-tight text-(--text-primary) border-b border-(--glass-border)/10",
+        "px-6 pt-6 pb-2 text-xl font-bold tracking-tight text-(--text-primary) border-b border-(--glass-border)/(--opacity-subtle)",
         className
       )}
     >
@@ -745,7 +757,7 @@ export function DialogActions({
   return (
     <div
       className={cn(
-        "flex items-center justify-end gap-3 border-t border-(--glass-border)/10 px-6 py-4 bg-(--bg-surface-hover)/20",
+        "flex items-center justify-end gap-3 border-t border-(--glass-border)/(--opacity-subtle) px-6 py-4 bg-(--bg-surface-hover)/(--opacity-dim)",
         className
       )}
     >
@@ -831,7 +843,7 @@ export function Tabs({
       role="tablist"
       className={cn(
         "relative flex flex-wrap items-center gap-1.5 overflow-x-auto rounded-2xl px-1.5 py-1.5",
-        "border border-(--glass-border) bg-(--bg-surface)/30 backdrop-blur-md shadow-glass",
+        "border border-(--glass-border) bg-(--bg-surface)/(--opacity-soft) backdrop-blur-md shadow-glass",
         className
       )}
     >
@@ -877,13 +889,13 @@ export function Tab({
         "relative flex h-10 items-center justify-center rounded-xl px-5 text-sm font-black transition-all duration-500",
         selected
           ? "text-(--text-primary)"
-          : "text-(--text-secondary) opacity-70 hover:opacity-100 hover:bg-(--bg-surface-hover)/20"
+          : "text-(--text-secondary) opacity-(--opacity-strong) hover:opacity-100 hover:bg-(--bg-surface-hover)/(--opacity-dim)"
       )}
     >
       {selected && (
         <motion.div
           layoutId={layoutId}
-          className="absolute inset-0 z-(--z-hide) rounded-xl bg-brand/10 ring-1 ring-brand/20"
+          className="absolute inset-0 z-(--z-hide) rounded-xl bg-brand/(--opacity-subtle) ring-1 ring-brand/(--opacity-dim)"
           transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
         />
       )}

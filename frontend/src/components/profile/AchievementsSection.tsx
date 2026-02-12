@@ -27,17 +27,17 @@ export const AchievementsSection = ({
           <motion.div
             key={ach.key}
             whileHover={{ y: -2 }}
-            className="flex items-start gap-3 p-4 rounded-2xl bg-(--bg-surface)/20 border border-glass-border/10 hover:border-brand/30 hover:bg-(--bg-surface)/40 transition-all cursor-pointer group"
+            className="flex items-start gap-3 p-4 rounded-2xl bg-(--bg-surface)/(--opacity-dim) border border-glass-border/(--opacity-subtle) hover:border-brand/(--opacity-soft) hover:bg-(--bg-surface)/(--opacity-medium) transition-all cursor-pointer group"
             onClick={() => onAchievementClick(ach)}
           >
-            <div className="h-10 w-10 shrink-0 rounded-xl bg-brand/10 flex items-center justify-center text-brand group-hover:bg-brand group-hover:text-white transition-colors">
+            <div className="h-10 w-10 shrink-0 rounded-xl bg-brand/(--opacity-subtle) flex items-center justify-center text-brand group-hover:bg-brand group-hover:text-white transition-colors">
               <Shield className="h-5 w-5" />
             </div>
             <div className="min-w-0">
               <h3 className="text-sm font-bold text-(--text-primary) truncate group-hover:text-brand transition-colors">
                 {ach.name}
               </h3>
-              <p className="text-[11px] text-(--text-secondary) opacity-70 mt-0.5 line-clamp-1">
+              <p className="text-label-md text-(--text-secondary) opacity-(--opacity-strong) mt-0.5 line-clamp-1">
                 {ach.issuer || "Academic Board"}
               </p>
             </div>

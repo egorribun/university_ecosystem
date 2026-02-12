@@ -4,7 +4,7 @@ declare const self: ServiceWorkerGlobalScope
 import { clientsClaim } from "workbox-core"
 
 import { initApiCaching, clearSessionCaches, setSessionHash } from "./sw/api"
-import { error } from "./sw/logger"
+import { error, log } from "./sw/logger"
 import { initMediaCaching } from "./sw/media"
 import { initOfflineQueue, processOfflineQueues } from "./sw/offline"
 import { initPrecaching } from "./sw/precaching"
@@ -53,7 +53,7 @@ async function bootstrap() {
     initPushHandlers()
 
     // 3. Register testing helper
-    ;(self as any).__SW_TESTING__ = {
+    self.__SW_TESTING__ = {
       storePendingNavigation: offline.storePendingNavigation,
       storePendingReport: offline.storePendingReport,
       readPendingNavigations: offline.readPendingNavigations,
@@ -68,7 +68,7 @@ async function bootstrap() {
     await processOfflineQueues()
 
     if (import.meta.env.DEV) {
-      console.log("[SW] Bootstrap complete")
+      log("Bootstrap complete")
     }
   } catch (err) {
     error("SW bootstrap failed", err)

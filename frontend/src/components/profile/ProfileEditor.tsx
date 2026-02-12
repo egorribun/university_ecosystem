@@ -85,7 +85,7 @@ export const ProfileEditor = ({
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
             maxLength={120}
-            className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-(--glass-border) bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary)/50 focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-200"
+            className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-(--glass-border) bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary)/(--opacity-medium) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-200"
           />
         </div>
 
@@ -113,7 +113,7 @@ export const ProfileEditor = ({
             onChange={(e) => setTelegram(e.target.value)}
             className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-200"
           />
-          <p className="text-[10px] xs:text-xs text-hint">{t("profile:form.telegramHint")}</p>
+          <p className="text-label-xs xs:text-xs text-hint">{t("profile:form.telegramHint")}</p>
         </div>
 
         {/* Teacher Fields */}
@@ -254,7 +254,7 @@ export const ProfileEditor = ({
           <button
             onClick={onSave}
             disabled={saving}
-            className="w-full sm:w-auto py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg sm:rounded-xl bg-(--primary-main) text-white font-extrabold tracking-wide text-sm sm:text-base shadow-surface hover:shadow-surface-strong transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.01] active:scale-[0.98] disabled:opacity-50 border border-(--primary-main)/20"
+            className="w-full sm:w-auto py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg sm:rounded-xl bg-(--primary-main) text-white font-extrabold tracking-wide text-sm sm:text-base shadow-surface hover:shadow-surface-strong transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.01] active:scale-[0.98] disabled:opacity-(--opacity-medium) border border-(--primary-main)/(--opacity-dim)"
           >
             {saving ? t("profile:form.saving") : t("profile:form.save")}
           </button>

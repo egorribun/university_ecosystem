@@ -191,7 +191,7 @@ export default function Schedule() {
       <div className="absolute left-1/2 top-[-14px] z-(--z-deep) -translate-x-1/2 pointer-events-none">
         <Badge
           size="xs"
-          className="chip-break font-medium bg-(--bg-surface)/80 border-glass-border shadow-glass text-(--text-secondary)"
+          className="chip-break font-medium bg-(--bg-surface)/(--opacity-hover) border-glass-border shadow-glass text-(--text-secondary)"
         >
           {t("schedule:break", { minutes: gap })}
         </Badge>
@@ -204,13 +204,13 @@ export default function Schedule() {
     return (
       <div
         ref={tableScrollRef}
-        className="mx-auto w-full max-w-[min(98vw,1920px)] overflow-x-auto rounded-3xl border border-glass-border bg-(--bg-surface)/40 text-(--text-primary) shadow-glass backdrop-blur-md scroll-smooth"
+        className="mx-auto w-full max-w-[min(98vw,1920px)] overflow-x-auto rounded-3xl border border-glass-border bg-(--bg-surface)/(--opacity-medium) text-(--text-primary) shadow-glass backdrop-blur-md scroll-smooth"
         style={{ minHeight: 360 }}
       >
         <table className="w-full border-collapse">
           <thead className="sticky top-0 z-(--z-content)">
             <tr>
-              <th className="sticky left-0 z-(--z-navbar) w-[50px] bg-(--bg-surface)/60 px-4 py-4 text-center font-extrabold text-(--text-primary) border-r border-glass-border shadow-md backdrop-blur-md">
+              <th className="sticky left-0 z-(--z-navbar) w-[50px] bg-(--bg-surface)/(--opacity-strong) px-4 py-4 text-center font-extrabold text-(--text-primary) border-r border-glass-border shadow-md backdrop-blur-md">
                 №
               </th>
               {weekdayBackend.map((day, idx) => {
@@ -223,7 +223,9 @@ export default function Schedule() {
                       headRefs.current[idx] = el
                     }}
                     className={cn(
-                      isTodayCol ? "bg-brand/10 shadow-focus" : "bg-(--bg-surface)/40",
+                      isTodayCol
+                        ? "bg-brand/(--opacity-subtle) shadow-focus"
+                        : "bg-(--bg-surface)/(--opacity-medium)",
                       "z-(--z-navbar) backdrop-blur-md"
                     )}
                   >
@@ -233,7 +235,7 @@ export default function Schedule() {
                       </span>
                       {(user?.role === "admin" || user?.role === "teacher") && (
                         <button
-                          className="ml-1 flex h-7 w-7 items-center justify-center rounded-lg border border-glass-border bg-(--bg-surface)/60 text-brand hover:bg-brand hover:text-white transition-colors"
+                          className="ml-1 flex h-7 w-7 items-center justify-center rounded-lg border border-glass-border bg-(--bg-surface)/(--opacity-strong) text-brand hover:bg-brand hover:text-white transition-colors"
                           onClick={(event) => {
                             event.stopPropagation()
                             setAddDay(day)
@@ -265,7 +267,7 @@ export default function Schedule() {
             ) : (
               visibleRows.map((row, rowIdx) => (
                 <tr key={rowIdx}>
-                  <td className="sticky left-0 z-(--z-navbar) bg-(--bg-surface)/60 px-4 py-3 text-center font-bold border-r border-glass-border shadow-md backdrop-blur-md">
+                  <td className="sticky left-0 z-(--z-navbar) bg-(--bg-surface)/(--opacity-strong) px-4 py-3 text-center font-bold border-r border-glass-border shadow-md backdrop-blur-md">
                     {rowIdx + 1}
                   </td>
                   {row.map((lesson, colIdx) => {
@@ -294,7 +296,7 @@ export default function Schedule() {
                         key={lesson.id}
                         className={cn(
                           "relative overflow-visible p-3",
-                          colIsToday ? "bg-brand/5" : ""
+                          colIsToday ? "bg-brand/(--opacity-faint)" : ""
                         )}
                       >
                         {renderBreakChip(rowIdx, colIdx)}
@@ -385,7 +387,7 @@ export default function Schedule() {
   )
 
   const inputClass =
-    "w-full rounded-xl border border-glass-border bg-(--bg-surface)/40 px-4 py-3 text-base font-medium text-(--text-primary) shadow-sm focus:border-brand focus:outline-none transition-all"
+    "w-full rounded-xl border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-4 py-3 text-base font-medium text-(--text-primary) shadow-sm focus:border-brand focus:outline-none transition-all"
 
   const activeGroupName = groups.find((g) => g.id === selectedGroup)?.name || ""
 
@@ -409,10 +411,10 @@ export default function Schedule() {
               style={fadeDelayStyle("80ms")}
               className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-(--bg-surface)/40 border border-glass-border text-brand shadow-glass">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-(--bg-surface)/(--opacity-medium) border border-glass-border text-brand shadow-glass">
                 <CalendarMonthIcon className="h-7 w-7" />
               </div>
-              <h1 className="text-(--fs-page-title) font-bold tracking-tight text-(--text-primary)">
+              <h1 className="text-(length:--fs-page-title) font-bold tracking-tight text-(--text-primary)">
                 {user?.role === "student"
                   ? t("schedule:title.student")
                   : t("schedule:title.default")}
@@ -432,7 +434,7 @@ export default function Schedule() {
               data-fade
               style={fadeDelayStyle("200ms")}
               className={cn(
-                "no-print group relative isolate mb-6 overflow-hidden rounded-3xl border border-glass-border bg-(--bg-surface)/40 p-6 shadow-glass backdrop-blur-md transition-all hover:shadow-xl",
+                "no-print group relative isolate mb-6 overflow-hidden rounded-3xl border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-6 shadow-glass backdrop-blur-md transition-all hover:shadow-xl",
                 !isMobile && "max-w-4xl"
               )}
             >
@@ -492,7 +494,7 @@ export default function Schedule() {
               {dialogLesson && (
                 <div className="space-y-4">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-semibold opacity-70 uppercase tracking-wider">
+                    <span className="text-sm font-semibold opacity-(--opacity-strong) uppercase tracking-wider">
                       {t("schedule:dialog.typeLabel")}:
                     </span>
                     <Badge
@@ -505,7 +507,7 @@ export default function Schedule() {
                     </Badge>
                   </div>
                   <div className="space-y-1">
-                    <span className="text-sm font-semibold opacity-70 uppercase tracking-wider">
+                    <span className="text-sm font-semibold opacity-(--opacity-strong) uppercase tracking-wider">
                       {t("schedule:dialog.timeLabel")}:
                     </span>
                     <p className="font-medium">
@@ -540,7 +542,7 @@ export default function Schedule() {
               {editLesson && (
                 <div className="space-y-5">
                   <div>
-                    <label className="mb-2 block text-sm font-semibold opacity-70">
+                    <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
                       {t("schedule:form.subject")}
                     </label>
                     <input
@@ -555,7 +557,7 @@ export default function Schedule() {
                     />
                   </div>
                   <div>
-                    <label className="mb-2 block text-sm font-semibold opacity-70">
+                    <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
                       {t("schedule:form.teacher")}
                     </label>
                     <input
@@ -570,7 +572,7 @@ export default function Schedule() {
                     />
                   </div>
                   <div>
-                    <label className="mb-2 block text-sm font-semibold opacity-70">
+                    <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
                       {t("schedule:form.room")}
                     </label>
                     <input
@@ -585,7 +587,7 @@ export default function Schedule() {
                     />
                   </div>
                   <div>
-                    <label className="mb-2 block text-sm font-semibold opacity-70">
+                    <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
                       {t("schedule:form.lessonType")}
                     </label>
                     <select
@@ -606,7 +608,7 @@ export default function Schedule() {
                   </div>
                   <div className="flex gap-4">
                     <div className="w-1/2">
-                      <label className="mb-2 block text-sm font-semibold opacity-70">
+                      <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
                         {t("schedule:form.startTime")}
                       </label>
                       <input
@@ -627,7 +629,7 @@ export default function Schedule() {
                       />
                     </div>
                     <div className="w-1/2">
-                      <label className="mb-2 block text-sm font-semibold opacity-70">
+                      <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
                         {t("schedule:form.endTime")}
                       </label>
                       <input
@@ -649,7 +651,7 @@ export default function Schedule() {
                     </div>
                   </div>
                   <div>
-                    <label className="mb-2 block text-sm font-semibold opacity-70">
+                    <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
                       {t("schedule:form.week")}
                     </label>
                     <select
@@ -714,7 +716,7 @@ export default function Schedule() {
             <DialogContent className="space-y-5 pt-4">
               <div className="space-y-5">
                 <div>
-                  <label className="mb-2 block text-sm font-semibold opacity-70">
+                  <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
                     {t("schedule:form.subject")}
                   </label>
                   <input
@@ -726,7 +728,7 @@ export default function Schedule() {
                   />
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-semibold opacity-70">
+                  <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
                     {t("schedule:form.teacher")}
                   </label>
                   <input
@@ -738,7 +740,7 @@ export default function Schedule() {
                   />
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-semibold opacity-70">
+                  <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
                     {t("schedule:form.room")}
                   </label>
                   <input
@@ -748,7 +750,7 @@ export default function Schedule() {
                   />
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-semibold opacity-70">
+                  <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
                     {t("schedule:form.lessonType")}
                   </label>
                   <select
@@ -767,7 +769,7 @@ export default function Schedule() {
                 </div>
                 <div className="flex gap-4">
                   <div className="w-1/2">
-                    <label className="mb-2 block text-sm font-semibold opacity-70">
+                    <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
                       {t("schedule:form.startTime")}
                     </label>
                     <input
@@ -780,7 +782,7 @@ export default function Schedule() {
                     />
                   </div>
                   <div className="w-1/2">
-                    <label className="mb-2 block text-sm font-semibold opacity-70">
+                    <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
                       {t("schedule:form.endTime")}
                     </label>
                     <input
@@ -794,7 +796,7 @@ export default function Schedule() {
                   </div>
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-semibold opacity-70">
+                  <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
                     {t("schedule:form.week")}
                   </label>
                   <select

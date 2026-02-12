@@ -136,7 +136,7 @@ export const StepUpDialog = ({
   return (
     <div
       role="presentation"
-      className="fixed inset-0 z-(--z-navbar) flex items-center justify-center p-4 bg-black/50"
+      className="fixed inset-0 z-(--z-navbar) flex items-center justify-center p-4 bg-black/(--opacity-medium)"
       onClick={onClose}
     >
       <div
@@ -170,7 +170,7 @@ export const StepUpDialog = ({
         <div className="flex gap-2 justify-end px-6 pb-6 pt-2">
           <button
             onClick={onClose}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 text-base font-bold rounded-lg transition-all duration-200 text-(--text-primary) hover:bg-(--text-primary)/10"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 text-base font-bold rounded-lg transition-all duration-200 text-(--text-primary) hover:bg-(--text-primary)/(--opacity-subtle)"
           >
             {t("common:buttons.cancel")}
           </button>

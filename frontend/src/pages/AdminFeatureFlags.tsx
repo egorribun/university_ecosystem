@@ -64,7 +64,7 @@ export default function AdminFeatureFlags() {
   if (loading) {
     return (
       <Layout>
-        <div className="flex min-h-screen items-center justify-center bg-background/50">
+        <div className="flex min-h-screen items-center justify-center bg-background/(--opacity-medium)">
           <div className="h-10 w-10 animate-spin rounded-full border-4 border-brand border-t-transparent" />
         </div>
       </Layout>
@@ -73,7 +73,7 @@ export default function AdminFeatureFlags() {
 
   return (
     <Layout>
-      <div className="min-h-screen w-full bg-background/50 py-12">
+      <div className="min-h-screen w-full bg-background/(--opacity-medium) py-12">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <motion.div
             initial={{ opacity: 0, y: -20 }}
@@ -89,26 +89,26 @@ export default function AdminFeatureFlags() {
             </p>
           </motion.div>
 
-          <div className="overflow-hidden rounded-3xl border border-glass-border bg-(--bg-surface)/40 shadow-glass">
+          <div className="overflow-hidden rounded-3xl border border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-glass-border/10 bg-(--bg-surface-hover)/20">
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
+                  <tr className="border-b border-glass-border/(--opacity-subtle) bg-(--bg-surface-hover)/(--opacity-dim)">
+                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
                       {t("featureFlags.table.flag", "Feature Flag")}
                     </th>
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
+                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
                       {t("featureFlags.table.status", "Status")}
                     </th>
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
+                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
                       {t("featureFlags.table.rollout", "Rollout")}
                     </th>
-                    <th className="px-6 py-4 text-right text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-70">
+                    <th className="px-6 py-4 text-right text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
                       {t("featureFlags.table.details", "Details")}
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-glass-border/10">
+                <tbody className="divide-y divide-glass-border/(--opacity-subtle)">
                   <AnimatePresence mode="popLayout">
                     {flags.map((flag, index) => (
                       <motion.tr
@@ -116,14 +116,14 @@ export default function AdminFeatureFlags() {
                         initial={{ opacity: 0, x: -10 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: index * 0.05 }}
-                        className="transition-colors hover:bg-(--bg-surface-hover)/5"
+                        className="transition-colors hover:bg-(--bg-surface-hover)/(--opacity-subtle)"
                       >
                         <td className="px-6 py-5">
                           <div className="flex flex-col gap-1">
                             <span className="text-base font-bold text-(--text-primary)">
                               {flag.name}
                             </span>
-                            <span className="text-xs text-(--text-secondary) max-w-xs opacity-70">
+                            <span className="text-xs text-(--text-secondary) max-w-xs opacity-(--opacity-strong)">
                               {flag.description}
                             </span>
                           </div>
@@ -149,7 +149,7 @@ export default function AdminFeatureFlags() {
                         </td>
                         <td className="px-6 py-5">
                           {flag.status === "percentage" ? (
-                            <div className="flex flex-col gap-2 min-w-[200px]">
+                            <div className="flex flex-col gap-2 min-w-(--min-w-column)">
                               <input
                                 type="range"
                                 min="0"
@@ -161,13 +161,13 @@ export default function AdminFeatureFlags() {
                                 }
                                 className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-glass-border accent-brand"
                               />
-                              <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-(--text-secondary)">
+                              <div className="flex items-center justify-between text-label-xs font-bold uppercase tracking-widest text-(--text-secondary)">
                                 <span>{flag.percentage}% of users</span>
                                 <Percent className="h-3 w-3" />
                               </div>
                             </div>
                           ) : (
-                            <span className="text-sm italic text-(--text-secondary) opacity-50">
+                            <span className="text-sm italic text-(--text-secondary) opacity-(--opacity-medium)">
                               Global toggle active
                             </span>
                           )}
@@ -175,7 +175,7 @@ export default function AdminFeatureFlags() {
                         <td className="px-6 py-5 text-right">
                           <button
                             title={JSON.stringify(flag.metadata, null, 2)}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)/20 hover:text-brand"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)/(--opacity-dim) hover:text-brand"
                           >
                             <Info className="h-4 w-4" />
                           </button>

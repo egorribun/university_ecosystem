@@ -27,7 +27,7 @@ export function ScheduleSkeleton() {
         {/* Table/List Skeleton */}
         <div className="hidden md:block">
           {/* Desktop Table Mock */}
-          <div className="rounded-2xl border border-white/10 bg-(--bg-surface) p-4">
+          <div className="rounded-2xl border border-white/(--opacity-subtle) bg-(--bg-surface) p-4">
             <div className="flex gap-4 mb-4">
               {Array.from({ length: 7 }).map((_, i) => (
                 <Skeleton key={i} className="flex-1 h-10" />

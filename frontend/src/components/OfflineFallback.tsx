@@ -18,7 +18,7 @@ export function OfflineFallback({ onRetry }: OfflineFallbackProps) {
         initial={{ scale: 0.8, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ type: "spring", stiffness: 200, damping: 20 }}
-        className="mb-8 flex h-24 w-24 items-center justify-center rounded-full bg-warning-bg/20 text-warning-text"
+        className="mb-8 flex h-24 w-24 items-center justify-center rounded-full bg-warning-bg/(--opacity-dim) text-warning-text"
       >
         <WifiOff size={48} />
       </motion.div>
@@ -58,7 +58,7 @@ export function OfflineFallback({ onRetry }: OfflineFallbackProps) {
           variant="outline"
           onClick={() => navigate("/")}
           leadingIcon={<HomeIcon size={18} />}
-          className="border-white/10"
+          className="border-white/(--opacity-subtle)"
         >
           {t("offlineFallback.backHome")}
         </Button>

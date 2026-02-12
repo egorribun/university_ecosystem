@@ -147,7 +147,7 @@ export default function ForgotPassword() {
   return (
     <div className="min-h-screen bg-(--bg-page) text-(--text-primary) flex items-center justify-center p-6 relative overflow-hidden">
       {/* Background decorative elements */}
-      <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-20">
+      <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-(--opacity-dim)">
         <div className="absolute top-[-10%] left-[-5%] w-[40%] h-[40%] bg-(--glow-spotlight-primary) rounded-full blur-(--glow-blur-massive)" />
         <div className="absolute bottom-[-10%] right-[-5%] w-[40%] h-[40%] bg-(--glow-spotlight-secondary) rounded-full blur-(--glow-blur-massive)" />
       </div>
@@ -179,12 +179,12 @@ export default function ForgotPassword() {
                   className="space-y-6 pt-4"
                 >
                   <div className="flex justify-center">
-                    <div className="h-20 w-20 rounded-3xl bg-success-bg/20 flex items-center justify-center text-success-text">
+                    <div className="h-20 w-20 rounded-3xl bg-success-bg/(--opacity-dim) flex items-center justify-center text-success-text">
                       <CheckCircle2 className="h-10 w-10" />
                     </div>
                   </div>
                   <div className="text-center space-y-4">
-                    <p className="text-[15px] leading-relaxed text-(--text-secondary)">
+                    <p className="text-body-sm leading-relaxed text-(--text-secondary)">
                       <Trans
                         ns="auth"
                         i18nKey="forgot.success"
@@ -194,7 +194,7 @@ export default function ForgotPassword() {
                         }}
                       />
                     </p>
-                    <p className="text-xs font-bold text-brand uppercase tracking-widest opacity-70">
+                    <p className="text-xs font-bold text-brand uppercase tracking-widest opacity-(--opacity-strong)">
                       {t("auth:forgot.successHint")}
                     </p>
                   </div>
@@ -257,7 +257,7 @@ export default function ForgotPassword() {
                             onClick={applySuggestion}
                             color="primary"
                             variant="outlined"
-                            className="cursor-pointer hover:bg-brand/5 transition-colors"
+                            className="cursor-pointer hover:bg-brand/(--opacity-subtle) transition-colors"
                           />
                         </motion.div>
                       )}
@@ -276,7 +276,7 @@ export default function ForgotPassword() {
                       <Button
                         type="submit"
                         variant="solid"
-                        className="w-full h-14 rounded-2xl text-base font-black shadow-lg shadow-brand/20 transition-all hover:shadow-brand/30 hover:-translate-y-0.5 active:translate-y-0"
+                        className="w-full h-14 rounded-2xl text-base font-black shadow-lg shadow-brand/(--opacity-dim) transition-all hover:shadow-brand/(--opacity-soft) hover:-translate-y-0.5 active:translate-y-0"
                         disabled={!canSubmit}
                         loading={forgotPending}
                         startIcon={<SendIcon className="h-5 w-5" />}

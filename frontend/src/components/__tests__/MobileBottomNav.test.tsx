@@ -1,8 +1,8 @@
 import { MemoryRouter } from "react-router-dom"
 import { render, screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
-import MobileBottomNav from "../MobileBottomNav"
-import i18n from "../../i18n/config"
+import MobileBottomNav from "@/components/MobileBottomNav"
+import i18n from "@/i18n/config"
 
 const mainNavLabel = () => i18n.t("navigation:aria.mainNavigation")
 

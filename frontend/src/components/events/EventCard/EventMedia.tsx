@@ -33,8 +33,8 @@ export const EventMedia: React.FC<EventMediaProps> = ({
         className={cn(
           "relative w-full overflow-hidden rounded-[14px]",
           "aspect-video max-h-[200px]",
-          "bg-linear-to-br from-[color-mix(in_srgb,var(--primary-main)_20%,var(--bg-surface)_80%)] to-[color-mix(in_srgb,var(--primary-main)_10%,var(--bg-surface)_90%)]",
-          "border border-[color-mix(in_srgb,var(--primary-main)_12%,transparent_88%)]"
+          "bg-linear-to-br from-event-media-tint-from to-event-media-tint-to",
+          "border border-event-media-border"
         )}
       >
         <SmartImage
@@ -51,20 +51,20 @@ export const EventMedia: React.FC<EventMediaProps> = ({
           onError={onReady}
         />
         {/* Gradient overlay for depth */}
-        <div className="absolute inset-0 bg-linear-to-t from-black/60 via-transparent to-transparent opacity-60 transition-opacity duration-300 group-hover:opacity-70" />
+        <div className="absolute inset-0 bg-linear-to-t from-black/(--opacity-medium) via-transparent to-transparent opacity-(--opacity-medium) transition-opacity duration-300 group-hover:opacity-(--opacity-strong)" />
 
         {/* Event type badge on image */}
         {eventType && (
-          <div className="absolute top-3 left-3 px-3 py-1.5 rounded-lg bg-black/50 backdrop-blur-md border border-white/20 shadow-lg">
+          <div className="absolute top-3 left-3 px-3 py-1.5 rounded-lg bg-black/(--opacity-medium) backdrop-blur-md border border-white/(--opacity-dim) shadow-lg">
             <span className="text-xs font-semibold text-white">{eventType}</span>
           </div>
         )}
 
         {/* Status indicators */}
         {timeStatus.status === "live" && (
-          <div className="absolute top-3 right-3 px-3 py-1.5 rounded-lg bg-success-bg/90 backdrop-blur-sm shadow-lg flex items-center gap-1.5 text-success-text">
+          <div className="absolute top-3 right-3 px-3 py-1.5 rounded-lg bg-success-bg/(--opacity-strong) backdrop-blur-sm shadow-lg flex items-center gap-1.5 text-success-text">
             <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-(--opacity-strong)" />
               <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
             </span>
             <span className="text-xs font-bold text-white">LIVE</span>
@@ -72,7 +72,7 @@ export const EventMedia: React.FC<EventMediaProps> = ({
         )}
 
         {timeStatus.status === "soon" && timeStatus.timeText && (
-          <div className="absolute top-3 right-3 px-3 py-1.5 rounded-lg bg-warning-bg/90 backdrop-blur-sm shadow-lg flex items-center gap-1.5 text-warning-text">
+          <div className="absolute top-3 right-3 px-3 py-1.5 rounded-lg bg-warning-bg/(--opacity-strong) backdrop-blur-sm shadow-lg flex items-center gap-1.5 text-warning-text">
             <span className="text-xs font-bold text-white">
               ⏱ {t("events:card.statuses.in", { time: timeStatus.timeText })}
             </span>
@@ -80,7 +80,7 @@ export const EventMedia: React.FC<EventMediaProps> = ({
         )}
 
         {!isReady && (
-          <div className="absolute inset-0 bg-linear-to-br from-[color-mix(in_srgb,var(--primary-main)_15%,var(--bg-surface)_85%)] to-(--bg-surface) animate-pulse" />
+          <div className="absolute inset-0 bg-linear-to-br from-event-media-pulse to-(--bg-surface) animate-pulse" />
         )}
       </div>
     </div>
