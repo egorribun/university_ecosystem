@@ -76,7 +76,6 @@ const initialEvent: EventDraft = {
   about_en: "",
 }
 
-
 const fadeDelayStyle = (value: string): CSSProperties =>
   ({ "--fade-delay": value }) as CSSProperties
 

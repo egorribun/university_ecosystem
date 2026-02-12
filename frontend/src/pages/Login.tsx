@@ -146,7 +146,6 @@ const Login = () => {
 
   const [submitting, setSubmitting] = useState(false)
 
-
   const [submitError, submitAction, isPending] = useActionState(
     async (previousState: string | null, formData: FormData) => {
       const username = String(formData.get("username") ?? "").trim()

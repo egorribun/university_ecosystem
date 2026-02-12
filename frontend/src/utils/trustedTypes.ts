@@ -8,7 +8,7 @@ import type {
 const SANITIZE_POLICY_NAME = "dompurify-news"
 const APP_POLICY_NAME = "app"
 
-let dompurifyInstance: typeof import("dompurify")["default"] | null = null
+let dompurifyInstance: (typeof import("dompurify"))["default"] | null = null
 async function getDOMPurify() {
   if (dompurifyInstance) return dompurifyInstance
   const DOMPurify = (await import("dompurify")).default
