@@ -1,19 +1,17 @@
-import {
-  useState,
-  useEffect,
-  useRef,
-  useDeferredValue,
-  startTransition,
-  type CSSProperties,
-} from "react"
-import Layout from "@/components/Layout"
-import PageFadeIn from "@/components/PageFadeIn"
+import { useState, useEffect, useRef, useDeferredValue, startTransition } from "react"
+import { PageLayout } from "@/components/PageLayout"
 import dayjs from "dayjs"
 import isoWeek from "dayjs/plugin/isoWeek"
 import "dayjs/locale/ru"
 import "dayjs/locale/en"
 import { useTranslation } from "react-i18next"
-import { Button, Badge, ProgressBar, Skeleton, Card } from "@/components/ui"
+import {
+  Button,
+  Badge,
+  ProgressBar,
+  Input,
+  Select,
+} from "@/components/ui"
 import {
   Alert,
   Dialog,
@@ -23,9 +21,6 @@ import {
   Snackbar,
 } from "@/components/settings"
 import {
-  Clock as AccessTimeIcon,
-  GraduationCap as SchoolIcon,
-  MapPin as RoomIcon,
   Calendar as CalendarMonthIcon,
   Plus as AddIcon,
 } from "lucide-react"
@@ -43,22 +38,18 @@ import {
   getTimeStr,
   getEndTimeStr,
   minutesDiff,
-  parseMinutes,
 } from "@/components/schedule/scheduleUtils"
 import { useScheduleData } from "@/hooks/useScheduleData"
 import { LessonCard } from "@/components/schedule/LessonCard"
 import { WeekSelector } from "@/components/schedule/WeekSelector"
 import { DayColumn } from "@/components/schedule/DayColumn"
 import { ScheduleSkeleton } from "@/components/schedule/ScheduleSkeleton"
+import FadeSection from "@/components/FadeSection"
 
 dayjs.extend(isoWeek)
 
-const fadeDelayStyle = (value: string): CSSProperties =>
-  ({ "--fade-delay": value }) as CSSProperties
-
 export default function Schedule() {
   const { t } = useTranslation(["schedule", "common"])
-  const { language } = useTranslation().i18n
   const isOnline = useOnlineStatus()
 
   const {
@@ -84,7 +75,6 @@ export default function Schedule() {
     toBackendLessonType,
     todayIdx,
     hasToday,
-    nowTick,
     currentLesson,
     nextLesson,
     conflictedIds,
@@ -119,7 +109,7 @@ export default function Schedule() {
 
   const editingLessonTypeOptions = lessonTypeOptions // Simplified as we have full list in hook
 
-  const addDayLabel = addDay ? getDayLabel(addDay) : ""
+
   const isMobile = useMediaQuery(`(max-width: ${breakpoints.ultrawide})`)
   const tableScrollRef = useRef<HTMLDivElement | null>(null)
   const headRefs = useRef<(HTMLTableCellElement | null)[]>([])
@@ -135,7 +125,7 @@ export default function Schedule() {
   const [rowLimit, setRowLimit] = useState(0)
 
   useEffect(() => {
-    setRowLimit((prev) => {
+    setRowLimit(() => {
       const start = Math.min(12, tableRows.length)
       return start
     })
@@ -204,8 +194,7 @@ export default function Schedule() {
     return (
       <div
         ref={tableScrollRef}
-        className="mx-auto w-full max-w-[min(98vw,1920px)] overflow-x-auto rounded-3xl border border-glass-border bg-(--bg-surface)/(--opacity-medium) text-(--text-primary) shadow-glass backdrop-blur-md scroll-smooth"
-        style={{ minHeight: 360 }}
+        className="mx-auto w-full max-w-[min(98vw,1920px)] overflow-x-auto rounded-lg border border-glass-border bg-(--bg-surface)/(--opacity-medium) text-(--text-primary) shadow-glass backdrop-blur-md scroll-smooth min-h-[360px]"
       >
         <table className="w-full border-collapse">
           <thead className="sticky top-0 z-(--z-content)">
@@ -235,7 +224,7 @@ export default function Schedule() {
                       </span>
                       {(user?.role === "admin" || user?.role === "teacher") && (
                         <button
-                          className="ml-1 flex h-7 w-7 items-center justify-center rounded-lg border border-glass-border bg-(--bg-surface)/(--opacity-strong) text-brand hover:bg-brand hover:text-white transition-colors"
+                          className="ml-1 flex h-7 w-7 items-center justify-center rounded-xs border border-glass-border bg-(--bg-surface)/(--opacity-strong) text-brand hover:bg-brand hover:text-white transition-colors"
                           onClick={(event) => {
                             event.stopPropagation()
                             setAddDay(day)
@@ -278,7 +267,7 @@ export default function Schedule() {
                           key={`empty-${rowIdx}-${colIdx}`}
                           className={cn("p-3", colIsToday ? "bg-card-hover" : "")}
                         >
-                          <div className="min-h-[148px] rounded-xl border border-dashed border-card-border" />
+                          <div className="min-h-[148px] rounded-sm border border-dashed border-card-border" />
                         </td>
                       )
                     }
@@ -386,31 +375,22 @@ export default function Schedule() {
     </div>
   )
 
-  const inputClass =
-    "w-full rounded-xl border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-4 py-3 text-base font-medium text-(--text-primary) shadow-sm focus:border-brand focus:outline-none transition-all"
-
   const activeGroupName = groups.find((g) => g.id === selectedGroup)?.name || ""
 
   if (isLoading) {
     return (
-      <Layout>
-        <PageFadeIn>
-          <ScheduleSkeleton />
-        </PageFadeIn>
-      </Layout>
+      <PageLayout variant="wide">
+        <ScheduleSkeleton />
+      </PageLayout>
     )
   }
 
   return (
-    <Layout>
-      <PageFadeIn>
-        <div className="w-full min-h-screen bg-transparent text-(--text-primary) py-8 sm:py-10">
-          <div className="mb-6 mt-0 px-2 md:px-4">
-            <div
-              data-fade
-              style={fadeDelayStyle("80ms")}
-              className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5"
-            >
+    <PageLayout variant="wide">
+      <div className="w-full text-(--text-primary)">
+        <div className="mb-6 mt-0">
+          <header>
+            <FadeSection delay="80ms" className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-(--bg-surface)/(--opacity-medium) border border-glass-border text-brand shadow-glass">
                 <CalendarMonthIcon className="h-7 w-7" />
               </div>
@@ -424,17 +404,16 @@ export default function Schedule() {
                   {t("schedule:header.groupName", { name: activeGroupName })}
                 </Badge>
               )}
-            </div>
+            </FadeSection>
 
-            <div data-fade style={fadeDelayStyle("140ms")} className="mb-6">
+            <FadeSection delay="140ms" className="mb-6">
               <WeekSelector currentParity={currentParity} setCurrentParity={setCurrentParity} />
-            </div>
+            </FadeSection>
 
-            <div
-              data-fade
-              style={fadeDelayStyle("200ms")}
+            <FadeSection
+              delay="200ms"
               className={cn(
-                "no-print group relative isolate mb-6 overflow-hidden rounded-3xl border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-6 shadow-glass backdrop-blur-md transition-all hover:shadow-xl",
+                "no-print group relative isolate mb-6 overflow-hidden rounded-lg border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-6 shadow-glass backdrop-blur-md transition-all hover:shadow-xl",
                 !isMobile && "max-w-4xl"
               )}
             >
@@ -460,338 +439,183 @@ export default function Schedule() {
               ) : (
                 <p>{t("schedule:summary.noMoreToday")}</p>
               )}
-            </div>
+            </FadeSection>
 
             {(user?.role === "teacher" || user?.role === "admin") && (
-              <div data-fade style={fadeDelayStyle("240ms")} className="mb-6 max-w-[380px]">
+              <FadeSection delay="240ms" className="mb-6 max-w-[380px]">
                 <label className="mb-2 block text-sm font-semibold">
                   {t("schedule:form.groupLabel")}
                 </label>
-                <select
+                <Select
                   value={selectedGroup ?? ""}
-                  onChange={(event) => setSelectedGroup(event.target.value || null)}
-                  className={inputClass}
-                >
-                  {groups.map((group) => (
-                    <option key={group.id} value={group.id}>
-                      {group.name}
-                    </option>
-                  ))}
-                </select>
+                  onValueChange={(val) => setSelectedGroup(val || null)}
+                  options={groups.map((g) => ({ value: g.id, label: g.name }))}
+                  placeholder={t("schedule:form.groupLabel")}
+                />
+              </FadeSection>
+            )}
+          </header>
+        </div>
+
+        <section aria-label={t("schedule:title.default")}>
+          <FadeSection delay="280ms" className="max-w-[1920px]">
+            {isMobile ? renderMobileCards() : renderTable()}
+          </FadeSection>
+        </section>
+
+        <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>{dialogLesson?.subject || t("schedule:dialog.detailsFallback")}</DialogTitle>
+          <DialogContent className="space-y-4 pt-2">
+            {dialogLesson && (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-semibold opacity-(--opacity-strong) uppercase tracking-wider">
+                    {t("schedule:dialog.typeLabel")}:
+                  </span>
+                  <Badge
+                    style={{
+                      background: getLessonTypeColor(dialogLesson.lesson_type),
+                      color: "white",
+                    }}
+                  >
+                    {getLessonTypeLabel(dialogLesson.lesson_type)}
+                  </Badge>
+                </div>
+                <div className="space-y-1">
+                  <span className="text-sm font-semibold opacity-(--opacity-strong) uppercase tracking-wider">
+                    {t("schedule:dialog.timeLabel")}:
+                  </span>
+                  <p className="font-medium">
+                    {`${getTimeStr(dialogLesson)}–${getEndTimeStr(dialogLesson)}`}
+                  </p>
+                </div>
+                {/* .. more details .. */}
               </div>
             )}
-          </div>
-
-          <div data-fade style={fadeDelayStyle("280ms")} className="max-w-[1920px] px-2 md:px-4">
-            {isMobile ? renderMobileCards() : renderTable()}
-          </div>
-
-          <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
-            <DialogTitle>
-              {dialogLesson?.subject || t("schedule:dialog.detailsFallback")}
-            </DialogTitle>
-            <DialogContent className="space-y-4 pt-2">
-              {dialogLesson && (
-                <div className="space-y-4">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-semibold opacity-(--opacity-strong) uppercase tracking-wider">
-                      {t("schedule:dialog.typeLabel")}:
-                    </span>
-                    <Badge
-                      style={{
-                        background: getLessonTypeColor(dialogLesson.lesson_type),
-                        color: "white",
-                      }}
-                    >
-                      {getLessonTypeLabel(dialogLesson.lesson_type)}
-                    </Badge>
-                  </div>
-                  <div className="space-y-1">
-                    <span className="text-sm font-semibold opacity-(--opacity-strong) uppercase tracking-wider">
-                      {t("schedule:dialog.timeLabel")}:
-                    </span>
-                    <p className="font-medium">
-                      {`${getTimeStr(dialogLesson)}–${getEndTimeStr(dialogLesson)}`}
-                    </p>
-                  </div>
-                  {/* .. more details .. */}
-                </div>
-              )}
-            </DialogContent>
-            <DialogActions>
-              {(user?.role === "admin" || user?.role === "teacher") && (
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setEditLesson(dialogLesson)
-                    setEditing(true)
-                  }}
-                >
-                  {t("common:buttons.edit")}
-                </Button>
-              )}
-              <Button variant="ghost" onClick={() => setOpenDialog(false)}>
-                {t("common:buttons.close")}
-              </Button>
-            </DialogActions>
-          </Dialog>
-
-          <Dialog open={editing} onClose={() => setEditing(false)} maxWidth="sm" fullWidth>
-            <DialogTitle>{t("schedule:dialog.editTitle")}</DialogTitle>
-            <DialogContent className="space-y-5 pt-4">
-              {editLesson && (
-                <div className="space-y-5">
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
-                      {t("schedule:form.subject")}
-                    </label>
-                    <input
-                      type="text"
-                      value={editLesson.subject || ""}
-                      onChange={(event) =>
-                        setEditLesson((prev) =>
-                          prev ? { ...prev, subject: event.target.value } : null
-                        )
-                      }
-                      className={inputClass}
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
-                      {t("schedule:form.teacher")}
-                    </label>
-                    <input
-                      type="text"
-                      value={editLesson.teacher || ""}
-                      onChange={(event) =>
-                        setEditLesson((prev) =>
-                          prev ? { ...prev, teacher: event.target.value } : null
-                        )
-                      }
-                      className={inputClass}
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
-                      {t("schedule:form.room")}
-                    </label>
-                    <input
-                      type="text"
-                      value={editLesson.room || ""}
-                      onChange={(event) =>
-                        setEditLesson((prev) =>
-                          prev ? { ...prev, room: event.target.value } : null
-                        )
-                      }
-                      className={inputClass}
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
-                      {t("schedule:form.lessonType")}
-                    </label>
-                    <select
-                      value={editLesson.lesson_type || ""}
-                      onChange={(event) =>
-                        setEditLesson((prev) =>
-                          prev ? { ...prev, lesson_type: event.target.value } : null
-                        )
-                      }
-                      className={inputClass}
-                    >
-                      {editingLessonTypeOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="flex gap-4">
-                    <div className="w-1/2">
-                      <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
-                        {t("schedule:form.startTime")}
-                      </label>
-                      <input
-                        type="time"
-                        value={getTimeStr(editLesson)}
-                        onChange={(event) =>
-                          setEditLesson((prev) =>
-                            prev
-                              ? {
-                                  ...prev,
-                                  start_time:
-                                    dayjs().format("YYYY-MM-DDT") + event.target.value + ":00",
-                                }
-                              : null
-                          )
-                        }
-                        className={inputClass}
-                      />
-                    </div>
-                    <div className="w-1/2">
-                      <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
-                        {t("schedule:form.endTime")}
-                      </label>
-                      <input
-                        type="time"
-                        value={getEndTimeStr(editLesson)}
-                        onChange={(event) =>
-                          setEditLesson((prev) =>
-                            prev
-                              ? {
-                                  ...prev,
-                                  end_time:
-                                    dayjs().format("YYYY-MM-DDT") + event.target.value + ":00",
-                                }
-                              : null
-                          )
-                        }
-                        className={inputClass}
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
-                      {t("schedule:form.week")}
-                    </label>
-                    <select
-                      value={editLesson.parity}
-                      onChange={(event) =>
-                        setEditLesson((prev) =>
-                          prev ? { ...prev, parity: event.target.value as LessonParity } : null
-                        )
-                      }
-                      className={inputClass}
-                    >
-                      <option value="both">{t("schedule:week.both")}</option>
-                      <option value="odd">{t("schedule:week.odd")}</option>
-                      <option value="even">{t("schedule:week.even")}</option>
-                    </select>
-                  </div>
-                </div>
-              )}
-            </DialogContent>
-            <DialogActions>
-              <Button variant="ghost" onClick={() => setEditing(false)}>
-                {t("common:buttons.cancel")}
-              </Button>
+          </DialogContent>
+          <DialogActions>
+            {(user?.role === "admin" || user?.role === "teacher") && (
               <Button
-                variant="solid"
-                onClick={async () => {
-                  if (!editLesson) return
-                  const optimisticId = editLesson.id
-                  const backup = groupSchedule.map((lesson) => ({ ...lesson }))
-                  const backendLessonType = toBackendLessonType(editLesson.lesson_type)
-                  const updatedLesson = { ...editLesson, lesson_type: backendLessonType }
-                  applyScheduleUpdate((prev) =>
-                    prev.map((lesson) => (lesson.id === optimisticId ? updatedLesson : lesson))
-                  )
-                  try {
-                    await api.patch(`/schedule/${optimisticId}`, {
-                      ...editLesson,
-                      lesson_type: backendLessonType,
-                    })
-                    setSnackbar(t("schedule:snackbar.updated"))
-                    setEditing(false)
-                    setOpenDialog(false)
-                    refresh()
-                  } catch {
-                    setSnackbar(t("schedule:snackbar.updateError"))
-                    applyScheduleUpdate(() => backup)
-                  }
+                variant="outline"
+                onClick={() => {
+                  setEditLesson(dialogLesson)
+                  setEditing(true)
                 }}
               >
-                {t("common:buttons.save")}
+                {t("common:buttons.edit")}
               </Button>
-            </DialogActions>
-          </Dialog>
+            )}
+            <Button variant="ghost" onClick={() => setOpenDialog(false)}>
+              {t("common:buttons.close")}
+            </Button>
+          </DialogActions>
+        </Dialog>
 
-          <Dialog
-            open={addDialogOpen}
-            onClose={() => setAddDialogOpen(false)}
-            maxWidth="sm"
-            fullWidth
-          >
-            <DialogTitle>{t("schedule:dialog.addTitle")}</DialogTitle>
-            <DialogContent className="space-y-5 pt-4">
+        <Dialog open={editing} onClose={() => setEditing(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>{t("schedule:dialog.editTitle")}</DialogTitle>
+          <DialogContent className="space-y-5 pt-4">
+            {editLesson && (
               <div className="space-y-5">
                 <div>
                   <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
                     {t("schedule:form.subject")}
                   </label>
-                  <input
-                    value={addFields.subject}
+                  <Input
+                    type="text"
+                    value={editLesson.subject || ""}
                     onChange={(event) =>
-                      setAddFields({ ...addFields, subject: event.target.value })
+                      setEditLesson((prev) =>
+                        prev ? { ...prev, subject: event.target.value } : null
+                      )
                     }
-                    className={inputClass}
+                    fullWidth
                   />
                 </div>
                 <div>
                   <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
                     {t("schedule:form.teacher")}
                   </label>
-                  <input
-                    value={addFields.teacher}
+                  <Input
+                    type="text"
+                    value={editLesson.teacher || ""}
                     onChange={(event) =>
-                      setAddFields({ ...addFields, teacher: event.target.value })
+                      setEditLesson((prev) =>
+                        prev ? { ...prev, teacher: event.target.value } : null
+                      )
                     }
-                    className={inputClass}
+                    fullWidth
                   />
                 </div>
                 <div>
                   <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
                     {t("schedule:form.room")}
                   </label>
-                  <input
-                    value={addFields.room}
-                    onChange={(event) => setAddFields({ ...addFields, room: event.target.value })}
-                    className={inputClass}
+                  <Input
+                    type="text"
+                    value={editLesson.room || ""}
+                    onChange={(event) =>
+                      setEditLesson((prev) => (prev ? { ...prev, room: event.target.value } : null))
+                    }
+                    fullWidth
                   />
                 </div>
                 <div>
                   <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
                     {t("schedule:form.lessonType")}
                   </label>
-                  <select
-                    value={addFields.lessonType}
-                    onChange={(event) =>
-                      setAddFields({ ...addFields, lessonType: event.target.value })
+                  <Select
+                    value={editLesson.lesson_type || ""}
+                    onValueChange={(val) =>
+                      setEditLesson((prev) => (prev ? { ...prev, lesson_type: val } : null))
                     }
-                    className={inputClass}
-                  >
-                    {lessonTypeOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                    options={editingLessonTypeOptions.map((o) => ({
+                      value: o.value,
+                      label: o.label,
+                    }))}
+                    placeholder={t("schedule:form.lessonType")}
+                  />
                 </div>
                 <div className="flex gap-4">
                   <div className="w-1/2">
                     <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
                       {t("schedule:form.startTime")}
                     </label>
-                    <input
+                    <Input
                       type="time"
-                      value={addFields.startTime}
+                      value={getTimeStr(editLesson)}
                       onChange={(event) =>
-                        setAddFields({ ...addFields, startTime: event.target.value })
+                        setEditLesson((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                start_time:
+                                  dayjs().format("YYYY-MM-DDT") + event.target.value + ":00",
+                              }
+                            : null
+                        )
                       }
-                      className={inputClass}
+                      fullWidth
                     />
                   </div>
                   <div className="w-1/2">
                     <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
                       {t("schedule:form.endTime")}
                     </label>
-                    <input
+                    <Input
                       type="time"
-                      value={addFields.endTime}
+                      value={getEndTimeStr(editLesson)}
                       onChange={(event) =>
-                        setAddFields({ ...addFields, endTime: event.target.value })
+                        setEditLesson((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                end_time:
+                                  dayjs().format("YYYY-MM-DDT") + event.target.value + ":00",
+                              }
+                            : null
+                        )
                       }
-                      className={inputClass}
+                      fullWidth
                     />
                   </div>
                 </div>
@@ -799,43 +623,178 @@ export default function Schedule() {
                   <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
                     {t("schedule:form.week")}
                   </label>
-                  <select
-                    value={addFields.parity}
-                    onChange={(event) =>
-                      setAddFields({ ...addFields, parity: event.target.value as LessonParity })
+                  <Select
+                    value={editLesson.parity}
+                    onValueChange={(val) =>
+                      setEditLesson((prev) =>
+                        prev ? { ...prev, parity: val as LessonParity } : null
+                      )
                     }
-                    className={inputClass}
-                  >
-                    <option value="both">{t("schedule:week.both")}</option>
-                    <option value="odd">{t("schedule:week.odd")}</option>
-                    <option value="even">{t("schedule:week.even")}</option>
-                  </select>
+                    options={[
+                      { value: "both", label: t("schedule:week.both") },
+                      { value: "odd", label: t("schedule:week.odd") },
+                      { value: "even", label: t("schedule:week.even") },
+                    ]}
+                    placeholder={t("schedule:form.week")}
+                  />
                 </div>
               </div>
-            </DialogContent>
-            <DialogActions>
-              <Button variant="ghost" onClick={() => setAddDialogOpen(false)}>
-                {t("common:buttons.cancel")}
-              </Button>
-              <Button variant="solid" onClick={handleAddLesson}>
-                {t("schedule:buttons.add")}
-              </Button>
-            </DialogActions>
-          </Dialog>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button variant="ghost" onClick={() => setEditing(false)}>
+              {t("common:buttons.cancel")}
+            </Button>
+            <Button
+              variant="solid"
+              onClick={async () => {
+                if (!editLesson) return
+                const optimisticId = editLesson.id
+                const backup = groupSchedule.map((lesson) => ({ ...lesson }))
+                const backendLessonType = toBackendLessonType(editLesson.lesson_type)
+                const updatedLesson = { ...editLesson, lesson_type: backendLessonType }
+                applyScheduleUpdate((prev) =>
+                  prev.map((lesson) => (lesson.id === optimisticId ? updatedLesson : lesson))
+                )
+                try {
+                  await api.patch(`/schedule/${optimisticId}`, {
+                    ...editLesson,
+                    lesson_type: backendLessonType,
+                  })
+                  setSnackbar(t("schedule:snackbar.updated"))
+                  setEditing(false)
+                  setOpenDialog(false)
+                  refresh()
+                } catch {
+                  setSnackbar(t("schedule:snackbar.updateError"))
+                  applyScheduleUpdate(() => backup)
+                }
+              }}
+            >
+              {t("common:buttons.save")}
+            </Button>
+          </DialogActions>
+        </Dialog>
 
-          <Snackbar
-            open={!!snackbar}
-            autoHideDuration={4000}
-            onClose={() => setSnackbar("")}
-            anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-          >
-            <Alert severity="success" variant="filled" onClose={() => setSnackbar("")}>
-              {snackbar}
-            </Alert>
-          </Snackbar>
-        </div>
-      </PageFadeIn>
-    </Layout>
+        <Dialog
+          open={addDialogOpen}
+          onClose={() => setAddDialogOpen(false)}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>{t("schedule:dialog.addTitle")}</DialogTitle>
+          <DialogContent className="space-y-5 pt-4">
+            <div className="space-y-5">
+              <div>
+                <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
+                  {t("schedule:form.subject")}
+                </label>
+                <Input
+                  value={addFields.subject}
+                  onChange={(event) => setAddFields({ ...addFields, subject: event.target.value })}
+                  fullWidth
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
+                  {t("schedule:form.teacher")}
+                </label>
+                <Input
+                  value={addFields.teacher}
+                  onChange={(event) => setAddFields({ ...addFields, teacher: event.target.value })}
+                  fullWidth
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
+                  {t("schedule:form.room")}
+                </label>
+                <Input
+                  value={addFields.room}
+                  onChange={(event) => setAddFields({ ...addFields, room: event.target.value })}
+                  fullWidth
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
+                  {t("schedule:form.lessonType")}
+                </label>
+                <Select
+                  value={addFields.lessonType}
+                  onValueChange={(val) => setAddFields({ ...addFields, lessonType: val })}
+                  options={lessonTypeOptions.map((o) => ({ value: o.value, label: o.label }))}
+                  placeholder={t("schedule:form.lessonType")}
+                />
+              </div>
+              <div className="flex gap-4">
+                <div className="w-1/2">
+                  <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
+                    {t("schedule:form.startTime")}
+                  </label>
+                  <Input
+                    type="time"
+                    value={addFields.startTime}
+                    onChange={(event) =>
+                      setAddFields({ ...addFields, startTime: event.target.value })
+                    }
+                    fullWidth
+                  />
+                </div>
+                <div className="w-1/2">
+                  <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
+                    {t("schedule:form.endTime")}
+                  </label>
+                  <Input
+                    type="time"
+                    value={addFields.endTime}
+                    onChange={(event) =>
+                      setAddFields({ ...addFields, endTime: event.target.value })
+                    }
+                    fullWidth
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-semibold opacity-(--opacity-strong)">
+                  {t("schedule:form.week")}
+                </label>
+                <Select
+                  value={addFields.parity}
+                  onValueChange={(val) =>
+                    setAddFields({ ...addFields, parity: val as LessonParity })
+                  }
+                  options={[
+                    { value: "both", label: t("schedule:week.both") },
+                    { value: "odd", label: t("schedule:week.odd") },
+                    { value: "even", label: t("schedule:week.even") },
+                  ]}
+                  placeholder={t("schedule:form.week")}
+                />
+              </div>
+            </div>
+          </DialogContent>
+          <DialogActions>
+            <Button variant="ghost" onClick={() => setAddDialogOpen(false)}>
+              {t("common:buttons.cancel")}
+            </Button>
+            <Button variant="solid" onClick={handleAddLesson}>
+              {t("schedule:buttons.add")}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Snackbar
+          open={!!snackbar}
+          autoHideDuration={4000}
+          onClose={() => setSnackbar("")}
+          anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+        >
+          <Alert severity="success" onClose={() => setSnackbar("")}>
+            {snackbar}
+          </Alert>
+        </Snackbar>
+      </div>
+    </PageLayout>
   )
 
   async function handleAddLesson() {

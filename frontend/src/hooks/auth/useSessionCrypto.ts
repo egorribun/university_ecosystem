@@ -11,69 +11,7 @@ export const SESSION_SIGNING_KEY_STORAGE_KEY = `${PROFILE_CACHE_BASE_KEY}.sessio
 
 type SessionSigningKeyResponse = components["schemas"]["SessionSigningKeyOut"]
 
-const utf8 = new TextEncoder()
 
-const bytesToBase64 = (bytes: Uint8Array): string => {
-  const maybeBuffer =
-    typeof globalThis !== "undefined" &&
-    typeof (globalThis as { Buffer?: unknown }).Buffer === "function"
-      ? (globalThis as { Buffer?: { from?: unknown } }).Buffer
-      : undefined
-
-  if (
-    maybeBuffer &&
-    typeof maybeBuffer === "function" &&
-    typeof (maybeBuffer as { from?: unknown }).from === "function"
-  ) {
-    return (
-      maybeBuffer as {
-        from: (
-          input: Uint8Array | string,
-          encoding?: string
-        ) => {
-          toString: (encoding: string) => string
-        }
-      }
-    )
-      .from(bytes)
-      .toString("base64")
-  }
-
-  let binary = ""
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte)
-  }
-
-  if (typeof globalThis !== "undefined" && typeof globalThis.btoa === "function") {
-    return globalThis.btoa(binary)
-  }
-
-  if (
-    maybeBuffer &&
-    typeof maybeBuffer === "function" &&
-    typeof (maybeBuffer as { from?: unknown }).from === "function"
-  ) {
-    return (
-      maybeBuffer as {
-        from: (
-          input: Uint8Array | string,
-          encoding?: string
-        ) => {
-          toString: (encoding: string) => string
-        }
-      }
-    )
-      .from(binary, "binary")
-      .toString("base64")
-  }
-
-  return binary
-}
-
-const bytesToHex = (bytes: Uint8Array): string =>
-  Array.from(bytes)
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("")
 
 import { cryptoWorker } from "@/utils/cryptoWorker"
 

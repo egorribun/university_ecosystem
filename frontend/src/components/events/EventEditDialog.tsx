@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useMemo } from "react"
+import { useRef, useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import { Pencil as EditIcon, X as CloseIcon } from "lucide-react"
 import { Button } from "@/components/ui"
@@ -48,7 +48,6 @@ export function EventEditDialog({
   dateError,
   normalizedTitle,
   normalizedLocation,
-  newImage,
   setNewImage,
   previewUrl,
 }: EventEditDialogProps) {

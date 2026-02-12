@@ -119,7 +119,7 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
       }
       return { previous }
     },
-    onError: (err, variables, context) => {
+    onError: (_err, _variables, context) => {
       if (context?.previous) {
         queryClient.setQueryData(queryKey, context.previous)
       }
@@ -168,7 +168,7 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
       }
       return { previous }
     },
-    onError: (err, variables, context) => {
+    onError: (_err, _variables, context) => {
       if (context?.previous) {
         queryClient.setQueryData(queryKey, context.previous)
       }
@@ -202,7 +202,7 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
       }
       return { previous }
     },
-    onError: (err, variables, context) => {
+    onError: (_err, _variables, context) => {
       if (context?.previous) {
         queryClient.setQueryData(queryKey, context.previous)
       }
@@ -236,7 +236,7 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
       }
       return { previous }
     },
-    onError: (err, variables, context) => {
+    onError: (_err, _variables, context) => {
       if (context?.previous) {
         queryClient.setQueryData(queryKey, context.previous)
       }

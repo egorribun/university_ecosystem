@@ -3,7 +3,6 @@ import { Send, Mail } from "lucide-react"
 import guuLogo from "@/assets/guu_logo.png"
 import SmartImage from "@/components/SmartImage"
 import { useTranslation } from "react-i18next"
-import { cn } from "@/utils/cn"
 import { Button } from "@/components/ui"
 
 export default function Footer() {
@@ -53,7 +52,7 @@ export default function Footer() {
                 variant="glass"
                 size="sm"
                 aria-label={t("navigation:footer.contactTelegram")}
-                className="h-10! w-10! p-0! rounded-xl"
+                className="h-10! w-10! p-0! rounded-sm"
                 href="https://t.me/GUUmsk"
                 target="_blank"
                 rel="noopener noreferrer"
@@ -65,7 +64,7 @@ export default function Footer() {
                 variant="glass"
                 size="sm"
                 aria-label={t("navigation:footer.contactEmail")}
-                className="h-10! w-10! p-0! rounded-xl"
+                className="h-10! w-10! p-0! rounded-sm"
                 href="https://mail.google.com/mail/?view=cm&fs=1&to=inf@guu.ru"
                 target="_blank"
                 rel="noopener noreferrer"

@@ -7,11 +7,11 @@ import {
   useId,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
-  type SVGProps,
 } from "react"
 import { createPortal } from "react-dom"
 import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
+import { ChevronLeft, ChevronRight, X } from "lucide-react"
 import SmartImage from "@/components/SmartImage"
 import { Button, ProgressBar, Skeleton, StoryCircle, STORY_CIRCLE_SIZE_MAP } from "@/components/ui"
 import type { ButtonProps } from "@/components/ui/button"
@@ -313,7 +313,7 @@ export default function DashboardStories({
                 className={cn(
                   "relative z-(--z-decor) flex aspect-9/16 w-(--story-card-w) max-h-[92vh] max-w-(--story-card-w) flex-col items-stretch justify-center overflow-hidden text-white sm:aspect-video sm:w-[min(96%,960px)] sm:max-h-(--h-hero-lg) sm:max-w-[min(96%,960px)]",
                   viewerStory.cover_url ? "bg-(--bg-page)" : "bg-brand shadow-premium-lift",
-                  viewerStory.cover_url ? "rounded-none" : "rounded-2xl sm:rounded-3xl"
+                  viewerStory.cover_url ? "rounded-none" : "rounded-md sm:rounded-lg"
                 )}
                 onPointerDown={handlePointerStart}
                 onPointerUp={handlePointerEnd}
@@ -429,7 +429,7 @@ export default function DashboardStories({
                   aria-label={t("stories.viewer.aria.close")}
                   className="absolute right-4 top-9 inline-flex h-11 w-11 items-center justify-center rounded-full bg-glass-bg/(--opacity-medium) text-white transition-colors duration-200 ease-out hover:bg-glass-bg/(--opacity-strong) focus-visible:outline focus-visible:ring-2 focus-visible:ring-white/(--opacity-strong) sm:right-6"
                 >
-                  <CloseIcon className="h-5 w-5" aria-hidden="true" />
+                  <X className="h-5 w-5" aria-hidden="true" />
                 </button>
 
                 <div className="pointer-events-none absolute inset-0">
@@ -440,7 +440,7 @@ export default function DashboardStories({
                       aria-label={t("stories.viewer.aria.prev")}
                       className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-glass-bg/(--opacity-medium) text-white transition-colors duration-200 ease-out hover:bg-glass-bg/(--opacity-strong) focus-visible:outline focus-visible:ring-2 focus-visible:ring-white/(--opacity-strong)"
                     >
-                      <ArrowLeftIcon className="h-5 w-5" aria-hidden="true" />
+                      <ChevronLeft className="h-5 w-5" aria-hidden="true" />
                     </button>
                   </div>
                   <div className="pointer-events-auto absolute right-2 top-1/2 -translate-y-1/2 sm:right-6">
@@ -450,7 +450,7 @@ export default function DashboardStories({
                       aria-label={t("stories.viewer.aria.next")}
                       className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-glass-bg/(--opacity-medium) text-white transition-colors duration-200 ease-out hover:bg-glass-bg/(--opacity-strong) focus-visible:outline focus-visible:ring-2 focus-visible:ring-white/(--opacity-strong)"
                     >
-                      <ArrowRightIcon className="h-5 w-5" aria-hidden="true" />
+                      <ChevronRight className="h-5 w-5" aria-hidden="true" />
                     </button>
                   </div>
                 </div>
@@ -531,7 +531,7 @@ export default function DashboardStories({
                       "transition-transform data-[active=true]:ring-4 data-[active=true]:ring-brand/(--opacity-medium)"
                     )}
                   >
-                    <div className="relative z-(--z-base) aspect-9/16 w-[--story-card-w] overflow-hidden rounded-2xl bg-(--bg-surface-raised) shadow-premium md:w-[--story-card-w-md]">
+                    <div className="relative z-(--z-base) aspect-9/16 w-[--story-card-w] overflow-hidden rounded-md bg-(--bg-surface-raised) shadow-premium md:w-[--story-card-w-md]">
                       {renderAvatar(story)}
                     </div>
                   </StoryCircle>
@@ -543,54 +543,5 @@ export default function DashboardStories({
       </div>
       {overlay}
     </>
-  )
-}
-
-function CloseIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
-    >
-      <path d="M18 6 6 18" />
-      <path d="M6 6l12 12" />
-    </svg>
-  )
-}
-
-function ArrowLeftIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
-    >
-      <path d="M15 18l-6-6 6-6" />
-    </svg>
-  )
-}
-
-function ArrowRightIcon(props: SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
-    >
-      <path d="M9 6l6 6-6 6" />
-    </svg>
   )
 }

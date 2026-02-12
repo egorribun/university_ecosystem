@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties, type ImgHTMLAttribute
 import { IMAGE_PLACEHOLDER_URL } from "@/constants/placeholders"
 import { addVersionParam, resolveMediaUrl, resolveProxyImageUrl, sanitizeUrl } from "@/utils/media"
 
-const DEV = import.meta.env.DEV === true
+
 
 const RESPONSIVE_DEFAULT_WIDTHS = [320, 540, 768, 1024, 1440] as const
 
@@ -62,7 +62,7 @@ export default function SmartImage({
   const [useFallback, setUseFallback] = useState(false)
 
   useEffect(() => {
-    setUseFallback(false)
+    // Status tracking removed for production
   }, [computed])
 
   const finalSrc = useFallback || !computed ? fallback : computed
@@ -73,9 +73,7 @@ export default function SmartImage({
   }, [srcRaw, responsiveWidths, isBlobUrl])
 
   useEffect(() => {
-    if (!DEV) return
-    const status = useFallback || !computed ? "fallback" : "primary"
-    console.info(`[SmartImage] status=${status} src=${finalSrc || "(empty)"}`)
+    // Dev logging removed
   }, [finalSrc, useFallback, computed])
 
   const mergedStyle: CSSProperties = { objectFit: "cover", ...(style ?? {}) }
@@ -91,19 +89,11 @@ export default function SmartImage({
       srcSet={srcSet || undefined}
       sizes={srcSet ? sizes : undefined}
       onLoad={(event) => {
-        if (DEV) {
-          console.info(`[SmartImage] status=loaded src=${finalSrc || "(empty)"}`)
-        }
         onLoad?.(event)
       }}
       onError={(event) => {
         if (!useFallback) {
-          if (DEV) {
-            console.warn(`[SmartImage] status=error src=${computed || "(empty)"}`)
-          }
           setUseFallback(true)
-        } else if (DEV) {
-          console.warn(`[SmartImage] status=error src=${fallback || "(empty)"}`)
         }
         onError?.(event)
       }}

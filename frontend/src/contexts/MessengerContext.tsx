@@ -24,7 +24,7 @@ export const useMessenger = () => {
 }
 
 export const MessengerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, isAuth } = useAuth()
+  const { isAuth } = useAuth()
   const queryClient = useQueryClient()
   const [presenceMap, setPresenceMap] = useState<Record<string, PresenceStatus>>({})
 

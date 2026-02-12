@@ -1,13 +1,12 @@
 import { z } from "zod"
 
-import type { components, paths } from "@/api/generated/schema"
+import type { components } from "@/api/generated/schema"
 import { apiClient } from "./client"
 import { ensureValidResponse } from "./validation"
 
 export type NewsItem = components["schemas"]["NewsOut"]
 
-type NewsListResponse =
-  paths["/api/v1/news"]["get"]["responses"]["200"]["content"]["application/json"]
+
 
 type FetchNewsOptions = {
   ifNoneMatch?: string | null

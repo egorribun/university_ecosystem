@@ -7,12 +7,9 @@ import { useAuth } from "../contexts/AuthContext"
 import { buildAvatarUrl } from "../utils/avatar"
 import { cn } from "@/utils/cn"
 import {
-  Button,
   TextField,
-  FormControlLabel,
   SectionCard,
   Avatar,
-  Divider,
 } from "@/components/settings"
 
 type UserRole = "student" | "teacher" | "admin"
@@ -126,7 +123,7 @@ export default function AdminUsers() {
                   value={filters.group_id}
                   onChange={(event) => handleGroupFilterChange(event.target.value)}
                   className={cn(
-                    "h-11 rounded-xl border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-3 py-2 text-sm text-(--text-primary) shadow-sm outline-none transition-all",
+                    "h-11 rounded-sm border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-3 py-2 text-sm text-(--text-primary) shadow-sm outline-none transition-all",
                     "focus:border-brand/(--opacity-medium) focus:ring-2 focus:ring-brand/(--opacity-subtle)"
                   )}
                 >
@@ -150,7 +147,7 @@ export default function AdminUsers() {
                   value={filters.role}
                   onChange={(event) => handleRoleChange(event.target.value as UserRole)}
                   className={cn(
-                    "h-11 rounded-xl border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-3 py-2 text-sm text-(--text-primary) shadow-sm outline-none transition-all",
+                    "h-11 rounded-sm border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-3 py-2 text-sm text-(--text-primary) shadow-sm outline-none transition-all",
                     "focus:border-brand/(--opacity-medium) focus:ring-2 focus:ring-brand/(--opacity-subtle)"
                   )}
                 >
@@ -164,7 +161,7 @@ export default function AdminUsers() {
           </div>
 
           {/* Desktop Table */}
-          <div className="hidden overflow-hidden rounded-3xl border border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass md:block">
+          <div className="hidden overflow-hidden rounded-lg border border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass md:block">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>

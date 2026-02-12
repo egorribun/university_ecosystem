@@ -23,8 +23,6 @@ describe("OtpEntry", () => {
     const user = userEvent.setup()
     render(<OtpEntry onSubmit={onSubmit} />)
 
-    const inputs = screen.getAllByRole("textbox")
-
     // Simulate typing 6 digits
     // Note: We need to type into the first input, or handle how the component distributes focus
     // The component manages focus, but for userEvent we might need to be careful

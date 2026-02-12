@@ -5,32 +5,34 @@
 // `src/styles/theme.css`. It is used for JS-based styling (e.g., Framer Motion).
 //
 // ⚠️  WARNING: DO NOT EDIT VALUES HERE MANUALLY.
-//     Always update `src/styles/theme.css` first, then reflect the change here.
+//     Always update `src/styles/theme.css` first, then run `npm run tokens:sync`.
 // -----------------------------------------------------------------------------
 
 export const spacingScale = {
-  "2xs": "var(--space-1)", // 0.25rem
-  xs: "var(--space-2)", // 0.5rem
-  sm: "var(--space-3)", // 0.75rem
-  md: "var(--space-4)", // 1rem
-  lg: "var(--space-6)", // 1.5rem
-  xl: "var(--space-8)", // 2rem
-  "2xl": "var(--space-12)", // 3rem
-  "3xl": "var(--space-16)", // 4rem
-  "4xl": "var(--space-32)", // 8rem (Updated to match theme.css --space-32)
+  "10": "var(--space-10)",
+  "2xl": "var(--space-12)",
+  "2xs": "var(--space-1)",
+  "3xl": "var(--space-16)",
+  "4xl": "var(--space-32)",
+  "5": "var(--space-5)",
+  "9": "var(--space-9)",
+  lg: "var(--space-6)",
+  md: "var(--space-4)",
+  sm: "var(--space-3)",
+  xl: "var(--space-8)",
+  xs: "var(--space-2)",
 } as const
 
 export const radiusScale = {
-  xs: "var(--radius-xs)",
-  sm: "var(--radius-sm)",
-  md: "var(--radius-md)",
-  lg: "var(--radius-lg)",
-  xl: "var(--radius-xl)",
   "2xl": "var(--radius-2xl)",
+  lg: "var(--radius-lg)",
+  md: "var(--radius-md)",
   pill: "var(--radius-full)",
+  sm: "var(--radius-sm)",
+  xl: "var(--radius-xl)",
+  xs: "var(--radius-xs)",
 } as const
 
-// Breakpoints should match Tailwind config and CSS variables
 export const breakpoints = {
   small: "640px",
   mobile: "768px",
@@ -43,20 +45,21 @@ export const breakpoints = {
 } as const
 
 export const zIndexTokens = {
-  hide: "var(--z-hide)",
   base: "var(--z-base)",
+  content: "var(--z-content)",
   decor: "var(--z-decor)",
   deep: "var(--z-deep)",
-  surface: "var(--z-surface)",
-  content: "var(--z-content)",
-  sticky: "var(--z-sticky)",
-  sidebar: "var(--z-sidebar)",
-  navbar: "var(--z-navbar)",
-  overlay: "var(--z-overlay)",
-  modal: "var(--z-modal)",
   dropdown: "var(--z-dropdown)",
-  popover: "var(--z-popover)",
   floating: "var(--z-floating)",
+  hide: "var(--z-hide)",
+  modal: "var(--z-modal)",
+  navbar: "var(--z-navbar)",
+  offline: "var(--z-offline)",
+  overlay: "var(--z-overlay)",
+  popover: "var(--z-popover)",
+  sidebar: "var(--z-sidebar)",
+  sticky: "var(--z-sticky)",
+  surface: "var(--z-surface)",
   toast: "var(--z-toast)",
   tooltip: "var(--z-tooltip)",
 } as const
@@ -66,17 +69,16 @@ export const focusRing = {
 } as const
 
 export const shadows = {
-  sm: "var(--shadow-sm)",
-  md: "var(--shadow-md)",
-  lg: "var(--shadow-premium-lift)",
   glass: "var(--shadow-glass)",
+  md: "var(--shadow-md)",
+  sm: "var(--shadow-sm)",
 } as const
 
 export const glass = {
   bg: "var(--glass-bg)",
+  blur: "var(--glass-blur)",
   border: "var(--glass-border)",
   shadow: "var(--glass-shadow)",
-  blur: "var(--glass-blur)",
   tint3: "var(--glass-tint3)",
 } as const
 
@@ -88,40 +90,31 @@ export const fluidTypography = {
 } as const
 
 export const dimensions = {
+  avatarXl: "var(--size-avatar-xl)",
+  cardMd: "var(--w-card-md)",
+  cardSm: "var(--w-card-sm)",
   heroLg: "var(--h-hero-lg)",
   heroMd: "var(--h-hero-md)",
   heroSm: "var(--h-hero-sm)",
   screenOffset: "var(--h-screen-offset)",
-  avatarXl: "var(--size-avatar-xl)",
-  cardSm: "var(--w-card-sm)",
-  cardMd: "var(--w-card-md)",
 } as const
 
 export const opacity = {
-  faint: "var(--opacity-faint)",
-  subtle: "var(--opacity-subtle)",
   dim: "var(--opacity-dim)",
-  soft: "var(--opacity-soft)",
-  medium: "var(--opacity-medium)",
-  strong: "var(--opacity-strong)",
-  hover: "var(--opacity-hover)",
+  faint: "var(--opacity-faint)",
   heavy: "var(--opacity-heavy)",
+  hover: "var(--opacity-hover)",
+  medium: "var(--opacity-medium)",
+  soft: "var(--opacity-soft)",
+  strong: "var(--opacity-strong)",
+  subtle: "var(--opacity-subtle)",
 } as const
 
-/**
- * Scale tokens for interactive states.
- * - `hover`: Standard hover enlargement (matches `--scale-hover`).
- * - `active`: Standard press-down reduction.
- */
 export const scale = {
-  hover: "var(--scale-hover)",
   active: "0.98",
+  hover: "var(--scale-hover)",
 } as const
 
-/**
- * Shared motion constants for Framer Motion variants.
- * Centralizing these ensures consistent animation timing across the app.
- */
 export const motion = {
   staggerDelay: 0.06,
   durationFast: 0.2,

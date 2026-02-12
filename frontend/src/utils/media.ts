@@ -32,7 +32,6 @@ export function resolveMediaUrl(
     return trimmed
   }
 
-  const dev = import.meta.env.DEV === true
   const cleanOrigin = origin?.trim() ?? ""
 
   // Empty origin means use relative paths (nginx proxy)

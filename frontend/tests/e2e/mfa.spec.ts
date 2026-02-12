@@ -43,7 +43,6 @@ test.describe.skip("Multi-factor authentication flows", () => {
     await otpInput.click()
     await page.keyboard.type("123456", { delay: 50 })
 
-    const verifyBtn = page.getByRole("button", { name: matchTotpVerifyButton })
     // The component might auto-submit, but we also ensure the button is at least enabled or we just wait for the success state
     await expect(
       page.getByText(/Приложение-аутентификатор подключено|Authenticator app connected/i)

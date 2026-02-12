@@ -5,13 +5,10 @@ import { useTranslation } from "react-i18next"
 import type { TFunction } from "i18next"
 import { isAxiosError } from "axios"
 import {
-  Mail as EmailIcon,
   Camera as PhotoCamera,
   Trash2 as DeleteIcon,
   Check as CheckIcon,
   RefreshCw as RestartAltIcon,
-  ChevronRight,
-  Plus as AddIcon,
 } from "lucide-react"
 
 import Layout from "@/components/Layout"
@@ -253,7 +250,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
                 {timeLeft}
               </Badge>
               {story.cta_url && (
-                <div className="mt-2 p-3 rounded-xl bg-(--bg-surface)/(--opacity-dim) border border-glass-border/(--opacity-dim)">
+                <div className="mt-2 p-3 rounded-sm bg-(--bg-surface)/(--opacity-dim) border border-glass-border/(--opacity-dim)">
                   <p className="text-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-(--opacity-medium) mb-1">
                     {t("stories:list.details.cta")}
                   </p>
@@ -263,7 +260,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
             </div>
 
             <div className="w-full md:w-56 flex flex-col items-center gap-4">
-              <div className="relative w-full aspect-9/16 rounded-2xl overflow-hidden bg-(--bg-surface)/(--opacity-dim) border border-glass-border shadow-inner group">
+              <div className="relative w-full aspect-9/16 rounded-md overflow-hidden bg-(--bg-surface)/(--opacity-dim) border border-glass-border shadow-inner group">
                 {coverPreview ? (
                   <img
                     src={sanitizeUrl(coverPreview) ?? ""}
@@ -525,7 +522,7 @@ export default function StoriesAdmin() {
       <PageFadeIn>
         <div className="mx-auto max-w-[1100px] px-4 py-8 md:py-12">
           <div className="mb-10 flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand/(--opacity-subtle) text-brand">
+            <div className="flex h-12 w-12 items-center justify-center rounded-md bg-brand/(--opacity-subtle) text-brand">
               <RestartAltIcon className="h-7 w-7" />
             </div>
             <h1 className="text-3xl font-extrabold tracking-tight text-(--text-primary)">
@@ -619,7 +616,7 @@ export default function StoriesAdmin() {
                   </div>
 
                   {coverPreview && (
-                    <div className="relative w-full sm:w-80 aspect-9/16 rounded-3xl overflow-hidden border border-glass-border shadow-2xl mt-2 group mx-auto md:mx-0">
+                    <div className="relative w-full sm:w-80 aspect-9/16 rounded-lg overflow-hidden border border-glass-border shadow-2xl mt-2 group mx-auto md:mx-0">
                       <SmartImage
                         srcRaw={coverPreview || ""}
                         alt={t("stories:form.previewAlt")}
@@ -690,7 +687,7 @@ export default function StoriesAdmin() {
                 <CircularProgress size={40} />
               </div>
             ) : stories.length === 0 ? (
-              <div className="text-center py-20 bg-(--bg-surface)/(--opacity-subtle) rounded-3xl border border-dashed border-glass-border/(--opacity-soft)">
+              <div className="text-center py-20 bg-(--bg-surface)/(--opacity-subtle) rounded-lg border border-dashed border-glass-border/(--opacity-soft)">
                 <p className="text-(--text-secondary) italic">{t("stories:list.empty")}</p>
               </div>
             ) : (

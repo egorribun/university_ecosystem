@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./theme.css";
+@import "./dashboard-theme.css";
 
 @theme {
   /*
@@ -52,7 +53,15 @@
   --brand-rgb: var(--primary-main-rgb);
   --brand-hover-rgb: var(--primary-hover-rgb);
 
-  /* Radius — sourced from theme.css :root, only fluid override here */
+  /* Radius — sourced from theme.css :root */
+  --radius-xs: var(--radius-xs);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-2xl: var(--radius-2xl);
+  --radius-3xl: var(--radius-3xl);
+  /* Mapped to 16/3xl in sync-tokens if needed, or custom */
   --radius-fluid-lg: var(--fluid-radius-lg);
 
   /* Component Dimensions */
@@ -115,6 +124,7 @@
   --shadow-sm: var(--shadow-sm);
   --shadow-md: var(--shadow-md);
   --shadow-glass: var(--glass-shadow);
+  --shadow-glass-strong: var(--shadow-glass-strong);
   --shadow-premium-lift: 0 20px 40px -12px
     color-mix(in srgb, var(--primary-main) var(--opacity-dim), transparent);
   --shadow-up: 0 -4px 12px color-mix(in srgb, black var(--opacity-faint), transparent);
@@ -575,4 +585,12 @@
   .animate-msg-bubble-in {
     animation: msg-bubble-in 0.5s var(--ease-back-out) forwards;
   }
+}
+
+@utility card-news {
+  @apply relative flex flex-col transition-shadow duration-300 ease-out w-full transform-gpu h-(--news-card-h-mobile) md:h-(--news-card-h-desktop);
+}
+
+@utility card-interactive {
+  @apply cursor-pointer hover:shadow-glass-strong active:scale-(--scale-active);
 }

@@ -1,4 +1,4 @@
-import { FC, useState, useRef, useEffect, useCallback, useMemo, type ReactNode } from "react"
+import { FC, useState, useRef, useEffect, useMemo, type ReactNode } from "react"
 import { Camera as PhotoCamera } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import api from "@/api/client"
@@ -227,7 +227,7 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
             <SmartImage
               srcRaw={editImageUrl}
               alt={t("news:alt.preview")}
-              className="h-20 w-full max-w-[180px] rounded-lg border border-white/10 object-cover shadow-surface"
+              className="h-20 w-full max-w-[180px] rounded-lg border border-white/(--opacity-subtle) object-cover shadow-surface"
             />
           ) : null}
         </div>

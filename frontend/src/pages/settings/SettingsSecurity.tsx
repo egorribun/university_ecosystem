@@ -18,13 +18,12 @@ import {
   SectionSubtitle,
   AccordionSection,
   Button,
-  Chip,
   Alert,
 } from "../../components/settings"
 
 import { TotpQrDisplay } from "../../components/mfa/TotpQrDisplay"
 import { OtpEntry } from "../../components/mfa/OtpEntry"
-import { Smartphone, Lock, Fingerprint, Trash2 } from "lucide-react"
+import { Smartphone, Fingerprint, Trash2 } from "lucide-react"
 
 import type { SetSnackbar } from "./types"
 
@@ -108,8 +107,6 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor, isActive }: Setti
     totpBusy,
     totpError,
     activeTotp,
-    pendingTotpEnrollment,
-    defaultMethodText,
     handleStartTotp,
     handleConfirmTotp,
     handleCancelTotp,
@@ -123,7 +120,6 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor, isActive }: Setti
   // --- WebAuthn ---
   const {
     credentials: webauthnCredentials,
-    credentialsLoading: webauthnFetching,
     busy: webauthnBusy,
     supported: webauthnSupported,
     handleRegister: handleRegisterWebAuthn,
@@ -180,7 +176,7 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor, isActive }: Setti
           >
             <div className="flex flex-col gap-4">
               {totpError ? (
-                <Alert severity="error" variant="outlined">
+                <Alert severity="error">
                   {totpError}
                 </Alert>
               ) : null}
@@ -189,7 +185,7 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor, isActive }: Setti
               {activeTotp.map((enrollment) => (
                 <div
                   key={enrollment.id}
-                  className="flex items-center justify-between p-3 rounded-lg bg-(--bg-surface-hover) border border-(--border-subtle)"
+                  className="flex items-center justify-between p-3 rounded-xs bg-(--bg-surface-hover) border border-(--border-subtle)"
                 >
                   <div className="flex items-center gap-3">
                     <Smartphone className="w-5 h-5 text-(--text-secondary)" />
@@ -218,7 +214,7 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor, isActive }: Setti
 
               {/* Draft Enrollment Flow */}
               {totpDraft ? (
-                <div className="flex flex-col gap-4 p-4 rounded-lg border border-(--border-subtle) bg-(--bg-surface-active)">
+                <div className="flex flex-col gap-4 p-4 rounded-xs border border-(--border-subtle) bg-(--bg-surface-active)">
                   <div className="flex flex-col gap-1">
                     <h4 className="text-sm font-bold text-(--text-primary)">
                       {t("settings:security.totp.pendingTitle")}
@@ -258,7 +254,7 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor, isActive }: Setti
                   {t("settings:security.totp.add")}
                 </Button>
               ) : (
-                <p className="text-sm text-(--text-secondary) bg-glass-tint1 border border-glass-border rounded-xl px-4 py-3 shadow-glass">
+                <p className="text-sm text-(--text-secondary) bg-glass-tint1 border border-glass-border rounded-sm px-4 py-3 shadow-glass">
                   {t("settings:security.totp.limitReached")}
                 </p>
               )}
@@ -272,7 +268,7 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor, isActive }: Setti
           >
             <div className="flex flex-col gap-4">
               {!webauthnSupported ? (
-                <Alert severity="warning" variant="outlined">
+                <Alert severity="warning">
                   {t("settings:security.webauthn.notSupported")}
                 </Alert>
               ) : (
@@ -281,7 +277,7 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor, isActive }: Setti
                     {webauthnCredentials.map((cred) => (
                       <div
                         key={cred.id}
-                        className="flex items-center justify-between p-3 rounded-lg bg-(--bg-surface-hover) border border-(--border-subtle)"
+                        className="flex items-center justify-between p-3 rounded-xs bg-(--bg-surface-hover) border border-(--border-subtle)"
                       >
                         <div className="flex items-center gap-3">
                           <Fingerprint className="w-5 h-5 text-(--text-secondary)" />

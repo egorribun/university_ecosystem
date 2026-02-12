@@ -1,50 +1,23 @@
-import { useState, useEffect, useCallback, useMemo, useOptimistic } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
 import {
   ContactList,
   ChatWindow,
-  type Message as UiMessage,
   MessageInput,
   NewChatModal,
 } from "../components/messenger/MessengerComponents"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
 import { cn } from "@/utils/cn"
-import { useAuth } from "../contexts/AuthContext"
 import { useMessengerController } from "@/hooks/features/useMessengerController"
-import {
-  chatApi,
-  type Chat,
-  type ChatMaintenanceResult,
-  type ChatsListResponse,
-  type Message,
-  type MessagesListResponse,
-  type PresenceStatus,
-} from "../api/chat"
-import { useMessenger } from "../contexts/MessengerContext"
 import SmartImage from "@/components/SmartImage"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
-import type { User } from "@/types/User"
-import client from "@/api/client"
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
 
 dayjs.extend(utc)
 
-const formatMessageTime = (dateString: string) => {
-  if (!dateString) return ""
-
-  // Fix: Remove microseconds which confuse the parser in some environments
-  // 2025-12-16T01:53:34.310903Z -> 2025-12-16T01:53:34Z
-  const cleanDate = dateString.replace(/(\.\d+)(Z|[+-]\d{2}:?\d{2})?$/, "$2")
-
-  // Parse as UTC and convert to local timezone
-  const parsed = dayjs.utc(cleanDate)
-
-  return parsed.local().format("HH:mm")
-}
 
 interface ConfirmDialogProps {
   open: boolean
@@ -92,7 +65,7 @@ function ConfirmDialog({
                   whileHover={{ scale: 1.05, backgroundColor: "var(--bg-surface-hover)" }}
                   whileTap={{ scale: 0.95 }}
                   onClick={onCancel}
-                  className="px-6 py-2.5 text-sm font-bold rounded-xl border border-subtle transition-colors"
+                  className="px-6 py-2.5 text-sm font-bold rounded-sm border border-subtle transition-colors"
                 >
                   {cancelText}
                 </motion.button>
@@ -101,7 +74,7 @@ function ConfirmDialog({
                   whileTap={{ scale: 0.95 }}
                   onClick={onConfirm}
                   className={cn(
-                    "px-6 py-2.5 text-sm font-bold rounded-xl shadow-surface transition-all text-white",
+                    "px-6 py-2.5 text-sm font-bold rounded-sm shadow-surface transition-all text-white",
                     variant === "danger"
                       ? "bg-(--error-text) shadow-glow-error"
                       : variant === "warning"
@@ -122,7 +95,6 @@ function ConfirmDialog({
 
 export default function Messenger() {
   const { t } = useTranslation(["messenger", "common"])
-  const { user } = useAuth()
   const {
     // State
     selectedChatId,
@@ -142,10 +114,8 @@ export default function Messenger() {
 
     // Profile
     profileUser,
-    setProfileUser,
     isProfileLoading,
     profileError,
-    activeChat: _activeChat, // alias if needed or just use activeChat
     handleViewProfile,
     handleCloseProfile,
     getOtherParticipant,
@@ -236,7 +206,7 @@ export default function Messenger() {
                 <input
                   type="text"
                   placeholder={t("messenger:search", "Search")}
-                  className="w-full pl-10 pr-4 py-2.5 rounded-2xl border-none focus:ring-2 focus:ring-(--brand-main)/(--opacity-soft) outline-none transition-all text-md shadow-sm bg-black/(--opacity-subtle) dark:bg-white/(--opacity-subtle)"
+                  className="w-full pl-10 pr-4 py-2.5 rounded-md border-none focus:ring-2 focus:ring-(--brand-main)/(--opacity-soft) outline-none transition-all text-md shadow-sm bg-black/(--opacity-subtle) dark:bg-white/(--opacity-subtle)"
                 />
               </div>
             </div>
@@ -394,7 +364,7 @@ export default function Messenger() {
                                 initial={{ opacity: 0, scale: 0.9, y: 10, x: 5 }}
                                 animate={{ opacity: 1, scale: 1, y: 0, x: 0 }}
                                 exit={{ opacity: 0, scale: 0.9, y: 10 }}
-                                className="absolute right-0 top-full mt-2 bg-glass-elevated backdrop-blur-xl rounded-2xl shadow-premium border border-glass-border-subtle py-2 min-w-(--min-w-sidebar) z-(--z-navbar) overflow-hidden"
+                                className="absolute right-0 top-full mt-2 bg-glass-elevated backdrop-blur-xl rounded-md shadow-premium border border-glass-border-subtle py-2 min-w-(--min-w-sidebar) z-(--z-navbar) overflow-hidden"
                               >
                                 {[
                                   {
@@ -480,7 +450,7 @@ export default function Messenger() {
                         value={searchQuery}
                         onChange={(event) => setSearchQuery(event.target.value)}
                         placeholder={t("messenger:searchMessages", "Search messages...")}
-                        className="flex-1 px-4 py-2.5 rounded-2xl bg-black/(--opacity-subtle) dark:bg-white/(--opacity-subtle) border-none focus:ring-2 focus:ring-(--brand-main)/(--opacity-medium) outline-none transition-all text-md"
+                        className="flex-1 px-4 py-2.5 rounded-md bg-black/(--opacity-subtle) dark:bg-white/(--opacity-subtle) border-none focus:ring-2 focus:ring-(--brand-main)/(--opacity-medium) outline-none transition-all text-md"
                         autoFocus
                       />
                     </motion.div>
@@ -587,7 +557,7 @@ export default function Messenger() {
                 )}
 
                 {profileError && (
-                  <div className="p-4 bg-(--error-text)/(--opacity-subtle) rounded-xl text-center">
+                  <div className="p-4 bg-(--error-text)/(--opacity-subtle) rounded-sm text-center">
                     <p className="text-sm font-semibold text-(--error-text)">{profileError}</p>
                   </div>
                 )}
@@ -600,7 +570,7 @@ export default function Messenger() {
                           srcRaw={profileUser.avatar_url || AVATAR_PLACEHOLDER_URL}
                           fallback={AVATAR_PLACEHOLDER_URL}
                           alt={profileUser.full_name ?? ""}
-                          className="w-24 h-24 rounded-3xl object-cover border-4 border-(--bg-surface) shadow-xl"
+                          className="w-24 h-24 rounded-lg object-cover border-4 border-(--bg-surface) shadow-xl"
                         />
                         {profileUser.is_active && (
                           <span className="msg-online-indicator absolute -bottom-1 -right-1 w-6 h-6 border-4 border-(--bg-surface)"></span>
@@ -613,7 +583,7 @@ export default function Messenger() {
                     </div>
 
                     <div className="grid grid-cols-2 gap-3 pb-2">
-                      <div className="p-4 rounded-2xl bg-(--bg-surface-hover)/(--opacity-medium) border border-subtle">
+                      <div className="p-4 rounded-md bg-(--bg-surface-hover)/(--opacity-medium) border border-subtle">
                         <p className="text-xs font-bold uppercase tracking-widest text-(--text-secondary)/(--opacity-strong) mb-1">
                           {t("messenger:status", "Status")}
                         </p>
@@ -636,7 +606,7 @@ export default function Messenger() {
                           href={profileUser.avatar_url}
                           target="_blank"
                           rel="noreferrer"
-                          className="p-4 rounded-2xl bg-(--primary-main)/(--opacity-subtle) border border-(--primary-main)/(--opacity-subtle) hover:bg-(--primary-main)/(--opacity-subtle) transition-colors"
+                          className="p-4 rounded-md bg-(--primary-main)/(--opacity-subtle) border border-(--primary-main)/(--opacity-subtle) hover:bg-(--primary-main)/(--opacity-subtle) transition-colors"
                         >
                           <p className="text-xs font-bold uppercase tracking-widest text-(--primary-main) mb-1">
                             {t("messenger:avatar", "Avatar")}

@@ -1,8 +1,7 @@
 import { useCallback } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 
-import Layout from "../components/Layout"
-import PageFadeIn from "../components/PageFadeIn"
+import { PageLayout } from "@/components/PageLayout"
 import DashboardStories from "@/components/DashboardStories"
 import { useAuth } from "../contexts/AuthContext"
 import { getLocaleForLanguage, useLanguage } from "@/contexts/LanguageContext"
@@ -44,68 +43,66 @@ export default function Dashboard() {
 
   if (authLoading) {
     return (
-      <Layout>
+      <PageLayout variant="full" className="py-0 md:py-0">
         <DashboardSkeleton />
-      </Layout>
+      </PageLayout>
     )
   }
 
   return (
-    <Layout>
-      <PageFadeIn>
-        <DashboardHero
-          user={user}
-          time={time}
-          hh={hh}
-          mm={mm}
-          dateStr={dateStr}
-          isNarrow={isNarrow}
-          prefersReducedMotion={prefersReducedMotion}
-        />
+    <PageLayout variant="full" className="dashboard-theme py-0 md:py-0">
+      <DashboardHero
+        user={user}
+        time={time}
+        hh={hh}
+        mm={mm}
+        dateStr={dateStr}
+        isNarrow={isNarrow}
+        prefersReducedMotion={prefersReducedMotion}
+      />
 
-        <div className="relative z-(--z-base) -mt-(--space-10) px-4 pb-16 sm:px-8 md:px-12 lg:px-16">
-          <ScrollReveal mode="slide" direction="up" delay={0.2}>
-            <DashboardStories
-              stories={stories}
-              loading={loadingStories}
-              onPrefetch={prefetchStories}
-              onStoryOpen={handleStoryOpen}
-            />
+      <div className="relative z-(--z-base) -mt-(--space-10) px-4 pb-16 sm:px-8 md:px-12 lg:px-16">
+        <ScrollReveal mode="slide" direction="up" delay={0.2}>
+          <DashboardStories
+            stories={stories}
+            loading={loadingStories}
+            onPrefetch={prefetchStories}
+            onStoryOpen={handleStoryOpen}
+          />
+        </ScrollReveal>
+
+        <section className="mt-6 grid grid-cols-1 gap-4 md:mt-8 md:gap-6 lg:grid-cols-12">
+          <ScrollReveal
+            mode="slide"
+            direction="up"
+            delay={0.3}
+            className="lg:col-span-4"
+            width="100%"
+          >
+            <ScheduleCard userRole={user?.role} userGroupId={user?.group_id} time={time} />
           </ScrollReveal>
 
-          <section className="mt-6 grid grid-cols-1 gap-4 md:mt-8 md:gap-6 lg:grid-cols-12">
-            <ScrollReveal
-              mode="slide"
-              direction="up"
-              delay={0.3}
-              className="lg:col-span-4"
-              width="100%"
-            >
-              <ScheduleCard userRole={user?.role} userGroupId={user?.group_id} time={time} />
-            </ScrollReveal>
+          <ScrollReveal
+            mode="slide"
+            direction="up"
+            delay={0.4}
+            className="lg:col-span-4"
+            width="100%"
+          >
+            <NewsCard locale={locale} />
+          </ScrollReveal>
 
-            <ScrollReveal
-              mode="slide"
-              direction="up"
-              delay={0.4}
-              className="lg:col-span-4"
-              width="100%"
-            >
-              <NewsCard locale={locale} />
-            </ScrollReveal>
-
-            <ScrollReveal
-              mode="slide"
-              direction="up"
-              delay={0.5}
-              className="lg:col-span-4"
-              width="100%"
-            >
-              <EventsCard locale={locale} />
-            </ScrollReveal>
-          </section>
-        </div>
-      </PageFadeIn>
-    </Layout>
+          <ScrollReveal
+            mode="slide"
+            direction="up"
+            delay={0.5}
+            className="lg:col-span-4"
+            width="100%"
+          >
+            <EventsCard locale={locale} />
+          </ScrollReveal>
+        </section>
+      </div>
+    </PageLayout>
   )
 }

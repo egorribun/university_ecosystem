@@ -20,8 +20,8 @@ function MapSkeleton() {
             <Skeleton className={isMobile ? "h-8 w-40" : "h-10 w-60"} />
           </div>
           <div className="flex items-center gap-2">
-            <Skeleton className="h-10 w-10 rounded-xl" />
-            <Skeleton className="h-10 w-10 rounded-xl" />
+            <Skeleton className="h-10 w-10 rounded-sm" />
+            <Skeleton className="h-10 w-10 rounded-sm" />
           </div>
         </div>
 
@@ -35,9 +35,9 @@ function MapSkeleton() {
 
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-(--z-navbar) pointer-events-none flex flex-col gap-3 pb-(--safe-area-bottom)">
           <div className="flex items-center gap-2 pointer-events-auto">
-            <div className="glass glass--panel rounded-2xl p-1 bg-(--bg-surface)/(--opacity-medium) backdrop-blur-xl border border-glass-border shadow-2xl flex items-center gap-1">
+            <div className="glass glass--panel rounded-md p-1 bg-(--bg-surface)/(--opacity-medium) backdrop-blur-xl border border-glass-border shadow-2xl flex items-center gap-1">
               <Skeleton className={isMobile ? "h-8 w-36" : "h-10 w-52"} />
-              <Skeleton className="h-10 w-10 rounded-xl" />
+              <Skeleton className="h-10 w-10 rounded-sm" />
             </div>
           </div>
         </div>

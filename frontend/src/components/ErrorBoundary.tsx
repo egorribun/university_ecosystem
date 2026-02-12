@@ -91,11 +91,11 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 <summary className="cursor-pointer text-sm font-semibold text-(--text-tertiary)">
                   Подробности ошибки
                 </summary>
-                <pre className="mt-4 overflow-x-auto whitespace-pre-wrap wrap-break-word rounded-md border border-error-text bg-black/5 p-3 text-xs text-error-text">
+                <pre className="mt-4 overflow-x-auto whitespace-pre-wrap wrap-break-word rounded-md border border-error-text bg-black/(--opacity-faint) p-3 text-xs text-error-text">
                   {this.state.error.toString()}
                 </pre>
                 {this.state.errorInfo && (
-                  <pre className="mt-2 overflow-x-auto whitespace-pre-wrap wrap-break-word rounded-md border border-error-text bg-black/5 p-3 text-xs text-error-text">
+                  <pre className="mt-2 overflow-x-auto whitespace-pre-wrap wrap-break-word rounded-md border border-error-text bg-black/(--opacity-faint) p-3 text-xs text-error-text">
                     {this.state.errorInfo.componentStack}
                   </pre>
                 )}

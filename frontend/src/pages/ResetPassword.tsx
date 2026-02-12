@@ -13,7 +13,6 @@ import {
   AlertTriangle,
 } from "lucide-react"
 
-import { cn } from "@/utils/cn"
 import { Button, TextField, SectionCard, Alert } from "@/components/settings"
 import { ProgressBar } from "@/components/ui"
 
@@ -170,7 +169,7 @@ export default function ResetPassword() {
                   className="space-y-6 pt-4 text-center"
                 >
                   <div className="flex justify-center">
-                    <div className="h-20 w-20 rounded-3xl bg-(--success-bg) flex items-center justify-center text-(--success-text)">
+                    <div className="h-20 w-20 rounded-lg bg-(--success-bg) flex items-center justify-center text-(--success-text)">
                       <CheckCircle2 className="h-10 w-10" />
                     </div>
                   </div>
@@ -187,7 +186,7 @@ export default function ResetPassword() {
                       as={Link}
                       to="/login"
                       variant="solid"
-                      className="w-full h-12 rounded-2xl"
+                      className="w-full h-12 rounded-md"
                     >
                       {t("auth:actions.goToLogin")}
                     </Button>
@@ -232,7 +231,7 @@ export default function ResetPassword() {
                           autoComplete="new-password"
                           ref={passwordRef}
                           disabled={resetPending}
-                          className="rounded-2xl"
+                          className="rounded-md"
                           trailingIcon={
                             <button
                               type="button"
@@ -277,7 +276,7 @@ export default function ResetPassword() {
                       </div>
 
                       {!!feedback && (
-                        <div className="flex gap-2 px-2 py-2 rounded-xl bg-(--primary-main)/(--opacity-subtle) border border-(--primary-main)/(--opacity-subtle)">
+                        <div className="flex gap-2 px-2 py-2 rounded-sm bg-(--primary-main)/(--opacity-subtle) border border-(--primary-main)/(--opacity-subtle)">
                           <ShieldCheck className="h-4 w-4 text-(--primary-main) shrink-0 mt-0.5" />
                           <p className="text-xs font-medium text-(--primary-main)/(--opacity-hover) leading-relaxed">
                             {feedback}
@@ -305,7 +304,7 @@ export default function ResetPassword() {
                           autoComplete="new-password"
                           ref={confirmRef}
                           disabled={resetPending}
-                          className="rounded-2xl"
+                          className="rounded-md"
                           trailingIcon={
                             <button
                               type="button"
@@ -324,7 +323,7 @@ export default function ResetPassword() {
                       </div>
 
                       {(capsPass || capsConfirm) && (
-                        <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-(--warning-bg) border border-(--warning-text)/(--opacity-subtle) text-(--warning-text)">
+                        <div className="flex items-center gap-2 px-2 py-1.5 rounded-xs bg-(--warning-bg) border border-(--warning-text)/(--opacity-subtle) text-(--warning-text)">
                           <AlertTriangle className="h-4 w-4" />
                           <p className="text-xs font-bold uppercase tracking-wider">
                             {t("auth:messages.capsLock")}
@@ -333,7 +332,7 @@ export default function ResetPassword() {
                       )}
 
                       {pwned && (
-                        <Alert severity="warning" className="rounded-xl py-2">
+                        <Alert severity="warning" className="rounded-sm py-2">
                           {t("auth:reset.pwnedWarning")}
                         </Alert>
                       )}
@@ -349,7 +348,7 @@ export default function ResetPassword() {
                       <Button
                         type="submit"
                         variant="solid"
-                        className="w-full h-14 rounded-2xl text-base font-black shadow-lg shadow-brand/(--opacity-dim)"
+                        className="w-full h-14 rounded-md text-base font-black shadow-lg shadow-brand/(--opacity-dim)"
                         disabled={!canSubmit || resetPending}
                         loading={resetPending}
                         startIcon={<LockIcon className="h-5 w-5" />}

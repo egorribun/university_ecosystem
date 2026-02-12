@@ -6,7 +6,6 @@ import { sha256 } from "@noble/hashes/sha256"
 
 import api, { resetEtagCache } from "@/api/client"
 import type { User } from "@/types/User"
-import { signSnapshot } from "./useSessionCrypto"
 import type { PendingMfaState, SetUserArg, UserState } from "@/types/Auth"
 import { clearAccessToken } from "./tokenStorage"
 

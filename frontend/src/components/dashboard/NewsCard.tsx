@@ -44,7 +44,7 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
   }
 
   const listActionBase =
-    "group relative isolate w-full overflow-hidden rounded-xl border border-border-subtle bg-(--bg-surface-hover)/(--opacity-subtle) px-4 py-3 text-left transition-all duration-300 ease-out hover:bg-(--bg-surface-hover)/(--opacity-dim) hover:border-border-strong hover:-translate-y-0.5 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/(--opacity-medium)"
+    "group relative isolate w-full overflow-hidden rounded-lg border border-border-subtle bg-(--bg-surface-hover)/(--opacity-subtle) px-4 py-3 text-left transition-all duration-300 ease-out hover:bg-(--bg-surface-hover)/(--opacity-dim) hover:border-border-strong hover:-translate-y-0.5 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/(--opacity-medium)"
 
   return (
     <Card
@@ -85,7 +85,7 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
             {[1, 2].map((i) => (
               <div
                 key={i}
-                className="flex items-start gap-4 rounded-xl border border-[--dash-panel-item-divider] bg-[--dash-panel-item-bg] px-4 py-3 opacity-(--opacity-medium)"
+                className="flex items-start gap-4 rounded-lg border border-[--dash-panel-item-divider] bg-[--dash-panel-item-bg] px-4 py-3 opacity-(--opacity-medium)"
               >
                 <Skeleton width={44} height={44} rounded="9999px" className="shrink-0" />
                 <div className="flex-1 space-y-2">

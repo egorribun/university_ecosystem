@@ -1,18 +1,9 @@
 import Layout from "../components/Layout"
 import PageFadeIn from "../components/PageFadeIn"
 import EventCard from "../components/EventCard"
-import {
-  useEffect,
-  useState,
-  useCallback,
-  useMemo,
-  useRef,
-  useLayoutEffect,
-  type CSSProperties,
-} from "react"
+import { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { createEvent, uploadEventImage } from "@/api/events"
-import type { Event } from "@/types/Event"
 import {
   Calendar as EventNoteIcon,
   Search as SearchIcon,
@@ -24,14 +15,15 @@ import SmartImage from "@/components/SmartImage"
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { EVENTS_PAGE_SIZE, useEventsListQuery, useMyEventsQuery } from "@/api/hooks/events"
-import { Button, Badge, Skeleton } from "@/components/ui"
+import { Button, Skeleton } from "@/components/ui"
 import { Dialog, DialogActions, DialogContent, DialogTitle } from "@/components/settings"
-import { motion, AnimatePresence } from "framer-motion"
+import { motion } from "framer-motion"
 import { springSoft } from "@/utils/animations"
 import { cn } from "@/utils/cn"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
 import { useDebounced } from "@/hooks/useDebounced"
+import FadeSection from "@/components/FadeSection"
 
 type EventTabKey = "active" | "archive" | "my"
 type EventTab = { key: EventTabKey; is_active?: boolean }
@@ -76,11 +68,8 @@ const initialEvent: EventDraft = {
   about_en: "",
 }
 
-const fadeDelayStyle = (value: string): CSSProperties =>
-  ({ "--fade-delay": value }) as CSSProperties
-
 const inputClass =
-  "w-full rounded-xl border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-4 py-3 text-md font-medium text-(--text-primary) shadow-sm focus:border-brand focus:outline-none transition-all placeholder:text-(--text-secondary)/(--opacity-medium)"
+  "w-full rounded-sm border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-4 py-3 text-md font-medium text-(--text-primary) shadow-sm focus:border-brand focus:outline-none transition-all placeholder:text-(--text-secondary)/(--opacity-medium)"
 
 const Events = () => {
   const { user } = useAuth()
@@ -108,24 +97,7 @@ const Events = () => {
 
   // Tab indicator animation
   const tabContainerRef = useRef<HTMLDivElement>(null)
-  const tabRefs = useRef<Map<EventTabKey, HTMLButtonElement | null>>(new Map())
-  const [indicatorStyle, setIndicatorStyle] = useState<{ left: number; width: number }>({
-    left: 0,
-    width: 0,
-  })
 
-  useLayoutEffect(() => {
-    const activeButton = tabRefs.current.get(tab)
-    const container = tabContainerRef.current
-    if (activeButton && container) {
-      const containerRect = container.getBoundingClientRect()
-      const buttonRect = activeButton.getBoundingClientRect()
-      setIndicatorStyle({
-        left: buttonRect.left - containerRect.left,
-        width: buttonRect.width,
-      })
-    }
-  }, [tab])
 
   useEffect(() => {
     if (!filtersOpen) return
@@ -318,44 +290,40 @@ const Events = () => {
         <div className="w-full min-h-screen bg-transparent text-(--text-primary) py-8 sm:py-10">
           <div className="px-4 sm:px-6 lg:px-8">
             {/* Header */}
-            <div
-              data-fade
-              style={fadeDelayStyle("80ms")}
-              className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5"
-            >
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-(--bg-surface)/(--opacity-medium) border border-glass-border text-brand shadow-glass transition-transform duration-300 hover:scale-[1.08] overflow-hidden">
-                <EventNoteIcon className="h-7 w-7" />
-              </div>
-              <h1 className="text-(length:--fs-page-title) font-bold tracking-tight text-(--text-primary)">
-                {t("events:pageTitle")}
-              </h1>
-            </div>
+            <header>
+              <FadeSection delay="80ms" className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-(--bg-surface)/(--opacity-medium) border border-glass-border text-brand shadow-glass transition-transform duration-300 hover:scale-[1.08] overflow-hidden">
+                  <EventNoteIcon className="h-7 w-7" />
+                </div>
+                <h1 className="text-(length:--fs-page-title) font-bold tracking-tight text-(--text-primary)">
+                  {t("events:pageTitle")}
+                </h1>
+              </FadeSection>
 
-            {/* Create button */}
-            {(user?.role === "admin" || user?.role === "teacher") && (
-              <div data-fade style={fadeDelayStyle("140ms")} className="mb-6 flex justify-start">
-                <Button
-                  size="lg"
-                  onClick={() => setCreateOpen(true)}
-                  disabled={imageUploading || loading}
-                  className="px-6 text-fluid-title-sm"
-                >
-                  {t("events:actions.openCreate")}
-                </Button>
-              </div>
-            )}
-
+              {/* Create button */}
+              {(user?.role === "admin" || user?.role === "teacher") && (
+                <FadeSection delay="140ms" className="mb-6 flex justify-start">
+                  <Button
+                    size="lg"
+                    onClick={() => setCreateOpen(true)}
+                    disabled={imageUploading || loading}
+                    className="px-6 text-fluid-title-sm"
+                  >
+                    {t("events:actions.openCreate")}
+                  </Button>
+                </FadeSection>
+              )}
+            </header>
             {/* Tabs */}
-            <div
-              data-fade
-              style={fadeDelayStyle("200ms")}
+            <FadeSection
+              delay="200ms"
               className="w-full max-w-[440px] z-(--z-modal)"
               role="tablist"
             >
               <div
                 ref={tabContainerRef}
                 className={cn(
-                  "inline-flex w-full items-center gap-1 rounded-[11px] border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-1 backdrop-blur-md shadow-glass",
+                  "inline-flex w-full items-center gap-1 rounded-xl border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-1 backdrop-blur-md shadow-glass",
                   "sm:w-auto"
                 )}
               >
@@ -368,7 +336,7 @@ const Events = () => {
                     aria-controls={`events-tabpanel-${tabItem.key}`}
                     onClick={() => handleTabChange(tabItem.key)}
                     className={cn(
-                      "relative z-(--z-base) px-4 py-2 text-body-sm font-semibold rounded-[9px] transition-colors duration-200",
+                      "relative z-(--z-base) px-4 py-2 text-body-sm font-semibold rounded-lg transition-colors duration-200",
                       "sm:px-6 sm:text-base",
                       tab === tabItem.key
                         ? "text-(--text-primary)"
@@ -378,8 +346,7 @@ const Events = () => {
                     {tab === tabItem.key && (
                       <motion.div
                         layoutId="active-tab-indicator"
-                        className="absolute inset-0 bg-(--bg-surface) shadow-sm"
-                        style={{ borderRadius: "inherit", zIndex: -1 }}
+                        className="absolute inset-0 bg-(--bg-surface) shadow-sm rounded-[inherit] -z-10"
                         transition={springSoft}
                       />
                     )}
@@ -387,10 +354,10 @@ const Events = () => {
                   </button>
                 ))}
               </div>
-            </div>
+            </FadeSection>
 
             {/* Search and filters */}
-            <div data-fade style={fadeDelayStyle("240ms")} className="mb-6 lg:max-w-4xl">
+            <FadeSection delay="240ms" className="mb-6 lg:max-w-4xl">
               <div className="relative">
                 <SearchIcon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-(--text-secondary) pointer-events-none opacity-(--opacity-strong)" />
                 <input
@@ -399,7 +366,7 @@ const Events = () => {
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder={t("events:filters.search")}
                   className={cn(
-                    "w-full rounded-2xl px-4 py-3.5 pl-11 pr-20 text-base text-(--text-primary)",
+                    "w-full rounded-md px-4 py-3.5 pl-11 pr-20 text-base text-(--text-primary)",
                     "bg-(--bg-surface)/(--opacity-medium) border border-glass-border shadow-glass backdrop-blur-md",
                     "placeholder:text-(--text-secondary)/(--opacity-medium)",
                     "outline-none transition-all duration-200",
@@ -436,13 +403,13 @@ const Events = () => {
                   </button>
                 </div>
               </div>
-            </div>
+            </FadeSection>
 
             {/* Filter popover */}
             {filtersOpen && filterAnchor && (
               <div
                 ref={filterPopoverRef}
-                className="fixed z-(--z-modal) mt-2 min-w-[260px] rounded-2xl border border-glass-border bg-(--bg-surface)/(--opacity-heavy) p-4 shadow-glass backdrop-blur-xl"
+                className="fixed z-(--z-modal) mt-2 min-w-[260px] rounded-md border border-glass-border bg-(--bg-surface)/(--opacity-heavy) p-4 shadow-glass backdrop-blur-xl"
                 style={{
                   top: filterAnchor.getBoundingClientRect().bottom + 8,
                   right: window.innerWidth - filterAnchor.getBoundingClientRect().right,
@@ -491,72 +458,73 @@ const Events = () => {
             )}
 
             {/* Events grid */}
-            <div
-              data-fade
-              style={fadeDelayStyle("260ms")}
-              role="tabpanel"
-              id={`events-tabpanel-${tab}`}
-              aria-labelledby={`events-tab-${tab}`}
-              className="grid gap-5 sm:gap-6 pb-6 grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
-            >
-              {loading &&
-                Array.from({ length: skeletonCount }).map((_, i) => (
-                  <div key={`event-skel-${i}`} className="w-full">
-                    <div className="w-full space-y-4 rounded-3xl border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-5 shadow-glass backdrop-blur-md">
-                      <Skeleton height={isMobile ? 180 : 200} className="rounded-2xl" />
-                      <Skeleton height={28} className="rounded-lg" />
-                      <Skeleton height={20} width="75%" className="rounded-lg" />
-                      <div className="flex gap-3 pt-2">
-                        <Skeleton height={36} width={120} className="rounded-xl" />
-                        <Skeleton height={36} width={100} className="rounded-xl" />
+            <section aria-label={t("events:pageTitle")}>
+              <FadeSection
+                delay="260ms"
+                role="tabpanel"
+                id={`events-tabpanel-${tab}`}
+                aria-labelledby={`events-tab-${tab}`}
+                className="grid gap-5 sm:gap-6 pb-6 grid-cols-1 md:grid-cols-2 xl:grid-cols-3"
+              >
+                {loading &&
+                  Array.from({ length: skeletonCount }).map((_, i) => (
+                    <div key={`event-skel-${i}`} className="w-full">
+                      <div className="w-full space-y-4 rounded-lg border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-5 shadow-glass backdrop-blur-md">
+                        <Skeleton height={isMobile ? 180 : 200} className="rounded-md" />
+                        <Skeleton height={28} className="rounded-lg" />
+                        <Skeleton height={20} width="75%" className="rounded-lg" />
+                        <div className="flex gap-3 pt-2">
+                          <Skeleton height={36} width={120} className="rounded-sm" />
+                          <Skeleton height={36} width={100} className="rounded-sm" />
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
 
-              {!loading &&
-                normalizedEvents.map((event, index) => (
-                  <EventCard
-                    key={event.id}
-                    {...event}
-                    onChange={handleRefresh}
-                    maxWidth="100%"
-                    animationIndex={index}
-                  />
-                ))}
+                {!loading &&
+                  normalizedEvents.map((event, index) => (
+                    <EventCard
+                      key={event.id}
+                      {...event}
+                      onChange={handleRefresh}
+                      maxWidth="100%"
+                      animationIndex={index}
+                    />
+                  ))}
 
-              {!loading && normalizedEvents.length === 0 && (
-                <div className="col-span-full mt-12 flex w-full justify-center animate-in fade-in slide-in-from-bottom-4 duration-500">
-                  <div className="flex w-full max-w-md flex-col items-center gap-5 rounded-3xl border border-glass-border/(--opacity-soft) bg-(--bg-surface)/(--opacity-medium) px-8 py-14 text-center shadow-glass backdrop-blur-md">
-                    <div className="relative z-(--z-base) flex h-16 w-16 items-center justify-center rounded-full bg-brand/(--opacity-subtle) border border-brand/(--opacity-dim) shadow-brand/(--opacity-subtle) shadow-lg">
-                      <EventNoteIcon className="h-8 w-8 text-brand" />
+                {!loading && normalizedEvents.length === 0 && (
+                  <div className="col-span-full mt-12 flex w-full justify-center animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="flex w-full max-w-md flex-col items-center gap-5 rounded-lg border border-glass-border/(--opacity-soft) bg-(--bg-surface)/(--opacity-medium) px-8 py-14 text-center shadow-glass backdrop-blur-md">
+                      <div className="relative z-(--z-base) flex h-16 w-16 items-center justify-center rounded-full bg-brand/(--opacity-subtle) border border-brand/(--opacity-dim) shadow-brand/(--opacity-subtle) shadow-lg">
+                        <EventNoteIcon className="h-8 w-8 text-brand" />
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-lg font-semibold text-(--text-primary)">
+                          {t("events:states.empty")}
+                        </p>
+                        <p className="text-sm text-(--text-secondary)">
+                          {tab === "active"
+                            ? t("events:states.emptyHint.active")
+                            : tab === "archive"
+                              ? t("events:states.emptyHint.archive")
+                              : t("events:states.emptyHint.my")}
+                        </p>
+                      </div>
+                      {tab !== "my" && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleTabChange(tab === "active" ? "archive" : "active")}
+                          className="mt-2 text-brand hover:bg-brand/(--opacity-subtle)"
+                        >
+                          {tab === "active" ? t("events:tabs.archive") : t("events:tabs.active")}
+                        </Button>
+                      )}
                     </div>
-                    <div className="space-y-2">
-                      <p className="text-lg font-semibold text-(--text-primary)">
-                        {t("events:states.empty")}
-                      </p>
-                      <p className="text-sm text-(--text-secondary)">
-                        {tab === "active"
-                          ? t("events:states.emptyHint.active")
-                          : tab === "archive"
-                            ? t("events:states.emptyHint.archive")
-                            : t("events:states.emptyHint.my")}
-                      </p>
-                    </div>
-                    {tab !== "my" && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleTabChange(tab === "active" ? "archive" : "active")}
-                        className="mt-2 text-brand hover:bg-brand/(--opacity-subtle)"
-                      >
-                        {tab === "active" ? t("events:tabs.archive") : t("events:tabs.active")}
-                      </Button>
-                    )}
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+              </FadeSection>
+            </section>
 
             {/* Load more */}
             {hasMore && (
@@ -694,7 +662,7 @@ const Events = () => {
                         />
                       </Button>
                       {(createPreview || eventData.image_url) && (
-                        <div className="mt-3 overflow-hidden rounded-2xl border border-glass-border shadow-glass">
+                        <div className="mt-3 overflow-hidden rounded-md border border-glass-border shadow-glass">
                           <SmartImage
                             srcRaw={createPreview || eventData.image_url || ""}
                             alt={t("events:alt.preview")}

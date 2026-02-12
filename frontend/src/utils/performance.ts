@@ -104,7 +104,7 @@ export function reportMetric(name: string, value: number, tags?: Record<string, 
  */
 export function timed(name?: string) {
   return function <T extends (...args: unknown[]) => Promise<unknown>>(
-    target: unknown,
+    _target: unknown,
     propertyKey: string,
     descriptor: TypedPropertyDescriptor<T>
   ): TypedPropertyDescriptor<T> {

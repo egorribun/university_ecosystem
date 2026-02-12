@@ -211,7 +211,7 @@ export const useMessengerController = () => {
     onSuccess: () => {
       setShowChatMenu(false)
     },
-    onSettled: (data, error, chatId) => {
+    onSettled: (_data, _error, chatId) => {
       queryClient.invalidateQueries({ queryKey: ["messages", chatId] })
       queryClient.invalidateQueries({ queryKey: ["chats"] })
     },
@@ -236,7 +236,7 @@ export const useMessengerController = () => {
 
       return { previousChats }
     },
-    onError: (_error, chatId, context) => {
+    onError: (_error, _chatId, context) => {
       if (context?.previousChats) {
         queryClient.setQueryData(["chats"], context.previousChats)
       }

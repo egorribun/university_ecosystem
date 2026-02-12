@@ -10,7 +10,7 @@ import {
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
 import { Button } from "@/components/settings"
-import { ShieldAlert, CheckCircle2 } from "lucide-react"
+import { ShieldAlert } from "lucide-react"
 
 type OtpEntryProps = {
   loading?: boolean

@@ -114,7 +114,7 @@ export function ScheduleCard({
   }
 
   const listActionBase =
-    "group relative isolate w-full overflow-hidden rounded-xl border border-transparent bg-(--bg-surface)/(--opacity-subtle) px-4 py-3 text-left transition-all duration-300 ease-out hover:bg-(--bg-surface)/(--opacity-dim) hover:border-glass-border hover:-translate-y-0.5 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/(--opacity-medium)"
+    "group relative isolate w-full overflow-hidden rounded-sm border border-transparent bg-(--bg-surface)/(--opacity-subtle) px-4 py-3 text-left transition-all duration-300 ease-out hover:bg-(--bg-surface)/(--opacity-dim) hover:border-glass-border hover:-translate-y-0.5 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/(--opacity-medium)"
 
   return (
     <Card
@@ -195,7 +195,7 @@ export function ScheduleCard({
             {[1, 2, 3].map((i) => (
               <div
                 key={i}
-                className="flex flex-col gap-2 rounded-xl border border-(--glass-border) bg-(--bg-surface)/(--opacity-dim) px-4 py-3 opacity-(--opacity-medium)"
+                className="flex flex-col gap-2 rounded-sm border border-(--glass-border) bg-(--bg-surface)/(--opacity-dim) px-4 py-3 opacity-(--opacity-medium)"
               >
                 <div className="flex items-center gap-2">
                   <Skeleton width={80} height={18} />

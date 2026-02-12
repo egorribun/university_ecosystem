@@ -715,7 +715,7 @@ const buildPathWithParams = <P extends ApiPath>(path: P, params: PathParamsOf<P>
     return normalizedPath
   }
 
-  return normalizedPath.replace(/\{([^{}]+)\}/g, (segment, key: string) => {
+  return normalizedPath.replace(/\{([^{}]+)\}/g, (_segment, key: string) => {
     const value = params[key as keyof typeof params]
     if (value == null) {
       throw new Error(`Missing value for path parameter "${key}"`)

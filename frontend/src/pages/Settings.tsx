@@ -1,10 +1,9 @@
-import React, { useState, useCallback, useRef, useEffect } from "react"
+import { useState, useCallback, useRef, useEffect } from "react"
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { Settings as SettingsIcon } from "lucide-react"
 
-import Layout from "../components/Layout"
-import PageFadeIn from "../components/PageFadeIn"
+import { PageLayout } from "@/components/PageLayout"
 import { Tabs, Tab, Snackbar } from "../components/settings"
 import { StepUpDialog } from "../components/mfa/StepUpDialog"
 
@@ -71,81 +70,79 @@ export default function Settings() {
   }, [searchParams, setSearchParams, t])
 
   return (
-    <Layout>
-      <PageFadeIn>
-        <div className="flex h-full w-full flex-col bg-(--bg-page) text-(--text-primary) sm:h-160 sm:max-h-[85vh] sm:flex-row">
-          <div className="px-2 md:px-4">
-            <div
-              data-fade
-              className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5 animate-fade-in delay-100"
-            >
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-subtle-bg text-brand shadow-premium transition-transform duration-200 hover:scale-105 backdrop-blur-sm">
-                <SettingsIcon className="h-6 w-6" />
-              </div>
-              <h1 className="text-(length:--fs-page-title) font-bold tracking-tight text-(--text-primary)">
-                {t("settings:page.title")}
-              </h1>
+    <PageLayout variant="full">
+      <div className="flex h-full w-full flex-col bg-(--bg-page) text-(--text-primary) sm:h-160 sm:max-h-[85vh] sm:flex-row">
+        <div className="px-2 md:px-4">
+          <div
+            data-fade
+            className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5 animate-fade-in delay-100"
+          >
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-subtle-bg text-brand shadow-premium transition-transform duration-200 hover:scale-105 backdrop-blur-sm">
+              <SettingsIcon className="h-6 w-6" />
             </div>
-
-            <div data-fade className="mb-8 animate-fade-in delay-150">
-              <Tabs
-                value={tab}
-                onChange={(_, value) => setTab(value)}
-                variant="scrollable"
-                scrollButtons="auto"
-                className="border-b border-(--border-subtle)"
-              >
-                <Tab label={t("settings:tabs.general")} />
-                <Tab label={t("settings:tabs.account")} />
-                <Tab label={t("settings:tabs.security")} />
-                <Tab label={t("settings:tabs.integrations")} />
-              </Tabs>
-            </div>
-
-            <div data-fade className="animate-fade-in delay-200">
-              {tab === 0 && <SettingsGeneral setSnackbar={setSnackbar} />}
-              {tab === 1 && <SettingsProfile setSnackbar={setSnackbar} />}
-              {tab === 2 && (
-                <SettingsSecurity
-                  setSnackbar={setSnackbar}
-                  openStepUpFor={openStepUpFor}
-                  isActive={tab === 2}
-                />
-              )}
-              {tab === 3 && <SettingsIntegrations setSnackbar={setSnackbar} />}
-            </div>
-
-            {/* StepUp Dialog */}
-            <StepUpDialog
-              open={stepUpOpen}
-              onClose={handleStepUpClose}
-              onCompleted={handleStepUpCompleted}
-            />
-
-            {/* Global Snackbar for Settings Page */}
-            <Snackbar
-              open={Boolean(snackbar)}
-              onClose={() => setSnackbar(null)}
-              autoHideDuration={6000}
-              anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-            >
-              {snackbar ? (
-                <div
-                  className={`px-4 py-3 rounded-lg shadow-lg text-sm font-medium border ${
-                    snackbar.severity === "error"
-                      ? "bg-error-bg text-error-text border-error-text/20"
-                      : snackbar.severity === "success"
-                        ? "bg-success-bg text-success-text border-success-text/20"
-                        : "bg-surface-raised text-text-primary border-border-subtle"
-                  }`}
-                >
-                  {snackbar.text}
-                </div>
-              ) : null}
-            </Snackbar>
+            <h1 className="text-(length:--fs-page-title) font-bold tracking-tight text-(--text-primary)">
+              {t("settings:page.title")}
+            </h1>
           </div>
+
+          <div data-fade className="mb-8 animate-fade-in delay-150">
+            <Tabs
+              value={tab}
+              onChange={(_, value) => setTab(value)}
+              variant="scrollable"
+              scrollButtons="auto"
+              className="border-b border-(--border-subtle)"
+            >
+              <Tab label={t("settings:tabs.general")} />
+              <Tab label={t("settings:tabs.account")} />
+              <Tab label={t("settings:tabs.security")} />
+              <Tab label={t("settings:tabs.integrations")} />
+            </Tabs>
+          </div>
+
+          <div data-fade className="animate-fade-in delay-200">
+            {tab === 0 && <SettingsGeneral setSnackbar={setSnackbar} />}
+            {tab === 1 && <SettingsProfile setSnackbar={setSnackbar} />}
+            {tab === 2 && (
+              <SettingsSecurity
+                setSnackbar={setSnackbar}
+                openStepUpFor={openStepUpFor}
+                isActive={tab === 2}
+              />
+            )}
+            {tab === 3 && <SettingsIntegrations setSnackbar={setSnackbar} />}
+          </div>
+
+          {/* StepUp Dialog */}
+          <StepUpDialog
+            open={stepUpOpen}
+            onClose={handleStepUpClose}
+            onCompleted={handleStepUpCompleted}
+          />
+
+          {/* Global Snackbar for Settings Page */}
+          <Snackbar
+            open={Boolean(snackbar)}
+            onClose={() => setSnackbar(null)}
+            autoHideDuration={6000}
+            anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+          >
+            {snackbar ? (
+              <div
+                className={`px-4 py-3 rounded-lg shadow-lg text-sm font-medium border ${
+                  snackbar.severity === "error"
+                    ? "bg-error-bg text-error-text border-error-text/(--opacity-dim)"
+                    : snackbar.severity === "success"
+                      ? "bg-success-bg text-success-text border-success-text/(--opacity-dim)"
+                      : "bg-surface-raised text-text-primary border-border-subtle"
+                }`}
+              >
+                {snackbar.text}
+              </div>
+            ) : null}
+          </Snackbar>
         </div>
-      </PageFadeIn>
-    </Layout>
+      </div>
+    </PageLayout>
   )
 }

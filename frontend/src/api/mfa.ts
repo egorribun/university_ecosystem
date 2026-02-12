@@ -2,7 +2,6 @@ import api from "./client"
 import type {
   MfaFactorStatus,
   MfaTotpEnrollment,
-  PendingMfaResponse,
   TotpEnrollmentConfirmPayload,
   TotpEnrollmentStartPayload,
   TotpEnrollmentStartResponse,

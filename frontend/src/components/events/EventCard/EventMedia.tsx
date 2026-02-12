@@ -31,7 +31,7 @@ export const EventMedia: React.FC<EventMediaProps> = ({
     <div className="mb-4">
       <div
         className={cn(
-          "relative w-full overflow-hidden rounded-[14px]",
+          "relative w-full overflow-hidden rounded-lg",
           "aspect-video max-h-[200px]",
           "bg-linear-to-br from-event-media-tint-from to-event-media-tint-to",
           "border border-event-media-border"

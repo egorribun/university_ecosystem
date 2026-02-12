@@ -1,4 +1,3 @@
-import React from "react"
 import { ProfileSection } from "./sections"
 import type { SetSnackbar } from "./types"
 

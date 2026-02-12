@@ -2,13 +2,9 @@ import { useActionState, useEffect, useMemo, useRef, useState } from "react"
 import axios from "../api/client"
 import { Link } from "react-router-dom"
 import { useTranslation, Trans } from "react-i18next"
-import useMediaQuery from "@/hooks/useMediaQuery"
-import { cn } from "@/utils/cn"
 import { Button, TextField, SectionCard, Chip } from "@/components/settings"
 import { motion, AnimatePresence } from "framer-motion"
-import { Mail as EmailIcon, ChevronLeft, Send as SendIcon, CheckCircle2 } from "lucide-react"
-import { Input } from "@/components/ui"
-import { breakpoints } from "@/theme/tokens"
+import { ChevronLeft, Send as SendIcon, CheckCircle2 } from "lucide-react"
 
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const COMMON_EMAIL_DOMAINS = [
@@ -78,7 +74,6 @@ export default function ForgotPassword() {
   const [emailSuggestion, setEmailSuggestion] = useState<string | null>(null)
   const [cooldown, setCooldown] = useState(0)
   const emailInputRef = useRef<HTMLInputElement | null>(null)
-  const isMobile = useMediaQuery(`(max-width: ${breakpoints.mobile})`)
   const emailValid = useMemo(() => email.length === 0 || emailRe.test(email), [email])
 
   useEffect(() => {
@@ -179,7 +174,7 @@ export default function ForgotPassword() {
                   className="space-y-6 pt-4"
                 >
                   <div className="flex justify-center">
-                    <div className="h-20 w-20 rounded-3xl bg-success-bg/(--opacity-dim) flex items-center justify-center text-success-text">
+                    <div className="h-20 w-20 rounded-lg bg-success-bg/(--opacity-dim) flex items-center justify-center text-success-text">
                       <CheckCircle2 className="h-10 w-10" />
                     </div>
                   </div>
@@ -204,7 +199,7 @@ export default function ForgotPassword() {
                       as={Link}
                       to="/login"
                       variant="solid"
-                      className="w-full h-12 rounded-2xl"
+                      className="w-full h-12 rounded-md"
                     >
                       {t("auth:actions.backToLogin")}
                     </Button>
@@ -245,7 +240,7 @@ export default function ForgotPassword() {
                         }
                         ref={emailInputRef}
                         disabled={forgotPending || cooldown > 0}
-                        className="rounded-2xl h-14"
+                        className="rounded-md h-14"
                       />
 
                       {emailSuggestion && (
@@ -276,7 +271,7 @@ export default function ForgotPassword() {
                       <Button
                         type="submit"
                         variant="solid"
-                        className="w-full h-14 rounded-2xl text-base font-black shadow-lg shadow-brand/(--opacity-dim) transition-all hover:shadow-brand/(--opacity-soft) hover:-translate-y-0.5 active:translate-y-0"
+                        className="w-full h-14 rounded-md text-base font-black shadow-lg shadow-brand/(--opacity-dim) transition-all hover:shadow-brand/(--opacity-soft) hover:-translate-y-0.5 active:translate-y-0"
                         disabled={!canSubmit}
                         loading={forgotPending}
                         startIcon={<SendIcon className="h-5 w-5" />}

@@ -169,7 +169,7 @@ describe("Navbar", () => {
     const burger = await screen.findByRole("button", { name: "Open menu" })
     await user.click(burger)
 
-    const closeButton = await screen.findByRole("button", { name: "Close menu" })
+    await screen.findByRole("button", { name: "Close menu" })
     // Focus should move to the drawer content
     const drawer = screen.getByRole("dialog")
     await waitFor(() => expect(drawer).toContainElement(document.activeElement as HTMLElement))

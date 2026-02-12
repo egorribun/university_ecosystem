@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next"
 import Layout from "./Layout"
 import { Skeleton } from "@/components/ui"
-import { cn } from "@/utils/cn"
+
 
 type LoadingStateProps = {
   label?: string

@@ -38,7 +38,6 @@ vi.mock("workbox-expiration", () => {
   }
 })
 
-const CLICK_DB_NAME = "notification-interactions"
 
 type PendingNavigation = {
   id?: number
@@ -142,16 +141,6 @@ type ServiceWorkerTestingApi = {
 
 type SwModule = typeof import("@/sw")
 
-const deleteDatabase = async () => {
-  await new Promise<void>((resolve) => {
-    const request = indexedDB.deleteDatabase(CLICK_DB_NAME)
-    request.onsuccess = () => resolve()
-    request.onerror = () => resolve() // Don't fail, just continue
-    request.onblocked = () => resolve() // Don't wait if blocked
-    // Fallback timeout to prevent hanging
-    setTimeout(resolve, 100)
-  })
-}
 
 type TestServiceWorkerScope = ServiceWorkerGlobalScope &
   typeof globalThis & {

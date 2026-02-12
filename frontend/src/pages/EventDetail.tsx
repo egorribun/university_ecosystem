@@ -59,7 +59,7 @@ const isCanceledRequestError = (err: unknown): boolean => {
 }
 
 const inputClass =
-  "w-full rounded-xl border border-(--glass-border) bg-(--bg-surface)/(--opacity-medium) px-4 py-3 text-input font-medium text-(--text-primary) shadow-sm transition-all duration-200 focus:border-(--primary-main) focus:outline-none focus:ring-4 focus:ring-(--primary-main)/(--opacity-faint) placeholder:text-(--text-secondary)/(--opacity-medium)"
+  "w-full rounded-sm border border-(--glass-border) bg-(--bg-surface)/(--opacity-medium) px-4 py-3 text-input font-medium text-(--text-primary) shadow-sm transition-all duration-200 focus:border-(--primary-main) focus:outline-none focus:ring-4 focus:ring-(--primary-main)/(--opacity-faint) placeholder:text-(--text-secondary)/(--opacity-medium)"
 
 function Snackbar({
   open,
@@ -82,7 +82,7 @@ function Snackbar({
 
   return (
     <div className="fixed bottom-6 left-1/2 z-(--z-navbar) -translate-x-1/2 animate-in slide-in-from-bottom-4 fade-in">
-      <div className="rounded-[1.25rem] border border-(--glass-border) bg-(--bg-surface)/(--opacity-heavy) px-5 py-3.5 text-sm font-semibold text-(--text-primary) shadow-premium backdrop-blur-md">
+      <div className="rounded-2xl border border-(--glass-border) bg-(--bg-surface)/(--opacity-heavy) px-5 py-3.5 text-sm font-semibold text-(--text-primary) shadow-premium backdrop-blur-md">
         {message}
       </div>
     </div>
@@ -368,7 +368,7 @@ const EventDetail = () => {
               )}
             </div>
             {imageUrl && (
-              <div className="relative w-full overflow-hidden rounded-2xl border border-(--glass-border) bg-black/(--opacity-faint) shadow-premium aspect-video">
+              <div className="relative w-full overflow-hidden rounded-md border border-(--glass-border) bg-black/(--opacity-faint) shadow-premium aspect-video">
                 <SmartImage
                   srcRaw={imageUrl}
                   alt={t("events:alt.image")}

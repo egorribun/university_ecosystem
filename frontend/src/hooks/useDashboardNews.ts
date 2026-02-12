@@ -37,8 +37,8 @@ export const useDashboardNews = (language: SupportedLanguage) => {
 }
 
 export const prefetchDashboardNews = async (
-  queryClient: QueryClient,
-  language: SupportedLanguage
+  _queryClient: QueryClient,
+  _language: SupportedLanguage
 ) => {
   // Prefetching optimization temporarily disabled during refactor
   return Promise.resolve()

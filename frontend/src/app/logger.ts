@@ -126,5 +126,7 @@ export function logInfo(...args: unknown[]): void {
 }
 
 export function logDebug(...args: unknown[]): void {
-  callConsole("log", args)
+  if (import.meta.env.DEV) {
+    callConsole("log", args)
+  }
 }

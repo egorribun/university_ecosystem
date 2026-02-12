@@ -1,11 +1,9 @@
 import { useAuth } from "@/contexts/AuthContext"
-import React, { useEffect, useMemo, useState, useRef, useCallback } from "react"
-import { useLocation, useNavigate } from "react-router-dom"
-import { useQueryClient } from "@tanstack/react-query"
+import { useEffect, useState, useRef, useCallback } from "react"
+import { useNavigate } from "react-router-dom"
 import api from "@/api/client"
 import type { User } from "@/types/User"
 import profileBg from "@/assets/background.png"
-import guuLogo from "@/assets/guu_logo.png"
 import PageFadeIn from "@/components/PageFadeIn"
 import Layout from "@/components/Layout"
 import {
@@ -17,14 +15,12 @@ import {
   DialogTitle,
   Snackbar,
 } from "@/components/settings"
-import { motion, useReducedMotion } from "framer-motion"
+import { motion } from "framer-motion"
 import { breakpoints } from "@/theme/tokens"
 
 import { useNowPlaying } from "@/hooks/useNowPlaying"
-import { addVersionParam, resolveMediaUrl } from "@/utils/media"
 import { useTranslation } from "react-i18next"
 import { QRCodeSVG } from "qrcode.react"
-import { ChevronDown as ExpandMoreIcon, ExternalLink as OpenInNewIcon } from "lucide-react"
 
 import {
   NowPlayingCard,
@@ -57,21 +53,17 @@ export default function Profile() {
   const isWideScreen =
     typeof window !== "undefined" &&
     typeof window.matchMedia === "function" &&
-    window.matchMedia("(min-width: 1400px)").matches
+    window.matchMedia(`(min-width: ${breakpoints.wide})`).matches
   const isMobile =
     typeof window !== "undefined" &&
     typeof window.matchMedia === "function" &&
     window.matchMedia(`(max-width: ${breakpoints.mobile})`).matches
-  const reduced = useReducedMotion()
   const { t } = useTranslation(["profile", "common"])
   const [qrOpen, setQrOpen] = useState(false)
   const [detailsOpen, setDetailsOpen] = useState(true)
   const [achievementOpen, setAchievementOpen] = useState<AchievementItem | null>(null)
-  const [emailMenuAnchor, setEmailMenuAnchor] = useState<HTMLElement | null>(null)
-  const [telegramMenuAnchor, setTelegramMenuAnchor] = useState<HTMLElement | null>(null)
   const emailButtonRef = useRef<HTMLButtonElement | null>(null)
   const telegramButtonRef = useRef<HTMLButtonElement | null>(null)
-  const queryClient = useQueryClient()
   const spotifyConnected = Boolean(user?.spotify_connected || user?.spotify_is_connected)
   const nowPlayingQuery = useNowPlaying(spotifyConnected)
   const nowPlaying = nowPlayingQuery.data ?? null
@@ -221,7 +213,7 @@ export default function Profile() {
           >
             <div className="max-w-full sm:max-w-[98%] md:max-w-[96%] lg:max-w-[95%] xl:max-w-(--layout-max-wide) mx-auto w-full relative z-(--z-base)">
               <motion.div
-                className="px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-8 sm:py-10 md:py-12 lg:py-14 rounded-xl sm:rounded-2xl md:rounded-3xl relative overflow-hidden bg-primary-subtle-bg/(--opacity-subtle) shadow-glass border border-glass-border-subtle/(--opacity-dim) backdrop-blur-md"
+                className="px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-8 sm:py-10 md:py-12 lg:py-14 rounded-sm sm:rounded-md md:rounded-lg relative overflow-hidden bg-primary-subtle-bg/(--opacity-subtle) shadow-glass border border-glass-border-subtle/(--opacity-dim) backdrop-blur-md"
                 initial={isTest ? false : { opacity: "var(--opacity-strong)", y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={

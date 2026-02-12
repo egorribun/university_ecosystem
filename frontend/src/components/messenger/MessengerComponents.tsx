@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useCallback, memo } from "react"
+import React, { useRef, useEffect, useState, memo } from "react"
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion"
 import { sanitizeUrl } from "@/utils/media"
 import { useVirtualizer } from "@tanstack/react-virtual"
@@ -464,7 +464,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
                     label: "File",
                     color: "text-(--warning-text) bg-(--warning-text)/(--opacity-subtle)",
                   },
-                ].map((item, index) => (
+                ].map((item) => (
                   <button
                     key={item.id}
                     onClick={() => handleAttachmentClick(item.id as any)}
@@ -610,7 +610,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
                           srcRaw={user.avatar_url || AVATAR_PLACEHOLDER_URL}
                           fallback={AVATAR_PLACEHOLDER_URL}
                           alt={user.full_name || ""}
-                          className="w-11 h-11 rounded-2xl object-cover shadow-sm ring-1 ring-black/5"
+                          className="w-11 h-11 rounded-2xl object-cover shadow-sm ring-1 ring-black/(--opacity-faint)"
                         />
                       </div>
                       <div className="flex-1 min-w-0">

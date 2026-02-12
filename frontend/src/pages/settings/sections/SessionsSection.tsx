@@ -6,8 +6,6 @@ import {
   Chip,
   Alert,
   CircularProgress,
-  SectionCard,
-  SectionTitle,
   SectionSubtitle,
   AccordionSection,
   SessionItem,
@@ -81,7 +79,7 @@ export function SessionsSection({
             </p>
           </div>
         ) : sessionsErrorMessage ? (
-          <Alert severity="error" variant="outlined" className="mt-3">
+          <Alert severity="error" className="mt-3">
             {sessionsErrorMessage}
           </Alert>
         ) : sessions.length === 0 ? (

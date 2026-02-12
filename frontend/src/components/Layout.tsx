@@ -18,7 +18,6 @@ const Layout = ({ children, className }: LayoutProps) => {
   return (
     <motion.main
       id="main"
-      role="main"
       tabIndex={-1}
       initial="hidden"
       animate="visible"

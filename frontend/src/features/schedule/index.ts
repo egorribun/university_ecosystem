@@ -13,4 +13,3 @@ export { useClassReminders } from "@/hooks/useClassReminders"
 export { useScheduleUIStore, useWeekOffset, useViewMode } from "@/stores"
 
 // Components will be added as migration progresses
-// export { ScheduleCard } from './components/ScheduleCard'
