@@ -38,7 +38,6 @@ vi.mock("workbox-expiration", () => {
   }
 })
 
-
 type PendingNavigation = {
   id?: number
   url: string
@@ -140,7 +139,6 @@ type ServiceWorkerTestingApi = {
 }
 
 type SwModule = typeof import("@/sw")
-
 
 type TestServiceWorkerScope = ServiceWorkerGlobalScope &
   typeof globalThis & {

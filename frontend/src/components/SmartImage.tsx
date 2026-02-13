@@ -2,8 +2,6 @@ import { useEffect, useMemo, useState, type CSSProperties, type ImgHTMLAttribute
 import { IMAGE_PLACEHOLDER_URL } from "@/constants/placeholders"
 import { addVersionParam, resolveMediaUrl, resolveProxyImageUrl, sanitizeUrl } from "@/utils/media"
 
-
-
 const RESPONSIVE_DEFAULT_WIDTHS = [320, 540, 768, 1024, 1440] as const
 
 export type SmartImageProps = {

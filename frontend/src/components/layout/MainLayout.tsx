@@ -1,6 +1,6 @@
 import React from "react"
 import { useLocation } from "react-router-dom"
-import Navbar from "@/components/Navbar"
+import Navbar from "@/components/navbar"
 import Footer from "@/components/Footer"
 import MobileBottomNav from "@/components/MobileBottomNav"
 import { useTranslation } from "react-i18next"

@@ -4,13 +4,7 @@
  * Reusable UI primitives extracted from Settings.tsx for use across the settings page sections.
  * These components follow the glassmorphism design language of the application.
  */
-import React, {
-  useState,
-  useEffect,
-  ChangeEvent,
-  FocusEvent,
-  type CSSProperties,
-} from "react"
+import React, { useState, useEffect, ChangeEvent, FocusEvent, type CSSProperties } from "react"
 import ReactDOM from "react-dom"
 import { motion } from "framer-motion"
 import { cn } from "@/utils/cn"

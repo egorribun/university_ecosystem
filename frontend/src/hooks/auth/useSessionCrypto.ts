@@ -11,8 +11,6 @@ export const SESSION_SIGNING_KEY_STORAGE_KEY = `${PROFILE_CACHE_BASE_KEY}.sessio
 
 type SessionSigningKeyResponse = components["schemas"]["SessionSigningKeyOut"]
 
-
-
 import { cryptoWorker } from "@/utils/cryptoWorker"
 
 export const hashSessionIdentifier = async (value: string): Promise<string> => {

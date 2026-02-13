@@ -1,5 +1,5 @@
 import { memo } from "react"
-import { Skeleton } from "@/components/ui/skeleton"
+import { Skeleton } from "@/components/ui/Skeleton"
 
 interface ScheduleCardSkeletonProps {
   /** Number of lesson items to show in skeleton */

@@ -5,13 +5,7 @@ import { isAxiosError } from "axios"
 import { useTranslation } from "react-i18next"
 import { RotateCcw, Trash2, Loader2 } from "lucide-react"
 import { cn } from "@/utils/cn"
-import {
-  Alert,
-  Button,
-  TextField,
-  SectionCard,
-  CircularProgress,
-} from "@/components/settings"
+import { Alert, Button, TextField, SectionCard, CircularProgress } from "@/components/settings"
 
 import {
   fetchAdminUserTopics,

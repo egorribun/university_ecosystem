@@ -178,7 +178,9 @@ describe("Settings TOTP enrollment", () => {
     await waitFor(() =>
       expect(screen.queryByText(/Finish setup|Завершите настройку/i)).not.toBeInTheDocument()
     )
-    expect(await screen.findByRole("button", { name: /Set up authenticator app|Настроить приложение/i })).toBeEnabled()
+    expect(
+      await screen.findByRole("button", { name: /Set up authenticator app|Настроить приложение/i })
+    ).toBeEnabled()
   })
 
   it("shows an error if pending cancellation fails", async () => {
@@ -253,6 +255,8 @@ describe("Settings TOTP enrollment", () => {
         /Only one authenticator app can be connected at a time|Можно подключить только одно приложение/i
       )
     ).toBeVisible()
-    expect(screen.queryByRole("button", { name: /Set up authenticator app|Настроить приложение/i })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole("button", { name: /Set up authenticator app|Настроить приложение/i })
+    ).not.toBeInTheDocument()
   })
 })

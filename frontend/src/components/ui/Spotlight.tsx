@@ -24,11 +24,7 @@ type SpotlightOverlayProps = {
   className?: string
 }
 
-export function SpotlightOverlay({
-  mouseX,
-  mouseY,
-  className,
-}: SpotlightOverlayProps) {
+export function SpotlightOverlay({ mouseX, mouseY, className }: SpotlightOverlayProps) {
   return (
     <motion.div
       className={cn(

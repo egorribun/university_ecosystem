@@ -116,6 +116,7 @@ let clientQueueResetAt = 0
 // localStorage-backed ETag cache for persistence across page reloads
 const ETAG_CACHE_KEY = "ue:etag-cache"
 const RESPONSE_CACHE_KEY = "ue:response-cache"
+const MAX_CACHE_ENTRIES = 50
 
 const loadEtagCache = (): Map<string, string> => {
   if (typeof window === "undefined") return new Map()
@@ -132,6 +133,15 @@ const loadEtagCache = (): Map<string, string> => {
 const saveEtagCache = (cache: Map<string, string>) => {
   if (typeof window === "undefined") return
   try {
+    // Enforce LRU/FIFO limit
+    if (cache.size > MAX_CACHE_ENTRIES) {
+      const deleteCount = cache.size - MAX_CACHE_ENTRIES
+      const keys = cache.keys()
+      for (let i = 0; i < deleteCount; i++) {
+        const key = keys.next().value
+        if (key) cache.delete(key)
+      }
+    }
     const entries = Array.from(cache.entries())
     localStorage.setItem(ETAG_CACHE_KEY, JSON.stringify(entries))
   } catch {}
@@ -153,6 +163,15 @@ const loadResponseCache = (): Map<string, unknown> => {
 const saveResponseCache = (cache: Map<string, unknown>) => {
   if (typeof window === "undefined") return
   try {
+    // Enforce LRU/FIFO limit
+    if (cache.size > MAX_CACHE_ENTRIES) {
+      const deleteCount = cache.size - MAX_CACHE_ENTRIES
+      const keys = cache.keys()
+      for (let i = 0; i < deleteCount; i++) {
+        const key = keys.next().value
+        if (key) cache.delete(key)
+      }
+    }
     const entries = Array.from(cache.entries())
     localStorage.setItem(RESPONSE_CACHE_KEY, JSON.stringify(entries))
   } catch {}
@@ -189,6 +208,12 @@ const createEtagCache = () => {
 
 // Response body cache for 304 handling
 const createResponseCache = () => {
+  // We keep a local reference to avoid constant parsing if possible,
+  // but strictly following the original pattern of "load fresh every time"
+  // means we must rely on save... to handle pruning.
+  // To make it true LRU, we ought to re-insert on GET.
+  // However, avoid writing to localStorage on every GET to prevent potential jank.
+  // We will accept FIFO behavior for now as a sufficient optimization over unbounded growth.
   let cache = loadResponseCache()
   return {
     get(key: string): unknown | undefined {
@@ -198,7 +223,7 @@ const createResponseCache = () => {
     set(key: string, value: unknown) {
       cache = loadResponseCache()
       cache.set(key, value)
-      saveResponseCache(cache)
+      saveResponseCache(cache) // Pruning happens here
     },
     delete(key: string) {
       cache = loadResponseCache()

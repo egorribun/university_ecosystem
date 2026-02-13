@@ -6,8 +6,6 @@ import { ensureValidResponse } from "./validation"
 
 export type NewsItem = components["schemas"]["NewsOut"]
 
-
-
 type FetchNewsOptions = {
   ifNoneMatch?: string | null
   signal?: AbortSignal

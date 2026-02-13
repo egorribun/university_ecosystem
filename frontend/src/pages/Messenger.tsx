@@ -18,7 +18,6 @@ import utc from "dayjs/plugin/utc"
 
 dayjs.extend(utc)
 
-
 interface ConfirmDialogProps {
   open: boolean
   title: string

@@ -93,9 +93,6 @@ const NewsCardComponent: FC<NewsCardProps> = ({
 
   const spotlight = useSpotlight()
 
-
-
-
   const localizedTitle = useMemo(() => {
     const english = title_en ?? ""
     if (language === "en" && english.trim()) return english

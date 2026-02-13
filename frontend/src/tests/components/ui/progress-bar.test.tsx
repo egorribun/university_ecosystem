@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { render, screen } from "@testing-library/react"
 
-import { ProgressBar } from "@/components/ui/progress-bar"
+import { ProgressBar } from "@/components/ui/ProgressBar"
 
 describe("ProgressBar", () => {
   it("announces numeric values with the provided aria-label", () => {

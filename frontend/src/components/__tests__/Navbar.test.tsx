@@ -2,7 +2,7 @@ import { MemoryRouter, useLocation } from "react-router-dom"
 import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import Navbar from "../Navbar"
+import Navbar from "../navbar"
 import { AppShellProvider } from "@/contexts/AppShellContext"
 
 vi.mock("@/contexts/AuthContext", () => ({

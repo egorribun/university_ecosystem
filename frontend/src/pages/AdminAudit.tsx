@@ -222,7 +222,6 @@ export default function AdminAudit() {
     void fetchLogs()
   }, [fetchLogs])
 
-
   return (
     <Layout>
       <div className="min-h-screen w-full bg-background/(--opacity-medium) py-12">

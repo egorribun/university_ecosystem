@@ -70,6 +70,7 @@ export const focusRing = {
 
 export const shadows = {
   glass: "var(--shadow-glass)",
+  lg: "var(--shadow-premium-lift)",
   md: "var(--shadow-md)",
   sm: "var(--shadow-sm)",
 } as const
@@ -121,3 +122,4 @@ export const motion = {
   durationMedium: 0.45,
   navTransition: 1.2,
 } as const
+

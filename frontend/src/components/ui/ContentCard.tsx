@@ -32,7 +32,7 @@ import {
 } from "react"
 
 import { cn } from "@/utils/cn"
-import { Card, type CardProps } from "./card"
+import { Card, type CardProps } from "./Card"
 
 /** Card context for sharing state between compound components */
 interface ContentCardContextValue {

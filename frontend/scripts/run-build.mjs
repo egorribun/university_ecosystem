@@ -31,6 +31,9 @@ function run(command, commandArgs, options = {}) {
 }
 
 async function main() {
+  console.log("Syncing tokens...")
+  await run("node", ["./scripts/sync-tokens.mjs"])
+
   await run("vite", ["build", ...sanitizedArgs], {
     cwd: path.resolve(process.cwd()),
     shell: true,

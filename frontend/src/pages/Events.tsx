@@ -319,11 +319,7 @@ const Events = () => {
               )}
             </header>
             {/* Tabs */}
-            <FadeSection
-              delay="200ms"
-              className="w-full max-w-md z-(--z-modal)"
-              role="tablist"
-            >
+            <FadeSection delay="200ms" className="w-full max-w-md z-(--z-modal)" role="tablist">
               <div
                 ref={tabContainerRef}
                 className={cn(
