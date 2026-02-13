@@ -16,8 +16,8 @@ const buttonVariants = cva(
     variants: {
       variant: {
         solid: cn(
-          "bg-linear-brand text-inverse-text shadow-surface ring-brand/(--opacity-dim) transition-all duration-500",
-          "hover:shadow-premium-lift hover:scale-hover hover:opacity-(--opacity-heavy)",
+          "bg-linear-brand text-inverse-text shadow-surface ring-brand/dim transition-all duration-500",
+          "hover:shadow-premium-lift hover:scale-hover hover:opacity-heavy",
           "active:scale-95",
           "motion-reduce:hover:translate-y-0 motion-reduce:hover:scale-100 motion-reduce:active:translate-y-0 motion-reduce:active:scale-100",
           "disabled:bg-(--border-subtle) disabled:text-(--text-tertiary)"
@@ -37,12 +37,12 @@ const buttonVariants = cva(
         ),
         glass: cn(
           "bg-glass backdrop-blur-glass text-(--text-primary) border border-glass-border shadow-glass",
-          "hover:bg-(--glass-tint1) hover:scale-hover",
+          "hover:bg-glass-tint1 hover:scale-hover",
           "active:scale-95 transition-all duration-300"
         ),
         gradient: cn(
           "bg-linear-brand text-inverse-text shadow-lg border-none",
-          "hover:shadow-premium-lift hover:saturate-150 hover:scale-hover hover:opacity-(--opacity-heavy)",
+          "hover:shadow-premium-lift hover:saturate-150 hover:scale-hover hover:opacity-heavy",
           "active:scale-95 transition-all duration-500"
         ),
       },
@@ -125,7 +125,7 @@ const ButtonBase = <T extends ElementType = "button">(
       ref={ref}
       className={cn(
         buttonVariants({ variant, size, fullWidth }),
-        isDisabled && "pointer-events-none opacity-(--opacity-strong)",
+        isDisabled && "pointer-events-none opacity-strong",
         className
       )}
       disabled={isButtonElement ? isDisabled : undefined}
@@ -142,7 +142,7 @@ const ButtonBase = <T extends ElementType = "button">(
           className="pointer-events-none absolute inset-0 flex items-center justify-center"
           aria-hidden
         >
-          <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent opacity-(--opacity-medium)" />
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent opacity-medium" />
         </span>
       ) : null}
     </Component>
