@@ -122,4 +122,3 @@ export const motion = {
   durationMedium: 0.45,
   navTransition: 1.2,
 } as const
-
