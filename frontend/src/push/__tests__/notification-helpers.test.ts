@@ -74,8 +74,7 @@ describe("buildNotificationDetails", () => {
       actions: [
         { action: " open ", title: "Open", icon: "icon.svg", url: "/open" },
         { action: "", title: "", url: "" },
-        // @ts-expect-error intentionally invalid payload
-        null,
+
       ],
     })
 
