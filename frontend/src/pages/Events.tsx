@@ -291,7 +291,7 @@ const Events = () => {
         description={t("events:pageDescription", "Upcoming events, lectures, and activities.")}
       />
       <PageFadeIn>
-        <div className="w-full min-h-screen bg-transparent text-(--text-primary) py-8 sm:py-10">
+        <div className="w-full min-h-full bg-transparent text-(--text-primary) py-8 sm:py-10">
           <div className="px-4 sm:px-6 lg:px-8">
             {/* Header */}
             <header>
