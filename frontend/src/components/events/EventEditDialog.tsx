@@ -6,20 +6,8 @@ import Dialog from "@/components/Dialog"
 import SmartImage from "@/components/SmartImage"
 import { cn } from "@/utils/cn"
 
-export type EventEditDraft = {
-  title: string
-  title_en: string
-  description: string
-  description_en: string
-  event_type: string
-  event_type_en: string
-  location: string
-  location_en: string
-  starts_at: string
-  ends_at: string
-  speaker: string
-  image_url: string
-}
+import type { EventEditDraft } from "@/types/Event"
+
 
 type EventEditDialogProps = {
   open: boolean
@@ -123,7 +111,7 @@ export function EventEditDialog({
     >
       <div className="space-y-4">
         <div>
-          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-(--opacity-heavy)">
+          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
             {language === "en"
               ? t("events:form.title_en", {
                   defaultValue: `${t("events:form.title")} (English)`,
@@ -138,7 +126,7 @@ export function EventEditDialog({
           />
         </div>
         <div>
-          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-(--opacity-heavy)">
+          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
             {language === "en"
               ? t("events:form.description_en", {
                   defaultValue: `${t("events:form.description")} (English)`,
@@ -153,7 +141,7 @@ export function EventEditDialog({
           />
         </div>
         <div>
-          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-(--opacity-heavy)">
+          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
             {language === "en"
               ? t("events:form.type_en", {
                   defaultValue: `${t("events:form.type")} (English)`,
@@ -168,7 +156,7 @@ export function EventEditDialog({
           />
         </div>
         <div>
-          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-(--opacity-heavy)">
+          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
             {language === "en"
               ? t("events:form.location_en", {
                   defaultValue: `${t("events:form.location")} (English)`,
@@ -183,7 +171,7 @@ export function EventEditDialog({
           />
         </div>
         <div>
-          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-(--opacity-heavy)">
+          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
             {t("events:form.start")}
           </label>
           <input
@@ -194,7 +182,7 @@ export function EventEditDialog({
           />
         </div>
         <div>
-          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-(--opacity-heavy)">
+          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
             {t("events:form.end")}
           </label>
           <input
@@ -210,7 +198,7 @@ export function EventEditDialog({
           )}
         </div>
         <div>
-          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-(--opacity-heavy)">
+          <label className="mb-2 block text-sm font-semibold tracking-wide text-(--text-secondary) opacity-heavy">
             {t("events:form.speaker")}
           </label>
           <input

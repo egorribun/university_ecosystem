@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
-declare const self: ServiceWorkerGlobalScope
-
+// No global self declaration needed with webworker lib
+export {}
 import { CacheableResponsePlugin } from "workbox-cacheable-response"
 import { ExpirationPlugin } from "workbox-expiration"
 import { registerRoute } from "workbox-routing"

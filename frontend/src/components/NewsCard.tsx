@@ -1,6 +1,6 @@
 import Dialog from "@/components/Dialog"
 import SmartImage from "@/components/SmartImage"
-import { Button } from "@/components/ui"
+import { Button, ContentCard, Snackbar } from "@/components/ui"
 import { SpotlightOverlay, useSpotlight } from "@/components/ui/Spotlight"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useNewsInteraction } from "@/hooks/useNewsInteraction"
@@ -67,6 +67,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   const [editOpen, setEditOpen] = useState(false)
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
   const [cardImageReady, setCardImageReady] = useState(!image_url)
 
   const editData = useMemo(
@@ -123,14 +124,14 @@ const NewsCardComponent: FC<NewsCardProps> = ({
     setLoading(true)
     try {
       await api.delete(`/news/${id}`)
-      onChange && onChange()
-    } catch (e) {
-      console.error(e)
+      onChange?.()
+    } catch (_e) {
+      setError(t("common:errors.generic", { defaultValue: "Произошла ошибка" }))
     } finally {
       setLoading(false)
       setConfirmDeleteOpen(false)
     }
-  }, [id, onChange])
+  }, [id, onChange, t])
 
   const openEdit = useCallback(() => setEditOpen(true), [])
   const closeEdit = useCallback(() => setEditOpen(false), [])
@@ -145,195 +146,208 @@ const NewsCardComponent: FC<NewsCardProps> = ({
       layout
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
-      whileHover={{ y: -4 }}
-      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-      className={cn(
-        "card-glass card-news group",
-        hoveringDisabled ? "cursor-default" : "card-interactive"
-      )}
       onMouseMove={spotlight.onMouseMove}
+      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+      whileHover={!hoveringDisabled ? { y: -4 } : undefined}
+      className={cn("h-full outline-none", hoveringDisabled ? "cursor-default" : "cursor-pointer")}
     >
-      <SpotlightOverlay
-        mouseX={spotlight.mouseX}
-        mouseY={spotlight.mouseY}
-        className="z-(--z-hide)"
-      />
-
-      {user?.role === "admin" && (
-        <div className="relative z-(--z-surface)">
-          <Suspense fallback={null}>
-            <NewsCardActions
-              id={id}
-              onEdit={openEdit}
-              onDelete={openDeletePrompt}
-              isDisabled={loading}
-            />
-          </Suspense>
-        </div>
-      )}
-
-      <div
+      <ContentCard
+        hoverable={!hoveringDisabled}
         className={cn(
-          "group/content relative flex h-full flex-1 flex-col text-left",
-          hoveringDisabled ? "opacity-100" : ""
+          "card-news group h-full",
+          hoveringDisabled ? "cursor-default" : "card-interactive"
         )}
       >
-        <div className="relative w-full h-(--news-hero-h) md:h-(--news-hero-h-md) shrink-0 overflow-hidden border-b border-glass-border bg-linear-to-br from-brand/(--opacity-subtle) to-brand/(--opacity-faint)">
-          <div
-            className={cn(
-              "absolute inset-0 animate-pulse bg-input-mix transition-opacity duration-300",
-              cardImageReady ? "opacity-0" : "opacity-100"
-            )}
-            aria-hidden
-          />
-          {cardImageUrl ? (
-            <>
-              <SmartImage
-                srcRaw={cardImageUrl}
-                alt={
-                  localizedTitle
-                    ? t("news:alt.hero", { title: localizedTitle })
-                    : t("news:alt.heroFallback")
-                }
-                sizes="(min-width: 1200px) 640px, (min-width: 900px) 520px, 100vw"
-                className="absolute inset-0 h-full w-full object-cover transition duration-700 ease-out"
-                onLoad={handleCardImageReady}
-                onError={handleCardImageReady}
-              />
-              <div
-                className="pointer-events-none absolute inset-0 z-(--z-decor) transition-opacity duration-300 group-hover:opacity-0 bg-linear-to-t from-black/(--opacity-heavy) via-black/(--opacity-medium) to-transparent opacity-(--opacity-strong)"
-                aria-hidden
-              />
-            </>
-          ) : (
-            <span className="relative z-(--z-deep) flex h-full w-full items-center justify-center overflow-hidden rounded-full">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand/(--opacity-medium) opacity-(--opacity-dim)"></span>
-              <ArticleIcon className="h-12 w-12" fontSize="large" />
-            </span>
-          )}
-          {createdAtIso ? (
-            <time
-              dateTime={createdAtIso}
-              className="absolute bottom-3 left-3 z-(--z-decor) rounded-full bg-black/(--opacity-strong) px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/(--opacity-heavy) transition duration-300 ease-out group-hover/content:-translate-y-0.5 group-hover/content:bg-black/(--opacity-strong)"
-            >
-              {createdAtLabel}
-            </time>
-          ) : null}
-          {!isOnline && (
-            <div className="absolute top-3 left-3 z-(--z-decor) flex items-center gap-1 rounded-full bg-warning-bg/(--opacity-heavy) px-2 py-0.5 text-micro font-bold uppercase tracking-wider text-warning-text shadow-surface backdrop-blur-sm">
-              <Cloud size={12} />
-              <span>{t("common:statuses.cached", { defaultValue: "Кэш" })}</span>
-            </div>
-          )}
-        </div>
-
-        <div className="flex flex-1 flex-col gap-2 p-fluid-card-p transition duration-300 ease-out group-hover:-translate-y-px group-focus-visible/content:-translate-y-px md:gap-3">
-          <h3 className="truncate text-(length:--fs-fluid-h3) font-semibold">
-            <Link
-              to={`/news/${id}`}
-              className={cn(
-                "before:absolute before:inset-0 focus:outline-none",
-                editOpen && "pointer-events-none"
-              )}
-            >
-              {localizedTitle}
-            </Link>
-          </h3>
-
-          <p className="min-h-(--space-12) text-sm text-(--text-secondary) line-clamp-2 md:min-h-(--space-18) md:line-clamp-3">
-            {sanitizedPreview}
-          </p>
-
-          <div className="relative z-(--z-deep) flex items-center gap-4 mt-1 border-t border-glass-border pt-3">
-            <motion.button
-              type="button"
-              whileTap={{ scale: 0.85 }}
-              onClick={(e) => {
-                e.stopPropagation()
-                toggleLike()
-              }}
-              className={cn(
-                "flex items-center gap-1.5 transition-colors duration-200",
-                isLiked
-                  ? "text-error-text"
-                  : "text-(--text-secondary) hover:text-error-text/(--opacity-hover)"
-              )}
-            >
-              <div className="relative">
-                {isLiked ? (
-                  <motion.div
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    transition={{ type: "spring", stiffness: 400, damping: 15 }}
-                  >
-                    <FavoriteIcon size={18} fill={isLiked ? "currentColor" : "none"} />
-                  </motion.div>
-                ) : (
-                  <FavoriteIcon size={18} />
-                )}
-              </div>
-              <span className="text-xs font-bold tabular-nums">{likesCount}</span>
-            </motion.button>
-
-            <div className="flex items-center gap-1.5 text-(--text-secondary)">
-              <ChatBubbleOutlineIcon size={18} />
-              <span className="text-xs font-bold tabular-nums">{commentsCount}</span>
-            </div>
-          </div>
-
-          <div className="mt-auto flex items-center gap-2 pt-2 text-(--primary-main)">
-            <span className="translate-y-1 text-sm font-semibold tracking-wide opacity-0 transition duration-300 ease-out group-focus-within:translate-y-0 group-focus-within:opacity-100 group-hover:translate-y-0 group-hover:opacity-100">
-              {t("common:cta.learnMore", { defaultValue: "Подробнее" })}
-            </span>
-            <ArrowOutwardIcon
-              size={16}
-              className="translate-x-0 text-(--primary-main) opacity-0 transition duration-300 ease-out group-focus-within:translate-x-1 group-focus-within:opacity-100 group-hover:translate-x-1 group-hover:opacity-100"
-            />
-          </div>
-        </div>
-      </div>
-
-      <Suspense fallback={null}>
-        <NewsCardEditDialog
-          id={id}
-          open={editOpen}
-          onClose={closeEdit}
-          initialData={editData}
-          onSuccess={onChange}
+        <SpotlightOverlay
+          mouseX={spotlight.mouseX}
+          mouseY={spotlight.mouseY}
+          className="z-(--z-hide)"
         />
-      </Suspense>
 
-      <Dialog
-        open={confirmDeleteOpen}
-        onClose={closeDeletePrompt}
-        title={t("news:dialogs.delete.title")}
-        bodyClassName="space-y-4"
-        footer={
-          <>
-            <Button
-              variant="outline"
-              onClick={closeDeletePrompt}
-              disabled={loading}
-              className="w-full sm:w-auto"
-            >
-              {t("common:buttons.cancel")}
-            </Button>
-            <Button
-              onClick={() => {
-                void handleDelete()
-              }}
-              disabled={loading}
-              loading={loading}
-              className="w-full bg-error-bg text-error-text hover:bg-error-bg/(--opacity-heavy) sm:w-auto"
-            >
-              <DeleteIcon size={18} className="mr-1" />
-              {t("common:buttons.delete")}
-            </Button>
-          </>
-        }
-      >
-        <p className="text-input text-(--text-secondary)">{t("news:dialogs.delete.description")}</p>
-      </Dialog>
+        {user?.role === "admin" && (
+          <ContentCard.Actions className="absolute right-2 top-2 z-(--z-surface)">
+            <Suspense fallback={null}>
+              <NewsCardActions
+                id={id}
+                onEdit={openEdit}
+                onDelete={openDeletePrompt}
+                isDisabled={loading}
+              />
+            </Suspense>
+          </ContentCard.Actions>
+        )}
+
+        <div
+          className={cn(
+            "group/content relative flex h-full flex-1 flex-col text-left",
+            hoveringDisabled ? "opacity-100" : ""
+          )}
+        >
+          {/* Custom Hero Section using SmartImage - kept for specific NewsCard needs */}
+          <div className="relative w-full h-(--news-hero-h) md:h-(--news-hero-h-md) shrink-0 overflow-hidden border-b border-glass-border bg-linear-to-br from-brand/(--opacity-subtle) to-brand/(--opacity-faint)">
+            <div
+              className={cn(
+                "absolute inset-0 animate-pulse bg-input-mix transition-opacity duration-300",
+                cardImageReady ? "opacity-0" : "opacity-100"
+              )}
+              aria-hidden
+            />
+            {cardImageUrl ? (
+              <>
+                <SmartImage
+                  srcRaw={cardImageUrl}
+                  alt={
+                    localizedTitle
+                      ? t("news:alt.hero", { title: localizedTitle })
+                      : t("news:alt.heroFallback")
+                  }
+                  sizes="(min-width: 1200px) 640px, (min-width: 900px) 520px, 100vw"
+                  className="absolute inset-0 h-full w-full object-cover transition duration-700 ease-out"
+                  onLoad={handleCardImageReady}
+                  onError={handleCardImageReady}
+                />
+                <div
+                  className="pointer-events-none absolute inset-0 z-(--z-decor) transition-opacity duration-300 group-hover:opacity-0 bg-linear-to-t from-black/(--opacity-heavy) via-black/(--opacity-medium) to-transparent opacity-strong"
+                  aria-hidden
+                />
+              </>
+            ) : (
+              <span className="relative z-(--z-deep) flex h-full w-full items-center justify-center overflow-hidden rounded-full">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand/(--opacity-medium) opacity-dim"></span>
+                <ArticleIcon className="h-12 w-12" fontSize="large" />
+              </span>
+            )}
+
+            {/* Badges Overlay */}
+            <div className="absolute bottom-3 left-3 z-(--z-decor) flex flex-wrap gap-2">
+              {createdAtIso && (
+                <time
+                  dateTime={createdAtIso}
+                  className="rounded-full bg-black/(--opacity-strong) px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/(--opacity-heavy) transition duration-300 ease-out group-hover/content:-translate-y-0.5 group-hover/content:bg-black/(--opacity-strong)"
+                >
+                  {createdAtLabel}
+                </time>
+              )}
+              {!isOnline && (
+                <div className="flex items-center gap-1 rounded-full bg-warning-bg/(--opacity-heavy) px-2 py-0.5 text-micro font-bold uppercase tracking-wider text-warning-text shadow-surface backdrop-blur-sm">
+                  <Cloud size={12} />
+                  <span>{t("common:statuses.cached", { defaultValue: "Кэш" })}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <ContentCard.Body className="flex flex-1 flex-col gap-2 p-fluid-card-p transition duration-300 ease-out group-hover:-translate-y-px group-focus-visible/content:-translate-y-px md:gap-3">
+            <ContentCard.Title className="text-(length:--fs-fluid-h3) font-semibold line-clamp-none">
+              <Link
+                to={`/news/${id}`}
+                className={cn(
+                  "before:absolute before:inset-0 focus:outline-none line-clamp-2",
+                  editOpen && "pointer-events-none"
+                )}
+              >
+                {localizedTitle}
+              </Link>
+            </ContentCard.Title>
+
+            <p className="min-h-(--space-12) text-sm text-(--text-secondary) line-clamp-2 md:min-h-(--space-18) md:line-clamp-3">
+              {sanitizedPreview}
+            </p>
+
+            <div className="relative z-(--z-deep) flex items-center gap-4 mt-1 border-t border-glass-border pt-3">
+              <motion.button
+                type="button"
+                whileTap={{ scale: 0.85 }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  toggleLike()
+                }}
+                className={cn(
+                  "flex items-center gap-1.5 transition-colors duration-200",
+                  isLiked
+                    ? "text-error-text"
+                    : "text-(--text-secondary) hover:text-error-text/(--opacity-hover)"
+                )}
+              >
+                <div className="relative">
+                  {isLiked ? (
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ type: "spring", stiffness: 400, damping: 15 }}
+                    >
+                      <FavoriteIcon size={18} fill={isLiked ? "currentColor" : "none"} />
+                    </motion.div>
+                  ) : (
+                    <FavoriteIcon size={18} />
+                  )}
+                </div>
+                <span className="text-xs font-bold tabular-nums">{likesCount}</span>
+              </motion.button>
+
+              <div className="flex items-center gap-1.5 text-(--text-secondary)">
+                <ChatBubbleOutlineIcon size={18} />
+                <span className="text-xs font-bold tabular-nums">{commentsCount}</span>
+              </div>
+            </div>
+
+            <div className="mt-auto flex items-center gap-2 pt-2 text-(--primary-main)">
+              <span className="translate-y-1 text-sm font-semibold tracking-wide opacity-0 transition duration-300 ease-out group-focus-within:translate-y-0 group-focus-within:opacity-100 group-hover:translate-y-0 group-hover:opacity-100">
+                {t("common:cta.learnMore", { defaultValue: "Подробнее" })}
+              </span>
+              <ArrowOutwardIcon
+                size={16}
+                className="translate-x-0 text-(--primary-main) opacity-0 transition duration-300 ease-out group-focus-within:translate-x-1 group-focus-within:opacity-100 group-hover:translate-x-1 group-hover:opacity-100"
+              />
+            </div>
+          </ContentCard.Body>
+        </div>
+
+        <Suspense fallback={null}>
+          <NewsCardEditDialog
+            id={id}
+            open={editOpen}
+            onClose={closeEdit}
+            initialData={editData}
+            onSuccess={onChange}
+          />
+        </Suspense>
+
+        <Dialog
+          open={confirmDeleteOpen}
+          onClose={closeDeletePrompt}
+          title={t("news:dialogs.delete.title")}
+          bodyClassName="space-y-4"
+          footer={
+            <>
+              <Button
+                variant="outline"
+                onClick={closeDeletePrompt}
+                disabled={loading}
+                className="w-full sm:w-auto"
+              >
+                {t("common:buttons.cancel")}
+              </Button>
+              <Button
+                onClick={() => {
+                  void handleDelete()
+                }}
+                disabled={loading}
+                loading={loading}
+                className="w-full bg-error-bg text-error-text hover:bg-error-bg/(--opacity-heavy) sm:w-auto"
+              >
+                <DeleteIcon size={18} className="mr-1" />
+                {t("common:buttons.delete")}
+              </Button>
+            </>
+          }
+        >
+          <p className="text-input text-(--text-secondary)">
+            {t("news:dialogs.delete.description")}
+          </p>
+        </Dialog>
+        <Snackbar open={!!error} message={error} onClose={() => setError("")} />
+      </ContentCard>
     </motion.article>
   )
 }

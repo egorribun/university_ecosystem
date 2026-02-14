@@ -365,8 +365,8 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
     }
     syncPermission()
 
-    if (typeof navigator !== "undefined" && (navigator as any).permissions?.query) {
-      ;(navigator as any).permissions
+    if (typeof navigator !== "undefined" && navigator.permissions?.query) {
+      navigator.permissions
         .query({ name: "notifications" as PermissionName })
         .then((status: PermissionStatus) => {
           if (cancelled) return
@@ -382,7 +382,9 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
             removeListener = () => {
               try {
                 status.removeEventListener("change", handler)
-              } catch {}
+              } catch {
+                // ignore
+              }
             }
           } else {
             const statusWithOnChange = status as PermissionStatus & {

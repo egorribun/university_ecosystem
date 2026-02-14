@@ -8,7 +8,7 @@ import { SpotlightOverlay } from "@/components/ui/Spotlight"
 import { motion as motionTokens } from "@/theme/tokens"
 import { EASING } from "@/utils/motion"
 
-import { Button, Snackbar } from "@/components/ui"
+import { Button, Snackbar, ContentCard } from "@/components/ui"
 import { useEventCardLogic } from "@/hooks/useEventCardLogic"
 
 // Sub-components
@@ -92,23 +92,22 @@ const EventCardComponent: FC<EventCardProps> = (props) => {
         y: -4,
         transition: { duration: motionTokens.durationFast, ease: EASING.premium },
       }}
-      className="w-full"
-      onMouseMove={spotlight.onMouseMove}
+      className="w-full outline-none"
+      onKeyDown={(e) => {
+        if (!editOpen && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault()
+          navigateToDetails()
+        }
+      }}
     >
-      <div
+      <ContentCard
+        hoverable={!editOpen}
         className={cn(
-          "card-glass group relative flex flex-col transition-shadow duration-300 ease-out w-full p-fluid-card-p transform-gpu will-change-transform rounded-fluid-lg bg-glass-elevated border-glass-border-subtle shadow-premium",
+          "card-glass group w-full transform-gpu will-change-transform rounded-fluid-lg bg-glass-elevated border-glass-border-subtle hover:shadow-premium-lift shadow-premium",
           editOpen ? "cursor-default" : "card-interactive"
         )}
-        role="button"
-        tabIndex={0}
         onClick={onCardClick}
-        onKeyDown={(e) => {
-          if (!editOpen && (e.key === "Enter" || e.key === " ")) {
-            e.preventDefault()
-            navigateToDetails()
-          }
-        }}
+        onMouseMove={spotlight.onMouseMove}
       >
         <SpotlightOverlay
           mouseX={spotlight.mouseX}
@@ -118,62 +117,62 @@ const EventCardComponent: FC<EventCardProps> = (props) => {
 
         {/* Admin Menu */}
         {user && (user.role === "admin" || user.role === "teacher") && (
-          <Suspense
-            fallback={
-              <div className="absolute top-3 right-3 w-8 h-8 rounded-full bg-glass animate-pulse" />
-            }
-          >
-            <EventAdminActions
-              menuAnchor={menuAnchor}
-              setMenuAnchor={setMenuAnchor}
-              onEdit={() => setEditOpen(true)}
-              onDelete={() => setConfirmDeleteOpen(true)}
-              menuId={menuId}
-            />
-          </Suspense>
+          <ContentCard.Actions className="absolute top-3 right-3 z-(--z-surface)">
+            <Suspense fallback={<div className="w-8 h-8 rounded-full bg-glass animate-pulse" />}>
+              <EventAdminActions
+                menuAnchor={menuAnchor}
+                setMenuAnchor={setMenuAnchor}
+                onEdit={() => setEditOpen(true)}
+                onDelete={() => setConfirmDeleteOpen(true)}
+                menuId={menuId}
+              />
+            </Suspense>
+          </ContentCard.Actions>
         )}
 
-        {/* Media Section */}
-        <EventMedia
-          imageUrl={cardImageUrl || undefined}
-          alt={title || ""}
-          eventType={event_type || undefined}
-          timeStatus={timeStatus}
-          isReady={cardImageReady}
-          onReady={() => setCardImageReady(true)}
-          onImageClick={navigateToDetails}
-        />
+        <ContentCard.Body className="p-fluid-card-p flex flex-col h-full">
+          {/* Media Section */}
+          <EventMedia
+            imageUrl={cardImageUrl || undefined}
+            alt={title || ""}
+            eventType={event_type || undefined}
+            timeStatus={timeStatus}
+            isReady={cardImageReady}
+            onReady={() => setCardImageReady(true)}
+            onImageClick={navigateToDetails}
+          />
 
-        {/* Info Section */}
-        <EventInfo
-          title={title || ""}
-          speaker={speaker || undefined}
-          startsAt={starts_at || ""}
-          endsAt={ends_at || ""}
-          location={location || ""}
-          description={description || ""}
-        />
+          {/* Info Section */}
+          <EventInfo
+            title={title || ""}
+            speaker={speaker || undefined}
+            startsAt={starts_at || ""}
+            endsAt={ends_at || ""}
+            location={location || ""}
+            description={description || ""}
+          />
 
-        {/* Actions Section */}
-        <EventActions
-          eventId={id}
-          isActive={is_active ?? true}
-          isEnded={eventEnded}
-          isRegistered={registration.isRegistered}
-          participantCount={registration.participantCount}
-          qrToken={registration.qrToken}
-          loading={loading || registration.isLoading}
-          onRegister={registration.register}
-          onUnregister={registration.unregister}
-          userRole={user?.role}
-        />
+          {/* Actions Section */}
+          <EventActions
+            eventId={id}
+            isActive={is_active ?? true}
+            isEnded={eventEnded}
+            isRegistered={registration.isRegistered}
+            participantCount={registration.participantCount}
+            qrToken={registration.qrToken}
+            loading={loading || registration.isLoading}
+            onRegister={registration.register}
+            onUnregister={registration.unregister}
+            userRole={user?.role}
+          />
+        </ContentCard.Body>
 
         {/* Dialogs */}
         <Suspense fallback={null}>
           <EventEditDialog
             open={editOpen}
             onClose={() => setEditOpen(false)}
-            draft={editData as any}
+            draft={editData}
             setDraft={setEditData}
             onSave={handleEdit}
             loading={loading}
@@ -211,7 +210,7 @@ const EventCardComponent: FC<EventCardProps> = (props) => {
         </Dialog>
 
         <Snackbar open={!!snackbar} message={snackbar} onClose={() => setSnackbar("")} />
-      </div>
+      </ContentCard>
     </motion.div>
   )
 }

@@ -10,13 +10,13 @@ import api from "../api/client"
 import { useAuth } from "../contexts/AuthContext"
 import { useEventRegistration } from "@/hooks/useEventRegistration"
 import { useSpotlight } from "@/components/ui/Spotlight"
-import type { Event } from "@/types/Event"
+import type { Event, EventEditDraft } from "@/types/Event"
+
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
 dayjs.extend(relativeTime)
 
-export type EventEditDraft = Partial<Event>
 
 const normalizeDate = (d?: string) => (d ? d.replace("T", " ").replace("Z", "") : "")
 
@@ -65,18 +65,18 @@ export function useEventCardLogic({
 
   // -- Edit Form State --
   const [editData, setEditData] = useState<EventEditDraft>({
-    title,
-    title_en,
-    description,
-    description_en,
-    event_type,
-    event_type_en,
-    location,
-    location_en,
-    starts_at,
-    ends_at,
-    speaker,
-    image_url,
+    title: title || "",
+    title_en: title_en || "",
+    description: description || "",
+    description_en: description_en || "",
+    event_type: event_type || "",
+    event_type_en: event_type_en || "",
+    location: location || "",
+    location_en: location_en || "",
+    starts_at: starts_at || "",
+    ends_at: ends_at || "",
+    speaker: speaker || "",
+    image_url: image_url || "",
   })
 
   const menuId = useMemo(() => `event-card-menu-${id}`, [id])

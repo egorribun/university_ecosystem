@@ -92,7 +92,9 @@ export default function ResetPassword() {
     try {
       const bad = await isPwnedPassword(value)
       if (value === password) setPwned(bad)
-    } catch {}
+    } catch {
+      // ignore
+    }
   }
 
   const [resetState, resetAction, resetPending] = useActionState<ResetState, FormData>(
@@ -148,7 +150,7 @@ export default function ResetPassword() {
   return (
     <div className="min-h-screen bg-(--bg-page) text-(--text-primary) flex items-center justify-center p-6 relative overflow-hidden">
       {/* Background decorative elements */}
-      <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-(--opacity-dim)">
+      <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-dim">
         <div className="absolute top-[-10%] right-[-5%] w-[40%] h-[40%] bg-(--glow-spotlight-primary) rounded-full blur-(--glow-blur-massive)" />
         <div className="absolute bottom-[-10%] left-[-5%] w-[40%] h-[40%] bg-(--glow-spotlight-secondary) rounded-full blur-(--glow-blur-massive)" />
       </div>
@@ -256,7 +258,7 @@ export default function ResetPassword() {
                               className="h-1.5"
                             />
                             <div className="flex justify-between items-center">
-                              <p className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-(--opacity-strong)">
+                              <p className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-strong">
                                 {t("auth:register.passwordStrength")}
                               </p>
                               <p className="text-label-xs font-bold text-brand uppercase tracking-widest">
@@ -302,7 +304,14 @@ export default function ResetPassword() {
                           }
                           fullWidth
                           autoComplete="new-password"
-                          ref={confirmRef}
+                          ref={(input) => {
+                            if (input) {
+                              confirmRef.current = input;
+                              // If you want to auto-focus on initial render of this field,
+                              // you can uncomment the line below.
+                              // setTimeout(() => input.focus(), 0);
+                            }
+                          }}
                           disabled={resetPending}
                           className="rounded-md"
                           trailingIcon={

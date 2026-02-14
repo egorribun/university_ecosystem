@@ -89,7 +89,7 @@ const areDeepEqual = (a: unknown, b: unknown): boolean => {
   if (keysA.length !== keysB.length) return false
   for (const key of keysA) {
     if (!keysB.includes(key)) return false
-    if (!areDeepEqual((a as any)[key], (b as any)[key])) return false
+    if (!areDeepEqual((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key])) return false
   }
   return true
 }
@@ -253,7 +253,7 @@ const decryptData = async (
     const decrypted = await subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext)
     const decoded = new TextDecoder().decode(decrypted)
     return JSON.parse(decoded) as CachedUserSnapshot
-  } catch (e) {
+  } catch (_e) {
     // Decryption failed (wrong key or tampering)
     return null
   }
@@ -566,7 +566,9 @@ export const useProfileSync = (
       if (typeof window === "undefined") return
       try {
         migrateProfileCache()
-      } catch {}
+      } catch {
+        // ignore
+      }
 
       const signingKey = readStoredSessionSigningKey()
       if (signingKey) {
@@ -592,9 +594,9 @@ export const useProfileSync = (
       const channel = new BroadcastChannel(PROFILE_BROADCAST_CHANNEL)
       channel.postMessage(message)
       channel.close()
-    } catch (error) {
+    } catch (_error) {
       if (import.meta.env.DEV) {
-        console.warn("Failed to broadcast profile event", error)
+        console.warn("Failed to broadcast profile event", _error)
       }
     }
   }, [])
@@ -761,9 +763,9 @@ export const useProfileSync = (
       try {
         channel = new BroadcastChannel(PROFILE_BROADCAST_CHANNEL)
         channel.addEventListener("message", onBroadcastMessage as EventListener)
-      } catch (error) {
+      } catch (_error) {
         if (import.meta.env.DEV) {
-          console.warn("Failed to subscribe to profile broadcast channel", error)
+          console.warn("Failed to subscribe to profile broadcast channel", _error)
         }
       }
     }
@@ -799,9 +801,9 @@ export const useProfileSync = (
         const profile = await fetchCurrentUser({ signal: controller.signal })
         try {
           await ensureSessionSigningKey()
-        } catch (error) {
+        } catch (_error) {
           if (!controller.signal.aborted && import.meta.env.DEV) {
-            console.warn("Failed to obtain session signing key", error)
+            console.warn("Failed to obtain session signing key", _error)
           }
         }
         if (!areDeepEqual(userStateRef.current, profile)) {

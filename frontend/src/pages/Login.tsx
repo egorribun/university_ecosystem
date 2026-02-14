@@ -10,6 +10,8 @@ import {
   Zap,
   ShieldCheck,
   Sparkles,
+  Fingerprint,
+  LogIn,
 } from "lucide-react"
 import { motion } from "framer-motion"
 import { ChallengeLockedError, useAuth } from "@/contexts/AuthContext"
@@ -19,7 +21,6 @@ import OtpEntry from "@/components/mfa/OtpEntry"
 import ParticleAuthBackground from "@/components/ui/ParticleAuthBackground"
 import { Input } from "@/components/ui/Input"
 import { startAuthentication, browserSupportsWebAuthn } from "@simplewebauthn/browser"
-import { Fingerprint } from "lucide-react"
 import { useLocalStorage } from "@/hooks/useLocalStorage"
 import { levenshtein } from "@/utils/levenshtein"
 import { COMMON_EMAIL_DOMAINS } from "@/constants/emailDomains"
@@ -75,7 +76,6 @@ const Login = () => {
   const redirectPath = state?.from?.pathname || "/dashboard"
 
   const [savedEmail, setSavedEmail] = useLocalStorage<string>("auth:lastEmail", "")
-  // Keep savedEmail ref for internal logic consistency with minimum changes
   const savedEmailRef = useRef(savedEmail)
   useEffect(() => {
     savedEmailRef.current = savedEmail
@@ -84,7 +84,6 @@ const Login = () => {
   const [trustDeviceStored, setTrustDeviceStored] = useLocalStorage<string>("auth:trustDevice", "0")
   const [trustDevice, setTrustDevice] = useState<boolean>(trustDeviceStored === "1")
 
-  // Sync trustDevice state back to storage
   useEffect(() => {
     setTrustDeviceStored(trustDevice ? "1" : "0")
   }, [trustDevice, setTrustDeviceStored])
@@ -156,13 +155,7 @@ const Login = () => {
     null
   )
 
-  // Sync submitting state for other parts of UI (like passkey) if needed,
-  // or just use isPending for the form.
-  // Note: handlePasskeyLogin still uses 'submitting' state.
-  // We keep 'submitting' for passkey but use 'isPending' for form.
-
   const [passkeyError, setPasskeyError] = useState<string | null>(null)
-
   const otpHelperText = null
 
   const handleEmailBlur = () => {
@@ -195,7 +188,6 @@ const Login = () => {
     [loginChallenge]
   )
 
-  // Check if browser supports WebAuthn (requires secure context: HTTPS or localhost)
   const webauthnSupported = useMemo(() => browserSupportsWebAuthn(), [])
 
   const handlePasskeyLogin = async () => {
@@ -338,18 +330,6 @@ const Login = () => {
     },
   ]
 
-  const statPills = [
-    {
-      icon: Zap,
-      value: t("auth:login.statFast", { defaultValue: "Быстро" }),
-      label: t("auth:login.statFastLabel", { defaultValue: "и безопасно" }),
-    },
-    {
-      icon: Sparkles,
-      value: t("auth:login.statSmart", { defaultValue: "Удобный и умный интерфейс" }),
-    },
-  ]
-
   if (loginChallenge) {
     return (
       <div className="fixed inset-0 min-h-screen w-full bg-linear-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
@@ -382,7 +362,7 @@ const Login = () => {
                       type="button"
                       onClick={handleWebAuthnVerify}
                       disabled={mfaBusy}
-                      className="inline-flex w-full items-center justify-center gap-3 rounded-xl bg-brand/(--opacity-subtle) px-6 py-4 text-lg font-bold text-brand transition hover:bg-brand/(--opacity-dim) disabled:opacity-(--opacity-medium)"
+                      className="inline-flex w-full items-center justify-center gap-3 rounded-xl bg-brand/(--opacity-subtle) px-6 py-4 text-lg font-bold text-brand transition hover:bg-brand/(--opacity-dim) disabled:opacity-medium"
                     >
                       <Fingerprint className="h-6 w-6" />
                       {t("auth:mfa.webauthn.useSecurityKey", {
@@ -501,19 +481,21 @@ const Login = () => {
           </div>
 
           <div className="mt-10 flex flex-wrap gap-4">
-            {statPills.map((pill, i) => (
-              <div key={i} className={badgeClass.replace("items-baseline", "items-center")}>
-                <pill.icon className="mr-1 h-4 w-4 text-brand" strokeWidth={3} />
-                <span className="text-xs font-extrabold uppercase tracking-[0.2em]">
-                  {pill.value}
-                </span>
-                {pill.label && (
-                  <span className="text-xs font-extrabold uppercase tracking-[0.2em]">
-                    {pill.label}
-                  </span>
-                )}
-              </div>
-            ))}
+            <div className={badgeClass.replace("items-baseline", "items-center")}>
+              <Zap className="mr-1 h-4 w-4 text-brand" strokeWidth={3} />
+              <span className="text-xs font-extrabold uppercase tracking-[0.2em]">
+                {t("auth:login.statFast", { defaultValue: "Быстро" })}
+              </span>
+              <span className="text-xs font-extrabold uppercase tracking-[0.2em] ml-1">
+                {t("auth:login.statFastLabel", { defaultValue: "и безопасно" })}
+              </span>
+            </div>
+            <div className={badgeClass.replace("items-baseline", "items-center")}>
+              <Sparkles className="mr-1 h-4 w-4 text-brand" strokeWidth={3} />
+              <span className="text-xs font-extrabold uppercase tracking-[0.2em]">
+                {t("auth:login.statSmart", { defaultValue: "Умный интерфейс" })}
+              </span>
+            </div>
           </div>
         </motion.div>
 
@@ -543,11 +525,15 @@ const Login = () => {
                 type="email"
                 className={!emailValid ? "border-error-text focus:border-error-text" : ""}
                 defaultValue={savedEmail}
-                ref={emailRef}
+                ref={(el) => {
+                  emailRef.current = el
+                  if (el) {
+                    setTimeout(() => el.focus(), 0)
+                  }
+                }}
                 onChange={(event) => setEmailMirror(event.target.value)}
                 onBlur={handleEmailBlur}
                 autoComplete="username"
-                autoFocus
                 disabled={isPending || submitting}
                 inputMode="email"
                 required
@@ -635,7 +621,7 @@ const Login = () => {
             <div className="flex flex-col gap-3">
               <button
                 type="submit"
-                className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-linear-to-b from-brand to-brand-hover px-6 py-4 text-lg font-extrabold text-white shadow-premium transition hover:-translate-y-0.5 hover:shadow-glass-strong disabled:opacity-(--opacity-strong)"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-linear-to-b from-brand to-brand-hover px-6 py-4 text-lg font-extrabold text-white shadow-premium transition hover:-translate-y-0.5 hover:shadow-glass-strong disabled:opacity-strong"
                 disabled={isPending || submitting}
               >
                 {isPending || submitting ? (
@@ -644,7 +630,10 @@ const Login = () => {
                     {t("auth:login.processing", { defaultValue: "Входим..." })}
                   </>
                 ) : (
-                  t("auth:actions.signIn")
+                  <>
+                    <LogIn className="h-6 w-6 mr-2" />
+                    {t("auth:actions.signIn")}
+                  </>
                 )}
               </button>
 
@@ -653,7 +642,7 @@ const Login = () => {
                   type="button"
                   onClick={handlePasskeyLogin}
                   disabled={submitting}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-brand/(--opacity-medium) bg-brand/(--opacity-subtle) px-6 py-4 text-lg font-extrabold text-brand shadow-surface transition hover:-translate-y-0.5 hover:bg-brand/(--opacity-dim) disabled:opacity-(--opacity-strong)"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-brand/(--opacity-medium) bg-brand/(--opacity-subtle) px-6 py-4 text-lg font-extrabold text-brand shadow-surface transition hover:-translate-y-0.5 hover:bg-brand/(--opacity-dim) disabled:opacity-strong"
                 >
                   <Fingerprint className="h-6 w-6" />
                   {t("auth:login.signInWithPasskey", { defaultValue: "Войти с помощью Passkey" })}

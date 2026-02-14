@@ -41,14 +41,18 @@ export const EventActions: React.FC<EventActionsProps> = ({
       if (wasOpen && qrToken) {
         setQrOpen(true)
       }
-    } catch {}
+    } catch {
+      // ignore
+    }
   }, [eventId, qrToken])
 
   useEffect(() => {
     try {
       if (qrOpen) sessionStorage.setItem(qrOpenKey(eventId), "1")
       else sessionStorage.removeItem(qrOpenKey(eventId))
-    } catch {}
+    } catch {
+      // ignore
+    }
   }, [qrOpen, eventId])
 
   return (

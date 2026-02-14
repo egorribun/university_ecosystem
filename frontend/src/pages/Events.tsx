@@ -252,7 +252,9 @@ const Events = () => {
       setTab("active")
       void queryClient.invalidateQueries({ queryKey: ["events"] })
       window.scrollTo({ top: 0, behavior: "smooth" })
-    } catch {}
+    } catch {
+      // ignore
+    }
   }
 
   const handleRefresh = useCallback(() => {

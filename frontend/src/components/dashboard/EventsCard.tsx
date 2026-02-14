@@ -14,14 +14,13 @@ import type { Event } from "@/types/Event"
 import dayjs from "dayjs"
 
 interface EventsCardProps {
-  locale: string
   className?: string
   style?: CSSProperties
   "data-fade"?: string
   "data-pop"?: string
 }
 
-export function EventsCard({ locale, className, style, ...props }: EventsCardProps) {
+export function EventsCard({ className, style, ...props }: EventsCardProps) {
   const { t } = useTranslation(["dashboard", "common"])
   const navigate = useNavigate()
   const { language } = useLanguage()
@@ -148,7 +147,7 @@ export function EventsCard({ locale, className, style, ...props }: EventsCardPro
             {[1, 2, 3].map((i) => (
               <div
                 key={i}
-                className="flex flex-col gap-2 rounded-sm border border-border-subtle bg-(--bg-surface)/(--opacity-dim) px-4 py-3 opacity-(--opacity-medium)"
+                className="flex flex-col gap-2 rounded-sm border border-border-subtle bg-(--bg-surface)/(--opacity-dim) px-4 py-3 opacity-medium"
               >
                 <Skeleton width="60%" height={20} />
                 <div className="flex items-center gap-2">

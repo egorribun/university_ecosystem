@@ -3,59 +3,39 @@
 
 <head>
   <script>
-    ; (function () {
+    ;(function () {
+      // 1. Theme Initialization
       var s = null
-      try {
-        s = localStorage.getItem("ue-mode")
-      } catch (e) { }
+      try { s = localStorage.getItem("ue-mode") } catch (e) {}
       var m = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
       var dark = s ? s === "dark" : m
-      // Standardized theme colors from theme.css
-      var bg = dark ? "#020617" : "#f8fafc"
       var html = document.documentElement
-      html.style.backgroundColor = bg
-      html.style.setProperty("--initial-bg", bg)
-      if (dark) {
-        html.classList.add("dark")
-      }
+      if (dark) html.classList.add("dark")
+
+      // 2. Language Detection
+      var lang = "ru"
+      try {
+        var storedLang = localStorage.getItem("ue:language")
+        if (storedLang === "en" || storedLang === "ru") {
+          lang = storedLang
+        } else {
+          var browser = (navigator.language || "").toLowerCase()
+          if (browser.indexOf("en") === 0) lang = "en"
+        }
+      } catch (error) {}
+      html.setAttribute("lang", lang)
+      window.__UE_SELECTED_LANG__ = lang
+
+      // 3. Static Shell Hooks
+      import("/static-shell-i18n.js")
+        .then(({ applyDocumentLanguage, applyMetaTranslations }) => {
+          applyDocumentLanguage(document, lang)
+          applyMetaTranslations(document, lang)
+        })
+        .catch(function(err) { console.error("i18n fail", err) })
     })()
   </script>
-  <!-- LHCI_MODE_MARKER -->
-  <style>
-    /* LHCI_CSS_PLACEHOLDER */
-  </style>
-  <script>
-      ; (function () {
-        import("/static-shell-i18n.js")
-          .then(({ applyDocumentLanguage, applyMetaTranslations, getPreferredLanguage }) => {
-            const language = window.__UE_SELECTED_LANG__ || getPreferredLanguage(window)
-            window.__UE_SELECTED_LANG__ = language
-            applyDocumentLanguage(document, language)
-            applyMetaTranslations(document, language)
-          })
-          .catch((error) => {
-            console.error("Failed to load static shell translations", error)
-          })
-      })()
-  </script>
-  <script>
-      ; (function () {
-        var lang = "ru"
-        try {
-          var storedLang = localStorage.getItem("ue:language")
-          if (storedLang === "en" || storedLang === "ru") {
-            lang = storedLang
-          } else {
-            var browser = (navigator.language || "").toLowerCase()
-            if (browser.indexOf("en") === 0) {
-              lang = "en"
-            }
-          }
-        } catch (error) { }
-        document.documentElement.setAttribute("lang", lang)
-        window.__UE_SELECTED_LANG__ = lang
-      })()
-  </script>
+
   <style>
     :root {
       --initial-bg: #f8fafc;
@@ -139,6 +119,7 @@
   <meta name="twitter:title" content="Экосистема ГУУ" />
   <meta name="twitter:description" content="Личный кабинет: профиль, расписание, новости и события кампуса." />
   <meta name="twitter:image" content="/og-image.png" />
+  <meta name="google-site-verification" content="not-applicable" />
   <title>Экосистема ГУУ</title>
   <link rel="icon" href="/favicon.ico" sizes="any" />
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />

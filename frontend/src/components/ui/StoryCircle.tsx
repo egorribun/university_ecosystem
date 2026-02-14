@@ -4,12 +4,6 @@ import type { PolymorphicComponentProps } from "@/types/polymorphic"
 
 export type StoryCircleSize = "sm" | "md" | "lg"
 
-export const STORY_CIRCLE_SIZE_MAP: Record<StoryCircleSize, number> = {
-  sm: 76.8,
-  md: 91.2,
-  lg: 110.4,
-}
-
 type StoryCircleOwnProps = {
   size?: StoryCircleSize
   borderWidth?: number
@@ -32,7 +26,6 @@ export const StoryCircle = <T extends ElementType = "div">({
   ...rest
 }: StoryCircleProps<T>) => {
   const Component = (as ?? "div") as ElementType
-  const dimension = STORY_CIRCLE_SIZE_MAP[size]
 
   return (
     <Component
@@ -43,13 +36,12 @@ export const StoryCircle = <T extends ElementType = "div">({
         "hover:shadow-xl hover:-translate-y-0.5",
         "focus-visible:outline-(--primary-main) focus-visible:ring-4 focus-visible:ring-(--primary-main)/(--opacity-dim)",
         "motion-reduce:hover:translate-y-0",
+        size === "sm" && "h-(--size-story-sm) w-(--size-story-sm) min-h-(--size-story-sm) min-w-(--size-story-sm)",
+        size === "md" && "h-(--size-story-md) w-(--size-story-md) min-h-(--size-story-md) min-w-(--size-story-md)",
+        size === "lg" && "h-(--size-story-lg) w-(--size-story-lg) min-h-(--size-story-lg) min-w-(--size-story-lg)",
         className
       )}
       style={{
-        width: dimension,
-        height: dimension,
-        minWidth: dimension,
-        minHeight: dimension,
         border: `${borderWidth}px solid color-mix(in srgb, var(--text-primary) 15%, transparent)`,
         ...style,
       }}
@@ -57,7 +49,7 @@ export const StoryCircle = <T extends ElementType = "div">({
     >
       <span
         aria-hidden
-        className="pointer-events-none absolute inset-0 rounded-full border border-(--primary-main)/(--opacity-subtle) opacity-0 transition-opacity duration-300 group-focus-visible/story:opacity-100 group-hover/story:opacity-(--opacity-medium)"
+        className="pointer-events-none absolute inset-0 rounded-full border border-(--primary-main)/(--opacity-subtle) opacity-0 transition-opacity duration-300 group-focus-visible/story:opacity-100 group-hover/story:opacity-medium"
         style={{ outlineOffset: 3 }}
       />
       <span className="relative z-(--z-deep) flex h-full w-full items-center justify-center overflow-hidden rounded-full">

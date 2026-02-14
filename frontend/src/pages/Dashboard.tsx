@@ -64,9 +64,7 @@ export default function Dashboard() {
         dateStr={dateStr}
         isNarrow={isNarrow}
         prefersReducedMotion={prefersReducedMotion}
-      />
-
-      <div className="relative z-(--z-base) -mt-(--space-10) px-4 pb-16 sm:px-8 md:px-12 lg:px-16">
+      >
         <ScrollReveal mode="slide" direction="up" delay={0.2}>
           <DashboardStories
             stories={stories}
@@ -76,7 +74,7 @@ export default function Dashboard() {
           />
         </ScrollReveal>
 
-        <div className="mt-6 grid w-full grid-cols-12 gap-4 md:mt-8 md:gap-6">
+        <div className="mt-6 grid w-full grid-cols-12 gap-4 md:mt-8 md:gap-6 pb-16">
           <div className="col-span-12 lg:col-span-4">
             <ScrollReveal mode="slide" direction="up" delay={0.3} width="100%">
               <ScheduleCard userRole={user?.role} userGroupId={user?.group_id} time={time} />
@@ -91,11 +89,11 @@ export default function Dashboard() {
 
           <div className="col-span-12 lg:col-span-4">
             <ScrollReveal mode="slide" direction="up" delay={0.5} width="100%">
-              <EventsCard locale={locale} />
+              <EventsCard />
             </ScrollReveal>
           </div>
         </div>
-      </div>
+      </DashboardHero>
     </PageLayout>
   )
 }

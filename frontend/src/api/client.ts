@@ -126,7 +126,9 @@ const loadEtagCache = (): Map<string, string> => {
       const entries: [string, string][] = JSON.parse(stored)
       return new Map(entries)
     }
-  } catch {}
+  } catch {
+    // ignore
+  }
   return new Map()
 }
 
@@ -144,7 +146,9 @@ const saveEtagCache = (cache: Map<string, string>) => {
     }
     const entries = Array.from(cache.entries())
     localStorage.setItem(ETAG_CACHE_KEY, JSON.stringify(entries))
-  } catch {}
+  } catch {
+    // ignore
+  }
 }
 
 // Response body cache for 304 handling
@@ -156,7 +160,9 @@ const loadResponseCache = (): Map<string, unknown> => {
       const entries: [string, unknown][] = JSON.parse(stored)
       return new Map(entries)
     }
-  } catch {}
+  } catch {
+    // ignore
+  }
   return new Map()
 }
 
@@ -174,7 +180,9 @@ const saveResponseCache = (cache: Map<string, unknown>) => {
     }
     const entries = Array.from(cache.entries())
     localStorage.setItem(RESPONSE_CACHE_KEY, JSON.stringify(entries))
-  } catch {}
+  } catch {
+    // ignore
+  }
 }
 
 // Create a proxy wrapper that syncs with localStorage
@@ -200,7 +208,9 @@ const createEtagCache = () => {
       if (typeof window !== "undefined") {
         try {
           localStorage.removeItem(ETAG_CACHE_KEY)
-        } catch {}
+        } catch {
+          // ignore
+        }
       }
     },
   }
@@ -235,7 +245,9 @@ const createResponseCache = () => {
       if (typeof window !== "undefined") {
         try {
           localStorage.removeItem(RESPONSE_CACHE_KEY)
-        } catch {}
+        } catch {
+          // ignore
+        }
       }
     },
   }

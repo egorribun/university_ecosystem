@@ -136,7 +136,7 @@ export default function MapContent() {
     }
     computeTop()
     const nav = document.querySelector<HTMLElement>(".navbar-root")
-    const ro = (window as any).ResizeObserver ? new ResizeObserver(() => computeTop()) : null
+    const ro = window.ResizeObserver ? new ResizeObserver(() => computeTop()) : null
     if (nav && ro) ro.observe(nav)
     window.addEventListener("resize", computeTop)
     window.addEventListener("orientationchange", computeTop)

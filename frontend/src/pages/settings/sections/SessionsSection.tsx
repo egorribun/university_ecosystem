@@ -130,15 +130,13 @@ export function SessionsSection({
                     </p>
                   </div>
                   <div className="flex flex-row flex-wrap items-center justify-start gap-2 gap-y-1.5 sm:justify-end">
-                    <Chip
-                      key={isRevoked ? "revoked" : "active"}
-                      data-testid={`session-status-${session.id}`}
-                      size="small"
-                      label={statusLabel}
-                      variant="outlined"
-                      color={session.is_current ? "primary" : "default"}
-                      className={cn("font-semibold", isRevoked && "opacity-(--opacity-hover)")}
-                    />
+                     <Chip
+                       key={isRevoked ? "revoked" : "active"}
+                       data-testid={`session-status-${session.id}`}
+                       label={statusLabel}
+                       color={session.is_current ? "primary" : "default"}
+                       className={cn("font-semibold", isRevoked && "opacity-hover")}
+                     />
                     {!session.is_current && !isRevoked && (
                       <Button
                         data-testid={`session-revoke-${session.id}`}

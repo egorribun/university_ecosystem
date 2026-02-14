@@ -330,7 +330,9 @@ export async function useMockApi(page: Page) {
           console.error(`[GlobalErrors] Unhandled rejection: ${error?.message || error}`)
         }
       })
-    } catch {}
+    } catch {
+      // ignore
+    }
   })
 
   page.on("console", (msg) => {
@@ -393,7 +395,9 @@ export async function useMockApi(page: Page) {
           const params = new URLSearchParams(postData)
           username = params.get("username") || ""
         }
-      } catch {}
+      } catch {
+        // ignore
+      }
 
       if (username === "student@example.com" || username === "student") {
         state.loggedIn = true

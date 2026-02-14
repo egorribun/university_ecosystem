@@ -110,7 +110,7 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
             </p>
           </div>
 
-          <div className="space-y-1 opacity-(--opacity-strong)">
+          <div className="space-y-1 opacity-strong">
             <p id={instructionsId} className="text-sm font-bold text-(--text-tertiary)">
               {t("map.fallback.instructions")}
             </p>
@@ -142,7 +142,7 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
         >
           <p
             id={listLabelId}
-            className="text-label-xs font-black uppercase tracking-[0.2em] text-(--text-tertiary) opacity-(--opacity-medium) px-1"
+            className="text-label-xs font-black uppercase tracking-[0.2em] text-(--text-tertiary) opacity-medium px-1"
           >
             {t("map.fallback.listLabel")}
           </p>
@@ -160,6 +160,12 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
                 tabIndex={isActive ? 0 : -1}
                 onFocus={() => setActiveIndex(index)}
                 onClick={() => focusIndex(index)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault()
+                    focusIndex(index)
+                  }
+                }}
                 className={cn(
                   "group relative flex flex-col gap-3 rounded-lg p-6 transition-all duration-500 cursor-pointer outline-none",
                   "border backdrop-blur-xl shadow-glass",
@@ -173,7 +179,7 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
                     <h3 className="text-lg font-black tracking-tight text-(--text-primary) sf-pro">
                       {point.name}
                     </h3>
-                    <div className="flex items-center gap-2 text-sm font-bold text-(--text-secondary) opacity-(--opacity-hover)">
+                    <div className="flex items-center gap-2 text-sm font-bold text-(--text-secondary) opacity-hover">
                       <MapPin className="h-3.5 w-3.5 shrink-0 text-brand" />
                       {point.address}
                     </div>
@@ -181,16 +187,16 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
                   <div
                     className={cn(
                       "p-2 rounded-md transition-all duration-500",
-                      isActive
+                        isActive
                         ? "bg-brand text-white shadow-lg shadow-brand/(--opacity-medium)"
-                        : "bg-(--bg-surface-hover)/(--opacity-dim) text-(--text-tertiary) opacity-(--opacity-dim) group-hover:opacity-100"
+                        : "bg-(--bg-surface-hover)/(--opacity-dim) text-(--text-tertiary) opacity-dim group-hover:opacity-100"
                     )}
                   >
                     <ChevronRight className="h-5 w-5" />
                   </div>
                 </div>
 
-                <p className="text-sm font-medium text-(--text-secondary) leading-relaxed opacity-(--opacity-heavy) line-clamp-2">
+                <p className="text-sm font-medium text-(--text-secondary) leading-relaxed opacity-heavy line-clamp-2">
                   {point.description}
                 </p>
 

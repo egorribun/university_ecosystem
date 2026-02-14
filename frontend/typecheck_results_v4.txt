@@ -1,0 +1,26 @@
+
+> frontend@1.0.0 typecheck
+> tsc --noEmit
+
+src/hooks/auth/useProfileSync.ts(187,7): error TS2769: No overload matches this call.
+  Overload 1 of 3, '(algorithm: AlgorithmIdentifier | EcdhKeyDeriveParams | HkdfParams | Pbkdf2Params, baseKey: CryptoKey, derivedKeyType: AlgorithmIdentifier | ... 3 more ... | AesDerivedKeyParams, extractable: boolean, keyUsages: KeyUsage[]): Promise<...>', gave the following error.
+    Type 'ArrayBufferView<ArrayBufferLike>' is not assignable to type 'BufferSource'.
+      Type 'ArrayBufferView<ArrayBufferLike>' is not assignable to type 'ArrayBufferView<ArrayBuffer>'.
+        Type 'ArrayBufferLike' is not assignable to type 'ArrayBuffer'.
+          Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer'.
+            Types of property '[Symbol.toStringTag]' are incompatible.
+              Type '"SharedArrayBuffer"' is not assignable to type '"ArrayBuffer"'.
+  Overload 2 of 3, '(algorithm: AlgorithmIdentifier | EcdhKeyDeriveParams | HkdfParams | Pbkdf2Params, baseKey: CryptoKey, derivedKeyType: AlgorithmIdentifier | ... 3 more ... | AesDerivedKeyParams, extractable: boolean, keyUsages: Iterable<...>): Promise<...>', gave the following error.
+    Type 'ArrayBufferView<ArrayBufferLike>' is not assignable to type 'BufferSource'.
+      Type 'ArrayBufferView<ArrayBufferLike>' is not assignable to type 'ArrayBufferView<ArrayBuffer>'.
+        Type 'ArrayBufferLike' is not assignable to type 'ArrayBuffer'.
+          Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer'.
+            Types of property '[Symbol.toStringTag]' are incompatible.
+              Type '"SharedArrayBuffer"' is not assignable to type '"ArrayBuffer"'.
+  Overload 3 of 3, '(algorithm: AlgorithmIdentifier | EcdhKeyDeriveParams | HkdfParams | Pbkdf2Params, baseKey: CryptoKey, derivedKeyType: AlgorithmIdentifier | ... 3 more ... | AesDerivedKeyParams, extractable: boolean, keyUsages: KeyUsage[]): Promise<...>', gave the following error.
+    Type 'ArrayBufferView<ArrayBufferLike>' is not assignable to type 'BufferSource'.
+      Type 'ArrayBufferView<ArrayBufferLike>' is not assignable to type 'ArrayBufferView<ArrayBuffer>'.
+        Type 'ArrayBufferLike' is not assignable to type 'ArrayBuffer'.
+          Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer'.
+            Types of property '[Symbol.toStringTag]' are incompatible.
+              Type '"SharedArrayBuffer"' is not assignable to type '"ArrayBuffer"'.

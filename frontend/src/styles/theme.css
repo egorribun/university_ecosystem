@@ -10,6 +10,7 @@
     --radius-lg: 1.5rem;
     --radius-xl: 2rem;
     --radius-2xl: 3rem;
+    --radius-3xl: 4rem;
     --radius-full: 9999px;
 
     /*
@@ -97,6 +98,9 @@
     --h-screen-offset: calc(100vh - var(--navbar-height));
 
     --size-avatar-xl: 120px;
+    --size-story-sm: 4.8rem;
+    --size-story-md: 5.7rem;
+    --size-story-lg: 6.9rem;
     --w-card-sm: 200px;
     --w-card-md: 220px;
 
@@ -239,17 +243,13 @@
     --shadow-premium:
       0 20px 50px color-mix(in srgb, black var(--opacity-subtle), transparent),
       0 8px 16px color-mix(in srgb, black var(--opacity-faint), transparent);
-    --shadow-premium-lift: 0 20px 40px -12px
-      color-mix(in srgb, var(--primary-main) var(--opacity-dim), transparent);
+    --shadow-premium-lift: 0 20px 40px -12px color-mix(in srgb, var(--primary-main) var(--opacity-dim), transparent);
     --shadow-glass: 0 35px 80px color-mix(in srgb, black var(--opacity-dim), transparent);
     --shadow-glass-strong: 0 45px 90px color-mix(in srgb, black var(--opacity-medium), transparent);
     --shadow-up: 0 -4px 12px color-mix(in srgb, black var(--opacity-faint), transparent);
-    --shadow-inner-premium: inset 0 1px 0
-      color-mix(in srgb, white var(--opacity-subtle), transparent);
-    --shadow-glow-blue: 0 0 20px
-      color-mix(in srgb, var(--color-blue-500) var(--opacity-soft), transparent);
-    --shadow-glow-green: 0 0 16px
-      color-mix(in srgb, var(--color-green-500) var(--opacity-soft), transparent);
+    --shadow-inner-premium: inset 0 1px 0 color-mix(in srgb, white var(--opacity-subtle), transparent);
+    --shadow-glow-blue: 0 0 20px color-mix(in srgb, var(--color-blue-500) var(--opacity-soft), transparent);
+    --shadow-glow-green: 0 0 16px color-mix(in srgb, var(--color-green-500) var(--opacity-soft), transparent);
     --shadow-focus: 0 0 0 2px var(--bg-page), 0 0 0 4px var(--primary-main);
 
     /* Brand Specifics */
@@ -257,23 +257,16 @@
     --color-spotify-hover: #1ed760;
 
     /* Semantic Glows & Shadows */
-    --shadow-glow-primary: 0 0 12px
-      color-mix(in srgb, var(--primary-main) var(--opacity-dim), transparent);
-    --shadow-glow-error: 0 0 12px
-      color-mix(in srgb, var(--error-text) var(--opacity-dim), transparent);
-    --shadow-glow-warning: 0 0 12px
-      color-mix(in srgb, var(--warning-text) var(--opacity-dim), transparent);
-    --shadow-glow-success: 0 0 12px
-      color-mix(in srgb, var(--success-text) var(--opacity-dim), transparent);
-    --shadow-pulse-primary: 0 0 0 3px
-      color-mix(in srgb, var(--primary-main) var(--opacity-dim), transparent);
-    --shadow-pulse-warning: 0 0 0 3px
-      color-mix(in srgb, var(--warning-text) var(--opacity-dim), transparent);
-    --shadow-pulse-brand: 0 0 0 2px
-      color-mix(in srgb, var(--primary-main) var(--opacity-subtle), transparent);
+    --shadow-glow-primary: 0 0 12px color-mix(in srgb, var(--primary-main) var(--opacity-dim), transparent);
+    --shadow-glow-error: 0 0 12px color-mix(in srgb, var(--error-text) var(--opacity-dim), transparent);
+    --shadow-glow-warning: 0 0 12px color-mix(in srgb, var(--warning-text) var(--opacity-dim), transparent);
+    --shadow-glow-success: 0 0 12px color-mix(in srgb, var(--success-text) var(--opacity-dim), transparent);
+    --shadow-pulse-primary: 0 0 0 3px color-mix(in srgb, var(--primary-main) var(--opacity-dim), transparent);
+    --shadow-pulse-warning: 0 0 0 3px color-mix(in srgb, var(--warning-text) var(--opacity-dim), transparent);
+    --shadow-pulse-brand: 0 0 0 2px color-mix(in srgb, var(--primary-main) var(--opacity-subtle), transparent);
 
     /* Feature Specific */
-    --lesson-type-default: #888888;
+    --lesson-type-default: var(--color-slate-400);
 
     /* Glass System Extensions */
     --glass-bg-low: color-mix(in srgb, white var(--glass-alpha-low), transparent);
@@ -282,22 +275,16 @@
 
     /* Core Layout Gradients (Standardized) */
     --grad-nav-light:
-      radial-gradient(
-        120% 180% at -10% -20%,
+      radial-gradient(120% 180% at -10% -20%,
         color-mix(in srgb, #2491ff var(--opacity-medium)),
-        transparent 58%
-      ),
-      linear-gradient(
-        112deg,
+        transparent 58%),
+      linear-gradient(112deg,
         var(--bg-surface) 0%,
-        color-mix(in srgb, var(--bg-surface) 96%, black 4%) 100%
-      );
+        color-mix(in srgb, var(--bg-surface) 96%, black 4%) 100%);
     --grad-nav-dark:
-      radial-gradient(
-        120% 180% at -10% -20%,
+      radial-gradient(120% 180% at -10% -20%,
         color-mix(in srgb, #38bdf8 var(--opacity-dim)),
-        transparent 58%
-      ),
+        transparent 58%),
       linear-gradient(112deg, #0a1524 0%, #0b2b47 100%);
 
     /* Semantic Transparency (Alpha Mixes) */
@@ -313,16 +300,12 @@
     --fs-card-title: clamp(1.1rem, 2vw, 1.5rem);
 
     /* Gradients */
-    --grad-news-hero: linear-gradient(
-      180deg,
-      transparent 30%,
-      color-mix(in srgb, #0f172a var(--opacity-strong), transparent) 95%
-    );
-    --grad-overlay: linear-gradient(
-      180deg,
-      transparent 0%,
-      color-mix(in srgb, #0f172a var(--opacity-hover), transparent) 100%
-    );
+    --grad-news-hero: linear-gradient(180deg,
+        transparent 30%,
+        color-mix(in srgb, #0f172a var(--opacity-strong), transparent) 95%);
+    --grad-overlay: linear-gradient(180deg,
+        transparent 0%,
+        color-mix(in srgb, #0f172a var(--opacity-hover), transparent) 100%);
 
     --msg-online-pulse: color-mix(in srgb, var(--success-text) var(--opacity-soft), transparent);
 
@@ -419,16 +402,12 @@
     --text-primary-ghost: color-mix(in srgb, var(--text-primary) 70%, transparent);
 
     /* Auth & Spotlight Glows */
-    --glow-spotlight-primary: color-mix(
-      in srgb,
-      var(--primary-main) var(--opacity-soft),
-      transparent
-    );
-    --glow-spotlight-secondary: color-mix(
-      in srgb,
-      var(--primary-main) var(--opacity-dim),
-      transparent
-    );
+    --glow-spotlight-primary: color-mix(in srgb,
+        var(--primary-main) var(--opacity-soft),
+        transparent);
+    --glow-spotlight-secondary: color-mix(in srgb,
+        var(--primary-main) var(--opacity-dim),
+        transparent);
     --glow-blur-massive: blur(120px);
 
     /* Overlay & Backdrop */
@@ -449,19 +428,16 @@
     --msg-header-bg: color-mix(in srgb, var(--color-slate-900) var(--opacity-heavy), transparent);
     --msg-header-border: var(--color-slate-700);
     --msg-sidebar-hover: var(--color-slate-800);
-    --msg-sidebar-active: color-mix(
-      in srgb,
-      var(--primary-main) var(--opacity-subtle),
-      transparent
-    );
+    --msg-sidebar-active: color-mix(in srgb,
+        var(--primary-main) var(--opacity-subtle),
+        transparent);
     --msg-online-color: var(--color-emerald-400);
 
     /* Glass Tints (Dark Mode) */
     --glass-bg: color-mix(in srgb, #0f172a var(--opacity-subtle), transparent);
     --glass-border: color-mix(in srgb, white var(--opacity-subtle), transparent);
     --glass-shadow: 0 8px 32px 0 color-mix(in srgb, black var(--opacity-soft), transparent);
-    --shadow-glass-strong: 0 12px 48px 0
-      color-mix(in srgb, black var(--opacity-medium), transparent);
+    --shadow-glass-strong: 0 12px 48px 0 color-mix(in srgb, black var(--opacity-medium), transparent);
     --glass-tint1: color-mix(in srgb, #38bdf8 var(--opacity-faint), transparent);
     --glass-tint2: color-mix(in srgb, #8b5cf6 var(--opacity-faint), transparent);
     --glass-tint3: color-mix(in srgb, black var(--opacity-soft), transparent);

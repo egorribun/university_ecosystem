@@ -5,6 +5,7 @@ import NewsCard from "@/components/NewsCard"
 import NewsCardSkeleton from "@/components/NewsCardSkeleton"
 import OfflineFallback from "@/components/OfflineFallback"
 import { Button } from "@/components/ui"
+import { EmptyState } from "@/components/ui/EmptyState"
 import { type NewsItem as News } from "@/api/news"
 
 interface NewsListProps {
@@ -34,9 +35,6 @@ export const NewsList = ({
 }: NewsListProps) => {
   const { t } = useTranslation(["news", "common"])
   const skeletonCount = 6
-  // Logic from News.tsx: showEmptyState = !isInitialLoading && !isFetching && newsList.length === 0
-  // But wait, if isFetching is true (background update), we still show list if we have it?
-  // In News.tsx: const showEmptyState = !isInitialLoading && !isFetching && newsList.length === 0
   const showEmptyState = !isInitialLoading && !isFetching && newsList.length === 0
 
   return (
@@ -66,26 +64,20 @@ export const NewsList = ({
               {!isOnline && newsList.length === 0 ? (
                 <OfflineFallback onRetry={refreshNews} />
               ) : (
-                <div className="flex w-full max-w-md flex-col items-center gap-5 rounded-lg border border-glass-border/(--opacity-soft) bg-(--bg-surface)/(--opacity-medium) px-8 py-14 text-center shadow-glass backdrop-blur-md">
-                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand/(--opacity-subtle) border border-brand/(--opacity-dim) shadow-brand/(--opacity-subtle) shadow-lg">
-                    <ArticleIcon className="h-8 w-8 text-brand" />
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-lg font-semibold text-(--text-primary)">
-                      {t("news:states.empty")}
-                    </p>
-                    <p className="text-sm text-(--text-secondary)">
-                      {t("news:states.checkLater", {
-                        defaultValue: "Check back later for updates",
-                      })}
-                    </p>
-                  </div>
-                  {isAdmin && (
-                    <Button size="lg" onClick={onAddClick} className="mt-2 px-6">
-                      {t("news:actions.add")}
-                    </Button>
-                  )}
-                </div>
+                <EmptyState
+                  icon={<ArticleIcon className="h-8 w-8" />}
+                  title={t("news:states.empty")}
+                  description={t("news:states.checkLater", {
+                    defaultValue: "Check back later for updates",
+                  })}
+                  action={
+                    isAdmin ? (
+                      <Button size="lg" onClick={onAddClick} className="px-6">
+                        {t("news:actions.add")}
+                      </Button>
+                    ) : undefined
+                  }
+                />
               )}
             </div>
           )}

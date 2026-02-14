@@ -72,11 +72,12 @@ export function parsePushEventData(
       return parsed as PushPayload
     }
     return {}
-  } catch (error) {
+  } catch (_error) {
+    // logError("Failed to parse push event data as JSON", _error) // Assuming logError is defined elsewhere
     try {
-      const text = data.text()
-      if (!text) return {}
-      return { body: text }
+      const _text = data.text()
+      if (!_text) return {}
+      return { body: _text }
     } catch {
       return {}
     }

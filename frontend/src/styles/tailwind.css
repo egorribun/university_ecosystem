@@ -142,7 +142,6 @@
 
   /* Gradients */
   --bg-linear-brand: var(--gradient-brand);
-  --bg-linear-brand: var(--gradient-brand);
   --bg-linear-news-hero: var(--grad-news-hero);
 
   /* Opacity Scale */
@@ -208,10 +207,8 @@
   --animate-pulse-shadow: pulse-shadow 2s ease-in-out infinite;
 
   /* Dashboard Specialized Gradients & Effects */
-  --dash-hero-radial-top: var(
-    --dash-hero-radial-top,
-    color-mix(in srgb, #38bdf8 var(--opacity-dim), transparent)
-  );
+  --dash-hero-radial-top: var(--dash-hero-radial-top,
+      color-mix(in srgb, #38bdf8 var(--opacity-dim), transparent));
   --dash-hero-radial-bottom: var(--dash-hero-radial-bottom, transparent);
   --dash-hero-orb: var(--dash-hero-orb);
   --dash-hero-pulse: var(--dash-hero-highlight);
@@ -224,11 +221,9 @@
   --bg-nav-light: var(--grad-nav-light);
   --bg-nav-dark: var(--grad-nav-dark);
   --bg-footer-light:
-    radial-gradient(
-      120% 180% at -10% -20%,
+    radial-gradient(120% 180% at -10% -20%,
       color-mix(in srgb, #2491ff var(--glass-alpha-med), transparent),
-      transparent 60%
-    ),
+      transparent 60%),
     linear-gradient(112deg, var(--primary-main) 0%, var(--primary-hover) 100%);
   --bg-footer-dark: var(--grad-nav-dark);
 }
@@ -248,6 +243,7 @@
 }
 
 @keyframes dash-colon-blink {
+
   0%,
   100% {
     opacity: 1;
@@ -338,6 +334,7 @@
 }
 
 @keyframes msg-online-pulse {
+
   0%,
   100% {
     box-shadow: 0 0 0 0 var(--msg-online-pulse);
@@ -349,6 +346,7 @@
 }
 
 @keyframes msg-typing {
+
   0%,
   60%,
   100% {
@@ -377,6 +375,7 @@
 }
 
 @keyframes pulse-shadow {
+
   0%,
   100% {
     box-shadow: 0 4px 16px -4px color-mix(in srgb, var(--primary-main) 40%, transparent 60%);
@@ -467,6 +466,7 @@
 }
 
 @layer components {
+
   /* Premium Glass Card - Elevated */
   .card-glass {
     @apply relative overflow-hidden rounded-4xl border border-glass-border bg-glass backdrop-blur-2xl shadow-glass;
@@ -477,7 +477,7 @@
 
   .card-glass::before {
     content: "";
-    @apply pointer-events-none absolute inset-0 bg-linear-to-br from-glass-tint1 via-glass-tint2 to-glass-tint3 opacity-(--opacity-dim) mix-blend-overlay;
+    @apply pointer-events-none absolute inset-0 bg-linear-to-br from-glass-tint1 via-glass-tint2 to-glass-tint3 opacity-dim mix-blend-overlay;
     z-index: -1;
   }
 
@@ -503,22 +503,18 @@
   .skeleton::after {
     content: "";
     @apply absolute inset-0;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      color-mix(in srgb, white var(--opacity-subtle), transparent) 50%,
-      transparent 100%
-    );
+    background: linear-gradient(90deg,
+        transparent 0%,
+        color-mix(in srgb, white var(--opacity-subtle), transparent) 50%,
+        transparent 100%);
     animation: skeleton-shimmer 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
   }
 
   .dark .skeleton::after {
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      color-mix(in srgb, white var(--opacity-faint), transparent) 50%,
-      transparent 100%
-    );
+    background: linear-gradient(90deg,
+        transparent 0%,
+        color-mix(in srgb, white var(--opacity-faint), transparent) 50%,
+        transparent 100%);
   }
 
   /* Skip-link for keyboard navigation */

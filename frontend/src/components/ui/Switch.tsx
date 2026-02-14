@@ -43,7 +43,7 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
           "relative inline-flex h-7 w-14 cursor-pointer items-center rounded-full p-0.5",
           "touch-manipulation select-none transition-premium",
           disabled
-            ? "cursor-not-allowed opacity-(--opacity-medium)"
+            ? "cursor-not-allowed opacity-medium"
             : "hover:scale-105 active:scale-95",
           className
         )}
@@ -97,7 +97,7 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
             checked && "bg-surface"
           )}
           style={{
-            transformOrigin: (checked ? "left center" : "right center") as any,
+            transformOrigin: checked ? "left center" : "right center",
           }}
         />
 

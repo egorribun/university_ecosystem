@@ -18,7 +18,7 @@ function getScrollRoot(): HTMLElement {
     document.querySelector("main"),
     document.getElementById("scroll-root"),
     document.querySelector("#root"),
-    (document as any).scrollingElement,
+    document.scrollingElement,
     document.documentElement,
     document.body,
   ]
@@ -34,7 +34,7 @@ function getScrollRoot(): HTMLElement {
 
 function smoothToTop(target: HTMLElement) {
   try {
-    ;(target as any).scrollTo({ top: 0, behavior: "smooth" })
+    target.scrollTo({ top: 0, behavior: "smooth" })
   } catch {
     const start = target.scrollTop
     const duration = 420
@@ -123,7 +123,7 @@ export default function MobileBottomNav() {
                 "group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--text-primary) transition-all outline-none select-none " +
                 (isActive
                   ? "active text-brand font-bold scale-110"
-                  : "opacity-(--opacity-strong) hover:opacity-100")
+                  : "opacity-strong hover:opacity-100")
               }
               aria-label={it.label}
             >
@@ -131,7 +131,7 @@ export default function MobileBottomNav() {
                 {isActive && (
                   <motion.div
                     layoutId="bottom-nav-active-glow"
-                    className="absolute inset-[-14px] rounded-full bg-brand opacity-(--opacity-subtle) blur-xl z-(--z-negative)"
+                    className="absolute inset-[-14px] rounded-full bg-brand opacity-subtle blur-xl z-(--z-negative)"
                     transition={springBouncy}
                   />
                 )}

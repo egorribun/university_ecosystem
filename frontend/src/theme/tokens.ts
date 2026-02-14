@@ -25,6 +25,7 @@ export const spacingScale = {
 
 export const radiusScale = {
   "2xl": "var(--radius-2xl)",
+  "3xl": "var(--radius-3xl)",
   lg: "var(--radius-lg)",
   md: "var(--radius-md)",
   pill: "var(--radius-full)",

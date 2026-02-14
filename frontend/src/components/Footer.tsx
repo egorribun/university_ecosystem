@@ -6,13 +6,13 @@ import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui"
 
 export default function Footer() {
+  const { t } = useTranslation(["navigation"])
   const year = new Date().getFullYear()
   const location = useLocation()
   const isAuthPage = ["/login", "/register", "/forgot-password", "/messenger"].some((p) =>
     location.pathname.startsWith(p)
   )
   if (isAuthPage) return null
-  const { t } = useTranslation(["navigation"])
 
   return (
     <footer
@@ -43,7 +43,7 @@ export default function Footer() {
                 {t("navigation:brandName")}
               </h2>
             </div>
-            <p className="max-w-[640px] text-white opacity-(--opacity-hover)">
+            <p className="max-w-[640px] text-white opacity-hover">
               {t("navigation:brandDescription")}
             </p>
             <div className="mt-4 flex gap-3">
@@ -75,7 +75,7 @@ export default function Footer() {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <h3 className="mb-1.5 text-sm font-extrabold tracking-widest text-white uppercase opacity-(--opacity-heavy)">
+            <h3 className="mb-1.5 text-sm font-extrabold tracking-widest text-white uppercase opacity-heavy">
               {t("navigation:footer.navigationTitle")}
             </h3>
             <Link to="/dashboard" className="footer-link-premium">
@@ -96,7 +96,7 @@ export default function Footer() {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <h3 className="mb-1.5 text-sm font-extrabold tracking-widest text-white uppercase opacity-(--opacity-heavy)">
+            <h3 className="mb-1.5 text-sm font-extrabold tracking-widest text-white uppercase opacity-heavy">
               {t("navigation:footer.profileTitle")}
             </h3>
             <Link to="/profile" className="footer-link-premium">
@@ -109,10 +109,10 @@ export default function Footer() {
         </div>
 
         <div className="mt-12 flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle/(--opacity-medium) pt-8">
-          <p className="text-sm font-medium text-white opacity-(--opacity-medium)">
+          <p className="text-sm font-medium text-white opacity-medium">
             {t("navigation:footer.copyright", { year })}
           </p>
-          <p className="text-xs text-white opacity-(--opacity-dim)">
+          <p className="text-xs text-white opacity-dim">
             {t("navigation:footer.careNote")}
           </p>
         </div>

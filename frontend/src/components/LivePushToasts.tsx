@@ -90,8 +90,8 @@ const writeBuffer = (buffer: ActiveToast[]) => {
   if (typeof window === "undefined") return
   try {
     window.localStorage?.setItem(BUFFER_STORAGE_KEY, JSON.stringify(memoryBuffer))
-  } catch {
-    // ignore persistence errors
+  } catch (_e) {
+    // Ignore
   }
 }
 
@@ -198,7 +198,7 @@ export default function LivePushToasts() {
         sameOrigin ? "_self" : "_blank",
         sameOrigin ? undefined : "noopener,noreferrer"
       )
-    } catch (error) {
+    } catch (_error) {
       window.open(safeUrl, "_blank", "noopener,noreferrer")
     }
     handleClose()
@@ -252,7 +252,7 @@ export default function LivePushToasts() {
               <h4 className="text-sm font-black tracking-tight mb-0.5 truncate uppercase">
                 {title}
               </h4>
-              <p className="text-xs font-semibold opacity-(--opacity-hover) leading-relaxed text-pretty">
+              <p className="text-xs font-semibold opacity-hover leading-relaxed text-pretty">
                 {body}
               </p>
 
@@ -267,20 +267,25 @@ export default function LivePushToasts() {
               )}
             </div>
 
-            <button
-              onClick={handleClose}
-              className="shrink-0 p-1 rounded-lg hover:bg-black/(--opacity-faint) dark:hover:bg-white/(--opacity-faint) transition-colors"
+            <motion.button
+              type="button"
+              whileTap={{ scale: 0.94 }}
+              onClick={() => handleClose()}
+              className="group/btn relative flex h-7 w-7 items-center justify-center rounded-full bg-linear-to-tr from-white/(--opacity-faint) to-white/(--opacity-subtle) text-white transition-all duration-300 hover:scale-110 hover:shadow-premium active:scale-95"
+              aria-label={t("common:buttons.close")}
             >
-              <X className="h-4 w-4" />
-            </button>
+              <X className="h-3.5 w-3.5 opacity-hover transition-opacity group-hover/btn:opacity-100" />
+            </motion.button>
 
-            {/* Progress bar for auto-hide */}
-            <motion.div
-              className="absolute bottom-0 left-0 h-0.5 bg-current opacity-(--opacity-soft)"
-              initial={{ width: "100%" }}
-              animate={{ width: "0%" }}
-              transition={{ duration: 6, ease: "linear" }}
-            />
+            {/* Progress Bar */}
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 overflow-hidden rounded-b-xl bg-white/(--opacity-faint)">
+              <motion.div
+                className="absolute bottom-0 left-0 h-0.5 bg-current opacity-soft"
+                initial={{ width: "100%" }}
+                animate={{ width: "0%" }}
+                transition={{ duration: 6, ease: "linear" }}
+              />
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

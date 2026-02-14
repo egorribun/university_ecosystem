@@ -120,11 +120,11 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
   return (
     <div className="w-full">
       <div className="flex flex-col gap-6 items-stretch">
-        <h3 className="text-lg font-black tracking-tight text-center text-(--text-primary)">
+        <h3 className="text-lg font-black tracking-tight text-center text-[--text-primary]">
           {t("mfa.otp.methods.totp")}
         </h3>
 
-        <p className="text-sm text-center text-(--text-secondary) font-medium leading-relaxed">
+        <p className="text-sm text-center text-[--text-secondary] font-medium leading-relaxed">
           {t("mfa.otp.descriptions.totp")}
         </p>
 
@@ -138,6 +138,10 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
               key={index}
               ref={(el) => {
                 inputRefs.current[index] = el
+                // Auto-focus the first input on initial render if it's empty
+                if (el && index === 0 && digits.every((d) => d === "")) {
+                  setTimeout(() => el.focus(), 0)
+                }
               }}
               type="text"
               inputMode="numeric"
@@ -153,16 +157,16 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
               onBlur={() => setFocusedIndex(null)}
               className={cn(
                 "w-11 h-14 sm:w-14 sm:h-18 text-center text-2xl font-black rounded-2xl",
-                "bg-(--bg-surface-raised)/(--opacity-medium) text-(--text-primary) border-2 transition-all duration-300",
+                "bg-[--bg-surface-raised]/[--opacity-medium] text-[--text-primary] border-2 transition-all duration-300",
                 "focus:outline-none backdrop-blur-md shadow-sm",
                 derivedError
-                  ? "border-error-border/(--opacity-medium) focus:border-error-border focus:ring-4 focus:ring-error-border/(--opacity-subtle)"
+                  ? "border-error-border/[--opacity-medium] focus:border-error-border focus:ring-4 focus:ring-error-border/[--opacity-subtle]"
                   : focusedIndex === index
-                    ? "border-brand ring-4 ring-brand/(--opacity-subtle) scale-105 shadow-brand/(--opacity-subtle) shadow-lg"
+                    ? "border-brand ring-4 ring-brand/[--opacity-subtle] scale-105 shadow-brand/[--opacity-subtle] shadow-lg"
                     : digit
-                      ? "border-brand/(--opacity-medium) bg-brand/(--opacity-faint)"
-                      : "border-glass-border/(--opacity-dim) hover:border-glass-border/(--opacity-medium) hover:bg-(--bg-surface-hover)/(--opacity-faint)",
-                "disabled:opacity-(--opacity-dim) disabled:cursor-not-allowed disabled:grayscale"
+                      ? "border-brand/[--opacity-medium] bg-brand/[--opacity-faint]"
+                      : "border-glass-border/[--opacity-dim] hover:border-glass-border/[--opacity-medium] hover:bg-[--bg-surface-hover]/[--opacity-faint]",
+                "disabled:opacity-dim disabled:cursor-not-allowed disabled:grayscale"
               )}
               aria-invalid={derivedError ? "true" : "false"}
             />
@@ -179,7 +183,7 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
         ) : derivedHelperText ? (
           <p
             id={helperId}
-            className="text-xs font-bold text-center text-(--text-secondary) opacity-(--opacity-medium)"
+            className="text-xs font-bold text-center text-[--text-secondary] opacity-medium"
           >
             {derivedHelperText}
           </p>
@@ -187,7 +191,7 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
 
         {loading && (
           <div className="flex justify-center items-center py-4">
-            <div className="h-8 w-8 rounded-full border-4 border-brand/(--opacity-subtle) border-t-brand animate-spin" />
+            <div className="h-8 w-8 rounded-full border-4 border-brand/[--opacity-subtle] border-t-brand animate-spin" />
           </div>
         )}
 
@@ -196,7 +200,7 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
             variant="solid"
             onClick={() => void submitCode()}
             disabled={loading || code.length !== 6}
-            className="w-full max-w-xs h-14 rounded-2xl font-black shadow-lg shadow-brand/(--opacity-dim)"
+            className="w-full max-w-xs h-14 rounded-2xl font-black shadow-lg shadow-brand/[--opacity-dim]"
             loading={loading}
           >
             {t("mfa.otp.submit")}

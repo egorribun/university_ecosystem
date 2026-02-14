@@ -65,8 +65,7 @@ export const NavbarActions = ({
         {isAuth && user && !loading ? (
           <motion.div whileTap={{ scale: 0.95 }} transition={springSoft}>
             <SmartImage
-              srcRaw={Boolean(avatarSource) ? avatarSource : avatarFallback}
-              cacheV={Boolean(avatarSource) ? avatarCacheV : undefined}
+              cacheV={avatarSource ? avatarCacheV : undefined}
               fallback={avatarFallback}
               alt={profileAlt}
               title={profileTitle}
