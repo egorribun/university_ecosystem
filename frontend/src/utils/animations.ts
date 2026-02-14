@@ -56,11 +56,11 @@ export const slideUpVariants: Variants = {
 }
 
 export const scaleInVariants: Variants = {
-  hidden: { opacity: 0, scale: 0.94, filter: "blur(4px)" },
+  hidden: { opacity: 0, scale: 0.94, filter: "blur(var(--blur-xs))" },
   visible: {
     opacity: 1,
     scale: 1,
-    filter: "blur(0px)",
+    filter: "blur(var(--blur-none))",
     transition: springHeavy,
   },
   exit: {
@@ -112,12 +112,12 @@ export const revealVariants = (direction: "up" | "down" | "left" | "right" = "up
   const y = direction === "up" ? offset : direction === "down" ? -offset : 0
 
   return {
-    hidden: { opacity: 0, x, y, filter: "blur(8px)" },
+    hidden: { opacity: 0, x, y, filter: "blur(var(--blur-sm))" },
     visible: {
       opacity: 1,
       x: 0,
       y: 0,
-      filter: "blur(0px)",
+      filter: "blur(var(--blur-none))",
       transition: {
         duration: 1.2,
         ease: easePremium,

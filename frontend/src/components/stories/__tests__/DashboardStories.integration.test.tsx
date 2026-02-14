@@ -62,6 +62,7 @@ const stories: StoryItem[] = [
     title_en: "Orientation",
     short_text_en: "Welcome week",
     created_by: "user-1",
+
   },
   {
     id: "uuid-2",
@@ -77,6 +78,7 @@ const stories: StoryItem[] = [
     title_en: "Clubs fair",
     short_text_en: "Meet the student clubs",
     created_by: "user-1",
+
   },
 ]
 

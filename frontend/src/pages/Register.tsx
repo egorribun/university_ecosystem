@@ -73,14 +73,14 @@ function suggestEmailDomain(email: string) {
 }
 
 const inputBaseClass =
-  "w-full rounded-md border border-brand/(--opacity-subtle) bg-(--bg-surface)/(--opacity-heavy) px-4 py-3 text-base font-medium " +
+  "w-full rounded-(--radius-md) border border-brand/(--opacity-subtle) bg-(--bg-surface)/(--opacity-heavy) px-(length:--space-4) py-(length:--space-3) text-base font-medium " +
   "text-(--text-primary) shadow-premium transition-all duration-200 " +
   "focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/(--opacity-dim) " +
   "placeholder:text-(--text-secondary)/(--opacity-strong) " +
   "dark:border-brand/(--opacity-subtle) dark:bg-(--bg-surface)/(--opacity-heavy)"
 
 const chipClass =
-  "inline-flex items-center gap-2 rounded-full border border-brand/(--opacity-dim) px-4 py-1.5 text-xs font-semibold uppercase tracking-widest"
+  "inline-flex items-center gap-(--space-2) rounded-full border border-brand/(--opacity-dim) px-(length:--space-4) py-(length:--space-15) text-(length:--fs-xs) font-semibold uppercase tracking-widest"
 
 const Spinner = () => (
   <span
@@ -277,7 +277,7 @@ const Register = () => {
   return (
     <div className="relative min-h-screen w-full overflow-hidden bg-(--bg-page) text-(--text-primary)">
       <ParticleAuthBackground />
-      <div className="relative z-(--z-surface) mx-auto grid min-h-screen w-full max-w-7xl grid-cols-1 items-stretch gap-10 px-4 py-12 sm:px-6 lg:grid-cols-2 lg:px-8">
+      <div className="relative z-(--z-surface) mx-auto grid min-h-screen w-full max-w-7xl grid-cols-1 items-stretch gap-(--space-10) px-(length:--space-4) py-(length:--space-12) sm:px-(length:--space-6) lg:grid-cols-2 lg:px-(length:--space-8)">
         <motion.div
           initial={{ x: -200 }}
           animate={{ x: 0 }}
@@ -319,10 +319,10 @@ const Register = () => {
           initial={{ y: 200 }}
           animate={{ y: 0 }}
           transition={{ duration: 0.5, ease: "easeOut", delay: 0.2 }}
-          className="flex w-full min-w-0 flex-col justify-center rounded-sm border border-glass-border-subtle bg-(--bg-surface)/(--opacity-hover) p-6 shadow-glass backdrop-blur-2xl sm:p-10"
+          className="flex w-full min-w-0 flex-col justify-center rounded-(--radius-sm) border border-glass-border-subtle bg-(--bg-surface)/(--opacity-hover) p-6 shadow-glass backdrop-blur-2xl sm:p-10"
         >
           <form action={registerAction} autoComplete="off" className="flex flex-col gap-6">
-            <div className="grid gap-5 sm:grid-cols-2">
+            <div className="grid gap-(--space-5) sm:grid-cols-2">
               <div className="space-y-2">
                 <label htmlFor="full_name" className="text-sm font-semibold">
                   {t("auth:fields.name")}

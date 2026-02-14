@@ -51,7 +51,7 @@ export function PasswordSection({
           <TextField
             fullWidth
             type="password"
-            size="small"
+            size="sm"
             label={t("settings:security.password.currentLabel")}
             value={currentPasswordValue}
             onChange={(event) => onCurrentPasswordChange(event.target.value)}
@@ -62,7 +62,7 @@ export function PasswordSection({
           <TextField
             fullWidth
             type="password"
-            size="small"
+            size="sm"
             label={t("settings:security.password.newLabel")}
             value={newPasswordValue}
             onChange={(event) => onNewPasswordChange(event.target.value)}
@@ -75,7 +75,7 @@ export function PasswordSection({
           <TextField
             fullWidth
             type="password"
-            size="small"
+            size="sm"
             label={t("settings:security.password.confirmLabel")}
             value={confirmPasswordValue}
             onChange={(event) => onConfirmPasswordChange(event.target.value)}
@@ -85,7 +85,7 @@ export function PasswordSection({
           />
           <Button
             type="submit"
-            variant="contained"
+            variant="solid"
             disabled={passwordBusy}
             startIcon={passwordBusy ? <CircularProgress size={18} color="inherit" /> : undefined}
           >

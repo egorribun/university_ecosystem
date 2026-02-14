@@ -15,7 +15,7 @@ import {
 } from "../../api/chat"
 import client from "../../api/client"
 import type { User } from "../../types/User"
-import type { Message as UiMessage } from "../../components/messenger/MessengerComponents"
+import type { Message as UiMessage } from "../../components/messenger"
 
 dayjs.extend(utc)
 

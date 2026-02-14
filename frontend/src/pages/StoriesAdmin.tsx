@@ -520,7 +520,7 @@ export default function StoriesAdmin() {
   return (
     <Layout>
       <PageFadeIn>
-        <div className="mx-auto max-w-[1100px] px-4 py-8 md:py-12">
+        <div className="mx-auto max-w-(length:--layout-max-page) px-fluid-x py-(length:--space-8) md:py-(length:--space-12)">
           <div className="mb-10 flex items-center gap-4">
             <div className="flex h-12 w-12 items-center justify-center rounded-md bg-brand/(--opacity-subtle) text-brand">
               <RestartAltIcon className="h-7 w-7" />

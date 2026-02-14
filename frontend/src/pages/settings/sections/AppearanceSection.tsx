@@ -49,7 +49,7 @@ export function AppearanceSection(_props: SettingsSectionProps) {
   ]
 
   return (
-    <div className="flex w-full flex-col gap-5 sm:gap-6 xl:max-w-[min(100%,820px)]">
+    <div className="flex w-full flex-col gap-5 sm:gap-6 xl:max-w-(--layout-max-content)">
       <SectionCard component="section">
         <div className="flex flex-col gap-2 mb-4">
           <SectionTitle variant="subtitle1">{t("settings:appearance.title")}</SectionTitle>

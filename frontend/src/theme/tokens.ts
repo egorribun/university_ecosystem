@@ -80,7 +80,7 @@ export const glass = {
   bg: "var(--glass-bg)",
   blur: "var(--glass-blur)",
   border: "var(--glass-border)",
-  shadow: "var(--glass-shadow)",
+  shadow: "var(--shadow-glass)",
   tint3: "var(--glass-tint3)",
 } as const
 

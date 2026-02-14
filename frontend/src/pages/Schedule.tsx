@@ -39,6 +39,13 @@ import FadeSection from "@/components/FadeSection"
 
 dayjs.extend(isoWeek)
 
+declare global {
+  interface Window {
+    requestIdleCallback: (callback: IdleRequestCallback, options?: IdleRequestOptions) => number
+    cancelIdleCallback: (handle: number) => void
+  }
+}
+
 export default function Schedule() {
   const { t } = useTranslation(["schedule", "common"])
   const isOnline = useOnlineStatus()
@@ -133,12 +140,12 @@ export default function Schedule() {
         })
       })
       if (!cancelled && rowLimit < tableRows.length) {
-        if ("requestIdleCallback" in window) (window as any).requestIdleCallback(step)
+        if ("requestIdleCallback" in window) window.requestIdleCallback(step)
         else setTimeout(step, 0)
       }
     }
     if (tableRows.length > 0 && rowLimit < tableRows.length) {
-      if ("requestIdleCallback" in window) (window as any).requestIdleCallback(step)
+      if ("requestIdleCallback" in window) window.requestIdleCallback(step)
       else setTimeout(step, 0)
     }
     return () => {
@@ -168,7 +175,7 @@ export default function Schedule() {
     const gap = minutesDiff(prev.end_time, curr.start_time)
     if (gap <= 0) return null
     return (
-      <div className="absolute left-1/2 top-[-14px] z-(--z-deep) -translate-x-1/2 pointer-events-none">
+      <div className="absolute left-1/2 top-[calc(var(--space-4)*-1)] z-(--z-deep) -translate-x-1/2 pointer-events-none">
         <Badge
           size="xs"
           className="chip-break font-medium bg-(--bg-surface)/(--opacity-hover) border-glass-border shadow-glass text-(--text-secondary)"
@@ -184,12 +191,12 @@ export default function Schedule() {
     return (
       <div
         ref={tableScrollRef}
-        className="mx-auto w-full max-w-[min(98vw,1920px)] overflow-x-auto rounded-lg border border-glass-border bg-(--bg-surface)/(--opacity-medium) text-(--text-primary) shadow-glass backdrop-blur-md scroll-smooth min-h-[360px]"
+        className="mx-auto w-full max-w-(length:--layout-max-ultrawide) overflow-x-auto rounded-lg border border-glass-border bg-(--bg-surface)/(--opacity-medium) text-(--text-primary) shadow-glass backdrop-blur-md scroll-smooth min-h-(length:--min-h-hero-md)"
       >
         <table className="w-full border-collapse">
           <thead className="sticky top-0 z-(--z-content)">
             <tr>
-              <th className="sticky left-0 z-(--z-navbar) w-[50px] bg-(--bg-surface)/(--opacity-strong) px-4 py-4 text-center font-extrabold text-(--text-primary) border-r border-glass-border shadow-md backdrop-blur-md">
+              <th className="sticky left-0 z-(--z-navbar) w-(length:--w-index-col) bg-(--bg-surface)/(--opacity-strong) px-4 py-4 text-center font-extrabold text-(--text-primary) border-r border-glass-border shadow-md backdrop-blur-md">
                 №
               </th>
               {weekdayBackend.map((day, idx) => {
@@ -257,7 +264,7 @@ export default function Schedule() {
                           key={`empty-${rowIdx}-${colIdx}`}
                           className={cn("p-3", colIsToday ? "bg-card-hover" : "")}
                         >
-                          <div className="min-h-[148px] rounded-sm border border-dashed border-card-border" />
+                          <div className="min-h-(length:--h-skeleton-row) rounded-(--radius-sm) border border-dashed border-card-border" />
                         </td>
                       )
                     }
@@ -306,7 +313,7 @@ export default function Schedule() {
 
   // Render Mobile
   const renderMobileDayAnchors = () => (
-    <div className="flex gap-2 overflow-x-auto pb-2 px-1 scrollbar-hide">
+    <div className="flex gap-(--space-2) overflow-x-auto pb-(length:--space-2) px-(length:--space-1) scrollbar-hide">
       {weekdayBackend.map((day, i) => (
         <Badge
           key={day}
@@ -380,7 +387,7 @@ export default function Schedule() {
       <div className="w-full text-(--text-primary)">
         <div className="mb-6 mt-0">
           <header>
-            <FadeSection delay="80ms" className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5">
+            <FadeSection delay="80ms" className="mb-(length:--space-8) flex flex-wrap items-center gap-(--space-4) sm:gap-(--space-5)">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-(--bg-surface)/(--opacity-medium) border border-glass-border text-brand shadow-glass">
                 <CalendarMonthIcon className="h-7 w-7" />
               </div>
@@ -403,7 +410,7 @@ export default function Schedule() {
             <FadeSection
               delay="200ms"
               className={cn(
-                "no-print group relative isolate mb-6 overflow-hidden rounded-lg border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-6 shadow-glass backdrop-blur-md transition-all hover:shadow-xl",
+                "no-print group relative isolate mb-(length:--space-6) overflow-hidden rounded-(--radius-lg) border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-(length:--space-6) shadow-glass backdrop-blur-md transition-all hover:shadow-xl",
                 !isMobile && "max-w-4xl"
               )}
             >
@@ -448,7 +455,7 @@ export default function Schedule() {
         </div>
 
         <section aria-label={t("schedule:title.default")}>
-          <FadeSection delay="280ms" className="max-w-[1920px]">
+          <FadeSection delay="280ms" className="max-w-(length:--layout-max-ultrawide)">
             {isMobile ? renderMobileCards() : renderTable()}
           </FadeSection>
         </section>

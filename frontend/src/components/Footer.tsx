@@ -19,10 +19,10 @@ export default function Footer() {
       className="bg-footer relative overflow-hidden border-t border-border-subtle/(--opacity-medium)"
       role="contentinfo"
       style={{
-        minHeight: "150px",
+        minHeight: "var(--h-skeleton-row)",
       }}
     >
-      <div className="relative z-(--z-surface) mx-auto max-w-[1260px] px-fluid-x py-8 md:py-10">
+      <div className="relative z-(--z-surface) mx-auto max-w-(length:--layout-max-wide) px-fluid-x py-(length:--space-8) md:py-(length:--space-10)">
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr] lg:gap-8">
           <div className="flex min-w-0 flex-col gap-3">
             <div className="flex items-center gap-3">
@@ -43,7 +43,7 @@ export default function Footer() {
                 {t("navigation:brandName")}
               </h2>
             </div>
-            <p className="max-w-[640px] text-white opacity-hover">
+            <p className="max-w-(length:--w-label-xl) text-white opacity-hover">
               {t("navigation:brandDescription")}
             </p>
             <div className="mt-4 flex gap-3">

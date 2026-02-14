@@ -300,7 +300,7 @@ describe("queue helper module exports", () => {
       ok: "value",
       nested: { valid: 1 },
     })
-    expect("invalid" in (sanitized?.nested as Record<string, unknown>)).toBe(false)
+    expect("invalid" in ((sanitized as any)?.nested as Record<string, unknown>)).toBe(false)
   })
 
   test("report queue waits for connectivity before flushing", async () => {

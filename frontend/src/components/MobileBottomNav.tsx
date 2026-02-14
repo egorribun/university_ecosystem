@@ -12,23 +12,26 @@ import { motion } from "framer-motion"
 import { springBouncy, springSoft } from "@/utils/animations"
 
 function getScrollRoot(): HTMLElement {
-  const cands: (Element | null | Document | HTMLElement)[] = [
-    document.querySelector("[data-scroll-root]"),
-    document.querySelector("main[role='main']"),
+  // Use explicit scroll root if defined, otherwise fallback to document defaults
+  const root = document.querySelector<HTMLElement>("[data-scroll-root]")
+  if (root) return root
+
+  // Legacy/Safety fallback search
+  const candidates = [
     document.querySelector("main"),
-    document.getElementById("scroll-root"),
-    document.querySelector("#root"),
     document.scrollingElement,
     document.documentElement,
     document.body,
   ]
-  for (const el of cands) {
+
+  for (const el of candidates) {
     if (!el) continue
     const e = el as HTMLElement
     const oy = getComputedStyle(e).overflowY
     const scrollable = (oy === "auto" || oy === "scroll") && e.scrollHeight > e.clientHeight
     if (scrollable) return e
   }
+
   return (document.scrollingElement || document.documentElement) as HTMLElement
 }
 
@@ -120,7 +123,7 @@ export default function MobileBottomNav() {
                 }
               }}
               className={({ isActive }) =>
-                "group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--text-primary) transition-all outline-none select-none " +
+                "group relative flex flex-1 flex-col items-center justify-center gap-(length:--space-2) py-(length:--space-1) text-(--text-primary) transition-all outline-none select-none " +
                 (isActive
                   ? "active text-brand font-bold scale-110"
                   : "opacity-strong hover:opacity-100")
@@ -131,7 +134,7 @@ export default function MobileBottomNav() {
                 {isActive && (
                   <motion.div
                     layoutId="bottom-nav-active-glow"
-                    className="absolute inset-[-14px] rounded-full bg-brand opacity-subtle blur-xl z-(--z-negative)"
+                    className="absolute inset-(length:calc(var(--space-4)*-1)) rounded-full bg-brand opacity-subtle blur-(--blur-glass) z-(--z-negative)"
                     transition={springBouncy}
                   />
                 )}

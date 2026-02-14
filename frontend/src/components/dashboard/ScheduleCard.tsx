@@ -270,7 +270,7 @@ export function ScheduleCard({
           repeat: Infinity,
           ease: "easeInOut",
         }}
-        className="pointer-events-none absolute -top-24 right-10 z-(--z-hide) h-36 w-36 rounded-full bg-(--flare-schedule-orb) blur-3xl mix-blend-soft-light transition-opacity duration-700"
+        className="pointer-events-none absolute -top-24 right-10 z-(--z-hide) h-(length:--space-36) w-(length:--space-36) rounded-full bg-(--flare-schedule-orb) blur-3xl mix-blend-soft-light transition-opacity duration-700"
       />
     </Card>
   )

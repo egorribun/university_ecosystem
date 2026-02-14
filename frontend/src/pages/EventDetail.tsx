@@ -59,7 +59,7 @@ const isCanceledRequestError = (err: unknown): boolean => {
 }
 
 const inputClass =
-  "w-full rounded-sm border border-(--glass-border) bg-(--bg-surface)/(--opacity-medium) px-4 py-3 text-input font-medium text-(--text-primary) shadow-sm transition-all duration-200 focus:border-(--primary-main) focus:outline-none focus:ring-4 focus:ring-(--primary-main)/(--opacity-faint) placeholder:text-(--text-secondary)/(--opacity-medium)"
+  "w-full rounded-(--radius-sm) border border-(--glass-border) bg-(--bg-surface)/(--opacity-medium) px-(length:--space-4) py-(length:--space-3) text-input font-medium text-(--text-primary) shadow-sm transition-all duration-200 focus:border-(--primary-main) focus:outline-none focus:ring-(length:--space-1) focus:ring-(--primary-main)/(--opacity-faint) placeholder:text-(--text-secondary)/(--opacity-medium)"
 
 function Snackbar({
   open,
@@ -81,8 +81,8 @@ function Snackbar({
   if (!open || !message) return null
 
   return (
-    <div className="fixed bottom-6 left-1/2 z-(--z-navbar) -translate-x-1/2 animate-in slide-in-from-bottom-4 fade-in">
-      <div className="rounded-2xl border border-(--glass-border) bg-(--bg-surface)/(--opacity-heavy) px-5 py-3.5 text-sm font-semibold text-(--text-primary) shadow-premium backdrop-blur-md">
+    <div className="fixed bottom-(--space-6) left-1/2 z-(--z-navbar) -translate-x-1/2 animate-in slide-in-from-bottom-4 fade-in">
+      <div className="rounded-(--radius-2xl) border border-(--glass-border) bg-(--bg-surface)/(--opacity-heavy) px-(length:--space-5) py-(length:--space-35) text-(length:--fs-sm) font-semibold text-(--text-primary) shadow-premium backdrop-blur-md">
         {message}
       </div>
     </div>
@@ -293,7 +293,7 @@ const EventDetail = () => {
     return (
       <Layout>
         <div className="flex min-h-(--h-hero-lg) items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-(--primary-main) border-t-transparent" />
+          <div className="h-(--space-8) w-(--space-8) animate-spin rounded-full border-(length:--space-1) border-(--primary-main) border-t-transparent" />
         </div>
       </Layout>
     )
@@ -314,13 +314,13 @@ const EventDetail = () => {
       onClick={handleBack}
       leadingIcon={<ArrowBackIcon size={20} />}
       className={cn(
-        "mb-6 w-full font-bold sm:w-auto",
+        "mb-(length:--space-6) w-full font-bold sm:w-auto",
         "bg-linear-to-r from-(--primary-main) via-(--primary-main) to-(--primary-main) text-white",
         "shadow-premium ring-1 ring-white/(--opacity-subtle)",
         "transition-all duration-300 transform-gpu",
         "hover:scale-105 hover:shadow-glass-strong",
         "active:scale-95",
-        "md:sticky md:top-3 md:z-(--z-overlay)"
+        "md:sticky md:top-(--space-3) md:z-(--z-overlay)"
       )}
     >
       {t("common:buttons.back")}
@@ -330,13 +330,13 @@ const EventDetail = () => {
   if (isMobile) {
     return (
       <Layout>
-        <div className="w-full min-h-(--h-screen-offset) bg-(--bg-page) px-4 py-4 sm:px-6 md:px-8 lg:px-12">
+        <div className="w-full min-h-(--h-screen-offset) bg-(--bg-page) px-(length:--space-4) py-(length:--space-4) sm:px-(length:--space-6) md:px-(length:--space-8) lg:px-(length:--space-12)">
           {BackButton}
-          <div className="space-y-6">
-            <h1 className="text-2xl font-extrabold text-(--text-primary) sm:text-3xl">
+          <div className="space-y-(length:--space-6)">
+            <h1 className="text-(length:--fs-fluid-h2) font-extrabold text-(--text-primary) sm:text-(length:--fs-fluid-h1)">
               {event.title}
             </h1>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-(--space-2)">
               {event.event_type && (
                 <Badge size="sm" className="bg-(--primary-main) text-white">
                   {event.event_type}
@@ -350,8 +350,8 @@ const EventDetail = () => {
                 {t("events:card.participants", { count: event.participant_count || 0 })}
               </Badge>
             </div>
-            <p className="text-base font-semibold text-(--text-primary)">{event.description}</p>
-            <div className="space-y-2">
+            <p className="text-(length:--fs-base) font-semibold text-(--text-primary)">{event.description}</p>
+            <div className="space-y-(length:--space-2)">
               <p className="text-base font-semibold text-(--text-primary)">
                 {t("events:detail.fields.location")}: <strong>{event.location}</strong>
               </p>
@@ -362,13 +362,13 @@ const EventDetail = () => {
                 </strong>
               </p>
               {event.speaker && (
-                <p className="text-base text-(--text-primary)">
+                <p className="text-(length:--fs-base) text-(--text-primary)">
                   {t("events:detail.fields.speaker")}: <strong>{event.speaker}</strong>
                 </p>
               )}
             </div>
             {imageUrl && (
-              <div className="relative w-full overflow-hidden rounded-md border border-(--glass-border) bg-black/(--opacity-faint) shadow-premium aspect-video">
+              <div className="relative w-full overflow-hidden rounded-(--radius-md) border border-(--glass-border) bg-black/(--opacity-faint) shadow-premium aspect-video">
                 <SmartImage
                   srcRaw={imageUrl}
                   alt={t("events:alt.image")}
@@ -379,7 +379,7 @@ const EventDetail = () => {
               </div>
             )}
             <div>
-              <div className="mb-2 flex items-center gap-2">
+              <div className="mb-2 flex items-center gap-(--space-2)">
                 <h2
                   ref={aboutSectionRef}
                   tabIndex={-1}
@@ -399,7 +399,7 @@ const EventDetail = () => {
                 )}
               </div>
               {editingAbout ? (
-                <div className="space-y-3">
+                <div className="space-y-(length:--space-3)">
                   <textarea
                     value={aboutDraft}
                     onChange={(e) => setAboutDraft(e.target.value)}
@@ -414,7 +414,7 @@ const EventDetail = () => {
                         : t("events:detail.sections.about.fieldLabel")
                     }
                   />
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-(--space-2)">
                     <Button
                       variant="solid"
                       size="sm"
@@ -451,7 +451,7 @@ const EventDetail = () => {
 
             {user && (user.role === "admin" || user.role === "teacher") && (
               <div>
-                <form action={uploadAction} className="flex flex-wrap items-center gap-2">
+                <form action={uploadAction} className="flex flex-wrap items-center gap-(--space-2)">
                   <Button variant="solid" as="label" disabled={uploadPending}>
                     {t("events:detail.sections.files.pickFile")}
                     <input
@@ -471,7 +471,7 @@ const EventDetail = () => {
                   </Button>
                   {selectedFile && (
                     <span
-                      className="ml-2 max-w-[110px] truncate text-xs text-(--text-secondary)"
+                      className="ml-(length:--space-2) max-w-(length:--w-label-sm) truncate text-xs text-(--text-secondary)"
                       title={selectedFile.name}
                     >
                       {selectedFile.name}
@@ -479,24 +479,24 @@ const EventDetail = () => {
                   )}
                 </form>
                 {isUploadErrorState(uploadState) && (
-                  <p className="mt-2 text-xs text-error-text">{uploadState.error}</p>
+                  <p className="mt-(length:--space-2) text-(length:--fs-xs) text-error-text">{uploadState.error}</p>
                 )}
               </div>
             )}
 
             {optimisticFiles.length > 0 ? (
               <div>
-                <h3 className="mb-2 text-base font-semibold text-(--text-primary)">
+                <h3 className="mb-(length:--space-2) text-(length:--fs-base) font-semibold text-(--text-primary)">
                   {t("events:detail.sections.files.title")}
                 </h3>
-                <div className="space-y-2">
+                <div className="space-y-(length:--space-2)">
                   {optimisticFiles.map((f) => {
                     const isPendingFile =
                       f.pending === true || f.id.toString().startsWith("pending-")
                     const fallbackName = f.file_url.split("/").pop() || f.file_url
                     const fileLabel = f.description || fallbackName
                     return (
-                      <div key={f.id} className="flex items-center gap-2">
+                      <div key={f.id} className="flex items-center gap-(--space-2)">
                         {isPendingFile ? (
                           <span className="flex-1 text-sm text-(--text-secondary)">
                             {f.description || t("events:detail.sections.files.pending")}
@@ -521,14 +521,14 @@ const EventDetail = () => {
                             type="button"
                             aria-label={t("events:detail.sections.files.deleteAria")}
                             disabled={isPendingFile}
-                            className="rounded-full p-1 text-error-text transition-colors hover:bg-error-bg/(--opacity-subtle) disabled:opacity-medium"
+                            className="rounded-full p-(length:--space-1) text-error-text transition-colors hover:bg-error-bg/(--opacity-subtle) disabled:opacity-medium"
                             onClick={async () => {
                               if (!isPendingFile) {
                                 await handleDeleteFile(f.id)
                               }
                             }}
                           >
-                            <DeleteIcon className="h-4 w-4" />
+                            <DeleteIcon size={16} />
                           </button>
                         )}
                       </div>
@@ -551,12 +551,12 @@ const EventDetail = () => {
 
   return (
     <Layout>
-      <div className="flex w-full min-h-(--h-screen-offset) flex-col bg-(--bg-page) px-4 py-4 sm:px-6 md:px-8 lg:px-12">
+      <div className="flex w-full min-h-(--h-screen-offset) flex-col bg-(--bg-page) px-(length:--space-4) py-(length:--space-4) sm:px-(length:--space-6) md:px-(length:--space-8) lg:px-(length:--space-12)">
         {BackButton}
-        <div className="flex flex-row gap-8 items-start">
-          <div className="w-[45%] space-y-6">
+        <div className="flex flex-row gap-(--space-8) items-start">
+          <div className="w-[45%] space-y-(length:--space-6)">
             {imageUrl && (
-              <div className="relative w-full overflow-hidden rounded-4xl border border-(--glass-border) bg-black/(--opacity-faint) shadow-premium aspect-21/9">
+              <div className="relative w-full overflow-hidden rounded-(--radius-4xl) border border-(--glass-border) bg-black/(--opacity-faint) shadow-premium aspect-21/9">
                 <SmartImage
                   srcRaw={imageUrl}
                   alt={t("events:alt.image")}
@@ -568,11 +568,11 @@ const EventDetail = () => {
             )}
             <div className="h-px bg-(--glass-border)" />
             <div>
-              <div className="mb-2 flex items-center gap-2">
+              <div className="mb-(length:--space-2) flex items-center gap-(--space-2)">
                 <h2
                   ref={aboutSectionRef}
                   tabIndex={-1}
-                  className="text-2xl font-bold text-(--text-primary)"
+                  className="text-(length:--fs-fluid-h2) font-bold text-(--text-primary)"
                 >
                   {t("events:detail.sections.about.title")}
                 </h2>
@@ -588,7 +588,7 @@ const EventDetail = () => {
                 )}
               </div>
               {editingAbout ? (
-                <div className="space-y-3">
+                <div className="space-y-(length:--space-3)">
                   <textarea
                     value={aboutDraft}
                     onChange={(e) => setAboutDraft(e.target.value)}
@@ -603,7 +603,7 @@ const EventDetail = () => {
                         : t("events:detail.sections.about.fieldLabel")
                     }
                   />
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-(--space-2)">
                     <Button
                       variant="solid"
                       size="sm"
@@ -639,11 +639,11 @@ const EventDetail = () => {
             </div>
           </div>
 
-          <div className="flex-1 min-w-0 space-y-4">
+          <div className="flex-1 min-w-0 space-y-(length:--space-4)">
             <h1 className="text-4xl font-extrabold text-(--text-primary) sm:text-5xl">
               {event.title}
             </h1>
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex flex-wrap items-center gap-(--space-3)">
               {event.event_type && (
                 <Badge size="md" className="bg-(--primary-main) text-white">
                   {event.event_type}
@@ -652,13 +652,13 @@ const EventDetail = () => {
               <Badge
                 size="md"
                 leadingIcon={<PeopleAltIcon size={18} className="text-(--primary-main)" />}
-                className="border-(--glass-border) bg-(--primary-main)/5 text-(--primary-main)"
+                className="border-(--glass-border) bg-(--primary-main)/(--opacity-faint) text-(--primary-main)"
               >
                 {t("events:card.participants", { count: event.participant_count || 0 })}
               </Badge>
             </div>
             <div className="h-px bg-(--glass-border)" />
-            <p className="whitespace-pre-line text-xl font-semibold leading-relaxed text-(--text-primary)">
+            <p className="whitespace-pre-line text-(length:--fs-lg) font-semibold leading-relaxed text-(--text-primary)">
               {event.description}
             </p>
             <div className="h-px bg-(--glass-border)" />
@@ -678,8 +678,8 @@ const EventDetail = () => {
             )}
 
             {user && (user.role === "admin" || user.role === "teacher") && (
-              <div className="mt-4">
-                <form action={uploadAction} className="flex flex-wrap items-center gap-3">
+              <div className="mt-(length:--space-4)">
+                <form action={uploadAction} className="flex flex-wrap items-center gap-(--space-3)">
                   <Button variant="solid" as="label" disabled={uploadPending}>
                     {t("events:detail.sections.files.pickFile")}
                     <input
@@ -699,7 +699,7 @@ const EventDetail = () => {
                   </Button>
                   {selectedFile && (
                     <span
-                      className="ml-2 max-w-[150px] truncate text-sm text-(--text-secondary)"
+                      className="ml-(length:--space-2) max-w-(length:--w-label-md) truncate text-sm text-(--text-secondary)"
                       title={selectedFile.name}
                     >
                       {selectedFile.name}
@@ -707,25 +707,25 @@ const EventDetail = () => {
                   )}
                 </form>
                 {isUploadErrorState(uploadState) && (
-                  <p className="mt-2 text-sm text-error-text">{uploadState.error}</p>
+                  <p className="mt-(length:--space-2) text-(length:--fs-sm) text-error-text">{uploadState.error}</p>
                 )}
               </div>
             )}
 
             {optimisticFiles.length > 0 ? (
               <div>
-                <div className="my-3 h-px bg-(--glass-border)" />
-                <h3 className="mb-2 text-base font-semibold text-(--text-primary)">
+                <div className="my-(length:--space-3) h-px bg-(--glass-border)" />
+                <h3 className="mb-(length:--space-2) text-(length:--fs-base) font-semibold text-(--text-primary)">
                   {t("events:detail.sections.files.title")}
                 </h3>
-                <div className="space-y-2">
+                <div className="space-y-(length:--space-2)">
                   {optimisticFiles.map((f) => {
                     const isPendingFile =
                       f.pending === true || f.id.toString().startsWith("pending-")
                     const fallbackName = f.file_url.split("/").pop() || f.file_url
                     const fileLabel = f.description || fallbackName
                     return (
-                      <div key={f.id} className="flex items-center gap-2">
+                      <div key={f.id} className="flex items-center gap-(--space-2)">
                         {isPendingFile ? (
                           <span className="flex-1 text-sm text-(--text-secondary)">
                             {f.description || t("events:detail.sections.files.pending")}
@@ -750,7 +750,7 @@ const EventDetail = () => {
                             type="button"
                             aria-label={t("events:detail.sections.files.deleteAria")}
                             disabled={isPendingFile}
-                            className="ml-2 rounded-full p-1 text-error-text transition-colors hover:bg-error-bg/(--opacity-subtle) disabled:opacity-medium"
+                            className="ml-(length:--space-2) rounded-full p-(length:--space-1) text-error-text transition-colors hover:bg-error-bg/(--opacity-subtle) disabled:opacity-medium"
                             onClick={async () => {
                               if (!isPendingFile) {
                                 await handleDeleteFile(f.id)

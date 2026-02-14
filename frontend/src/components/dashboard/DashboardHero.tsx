@@ -53,26 +53,26 @@ export function DashboardHero({
       "absolute inset-0 z-(--z-hide) bg-[radial-gradient(circle_at_bottom,var(--dash-hero-radial-bottom),transparent_78%)]",
     ]
 
-    const orbSize = isNarrow ? "h-[28rem] w-[28rem]" : "h-[46rem] w-[46rem]"
+    const orbSize = isNarrow ? "h-(length:--space-40) w-(length:--space-40)" : "h-(length:--space-80) w-(length:--space-80)"
     layers.push(
-      `absolute -top-56 left-1/2 ${orbSize} -translate-x-1/2 rounded-full bg-[radial-gradient(circle,var(--dash-hero-orb),transparent)] blur-[210px]`
+      `absolute -top-56 left-1/2 ${orbSize} -translate-x-1/2 rounded-full bg-[radial-gradient(circle,var(--dash-hero-orb),transparent)] blur-(--glow-blur-3xl)`
     )
 
     if (!isNarrow) {
       layers.push(
         prefersReducedMotion
-          ? "absolute bottom-[-16rem] right-[10%] h-[28rem] w-[28rem] rounded-full bg-[radial-gradient(circle,var(--dash-hero-pulse),transparent)] opacity-(--opacity-strong) blur-[180px]"
-          : "absolute bottom-[-18rem] right-[8%] h-[34rem] w-[34rem] animate-[pulse_14s_ease-in-out_infinite] rounded-full bg-[radial-gradient(circle,var(--dash-hero-pulse),transparent)] blur-[210px]"
+          ? "absolute bottom-[-16rem] right-[10%] h-(length:--space-40) w-(length:--space-40) rounded-full bg-[radial-gradient(circle,var(--dash-hero-pulse),transparent)] opacity-(--opacity-strong) blur-(--glow-blur-xl)"
+          : "absolute bottom-[-18rem] right-[8%] h-(length:--space-52) w-(length:--space-52) animate-[pulse_14s_ease-in-out_infinite] rounded-full bg-[radial-gradient(circle,var(--dash-hero-pulse),transparent)] blur-(--glow-blur-3xl)"
       )
     }
 
     if (!prefersReducedMotion && !isNarrow) {
       layers.push(
-        "absolute -left-28 top-1/2 h-[30rem] w-[30rem] -translate-y-1/2 animate-[spin_26s_linear_infinite] rounded-full bg-(--grad-dash-conic) opacity-(--opacity-hover) blur-[220px]"
+        "absolute -left-28 top-1/2 h-(length:--space-48) w-(length:--space-48) -translate-y-1/2 animate-[spin_26s_linear_infinite] rounded-full bg-(--grad-dash-conic) opacity-(--opacity-hover) blur-(--glow-blur-mega)"
       )
     } else if (!isNarrow) {
       layers.push(
-        "absolute -left-24 top-1/2 h-[26rem] w-[26rem] -translate-y-1/2 rounded-full bg-(--grad-dash-conic-simple) opacity-(--opacity-strong) blur-[200px]"
+        "absolute -left-24 top-1/2 h-(length:--space-40) w-(length:--space-40) -translate-y-1/2 rounded-full bg-(--grad-dash-conic-simple) opacity-(--opacity-strong) blur-(--glow-blur-2xl)"
       )
     }
 
@@ -121,11 +121,11 @@ export function DashboardHero({
                 className="pointer-events-none absolute -inset-y-20 -left-1/2 w-[160%] skew-x-[-14deg] bg-linear-to-r from-transparent via-white/(--opacity-soft) to-transparent opacity-0 transition-opacity duration-700 ease-out group-hover:opacity-medium"
               />
             )}
-            <div className="pointer-events-none absolute -right-24 top-1/2 h-64 w-64 -translate-y-1/2 rounded-full bg-(--flare-highlight) dash-highlight-veil blur-3xl" />
+            <div className="pointer-events-none absolute -right-24 top-1/2 h-(length:--space-64) w-(length:--space-64) -translate-y-1/2 rounded-full bg-(--flare-highlight) dash-highlight-veil blur-3xl" />
             {showHeaderMotion ? (
-              <div className="pointer-events-none absolute left-[-20%] top-[-40%] h-56 w-56 animate-[spin_18s_linear_infinite] rounded-full bg-(--grad-dash-conic) opacity-strong blur-[120px]" />
+              <div className="pointer-events-none absolute left-[-20%] top-[-40%] h-(length:--space-56) w-(length:--space-56) animate-[spin_18s_linear_infinite] rounded-full bg-(--grad-dash-conic) opacity-strong blur-(--glow-blur-lg)" />
             ) : (
-              <div className="pointer-events-none absolute left-[-18%] top-[-42%] h-48 w-48 rounded-full bg-(--grad-dash-conic-simple) opacity-medium blur-[110px]" />
+              <div className="pointer-events-none absolute left-[-18%] top-[-42%] h-(length:--space-48) w-(length:--space-48) rounded-full bg-(--grad-dash-conic-simple) opacity-medium blur-(--glow-blur-md)" />
             )}
             <div className="relative grid gap-6 lg:grid-cols-12 lg:items-center">
               <div className="space-y-3 text-(--text-primary) lg:col-span-8">

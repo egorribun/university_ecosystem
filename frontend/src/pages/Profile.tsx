@@ -197,7 +197,7 @@ export default function Profile() {
       <SEO title={t("profile:pageTitle", "My Profile")} />
       <div className="fixed inset-0 z-(--z-hide) pointer-events-none overflow-hidden" aria-hidden>
         <div
-          className="absolute inset-0 bg-repeat bg-size-[clamp(180px,22vw,360px)] opacity-(--opacity-medium) mix-blend-soft-light dark:opacity-(--opacity-dim) translate-z-0"
+          className="absolute inset-0 bg-repeat bg-size-[clamp(var(--size-pattern-min),22vw,var(--size-pattern-max))] opacity-(--opacity-medium) mix-blend-soft-light dark:opacity-(--opacity-dim) translate-z-0"
           style={{ backgroundImage: `url(${profileBg})` }}
         />
       </div>
@@ -209,13 +209,13 @@ export default function Profile() {
           transition={isTest ? { duration: 0 } : { type: "spring", stiffness: 460, damping: 34 }}
         >
           <section
-            className="profile-page relative min-h-screen flex flex-col py-12 sm:py-16 md:py-20 lg:py-24 px-3 sm:px-4 md:px-6 lg:px-8"
+            className="profile-page relative min-h-screen flex flex-col py-(length:--space-12) sm:py-(length:--space-16) md:py-(length:--space-20) lg:py-(length:--space-24) px-(length:--space-3) sm:px-(length:--space-4) md:px-(length:--space-6) lg:px-(length:--space-8)"
             data-testid="profile-root"
             aria-label={t("profile:aria.page")}
           >
-            <div className="max-w-full sm:max-w-[98%] md:max-w-[96%] lg:max-w-[95%] xl:max-w-(--layout-max-wide) mx-auto w-full relative z-(--z-base)">
+            <div className="max-w-full sm:max-w-[98%] md:max-w-[96%] lg:max-w-[95%] xl:max-w-(--layout-max-ultrawide) mx-auto w-full relative z-(--z-base)">
               <motion.div
-                className="px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-8 sm:py-10 md:py-12 lg:py-14 rounded-sm sm:rounded-md md:rounded-lg relative overflow-hidden bg-primary-subtle-bg/(--opacity-subtle) shadow-glass border border-glass-border-subtle/(--opacity-dim) backdrop-blur-md"
+                className="px-(length:--space-4) sm:px-(length:--space-6) md:px-(length:--space-8) lg:px-(length:--space-10) xl:px-(length:--space-12) py-(length:--space-8) sm:py-(length:--space-10) md:py-(length:--space-12) lg:py-(length:--space-14) rounded-sm sm:rounded-md md:rounded-lg relative overflow-hidden bg-primary-subtle-bg/(--opacity-subtle) shadow-glass border border-glass-border-subtle/(--opacity-dim) backdrop-blur-md"
                 initial={isTest ? false : { opacity: "var(--opacity-strong)", y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={
@@ -314,7 +314,7 @@ export default function Profile() {
       {/* QR Code Dialog */}
       <Dialog open={qrOpen} onClose={() => setQrOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle className="text-center">{t("profile:dialog.qr.title")}</DialogTitle>
-        <DialogContent className="flex flex-col items-center justify-center gap-3 min-h-[320px]">
+        <DialogContent className="flex flex-col items-center justify-center gap-3 min-h-(length:--h-dialog-min)">
           <div className="w-full md:w-80 lg:w-96 flex flex-col border-r border-msg-border h-full relative z-(--z-deep) bg-msg-sidebar">
             <QRCodeSVG value={vCardData} size={300} level="H" includeMargin />
           </div>

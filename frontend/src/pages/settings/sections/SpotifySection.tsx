@@ -25,7 +25,7 @@ export function SpotifySection({
   const { t } = useTranslation(["settings"])
 
   return (
-    <div className="flex w-full flex-col gap-6 sm:gap-7 xl:max-w-[min(100%,820px)]">
+    <div className="flex w-full flex-col gap-6 sm:gap-7 xl:max-w-(--layout-max-content)">
       <div className="flex flex-col gap-4">
         <div className="flex items-center gap-2">
           <SpotifyLogo className="rounded-full" />
@@ -45,11 +45,11 @@ export function SpotifySection({
           {connected && !!displayName && <Chip label={displayName} />}
         </div>
         {!connected ? (
-          <Button variant="contained" onClick={onConnect} className="self-start">
+          <Button variant="solid" onClick={onConnect} className="self-start">
             {t("settings:integrations.spotify.connect")}
           </Button>
         ) : (
-          <Button variant="outlined" color="error" onClick={onDisconnect} className="self-start">
+          <Button variant="outline" color="error" onClick={onDisconnect} className="self-start">
             {t("settings:integrations.spotify.disconnect")}
           </Button>
         )}

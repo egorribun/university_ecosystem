@@ -79,7 +79,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
           {/* Ambient radial glow */}
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,color-mix(in_srgb,var(--primary-main)_var(--opacity-subtle),transparent)_0%,transparent_70%)]" />
 
-          <div className="relative z-(--z-deep) w-full max-w-[480px] rounded-2xl border border-border-subtle bg-(--bg-surface) p-10 text-center shadow-premium backdrop-blur-md">
+          <div className="relative z-(--z-deep) w-full max-w-(length:--layout-max-modal) rounded-2xl border border-border-subtle bg-(--bg-surface) p-(length:--space-10) text-center shadow-premium backdrop-blur-md">
             <h1 className="mb-4 text-3xl font-black tracking-tight text-(--text-primary)">
               Что-то пошло не так
             </h1>

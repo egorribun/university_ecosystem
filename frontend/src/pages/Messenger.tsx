@@ -6,7 +6,7 @@ import {
   ChatWindow,
   MessageInput,
   NewChatModal,
-} from "../components/messenger/MessengerComponents"
+} from "../components/messenger"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
 import { cn } from "@/utils/cn"
@@ -47,25 +47,25 @@ function ConfirmDialog({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-overlay/80 backdrop-blur-md flex items-center justify-center z-modal p-4"
+          className="fixed inset-0 bg-overlay/(--opacity-strong) backdrop-blur-md flex items-center justify-center z-(--z-modal) p-(length:--space-4)"
         >
           <motion.div
             initial={{ scale: 0.9, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.9, opacity: 0, y: 20 }}
-            className="bg-bg-surface dark:bg-bg-page rounded-4xl shadow-premium w-full max-w-md overflow-hidden border border-glass-border"
+            className="bg-(--bg-surface) dark:bg-(--bg-page) rounded-(--radius-2xl) shadow-premium w-full max-w-md overflow-hidden border border-(--glass-border)"
           >
-            <div className="p-8 space-y-4">
+            <div className="p-(length:--space-8) flex flex-col gap-(--space-4)">
               <h3 className="text-xl font-bold tracking-tight sf-pro">{title}</h3>
               <p className="text-base text-text-secondary font-medium leading-relaxed">
                 {message}
               </p>
-              <div className="flex gap-3 justify-end pt-4">
+              <div className="flex gap-(--space-3) justify-end pt-(length:--space-4)">
                 <motion.button
                   whileHover={{ scale: 1.05, backgroundColor: "var(--bg-surface-hover)" }}
                   whileTap={{ scale: 0.95 }}
                   onClick={onCancel}
-                  className="px-6 py-2.5 text-sm font-bold rounded-sm border border-subtle transition-colors"
+                  className="px-6 py-2.5 text-sm font-bold rounded-(--radius-sm) border border-subtle transition-colors"
                 >
                   {cancelText}
                 </motion.button>
@@ -74,7 +74,7 @@ function ConfirmDialog({
                   whileTap={{ scale: 0.95 }}
                   onClick={onConfirm}
                   className={cn(
-                    "px-6 py-2.5 text-sm font-bold rounded-sm shadow-surface transition-all text-white",
+                    "px-6 py-2.5 text-sm font-bold rounded-(--radius-sm) shadow-surface transition-all text-white",
                     variant === "danger"
                       ? "bg-error-text shadow-glow-error"
                       : variant === "warning"
@@ -153,7 +153,7 @@ export default function Messenger() {
       className="flex overflow-hidden text-text-primary font-sans h-full bg-msg-chat"
       style={{
         paddingBottom: isBottomNavVisible
-          ? "calc(var(--bn-h, 4rem) + env(safe-area-inset-bottom, 0px) + 8px)"
+          ? "calc(var(--bn-h, 4rem) + env(safe-area-inset-bottom, 0px) + var(--space-2))"
           : 0,
       }}
     >
@@ -166,9 +166,9 @@ export default function Messenger() {
             animate={{ x: 0, opacity: 1 }}
             exit={isMobile ? { x: -300, opacity: 0 } : undefined}
             transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-            className="w-full md:w-80 lg:w-96 flex flex-col border-r border-msg-border h-full relative z-deep bg-msg-sidebar"
+            className="w-full md:w-(--layout-max-sidebar) lg:w-(--layout-max-sidebar) flex flex-col border-r border-(--glass-border) h-full relative z-(--z-deep) bg-(--bg-surface-raised)"
           >
-            <div className="p-4 flex justify-between items-center sticky top-0 z-deep backdrop-blur-xl bg-msg-header border-b border-msg-border">
+            <div className="p-(length:--space-4) flex justify-between items-center sticky top-0 z-(--z-deep) backdrop-blur-xl bg-(--bg-surface)/(--opacity-medium) border-b border-(--glass-border)">
               <h1 className="text-2xl font-bold tracking-tight sf-pro">
                 {t("messenger:title", "Messages")}
               </h1>
@@ -176,7 +176,7 @@ export default function Messenger() {
                 whileHover={{ scale: 1.1, backgroundColor: "var(--msg-sidebar-hover)" }}
                 whileTap={{ scale: 0.9 }}
                 onClick={() => setIsNewChatModalOpen(true)}
-                className="p-2 rounded-full transition-colors bg-primary-main/10 text-msg-active"
+                className="p-(length:--space-2) rounded-full transition-colors bg-(--primary-main)/(--opacity-low) text-msg-active"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -195,7 +195,7 @@ export default function Messenger() {
               </motion.button>
             </div>
 
-            <div className="p-4 bg-msg-sidebar">
+            <div className="p-(length:--space-4) bg-(--bg-surface-raised)">
               <div className="relative group">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -214,7 +214,7 @@ export default function Messenger() {
                 <input
                   type="text"
                   placeholder={t("messenger:search", "Search")}
-                  className="w-full pl-10 pr-4 py-2.5 rounded-md border-none focus:ring-2 focus:ring-brand-main/20 outline-none transition-all text-md shadow-sm bg-black/10 dark:bg-white/10"
+                  className="w-full pl-(length:--space-10) pr-(length:--space-4) py-(length:--space-25) rounded-(--radius-md) border-none focus:ring-2 focus:ring-(--brand-main)/(--opacity-medium) outline-none transition-all text-(length:--fs-body) shadow-sm bg-black/(--opacity-medium) dark:bg-white/(--opacity-medium)"
                 />
               </div>
             </div>
@@ -246,14 +246,14 @@ export default function Messenger() {
                       initial={{ y: -20, opacity: 0 }}
                       animate={{ y: 0, opacity: 1 }}
                       exit={{ y: -20, opacity: 0 }}
-                      className="msg-header shrink-0 h-16 flex items-center px-4 justify-between z-deep"
+                      className="shrink-0 h-(--navbar-h-base) flex items-center px-(length:--space-4) justify-between z-(--z-deep)"
                     >
                       <div className="flex items-center gap-3">
                         {isMobile && (
                           <motion.button
                             whileTap={{ scale: 0.9 }}
                             onClick={() => navigate("/messenger")}
-                            className="p-1.5 -ml-1 rounded-full hover:bg-bg-surface-hover/50 transition-colors"
+                            className="p-(length:--space-15) -ml-(length:--space-1) rounded-full hover:bg-(--bg-surface-hover)/(--opacity-medium) transition-colors"
                           >
                             <svg
                               xmlns="http://www.w3.org/2000/svg"
@@ -285,10 +285,10 @@ export default function Messenger() {
                               }
                               fallback={AVATAR_PLACEHOLDER_URL}
                               alt={getOtherParticipant(activeChat)?.full_name || ""}
-                              className="w-11 h-11 rounded-full object-cover border-2 border-glass-border-subtle"
+                              className="size-(--space-11) rounded-full object-cover border-2 border-(--glass-border-subtle)"
                             />
                             {presenceMap[getOtherParticipant(activeChat)?.id ?? ""]?.active && (
-                              <span className="msg-online-indicator absolute bottom-0 right-0 w-3.5 h-3.5"></span>
+                              <span className="msg-online-indicator absolute bottom-0 right-0 size-(--space-35)"></span>
                             )}
                           </div>
                           <div>
@@ -327,7 +327,7 @@ export default function Messenger() {
                           whileHover={{ scale: 1.05 }}
                           whileTap={{ scale: 0.95 }}
                           onClick={() => setShowSearchInChat(true)}
-                          className="p-2.5 rounded-full hover:bg-bg-surface-hover/50 transition-colors"
+                          className="p-(length:--space-25) rounded-full hover:bg-(--bg-surface-hover)/(--opacity-medium) transition-colors"
                         >
                           <svg
                             xmlns="http://www.w3.org/2000/svg"
@@ -349,7 +349,7 @@ export default function Messenger() {
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.95 }}
                             onClick={() => setShowChatMenu(!showChatMenu)}
-                            className={`p-2.5 rounded-full transition-colors ${showChatMenu ? "bg-bg-surface-hover" : "hover:bg-bg-surface-hover/50"}`}
+                            className={`p-(length:--space-25) rounded-full transition-colors ${showChatMenu ? "bg-(--bg-surface-hover)" : "hover:bg-(--bg-surface-hover)/(--opacity-medium)"}`}
                           >
                             <svg
                               xmlns="http://www.w3.org/2000/svg"
@@ -428,7 +428,7 @@ export default function Messenger() {
                       initial={{ y: -20, opacity: 0 }}
                       animate={{ y: 0, opacity: 1 }}
                       exit={{ y: -20, opacity: 0 }}
-                      className="shrink-0 h-16 border-b border-glass-border-subtle flex items-center px-4 bg-glass-elevated backdrop-blur-xl z-deep"
+                      className="shrink-0 h-(--navbar-h-base) border-b border-(--glass-border) flex items-center px-(length:--space-4) bg-(--bg-surface-raised)/(--opacity-medium) backdrop-blur-xl z-(--z-deep)"
                     >
                       <motion.button
                         whileTap={{ scale: 0.9 }}
@@ -462,7 +462,7 @@ export default function Messenger() {
                         autoCorrect="off"
                         spellCheck="false"
                         placeholder={t("messenger:searchMessages", "Search messages...")}
-                        className="flex-1 px-4 py-2.5 rounded-md bg-black/10 dark:bg-white/10 border-none focus:ring-2 focus:ring-brand-main/40 outline-none transition-all text-md"
+                        className="flex-1 px-4 py-2.5 rounded-md bg-black/(--opacity-subtle) dark:bg-white/(--opacity-subtle) border-none focus:ring-2 focus:ring-brand-main/(--opacity-medium) outline-none transition-all text-md"
                       />
                     </motion.div>
                   )}
@@ -477,7 +477,7 @@ export default function Messenger() {
                   initial={{ scale: 0.8, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   whileHover={{ rotate: 5, scale: 1.1 }}
-                  className="w-32 h-32 rounded-4xl flex items-center justify-center mb-8 shadow-premium"
+                  className="size-(--space-32) rounded-(--radius-2xl) flex items-center justify-center mb-(length:--space-8) shadow-premium"
                   style={{
                     background:
                       "linear-gradient(135deg, var(--msg-sidebar-hover), var(--msg-header-bg))",
@@ -490,7 +490,7 @@ export default function Messenger() {
                     viewBox="0 0 24 24"
                     strokeWidth={1}
                     stroke="currentColor"
-                    className="w-16 h-16 text-msg-active opacity-[--opacity-strong]"
+                    className="size-(--space-16) text-msg-active opacity-[--opacity-strong]"
                   >
                     <path
                       strokeLinecap="round"
@@ -526,15 +526,15 @@ export default function Messenger() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-overlay/[--opacity-strong] backdrop-blur-md flex items-center justify-center z-[--z-overlay] p-4"
+            className="fixed inset-0 bg-overlay/(--opacity-strong) backdrop-blur-md flex items-center justify-center z-(--z-overlay) p-(length:--space-4)"
           >
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="bg-[--bg-surface] dark:bg-[--bg-page] rounded-4xl shadow-2xl w-full max-w-lg overflow-hidden border border-white/[--opacity-subtle] z-[--z-modal]"
+              className="bg-(--bg-surface) dark:bg-(--bg-page) rounded-(--radius-2xl) shadow-2xl w-full max-w-lg overflow-hidden border border-white/(--opacity-subtle) z-(--z-modal)"
             >
-              <div className="p-6 pb-4 flex items-center justify-between border-b border-msg-border">
+              <div className="p-(length:--space-6) pb-(length:--space-4) flex items-center justify-between border-b border-msg-border">
                 <h3 className="text-xl font-bold tracking-tight sf-pro">
                   {profileUser?.full_name || t("messenger:profile", "Profile")}
                 </h3>
@@ -557,7 +557,7 @@ export default function Messenger() {
                 </motion.button>
               </div>
 
-              <div className="p-8">
+              <div className="p-(length:--space-8)">
                 {isProfileLoading && (
                   <div className="flex flex-col items-center py-8">
                     <div className="w-12 h-12 border-4 border-[--primary-main]/[--opacity-dim] border-t-[--primary-main] rounded-full animate-spin"></div>
@@ -581,10 +581,10 @@ export default function Messenger() {
                           srcRaw={profileUser.avatar_url || AVATAR_PLACEHOLDER_URL}
                           fallback={AVATAR_PLACEHOLDER_URL}
                           alt={profileUser.full_name ?? ""}
-                          className="w-24 h-24 rounded-lg object-cover border-4 border-[--bg-surface] shadow-xl"
+                          className="size-(--space-24) rounded-(--radius-md) object-cover border-4 border-(--bg-surface) shadow-xl"
                         />
                         {profileUser.is_active && (
-                          <span className="msg-online-indicator absolute -bottom-1 -right-1 w-6 h-6 border-4 border-[--bg-surface]"></span>
+                          <span className="msg-online-indicator absolute -bottom-(--space-1) -right-(--space-1) size-(--space-6) border-4 border-(--bg-surface)"></span>
                         )}
                       </div>
                       <h4 className="text-2xl font-bold tracking-tight sf-pro">
@@ -593,8 +593,8 @@ export default function Messenger() {
                       <p className="text-[--text-secondary] font-medium">{profileUser.email}</p>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3 pb-2">
-                      <div className="p-4 rounded-md bg-[--bg-surface-hover]/[--opacity-medium] border border-subtle">
+                    <div className="grid grid-cols-2 gap-(--space-3) pb-(length:--space-2)">
+                      <div className="p-(length:--space-4) rounded-(--radius-md) bg-(--bg-surface-hover)/(--opacity-medium) border border-subtle">
                         <p className="text-xs font-bold uppercase tracking-widest text-[--text-secondary]/[--opacity-strong] mb-1">
                           {t("messenger:status", "Status")}
                         </p>
@@ -617,7 +617,7 @@ export default function Messenger() {
                           href={profileUser.avatar_url}
                           target="_blank"
                           rel="noreferrer"
-                          className="p-4 rounded-md bg-[--primary-main]/[--opacity-subtle] border border-[--primary-main]/[--opacity-subtle] hover:bg-[--primary-main]/[--opacity-subtle] transition-colors"
+                          className="p-(length:--space-4) rounded-(--radius-md) bg-(--primary-main)/(--opacity-subtle) border border-(--primary-main)/(--opacity-subtle) hover:bg-(--primary-main)/(--opacity-subtle) transition-colors"
                         >
                           <p className="text-xs font-bold uppercase tracking-widest text-[--primary-main] mb-1">
                             {t("messenger:avatar", "Avatar")}

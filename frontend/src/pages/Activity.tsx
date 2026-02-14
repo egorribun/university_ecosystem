@@ -154,7 +154,7 @@ export default function Activity() {
                     : { willChange: "transform, opacity", transform: "translateZ(0)" }),
                   ...fadeDelayStyle("140ms"),
                 }}
-                className="mb-6 inline-flex items-center gap-1 rounded-full border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-1 shadow-premium backdrop-blur-xl [-webkit-backdrop-filter:blur(12px)] dark:border-glass-border dark:bg-(--bg-page)/(--opacity-medium) dark:shadow-premium"
+                className="mb-6 inline-flex items-center gap-1 rounded-full border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-1 shadow-premium backdrop-blur-xl [-webkit-backdrop-filter:blur(var(--blur-md))] dark:border-glass-border dark:bg-(--bg-page)/(--opacity-medium) dark:shadow-premium"
               >
                 {periodOptions.map((option) => (
                   <button

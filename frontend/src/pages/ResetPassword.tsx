@@ -148,9 +148,9 @@ export default function ResetPassword() {
   const isSuccess = resetStatus === "success"
 
   return (
-    <div className="min-h-screen bg-(--bg-page) text-(--text-primary) flex items-center justify-center p-6 relative overflow-hidden">
+    <div className="min-h-screen bg-(--bg-page) text-(--text-primary) flex items-center justify-center p-(length:--fluid-px) relative overflow-hidden">
       {/* Background decorative elements */}
-      <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-dim">
+      <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-(--opacity-dim)">
         <div className="absolute top-[-10%] right-[-5%] w-[40%] h-[40%] bg-(--glow-spotlight-primary) rounded-full blur-(--glow-blur-massive)" />
         <div className="absolute bottom-[-10%] left-[-5%] w-[40%] h-[40%] bg-(--glow-spotlight-secondary) rounded-full blur-(--glow-blur-massive)" />
       </div>
@@ -158,9 +158,9 @@ export default function ResetPassword() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-[460px] z-(--z-modal)"
+        className="w-full max-w-(length:--layout-max-modal) z-(--z-modal)"
       >
-        <SectionCard className="p-8 sm:p-10 border-glass-border shadow-2xl backdrop-blur-2xl">
+        <SectionCard className="p-(length:--fluid-card-p) border-glass-border shadow-2xl backdrop-blur-2xl">
           <div className="space-y-8">
             <AnimatePresence mode="wait">
               {isSuccess ? (
@@ -171,8 +171,8 @@ export default function ResetPassword() {
                   className="space-y-6 pt-4 text-center"
                 >
                   <div className="flex justify-center">
-                    <div className="h-20 w-20 rounded-lg bg-(--success-bg) flex items-center justify-center text-(--success-text)">
-                      <CheckCircle2 className="h-10 w-10" />
+                    <div className="h-(--space-20) w-(--space-20) rounded-(--radius-lg) bg-(--success-bg) flex items-center justify-center text-(--success-text)">
+                      <CheckCircle2 size={40} />
                     </div>
                   </div>
                   <div className="space-y-2">
@@ -188,7 +188,7 @@ export default function ResetPassword() {
                       as={Link}
                       to="/login"
                       variant="solid"
-                      className="w-full h-12 rounded-md"
+                      className="w-full h-(--space-12) rounded-(--radius-md)"
                     >
                       {t("auth:actions.goToLogin")}
                     </Button>
@@ -202,7 +202,7 @@ export default function ResetPassword() {
                   className="space-y-6"
                 >
                   <div className="text-center space-y-2">
-                    <h1 className="text-3xl font-black tracking-tight text-(--text-primary) sm:text-4xl">
+                    <h1 className="text-(length:--fs-h1) font-black tracking-tight text-(--text-primary)">
                       {t("auth:reset.title")}
                     </h1>
                     <p className="text-sm text-(--text-secondary) font-medium">
@@ -228,23 +228,19 @@ export default function ResetPassword() {
                           onKeyDown={(event: React.KeyboardEvent<HTMLInputElement>) =>
                             setCapsPass(event.getModifierState("CapsLock"))
                           }
-                          autoFocus
-                          fullWidth
-                          autoComplete="new-password"
-                          ref={passwordRef}
                           disabled={resetPending}
                           className="rounded-md"
                           trailingIcon={
                             <button
                               type="button"
                               onClick={() => setShowPass(!showPass)}
-                              className="p-1 hover:bg-black/(--opacity-subtle) dark:hover:bg-white/(--opacity-subtle) rounded-md transition-colors"
+                              className="p-(length:--space-1) hover:bg-black/(--opacity-subtle) dark:hover:bg-white/(--opacity-subtle) rounded-(--radius-md) transition-colors"
                               tabIndex={-1}
                             >
                               {showPass ? (
-                                <VisibilityOff className="h-4 w-4" />
+                                <VisibilityOff size={16} />
                               ) : (
-                                <Visibility className="h-4 w-4" />
+                                <Visibility size={16} />
                               )}
                             </button>
                           }
@@ -255,7 +251,7 @@ export default function ResetPassword() {
                             <ProgressBar
                               value={[10, 30, 55, 75, 100][strength]}
                               color={strength < 2 ? "error" : strength < 3 ? "warning" : "success"}
-                              className="h-1.5"
+                              className="h-(--space-15)"
                             />
                             <div className="flex justify-between items-center">
                               <p className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-strong">
@@ -278,8 +274,8 @@ export default function ResetPassword() {
                       </div>
 
                       {!!feedback && (
-                        <div className="flex gap-2 px-2 py-2 rounded-sm bg-(--primary-main)/(--opacity-subtle) border border-(--primary-main)/(--opacity-subtle)">
-                          <ShieldCheck className="h-4 w-4 text-(--primary-main) shrink-0 mt-0.5" />
+                        <div className="flex gap-(--space-2) px-(length:--space-2) py-(length:--space-2) rounded-(--radius-xs) bg-(--primary-main)/(--opacity-subtle) border border-(--primary-main)/(--opacity-subtle)">
+                          <ShieldCheck size={16} className="text-(--primary-main) shrink-0 mt-05" />
                           <p className="text-xs font-medium text-(--primary-main)/(--opacity-hover) leading-relaxed">
                             {feedback}
                           </p>
@@ -306,7 +302,7 @@ export default function ResetPassword() {
                           autoComplete="new-password"
                           ref={(input) => {
                             if (input) {
-                              confirmRef.current = input;
+                              confirmRef.current = input as HTMLInputElement;
                               // If you want to auto-focus on initial render of this field,
                               // you can uncomment the line below.
                               // setTimeout(() => input.focus(), 0);
@@ -318,13 +314,13 @@ export default function ResetPassword() {
                             <button
                               type="button"
                               onClick={() => setShowConfirm(!showConfirm)}
-                              className="p-1 hover:bg-black/(--opacity-subtle) dark:hover:bg-white/(--opacity-subtle) rounded-md transition-colors"
+                              className="p-(length:--space-1) hover:bg-black/(--opacity-subtle) dark:hover:bg-white/(--opacity-subtle) rounded-(--radius-md) transition-colors"
                               tabIndex={-1}
                             >
                               {showConfirm ? (
-                                <VisibilityOff className="h-4 w-4" />
+                                <VisibilityOff size={16} />
                               ) : (
-                                <Visibility className="h-4 w-4" />
+                                <Visibility size={16} />
                               )}
                             </button>
                           }
@@ -332,8 +328,8 @@ export default function ResetPassword() {
                       </div>
 
                       {(capsPass || capsConfirm) && (
-                        <div className="flex items-center gap-2 px-2 py-1.5 rounded-xs bg-(--warning-bg) border border-(--warning-text)/(--opacity-subtle) text-(--warning-text)">
-                          <AlertTriangle className="h-4 w-4" />
+                        <div className="flex items-center gap-(--space-2) px-(length:--space-2) py-(length:--space-15) rounded-(--radius-xs) bg-(--warning-bg) border border-(--warning-text)/(--opacity-subtle) text-(--warning-text)">
+                          <AlertTriangle size={16} />
                           <p className="text-xs font-bold uppercase tracking-wider">
                             {t("auth:messages.capsLock")}
                           </p>
@@ -341,7 +337,7 @@ export default function ResetPassword() {
                       )}
 
                       {pwned && (
-                        <Alert severity="warning" className="rounded-sm py-2">
+                        <Alert severity="warning" className="rounded-(--radius-sm) py-(length:--space-2)">
                           {t("auth:reset.pwnedWarning")}
                         </Alert>
                       )}
@@ -357,10 +353,10 @@ export default function ResetPassword() {
                       <Button
                         type="submit"
                         variant="solid"
-                        className="w-full h-14 rounded-md text-base font-black shadow-lg shadow-brand/(--opacity-dim)"
+                        className="w-full h-(--space-14) rounded-(--radius-lg) text-(length:--fs-base) font-black shadow-lg shadow-brand/(--opacity-dim)"
                         disabled={!canSubmit || resetPending}
                         loading={resetPending}
-                        startIcon={<LockIcon className="h-5 w-5" />}
+                        startIcon={<LockIcon size={20} />}
                       >
                         {t("auth:reset.saveButton")}
                       </Button>
@@ -368,9 +364,9 @@ export default function ResetPassword() {
                       <div className="pt-2 text-center">
                         <Link
                           to="/forgot-password"
-                          className="inline-flex items-center gap-2 text-sm font-bold text-(--text-secondary) hover:text-brand transition-colors group"
+                          className="inline-flex items-center gap-(--space-2) text-(length:--fs-sm) font-bold text-(--text-secondary) hover:text-brand transition-colors group"
                         >
-                          <ChevronLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
+                          <ChevronLeft className="h-(--space-4) w-(--space-4) transition-transform group-hover:-translate-x-(--space-1)" />
                           {t("auth:reset.linkHelp")}
                         </Link>
                       </div>

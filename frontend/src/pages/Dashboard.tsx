@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next"
 import { SEO } from "@/components/SEO"
 
 import { PageLayout } from "@/components/PageLayout"
-import DashboardStories from "@/components/DashboardStories"
+import { DashboardStories } from "@/components/stories"
 import { useAuth } from "../contexts/AuthContext"
 import { getLocaleForLanguage, useLanguage } from "@/contexts/LanguageContext"
 import { useDashboardStories, prefetchDashboardStories } from "@/hooks/useDashboardStories"
@@ -74,7 +74,7 @@ export default function Dashboard() {
           />
         </ScrollReveal>
 
-        <div className="mt-6 grid w-full grid-cols-12 gap-4 md:mt-8 md:gap-6 pb-16">
+        <div className="mt-lg grid w-full grid-cols-12 gap-md md:mt-xl md:gap-lg pb-3xl">
           <div className="col-span-12 lg:col-span-4">
             <ScrollReveal mode="slide" direction="up" delay={0.3} width="100%">
               <ScheduleCard userRole={user?.role} userGroupId={user?.group_id} time={time} />

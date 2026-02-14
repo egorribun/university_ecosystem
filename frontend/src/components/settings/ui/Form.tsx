@@ -4,51 +4,63 @@ import {
   Button as GlobalButton,
   type ButtonProps as GlobalButtonProps,
   Input,
+  Textarea,
   Switch,
   RadioGroup,
   RadioGroupItem as Radio,
 } from "@/components/ui"
 
-export { Input, Switch, RadioGroup, Radio }
+export { Input, Textarea, Switch, RadioGroup, Radio }
 
-// Compatible Button wrapper
+// Compatible Button wrapper types
+type LegacyVariant = "contained" | "outlined" | "text"
+type LegacySize = "small" | "medium" | "large"
+
 export function Button<T extends React.ElementType = "button">({
   variant,
   size,
   startIcon,
   endIcon,
+  leadingIcon,
+  trailingIcon,
   ...props
-}: {
-  variant?: "contained" | "outlined" | "text" | "solid" | "outline" | "ghost" | "glass" | "gradient"
-  size?: "small" | "medium" | "large" | "sm" | "md" | "lg"
+}: Omit<GlobalButtonProps<T>, "variant" | "size"> & {
+  variant?: GlobalButtonProps<T>["variant"] | LegacyVariant
+  size?: GlobalButtonProps<T>["size"] | LegacySize
   startIcon?: React.ReactNode
   endIcon?: React.ReactNode
-} & Omit<GlobalButtonProps<T>, "variant" | "size" | "leadingIcon" | "trailingIcon">) {
-  const mappedVariant =
-    variant === "contained"
-      ? ("solid" as const)
-      : variant === "outlined"
-        ? ("outline" as const)
-        : variant === "text"
-          ? ("ghost" as const)
-          : (variant as GlobalButtonProps<T>["variant"]) || ("solid" as const)
+}) {
+  const isLegacyVariant = (v: any): v is LegacyVariant =>
+    ["contained", "outlined", "text"].includes(v)
+  const isLegacySize = (s: any): s is LegacySize => ["small", "medium", "large"].includes(s)
 
-  const mappedSize =
-    size === "small"
-      ? ("sm" as const)
-      : size === "medium"
-        ? ("md" as const)
-        : size === "large"
-          ? ("lg" as const)
-          : (size as GlobalButtonProps<T>["size"]) || ("md" as const)
+  const mappedVariant = (
+    isLegacyVariant(variant)
+      ? variant === "contained"
+        ? "solid"
+        : variant === "outlined"
+          ? "outline"
+          : "ghost"
+      : variant || "solid"
+  ) as GlobalButtonProps<T>["variant"]
+
+  const mappedSize = (
+    isLegacySize(size)
+      ? size === "small"
+        ? "sm"
+        : size === "medium"
+          ? "md"
+          : "lg"
+      : size || "md"
+  ) as GlobalButtonProps<T>["size"]
 
   return (
     <GlobalButton
       variant={mappedVariant}
       size={mappedSize}
-      leadingIcon={startIcon}
-      trailingIcon={endIcon}
-      {...(props as GlobalButtonProps<T>)}
+      leadingIcon={leadingIcon ?? startIcon}
+      trailingIcon={trailingIcon ?? endIcon}
+      {...(props as React.ComponentPropsWithoutRef<T>)}
     />
   )
 }
@@ -81,7 +93,7 @@ export const TextField = React.forwardRef<
     error?: boolean
     helperText?: string
     placeholder?: string
-    size?: "small" | "medium"
+    size?: "small" | "medium" | "sm" | "md"
     fullWidth?: boolean
     autoComplete?: string
     className?: string
@@ -135,7 +147,7 @@ export const TextField = React.forwardRef<
             </div>
           )}
           {multiline ? (
-            <textarea
+            <Textarea
               ref={ref as React.Ref<HTMLTextAreaElement>}
               value={value}
               onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
@@ -148,14 +160,6 @@ export const TextField = React.forwardRef<
               placeholder={placeholder}
               rows={rows}
               className={cn(
-                "flex w-full rounded-xl border-glass-border bg-glass-bg px-4 py-3 text-base font-medium text-(--text-primary) shadow-sm transition-all duration-500",
-                "placeholder:text-(--text-secondary)/(--opacity-medium)",
-                "focus:border-(--brand-main)/(--opacity-medium) focus:outline-none focus:ring-4 focus:ring-(--brand-main)/(--opacity-subtle)",
-                "disabled:cursor-not-allowed disabled:opacity-medium",
-                error
-                  ? "border-(--error-text) focus:border-(--error-text) focus:ring-(--error-text)/(--opacity-subtle)"
-                  : "",
-                !fullWidth ? "w-auto" : "",
                 "resize-none",
                 leadingIcon ? "pl-11" : "",
                 trailingIcon ? "pr-11" : ""

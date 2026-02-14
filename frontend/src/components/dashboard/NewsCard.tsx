@@ -1,16 +1,15 @@
 import { type CSSProperties, type KeyboardEvent } from "react"
-import { motion } from "framer-motion"
-import { Link, useNavigate } from "react-router-dom"
+import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { ArrowRight } from "lucide-react"
 
-import { Button, Card, Skeleton } from "@/components/ui"
+import { Button, Card } from "@/components/ui"
 import { cn } from "@/utils/cn"
 import { useDashboardNews, prefetchDashboardNews } from "@/hooks/useDashboardNews"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useQueryClient } from "@tanstack/react-query"
 import type { NewsItem } from "@/api/news"
-import { DateBullet } from "./DateBullet"
+import { NewsCardBackground } from "./NewsCardBackground"
+import { NewsCardList } from "./NewsCardList"
 
 interface NewsCardProps {
   locale: string
@@ -22,7 +21,6 @@ interface NewsCardProps {
 
 export function NewsCard({ locale, className, style, ...props }: NewsCardProps) {
   const { t } = useTranslation(["dashboard", "common"])
-  const navigate = useNavigate()
   const { language } = useLanguage()
   const queryClient = useQueryClient()
 
@@ -43,9 +41,6 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
     }
   }
 
-  const listActionBase =
-    "group relative isolate w-full overflow-hidden rounded-lg border border-border-subtle bg-surface-hover/subtle px-4 py-3 text-left transition-all duration-300 ease-out hover:bg-surface-hover/dim hover:border-border-strong hover:-translate-y-0.5 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/medium"
-
   return (
     <Card
       className={cn(
@@ -59,9 +54,9 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
       style={style}
       {...props}
     >
-      <div className="relative z-(--z-deep) space-y-5">
+      <div className="relative z-deep space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-(length:--fs-fluid-h2) font-extrabold text-(--text-primary)">
+          <h2 className="text-fluid-h2 font-extrabold text-(--text-primary)">
             {t("dashboard:news.heading")}
           </h2>
           <Button
@@ -80,89 +75,9 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
           </Button>
         </div>
 
-        {loadingNews && (
-          <div className="space-y-4" role="presentation">
-            {[1, 2].map((i) => (
-              <div
-                key={i}
-                className="flex items-start gap-4 rounded-lg border border-[--dash-panel-item-divider] bg-[--dash-panel-item-bg] px-4 py-3 opacity-medium"
-              >
-                <Skeleton width={44} height={44} rounded="9999px" className="shrink-0" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton height={20} width="90%" />
-                  <Skeleton height={14} width="70%" />
-                  <Skeleton height={14} width="40%" />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-        {!loadingNews && news.length === 0 && (
-          <p className="text-sm text-(--text-secondary)">{t("dashboard:news.empty")}</p>
-        )}
-        {!loadingNews && news.length > 0 && (
-          <ul className="space-y-3" aria-label={t("dashboard:aria.newsList")}>
-            {news.map((n) => (
-              <li key={n.id} className="dash-list-item">
-                <button
-                  type="button"
-                  className={cn(listActionBase, "flex items-start gap-4 text-left sm:gap-5")}
-                  onClick={() => navigate(`/news/${n.id}`)}
-                  title={n.title}
-                  aria-label={t("dashboard:aria.newsItem", { title: n.title })}
-                >
-                  <DateBullet date={n.created_at} locale={locale} />
-                  <div className="flex flex-col gap-1">
-                    <span className="text-(length:--fs-fluid-h3) font-bold leading-snug text-(--text-primary)">
-                      {n.title}
-                    </span>
-                    <span className="text-sm text-(--text-secondary)">
-                      {(n.content || "").slice(0, 110)}
-                      {(n.content || "").length > 110 ? "…" : ""}
-                    </span>
-                  </div>
-                  <span
-                    aria-hidden="true"
-                    className="ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-glass-border bg-surface/dim text-(--text-primary) opacity-0 transition-all duration-300 group-hover:opacity-100 group-hover:border-brand group-hover:bg-brand/subtle group-hover:text-brand"
-                  >
-                    <ArrowRight aria-hidden="true" className="h-4 w-4" />
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+        <NewsCardList news={news} loading={loadingNews} locale={locale} />
       </div>
-      <motion.span
-        aria-hidden="true"
-        initial={{ opacity: 0 }}
-        whileHover={{ opacity: "var(--opacity-heavy)" }}
-        animate={{
-          scale: [1, 1.1, 1],
-        }}
-        transition={{
-          duration: 4.5,
-          repeat: Infinity,
-          ease: "easeInOut",
-        }}
-        className="pointer-events-none absolute inset-0 z-(--z-hide) bg-[radial-gradient(circle_at_top_right,var(--dash-card-news-radial),transparent_68%)] mix-blend-soft-light transition-opacity duration-500"
-      />
-      <motion.span
-        aria-hidden="true"
-        initial={{ opacity: "var(--opacity-medium)" }}
-        whileHover={{ opacity: "var(--opacity-strong)" }}
-        animate={{
-          scale: [1, 1.18, 1],
-          rotate: [0, -5, 0],
-          x: [0, 10, 0],
-        }}
-        transition={{
-          duration: 6.5,
-          repeat: Infinity,
-          ease: "easeInOut",
-        }}
-        className="pointer-events-none absolute -bottom-20 left-1/3 z-(--z-hide) h-44 w-44 rounded-full bg-[radial-gradient(circle,var(--dash-card-news-orb),transparent)] blur-3xl mix-blend-soft-light transition-opacity duration-700"
-      />
+      <NewsCardBackground />
     </Card>
   )
 }

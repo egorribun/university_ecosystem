@@ -7,7 +7,7 @@ export interface FeatureFlag {
   percentage: number
   allowed_users: number[]
   allowed_groups: string[]
-  metadata: Record<string, any>
+  metadata: Record<string, unknown>
 }
 
 export interface FeatureFlagUpdatePayload {
@@ -25,7 +25,7 @@ export interface AuditLog {
   resource_type: string
   resource_id?: string
   action: string
-  context?: Record<string, any>
+  context?: Record<string, unknown>
   ip_address?: string
   user_agent?: string
   created_at: string

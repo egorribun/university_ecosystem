@@ -107,20 +107,20 @@ export function renderBootstrapFallback({
   container.style.padding = "2rem"
   container.style.gap = "1.5rem"
   container.style.textAlign = "center"
-  container.style.backgroundColor = "var(--bg-page, #f8fafc)"
+  container.style.backgroundColor = "var(--bg-page)"
 
   const title = documentRef.createElement("h1")
   title.textContent = copy.title
   title.style.margin = "0"
   title.style.fontSize = "var(--fs-h3, 1.75rem)"
   title.style.fontWeight = "800"
-  title.style.color = "var(--text-primary, #0f172a)"
+  title.style.color = "var(--text-primary)"
 
   const description = documentRef.createElement("p")
   description.textContent = copy.description
   description.style.margin = "0"
   description.style.maxWidth = "32rem"
-  description.style.color = "var(--text-secondary, #475569)"
+  description.style.color = "var(--text-secondary)"
 
   const actions = documentRef.createElement("div")
   actions.style.display = "flex"
@@ -132,10 +132,10 @@ export function renderBootstrapFallback({
   reloadButton.type = "button"
   reloadButton.textContent = copy.reloadButtonLabel
   reloadButton.style.backgroundColor = "var(--primary-main)"
-  reloadButton.style.color = "var(--color-white, #ffffff)"
+  reloadButton.style.color = "var(--color-white)"
   reloadButton.style.border = "none"
   reloadButton.style.padding = "14px 28px"
-  reloadButton.style.borderRadius = "var(--radius-xl, 14px)"
+  reloadButton.style.borderRadius = "var(--radius-xl)"
   reloadButton.style.fontSize = "16px"
   reloadButton.style.fontWeight = "700"
   reloadButton.style.cursor = "pointer"
@@ -149,7 +149,7 @@ export function renderBootstrapFallback({
   clearCacheButton.style.border = "2px solid var(--primary-main)"
   clearCacheButton.style.color = "var(--primary-main)"
   clearCacheButton.style.padding = "12px 24px"
-  clearCacheButton.style.borderRadius = "var(--radius-xl, 14px)"
+  clearCacheButton.style.borderRadius = "var(--radius-xl)"
   clearCacheButton.style.fontSize = "14px"
   clearCacheButton.style.fontWeight = "600"
   clearCacheButton.style.cursor = "pointer"

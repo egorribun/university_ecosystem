@@ -5,12 +5,13 @@ import { cva, type VariantProps } from "class-variance-authority"
 const skeletonVariants = cva("skeleton bg-muted animate-pulse", {
   variants: {
     rounded: {
-      true: "rounded-lg",
+      true: "rounded-(--radius-md)",
       false: "rounded-none",
       full: "rounded-full",
-      md: "rounded-md",
-      lg: "rounded-lg",
-      xl: "rounded-xl",
+      sm: "rounded-(--radius-sm)",
+      md: "rounded-(--radius-md)",
+      lg: "rounded-(--radius-lg)",
+      xl: "rounded-(--radius-xl)",
     },
   },
   defaultVariants: {

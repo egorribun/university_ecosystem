@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react"
 import { describe, it, expect, vi } from "vitest"
-import { ContactList, ChatWindow } from "../../components/messenger/MessengerComponents"
+import { ContactList, ChatWindow } from "../../components/messenger"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
 // Mock translations

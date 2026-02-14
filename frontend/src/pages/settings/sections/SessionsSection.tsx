@@ -56,7 +56,7 @@ export function SessionsSection({
       <div className="flex flex-col gap-3">
         <div className="flex flex-col items-start gap-2.5 sm:flex-row sm:items-center sm:justify-between">
           <Button
-            variant="outlined"
+            variant="outline"
             color="error"
             disabled={revokeAllPending}
             onClick={() => void onRevokeAllSessions()}
@@ -140,8 +140,8 @@ export function SessionsSection({
                     {!session.is_current && !isRevoked && (
                       <Button
                         data-testid={`session-revoke-${session.id}`}
-                        size="small"
-                        variant="text"
+                        size="sm"
+                        variant="ghost"
                         color="error"
                         disabled={disableRevoke}
                         onClick={() => void onRevokeSession(session.id)}

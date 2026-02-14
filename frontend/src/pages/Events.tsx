@@ -70,7 +70,7 @@ const initialEvent: EventDraft = {
 }
 
 const inputClass =
-  "w-full rounded-sm border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-4 py-3 text-md font-medium text-(--text-primary) shadow-sm focus:border-brand focus:outline-none transition-all placeholder:text-(--text-secondary)/(--opacity-medium)"
+  "w-full rounded-(--radius-sm) border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-4 py-3 text-md font-medium text-(--text-primary) shadow-sm focus:border-brand focus:outline-none transition-all placeholder:text-(--text-secondary)/(--opacity-medium)"
 
 const Events = () => {
   const { user } = useAuth()
@@ -338,7 +338,7 @@ const Events = () => {
                     aria-controls={`events-tabpanel-${tabItem.key}`}
                     onClick={() => handleTabChange(tabItem.key)}
                     className={cn(
-                      "relative z-(--z-base) px-4 py-2 text-body-sm font-semibold rounded-lg transition-colors duration-200",
+                      "relative z-(--z-base) px-4 py-2 text-body-sm font-semibold rounded-(--radius-lg) transition-colors duration-200",
                       "sm:px-6 sm:text-base",
                       tab === tabItem.key
                         ? "text-(--text-primary)"
@@ -348,7 +348,7 @@ const Events = () => {
                     {tab === tabItem.key && (
                       <motion.div
                         layoutId="active-tab-indicator"
-                        className="absolute inset-0 bg-(--bg-surface) shadow-sm rounded-[inherit] -z-10"
+                        className="absolute inset-0 bg-(--bg-surface) shadow-sm rounded-[inherit] z-(--z-negative)"
                         transition={springSoft}
                       />
                     )}
@@ -440,7 +440,7 @@ const Events = () => {
                       className={inputClass}
                     />
                   </div>
-                  <div className="flex justify-end gap-2">
+                  <div className="flex justify-end gap-(--space-2)">
                     <Button
                       variant="ghost"
                       size="sm"
@@ -471,13 +471,13 @@ const Events = () => {
                 {loading &&
                   Array.from({ length: skeletonCount }).map((_, i) => (
                     <div key={`event-skel-${i}`} className="w-full">
-                      <div className="w-full space-y-4 rounded-lg border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-5 shadow-glass backdrop-blur-md">
+                      <div className="w-full space-y-4 rounded-(--radius-lg) border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-5 shadow-glass backdrop-blur-md">
                         <Skeleton height={isMobile ? 180 : 200} className="rounded-md" />
-                        <Skeleton height={28} className="rounded-lg" />
-                        <Skeleton height={20} width="75%" className="rounded-lg" />
+                        <Skeleton height={28} className="rounded-(--radius-lg)" />
+                        <Skeleton height={20} width="75%" className="rounded-(--radius-lg)" />
                         <div className="flex gap-3 pt-2">
-                          <Skeleton height={36} width={120} className="rounded-sm" />
-                          <Skeleton height={36} width={100} className="rounded-sm" />
+                          <Skeleton height={36} width={120} className="rounded-(--radius-sm)" />
+                          <Skeleton height={36} width={100} className="rounded-(--radius-sm)" />
                         </div>
                       </div>
                     </div>
@@ -496,7 +496,7 @@ const Events = () => {
 
                 {!loading && normalizedEvents.length === 0 && (
                   <div className="col-span-full mt-12 flex w-full justify-center animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div className="flex w-full max-w-md flex-col items-center gap-5 rounded-lg border border-glass-border/(--opacity-soft) bg-(--bg-surface)/(--opacity-medium) px-8 py-14 text-center shadow-glass backdrop-blur-md">
+                    <div className="flex w-full max-w-md flex-col items-center gap-5 rounded-(--radius-lg) border border-glass-border/(--opacity-soft) bg-(--bg-surface)/(--opacity-medium) px-8 py-14 text-center shadow-glass backdrop-blur-md">
                       <div className="relative z-(--z-base) flex h-16 w-16 items-center justify-center rounded-full bg-brand/(--opacity-subtle) border border-brand/(--opacity-dim) shadow-brand/(--opacity-subtle) shadow-lg">
                         <EventNoteIcon className="h-8 w-8 text-brand" />
                       </div>
@@ -580,7 +580,7 @@ const Events = () => {
                           updateLocalizedDraftValue("description", event.target.value)
                         }
                         rows={3}
-                        className={cn(inputClass, "min-h-[120px] resize-y")}
+                        className={cn(inputClass, "min-h-(length:--h-textarea-min) resize-y")}
                       />
                     </div>
                     <div>
@@ -633,7 +633,7 @@ const Events = () => {
                         className={inputClass}
                       />
                     </div>
-                    <div className="space-y-3">
+                    <div className="space-y-(length:--space-3)">
                       <label className="block text-sm font-semibold text-(--text-secondary)">
                         {t("events:form.image")}
                       </label>
@@ -641,7 +641,7 @@ const Events = () => {
                         as="label"
                         variant="outline"
                         disabled={imageUploading}
-                        className="w-full justify-start gap-2 bg-(--bg-surface)/(--opacity-dim)"
+                        className="w-full justify-start gap-(--space-2) bg-(--bg-surface)/(--opacity-dim)"
                       >
                         {imageUploading ? (
                           t("common:statuses.uploading")

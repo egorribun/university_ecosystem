@@ -47,9 +47,9 @@ const buttonVariants = cva(
         ),
       },
       size: {
-        sm: "min-h-10 px-3 py-2 text-sm",
-        md: "min-h-(--space-12) px-5 py-2.5 text-base",
-        lg: "min-h-14 px-7 py-3 text-lg",
+        sm: "min-h-(--space-10) px-(length:--space-3) py-(length:--space-2) text-(length:--fs-sm)",
+        md: "min-h-(--space-12) px-(length:--space-5) py-(length:--space-2.5) text-(length:--fs-base)",
+        lg: "min-h-(--space-14) px-(length:--space-7) py-(length:--space-3) text-(length:--fs-lg)",
       },
       fullWidth: {
         true: "w-full",

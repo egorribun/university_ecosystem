@@ -62,7 +62,7 @@ export async function storePendingReport(record: {
   url: string
   reportUrl: string
   timestamp: number
-  payload?: any
+  payload?: unknown
 }) {
   return addRecord(STORES.REPORT, record)
 }
@@ -72,16 +72,21 @@ export async function readPendingReports() {
   return db.getAll(STORES.REPORT)
 }
 
-export function sanitizeReportPayload(payload: any): any {
+export function sanitizeReportPayload(payload: unknown): unknown {
   if (!payload || typeof payload !== "object") return payload
-  const result: any = Array.isArray(payload) ? [] : {}
-  for (const key in payload) {
-    const val = payload[key]
-    if (typeof val === "function") continue
-    if (val && typeof val === "object") {
+
+  if (Array.isArray(payload)) {
+    return payload.map(sanitizeReportPayload)
+  }
+
+  const result: Record<string, unknown> = {}
+  const source = payload as Record<string, unknown>
+
+  for (const key in source) {
+    if (Object.prototype.hasOwnProperty.call(source, key)) {
+      const val = source[key]
+      if (typeof val === "function") continue
       result[key] = sanitizeReportPayload(val)
-    } else {
-      result[key] = val
     }
   }
   return result

@@ -54,8 +54,8 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
               />
               <div className="flex flex-col sm:flex-row gap-2 flex-1">
                 <Button
-                  size="small"
-                  variant="contained"
+                  size="sm"
+                  variant="solid"
                   onClick={avatar.triggerPick}
                   disabled={avatar.busy}
                   className="w-full sm:w-auto"
@@ -63,8 +63,8 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
                   {t("settings:media.avatar.change")}
                 </Button>
                 <Button
-                  size="small"
-                  variant="outlined"
+                  size="sm"
+                  variant="outline"
                   color="error"
                   onClick={avatar.remove}
                   disabled={avatar.busy}
@@ -96,8 +96,8 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
               />
               <div className="flex flex-col sm:flex-row gap-2 flex-1">
                 <Button
-                  size="small"
-                  variant="contained"
+                  size="sm"
+                  variant="solid"
                   onClick={cover.triggerPick}
                   disabled={cover.busy}
                   className="w-full sm:w-auto"
@@ -106,8 +106,8 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
                 </Button>
                 {cover.coverUrl && (
                   <Button
-                    size="small"
-                    variant="outlined"
+                    size="sm"
+                    variant="outline"
                     color="error"
                     onClick={cover.remove}
                     disabled={cover.busy}
@@ -132,8 +132,8 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
                 Редактируйте информацию о себе на странице профиля
               </SectionSubtitle>
               <Button
-                size="small"
-                variant="outlined"
+                size="sm"
+                variant="outline"
                 onClick={() => navigate({ pathname: "/profile", search: "?edit=1" })}
                 className="self-start"
               >

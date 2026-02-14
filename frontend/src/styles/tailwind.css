@@ -90,12 +90,12 @@
   --size-touch: var(--size-touch-target);
 
   /* Typography Scale (Fluid) */
-  --font-size-xs: 0.75rem;
-  --font-size-sm: 0.875rem;
-  --font-size-base: var(--fs-body);
-  --font-size-lg: 1.125rem;
-  --font-size-xl: 1.25rem;
-  --font-size-2xl: 1.5rem;
+  --font-size-xs: var(--fs-xs);
+  --font-size-sm: var(--fs-sm);
+  --font-size-base: var(--fs-base);
+  --font-size-lg: var(--fs-lg);
+  --font-size-xl: var(--fs-xl);
+  --font-size-2xl: var(--fs-2xl);
   --font-size-3xl: var(--fs-h3);
   --font-size-4xl: var(--fs-h2);
   --font-size-5xl: var(--fs-h1);
@@ -126,11 +126,9 @@
   /* Shadows */
   --shadow-sm: var(--shadow-sm);
   --shadow-md: var(--shadow-md);
-  --shadow-glass: var(--glass-shadow);
+  --shadow-glass: var(--shadow-glass);
   --shadow-glass-strong: var(--shadow-glass-strong);
   --shadow-premium-lift: var(--shadow-premium-lift);
-  --shadow-glass: var(--glass-shadow);
-  --shadow-glass-strong: var(--shadow-glass-strong);
   --shadow-premium-lift: var(--shadow-premium-lift);
   --shadow-up: var(--shadow-up);
   --shadow-surface: var(--shadow-surface);
@@ -598,6 +596,66 @@
   .animate-msg-bubble-in {
     animation: msg-bubble-in 0.5s var(--ease-back-out) forwards;
   }
+}
+
+@utility z-hide {
+  z-index: var(--z-hide);
+}
+
+@utility z-base {
+  z-index: var(--z-base);
+}
+
+@utility z-decor {
+  z-index: var(--z-decor);
+}
+
+@utility z-surface {
+  z-index: var(--z-surface);
+}
+
+@utility z-deep {
+  z-index: var(--z-deep);
+}
+
+@utility z-dialog {
+  z-index: var(--z-dialog);
+}
+
+@utility z-modal {
+  z-index: var(--z-modal);
+}
+
+@utility z-toast {
+  z-index: var(--z-toast);
+}
+
+@utility z-tooltip {
+  z-index: var(--z-tooltip);
+}
+
+@utility z-overlay {
+  z-index: var(--z-overlay);
+}
+
+@utility text-fluid-h1 {
+  font-size: var(--fs-fluid-h1);
+}
+
+@utility text-fluid-h2 {
+  font-size: var(--fs-fluid-h2);
+}
+
+@utility text-fluid-h3 {
+  font-size: var(--fs-fluid-h3);
+}
+
+@utility h-news-hero {
+  height: var(--news-hero-h);
+}
+
+@utility h-news-hero-md {
+  height: var(--news-hero-h-md);
 }
 
 @utility card-news {

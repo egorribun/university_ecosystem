@@ -8,12 +8,7 @@ import {
   Camera as PhotoCamera,
   Share2 as IosShareIcon,
   Copy as ContentCopyIcon,
-  Send as SendIcon,
   Heart as FavoriteIcon,
-  MessageSquare as ChatBubbleOutlineIcon,
-  MessageCircle as WhatsAppIcon,
-  Mail as AlternateEmailIcon,
-  Send as TelegramIcon,
 } from "lucide-react"
 import {
   Alert,
@@ -24,13 +19,16 @@ import {
   Snackbar,
 } from "@/components/settings"
 import { useNewsInteraction } from "@/hooks/useNewsInteraction"
+import { useShare } from "@/hooks/useShare"
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
 import timezone from "dayjs/plugin/timezone"
 import { deleteNews, fetchNewsItem, updateNews, uploadNewsImage, type NewsItem } from "@/api/news"
 import Layout from "@/components/Layout"
+import { SEO } from "@/components/SEO"
 import SmartImage from "@/components/SmartImage"
-import { Button } from "@/components/ui"
+import { Button, Input, Textarea } from "@/components/ui"
+import { NewsComments } from "@/components/news/NewsComments"
 import { useAuth } from "@/contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useTranslation } from "react-i18next"
@@ -39,11 +37,8 @@ import { cn } from "@/utils/cn"
 dayjs.extend(utc)
 dayjs.extend(timezone)
 
-const inputClass =
-  "w-full rounded-sm border border-(--glass-border) bg-(--bg-surface)/(--opacity-medium) px-4 py-2.5 text-base text-(--text-primary) shadow-sm focus:border-(--brand-main) focus:outline-none transition placeholder:text-(--text-secondary)/(--opacity-medium)"
-const textareaClass = cn(inputClass, "min-h-40 resize-y leading-relaxed")
 const iconButtonClass =
-  "inline-flex h-10 w-10 items-center justify-center rounded-full border border-(--glass-border) bg-(--bg-surface)/(--opacity-hover) text-(--text-secondary) shadow-sm transition hover:bg-(--bg-surface) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--brand-main)"
+  "inline-flex h-(--space-10) w-(--space-10) items-center justify-center rounded-full border border-(--glass-border) bg-(--bg-surface)/(--opacity-hover) text-(--text-secondary) shadow-sm transition hover:bg-(--bg-surface) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--brand-main)"
 
 type FieldProps = {
   label: ReactNode
@@ -54,7 +49,7 @@ type FieldProps = {
 
 function Field({ label, htmlFor, children, required = false }: FieldProps) {
   return (
-    <div className="space-y-2">
+    <div className="flex flex-col gap-(--space-2)">
       <label
         htmlFor={htmlFor}
         className="text-sm font-semibold tracking-wide text-(--text-secondary)/(--opacity-hover)"
@@ -103,19 +98,39 @@ export default function NewsDetail() {
   const [newImage, setNewImage] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [snackbar, setSnackbar] = useState("")
-  const [sharing, setSharing] = useState(false)
-  const [shareDialogOpen, setShareDialogOpen] = useState(false)
-  const [copyingLink, setCopyingLink] = useState(false)
-  const [copiedLink, setCopiedLink] = useState(false)
+  const [heroRatio, setHeroRatio] = useState<number | null>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const editTitleRef = useRef<HTMLInputElement>(null)
-  const [heroRatio, setHeroRatio] = useState<number | null>(null)
-  const copyTimeoutRef = useRef<number | null>(null)
-  const [commentText, setCommentText] = useState("")
+
+
 
   const { data: newsItem } = useQuery<NewsItem>({ queryKey: ["news", id, language] })
 
+  const {
+    sharing,
+    shareDialogOpen,
+    setShareDialogOpen,
+    copyingLink,
+    copiedLink,
+    shareOptions,
+    handleShare,
+    handleCopyLink,
+  } = useShare({
+    title: newsItem?.title || "",
+    onNotify: (msg) => setSnackbar(msg),
+    translations: {
+      shareSuccess: t("news:notifications.shareSuccess"),
+      shareError: t("news:notifications.shareError"),
+      linkCopied: t("news:notifications.linkCopied"),
+      pageTitle: t("news:pageTitle"),
+      telegram: t("news:shareDialog.options.telegram"),
+      whatsapp: t("news:shareDialog.options.whatsapp"),
+      email: t("news:shareDialog.options.email"),
+    },
+  })
+
   const { interactions, toggleLike, addComment, isCommenting, updateComment, deleteComment } =
+
     useNewsInteraction(id, {
       initialData: newsItem
         ? {
@@ -129,8 +144,6 @@ export default function NewsDetail() {
   const likesCount = interactions?.likes_count ?? 0
   const comments = interactions?.comments ?? []
 
-  const [editingCommentId, setEditingCommentId] = useState<number | null>(null)
-  const [editingCommentText, setEditingCommentText] = useState("")
 
   const handleHeroLoad = useCallback<React.ReactEventHandler<HTMLImageElement>>((event) => {
     const img = event.currentTarget
@@ -144,7 +157,7 @@ export default function NewsDetail() {
   const heroFrame = useMemo(() => {
     if (!heroRatio || !Number.isFinite(heroRatio) || heroRatio <= 0) {
       return {
-        container: "h-(length:--h-hero-sm) min-h-80 max-h-[520px]",
+        container: "h-(length:--h-hero-sm) min-h-80 max-h-(length:--layout-max-modal)",
         image: "object-cover object-[50%_40%]",
         backdrop: "bg-black/(--opacity-dim)",
       }
@@ -154,7 +167,7 @@ export default function NewsDetail() {
 
     if (ratio < 0.82) {
       return {
-        container: "min-h-[440px] max-h-[82vh] aspect-3/4",
+        container: "min-h-(length:--min-h-hero-lg) max-h-(length:--h-hero-max-portrait) aspect-3/4",
         image: "object-contain object-center",
         backdrop: "bg-black/(--opacity-soft)",
       }
@@ -162,7 +175,7 @@ export default function NewsDetail() {
 
     if (ratio < 1.18) {
       return {
-        container: "min-h-[360px] max-h-[76vh] aspect-5/4",
+        container: "min-h-(length:--min-h-hero-md) max-h-(length:--h-hero-max-square) aspect-5/4",
         image: "object-cover object-[50%_38%]",
         backdrop: "bg-(--bg-surface)/(--opacity-dim)",
       }
@@ -170,14 +183,14 @@ export default function NewsDetail() {
 
     if (ratio > 2.6) {
       return {
-        container: "min-h-[260px] max-h-(length:--h-hero-md) aspect-21/9",
+        container: "min-h-(length:--min-h-hero-xs) max-h-(length:--h-hero-md) aspect-21/9",
         image: "object-cover object-[50%_46%]",
         backdrop: "bg-black/(--opacity-dim)",
       }
     }
 
     return {
-      container: "min-h-[300px] max-h-[68vh] aspect-video",
+      container: "min-h-(length:--min-h-hero-sm) max-h-(length:--h-hero-max-landscape) aspect-video",
       image: "object-cover object-[50%_40%]",
       backdrop: "bg-(--bg-surface)/(--opacity-dim)",
     }
@@ -203,25 +216,8 @@ export default function NewsDetail() {
     return () => window.clearTimeout(timeout)
   }, [snackbar])
 
-  useEffect(() => {
-    if (shareDialogOpen) return
-    if (copyTimeoutRef.current) {
-      window.clearTimeout(copyTimeoutRef.current)
-      copyTimeoutRef.current = null
-    }
-    setCopiedLink(false)
-  }, [shareDialogOpen])
-
-  useEffect(() => {
-    return () => {
-      if (copyTimeoutRef.current) {
-        window.clearTimeout(copyTimeoutRef.current)
-        copyTimeoutRef.current = null
-      }
-    }
-  }, [])
-
   const resetPreview = () => {
+
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl)
       setPreviewUrl(null)
@@ -354,128 +350,22 @@ export default function NewsDetail() {
     return Math.max(1, Math.round(words / wordsPerMinute))
   }, [content])
 
-  const shareUrl = useMemo(() => {
-    if (typeof window === "undefined") return ""
-    return window.location.href
-  }, [id, language])
 
-  const shareOptions = useMemo(() => {
-    if (!shareUrl) return []
-    const encodedUrl = encodeURIComponent(shareUrl)
-    const shareTitle = displayTitle || t("news:pageTitle")
-    const encodedTitle = encodeURIComponent(shareTitle)
 
-    return [
-      {
-        id: "telegram",
-        label: t("news:shareDialog.options.telegram", { defaultValue: "Telegram" }),
-        href: `https://t.me/share/url?url=${encodedUrl}&text=${encodedTitle}`,
-        icon: <TelegramIcon className="h-4 w-4" />,
-        accent: "text-brand",
-      },
-      {
-        id: "whatsapp",
-        label: t("news:shareDialog.options.whatsapp", { defaultValue: "WhatsApp" }),
-        href: `https://api.whatsapp.com/send?text=${encodedTitle}%20${encodedUrl}`,
-        icon: <WhatsAppIcon className="h-4 w-4" />,
-        accent: "text-(--success-text)",
-      },
-      {
-        id: "email",
-        label: t("news:shareDialog.options.email", { defaultValue: "Email" }),
-        href: `mailto:?subject=${encodedTitle}&body=${encodedTitle}%0A${encodedUrl}`,
-        icon: <AlternateEmailIcon className="h-4 w-4" />,
-        accent: "text-brand/(--opacity-hover)",
-      },
-    ]
-  }, [displayTitle, shareUrl, t])
-
-  const handleShare = useCallback(async () => {
-    if (sharing) return
-
-    const url = typeof window !== "undefined" ? window.location.href : ""
-    if (!url) return
-
-    const title = displayTitle || t("news:pageTitle")
-    const shareData = {
-      title,
-      text: title,
-      url,
-    }
-
-    const canUseNativeShare =
-      typeof navigator !== "undefined" &&
-      typeof navigator.share === "function" &&
-      (!navigator.canShare || navigator.canShare(shareData))
-
-    try {
-      setSharing(true)
-      if (canUseNativeShare) {
-        await navigator.share(shareData)
-        setSnackbar(t("news:notifications.shareSuccess"))
-      } else {
-        setShareDialogOpen(true)
-      }
-    } catch (error) {
-      const message = (error as DOMException | Error)?.name ?? ""
-      if (message === "AbortError") return
-      console.error(error)
-      setSnackbar(t("news:notifications.shareError"))
-    } finally {
-      setSharing(false)
-    }
-  }, [displayTitle, sharing, t])
-
-  const handleCopyLink = useCallback(async () => {
-    if (!shareUrl || copyingLink) return
-    setCopyingLink(true)
-
-    try {
-      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(shareUrl)
-      } else {
-        const textarea = document.createElement("textarea")
-        textarea.value = shareUrl
-        textarea.setAttribute("readonly", "")
-        textarea.style.position = "absolute"
-        textarea.style.left = "-9999px"
-        document.body.appendChild(textarea)
-        textarea.select()
-        document.execCommand("copy")
-        document.body.removeChild(textarea)
-      }
-
-      setCopiedLink(true)
-      const message = t("news:notifications.linkCopied")
-
-      setSnackbar(message)
-      if (copyTimeoutRef.current) {
-        window.clearTimeout(copyTimeoutRef.current)
-      }
-      copyTimeoutRef.current = window.setTimeout(() => {
-        setCopiedLink(false)
-        copyTimeoutRef.current = null
-      }, 2200)
-    } catch (error) {
-      console.error(error)
-      setSnackbar(t("news:notifications.shareError"))
-    } finally {
-      setCopyingLink(false)
-    }
-  }, [copyingLink, shareUrl, t])
-
-  return (
-    <Layout>
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <span className="h-12 w-12 animate-spin rounded-full border-2 border-white/(--opacity-soft) border-t-(--brand-main)" />
-      </div>
-    </Layout>
-  )
+  if (query.isLoading) {
+    return (
+      <Layout>
+        <div className="flex min-h-(--h-hero-lg) items-center justify-center">
+          <span className="h-(--space-12) w-(--space-12) animate-spin rounded-full border-2 border-white/(--opacity-soft) border-t-(--brand-main)" />
+        </div>
+      </Layout>
+    )
+  }
 
   if (query.isError || !query.data)
     return (
       <Layout>
-        <div className="px-4 py-10">
+        <div className="px-(length:--space-4) py-(length:--space-10)">
           <p className="text-lg font-semibold text-(--error-text)">{t("news:states.loadError")}</p>
         </div>
       </Layout>
@@ -483,7 +373,7 @@ export default function NewsDetail() {
 
   return (
     <Layout>
-      <div className="flex w-full flex-col gap-6 px-4 pb-16 pt-4 sm:gap-8 sm:px-6 sm:pt-6 lg:px-8">
+      <div className="flex w-full flex-col gap-(length:--fluid-gap) px-(length:--fluid-px) pb-(length:--space-16) pt-(length:--space-6) sm:gap-(length:--space-8) sm:pt-(length:--space-8) lg:px-(length:--fluid-px)">
         <Button
           variant="outline"
           onClick={handleBack}
@@ -493,16 +383,18 @@ export default function NewsDetail() {
           {t("common:buttons.back")}
         </Button>
 
-        <article className="flex w-full flex-col items-start gap-8">
-          <header className="flex w-full flex-col gap-4 text-left">
+        <article className="flex w-full flex-col items-start gap-(--space-8)">
+          <header className="flex w-full flex-col gap-(--space-4) text-left">
             <h1 className="max-w-5xl text-(length:--fs-fluid-h1) font-extrabold tracking-tight text-(--text-primary)">
               {displayTitle}
             </h1>
 
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-              <div className="flex flex-wrap items-center gap-2 text-sm text-(--text-secondary)">
+            <SEO title={displayTitle} description={content.slice(0, 160)} image={imageUrl} />
+
+            <div className="flex flex-col gap-(--space-3) sm:flex-row sm:flex-wrap sm:items-center">
+              <div className="flex flex-wrap items-center gap-(--space-2) text-sm text-(--text-secondary)">
                 {createdAt ? (
-                  <span className="inline-flex items-center gap-2 rounded-full border border-(--glass-border) bg-(--bg-surface)/(--opacity-subtle) px-3 py-1 text-xs font-semibold uppercase tracking-widest text-(--text-secondary)">
+                  <span className="inline-flex items-center gap-(--space-2) rounded-full border border-(--glass-border) bg-(--bg-surface)/(--opacity-subtle) px-(length:--space-3) py-(length:--space-1) text-(length:--fs-xs) font-semibold uppercase tracking-widest text-(--text-secondary)">
                     <span>{t("news:meta.published")}</span>
                     <span aria-hidden>•</span>
                     <time dateTime={createdAtIso} className="text-(--text-primary)">
@@ -512,7 +404,7 @@ export default function NewsDetail() {
                 ) : null}
 
                 {readingTimeMinutes !== null && (
-                  <span className="inline-flex items-center gap-2 rounded-full border border-(--glass-border)/(--opacity-dim) bg-(--bg-surface)/(--opacity-subtle) px-3 py-1 text-xs font-medium tracking-wide text-(--text-primary)">
+                  <span className="inline-flex items-center gap-(--space-2) rounded-(--radius-pill) border border-(--glass-border)/(--opacity-dim) bg-(--bg-surface)/(--opacity-subtle) px-(length:--space-3) py-(length:--space-1) text-(length:--fs-xs) font-medium tracking-wide text-(--text-primary)">
                     {t("news:meta.readingTime", { count: readingTimeMinutes ?? undefined })}
                   </span>
                 )}
@@ -523,7 +415,7 @@ export default function NewsDetail() {
                   onClick={() => {
                     void handleShare()
                   }}
-                  leadingIcon={<IosShareIcon fontSize="small" />}
+                  leadingIcon={<IosShareIcon size={16} />}
                   className="w-full basis-full sm:w-auto sm:basis-auto"
                   loading={sharing}
                   aria-label={t("news:aria.shareNews") ?? ""}
@@ -558,7 +450,7 @@ export default function NewsDetail() {
             </div>
 
             {user?.role === "admin" ? (
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-(--space-2)">
                 <button
                   type="button"
                   onClick={openEdit}
@@ -566,7 +458,7 @@ export default function NewsDetail() {
                   aria-label={t("news:aria.editNews") ?? ""}
                   disabled={saving || deleting}
                 >
-                  <EditIcon fontSize="small" />
+                  <EditIcon size={16} />
                 </button>
                 <button
                   type="button"
@@ -604,13 +496,13 @@ export default function NewsDetail() {
               />
             </div>
             {displayTitle ? null : (
-              <figcaption className="border-t border-(--glass-border) bg-(--bg-surface)/(--opacity-subtle) px-5 py-3 text-sm font-medium text-(--text-secondary)">
+              <figcaption className="border-t border-(--glass-border) bg-(--bg-surface)/(--opacity-subtle) px-(length:--space-5) py-(length:--space-3) text-(length:--fs-sm) font-medium text-(--text-secondary)">
                 {t("news:alt.heroFallback")}
               </figcaption>
             )}
           </figure>
 
-          <section className="max-w-4xl self-start space-y-6 text-lg leading-8 text-(--text-secondary)">
+          <section className="max-w-4xl self-start space-y-(length:--fluid-gap) text-(length:--fs-body) leading-relaxed text-(--text-secondary)">
             {content?.split(/\n{2,}/).map((chunk: string, index: number) => {
               const text = chunk.trim()
 
@@ -620,141 +512,16 @@ export default function NewsDetail() {
             })}
           </section>
 
-          <footer className="w-full max-w-4xl mt-12 border-t border-glass-border/(--opacity-soft) pt-10">
-            <div className="flex items-center gap-3 mb-8">
-              <ChatBubbleOutlineIcon className="h-6 w-6 text-brand" />
-              <h2 className="text-xl font-bold text-(--text-primary)">
-                {t("news:sections.comments", { defaultValue: "Комментарии" })}
-              </h2>
-              <span className="px-2 py-0.5 rounded-full bg-brand/(--opacity-subtle) border border-brand/(--opacity-dim) text-xs font-bold tabular-nums text-brand">
-                {comments.length}
-              </span>
-            </div>
-
-            <div className="space-y-6 mb-10">
-              {comments.length === 0 ? (
-                <p className="text-(--text-secondary) italic py-4">
-                  {t("news:states.noComments", {
-                    defaultValue: "Пока нет ни одного комментария. Будьте первым!",
-                  })}
-                </p>
-              ) : (
-                comments.map((comment) => (
-                  <div
-                    key={comment.id}
-                    className="flex flex-col gap-2 p-4 rounded-md bg-(--bg-surface)/(--opacity-dim) border border-glass-border/(--opacity-soft) shadow-sm"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-sm text-(--text-primary)">
-                        {comment.user_name}
-                      </span>
-                      <div className="flex items-center gap-3">
-                        <time className="text-xs text-(--text-secondary) uppercase font-semibold">
-                          {getMoscowDate(comment.created_at)}
-                        </time>
-                        {(user?.id === comment.user_id || user?.role === "admin") && (
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => {
-                                setEditingCommentId(comment.id)
-                                setEditingCommentText(comment.content)
-                              }}
-                              className="p-1.5 rounded-full hover:bg-(--bg-surface)/(--opacity-strong) text-(--text-secondary) hover:text-(--text-primary) transition-colors"
-                              title={t("news:actions.editComment", { defaultValue: "Edit" }) ?? ""}
-                            >
-                              <EditIcon className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              onClick={() => {
-                                if (
-                                  confirm(
-                                    t("news:dialogs.deleteComment.confirm", {
-                                      defaultValue: "Delete this comment?",
-                                    }) ?? "Delete this comment?"
-                                  )
-                                ) {
-                                  void deleteComment(comment.id)
-                                }
-                              }}
-                              className="p-1.5 rounded-full hover:bg-(--error-text)/(--opacity-subtle) text-(--error-text) hover:text-(--error-text)/(--opacity-hover) transition-colors"
-                              title={
-                                t("news:actions.deleteComment", { defaultValue: "Delete" }) ?? ""
-                              }
-                            >
-                              <DeleteIcon className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    {editingCommentId === comment.id ? (
-                      <div className="space-y-3 mt-1">
-                        <textarea
-                          value={editingCommentText}
-                          onChange={(event) => setEditingCommentText(event.target.value)}
-                          className={cn(textareaClass, "min-h-20 text-sm")}
-                          autoFocus
-                        />
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setEditingCommentId(null)}
-                          >
-                            {t("common:buttons.cancel")}
-                          </Button>
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              if (editingCommentText.trim()) {
-                                void updateComment(comment.id, editingCommentText)
-                                setEditingCommentId(null)
-                              }
-                            }}
-                            disabled={!editingCommentText.trim()}
-                          >
-                            {t("common:buttons.save")}
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-base leading-relaxed whitespace-pre-wrap text-(--text-primary)">
-                        {comment.content}
-                      </p>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-
-            {user && (
-              <div className="space-y-4">
-                <textarea
-                  value={commentText}
-                  onChange={(event) => setCommentText(event.target.value)}
-                  placeholder={t("news:form.commentPlaceholder", {
-                    defaultValue: "Напишите что-нибудь...",
-                  })}
-                  className={cn(textareaClass, "min-h-24")}
-                />
-                <div className="flex justify-end">
-                  <Button
-                    onClick={() => {
-                      if (commentText.trim()) {
-                        addComment(commentText)
-                        setCommentText("")
-                      }
-                    }}
-                    disabled={!commentText.trim() || isCommenting}
-                    loading={isCommenting}
-                    leadingIcon={<SendIcon fontSize="small" />}
-                  >
-                    {t("news:actions.postComment", { defaultValue: "Отправить" })}
-                  </Button>
-                </div>
-              </div>
-            )}
-          </footer>
+          <NewsComments
+            comments={comments}
+            user={user}
+            isCommenting={isCommenting}
+            addComment={addComment}
+            updateComment={updateComment}
+            deleteComment={deleteComment}
+            t={t}
+            getMoscowDate={getMoscowDate}
+          />
         </article>
       </div>
 
@@ -770,40 +537,35 @@ export default function NewsDetail() {
             {t("news:shareDialog.description")}
           </p>
 
-          <div className="grid gap-3 sm:grid-cols-3">
-            {shareOptions.map((option) => (
-              <a
-                key={`share-option-${option.id}`}
-                href={option.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => setShareDialogOpen(false)}
-                className="group flex items-center gap-3 rounded-md border border-(--glass-border)/(--opacity-dim) bg-(--bg-surface)/(--opacity-medium) px-4 py-3 transition hover:border-(--glass-border)/(--opacity-soft) hover:bg-(--bg-surface)/(--opacity-strong)"
-              >
-                <span
-                  className={cn(
-                    "inline-flex h-10 w-10 items-center justify-center rounded-full bg-(--bg-surface)/(--opacity-hover) text-xl shadow-sm transition group-hover:scale-105",
-                    option.id === "telegram"
-                      ? "text-(--brand-main)"
-                      : option.id === "whatsapp"
-                        ? "text-success-text"
-                        : "text-(--brand-main)/(--opacity-hover)"
-                  )}
+          <div className="grid gap-(--space-3) sm:grid-cols-3">
+            {shareOptions.map((option) => {
+              const Icon = option.icon
+              return (
+                <a
+                  key={`share-option-${option.id}`}
+                  href={option.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setShareDialogOpen(false)}
+                  className="group flex items-center gap-(--space-3) rounded-(--radius-md) border border-(--glass-border)/(--opacity-dim) bg-(--bg-surface)/(--opacity-medium) px-(length:--space-4) py-(length:--space-3) transition hover:border-(--glass-border)/(--opacity-soft) hover:bg-(--bg-surface)/(--opacity-strong)"
                 >
-                  {option.id === "telegram" ? (
-                    <TelegramIcon className="h-5 w-5" />
-                  ) : option.id === "whatsapp" ? (
-                    <WhatsAppIcon className="h-5 w-5" />
-                  ) : (
-                    <AlternateEmailIcon className="h-5 w-5" />
-                  )}
-                </span>
-                <span className="text-sm font-semibold text-(--text-primary)">{option.label}</span>
-              </a>
-            ))}
+                  <span
+                    className={cn(
+                      "inline-flex h-10 w-10 items-center justify-center rounded-full bg-(--bg-surface)/(--opacity-hover) shadow-sm transition group-hover:scale-105",
+                      option.accent
+                    )}
+                  >
+                    <Icon className="h-5 w-5" />
+                  </span>
+                  <span className="text-sm font-semibold text-(--text-primary)">
+                    {option.label}
+                  </span>
+                </a>
+              )
+            })}
           </div>
         </DialogContent>
-        <DialogActions className="p-6">
+        <DialogActions className="p-(length:--space-6)">
           <Button
             variant="solid"
             onClick={() => {
@@ -812,8 +574,8 @@ export default function NewsDetail() {
             disabled={copyingLink}
             className="w-full sm:w-auto"
           >
-            <div className="flex items-center gap-2">
-              <ContentCopyIcon className="h-4 w-4" />
+            <div className="flex items-center gap-(--space-2)">
+              <ContentCopyIcon className="h-(--space-4) w-(--space-4)" />
               {copiedLink ? t("news:shareDialog.copySuccess") : t("news:shareDialog.copy")}
             </div>
           </Button>
@@ -822,28 +584,26 @@ export default function NewsDetail() {
 
       <Dialog open={editOpen} onClose={closeEdit} maxWidth="lg" fullWidth>
         <DialogTitle>{t("news:dialogs.edit.title")}</DialogTitle>
-        <DialogContent className="space-y-6 pt-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-4">
+        <DialogContent className="space-y-(length:--space-6) pt-(length:--space-4)">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-(--space-6)">
+            <div className="space-y-(length:--space-4)">
               <Field label={t("news:form.title") ?? ""} htmlFor="edit-title" required>
-                <input
+                <Input
                   id="edit-title"
                   ref={editTitleRef}
                   type="text"
                   value={editData.title}
-                  onChange={(e) => setEditData({ ...editData, title: e.target.value })}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditData({ ...editData, title: e.target.value })}
                   maxLength={100}
-                  className={inputClass}
                 />
               </Field>
 
               <Field label={t("news:form.content") ?? ""} htmlFor="edit-content" required>
-                <textarea
+                <Textarea
                   id="edit-content"
                   value={editData.content}
-                  onChange={(e) => setEditData({ ...editData, content: e.target.value })}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setEditData({ ...editData, content: e.target.value })}
                   maxLength={3000}
-                  className={textareaClass}
                   rows={6}
                 />
               </Field>
@@ -854,13 +614,12 @@ export default function NewsDetail() {
                 label={t("news:form.title_en", { defaultValue: "Title (English)" }) ?? ""}
                 htmlFor="edit-title-en"
               >
-                <input
+                <Input
                   id="edit-title-en"
                   type="text"
                   value={editData.title_en}
-                  onChange={(e) => setEditData({ ...editData, title_en: e.target.value })}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditData({ ...editData, title_en: e.target.value })}
                   maxLength={100}
-                  className={inputClass}
                 />
               </Field>
 
@@ -868,12 +627,11 @@ export default function NewsDetail() {
                 label={t("news:form.content_en", { defaultValue: "News text (English)" }) ?? ""}
                 htmlFor="edit-content-en"
               >
-                <textarea
+                <Textarea
                   id="edit-content-en"
                   value={editData.content_en}
-                  onChange={(e) => setEditData({ ...editData, content_en: e.target.value })}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setEditData({ ...editData, content_en: e.target.value })}
                   maxLength={3000}
-                  className={textareaClass}
                   rows={6}
                 />
               </Field>
@@ -966,7 +724,7 @@ export default function NewsDetail() {
               void handleDelete()
             }}
             disabled={deleting}
-            className="absolute inset-0 bg-linear-to-t from-gray-900 via-gray-900/(--opacity-soft) to-transparent text-white hover:from-red-700 hover:to-red-800 sm:w-auto"
+            className="w-full sm:w-auto bg-(--error-text) hover:bg-(--error-text)/(--opacity-hover)"
           >
             <div className="flex items-center gap-2">
               <DeleteIcon className="h-4 w-4" />

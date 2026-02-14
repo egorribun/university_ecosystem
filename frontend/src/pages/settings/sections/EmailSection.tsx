@@ -65,7 +65,7 @@ export function EmailSection({
             <div className="flex flex-col sm:flex-row gap-2.5 items-start sm:items-end">
               <TextField
                 fullWidth
-                size="small"
+                size="sm"
                 label={t("settings:security.email.newLabel")}
                 type="email"
                 value={emailValue}
@@ -76,7 +76,7 @@ export function EmailSection({
               />
               <TextField
                 fullWidth
-                size="small"
+                size="sm"
                 label={t("settings:security.email.passwordLabel")}
                 type="password"
                 value={emailPassword}
@@ -88,7 +88,7 @@ export function EmailSection({
               />
               <Button
                 type="submit"
-                variant="contained"
+                variant="solid"
                 disabled={emailBusy || !emailValue || !emailPassword}
                 className="h-[40px] shrink-0 w-full sm:w-auto"
                 startIcon={emailBusy ? <CircularProgress size={18} color="inherit" /> : undefined}

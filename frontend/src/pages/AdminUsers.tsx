@@ -92,14 +92,14 @@ export default function AdminUsers() {
 
   return (
     <Layout>
-      <div className="min-h-screen w-full bg-background/(--opacity-medium) py-8">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="mb-8 flex flex-col gap-6">
+      <div className="min-h-screen w-full bg-background/(--opacity-medium) py-(length:--space-8)">
+        <div className="mx-auto max-w-(--layout-max-wide) px-(length:--space-4) sm:px-(length:--space-6) lg:px-(length:--space-8)">
+          <div className="mb-(length:--space-8) flex flex-col gap-(--space-6)">
             <h1 className="text-4xl font-bold tracking-tight text-(--text-primary) sm:text-5xl">
               {t("users.title")}
             </h1>
 
-            <SectionCard className="flex flex-wrap items-end gap-4 p-6">
+            <SectionCard className="flex flex-wrap items-end gap-(--space-4) p-(length:--space-6)">
               <TextField
                 id="full-name-filter"
                 label={t("users.filters.fullName")}
@@ -107,7 +107,7 @@ export default function AdminUsers() {
                 onChange={(event) => handleFilterChange("full_name")(event.target.value)}
                 className="min-w-(--min-w-sidebar) flex-1"
               />
-              <div className="flex flex-col gap-1.5 min-w-(--min-w-field) flex-1">
+              <div className="flex flex-col gap-(--space-15) min-w-(--min-w-field) flex-1">
                 <label
                   htmlFor="group-filter"
                   className="text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)"
@@ -119,7 +119,7 @@ export default function AdminUsers() {
                   value={filters.group_id}
                   onChange={(event) => handleGroupFilterChange(event.target.value)}
                   className={cn(
-                    "h-11 rounded-sm border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-3 py-2 text-sm text-(--text-primary) shadow-sm outline-none transition-all",
+                    "h-(--space-11) rounded-(--radius-sm) border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-(length:--space-3) py-(length:--space-2) text-(length:--fs-sm) text-(--text-primary) shadow-sm outline-none transition-all",
                     "focus:border-brand/(--opacity-medium) focus:ring-2 focus:ring-brand/(--opacity-subtle)"
                   )}
                 >
@@ -131,7 +131,7 @@ export default function AdminUsers() {
                   ))}
                 </select>
               </div>
-              <div className="flex flex-col gap-1.5 min-w-(--min-w-field) flex-1">
+              <div className="flex flex-col gap-(--space-15) min-w-(--min-w-field) flex-1">
                 <label
                   htmlFor="role-filter"
                   className="text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)"
@@ -143,7 +143,7 @@ export default function AdminUsers() {
                   value={filters.role}
                   onChange={(event) => handleRoleChange(event.target.value as UserRole)}
                   className={cn(
-                    "h-11 rounded-sm border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-3 py-2 text-sm text-(--text-primary) shadow-sm outline-none transition-all",
+                    "h-(--space-11) rounded-(--radius-sm) border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-(length:--space-3) py-(length:--space-2) text-(length:--fs-sm) text-(--text-primary) shadow-sm outline-none transition-all",
                     "focus:border-brand/(--opacity-medium) focus:ring-2 focus:ring-brand/(--opacity-subtle)"
                   )}
                 >
@@ -162,22 +162,22 @@ export default function AdminUsers() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-glass-border/(--opacity-subtle) bg-(--bg-surface-hover)/(--opacity-dim)">
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
+                    <th className="px-(length:--space-6) py-(length:--space-4) text-(length:--fs-xs) font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
                       {t("users.table.avatar")}
                     </th>
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
+                    <th className="px-(length:--space-6) py-(length:--space-4) text-(length:--fs-xs) font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
                       {t("users.table.fullName")}
                     </th>
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
+                    <th className="px-(length:--space-6) py-(length:--space-4) text-(length:--fs-xs) font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
                       {t("users.table.email")}
                     </th>
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
+                    <th className="px-(length:--space-6) py-(length:--space-4) text-(length:--fs-xs) font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
                       {t("users.table.role")}
                     </th>
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
+                    <th className="px-(length:--space-6) py-(length:--space-4) text-(length:--fs-xs) font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
                       {t("users.table.group")}
                     </th>
-                    <th className="px-6 py-4 text-right text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
+                    <th className="px-(length:--space-6) py-(length:--space-4) text-right text-(length:--fs-xs) font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
                       {t("users.table.actions")}
                     </th>
                   </tr>
@@ -188,25 +188,25 @@ export default function AdminUsers() {
                       key={user.id}
                       className="transition-colors hover:bg-(--bg-surface-hover)/(--opacity-subtle)"
                     >
-                      <td className="whitespace-nowrap px-6 py-4">
+                      <td className="whitespace-nowrap px-(length:--space-6) py-(length:--space-4)">
                         <Avatar
                           src={buildAvatarUrl(user.avatar_url, user.id)}
                           alt={user.full_name}
-                          className="h-10 w-10"
+                          className="h-(--space-10) w-(--space-10)"
                         />
                       </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-(--text-primary)">
+                      <td className="whitespace-nowrap px-(length:--space-6) py-(length:--space-4) text-(length:--fs-sm) font-medium text-(--text-primary)">
                         {user.full_name}
                       </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-sm text-(--text-secondary)">
+                      <td className="whitespace-nowrap px-(length:--space-6) py-(length:--space-4) text-(length:--fs-sm) text-(--text-secondary)">
                         {user.email}
                       </td>
-                      <td className="whitespace-nowrap px-6 py-4">
-                        <span className="inline-flex rounded-full bg-brand/(--opacity-subtle) px-2.5 py-0.5 text-xs font-bold text-brand ring-1 ring-inset ring-brand/(--opacity-dim)">
+                      <td className="whitespace-nowrap px-(length:--space-6) py-(length:--space-4)">
+                        <span className="inline-flex rounded-full bg-brand/(--opacity-subtle) px-(length:--space-2.5) py-(length:--space-0.5) text-(length:--fs-xs) font-bold text-brand ring-1 ring-inset ring-brand/(--opacity-dim)">
                           {roleOptions[user.role]}
                         </span>
                       </td>
-                      <td className="whitespace-nowrap px-6 py-4">
+                      <td className="whitespace-nowrap px-(length:--space-6) py-(length:--space-4)">
                         {user.role !== "teacher" && user.role !== "admin" ? (
                           <select
                             value={user.group_id ? String(user.group_id) : ""}
@@ -214,7 +214,7 @@ export default function AdminUsers() {
                               handleGroupSelectChange(user.id, event.target.value)
                             }
                             className={cn(
-                              "rounded-lg border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-2.5 py-1 text-xs text-(--text-primary) shadow-sm outline-none transition-all",
+                              "rounded-(--radius-lg) border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-(length:--space-2.5) py-(length:--space-1) text-(length:--fs-xs) text-(--text-primary) shadow-sm outline-none transition-all",
                               "focus:border-brand/(--opacity-medium) focus:ring-2 focus:ring-brand/(--opacity-subtle)"
                             )}
                           >
@@ -227,7 +227,7 @@ export default function AdminUsers() {
                           </select>
                         ) : null}
                       </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-right">
+                      <td className="whitespace-nowrap px-(length:--space-6) py-(length:--space-4) text-right">
                         {user.id !== (userContext?.id ?? null) && (
                           <button
                             type="button"
@@ -248,21 +248,21 @@ export default function AdminUsers() {
           </div>
 
           {/* Mobile Cards */}
-          <div className="grid grid-cols-1 gap-4 md:hidden">
+          <div className="grid grid-cols-1 gap-(--space-4) md:hidden">
             {users.map((user) => (
-              <SectionCard key={user.id} className="relative flex-row items-center gap-4 p-4">
+              <SectionCard key={user.id} className="relative flex-row items-center gap-(--space-4) p-(length:--space-4)">
                 <Avatar
                   src={buildAvatarUrl(user.avatar_url, user.id)}
                   alt={user.full_name}
-                  className="h-14 w-14"
+                  className="h-(--space-14) w-(--space-14)"
                 />
                 <div className="flex flex-1 flex-col min-w-0">
                   <h3 className="truncate text-base font-bold text-(--text-primary)">
                     {user.full_name}
                   </h3>
                   <p className="truncate text-sm text-(--text-secondary)">{user.email}</p>
-                  <div className="mt-2 flex items-center gap-2">
-                    <span className="rounded-full bg-brand/(--opacity-subtle) px-2 py-0.5 text-badge font-bold text-brand ring-1 ring-inset ring-brand/(--opacity-dim)">
+                  <div className="mt-(length:--space-2) flex items-center gap-(--space-2)">
+                    <span className="rounded-full bg-brand/(--opacity-subtle) px-(length:--space-2) py-(length:--space-0.5) text-(length:--fs-badge) font-bold text-brand ring-1 ring-inset ring-brand/(--opacity-dim)">
                       {roleOptions[user.role]}
                     </span>
                     {user.role !== "teacher" && user.role !== "admin" && (
@@ -288,7 +288,7 @@ export default function AdminUsers() {
                   <button
                     type="button"
                     onClick={() => handleDelete(user.id)}
-                    className="absolute top-4 right-4 rounded-lg p-1.5 text-error transition-colors hover:bg-error/(--opacity-subtle)"
+                    className="absolute top-(--space-4) right-(--space-4) rounded-(--radius-lg) p-(length:--space-1.5) text-error transition-colors hover:bg-error/(--opacity-subtle)"
                     aria-label={t("users.table.deleteUser")}
                     title={t("users.table.deleteUser")}
                   >

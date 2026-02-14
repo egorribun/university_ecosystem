@@ -150,7 +150,7 @@ export default function ForgotPassword() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-[440px] z-(--z-modal)"
+        className="w-full max-w-(length:--layout-max-dialog) z-(--z-modal)"
       >
         <SectionCard className="p-8 sm:p-10 border-glass-border shadow-2xl backdrop-blur-2xl">
           <div className="space-y-8">
