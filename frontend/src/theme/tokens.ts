@@ -9,9 +9,16 @@
 // -----------------------------------------------------------------------------
 
 export const spacingScale = {
+  "05": "var(--space-05)",
   "10": "var(--space-10)",
+  "125": "var(--space-125)",
+  "15": "var(--space-15)",
+  "20": "var(--space-20)",
+  "24": "var(--space-24)",
+  "25": "var(--space-25)",
   "2xl": "var(--space-12)",
   "2xs": "var(--space-1)",
+  "35": "var(--space-35)",
   "3xl": "var(--space-16)",
   "4xl": "var(--space-32)",
   "5": "var(--space-5)",
@@ -55,6 +62,7 @@ export const zIndexTokens = {
   hide: "var(--z-hide)",
   modal: "var(--z-modal)",
   navbar: "var(--z-navbar)",
+  negative: "var(--z-negative)",
   offline: "var(--z-offline)",
   overlay: "var(--z-overlay)",
   popover: "var(--z-popover)",
@@ -78,9 +86,7 @@ export const shadows = {
 
 export const glass = {
   bg: "var(--glass-bg)",
-  blur: "var(--glass-blur)",
   border: "var(--glass-border)",
-  shadow: "var(--shadow-glass)",
   tint3: "var(--glass-tint3)",
 } as const
 
@@ -96,20 +102,20 @@ export const dimensions = {
   cardMd: "var(--w-card-md)",
   cardSm: "var(--w-card-sm)",
   heroLg: "var(--h-hero-lg)",
+  heroMax: "var(--h-hero-max-portrait)",
+  heroMax: "var(--h-hero-max-square)",
+  heroMax: "var(--h-hero-max-landscape)",
   heroMd: "var(--h-hero-md)",
   heroSm: "var(--h-hero-sm)",
   screenOffset: "var(--h-screen-offset)",
 } as const
 
 export const opacity = {
-  dim: "var(--opacity-dim)",
-  faint: "var(--opacity-faint)",
   heavy: "var(--opacity-heavy)",
   hover: "var(--opacity-hover)",
   medium: "var(--opacity-medium)",
   soft: "var(--opacity-soft)",
   strong: "var(--opacity-strong)",
-  subtle: "var(--opacity-subtle)",
 } as const
 
 export const scale = {

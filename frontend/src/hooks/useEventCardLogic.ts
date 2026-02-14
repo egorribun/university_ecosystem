@@ -12,11 +12,9 @@ import { useEventRegistration } from "@/hooks/useEventRegistration"
 import { useSpotlight } from "@/components/ui/Spotlight"
 import type { Event, EventEditDraft } from "@/types/Event"
 
-
 dayjs.extend(utc)
 dayjs.extend(timezone)
 dayjs.extend(relativeTime)
-
 
 const normalizeDate = (d?: string) => (d ? d.replace("T", " ").replace("Z", "") : "")
 

@@ -30,13 +30,33 @@ const badgeVariants = cva(
     compoundVariants: [
       // --- Sizing ---
       // Pill shape
-      { shape: "pill", size: "xs", class: "min-h-(--space-6) px-(length:--space-2) text-(length:--fs-badge)" },
-      { shape: "pill", size: "sm", class: "min-h-(--space-7) px-(length:--space-2.5) text-(length:--fs-badge-sm)" },
-      { shape: "pill", size: "md", class: "min-h-(--space-8) px-(length:--space-3) text-(length:--fs-sm)" },
+      {
+        shape: "pill",
+        size: "xs",
+        class: "min-h-(--space-6) px-(length:--space-2) text-(length:--fs-badge)",
+      },
+      {
+        shape: "pill",
+        size: "sm",
+        class: "min-h-(--space-7) px-(length:--space-2.5) text-(length:--fs-badge-sm)",
+      },
+      {
+        shape: "pill",
+        size: "md",
+        class: "min-h-(--space-8) px-(length:--space-3) text-(length:--fs-sm)",
+      },
       // Circle shape
-      { shape: "circle", size: "xs", class: "h-(--space-7) w-(--space-7) text-(length:--fs-badge)" },
+      {
+        shape: "circle",
+        size: "xs",
+        class: "h-(--space-7) w-(--space-7) text-(length:--fs-badge)",
+      },
       { shape: "circle", size: "sm", class: "h-(--space-8) w-(--space-8) text-(length:--fs-sm)" },
-      { shape: "circle", size: "md", class: "h-(--space-10) w-(--space-10) text-(length:--fs-base)" },
+      {
+        shape: "circle",
+        size: "md",
+        class: "h-(--space-10) w-(--space-10) text-(length:--fs-base)",
+      },
 
       // --- Tones & Variants ---
       // Default

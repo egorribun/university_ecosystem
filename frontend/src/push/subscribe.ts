@@ -455,7 +455,9 @@ export async function recoverPushConsentFromBrowser(): Promise<boolean> {
     setPushConsent(true)
 
     // Re-sync subscription with server
-    const json = subscription.toJSON() as unknown as Record<string, unknown> as Parameters<typeof saveSubscription>[0]
+    const json = subscription.toJSON() as unknown as Record<string, unknown> as Parameters<
+      typeof saveSubscription
+    >[0]
     try {
       await persistSubscriptionWithBackoff(json)
     } catch (error) {

@@ -37,8 +37,13 @@ async function hashSensitiveFields(obj: unknown, userSalt: string): Promise<unkn
   const result: Record<string, unknown> = {}
   for (const key in obj) {
     if (Object.prototype.hasOwnProperty.call(obj, key)) {
-      if (sensitiveFields.includes(key) && typeof (obj as Record<string, unknown>)[key] === "string") {
-        const passwordBytes = new TextEncoder().encode((obj as Record<string, unknown>)[key] as string)
+      if (
+        sensitiveFields.includes(key) &&
+        typeof (obj as Record<string, unknown>)[key] === "string"
+      ) {
+        const passwordBytes = new TextEncoder().encode(
+          (obj as Record<string, unknown>)[key] as string
+        )
         // Offload scrypt effort to worker
         const hashed = await cryptoWorker.scrypt({
           password: passwordBytes,

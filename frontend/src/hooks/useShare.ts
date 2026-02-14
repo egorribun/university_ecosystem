@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Send as TelegramIcon,
   MessageCircle as WhatsAppIcon,
-  Mail as AlternateEmailIcon
+  Mail as AlternateEmailIcon,
 } from "lucide-react"
 
 interface ShareOptions {

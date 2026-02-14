@@ -93,7 +93,9 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor, isActive }: Setti
 
   const sessionsErrorMessage = React.useMemo(() => {
     if (!sessionsIsError) return null
-    const err = sessionsError as { response?: { status?: number; data?: { detail?: string | string[]; message?: string } } }
+    const err = sessionsError as {
+      response?: { status?: number; data?: { detail?: string | string[]; message?: string } }
+    }
     if (err?.response?.data?.detail) {
       return String(err.response.data.detail)
     }

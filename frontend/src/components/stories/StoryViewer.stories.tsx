@@ -26,7 +26,8 @@ const mockStories: StoryItem[] = [
     id: "1",
     title: "Welcome to University",
     short_text: "Discover our vibrant campus life and opportunities.",
-    cover_url: "https://images.unsplash.com/photo-1541339907198-e08756dedf3f?w=800&auto=format&fit=crop",
+    cover_url:
+      "https://images.unsplash.com/photo-1541339907198-e08756dedf3f?w=800&auto=format&fit=crop",
     created_at: new Date().toISOString(),
     expires_at: new Date(Date.now() + 86400000).toISOString(),
     published_at: new Date().toISOString(),

@@ -53,7 +53,9 @@ export function DashboardHero({
       "absolute inset-0 z-(--z-hide) bg-[radial-gradient(circle_at_bottom,var(--dash-hero-radial-bottom),transparent_78%)]",
     ]
 
-    const orbSize = isNarrow ? "h-(length:--space-40) w-(length:--space-40)" : "h-(length:--space-80) w-(length:--space-80)"
+    const orbSize = isNarrow
+      ? "h-(length:--space-40) w-(length:--space-40)"
+      : "h-(length:--space-80) w-(length:--space-80)"
     layers.push(
       `absolute -top-56 left-1/2 ${orbSize} -translate-x-1/2 rounded-full bg-[radial-gradient(circle,var(--dash-hero-orb),transparent)] blur-(--glow-blur-3xl)`
     )

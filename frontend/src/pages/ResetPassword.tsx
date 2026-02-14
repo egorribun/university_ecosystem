@@ -237,11 +237,7 @@ export default function ResetPassword() {
                               className="p-(length:--space-1) hover:bg-black/(--opacity-subtle) dark:hover:bg-white/(--opacity-subtle) rounded-(--radius-md) transition-colors"
                               tabIndex={-1}
                             >
-                              {showPass ? (
-                                <VisibilityOff size={16} />
-                              ) : (
-                                <Visibility size={16} />
-                              )}
+                              {showPass ? <VisibilityOff size={16} /> : <Visibility size={16} />}
                             </button>
                           }
                         />
@@ -302,7 +298,7 @@ export default function ResetPassword() {
                           autoComplete="new-password"
                           ref={(input) => {
                             if (input) {
-                              confirmRef.current = input as HTMLInputElement;
+                              confirmRef.current = input as HTMLInputElement
                               // If you want to auto-focus on initial render of this field,
                               // you can uncomment the line below.
                               // setTimeout(() => input.focus(), 0);
@@ -317,11 +313,7 @@ export default function ResetPassword() {
                               className="p-(length:--space-1) hover:bg-black/(--opacity-subtle) dark:hover:bg-white/(--opacity-subtle) rounded-(--radius-md) transition-colors"
                               tabIndex={-1}
                             >
-                              {showConfirm ? (
-                                <VisibilityOff size={16} />
-                              ) : (
-                                <Visibility size={16} />
-                              )}
+                              {showConfirm ? <VisibilityOff size={16} /> : <Visibility size={16} />}
                             </button>
                           }
                         />
@@ -337,7 +329,10 @@ export default function ResetPassword() {
                       )}
 
                       {pwned && (
-                        <Alert severity="warning" className="rounded-(--radius-sm) py-(length:--space-2)">
+                        <Alert
+                          severity="warning"
+                          className="rounded-(--radius-sm) py-(length:--space-2)"
+                        >
                           {t("auth:reset.pwnedWarning")}
                         </Alert>
                       )}

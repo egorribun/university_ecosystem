@@ -8,7 +8,6 @@ import { cn } from "@/utils/cn"
 
 import type { EventEditDraft } from "@/types/Event"
 
-
 type EventEditDialogProps = {
   open: boolean
   onClose: () => void

@@ -76,9 +76,7 @@ describe("StoryViewer", () => {
 
   it("renders the active story", () => {
     renderViewer({ activeStoryIndex: 0 })
-    expect(
-      screen.getByRole("dialog", { name: /Story Viewer: Story 1/i })
-    ).toBeInTheDocument()
+    expect(screen.getByRole("dialog", { name: /Story Viewer: Story 1/i })).toBeInTheDocument()
     expect(screen.getByRole("heading", { name: "Story 1" })).toBeInTheDocument()
   })
 

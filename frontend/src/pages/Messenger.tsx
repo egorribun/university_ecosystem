@@ -1,12 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
-import {
-  ContactList,
-  ChatWindow,
-  MessageInput,
-  NewChatModal,
-} from "../components/messenger"
+import { ContactList, ChatWindow, MessageInput, NewChatModal } from "../components/messenger"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
 import { cn } from "@/utils/cn"
@@ -57,9 +52,7 @@ function ConfirmDialog({
           >
             <div className="p-(length:--space-8) flex flex-col gap-(--space-4)">
               <h3 className="text-xl font-bold tracking-tight sf-pro">{title}</h3>
-              <p className="text-base text-text-secondary font-medium leading-relaxed">
-                {message}
-              </p>
+              <p className="text-base text-text-secondary font-medium leading-relaxed">{message}</p>
               <div className="flex gap-(--space-3) justify-end pt-(length:--space-4)">
                 <motion.button
                   whileHover={{ scale: 1.05, backgroundColor: "var(--bg-surface-hover)" }}

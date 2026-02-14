@@ -57,8 +57,7 @@ export const StoryViewer = ({
     }
   }, [activeStoryIndex])
 
-  const viewerStory =
-    activeStoryIndex === null ? null : (stories[activeStoryIndex] ?? null)
+  const viewerStory = activeStoryIndex === null ? null : (stories[activeStoryIndex] ?? null)
 
   const progressForIndex = useCallback(
     (index: number) => {
@@ -91,9 +90,7 @@ export const StoryViewer = ({
     []
   )
 
-  const viewerStoryLink = viewerStory?.cta_url
-    ? linkPropsFor(viewerStory.cta_url)
-    : null
+  const viewerStoryLink = viewerStory?.cta_url ? linkPropsFor(viewerStory.cta_url) : null
 
   const storyDialogLabel = viewerStory
     ? t("stories.viewer.aria.dialog", {
@@ -161,9 +158,7 @@ export const StoryViewer = ({
         <div
           className={cn(
             "relative z-(--z-decor) flex aspect-9/16 w-(--story-card-w) max-h-[92vh] max-w-(--story-card-w) flex-col items-stretch justify-center overflow-hidden text-white sm:aspect-video sm:w-[min(96%,960px)] sm:max-h-(--h-hero-lg) sm:max-w-(--layout-max-content)",
-            viewerStory.cover_url
-              ? "bg-(--bg-page)"
-              : "bg-brand shadow-premium-lift",
+            viewerStory.cover_url ? "bg-(--bg-page)" : "bg-brand shadow-premium-lift",
             viewerStory.cover_url ? "rounded-none" : "rounded-md sm:rounded-lg"
           )}
           onPointerDown={handlePointerDown}
@@ -193,9 +188,7 @@ export const StoryViewer = ({
 
           <p className="sr-only">{t("stories.viewer.hints.auto")}</p>
 
-          {(viewerStory.title ||
-            viewerStory.short_text ||
-            viewerStory.cta_url) && (
+          {(viewerStory.title || viewerStory.short_text || viewerStory.cta_url) && (
             <div
               className={cn(
                 "absolute bottom-0 left-0 right-0 flex flex-col",
@@ -206,12 +199,8 @@ export const StoryViewer = ({
                 backgroundImage: viewerStory.cover_url
                   ? "linear-gradient(180deg, transparent 0%, var(--primary-subtle-bg) 55%, var(--bg-page) 100%)"
                   : "var(--grad-story-fade)",
-                backdropFilter: viewerStory.cover_url
-                  ? "blur(var(--blur-glass))"
-                  : undefined,
-                WebkitBackdropFilter: viewerStory.cover_url
-                  ? "blur(var(--blur-glass))"
-                  : undefined,
+                backdropFilter: viewerStory.cover_url ? "blur(var(--blur-glass))" : undefined,
+                WebkitBackdropFilter: viewerStory.cover_url ? "blur(var(--blur-glass))" : undefined,
               }}
             >
               {viewerStory.title && (
@@ -223,9 +212,7 @@ export const StoryViewer = ({
                 </h2>
               )}
               {viewerStory.short_text && (
-                <p className="text-base opacity-heavy">
-                  {viewerStory.short_text}
-                </p>
+                <p className="text-base opacity-heavy">{viewerStory.short_text}</p>
               )}
               {viewerStoryLink &&
                 ("to" in viewerStoryLink ? (

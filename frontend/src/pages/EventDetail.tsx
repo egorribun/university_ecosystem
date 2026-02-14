@@ -350,7 +350,9 @@ const EventDetail = () => {
                 {t("events:card.participants", { count: event.participant_count || 0 })}
               </Badge>
             </div>
-            <p className="text-(length:--fs-base) font-semibold text-(--text-primary)">{event.description}</p>
+            <p className="text-(length:--fs-base) font-semibold text-(--text-primary)">
+              {event.description}
+            </p>
             <div className="space-y-(length:--space-2)">
               <p className="text-base font-semibold text-(--text-primary)">
                 {t("events:detail.fields.location")}: <strong>{event.location}</strong>
@@ -479,7 +481,9 @@ const EventDetail = () => {
                   )}
                 </form>
                 {isUploadErrorState(uploadState) && (
-                  <p className="mt-(length:--space-2) text-(length:--fs-xs) text-error-text">{uploadState.error}</p>
+                  <p className="mt-(length:--space-2) text-(length:--fs-xs) text-error-text">
+                    {uploadState.error}
+                  </p>
                 )}
               </div>
             )}
@@ -707,7 +711,9 @@ const EventDetail = () => {
                   )}
                 </form>
                 {isUploadErrorState(uploadState) && (
-                  <p className="mt-(length:--space-2) text-(length:--fs-sm) text-error-text">{uploadState.error}</p>
+                  <p className="mt-(length:--space-2) text-(length:--fs-sm) text-error-text">
+                    {uploadState.error}
+                  </p>
                 )}
               </div>
             )}

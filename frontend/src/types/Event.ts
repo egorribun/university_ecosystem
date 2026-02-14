@@ -17,4 +17,3 @@ export type EventEditDraft = {
   speaker: string
   image_url: string
 }
-

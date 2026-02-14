@@ -112,9 +112,7 @@ export default function Footer() {
           <p className="text-sm font-medium text-white opacity-medium">
             {t("navigation:footer.copyright", { year })}
           </p>
-          <p className="text-xs text-white opacity-dim">
-            {t("navigation:footer.careNote")}
-          </p>
+          <p className="text-xs text-white opacity-dim">{t("navigation:footer.careNote")}</p>
         </div>
       </div>
     </footer>

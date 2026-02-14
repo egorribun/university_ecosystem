@@ -125,10 +125,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
           >
             <Paperclip
               size={20}
-              className={cn(
-                "transition-transform duration-300",
-                showAttachMenu && "rotate-45"
-              )}
+              className={cn("transition-transform duration-300", showAttachMenu && "rotate-45")}
             />
           </motion.button>
 

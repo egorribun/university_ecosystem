@@ -162,7 +162,7 @@ def require_owner_or_admin(
         raise_forbidden(locale)
 
 
-def ensure_exists[T](resource: T | None, resource_key: str, locale: str) -> T:
+def ensure_exists(resource: T | None, resource_key: str, locale: str) -> T:
     """
     Ensure resource exists, return it or raise 404.
 

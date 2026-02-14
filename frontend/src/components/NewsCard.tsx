@@ -145,11 +145,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
           hoveringDisabled ? "cursor-default" : "card-interactive"
         )}
       >
-        <SpotlightOverlay
-          mouseX={spotlight.mouseX}
-          mouseY={spotlight.mouseY}
-          className="z-hide"
-        />
+        <SpotlightOverlay mouseX={spotlight.mouseX} mouseY={spotlight.mouseY} className="z-hide" />
 
         {user?.role === "admin" && (
           <ContentCard.Actions className="absolute right-2 top-2 z-surface">
@@ -170,11 +166,7 @@ const NewsCardComponent: FC<NewsCardProps> = ({
             hoveringDisabled ? "opacity-100" : ""
           )}
         >
-          <NewsCardHero
-            image_url={image_url}
-            title={localizedTitle}
-            created_at={created_at}
-          />
+          <NewsCardHero image_url={image_url} title={localizedTitle} created_at={created_at} />
 
           <NewsCardContent
             id={id}

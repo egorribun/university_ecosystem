@@ -55,8 +55,9 @@ def configure_logging(
         structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
         structlog.processors.EventRenamer("message"),
-        lambda _, __, event_dict: event_dict.update({"service": "backend"})
-        or event_dict,
+        lambda _, __, event_dict: (
+            event_dict.update({"service": "backend"}) or event_dict
+        ),
     ]
 
     if json_output:

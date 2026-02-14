@@ -102,8 +102,6 @@ export default function NewsDetail() {
   const imageInputRef = useRef<HTMLInputElement>(null)
   const editTitleRef = useRef<HTMLInputElement>(null)
 
-
-
   const { data: newsItem } = useQuery<NewsItem>({ queryKey: ["news", id, language] })
 
   const {
@@ -130,7 +128,6 @@ export default function NewsDetail() {
   })
 
   const { interactions, toggleLike, addComment, isCommenting, updateComment, deleteComment } =
-
     useNewsInteraction(id, {
       initialData: newsItem
         ? {
@@ -143,7 +140,6 @@ export default function NewsDetail() {
   const isLiked = interactions?.is_liked ?? false
   const likesCount = interactions?.likes_count ?? 0
   const comments = interactions?.comments ?? []
-
 
   const handleHeroLoad = useCallback<React.ReactEventHandler<HTMLImageElement>>((event) => {
     const img = event.currentTarget
@@ -190,7 +186,8 @@ export default function NewsDetail() {
     }
 
     return {
-      container: "min-h-(length:--min-h-hero-sm) max-h-(length:--h-hero-max-landscape) aspect-video",
+      container:
+        "min-h-(length:--min-h-hero-sm) max-h-(length:--h-hero-max-landscape) aspect-video",
       image: "object-cover object-[50%_40%]",
       backdrop: "bg-(--bg-surface)/(--opacity-dim)",
     }
@@ -217,7 +214,6 @@ export default function NewsDetail() {
   }, [snackbar])
 
   const resetPreview = () => {
-
     if (previewUrl) {
       URL.revokeObjectURL(previewUrl)
       setPreviewUrl(null)
@@ -349,8 +345,6 @@ export default function NewsDetail() {
     const wordsPerMinute = 220
     return Math.max(1, Math.round(words / wordsPerMinute))
   }, [content])
-
-
 
   if (query.isLoading) {
     return (
@@ -593,7 +587,9 @@ export default function NewsDetail() {
                   ref={editTitleRef}
                   type="text"
                   value={editData.title}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditData({ ...editData, title: e.target.value })}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    setEditData({ ...editData, title: e.target.value })
+                  }
                   maxLength={100}
                 />
               </Field>
@@ -602,7 +598,9 @@ export default function NewsDetail() {
                 <Textarea
                   id="edit-content"
                   value={editData.content}
-                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setEditData({ ...editData, content: e.target.value })}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                    setEditData({ ...editData, content: e.target.value })
+                  }
                   maxLength={3000}
                   rows={6}
                 />
@@ -618,7 +616,9 @@ export default function NewsDetail() {
                   id="edit-title-en"
                   type="text"
                   value={editData.title_en}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEditData({ ...editData, title_en: e.target.value })}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    setEditData({ ...editData, title_en: e.target.value })
+                  }
                   maxLength={100}
                 />
               </Field>
@@ -630,7 +630,9 @@ export default function NewsDetail() {
                 <Textarea
                   id="edit-content-en"
                   value={editData.content_en}
-                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setEditData({ ...editData, content_en: e.target.value })}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                    setEditData({ ...editData, content_en: e.target.value })
+                  }
                   maxLength={3000}
                   rows={6}
                 />

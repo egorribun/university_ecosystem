@@ -250,7 +250,10 @@ export default function AdminUsers() {
           {/* Mobile Cards */}
           <div className="grid grid-cols-1 gap-(--space-4) md:hidden">
             {users.map((user) => (
-              <SectionCard key={user.id} className="relative flex-row items-center gap-(--space-4) p-(length:--space-4)">
+              <SectionCard
+                key={user.id}
+                className="relative flex-row items-center gap-(--space-4) p-(length:--space-4)"
+              >
                 <Avatar
                   src={buildAvatarUrl(user.avatar_url, user.id)}
                   alt={user.full_name}

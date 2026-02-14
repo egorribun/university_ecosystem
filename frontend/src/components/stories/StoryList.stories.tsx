@@ -18,7 +18,8 @@ const mockStories: StoryItem[] = [
   {
     id: "1",
     title: "Campus Life",
-    cover_url: "https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=800&auto=format&fit=crop",
+    cover_url:
+      "https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=800&auto=format&fit=crop",
     created_at: new Date().toISOString(),
     expires_at: new Date(Date.now() + 86400000).toISOString(),
     published_at: new Date().toISOString(),
@@ -29,7 +30,8 @@ const mockStories: StoryItem[] = [
   {
     id: "2",
     title: "Research",
-    cover_url: "https://images.unsplash.com/photo-1532094349884-543bc11b234d?w=800&auto=format&fit=crop",
+    cover_url:
+      "https://images.unsplash.com/photo-1532094349884-543bc11b234d?w=800&auto=format&fit=crop",
     created_at: new Date().toISOString(),
     expires_at: new Date(Date.now() + 86400000).toISOString(),
     published_at: new Date().toISOString(),

@@ -45,13 +45,7 @@ export function Button<T extends React.ElementType = "button">({
   ) as GlobalButtonProps<T>["variant"]
 
   const mappedSize = (
-    isLegacySize(size)
-      ? size === "small"
-        ? "sm"
-        : size === "medium"
-          ? "md"
-          : "lg"
-      : size || "md"
+    isLegacySize(size) ? (size === "small" ? "sm" : size === "medium" ? "md" : "lg") : size || "md"
   ) as GlobalButtonProps<T>["size"]
 
   return (
@@ -159,11 +153,7 @@ export const TextField = React.forwardRef<
               disabled={disabled}
               placeholder={placeholder}
               rows={rows}
-              className={cn(
-                "resize-none",
-                leadingIcon ? "pl-11" : "",
-                trailingIcon ? "pr-11" : ""
-              )}
+              className={cn("resize-none", leadingIcon ? "pl-11" : "", trailingIcon ? "pr-11" : "")}
               {...props}
             />
           ) : (

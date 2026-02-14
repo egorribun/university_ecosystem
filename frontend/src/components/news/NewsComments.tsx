@@ -3,10 +3,9 @@ import {
   MessageSquare as ChatBubbleOutlineIcon,
   Edit2 as EditIcon,
   Trash2 as DeleteIcon,
-  Send as SendIcon
+  Send as SendIcon,
 } from "lucide-react"
 import { Button, Textarea } from "@/components/ui"
-
 
 interface Comment {
   id: number
@@ -81,9 +80,7 @@ export function NewsComments({
               className="flex flex-col gap-2 p-4 rounded-md bg-(--bg-surface)/(--opacity-dim) border border-glass-border/(--opacity-soft) shadow-sm"
             >
               <div className="flex items-center justify-between">
-                <span className="font-bold text-sm text-(--text-primary)">
-                  {comment.user_name}
-                </span>
+                <span className="font-bold text-sm text-(--text-primary)">{comment.user_name}</span>
                 <div className="flex items-center gap-3">
                   <time className="text-xs text-(--text-secondary) uppercase font-semibold">
                     {getMoscowDate(comment.created_at)}
@@ -130,11 +127,7 @@ export function NewsComments({
                     autoFocus
                   />
                   <div className="flex justify-end gap-(--space-2)">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setEditingCommentId(null)}
-                    >
+                    <Button variant="outline" size="sm" onClick={() => setEditingCommentId(null)}>
                       {t("common:buttons.cancel")}
                     </Button>
                     <Button

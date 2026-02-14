@@ -187,7 +187,7 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
                   <div
                     className={cn(
                       "p-2 rounded-md transition-all duration-500",
-                        isActive
+                      isActive
                         ? "bg-brand text-white shadow-lg shadow-brand/(--opacity-medium)"
                         : "bg-(--bg-surface-hover)/(--opacity-dim) text-(--text-tertiary) opacity-dim group-hover:opacity-100"
                     )}

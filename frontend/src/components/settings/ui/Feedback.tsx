@@ -55,8 +55,10 @@ export function Chip({
 } & React.HTMLAttributes<HTMLSpanElement>) {
   const colorMap = {
     default: "text-(--text-secondary) bg-glass-bg border-glass-border",
-    success: "text-(--success-bg) bg-(--success-bg)/opacity-subtle border-(--success-bg)/opacity-dim",
-    primary: "text-(--brand-main) bg-(--brand-main)/opacity-subtle border-(--brand-main)/opacity-dim",
+    success:
+      "text-(--success-bg) bg-(--success-bg)/opacity-subtle border-(--success-bg)/opacity-dim",
+    primary:
+      "text-(--brand-main) bg-(--brand-main)/opacity-subtle border-(--brand-main)/opacity-dim",
   }
 
   return (

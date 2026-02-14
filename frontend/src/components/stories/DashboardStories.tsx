@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import type { StoryItem } from "@/types/Story"
 import useMediaQuery from "@/hooks/useMediaQuery"

@@ -124,8 +124,8 @@ async def test_create_comment(
 
     app.dependency_overrides[get_news_service] = lambda: mock_news_service
     app.dependency_overrides[get_current_user] = lambda: mock_user
-    app.dependency_overrides[get_notification_service] = (
-        lambda: mock_notification_service
+    app.dependency_overrides[get_notification_service] = lambda: (
+        mock_notification_service
     )
 
     resp = await async_client.post(

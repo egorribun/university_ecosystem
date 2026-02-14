@@ -89,7 +89,8 @@ const areDeepEqual = (a: unknown, b: unknown): boolean => {
   if (keysA.length !== keysB.length) return false
   for (const key of keysA) {
     if (!keysB.includes(key)) return false
-    if (!areDeepEqual((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key])) return false
+    if (!areDeepEqual((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]))
+      return false
   }
   return true
 }

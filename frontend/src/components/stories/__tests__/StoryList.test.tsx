@@ -39,16 +39,12 @@ const mockStories: StoryItem[] = [
 
 describe("StoryList", () => {
   it("renders nothing when empty and not loading", () => {
-    const { container } = render(
-      <StoryList stories={[]} loading={false} onOpenStory={vi.fn()} />
-    )
+    const { container } = render(<StoryList stories={[]} loading={false} onOpenStory={vi.fn()} />)
     expect(container).toBeEmptyDOMElement()
   })
 
   it("renders skeletons when loading", () => {
-    const { container } = render(
-      <StoryList stories={[]} loading={true} onOpenStory={vi.fn()} />
-    )
+    const { container } = render(<StoryList stories={[]} loading={true} onOpenStory={vi.fn()} />)
     expect(container.getElementsByClassName("animate-pulse").length).toBeGreaterThan(0)
   })
 
@@ -68,13 +64,7 @@ describe("StoryList", () => {
 
   it("calls onPrefetch on hover", () => {
     const handlePrefetch = vi.fn()
-    render(
-      <StoryList
-        stories={mockStories}
-        onOpenStory={vi.fn()}
-        onPrefetch={handlePrefetch}
-      />
-    )
+    render(<StoryList stories={mockStories} onOpenStory={vi.fn()} onPrefetch={handlePrefetch} />)
 
     fireEvent.mouseEnter(screen.getByLabelText("Story: Story 1"))
     expect(handlePrefetch).toHaveBeenCalled()

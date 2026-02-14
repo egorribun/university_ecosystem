@@ -12,13 +12,15 @@ import logging
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Generic, TypeVar
+
+T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
-class CacheEntry[T]:
+class CacheEntry(Generic[T]):
     """Cache entry with value and metadata."""
 
     value: T
@@ -30,7 +32,7 @@ class CacheEntry[T]:
         return time.time() > self.expires_at
 
 
-class LRUCache[T]:
+class LRUCache(Generic[T]):
     """
     Thread-safe LRU cache for L1 caching.
 

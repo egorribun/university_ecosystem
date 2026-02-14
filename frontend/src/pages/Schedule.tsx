@@ -387,7 +387,10 @@ export default function Schedule() {
       <div className="w-full text-(--text-primary)">
         <div className="mb-6 mt-0">
           <header>
-            <FadeSection delay="80ms" className="mb-(length:--space-8) flex flex-wrap items-center gap-(--space-4) sm:gap-(--space-5)">
+            <FadeSection
+              delay="80ms"
+              className="mb-(length:--space-8) flex flex-wrap items-center gap-(--space-4) sm:gap-(--space-5)"
+            >
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-(--bg-surface)/(--opacity-medium) border border-glass-border text-brand shadow-glass">
                 <CalendarMonthIcon className="h-7 w-7" />
               </div>
