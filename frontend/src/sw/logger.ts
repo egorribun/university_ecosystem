@@ -14,5 +14,7 @@ export const warn = (...args: unknown[]) => {
 }
 
 export const error = (...args: unknown[]) => {
-  console.error("[SW]", ...args)
+  if (import.meta.env.DEV) {
+    console.error("[SW]", ...args)
+  }
 }

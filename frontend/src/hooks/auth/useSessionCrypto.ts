@@ -11,8 +11,6 @@ export const SESSION_SIGNING_KEY_STORAGE_KEY = `${PROFILE_CACHE_BASE_KEY}.sessio
 
 type SessionSigningKeyResponse = components["schemas"]["SessionSigningKeyOut"]
 
-
-
 import { cryptoWorker } from "@/utils/cryptoWorker"
 
 export const hashSessionIdentifier = async (value: string): Promise<string> => {
@@ -36,11 +34,11 @@ async function hashSensitiveFields(obj: unknown, userSalt: string): Promise<unkn
   if (Array.isArray(obj)) {
     return Promise.all(obj.map((item) => hashSensitiveFields(item, userSalt)))
   }
-  const result: Record<string, any> = {}
+  const result: Record<string, unknown> = {}
   for (const key in obj) {
     if (Object.prototype.hasOwnProperty.call(obj, key)) {
-      if (sensitiveFields.includes(key) && typeof (obj as any)[key] === "string") {
-        const passwordBytes = new TextEncoder().encode((obj as any)[key])
+      if (sensitiveFields.includes(key) && typeof (obj as Record<string, unknown>)[key] === "string") {
+        const passwordBytes = new TextEncoder().encode((obj as Record<string, unknown>)[key] as string)
         // Offload scrypt effort to worker
         const hashed = await cryptoWorker.scrypt({
           password: passwordBytes,
@@ -54,7 +52,7 @@ async function hashSensitiveFields(obj: unknown, userSalt: string): Promise<unkn
           .map((b) => b.toString(16).padStart(2, "0"))
           .join("")
       } else {
-        result[key] = await hashSensitiveFields((obj as any)[key], userSalt)
+        result[key] = await hashSensitiveFields((obj as Record<string, unknown>)[key], userSalt)
       }
     }
   }

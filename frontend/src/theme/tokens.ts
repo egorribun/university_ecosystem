@@ -25,6 +25,7 @@ export const spacingScale = {
 
 export const radiusScale = {
   "2xl": "var(--radius-2xl)",
+  "3xl": "var(--radius-3xl)",
   lg: "var(--radius-lg)",
   md: "var(--radius-md)",
   pill: "var(--radius-full)",
@@ -70,6 +71,7 @@ export const focusRing = {
 
 export const shadows = {
   glass: "var(--shadow-glass)",
+  lg: "var(--shadow-premium-lift)",
   md: "var(--shadow-md)",
   sm: "var(--shadow-sm)",
 } as const
@@ -121,3 +123,4 @@ export const motion = {
   durationMedium: 0.45,
   navTransition: 1.2,
 } as const
+

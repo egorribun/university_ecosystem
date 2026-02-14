@@ -28,7 +28,12 @@ export type InputProps = Omit<ComponentPropsWithoutRef<"input">, "size"> &
 export const Input = forwardRef<HTMLInputElement, InputProps>(
   ({ className, error, fullWidth, ...props }, ref) => {
     return (
-      <input ref={ref} className={cn(inputVariants({ error, fullWidth }), className)} {...props} />
+      <input
+        ref={ref}
+        className={cn(inputVariants({ error, fullWidth }), className)}
+        aria-invalid={!!error}
+        {...props}
+      />
     )
   }
 )

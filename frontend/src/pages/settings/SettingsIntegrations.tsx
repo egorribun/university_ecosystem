@@ -27,7 +27,7 @@ export function SettingsIntegrations({ setSnackbar }: SettingsIntegrationsProps)
       const safeUrl = sanitizeSpotifyAuthorizeUrl(data?.url)
       if (!safeUrl) throw new Error("Received unsafe Spotify authorization URL")
       window.location.assign(safeUrl)
-    } catch (error) {
+    } catch (_error) {
       setSnackbar({
         text: t("settings:integrations.spotify.snackbar.openFailed"),
         severity: "error",

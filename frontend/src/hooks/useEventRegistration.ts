@@ -51,7 +51,9 @@ export function useEventRegistration({
       if (cached === "1" && !initialRegistered) {
         setIsRegistered(true)
       }
-    } catch {}
+    } catch {
+      // ignore
+    }
   }, [eventId, user?.id, initialRegistered])
 
   // Persist registration state to localStorage
@@ -63,7 +65,9 @@ export function useEventRegistration({
       } else {
         localStorage.removeItem(regKey(eventId, user.id))
       }
-    } catch {}
+    } catch {
+      // ignore
+    }
   }, [isRegistered, eventId, user?.id])
 
   // Sync QR token with registered state and localStorage
@@ -72,7 +76,9 @@ export function useEventRegistration({
       setQrToken(undefined)
       try {
         localStorage.removeItem(qrKey(eventId, user))
-      } catch {}
+      } catch {
+        // ignore
+      }
       return
     }
 
@@ -80,13 +86,17 @@ export function useEventRegistration({
       setQrToken(initialQrToken)
       try {
         localStorage.setItem(qrKey(eventId, user), initialQrToken)
-      } catch {}
+      } catch {
+        // ignore
+      }
     } else {
       // Try to recover from localStorage
       try {
         const stored = localStorage.getItem(qrKey(eventId, user))
         if (stored) setQrToken(stored)
-      } catch {}
+      } catch {
+        // ignore
+      }
     }
   }, [isRegistered, initialQrToken, eventId, user])
 
@@ -106,13 +116,17 @@ export function useEventRegistration({
           setQrToken(code)
           try {
             localStorage.setItem(qrKey(eventId, user), code)
-          } catch {}
+          } catch {
+            // ignore
+          }
         }
       } else {
         setQrToken(undefined)
         try {
           localStorage.removeItem(qrKey(eventId, user))
-        } catch {}
+        } catch {
+          // ignore
+        }
       }
 
       setIsRegistered(nextRegistered)
@@ -134,7 +148,9 @@ export function useEventRegistration({
       onNotify?.(t("events:card.messages.registerSuccess"))
       try {
         localStorage.setItem(qrKey(eventId, user), code)
-      } catch {}
+      } catch {
+        // ignore
+      }
     } catch (error) {
       const shouldResync =
         isAxiosError(error) &&
@@ -172,7 +188,9 @@ export function useEventRegistration({
       onNotify?.(t("events:card.messages.unregisterSuccess"))
       try {
         localStorage.removeItem(qrKey(eventId, user))
-      } catch {}
+      } catch {
+        // ignore
+      }
     } catch (error) {
       const shouldResync =
         isAxiosError(error) &&

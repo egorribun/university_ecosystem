@@ -13,7 +13,7 @@ export function fetchStories() {
   return axios.get<StoriesListResponse>("/stories", {
     validateStatus: (status: number) => status >= 200 && status < 400,
     etagCacheKey: "dashboard:stories",
-  } as any)
+  })
 }
 
 export function createStory(payload: StoryCreatePayload) {

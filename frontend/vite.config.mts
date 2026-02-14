@@ -253,7 +253,10 @@ export default defineConfig(({ mode }) => {
         output: {
           manualChunks: {
             "vendor-react": ["react", "react-dom", "react-router-dom"],
-            "vendor-utils": ["dayjs", "@zxcvbn-ts/core", "@zxcvbn-ts/language-common"],
+            "vendor-ui": ["framer-motion", "lucide-react"],
+            "vendor-query": ["@tanstack/react-query"],
+            "vendor-utils": ["dayjs", "axios", "zod", "i18next", "react-i18next"],
+            "vendor-security": ["dompurify", "@zxcvbn-ts/core"],
           },
         },
       },

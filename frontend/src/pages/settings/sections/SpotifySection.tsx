@@ -35,18 +35,14 @@ export function SpotifySection({
         </div>
         <div className="flex flex-wrap items-center gap-2.5">
           <Chip
-            size="small"
             label={
               connected
                 ? t("settings:integrations.spotify.status.connected")
                 : t("settings:integrations.spotify.status.disconnected")
             }
             color={connected ? "success" : "default"}
-            variant="outlined"
           />
-          {connected && !!displayName && (
-            <Chip size="small" variant="outlined" label={displayName} />
-          )}
+          {connected && !!displayName && <Chip label={displayName} />}
         </div>
         {!connected ? (
           <Button variant="contained" onClick={onConnect} className="self-start">

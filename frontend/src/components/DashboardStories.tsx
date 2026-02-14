@@ -13,8 +13,8 @@ import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
 import { ChevronLeft, ChevronRight, X } from "lucide-react"
 import SmartImage from "@/components/SmartImage"
-import { Button, ProgressBar, Skeleton, StoryCircle, STORY_CIRCLE_SIZE_MAP } from "@/components/ui"
-import type { ButtonProps } from "@/components/ui/button"
+import { Button, ProgressBar, Skeleton, StoryCircle } from "@/components/ui"
+import type { ButtonProps } from "@/components/ui/Button"
 import type { StoryItem } from "@/types/Story"
 import useFocusTrap from "@/hooks/useFocusTrap"
 import useMediaQuery from "@/hooks/useMediaQuery"
@@ -22,7 +22,7 @@ import { cn } from "@/utils/cn"
 
 const STORY_AUTO_ADVANCE_MS = 6500
 const SKELETON_COUNT = 8
-const STORY_CIRCLE_DIAMETER = STORY_CIRCLE_SIZE_MAP.md
+const STORY_CIRCLE_DIAMETER = "var(--size-story-md)"
 
 const isBrowser = typeof document !== "undefined"
 
@@ -293,8 +293,7 @@ export default function DashboardStories({
     isClient && viewerStory && openIndex !== null
       ? createPortal(
           <div
-            className="fixed inset-0 flex items-center justify-center p-fluid-x sm:p-fluid-y"
-            style={{ zIndex: "var(--z-overlay)" }}
+            className="fixed inset-0 flex items-center justify-center p-fluid-x sm:p-fluid-y z-(--z-overlay)"
           >
             <div
               aria-hidden
@@ -371,7 +370,7 @@ export default function DashboardStories({
                       </h2>
                     )}
                     {viewerStory.short_text && (
-                      <p className="text-base opacity-(--opacity-heavy)">
+                      <p className="text-base opacity-heavy">
                         {viewerStory.short_text}
                       </p>
                     )}
@@ -486,8 +485,8 @@ export default function DashboardStories({
                 }}
               >
                 <Skeleton
-                  width={STORY_CIRCLE_DIAMETER}
-                  height={STORY_CIRCLE_DIAMETER}
+                  width="100%"
+                  height="100%"
                   rounded="9999px"
                 />
               </div>

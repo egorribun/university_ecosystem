@@ -20,7 +20,14 @@
     "paths": {
       "@/*": ["src/*"]
     },
-    "types": ["vite/client", "vite-plugin-pwa/client", "vitest", "vitest/globals", "jsdom"]
+    "types": [
+      "vite/client",
+      "vite-plugin-pwa/client",
+      "vitest",
+      "vitest/globals",
+      "jsdom",
+      "@testing-library/jest-dom"
+    ]
   },
-  "include": ["src", "tests", "playwright.config.ts"]
+  "include": ["src", "tests", "playwright.config.ts", ".storybook"]
 }

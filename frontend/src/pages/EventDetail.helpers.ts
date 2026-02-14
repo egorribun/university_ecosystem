@@ -1,4 +1,3 @@
-
 type UploadIdleState = { status: "idle" }
 type UploadSuccessState = { status: "success" }
 export type UploadErrorState = { status: "error"; error: string }

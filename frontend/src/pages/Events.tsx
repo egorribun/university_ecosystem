@@ -1,4 +1,5 @@
 import Layout from "../components/Layout"
+import { SEO } from "@/components/SEO"
 import PageFadeIn from "../components/PageFadeIn"
 import EventCard from "../components/EventCard"
 import { useEffect, useState, useCallback, useMemo, useRef } from "react"
@@ -97,7 +98,6 @@ const Events = () => {
 
   // Tab indicator animation
   const tabContainerRef = useRef<HTMLDivElement>(null)
-
 
   useEffect(() => {
     if (!filtersOpen) return
@@ -252,7 +252,9 @@ const Events = () => {
       setTab("active")
       void queryClient.invalidateQueries({ queryKey: ["events"] })
       window.scrollTo({ top: 0, behavior: "smooth" })
-    } catch {}
+    } catch {
+      // ignore
+    }
   }
 
   const handleRefresh = useCallback(() => {
@@ -286,8 +288,12 @@ const Events = () => {
 
   return (
     <Layout>
+      <SEO
+        title={t("events:pageTitle")}
+        description={t("events:pageDescription", "Upcoming events, lectures, and activities.")}
+      />
       <PageFadeIn>
-        <div className="w-full min-h-screen bg-transparent text-(--text-primary) py-8 sm:py-10">
+        <div className="w-full min-h-full bg-transparent text-(--text-primary) py-8 sm:py-10">
           <div className="px-4 sm:px-6 lg:px-8">
             {/* Header */}
             <header>
@@ -315,11 +321,7 @@ const Events = () => {
               )}
             </header>
             {/* Tabs */}
-            <FadeSection
-              delay="200ms"
-              className="w-full max-w-[440px] z-(--z-modal)"
-              role="tablist"
-            >
+            <FadeSection delay="200ms" className="w-full max-w-md z-(--z-modal)" role="tablist">
               <div
                 ref={tabContainerRef}
                 className={cn(
@@ -359,7 +361,7 @@ const Events = () => {
             {/* Search and filters */}
             <FadeSection delay="240ms" className="mb-6 lg:max-w-4xl">
               <div className="relative">
-                <SearchIcon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-(--text-secondary) pointer-events-none opacity-(--opacity-strong)" />
+                <SearchIcon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-(--text-secondary) pointer-events-none opacity-strong" />
                 <input
                   type="text"
                   value={search}
@@ -409,7 +411,7 @@ const Events = () => {
             {filtersOpen && filterAnchor && (
               <div
                 ref={filterPopoverRef}
-                className="fixed z-(--z-modal) mt-2 min-w-[260px] rounded-md border border-glass-border bg-(--bg-surface)/(--opacity-heavy) p-4 shadow-glass backdrop-blur-xl"
+                className="fixed z-(--z-modal) mt-2 min-w-64 rounded-md border border-glass-border bg-(--bg-surface)/(--opacity-heavy) p-4 shadow-glass backdrop-blur-xl"
                 style={{
                   top: filterAnchor.getBoundingClientRect().bottom + 8,
                   right: window.innerWidth - filterAnchor.getBoundingClientRect().right,

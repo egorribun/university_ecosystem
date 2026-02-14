@@ -6,11 +6,7 @@ import Layout from "../components/Layout"
 import { useAuth } from "../contexts/AuthContext"
 import { buildAvatarUrl } from "../utils/avatar"
 import { cn } from "@/utils/cn"
-import {
-  TextField,
-  SectionCard,
-  Avatar,
-} from "@/components/settings"
+import { TextField, SectionCard, Avatar } from "@/components/settings"
 
 type UserRole = "student" | "teacher" | "admin"
 

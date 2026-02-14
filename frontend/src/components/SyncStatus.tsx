@@ -58,7 +58,7 @@ export function SyncStatus() {
           setPendingCount(countReq.result)
           db.close()
         }
-      } catch (e) {
+      } catch (_e) {
         // Silently fail if DB not ready
       }
     }

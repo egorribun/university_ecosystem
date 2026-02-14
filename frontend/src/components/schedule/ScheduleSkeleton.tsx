@@ -1,8 +1,6 @@
 import { Skeleton } from "@/components/ui"
 
-
 export function ScheduleSkeleton() {
-
   return (
     <div className="w-screen min-h-screen bg-(--bg-page) py-8 sm:py-10">
       <div className="px-2 md:px-4">

@@ -175,11 +175,7 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor, isActive }: Setti
             subtitle={t("settings:security.totp.description")}
           >
             <div className="flex flex-col gap-4">
-              {totpError ? (
-                <Alert severity="error">
-                  {totpError}
-                </Alert>
-              ) : null}
+              {totpError ? <Alert severity="error">{totpError}</Alert> : null}
 
               {/* Active Enrollment */}
               {activeTotp.map((enrollment) => (
@@ -268,9 +264,7 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor, isActive }: Setti
           >
             <div className="flex flex-col gap-4">
               {!webauthnSupported ? (
-                <Alert severity="warning">
-                  {t("settings:security.webauthn.notSupported")}
-                </Alert>
+                <Alert severity="warning">{t("settings:security.webauthn.notSupported")}</Alert>
               ) : (
                 <>
                   <div className="flex flex-col gap-2">

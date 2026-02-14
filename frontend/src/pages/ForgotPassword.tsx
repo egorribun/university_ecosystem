@@ -142,7 +142,7 @@ export default function ForgotPassword() {
   return (
     <div className="min-h-screen bg-(--bg-page) text-(--text-primary) flex items-center justify-center p-6 relative overflow-hidden">
       {/* Background decorative elements */}
-      <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-(--opacity-dim)">
+      <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-dim">
         <div className="absolute top-[-10%] left-[-5%] w-[40%] h-[40%] bg-(--glow-spotlight-primary) rounded-full blur-(--glow-blur-massive)" />
         <div className="absolute bottom-[-10%] right-[-5%] w-[40%] h-[40%] bg-(--glow-spotlight-secondary) rounded-full blur-(--glow-blur-massive)" />
       </div>
@@ -189,7 +189,7 @@ export default function ForgotPassword() {
                         }}
                       />
                     </p>
-                    <p className="text-xs font-bold text-brand uppercase tracking-widest opacity-(--opacity-strong)">
+                    <p className="text-xs font-bold text-brand uppercase tracking-widest opacity-strong">
                       {t("auth:forgot.successHint")}
                     </p>
                   </div>
@@ -231,7 +231,6 @@ export default function ForgotPassword() {
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         onBlur={onBlurEmail}
-                        autoFocus
                         fullWidth
                         autoComplete="email"
                         error={!emailValid && email.length > 0}
@@ -251,7 +250,6 @@ export default function ForgotPassword() {
                             })}
                             onClick={applySuggestion}
                             color="primary"
-                            variant="outlined"
                             className="cursor-pointer hover:bg-brand/(--opacity-subtle) transition-colors"
                           />
                         </motion.div>

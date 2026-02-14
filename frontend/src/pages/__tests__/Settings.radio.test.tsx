@@ -9,7 +9,6 @@ import Settings from "@/pages/Settings"
 import type { User } from "@/types/User"
 import { LanguageProvider } from "@/contexts/LanguageContext"
 
-
 vi.mock("@/hooks/useNotifications", () => ({
   useNotifications: () => ({ unreadCount: 0 }),
 }))

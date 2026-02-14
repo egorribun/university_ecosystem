@@ -1,5 +1,8 @@
 import { useCallback } from "react"
 import { useQueryClient } from "@tanstack/react-query"
+import { useTranslation } from "react-i18next"
+
+import { SEO } from "@/components/SEO"
 
 import { PageLayout } from "@/components/PageLayout"
 import DashboardStories from "@/components/DashboardStories"
@@ -20,6 +23,7 @@ import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
 
 export default function Dashboard() {
+  const { t } = useTranslation(["dashboard", "common"])
   const { user, loading: authLoading } = useAuth()
   const isNarrow = useMediaQuery(`(max-width: ${breakpoints.dashboard})`)
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
@@ -51,6 +55,7 @@ export default function Dashboard() {
 
   return (
     <PageLayout variant="full" className="dashboard-theme py-0 md:py-0">
+      <SEO title={t("dashboard:pageTitle", "Dashboard")} />
       <DashboardHero
         user={user}
         time={time}
@@ -59,9 +64,7 @@ export default function Dashboard() {
         dateStr={dateStr}
         isNarrow={isNarrow}
         prefersReducedMotion={prefersReducedMotion}
-      />
-
-      <div className="relative z-(--z-base) -mt-(--space-10) px-4 pb-16 sm:px-8 md:px-12 lg:px-16">
+      >
         <ScrollReveal mode="slide" direction="up" delay={0.2}>
           <DashboardStories
             stories={stories}
@@ -71,38 +74,26 @@ export default function Dashboard() {
           />
         </ScrollReveal>
 
-        <section className="mt-6 grid grid-cols-1 gap-4 md:mt-8 md:gap-6 lg:grid-cols-12">
-          <ScrollReveal
-            mode="slide"
-            direction="up"
-            delay={0.3}
-            className="lg:col-span-4"
-            width="100%"
-          >
-            <ScheduleCard userRole={user?.role} userGroupId={user?.group_id} time={time} />
-          </ScrollReveal>
+        <div className="mt-6 grid w-full grid-cols-12 gap-4 md:mt-8 md:gap-6 pb-16">
+          <div className="col-span-12 lg:col-span-4">
+            <ScrollReveal mode="slide" direction="up" delay={0.3} width="100%">
+              <ScheduleCard userRole={user?.role} userGroupId={user?.group_id} time={time} />
+            </ScrollReveal>
+          </div>
 
-          <ScrollReveal
-            mode="slide"
-            direction="up"
-            delay={0.4}
-            className="lg:col-span-4"
-            width="100%"
-          >
-            <NewsCard locale={locale} />
-          </ScrollReveal>
+          <div className="col-span-12 lg:col-span-4">
+            <ScrollReveal mode="slide" direction="up" delay={0.4} width="100%">
+              <NewsCard locale={locale} />
+            </ScrollReveal>
+          </div>
 
-          <ScrollReveal
-            mode="slide"
-            direction="up"
-            delay={0.5}
-            className="lg:col-span-4"
-            width="100%"
-          >
-            <EventsCard locale={locale} />
-          </ScrollReveal>
-        </section>
-      </div>
+          <div className="col-span-12 lg:col-span-4">
+            <ScrollReveal mode="slide" direction="up" delay={0.5} width="100%">
+              <EventsCard />
+            </ScrollReveal>
+          </div>
+        </div>
+      </DashboardHero>
     </PageLayout>
   )
 }

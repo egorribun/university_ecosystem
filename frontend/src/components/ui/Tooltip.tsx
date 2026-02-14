@@ -10,7 +10,8 @@ type TooltipProps = {
 }
 
 export function Tooltip({ content, children, className, id }: TooltipProps) {
-  const tooltipId = id ?? useId()
+  const generatedId = useId()
+  const tooltipId = id ?? generatedId
 
   const label = typeof content === "string" ? content : undefined
 

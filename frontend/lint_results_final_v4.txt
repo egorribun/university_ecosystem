@@ -1,0 +1,193 @@
+
+> frontend@1.0.0 lint
+> eslint --max-warnings=0 --ext .ts,.tsx "src" "tests"
+
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\api\hooks\news.ts
+  133:53  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\app\__tests__\a11y.test.tsx
+  192:63  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  194:56  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  196:84  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  198:58  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  200:56  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\components\EventCard.tsx
+  175:32  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\components\MobileBottomNav.tsx
+  21:18  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  37:17  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\components\ScrollReveal.tsx
+  72:75  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\components\__tests__\Navbar.test.tsx
+  57:5   warning  Visible, non-interactive elements with click handlers must have at least one keyboard listener            jsx-a11y/click-events-have-key-events
+  57:5   warning  Non-interactive elements should not be assigned mouse or keyboard event listeners                         jsx-a11y/no-noninteractive-element-interactions
+  57:5   warning  The element img has an implicit role of img. Defining this explicitly is redundant and should be avoided  jsx-a11y/no-redundant-roles
+  67:68  warning  Unexpected any. Specify a different type                                                                  @typescript-eslint/no-explicit-any
+  95:37  warning  Unexpected any. Specify a different type                                                                  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\components\__tests__\NotificationsBell.test.tsx
+  37:68  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  68:37  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\components\messenger\MessengerComponents.tsx
+  472:69  warning  Unexpected any. Specify a different type                                                       @typescript-eslint/no-explicit-any
+  575:19  warning  The autoFocus prop should not be used, as it can reduce usability and accessibility for users  jsx-a11y/no-autofocus
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\components\mfa\OtpEntry.tsx
+  146:15  warning  The autoFocus prop should not be used, as it can reduce usability and accessibility for users  jsx-a11y/no-autofocus
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\components\mfa\StepUpDialog.tsx
+  142:7  warning  Visible, non-interactive elements with click handlers must have at least one keyboard listener  jsx-a11y/click-events-have-key-events
+  142:7  warning  Non-interactive elements should not be assigned mouse or keyboard event listeners               jsx-a11y/no-noninteractive-element-interactions
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\components\navbar\MobileMenu.tsx
+  58:5  warning  Visible, non-interactive elements with click handlers must have at least one keyboard listener  jsx-a11y/click-events-have-key-events
+  58:5  warning  Non-interactive elements should not be assigned mouse or keyboard event listeners               jsx-a11y/no-noninteractive-element-interactions
+  75:7  warning  Visible, non-interactive elements with click handlers must have at least one keyboard listener  jsx-a11y/click-events-have-key-events
+  75:7  warning  Non-interactive elements should not be assigned mouse or keyboard event listeners               jsx-a11y/no-noninteractive-element-interactions
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\components\ui\Skeleton.tsx
+  55:36  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\components\ui\Switch.tsx
+  100:76  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\contexts\__tests__\AuthContext.requests.test.tsx
+   28:81  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   41:81  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   75:52  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  120:54  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\contexts\__tests__\AuthContext.test.tsx
+   65:61  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  411:52  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  431:10  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  483:10  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\hooks\__tests__\useNowPlaying.test.tsx
+   46:10  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   72:75  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  117:78  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  155:52  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\hooks\auth\useProfileSync.ts
+   92:29  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   92:46  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  187:21  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\hooks\auth\useSessionCrypto.ts
+  37:32  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  40:59  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  41:64  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  55:57  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\hooks\useDashboardSchedule.ts
+  59:12  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\hooks\usePushPreferences.ts
+  368:59  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  369:22  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\pages\AdminNotifications.tsx
+  465:66  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\pages\ForgotPassword.tsx
+  234:25  warning  The autoFocus prop should not be used, as it can reduce usability and accessibility for users  jsx-a11y/no-autofocus
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\pages\Login.tsx
+  550:17  warning  The autoFocus prop should not be used, as it can reduce usability and accessibility for users  jsx-a11y/no-autofocus
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\pages\MapContent.tsx
+  139:27  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\pages\Messenger.tsx
+  453:25  warning  The autoFocus prop should not be used, as it can reduce usability and accessibility for users  jsx-a11y/no-autofocus
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\pages\NewsDetail.tsx
+   80:17  warning  Unnecessary escape character: \-                                                               no-useless-escape
+  696:27  warning  The autoFocus prop should not be used, as it can reduce usability and accessibility for users  jsx-a11y/no-autofocus
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\pages\ResetPassword.tsx
+  231:27  warning  The autoFocus prop should not be used, as it can reduce usability and accessibility for users  jsx-a11y/no-autofocus
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\pages\Schedule.tsx
+  136:57  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  141:55  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\pages\__tests__\Schedule.cache.test.tsx
+  130:32  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  131:30  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\pages\__tests__\Schedule.translations.test.tsx
+  189:32  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  190:30  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\pages\__tests__\Settings.media.test.tsx
+  126:86  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  127:84  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  192:57  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  194:55  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  196:69  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  230:90  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  231:84  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  252:90  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  253:84  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\pages\__tests__\Settings.notifications.test.tsx
+   33:26  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  184:24  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  185:21  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\pages\settings\SettingsSecurity.tsx
+  96:34  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\push\__tests__\unsubscribePush.test.ts
+  24:28  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  34:37  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\push\subscribe.ts
+  373:23  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  392:23  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\setupTests.ts
+   38:45  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   39:45  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   39:79  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+   40:40  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  111:13  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\sw\offline.ts
+  65:13  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  75:48  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  75:54  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  77:17  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\tests\components\MessengerVisuals.test.tsx
+  15:33  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\tests\pageTranslations.test.tsx
+  483:19  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  486:34  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  487:32  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\types\Admin.ts
+  10:28  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  28:28  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\utils\browser.ts
+  8:48  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\src\utils\date.ts
+  13:17  warning  Unnecessary escape character: \-  no-useless-escape
+
+C:\Users\egorribun\Documents\university_ecosystem\frontend\tests\e2e\notifications.spec.ts
+  139:41  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+тЬЦ 99 problems (0 errors, 99 warnings)
+
+ESLint found too many warnings (maximum: 0).

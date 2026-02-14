@@ -1,3 +1,5 @@
+import { motion } from "@/theme/tokens"
+
 // Common easing curves matching src/styles/theme.css
 export const EASING = {
   premium: [0.16, 1, 0.3, 1] as const, // --ease-premium
@@ -10,8 +12,8 @@ export const EASING = {
 }
 
 export const DURATIONS = {
-  fast: 0.2, // --transition-fast (approx)
-  medium: 0.4,
+  fast: motion.durationFast, // --transition-fast
+  medium: motion.durationMedium,
   slow: 0.5, // --transition-premium (approx)
 }
 

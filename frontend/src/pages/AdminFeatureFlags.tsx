@@ -1,10 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useTranslation } from "react-i18next"
-import {
-  Info,
-  Percent,
-} from "lucide-react"
+import { Info, Percent } from "lucide-react"
 import api from "../api/client"
 import Layout from "../components/Layout"
 import { SwitchControl, Chip } from "@/components/settings"

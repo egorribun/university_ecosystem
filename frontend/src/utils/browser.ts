@@ -5,7 +5,7 @@ export function isIOS(): boolean {
   const iosPlatforms = ["iPad", "iPhone", "iPod"]
   if (iosPlatforms.includes(platform)) return true
   // iPadOS 13+ returns MacIntel, so additionally check for touch support
-  if (platform === "MacIntel" && (navigator as any).maxTouchPoints > 1) return true
+  if (platform === "MacIntel" && navigator.maxTouchPoints > 1) return true
   return /iPad|iPhone|iPod/.test(userAgent)
 }
 

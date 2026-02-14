@@ -146,7 +146,7 @@ const EventDetail = () => {
         if (fileInputRef.current) fileInputRef.current.value = ""
         await refreshEvent().catch(() => {})
         return { status: "success" }
-      } catch (err) {
+      } catch (_err) {
         mutateFiles({ type: "remove", id: optimisticId })
         setSnackbar(t("events:detail.messages.fileAddFailed"))
         return { status: "error", error: t("events:detail.upload.errors.failed") }
@@ -521,7 +521,7 @@ const EventDetail = () => {
                             type="button"
                             aria-label={t("events:detail.sections.files.deleteAria")}
                             disabled={isPendingFile}
-                            className="rounded-full p-1 text-error-text transition-colors hover:bg-error-bg/(--opacity-subtle) disabled:opacity-(--opacity-medium)"
+                            className="rounded-full p-1 text-error-text transition-colors hover:bg-error-bg/(--opacity-subtle) disabled:opacity-medium"
                             onClick={async () => {
                               if (!isPendingFile) {
                                 await handleDeleteFile(f.id)
@@ -750,7 +750,7 @@ const EventDetail = () => {
                             type="button"
                             aria-label={t("events:detail.sections.files.deleteAria")}
                             disabled={isPendingFile}
-                            className="ml-2 rounded-full p-1 text-error-text transition-colors hover:bg-error-bg/(--opacity-subtle) disabled:opacity-(--opacity-medium)"
+                            className="ml-2 rounded-full p-1 text-error-text transition-colors hover:bg-error-bg/(--opacity-subtle) disabled:opacity-medium"
                             onClick={async () => {
                               if (!isPendingFile) {
                                 await handleDeleteFile(f.id)

@@ -6,6 +6,7 @@ import type { User } from "@/types/User"
 import profileBg from "@/assets/background.png"
 import PageFadeIn from "@/components/PageFadeIn"
 import Layout from "@/components/Layout"
+import { SEO } from "@/components/SEO"
 import {
   Alert,
   Button,
@@ -193,6 +194,7 @@ export default function Profile() {
 
   return (
     <Layout className="bg-transparent!">
+      <SEO title={t("profile:pageTitle", "My Profile")} />
       <div className="fixed inset-0 z-(--z-hide) pointer-events-none overflow-hidden" aria-hidden>
         <div
           className="absolute inset-0 bg-repeat bg-size-[clamp(180px,22vw,360px)] opacity-(--opacity-medium) mix-blend-soft-light dark:opacity-(--opacity-dim) translate-z-0"

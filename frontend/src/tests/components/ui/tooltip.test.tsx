@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { render, screen } from "@testing-library/react"
 
-import { Tooltip } from "@/components/ui/tooltip"
+import { Tooltip } from "@/components/ui/Tooltip"
 
 describe("Tooltip", () => {
   it("applies title and describedby when given string content", () => {

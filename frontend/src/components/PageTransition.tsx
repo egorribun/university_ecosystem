@@ -1,5 +1,4 @@
 import { FC, ReactNode, useEffect, useState } from "react"
-import { zIndexTokens } from "@/theme/tokens"
 import { DURATIONS, EASING } from "@/utils/motion"
 
 type Props = { children: ReactNode }
@@ -58,7 +57,7 @@ const PageTransition: FC<Props> = ({ children }) => {
   if (reduceMotion || !motionModule) {
     return (
       <div style={{ position: "relative", minHeight: "100%", background: "var(--bg-page)" }}>
-        <div style={{ position: "relative", zIndex: zIndexTokens.base }}>{children}</div>
+        <div className="relative z-(--z-base)">{children}</div>
       </div>
     )
   }
@@ -94,9 +93,8 @@ const PageTransition: FC<Props> = ({ children }) => {
               ease: EASING.premium,
             },
           }}
+          className="relative z-(--z-base)"
           style={{
-            position: "relative",
-            zIndex: zIndexTokens.base,
             willChange: "transform, opacity, filter",
             backfaceVisibility: "hidden",
             transform: "translateZ(0)",

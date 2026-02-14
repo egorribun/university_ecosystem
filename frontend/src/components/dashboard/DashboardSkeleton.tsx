@@ -1,7 +1,6 @@
 import { memo } from "react"
 import { Skeleton, Card } from "@/components/ui"
 
-
 /**
  * DashboardSkeleton - Full-page loading state for the Dashboard.
  * Mimics the layout of the real dashboard with placeholder elements.

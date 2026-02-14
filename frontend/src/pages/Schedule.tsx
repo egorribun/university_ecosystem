@@ -5,13 +5,7 @@ import isoWeek from "dayjs/plugin/isoWeek"
 import "dayjs/locale/ru"
 import "dayjs/locale/en"
 import { useTranslation } from "react-i18next"
-import {
-  Button,
-  Badge,
-  ProgressBar,
-  Input,
-  Select,
-} from "@/components/ui"
+import { Button, Badge, ProgressBar, Input, Select } from "@/components/ui"
 import {
   Alert,
   Dialog,
@@ -20,10 +14,7 @@ import {
   DialogTitle,
   Snackbar,
 } from "@/components/settings"
-import {
-  Calendar as CalendarMonthIcon,
-  Plus as AddIcon,
-} from "lucide-react"
+import { Calendar as CalendarMonthIcon, Plus as AddIcon } from "lucide-react"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
@@ -108,7 +99,6 @@ export default function Schedule() {
   }, [lessonTypeOptions, defaultLessonType])
 
   const editingLessonTypeOptions = lessonTypeOptions // Simplified as we have full list in hook
-
 
   const isMobile = useMediaQuery(`(max-width: ${breakpoints.ultrawide})`)
   const tableScrollRef = useRef<HTMLDivElement | null>(null)

@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { PropsWithChildren } from "react"
 import { describe, it, beforeEach, afterEach, vi } from "vitest"
 
-import Navbar from "@/components/Navbar"
+import Navbar from "@/components/navbar"
 import Dashboard from "@/pages/Dashboard"
 import Profile from "@/pages/Profile"
 import { AuthContext } from "@/contexts/AuthContext"

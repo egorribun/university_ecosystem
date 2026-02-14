@@ -52,7 +52,7 @@ export function Skeleton({
   } else if (typeof rounded === "string") {
     // Check if it's a known variant key
     if (["full", "md", "lg", "xl"].includes(rounded)) {
-      variantRounding = rounded as any
+      variantRounding = rounded as VariantProps<typeof skeletonVariants>["rounded"]
     } else {
       // It's a custom CSS value
       variantRounding = false // disable class

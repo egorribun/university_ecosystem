@@ -30,12 +30,16 @@ const getAllowedScriptOrigins = (base: Location): Set<string> => {
   const origins = new Set<string>()
   try {
     origins.add(new URL(base.href).origin)
-  } catch {}
+  } catch {
+    // ignore
+  }
   const backendOrigin = import.meta.env.VITE_BACKEND_ORIGIN
   if (backendOrigin) {
     try {
       origins.add(new URL(backendOrigin, base.href).origin)
-    } catch {}
+    } catch {
+      // ignore
+    }
   }
   return origins
 }
@@ -97,7 +101,9 @@ export const sanitizeHTML = async (value: string): Promise<string | TrustedHTML>
   if (policy) {
     try {
       return policy.createHTML(value)
-    } catch {}
+    } catch {
+      // ignore
+    }
   }
   return DOMPurify.sanitize(value, DEFAULT_SANITIZE_CONFIG)
 }

@@ -1,5 +1,5 @@
-/// <reference types="vitest" />
-import "@testing-library/jest-dom"
+import "vitest"
+import "@testing-library/jest-dom/vitest"
 import { TextEncoder, TextDecoder } from "node:util"
 import { webcrypto } from "node:crypto"
 import { afterAll, afterEach, beforeAll, expect, vi } from "vitest"
@@ -16,6 +16,15 @@ import {
 import i18n from "./i18n/config"
 import { resetEtagCache } from "./api/client"
 
+declare module "vitest" {
+  export interface Assertion {
+    toBeAccessible(): Promise<void>
+  }
+  export interface AsymmetricMatchersContaining {
+    toBeAccessible(): Promise<void>
+  }
+}
+
 expect.extend(toHaveNoViolations)
 
 if (!process.stdout.columns || process.stdout.columns === 0) {
@@ -26,11 +35,16 @@ if (!process.stderr.columns || process.stderr.columns === 0) {
   process.stderr.columns = 80
 }
 
+if (!globalThis.TextEncoder) (globalThis as any).TextEncoder = TextEncoder
+if (!globalThis.TextDecoder) (globalThis as any).TextDecoder = TextDecoder as any
+if (!globalThis.crypto) (globalThis as any).crypto = webcrypto
+
 beforeAll(async () => {
   await i18n.changeLanguage("en")
   document.documentElement.lang = "en"
   server.listen({ onUnhandledRequest: "error" })
 })
+
 afterEach(() => {
   server.resetHandlers()
   resetTestSessions()
@@ -41,18 +55,17 @@ afterEach(() => {
   resetAdminDeadLetterJobs()
   resetEtagCache()
 })
+
 afterAll(() => server.close())
-if (!(globalThis as any).TextEncoder) (globalThis as any).TextEncoder = TextEncoder
-if (!(globalThis as any).TextDecoder) (globalThis as any).TextDecoder = TextDecoder as any
-if (!(globalThis as any).crypto) (globalThis as any).crypto = webcrypto
+
 Object.defineProperty(window, "matchMedia", {
   writable: true,
   value: vi.fn().mockImplementation((query) => ({
     matches: false,
     media: query,
     onchange: null,
-    addListener: vi.fn(), // deprecated
-    removeListener: vi.fn(), // deprecated
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
     dispatchEvent: vi.fn(),
@@ -70,16 +83,11 @@ if (!("IntersectionObserver" in window)) {
     },
   })
 }
-type ScrollToFunction = (options?: ScrollToOptions | number, y?: number) => void
-const windowWithScroll = window as typeof window & { scrollTo?: ScrollToFunction }
-if (!windowWithScroll.scrollTo) {
-  windowWithScroll.scrollTo = () => undefined
-}
+
 vi.mock("qrcode.react", () => ({
   QRCodeSVG: () => null,
 }))
 
-// Mock HTMLCanvasElement for tests that don't need real canvas
 if (typeof HTMLCanvasElement !== "undefined") {
   HTMLCanvasElement.prototype.getContext = vi.fn(
     () =>
@@ -103,3 +111,15 @@ if (typeof HTMLCanvasElement !== "undefined") {
       }) as any
   )
 }
+
+const originalConsoleError = console.error
+const originalConsoleWarn = console.warn
+console.error = (...args: unknown[]) => {
+  if (typeof args[0] === "string" && args[0].includes("Warning:")) return
+  originalConsoleError(...args)
+}
+console.warn = (...args: unknown[]) => {
+  if (typeof args[0] === "string" && args[0].includes("Warning:")) return
+  originalConsoleWarn(...args)
+}
+console.log = (..._args: unknown[]) => {}

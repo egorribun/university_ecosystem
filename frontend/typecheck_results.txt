@@ -1,0 +1,25 @@
+
+> frontend@1.0.0 typecheck
+> tsc --noEmit
+
+src/app/__tests__/a11y.test.tsx(166,64): error TS2339: Property 'toBeInTheDocument' does not exist on type 'JestMatchers<HTMLElement>'.
+src/app/__tests__/a11y.test.tsx(208,71): error TS2339: Property 'toBeInTheDocument' does not exist on type 'Matchers<void, HTMLElement | null>'.
+src/app/__tests__/a11y.test.tsx(221,68): error TS2339: Property 'toBeInTheDocument' does not exist on type 'JestMatchers<HTMLElement>'.
+src/components/__tests__/LoadingState.test.tsx(10,20): error TS2339: Property 'toHaveAttribute' does not exist on type 'JestMatchers<HTMLElement>'.
+src/components/__tests__/LoadingState.test.tsx(11,20): error TS2339: Property 'toHaveAttribute' does not exist on type 'JestMatchers<HTMLElement>'.
+src/components/__tests__/LoadingState.test.tsx(12,48): error TS2339: Property 'toBeInTheDocument' does not exist on type 'JestMatchers<HTMLElement>'.
+src/pages/__tests__/Schedule.cache.test.tsx(202,64): error TS2339: Property 'toBeInTheDocument' does not exist on type 'JestMatchers<HTMLElement>'.
+src/pages/__tests__/Schedule.cache.test.tsx(203,55): error TS2339: Property 'toBeInTheDocument' does not exist on type 'Matchers<void, HTMLElement | null>'.
+src/pages/__tests__/Schedule.translations.test.tsx(227,54): error TS2339: Property 'toBeInTheDocument' does not exist on type 'JestMatchers<HTMLElement>'.
+src/pages/__tests__/Schedule.translations.test.tsx(228,75): error TS2339: Property 'toBeInTheDocument' does not exist on type 'JestMatchers<HTMLElement>'.
+src/pages/__tests__/Schedule.translations.test.tsx(229,50): error TS2339: Property 'toBeInTheDocument' does not exist on type 'JestMatchers<HTMLElement>'.
+src/pages/Dashboard.tsx(92,27): error TS2322: Type '{ locale: "en-US" | "ru-RU"; }' is not assignable to type 'IntrinsicAttributes & EventsCardProps'.
+  Property 'locale' does not exist on type 'IntrinsicAttributes & EventsCardProps'.
+src/pages/ForgotPassword.tsx(254,29): error TS2322: Type '{ label: string; onClick: () => void; color: "primary"; variant: string; className: string; }' is not assignable to type 'IntrinsicAttributes & { label: string; color?: "default" | "success" | "primary" | undefined; className?: string | undefined; } & HTMLAttributes<HTMLSpanElement>'.
+  Property 'variant' does not exist on type 'IntrinsicAttributes & { label: string; color?: "default" | "success" | "primary" | undefined; className?: string | undefined; } & HTMLAttributes<HTMLSpanElement>'.
+src/pages/settings/sections/SessionsSection.tsx(136,23): error TS2322: Type '{ key: string; "data-testid": string; size: string; label: string; variant: string; color: "default" | "primary"; className: string; }' is not assignable to type 'IntrinsicAttributes & { label: string; color?: "default" | "success" | "primary" | undefined; className?: string | undefined; } & HTMLAttributes<HTMLSpanElement>'.
+  Property 'size' does not exist on type 'IntrinsicAttributes & { label: string; color?: "default" | "success" | "primary" | undefined; className?: string | undefined; } & HTMLAttributes<HTMLSpanElement>'.
+src/pages/settings/sections/SpotifySection.tsx(38,13): error TS2322: Type '{ size: string; label: string; color: "default" | "success"; variant: string; }' is not assignable to type 'IntrinsicAttributes & { label: string; color?: "default" | "success" | "primary" | undefined; className?: string | undefined; } & HTMLAttributes<HTMLSpanElement>'.
+  Property 'size' does not exist on type 'IntrinsicAttributes & { label: string; color?: "default" | "success" | "primary" | undefined; className?: string | undefined; } & HTMLAttributes<HTMLSpanElement>'.
+src/pages/settings/sections/SpotifySection.tsx(48,19): error TS2322: Type '{ size: string; variant: string; label: string; }' is not assignable to type 'IntrinsicAttributes & { label: string; color?: "default" | "success" | "primary" | undefined; className?: string | undefined; } & HTMLAttributes<HTMLSpanElement>'.
+  Property 'size' does not exist on type 'IntrinsicAttributes & { label: string; color?: "default" | "success" | "primary" | undefined; className?: string | undefined; } & HTMLAttributes<HTMLSpanElement>'.

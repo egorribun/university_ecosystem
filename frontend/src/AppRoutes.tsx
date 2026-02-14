@@ -14,6 +14,7 @@ import { usePushSync } from "./hooks/usePushSync"
 import { nowPlayingQueryKey } from "./hooks/useNowPlaying"
 import { prefetchRouteModules } from "./utils/prefetchRoutes"
 import useMediaQuery from "@/hooks/useMediaQuery"
+import { useRouteType } from "@/hooks/useRouteType"
 
 import PageTransition from "./components/PageTransition"
 
@@ -110,12 +111,10 @@ export function AppRoutes() {
     prefetchRouteModules([...publicLoaders, ...sharedLoaders], { timeoutMs: 800 })
   }, [isAuth])
 
-  const isCompactPage = ["/login", "/register", "/forgot-password"].some(
-    (path) => location.pathname.startsWith(path) || location.pathname.startsWith("/reset-password")
-  )
+  const { isCompactPage, isMessenger } = useRouteType()
 
   const wrap = (node: ReactElement) => {
-    if (reduceMotion || isCompactPage || location.pathname.startsWith("/messenger")) return node
+    if (reduceMotion || isCompactPage || isMessenger) return node
     return <PageTransition>{node}</PageTransition>
   }
 

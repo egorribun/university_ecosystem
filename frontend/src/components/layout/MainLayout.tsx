@@ -1,6 +1,6 @@
 import React from "react"
-import { useLocation } from "react-router-dom"
-import Navbar from "@/components/Navbar"
+import { useRouteType } from "@/hooks/useRouteType"
+import Navbar from "@/components/navbar"
 import Footer from "@/components/Footer"
 import MobileBottomNav from "@/components/MobileBottomNav"
 import { useTranslation } from "react-i18next"
@@ -12,16 +12,7 @@ interface MainLayoutProps {
 
 export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const { t } = useTranslation(["navigation"])
-  const location = useLocation()
-  const path = location.pathname
-
-  // Pages that should not show the main navigation/footer
-  const isCompactPage = ["/login", "/register", "/forgot-password", "/messenger"].some((p) =>
-    path.startsWith(p)
-  )
-
-  // Specific pages that might hide certain elements
-  const hideFooter = path.startsWith("/map") || path.startsWith("/schedule")
+  const { isCompactPage, hideFooter, isMessenger } = useRouteType()
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -38,7 +29,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         id="main-content"
         className={cn(
           "flex-1 w-full outline-none",
-          path.startsWith("/messenger") ? "overflow-hidden" : "overflow-y-auto"
+          isMessenger ? "overflow-hidden" : "overflow-y-auto"
         )}
       >
         {children}

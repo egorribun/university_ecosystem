@@ -53,7 +53,7 @@ function sendMetric(endpoint: string, metric: WebVitalMetric): void {
       const blob = new Blob([payload], { type: "application/json" })
       navigator.sendBeacon(endpoint, blob)
       return
-    } catch (error) {
+    } catch (_error) {
       // Fallback to fetch below; ignore transport errors
     }
   }

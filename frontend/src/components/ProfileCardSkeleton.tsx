@@ -1,5 +1,5 @@
 import { memo } from "react"
-import { Skeleton } from "@/components/ui/skeleton"
+import { Skeleton } from "@/components/ui/Skeleton"
 
 interface ProfileCardSkeletonProps {
   /** Show cover image skeleton */

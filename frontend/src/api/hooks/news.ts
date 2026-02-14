@@ -130,7 +130,7 @@ const createNewsListQueryFn =
       return ensurePaginatedResponse(cached?.pages?.[0], normalized.limit)
     }
 
-    return ensurePaginatedResponse(response.data as any, normalized.limit)
+    return ensurePaginatedResponse(response.data as PaginatedResponse<NewsItem>, normalized.limit)
   }
 
 type UseNewsListQueryOptions = Omit<

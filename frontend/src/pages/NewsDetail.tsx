@@ -77,7 +77,7 @@ async function fetchNews(id: string): Promise<NewsItem> {
 
 const getMoscowDate = (dateStr: string) => {
   let parsed = dayjs(dateStr)
-  if (!/([Zz]|[+\-]\d\d:?\d\d)$/.test(dateStr)) parsed = dayjs.utc(dateStr)
+  if (!/([Zz]|[+-]\d\d:?\d\d)$/.test(dateStr)) parsed = dayjs.utc(dateStr)
   return parsed.tz("Europe/Moscow").format("DD.MM.YYYY HH:mm")
 }
 

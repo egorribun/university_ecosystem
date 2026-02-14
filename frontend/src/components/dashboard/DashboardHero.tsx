@@ -34,6 +34,7 @@ export function DashboardHero({
   dateStr,
   isNarrow,
   prefersReducedMotion,
+  children,
 }: DashboardHeroProps) {
   const navigate = useNavigate()
   const { t } = useTranslation(["dashboard", "common", "navigation"])
@@ -105,26 +106,26 @@ export function DashboardHero({
           >
             <span
               aria-hidden="true"
-              className="pointer-events-none absolute inset-0 dash-highlight-veil bg-(--flare-primary) opacity-(--opacity-subtle) transition-opacity duration-700"
+              className="pointer-events-none absolute inset-0 dash-highlight-veil bg-(--flare-primary) opacity-subtle transition-opacity duration-700"
             />
             {showHeaderMotion ? (
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute -inset-y-24 -left-1/2 w-[170%] skew-x-[-18deg] bg-linear-to-r from-transparent via-white/(--opacity-medium) to-transparent opacity-0 transition-all duration-2200 ease-out group-hover:translate-x-[35%] group-hover:opacity-(--opacity-strong)"
+                className="pointer-events-none absolute -inset-y-24 -left-1/2 w-[170%] skew-x-[-18deg] bg-linear-to-r from-transparent via-white/(--opacity-medium) to-transparent opacity-0 transition-all duration-2200 ease-out group-hover:translate-x-[35%] group-hover:opacity-strong"
               >
                 <span className="block h-full w-full animate-skeleton-wave bg-linear-to-r from-transparent via-white/(--opacity-strong) to-transparent" />
               </span>
             ) : (
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute -inset-y-20 -left-1/2 w-[160%] skew-x-[-14deg] bg-linear-to-r from-transparent via-white/(--opacity-soft) to-transparent opacity-0 transition-opacity duration-700 ease-out group-hover:opacity-(--opacity-medium)"
+                className="pointer-events-none absolute -inset-y-20 -left-1/2 w-[160%] skew-x-[-14deg] bg-linear-to-r from-transparent via-white/(--opacity-soft) to-transparent opacity-0 transition-opacity duration-700 ease-out group-hover:opacity-medium"
               />
             )}
             <div className="pointer-events-none absolute -right-24 top-1/2 h-64 w-64 -translate-y-1/2 rounded-full bg-(--flare-highlight) dash-highlight-veil blur-3xl" />
             {showHeaderMotion ? (
-              <div className="pointer-events-none absolute left-[-20%] top-[-40%] h-56 w-56 animate-[spin_18s_linear_infinite] rounded-full bg-(--grad-dash-conic) opacity-(--opacity-strong) blur-[120px]" />
+              <div className="pointer-events-none absolute left-[-20%] top-[-40%] h-56 w-56 animate-[spin_18s_linear_infinite] rounded-full bg-(--grad-dash-conic) opacity-strong blur-[120px]" />
             ) : (
-              <div className="pointer-events-none absolute left-[-18%] top-[-42%] h-48 w-48 rounded-full bg-(--grad-dash-conic-simple) opacity-(--opacity-medium) blur-[110px]" />
+              <div className="pointer-events-none absolute left-[-18%] top-[-42%] h-48 w-48 rounded-full bg-(--grad-dash-conic-simple) opacity-medium blur-[110px]" />
             )}
             <div className="relative grid gap-6 lg:grid-cols-12 lg:items-center">
               <div className="space-y-3 text-(--text-primary) lg:col-span-8">
@@ -173,6 +174,12 @@ export function DashboardHero({
           </header>
         </ScrollReveal>
       </div>
+
+      {children && (
+        <div className="relative z-(--z-base) -mt-(--space-10) px-4 sm:px-8 md:px-12 lg:px-16">
+          {children}
+        </div>
+      )}
     </section>
   )
 }

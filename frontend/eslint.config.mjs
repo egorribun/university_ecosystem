@@ -46,20 +46,24 @@ export default tseslint.config({
     react: { version: "detect" }
   },
   rules: {
-    "@typescript-eslint/no-unused-vars": "off",
-    "@typescript-eslint/no-explicit-any": "off",
-    "@typescript-eslint/no-unused-expressions": "off",
-    "@typescript-eslint/triple-slash-reference": "off",
-    "@typescript-eslint/no-empty-object-type": "off",
-    "no-empty": "off",
-    "no-extra-boolean-cast": "off",
-    "no-useless-escape": "off",
-    "jsx-a11y/click-events-have-key-events": "off",
-    "jsx-a11y/no-noninteractive-element-interactions": "off",
-    "jsx-a11y/no-redundant-roles": "off",
-    "jsx-a11y/no-autofocus": "off",
-    "react-hooks/rules-of-hooks": "off",
-    "react-hooks/exhaustive-deps": "off",
+    "@typescript-eslint/no-unused-vars": ["error", {
+      "argsIgnorePattern": "^_",
+      "varsIgnorePattern": "^_",
+      "caughtErrorsIgnorePattern": "^_"
+    }],
+    "@typescript-eslint/no-explicit-any": "warn",
+    "@typescript-eslint/no-unused-expressions": "warn",
+    "@typescript-eslint/triple-slash-reference": "error",
+    "@typescript-eslint/no-empty-object-type": "error",
+
+    "no-extra-boolean-cast": "error",
+    "no-useless-escape": "warn",
+    "jsx-a11y/click-events-have-key-events": "warn",
+    "jsx-a11y/no-noninteractive-element-interactions": "warn",
+    "jsx-a11y/no-redundant-roles": "warn",
+    "jsx-a11y/no-autofocus": "warn",
+    "react-hooks/rules-of-hooks": "error",
+
     "react/prop-types": "off",
     "react/react-in-jsx-scope": "off"
   }

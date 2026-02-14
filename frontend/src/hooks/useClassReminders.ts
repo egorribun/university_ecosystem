@@ -21,7 +21,9 @@ function openUrl(u: string) {
   try {
     const absolute = new URL(u, location.origin).href
     window.open(absolute, "_blank")
-  } catch {}
+  } catch {
+    // ignore
+  }
 }
 
 export function useClassReminders(
@@ -77,7 +79,9 @@ export function useClassReminders(
             const n = new Notification(title, { body, tag, data })
             n.onclick = () => openUrl(data.url)
           }
-        } catch {}
+        } catch {
+          // ignore
+        }
       }
 
       const id = scheduleAt(at, cb)
