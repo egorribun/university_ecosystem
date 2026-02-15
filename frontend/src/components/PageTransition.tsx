@@ -57,7 +57,7 @@ const PageTransition: FC<Props> = ({ children }) => {
   if (reduceMotion || !motionModule) {
     return (
       <div style={{ position: "relative", minHeight: "100%", background: "var(--bg-page)" }}>
-        <div className="relative z-(--z-base)">{children}</div>
+        <div className="relative z-base">{children}</div>
       </div>
     )
   }
@@ -93,7 +93,7 @@ const PageTransition: FC<Props> = ({ children }) => {
               ease: EASING.premium,
             },
           }}
-          className="relative z-(--z-base)"
+          className="relative z-base"
           style={{
             willChange: "transform, opacity, filter",
             backfaceVisibility: "hidden",

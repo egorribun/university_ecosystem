@@ -61,7 +61,7 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
         {/* Track */}
         <motion.span
           className={cn(
-            "absolute inset-0 rounded-full border border-border-subtle transition-colors duration-300",
+            "absolute inset-0 rounded-full border border-border-subtle transition-colors duration-base",
             "bg-(--bg-surface)-tint backdrop-blur-sm",
             checked && "bg-brand/(--opacity-dim) border-brand/(--opacity-soft)"
           )}
@@ -89,7 +89,7 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
           }}
           transition={{ type: "spring", stiffness: 500, damping: 30 }}
           className={cn(
-            "relative z-(--z-deep) block h-5.5 w-5.5 rounded-full bg-surface shadow-surface",
+            "relative z-deep block h-5.5 w-5.5 rounded-full bg-surface shadow-surface",
             "border border-glass-border-subtle",
             "bg-surface",
             checked && "bg-surface"

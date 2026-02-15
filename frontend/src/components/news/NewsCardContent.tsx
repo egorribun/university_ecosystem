@@ -34,7 +34,7 @@ const NewsCardContent = ({
   const { t } = useTranslation(["common"])
 
   return (
-    <ContentCard.Body className="flex flex-1 flex-col gap-2 p-fluid-card-p transition duration-300 ease-out group-hover:-translate-y-px group-focus-visible/content:-translate-y-px md:gap-3">
+    <ContentCard.Body className="flex flex-1 flex-col gap-2 p-fluid-card-p transition duration-base ease-out group-hover:-translate-y-px group-focus-visible/content:-translate-y-px md:gap-3">
       <ContentCard.Title className="text-fluid-h3 font-semibold line-clamp-none">
         <Link
           to={`/news/${id}`}
@@ -60,7 +60,7 @@ const NewsCardContent = ({
             onToggleLike()
           }}
           className={cn(
-            "flex items-center gap-1.5 transition-colors duration-200",
+            "flex items-center gap-1.5 transition-colors duration-fast",
             isLiked
               ? "text-error-text"
               : "text-(--text-secondary) hover:text-error-text/(--opacity-hover)"
@@ -89,12 +89,12 @@ const NewsCardContent = ({
       </div>
 
       <div className="mt-auto flex items-center gap-2 pt-2 text-(--primary-main)">
-        <span className="translate-y-1 text-sm font-semibold tracking-wide opacity-0 transition duration-300 ease-out group-focus-within:translate-y-0 group-focus-within:opacity-100 group-hover:translate-y-0 group-hover:opacity-100">
+        <span className="translate-y-1 text-sm font-semibold tracking-wide opacity-0 transition duration-base ease-out group-focus-within:translate-y-0 group-focus-within:opacity-100 group-hover:translate-y-0 group-hover:opacity-100">
           {t("common:cta.learnMore", { defaultValue: "Подробнее" })}
         </span>
         <ArrowOutwardIcon
           size={16}
-          className="translate-x-0 text-(--primary-main) opacity-0 transition duration-300 ease-out group-focus-within:translate-x-1 group-focus-within:opacity-100 group-hover:translate-x-1 group-hover:opacity-100"
+          className="translate-x-0 text-(--primary-main) opacity-0 transition duration-base ease-out group-focus-within:translate-x-1 group-focus-within:opacity-100 group-hover:translate-x-1 group-hover:opacity-100"
         />
       </div>
     </ContentCard.Body>

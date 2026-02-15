@@ -1,8 +1,11 @@
-import { useState, useEffect, useMemo, useCallback, useTransition } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import dayjs from "dayjs"
+import isoWeek from "dayjs/plugin/isoWeek"
 import api from "../api/client"
+
+dayjs.extend(isoWeek)
 import { useAuth } from "../contexts/AuthContext"
 import {
   type Lesson,
@@ -35,7 +38,6 @@ export function useScheduleData() {
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
   const [currentParity, setCurrentParity] = useState<"odd" | "even">("odd")
   const [nowTick, setNowTick] = useState(dayjs())
-  const [, _startTransition] = useTransition()
 
   // Update time ticker
   useEffect(() => {

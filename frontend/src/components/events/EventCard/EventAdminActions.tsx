@@ -33,7 +33,7 @@ export const EventAdminActions: React.FC<EventAdminActionsProps> = ({
         aria-controls={menuAnchor ? menuId : undefined}
         aria-haspopup="true"
         aria-expanded={Boolean(menuAnchor)}
-        className="absolute top-3 right-3 z-(--z-decor) min-h-0! p-2! rounded-full"
+        className="absolute top-3 right-3 z-decor min-h-0! p-2! rounded-full"
         onClick={(e) => {
           e.stopPropagation()
           setMenuAnchor(e.currentTarget as HTMLElement)
@@ -43,7 +43,7 @@ export const EventAdminActions: React.FC<EventAdminActionsProps> = ({
       </Button>
       {menuAnchor && (
         <div
-          className="absolute right-0 top-12 z-(--z-navbar) min-w-(--min-w-dropdown) rounded-xl border border-(--glass-border) bg-(--bg-surface) shadow-surface-strong"
+          className="absolute right-0 top-12 z-navbar min-w-(--min-w-dropdown) rounded-xl border border-(--glass-border) bg-(--bg-surface) shadow-surface-strong"
           onClick={(e) => e.stopPropagation()}
           role="presentation"
         >

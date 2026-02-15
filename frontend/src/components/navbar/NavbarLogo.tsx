@@ -17,10 +17,11 @@ interface NavbarLogoProps {
 export const NavbarLogo = ({ t, isMobile, onLogoClick, markScrollFromBottom }: NavbarLogoProps) => {
   return (
     <Link
+      id="navbar-logo-link"
       to="/dashboard"
       aria-label={t("navigation:aria.homeLink")}
       className={cn(
-        "inline-flex min-w-0 items-center rounded-2xl px-3 py-1.5 no-underline group transition-all duration-300 hover:bg-(--bg-surface-hover)/(--opacity-soft)",
+        "inline-flex min-w-0 items-center rounded-2xl px-3 py-1.5 no-underline group transition-all duration-base hover:bg-(--bg-surface-hover)/(--opacity-soft)",
         isMobile ? "gap-fluid-gap" : "gap-4"
       )}
       onPointerDown={markScrollFromBottom}
@@ -44,7 +45,7 @@ export const NavbarLogo = ({ t, isMobile, onLogoClick, markScrollFromBottom }: N
         />
       </motion.div>
       <div className="flex flex-col justify-center">
-        <span className="whitespace-nowrap font-black tracking-tight text-lg group-hover:opacity-(--opacity-strong) transition-all duration-300 leading-tight text-brand">
+        <span className="whitespace-nowrap font-black tracking-tight text-lg group-hover:opacity-strong transition-all duration-base leading-tight text-brand">
           {t("navigation:brandName")}
         </span>
       </div>

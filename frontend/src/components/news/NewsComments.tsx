@@ -55,10 +55,10 @@ export function NewsComments({
   }
 
   return (
-    <footer className="w-full max-w-4xl mt-(length:--space-12) border-t border-glass-border/(--opacity-soft) pt-(length:--space-10)">
-      <div className="flex items-center gap-(length:--fluid-gap) mb-(length:--space-8)">
+    <footer className="w-full max-w-4xl mt-(--space-12) border-t border-glass-border/(--opacity-soft) pt-(--space-10)">
+      <div className="flex items-center gap-(--fluid-gap) mb-(--space-8)">
         <ChatBubbleOutlineIcon className="h-6 w-6 text-brand" size={24} />
-        <h2 className="text-(length:--fs-h3) font-extrabold text-(--text-primary)">
+        <h2 className="text-(--fs-h3) font-extrabold text-(--text-primary)">
           {t("news:sections.comments", { defaultValue: "Комментарии" })}
         </h2>
         <span className="px-2 py-0.5 rounded-full bg-brand/(--opacity-subtle) border border-brand/(--opacity-dim) text-xs font-bold tabular-nums text-brand">
@@ -66,7 +66,7 @@ export function NewsComments({
         </span>
       </div>
 
-      <div className="flex flex-col gap-(--space-6) mb-(length:--space-10)">
+      <div className="flex flex-col gap-(--space-6) mb-(--space-10)">
         {comments.length === 0 ? (
           <p className="text-(--text-secondary) italic py-4">
             {t("news:states.noComments", {
@@ -119,11 +119,12 @@ export function NewsComments({
                 </div>
               </div>
               {editingCommentId === comment.id ? (
-                <div className="flex flex-col gap-(--space-3) mt-(length:--space-1)">
+                <div className="flex flex-col gap-(--space-3) mt-(--space-1)">
                   <Textarea
                     value={editingCommentText}
                     onChange={(event) => setEditingCommentText(event.target.value)}
                     className="min-h-20 text-sm"
+                    // eslint-disable-next-line jsx-a11y/no-autofocus
                     autoFocus
                   />
                   <div className="flex justify-end gap-(--space-2)">

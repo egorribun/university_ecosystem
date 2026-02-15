@@ -15,6 +15,10 @@
       "title": "Theme",
       "subtitle": "Choose between light, dark, or system theme.",
       "systemHint": "Current system mode: {{value}}",
+      "hintOptions": {
+        "dark": "dark",
+        "light": "light"
+      },
       "options": {
         "system": "System",
         "light": "Light",
@@ -86,7 +90,7 @@
     },
     "cover": {
       "title": "Profile cover",
-      "recommendation": "Recommended: 1600×400 px or larger",
+      "subtitle": "Recommended: 1600×400 px or larger",
       "change": "Change",
       "updated": "Cover updated",
       "uploadFailed": "Couldn't upload cover",

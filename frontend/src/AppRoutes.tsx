@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect, type ReactElement } from "react"
+import { useTranslation } from "react-i18next"
 import { Routes, Route, Navigate, useLocation } from "react-router-dom"
 import { useQueryClient } from "@tanstack/react-query"
 
@@ -63,6 +64,7 @@ const AdminFeatureFlags = lazy(routeModules.AdminFeatureFlags)
 const AdminAudit = lazy(routeModules.AdminAudit)
 
 export function AppRoutes() {
+  const { t } = useTranslation(["common"])
   const location = useLocation()
   const queryClient = useQueryClient()
   const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
@@ -136,7 +138,7 @@ export function AppRoutes() {
         fontWeight: isLHCI ? "bold" : "normal",
       }}
     >
-      {isLHCI ? "UNIVERSITY ECOSYSTEM LHCI RENDER" : "Loading..."}
+      {isLHCI ? "UNIVERSITY ECOSYSTEM LHCI RENDER" : t("common:loading")}
     </div>
   )
 

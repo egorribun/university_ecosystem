@@ -164,7 +164,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
         className={cn(
           "nowplaying--spotify w-full grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 px-4 py-3.5 rounded-2xl relative overflow-hidden",
           "border-glass-border bg-glass-bg backdrop-blur-glass shadow-glass text-(--text-primary)",
-          "transition-all duration-300 hover:-translate-y-0.5"
+          "transition-all duration-base hover:-translate-y-0.5"
         )}
         initial={isTest || prefersReduce || reduced ? false : { y: 12, opacity: 0.8, scale: 1 }}
         animate={{ y: 0, opacity: 1, scale: 1 }}
@@ -174,7 +174,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
           isTest ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 36, mass: 0.9 }
         }
       >
-        <div className="absolute inset-0 z-(--z-base) bg-linear-to-t from-black/(--opacity-hover) via-black/(--opacity-dim) to-transparent pointer-events-none" />
+        <div className="absolute inset-0 z-base bg-linear-to-t from-black/(--opacity-hover) via-black/(--opacity-dim) to-transparent pointer-events-none" />
         <div className="relative w-14 h-14 rounded-lg overflow-hidden shadow-premium">
           {data.album_image_url && !imageError ? (
             <img
@@ -185,12 +185,12 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
               referrerPolicy="no-referrer"
               onLoad={handleImageLoad}
               onError={handleImageError}
-              className={`w-full h-full rounded-lg object-cover transition-opacity duration-300 ${
+              className={`w-full h-full rounded-lg object-cover transition-opacity duration-base ${
                 imageLoaded ? "opacity-100" : "opacity-0"
               } ${
                 prefersReduce || reduced
                   ? ""
-                  : "scale-[1.012] transition-transform duration-900 cubic-bezier-[0.22,0.61,0.36,1] hover:scale-[1.02]"
+                  : "scale-[1.012] transition-transform duration-lazy cubic-bezier-[0.22,0.61,0.36,1] hover:scale-[1.02]"
               }`}
             />
           ) : (
@@ -199,15 +199,15 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
             </div>
           )}
         </div>
-        <div className="min-w-0 flex flex-col gap-1.5 relative z-(--z-deep)" aria-live="polite">
+        <div className="min-w-0 flex flex-col gap-1.5 relative z-deep" aria-live="polite">
           <h3
-            className={`np-title font-bold leading-tight tracking-tight text-(--text-primary) text-base transition-opacity duration-200 ${
+            className={`np-title font-bold leading-tight tracking-tight text-(--text-primary) text-base transition-opacity duration-fast ${
               imageLoaded || !data.album_image_url || imageError ? "opacity-100" : "opacity-0"
             }`}
           >
             {data.track_name || "—"}
           </h3>
-          <p className="np-art text-sm text-(--text-secondary) opacity-(--opacity-strong) truncate">
+          <p className="np-art text-sm text-(--text-secondary) opacity-strong truncate">
             {data.artists.join(", ")}
           </p>
           {!data.is_playing && (

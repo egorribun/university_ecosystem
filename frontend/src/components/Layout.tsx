@@ -35,7 +35,7 @@ const Layout = ({ children, className }: LayoutProps) => {
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="sticky top-0 z-(--z-sticky) flex w-full items-center justify-center gap-(length:--space-2) bg-(--warning-bg)/(--opacity-heavy) py-(length:--space-1) text-badge font-bold uppercase tracking-wider text-(--warning-text) backdrop-blur-md"
+            className="sticky top-0 z-sticky flex w-full items-center justify-center gap-(--space-2) bg-(--warning-bg)/(--opacity-heavy) py-(--space-1) text-badge font-bold uppercase tracking-wider text-(--warning-text) backdrop-blur-md"
           >
             <WifiOff size={14} />
             <span>{t("offlineIndicator.offline")}</span>

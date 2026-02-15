@@ -14,8 +14,10 @@ export function EventCardSkeleton() {
       aria-label="Loading event"
     >
       {/* Image placeholder */}
-      <div
-        className="h-[160px] w-full animate-skeleton-wave bg-skeleton sm:h-[180px]"
+      <Skeleton
+        width="100%"
+        height="200px"
+        className="h-40 w-full animate-skeleton-wave bg-skeleton sm:h-44"
         aria-hidden
       />
 

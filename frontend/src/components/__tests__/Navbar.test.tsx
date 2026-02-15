@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { MemoryRouter, useLocation } from "react-router-dom"
 import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
@@ -54,6 +55,7 @@ vi.mock("@/components/NotificationsBell", () => ({
 
 vi.mock("@/components/SmartImage", () => ({
   default: ({ alt, onClick }: { alt: string; onClick?: () => void }) => (
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-redundant-roles
     <img src="avatar" alt={alt} role="img" data-testid="smart-image" onClick={onClick} />
   ),
 }))

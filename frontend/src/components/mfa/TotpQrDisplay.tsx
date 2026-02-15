@@ -19,16 +19,11 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
 
   const handleCopy = useCallback(async () => {
     try {
-      if (typeof navigator === "undefined" || !navigator.clipboard) {
-        throw new Error("clipboard unsupported")
-      }
       await navigator.clipboard.writeText(normalizedSecret)
       setCopied(true)
       setTimeout(() => setCopied(false), 2500)
-    } catch (error) {
-      if (import.meta.env.DEV) {
-        console.warn("Failed to copy secret", error)
-      }
+    } catch {
+      // Ignored
       setCopied(false)
     }
   }, [normalizedSecret])
@@ -39,11 +34,9 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
       {label ? (
         <p className="text-sm text-(--text-secondary)">{t("mfa.totp.accountLabel", { label })}</p>
       ) : null}
-      <div className="p-4 rounded-lg border border-glass-border bg-surface shadow-sm min-h-[224px] flex items-center justify-center">
+      <div className="p-4 rounded-lg border border-glass-border bg-surface shadow-sm min-h-56 flex items-center justify-center">
         <Suspense
-          fallback={
-            <div className="w-[192px] h-[192px] animate-pulse bg-(--border-subtle) rounded" />
-          }
+          fallback={<div className="w-48 h-48 animate-pulse bg-(--border-subtle) rounded" />}
         >
           {/*
             QR codes require high-contrast colors for reliable scanning.
@@ -59,7 +52,7 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
           />
         </Suspense>
       </div>
-      <div className="flex flex-row items-center gap-2 w-full max-w-[320px]">
+      <div className="flex flex-row items-center gap-2 w-full max-w-xs">
         <div className="relative flex-1">
           <label
             htmlFor="totp-manual-code"
@@ -72,7 +65,7 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
             type="text"
             readOnly
             value={normalizedSecret}
-            className="w-full px-3 py-1.5 text-sm rounded-lg border-(--text-primary)/(--opacity-dim) bg-card text-(--text-primary) font-mono tracking-wider text-center select-all cursor-text"
+            className="w-full px-3 py-1.5 text-sm rounded-lg border border-(--text-primary)/(--opacity-dim) bg-card text-(--text-primary) font-mono tracking-wider text-center select-all cursor-text"
           />
         </div>
         <div className="relative mt-5">

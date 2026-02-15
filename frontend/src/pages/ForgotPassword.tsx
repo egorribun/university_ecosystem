@@ -5,60 +5,9 @@ import { useTranslation, Trans } from "react-i18next"
 import { Button, TextField, SectionCard, Chip } from "@/components/settings"
 import { motion, AnimatePresence } from "framer-motion"
 import { ChevronLeft, Send as SendIcon, CheckCircle2 } from "lucide-react"
+import { suggestEmailDomain } from "@/utils/authUtils"
 
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const COMMON_EMAIL_DOMAINS = [
-  "gmail.com",
-  "googlemail.com",
-  "yahoo.com",
-  "outlook.com",
-  "hotmail.com",
-  "live.com",
-  "icloud.com",
-  "mail.ru",
-  "bk.ru",
-  "list.ru",
-  "inbox.ru",
-  "yandex.ru",
-  "yandex.com",
-  "rambler.ru",
-  "proton.me",
-]
-
-function levenshtein(a: string, b: string) {
-  const m = a.length,
-    n = b.length
-  if (!m) return n
-  if (!n) return m
-  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0))
-  for (let i = 0; i <= m; i++) dp[i][0] = i
-  for (let j = 0; j <= n; j++) dp[0][j] = j
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1
-      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost)
-    }
-  }
-  return dp[m][n]
-}
-
-function suggestEmailDomain(email: string) {
-  const at = email.indexOf("@")
-  if (at < 0) return null
-  const local = email.slice(0, at).trim()
-  const dom = email
-    .slice(at + 1)
-    .trim()
-    .toLowerCase()
-  if (!local || !dom) return null
-  if (COMMON_EMAIL_DOMAINS.includes(dom)) return null
-  let best: { d: string; dist: number } | null = null
-  for (const cand of COMMON_EMAIL_DOMAINS) {
-    const dist = levenshtein(dom, cand)
-    if (dist <= 2 && (!best || dist < best.dist)) best = { d: cand, dist }
-  }
-  return best ? `${local}@${best.d}` : null
-}
 
 const FORGOT_URL = "/password/forgot"
 
@@ -150,9 +99,9 @@ export default function ForgotPassword() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-(length:--layout-max-dialog) z-(--z-modal)"
+        className="w-full max-w-(--layout-max-dialog) z-modal"
       >
-        <SectionCard className="p-8 sm:p-10 border-glass-border shadow-2xl backdrop-blur-2xl">
+        <SectionCard className="p-8 sm:p-10 border-glass-border shadow-glass backdrop-blur-2xl rounded-4xl">
           <div className="space-y-8">
             <div className="text-center space-y-2">
               <h1 className="text-3xl font-black tracking-tight text-(--text-primary) sm:text-4xl">
@@ -196,14 +145,16 @@ export default function ForgotPassword() {
 
                   <div className="space-y-3 pt-4">
                     <Button
+                      id="forgot-back-to-login"
                       as={Link}
                       to="/login"
                       variant="solid"
-                      className="w-full h-12 rounded-md"
+                      className="w-full h-12 rounded-lg"
                     >
                       {t("auth:actions.backToLogin")}
                     </Button>
                     <Button
+                      id="forgot-another-attempt"
                       variant="ghost"
                       onClick={resetRequest}
                       disabled={cooldown > 0}
@@ -224,7 +175,7 @@ export default function ForgotPassword() {
                   <form action={forgotAction} autoComplete="off" className="space-y-6">
                     <div className="space-y-3">
                       <TextField
-                        id="email"
+                        id="forgot-email-input"
                         label={t("auth:fields.email")}
                         name="email"
                         type="email"
@@ -239,7 +190,7 @@ export default function ForgotPassword() {
                         }
                         ref={emailInputRef}
                         disabled={forgotPending || cooldown > 0}
-                        className="rounded-md h-14"
+                        className="rounded-lg h-14"
                       />
 
                       {emailSuggestion && (
@@ -267,9 +218,10 @@ export default function ForgotPassword() {
 
                     <div className="space-y-4 pt-2">
                       <Button
+                        id="forgot-submit-btn"
                         type="submit"
                         variant="solid"
-                        className="w-full h-14 rounded-md text-base font-black shadow-lg shadow-brand/(--opacity-dim) transition-all hover:shadow-brand/(--opacity-soft) hover:-translate-y-0.5 active:translate-y-0"
+                        className="w-full h-14 rounded-lg text-base font-black shadow-premium hover:shadow-glass hover:-translate-y-0.5 active:translate-y-0"
                         disabled={!canSubmit}
                         loading={forgotPending}
                         startIcon={<SendIcon className="h-5 w-5" />}

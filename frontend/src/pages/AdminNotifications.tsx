@@ -321,7 +321,10 @@ export default function AdminNotifications() {
                     <td className="px-4 py-3 text-sm text-(--text-primary)">
                       {formatJobKind(job.kind, t)}
                     </td>
-                    <td className="px-4 py-3 text-sm text-(--text-primary) font-mono truncate max-w-(length:--w-label-sm)">
+                    <td
+                      className="px-4 py-3 text-sm text-(--text-primary) font-mono truncate"
+                      style={{ maxWidth: "var(--w-label-sm)" }}
+                    >
                       {job.record_id}
                     </td>
                     <td className="px-4 py-3 text-sm text-(--text-secondary)">
@@ -333,8 +336,15 @@ export default function AdminNotifications() {
                     <td className="px-4 py-3 text-sm font-bold text-(--text-primary)">
                       {job.attempts}
                     </td>
-                    <td className="px-4 py-3 text-sm text-(--text-secondary) max-w-(length:--w-label-md)">
-                      <span className="line-clamp-2" title={job.last_error ?? ""}>
+                    <td
+                      className="px-4 py-3 text-sm text-(--text-secondary)"
+                      style={{ maxWidth: "var(--w-label-md)" }}
+                    >
+                      <span
+                        className="truncate"
+                        style={{ maxWidth: "var(--w-label-sm)" }}
+                        title={job.last_error ?? ""}
+                      >
                         {job.last_error ?? t("admin:notifications.table.noError")}
                       </span>
                     </td>
@@ -485,7 +495,7 @@ export default function AdminNotifications() {
                   <Button
                     onClick={handleSaveTopics}
                     disabled={topicsBusy || !topicsData.allowed_topics.length}
-                    className="min-w-[140px]"
+                    className="min-w-36"
                   >
                     {topicsBusy ? (
                       <Loader2 className="h-4 w-4 animate-spin" />

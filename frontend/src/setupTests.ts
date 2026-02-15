@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import "vitest"
 import "@testing-library/jest-dom/vitest"
 import { TextEncoder, TextDecoder } from "node:util"

@@ -97,7 +97,7 @@ self.addEventListener("message", (event) => {
       event.waitUntil(clearSessionCaches())
       break
     case SERVICE_WORKER_MESSAGE_TYPES.PROCESS_NOTIFICATION_CLICK_QUEUE:
-    case "PROCESS_OFFLINE_QUEUES":
+    case SERVICE_WORKER_MESSAGE_TYPES.PROCESS_OFFLINE_QUEUES:
       event.waitUntil(processOfflineQueues())
       break
   }

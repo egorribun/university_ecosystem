@@ -69,7 +69,7 @@ export default function SpotifyConnect() {
   if (!user) return null
 
   return (
-    <div className="mt-4 overflow-hidden rounded-3xl border border-glass-border bg-(--bg-surface)/(--opacity-soft) backdrop-blur-xl transition-all duration-500 shadow-glass">
+    <div className="mt-4 overflow-hidden rounded-3xl border border-glass-border bg-(--bg-surface)/(--opacity-soft) backdrop-blur-xl transition-all duration-slow shadow-glass">
       <div className="px-6 py-4 border-b border-glass-border/(--opacity-subtle) bg-(--bg-surface)/(--opacity-subtle)">
         <h3 className="text-lg font-black tracking-tight text-(--text-primary) flex items-center gap-2">
           <Music className="h-5 w-5 text-(--color-spotify)" />
@@ -129,7 +129,7 @@ export default function SpotifyConnect() {
                       {(now.artists || []).join(", ")}
                     </p>
                     {!!now.album_name && (
-                      <p className="text-xs font-medium text-(--text-tertiary) truncate opacity-(--opacity-strong)">
+                      <p className="text-xs font-medium text-(--text-tertiary) truncate opacity-strong">
                         {now.album_name}
                       </p>
                     )}

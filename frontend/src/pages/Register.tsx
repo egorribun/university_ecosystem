@@ -1,30 +1,14 @@
 import { useActionState, useEffect, useMemo, useRef, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { Eye, EyeOff, Sparkles, UsersRound, ShieldCheck, Crown } from "lucide-react"
+import { Eye, EyeOff, Sparkles, UsersRound, ShieldCheck, Crown, Calendar, Newspaper, MessageCircle } from "lucide-react"
 import { motion } from "framer-motion"
 import ParticleAuthBackground from "@/components/ui/ParticleAuthBackground"
 import api from "@/api/client"
-
-const COMMON_EMAIL_DOMAINS = [
-  "gmail.com",
-  "googlemail.com",
-  "yahoo.com",
-  "outlook.com",
-  "hotmail.com",
-  "live.com",
-  "icloud.com",
-  "mail.ru",
-  "bk.ru",
-  "list.ru",
-  "inbox.ru",
-  "yandex.ru",
-  "yandex.com",
-  "rambler.ru",
-  "proton.me",
-]
-
-const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+import { Input } from "@/components/ui/Input"
+import { Select } from "@/components/ui/Select"
+import { Button } from "@/components/ui/Button"
+import { suggestEmailDomain } from "@/utils/authUtils"
 
 type RegisterState = {
   status: "idle" | "success" | "error"
@@ -32,62 +16,11 @@ type RegisterState = {
   field?: "full_name" | "email" | "password" | "confirm" | "invite_code"
 }
 
-function levenshtein(a: string, b: string) {
-  const m = a.length
-  const n = b.length
-  if (!m) return n
-  if (!n) return m
-
-  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0))
-  for (let i = 0; i <= m; i++) dp[i][0] = i
-  for (let j = 0; j <= n; j++) dp[0][j] = j
-
-  for (let i = 1; i <= m; i++) {
-    for (let j = 1; j <= n; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1
-      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost)
-    }
-  }
-  return dp[m][n]
-}
-
-function suggestEmailDomain(email: string) {
-  const at = email.indexOf("@")
-  if (at < 0) return null
-
-  const local = email.slice(0, at).trim()
-  const dom = email
-    .slice(at + 1)
-    .trim()
-    .toLowerCase()
-
-  if (!local || !dom) return null
-  if (COMMON_EMAIL_DOMAINS.includes(dom)) return null
-
-  let best: { d: string; dist: number } | null = null
-  for (const cand of COMMON_EMAIL_DOMAINS) {
-    const dist = levenshtein(dom, cand)
-    if (dist <= 2 && (!best || dist < best.dist)) best = { d: cand, dist }
-  }
-  return best ? `${local}@${best.d}` : null
-}
-
-const inputBaseClass =
-  "w-full rounded-(--radius-md) border border-brand/(--opacity-subtle) bg-(--bg-surface)/(--opacity-heavy) px-(length:--space-4) py-(length:--space-3) text-base font-medium " +
-  "text-(--text-primary) shadow-premium transition-all duration-200 " +
-  "focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/(--opacity-dim) " +
-  "placeholder:text-(--text-secondary)/(--opacity-strong) " +
-  "dark:border-brand/(--opacity-subtle) dark:bg-(--bg-surface)/(--opacity-heavy)"
+// Email suggestion logic centralized in authUtils.ts
+const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 const chipClass =
-  "inline-flex items-center gap-(--space-2) rounded-full border border-brand/(--opacity-dim) px-(length:--space-4) py-(length:--space-15) text-(length:--fs-xs) font-semibold uppercase tracking-widest"
-
-const Spinner = () => (
-  <span
-    className="inline-flex h-5 w-5 animate-spin rounded-full border-2 border-current/(--opacity-strong) border-t-transparent"
-    aria-hidden="true"
-  />
-)
+  "inline-flex items-center gap-2 rounded-full border border-brand/(--opacity-dim) px-4 py-1.5 text-xs font-semibold uppercase tracking-widest"
 
 const Register = () => {
   const { t } = useTranslation(["auth"])
@@ -275,23 +208,23 @@ const Register = () => {
     : t("auth:register.inviteOptional", { defaultValue: "Приглашение необязательно" })
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-(--bg-page) text-(--text-primary)">
+    <div className="relative min-h-screen w-full overflow-hidden bg-page text-text-primary">
       <ParticleAuthBackground />
-      <div className="relative z-(--z-surface) mx-auto grid min-h-screen w-full max-w-7xl grid-cols-1 items-stretch gap-(--space-10) px-(length:--space-4) py-(length:--space-12) sm:px-(length:--space-6) lg:grid-cols-2 lg:px-(length:--space-8)">
+      <div className="relative z-surface mx-auto grid min-h-screen w-full max-w-7xl grid-cols-1 items-stretch gap-10 px-4 py-12 sm:px-6 lg:grid-cols-2 lg:px-8">
         <motion.div
           initial={{ x: -200 }}
           animate={{ x: 0 }}
           transition={{ duration: 0.5, ease: "easeOut" }}
-          className="flex w-full min-w-0 flex-col justify-center rounded-sm border border-glass-border-subtle bg-(--bg-surface)/(--opacity-strong) p-8 shadow-glass backdrop-blur-3xl lg:p-12"
+          className="flex w-full min-w-0 flex-col justify-center rounded-4xl border border-glass-border-subtle bg-surface/(--opacity-strong) p-8 shadow-glass backdrop-blur-3xl lg:p-12"
         >
-          <div className="flex items-center gap-3 text-sm font-semibold uppercase tracking-widest text-(--text-primary)/(--opacity-strong)">
+          <div className="flex items-center gap-3 text-sm font-semibold uppercase tracking-widest text-text-primary/(--opacity-strong)">
             <Crown className="h-5 w-5" aria-hidden="true" />
             {t("auth:register.heroBadge", { defaultValue: "Добро пожаловать в систему" })}
           </div>
-          <h1 className="mt-6 text-4xl font-extrabold leading-tight text-(--text-primary) sm:text-5xl">
+          <h1 className="mt-6 text-4xl font-extrabold leading-tight text-text-primary sm:text-5xl">
             {t("auth:register.title")}
           </h1>
-          <p className="mt-4 text-lg leading-relaxed text-(--text-secondary)">
+          <p className="mt-4 text-lg leading-relaxed text-text-secondary">
             {t("auth:register.heroDescription", {
               defaultValue:
                 "Создайте аккаунт, чтобы управлять своей академической траекторией, посещать события и мгновенно взаимодействовать с кампусом.",
@@ -301,7 +234,7 @@ const Register = () => {
             {heroPerks.map(({ icon: Icon, title, description }) => (
               <div
                 key={title}
-                className="rounded-lg border border-glass-border/(--opacity-heavy) bg-(--bg-surface)/(--opacity-medium) px-5 py-6 shadow-premium"
+                className="rounded-lg border border-glass-border/(--opacity-heavy) bg-surface/(--opacity-medium) px-5 py-6 shadow-premium"
               >
                 <div className="flex items-center gap-3">
                   <div className="flex size-12 items-center justify-center rounded-md bg-brand-subtle-bg text-brand">
@@ -309,7 +242,7 @@ const Register = () => {
                   </div>
                   <p className="text-base font-semibold">{title}</p>
                 </div>
-                <p className="mt-4 text-sm text-(--text-secondary)">{description}</p>
+                <p className="mt-4 text-sm text-text-secondary">{description}</p>
               </div>
             ))}
           </div>
@@ -319,7 +252,7 @@ const Register = () => {
           initial={{ y: 200 }}
           animate={{ y: 0 }}
           transition={{ duration: 0.5, ease: "easeOut", delay: 0.2 }}
-          className="flex w-full min-w-0 flex-col justify-center rounded-(--radius-sm) border border-glass-border-subtle bg-(--bg-surface)/(--opacity-hover) p-6 shadow-glass backdrop-blur-2xl sm:p-10"
+          className="flex w-full min-w-0 flex-col justify-center rounded-4xl border border-glass-border-subtle bg-surface/(--opacity-hover) p-6 shadow-glass backdrop-blur-2xl sm:p-10"
         >
           <form action={registerAction} autoComplete="off" className="flex flex-col gap-6">
             <div className="grid gap-(--space-5) sm:grid-cols-2">
@@ -327,15 +260,16 @@ const Register = () => {
                 <label htmlFor="full_name" className="text-sm font-semibold">
                   {t("auth:fields.name")}
                 </label>
-                <input
+
+                <Input
                   id="full_name"
                   name="full_name"
                   value={form.full_name}
                   onChange={handleChange}
-                  className={inputBaseClass}
                   autoComplete="name"
                   ref={fullNameRef}
                   disabled={registerPending}
+                  error={registerStatus === "error" && registerErrorField === "full_name"}
                   placeholder={
                     t("auth:register.namePlaceholder", { defaultValue: "Имя и фамилия" }) ??
                     undefined
@@ -347,45 +281,43 @@ const Register = () => {
                   {t("auth:fields.role")}
                 </label>
                 <div className="relative">
-                  <select
-                    id="role"
-                    name="role"
+                  <Select
+                    id="register-role"
                     value={form.role}
-                    onChange={handleChange}
-                    className={`${inputBaseClass} appearance-none pr-12`}
+                    onValueChange={(val) => setForm((prev) => ({ ...prev, role: val }))}
+                    options={[
+                      { value: "student", label: t("auth:register.role.student") },
+                      { value: "teacher", label: t("auth:register.role.teacher") },
+                      { value: "admin", label: t("auth:register.role.admin") },
+                    ]}
                     disabled={registerPending}
-                  >
-                    <option value="student">{t("auth:register.role.student")}</option>
-                    <option value="teacher">{t("auth:register.role.teacher")}</option>
-                    <option value="admin">{t("auth:register.role.admin")}</option>
-                  </select>
-                  <Sparkles
-                    className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-brand"
-                    aria-hidden="true"
+                    placeholder={t("auth:fields.role")}
                   />
+
+                  <span className="text-text-muted-subtle text-sm">{inviteHint}</span>
                 </div>
-                <span className="text-text-muted-subtle text-sm">{inviteHint}</span>
               </div>
             </div>
-
             <div className="space-y-2">
               <label htmlFor="email" className="text-sm font-semibold">
                 {t("auth:fields.email")}
               </label>
-              <input
+              <Input
                 id="email"
                 name="email"
                 type="email"
                 value={form.email}
                 onChange={handleChange}
                 onBlur={handleEmailBlur}
-                className={`${inputBaseClass} ${!emailValid ? "border-(--error-text) focus:border-(--error-text)" : ""}`}
+                error={
+                  !emailValid || (registerStatus === "error" && registerErrorField === "email")
+                }
                 autoComplete="email"
                 ref={emailRef}
                 disabled={registerPending}
                 placeholder="name@university.edu"
               />
-              <p className="text-(--text-secondary) text-xs font-medium">
+              <p className="text-text-secondary text-xs font-medium">
                 {!emailValid ? t("auth:messages.invalidFormat") : " "}
               </p>
               {emailSuggestion ? (
@@ -408,15 +340,16 @@ const Register = () => {
                 <label htmlFor="invite_code" className="text-sm font-semibold">
                   {t("auth:fields.inviteCode")}
                 </label>
-                <input
+
+                <Input
                   id="invite_code"
                   name="invite_code"
                   value={form.invite_code}
                   onChange={handleChange}
-                  className={inputBaseClass}
                   autoComplete="one-time-code"
                   ref={inviteRef}
                   disabled={registerPending}
+                  error={registerStatus === "error" && registerErrorField === "invite_code"}
                   placeholder="ABCD-1234"
                 />
               </div>
@@ -427,7 +360,7 @@ const Register = () => {
                 {t("auth:fields.password")}
               </label>
               <div className="relative">
-                <input
+                <Input
                   id="password"
                   name="password"
                   type={showPass ? "text" : "password"}
@@ -439,10 +372,10 @@ const Register = () => {
                   onKeyDown={(event: React.KeyboardEvent) =>
                     setCapsPass(event.getModifierState("CapsLock"))
                   }
-                  className={inputBaseClass}
                   autoComplete="new-password"
                   ref={passwordRef}
                   disabled={registerPending}
+                  error={registerStatus === "error" && registerErrorField === "password"}
                 />
                 <button
                   type="button"
@@ -464,9 +397,9 @@ const Register = () => {
               <p className="text-xs text-text-muted-subtle">{t("auth:register.passwordHint")}</p>
               {passwordStrengthPercent !== null ? (
                 <div className="space-y-1">
-                  <div className="h-3 w-full rounded-full bg-(--bg-surface-hover)">
+                  <div className="h-3 w-full rounded-full bg-surface-hover">
                     <div
-                      className="h-full rounded-full bg-brand transition-all duration-300"
+                      className="h-full rounded-full bg-brand transition-all duration-base"
                       style={{ width: `${passwordStrengthPercent}%` }}
                     />
                   </div>
@@ -498,7 +431,7 @@ const Register = () => {
                 </span>
               </div>
               {capsPass ? (
-                <p className="text-xs font-semibold text-(--warning-text)">
+                <p className="text-xs font-semibold text-warning-text">
                   {t("auth:messages.capsLock")}
                 </p>
               ) : null}
@@ -509,7 +442,7 @@ const Register = () => {
                 {t("auth:fields.confirmPassword")}
               </label>
               <div className="relative">
-                <input
+                <Input
                   id="confirm"
                   name="confirm"
                   type={showConfirm ? "text" : "password"}
@@ -521,10 +454,10 @@ const Register = () => {
                   onKeyDown={(event: React.KeyboardEvent) =>
                     setCapsConfirm(event.getModifierState("CapsLock"))
                   }
-                  className={inputBaseClass}
                   autoComplete="new-password"
                   ref={confirmRef}
                   disabled={registerPending}
+                  error={registerStatus === "error" && registerErrorField === "confirm"}
                 />
                 <button
                   type="button"
@@ -544,33 +477,31 @@ const Register = () => {
                 </button>
               </div>
               {capsConfirm ? (
-                <p className="text-xs font-semibold text-(--warning-text)">
+                <p className="text-xs font-semibold text-warning-text">
                   {t("auth:messages.capsLock")}
                 </p>
               ) : null}
             </div>
 
             <div
-              className="min-h-6 text-center text-sm font-semibold text-(--error-text)"
+              className="min-h-6 text-center text-sm font-semibold text-error-text"
               aria-live="assertive"
             >
               {registerErrorMessage}
             </div>
 
-            <button
+            <Button
+              id="register-submit"
               type="submit"
-              className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-brand px-6 py-4 text-lg font-extrabold text-white shadow-premium transition hover:-translate-y-0.5 hover:shadow-glass disabled:opacity-(--opacity-strong)"
+              variant="solid"
+              size="lg"
+              fullWidth
+              loading={registerPending}
               disabled={registerPending || !isValid}
+              className="text-lg font-extrabold shadow-premium hover:shadow-glass disabled:opacity-strong"
             >
-              {registerPending ? (
-                <>
-                  <Spinner />
-                  {t("auth:register.processing", { defaultValue: "Регистрируем..." })}
-                </>
-              ) : (
-                t("auth:actions.signUp")
-              )}
-            </button>
+              {t("auth:actions.signUp")}
+            </Button>
 
             <div className="text-center text-sm">
               {t("auth:register.haveAccount")}{" "}

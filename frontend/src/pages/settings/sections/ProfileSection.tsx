@@ -29,7 +29,7 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
       <div className="flex flex-col gap-2 mb-4">
         <SectionTitle variant="subtitle1">{t("settings:account.profile.title")}</SectionTitle>
         <SectionSubtitle variant="body2">
-          Управление вашим профилем и медиа контентом
+          {t("settings:account.profile.subtitle")}
         </SectionSubtitle>
       </div>
 
@@ -38,7 +38,7 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
         <li className="list-none">
           <AccordionSection
             title={t("settings:media.avatar.title")}
-            subtitle="Загрузите или измените фото профиля"
+            subtitle={t("settings:media.avatar.subtitle")}
           >
             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
               <Avatar
@@ -81,7 +81,7 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
         <li className="list-none">
           <AccordionSection
             title={t("settings:media.cover.title")}
-            subtitle="Установите обложку для вашего профиля"
+            subtitle={t("settings:media.cover.subtitle")}
           >
             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
               <div
@@ -124,12 +124,12 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
         {/* User Info Section */}
         <li className="list-none">
           <AccordionSection
-            title="Информация о пользователе"
-            subtitle="Имя, биография и другие данные профиля"
+            title={t("settings:account.profile.extra.title", { defaultValue: "Информация о пользователе" })}
+            subtitle={t("settings:account.profile.extra.subtitle", { defaultValue: "Имя, биография и другие данные профиля" })}
           >
             <div className="flex flex-col gap-3">
               <SectionSubtitle className="text-sm">
-                Редактируйте информацию о себе на странице профиля
+                {t("settings:account.profile.extra.hint", { defaultValue: "Редактируйте информацию о себе на странице профиля" })}
               </SectionSubtitle>
               <Button
                 size="sm"

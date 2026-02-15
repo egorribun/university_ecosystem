@@ -151,10 +151,9 @@ export function getEndTimeStr(lesson: Lesson): string {
 
 export function parseMinutes(s?: string | null): number | null {
   if (!s) return null
-  const hhmm = s.length >= 16 && s[10] === "T" ? s.slice(11, 16) : s.slice(0, 5)
-  const [h, m] = hhmm.split(":").map(Number)
-  if (Number.isNaN(h) || Number.isNaN(m)) return null
-  return h * 60 + m
+  const d = toDayjs(s)
+  if (!d || !d.isValid()) return null
+  return d.hour() * 60 + d.minute()
 }
 
 export function minutesDiff(a?: string | null, b?: string | null): number {
@@ -165,15 +164,21 @@ export function minutesDiff(a?: string | null, b?: string | null): number {
 
 export const toDayjs = (s?: string | null) => {
   if (!s) return null
+  // If it's a full ISO string
   if (s.length >= 16 && s.includes("T")) return dayjs(s)
-  return dayjs(dayjs().format("YYYY-MM-DDT") + (s.length === 5 ? s + ":00" : s))
+  // If it's just HH:mm
+  if (/^\d{2}:\d{2}$/.test(s)) {
+    return dayjs(`${dayjs().format("YYYY-MM-DD")}T${s}:00`)
+  }
+  return dayjs(s)
 }
 
 export function getTodayIdx(): number {
   const d = dayjs()
-  const iso = typeof d.isoWeekday === "function" ? d.isoWeekday() : d.day()
+  // isoWeekday: 1 (Mon) - 7 (Sun)
+  const iso = d.isoWeekday()
   if (iso === 7) return -1
-  return (iso - 1) as 0 | 1 | 2 | 3 | 4 | 5
+  return iso - 1
 }
 
 // ============================================================================

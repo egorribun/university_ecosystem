@@ -370,7 +370,7 @@ async function persistSubscriptionWithBackoff(
           (error &&
             typeof error === "object" &&
             "response" in error &&
-            (error as any).response?.status === 409) ||
+            (error as { response: { status: number } }).response?.status === 409) ||
           (error instanceof Error && error.message.includes("409"))
 
         if (isConflict) {
@@ -389,7 +389,7 @@ async function persistSubscriptionWithBackoff(
           (error &&
             typeof error === "object" &&
             "response" in error &&
-            (error as any).response?.status === 429)
+            (error as { response: { status: number } }).response?.status === 429)
 
         if (isRateLimited) {
           // 429 means too many requests - stop immediately, don't retry

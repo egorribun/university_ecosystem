@@ -28,6 +28,7 @@ interface DayColumnProps {
 export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
   (
     {
+      day,
       label,
       lessons,
       isToday,
@@ -50,18 +51,17 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
       <div
         ref={ref}
         className={cn(
-          "group relative isolate mb-2 rounded-2xl border border-glass-border p-4 sm:p-6 shadow-premium [content-visibility:auto] [contain-intrinsic-size:400px] transition-all duration-300",
+          "group relative isolate mb-2 rounded-2xl border border-glass-border p-4 sm:p-6 shadow-premium [content-visibility:auto] [contain-intrinsic-size:400px] transition-all duration-base",
           isToday
             ? "bg-primary-main/(--opacity-faint) ring-2 ring-primary-main/(--opacity-dim) dark:bg-primary-main/(--opacity-subtle) dark:ring-primary-main/(--opacity-soft)"
             : "bg-(--bg-surface)/(--opacity-hover) dark:bg-(--bg-surface)/(--opacity-heavy) shadow-md dark:shadow-xl",
           "backdrop-blur-md"
         )}
       >
-        <div className="absolute top-3 right-3 px-3 py-1.5 rounded-lg bg-success-bg/(--opacity-heavy) backdrop-blur-sm shadow-lg flex items-center gap-1.5 text-success-text"></div>
         <div className="mb-4 flex items-center gap-2">
           <h3
             className={cn(
-              "text-lg font-extrabold tracking-tight text-(--text-primary) transition-colors duration-200",
+              "text-lg font-extrabold tracking-tight text-(--text-primary) transition-colors duration-fast",
               isToday && "text-primary-main dark:text-primary-light"
             )}
           >
@@ -69,7 +69,8 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
           </h3>
           {(userRole === "admin" || userRole === "teacher") && (
             <button
-              className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg border border-brand/(--opacity-dim) bg-brand/(--opacity-subtle) text-brand transition-all duration-200 hover:border-brand hover:bg-brand hover:text-white hover:shadow-glass hover:scale-110"
+              id={`add-lesson-${day}`}
+              className="ml-auto flex h-7 w-7 items-center justify-center rounded-lg border border-brand/(--opacity-dim) bg-brand/(--opacity-subtle) text-brand transition-all duration-fast hover:border-brand hover:bg-brand hover:text-white hover:shadow-glass hover:scale-110"
               onClick={(e) => {
                 e.stopPropagation()
                 onAdd()
@@ -101,7 +102,7 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
                   {idx > 0 && gap > 0 && (
                     <Badge
                       size="xs"
-                      className="chip-break mb-2 font-medium bg-warning-bg/(--opacity-dim) border border-warning-border/(--opacity-soft) text-warning-text shadow-sm"
+                      className="chip-break mb-2 font-medium bg-warning-bg/(--opacity-dim) border border-warning-border/(--opacity-soft) text-warning-text"
                     >
                       {t("schedule:break", { minutes: gap })}
                     </Badge>

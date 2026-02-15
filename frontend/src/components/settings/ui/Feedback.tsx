@@ -1,4 +1,5 @@
 import React, { useEffect } from "react"
+import { Loader2 } from "lucide-react"
 import { cn } from "@/utils/cn"
 import SmartImage from "@/components/SmartImage"
 
@@ -14,11 +15,13 @@ export function Alert({
   className?: string
 }) {
   const palette = {
-    info: "bg-(--brand-main)/opacity-dim text-(--brand-main) border-(--brand-main)/opacity-dim",
-    error: "bg-(--error-text)/opacity-dim text-(--error-text) border-(--error-text)/opacity-dim",
+    info: "bg-(--brand-main)/(--opacity-dim) text-(--brand-main) border-(--brand-main)/(--opacity-dim)",
+    error:
+      "bg-(--error-text)/(--opacity-dim) text-(--error-text) border-(--error-text)/(--opacity-dim)",
     warning:
-      "bg-(--warning-text)/opacity-dim text-(--warning-text) border-(--warning-text)/opacity-dim",
-    success: "bg-(--success-bg)/opacity-dim text-(--success-bg) border-(--success-bg)/opacity-dim",
+      "bg-(--warning-text)/(--opacity-dim) text-(--warning-text) border-(--warning-text)/(--opacity-dim)",
+    success:
+      "bg-(--success-bg)/(--opacity-dim) text-(--success-bg) border-(--success-bg)/(--opacity-dim)",
   }
 
   return (
@@ -56,9 +59,9 @@ export function Chip({
   const colorMap = {
     default: "text-(--text-secondary) bg-glass-bg border-glass-border",
     success:
-      "text-(--success-bg) bg-(--success-bg)/opacity-subtle border-(--success-bg)/opacity-dim",
+      "text-(--success-bg) bg-(--success-bg)/(--opacity-subtle) border-(--success-bg)/(--opacity-dim)",
     primary:
-      "text-(--brand-main) bg-(--brand-main)/opacity-subtle border-(--brand-main)/opacity-dim",
+      "text-(--brand-main) bg-(--brand-main)/(--opacity-subtle) border-(--brand-main)/(--opacity-dim)",
   }
 
   return (
@@ -149,30 +152,7 @@ export function CircularProgress({
   color?: string
   className?: string
 }) {
-  return (
-    <svg
-      className={cn("animate-spin text-brand", className)}
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <circle
-        className="opacity-dim"
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="3"
-      />
-      <path
-        className="opacity-100"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-      />
-    </svg>
-  )
+  return <Loader2 className={cn("animate-spin text-brand", className)} width={size} height={size} />
 }
 
 export function Snackbar({
@@ -215,7 +195,7 @@ export function Snackbar({
   return (
     <div
       className={cn(
-        "fixed pointer-events-none z-(--z-toast)",
+        "fixed pointer-events-none z-toast",
         positionClasses,
         horizontalClasses,
         className

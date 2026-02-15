@@ -32,9 +32,9 @@ export const StoryCircle = <T extends ElementType = "div">({
       className={cn(
         "group/story relative inline-flex items-center justify-center overflow-visible rounded-full text-white",
         "bg-linear-to-br from-(--primary-main) to-(--primary-main) shadow-lg",
-        "transition-all duration-300 ease-premium transform-gpu",
+        "transition-all duration-base ease-premium transform-gpu",
         "hover:shadow-xl hover:-translate-y-0.5",
-        "focus-visible:outline-(--primary-main) focus-visible:ring-(length:--space-1) focus-visible:ring-(--primary-main)/(--opacity-dim)",
+        "focus-visible:outline-(--primary-main) focus-visible:ring-(--space-1) focus-visible:ring-(--primary-main)/(--opacity-dim)",
         "motion-reduce:hover:translate-y-0",
         size === "sm" &&
           "h-(--size-story-sm) w-(--size-story-sm) min-h-(--size-story-sm) min-w-(--size-story-sm)",
@@ -52,10 +52,10 @@ export const StoryCircle = <T extends ElementType = "div">({
     >
       <span
         aria-hidden
-        className="pointer-events-none absolute inset-0 rounded-full border border-(--primary-main)/(--opacity-subtle) opacity-0 transition-opacity duration-300 group-focus-visible/story:opacity-100 group-hover/story:opacity-medium"
+        className="pointer-events-none absolute inset-0 rounded-full border border-(--primary-main)/(--opacity-subtle) opacity-0 transition-opacity duration-base group-focus-visible/story:opacity-100 group-hover/story:opacity-medium"
         style={{ outlineOffset: 3 }}
       />
-      <span className="relative z-(--z-deep) flex h-full w-full items-center justify-center overflow-hidden rounded-full">
+      <span className="relative z-deep flex h-full w-full items-center justify-center overflow-hidden rounded-full">
         {children}
       </span>
     </Component>

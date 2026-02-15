@@ -58,28 +58,34 @@ export function MobileMenu({
     <div
       id="mobile-drawer"
       className={cn(
-        "mobile-drawer fixed inset-0 z-(--z-overlay) flex h-screen w-screen",
+        "mobile-drawer fixed inset-0 z-overlay flex h-screen w-screen",
         isOpen
           ? "pointer-events-auto bg-black/(--opacity-dim)"
           : "pointer-events-none bg-transparent", // Darker overlay
-        !prefersReducedMotion && "transition-colors duration-200"
+        !prefersReducedMotion && "transition-colors duration-fast"
       )}
       style={{
         pointerEvents: isOpen ? "auto" : "none",
       }}
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onClose()
+      }}
+      role="button"
+      tabIndex={0}
       aria-label={t("navigation:aria.mobileMenu")}
     >
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
       <nav
+        role="dialog"
+        aria-modal="true"
         ref={drawerTrapRef}
         className={cn(
-          "fixed inset-y-0 left-0 z-(--z-overlay) flex h-full w-(--mobile-menu-w) max-w-[85%] flex-col bg-(--glass-bg) shadow-2xl transition-transform duration-500 ease-premium",
+          "fixed inset-y-0 left-0 z-overlay flex h-full w-(--mobile-menu-w) max-w-(--w-drawer-mobile-max) flex-col bg-(--glass-bg) shadow-2xl transition-transform duration-slow ease-premium",
           "border-r border-(--glass-border) backdrop-blur-(--glass-blur)",
           isOpen ? "translate-x-0" : "-translate-x-full"
         )}
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
       >
         <div className="flex-1 overflow-y-auto px-4 py-8">
           <ul className="flex flex-col gap-2">
@@ -89,10 +95,11 @@ export function MobileMenu({
               return (
                 <li key={item.to}>
                   <Link
+                    id={`mobile-nav-link-${item.to.replace(/\//g, "") || "home"}`}
                     to={item.to}
                     onClick={onClose}
                     className={cn(
-                      "flex items-center gap-4 rounded-2xl px-5 py-4 text-base font-semibold transition-all duration-300",
+                      "flex items-center gap-4 rounded-2xl px-5 py-4 text-base font-semibold transition-all duration-base",
                       active
                         ? "bg-(--primary-main)/(--opacity-subtle) text-(--primary-main) shadow-sm"
                         : "text-(--nav-text) hover:bg-(--glass-tint-1) hover:translate-x-1"
@@ -114,9 +121,10 @@ export function MobileMenu({
             {isAuth && user && (
               <li className="mt-4 pt-4 border-t border-(--glass-border)">
                 <button
+                  id="mobile-nav-link-settings"
                   type="button"
                   className={cn(
-                    "flex w-full items-center gap-4 rounded-2xl px-5 py-4 text-base font-semibold transition-all duration-300",
+                    "flex w-full items-center gap-4 rounded-2xl px-5 py-4 text-base font-semibold transition-all duration-base",
                     isActive("/settings")
                       ? "bg-(--primary-main)/(--opacity-subtle) text-(--primary-main) shadow-sm"
                       : "text-(--nav-text) hover:bg-(--glass-tint-1) hover:translate-x-1"
@@ -142,7 +150,7 @@ export function MobileMenu({
         </div>
 
         <div className="border-t border-(--glass-border) p-8">
-          <div className="text-center text-xs font-medium text-(--text-secondary) opacity-(--opacity-medium)">
+          <div className="text-center text-xs font-medium text-(--text-secondary) opacity-medium">
             © {new Date().getFullYear()} {t("navigation:brandName")}
           </div>
         </div>

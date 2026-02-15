@@ -26,7 +26,7 @@ export const ProfileDetails = ({ user, isOpen, onToggle }: ProfileDetailsProps) 
         </h2>
         <ExpandMoreIcon
           className={cn(
-            "h-5 w-5 text-(--brand-main) transition-transform duration-300",
+            "h-5 w-5 text-(--brand-main) transition-transform duration-base",
             isOpen && "rotate-180"
           )}
         />
@@ -34,29 +34,29 @@ export const ProfileDetails = ({ user, isOpen, onToggle }: ProfileDetailsProps) 
 
       <div
         className={cn(
-          "transition-all duration-300 overflow-hidden",
+          "transition-all duration-base overflow-hidden",
           isOpen ? "max-h-[1000px] opacity-100" : "max-h-0 opacity-0"
         )}
       >
         <div className="px-3 pb-6 flex flex-col gap-1">
           <DetailRow label={t("profile:labels.institute")} value={user?.institute} />
-          <Divider className="opacity-(--opacity-subtle) mx-4" />
+          <Divider className="opacity-subtle mx-4" />
           <DetailRow label={t("profile:labels.educationLevel")} value={user?.education_level} />
-          <Divider className="opacity-(--opacity-subtle) mx-4" />
+          <Divider className="opacity-subtle mx-4" />
           <DetailRow
             label={
               user?.role === "teacher" ? t("profile:labels.department") : t("profile:labels.track")
             }
             value={user?.role === "teacher" ? user?.department : user?.track}
           />
-          <Divider className="opacity-(--opacity-subtle) mx-4" />
+          <Divider className="opacity-subtle mx-4" />
           <DetailRow
             label={
               user?.role === "teacher" ? t("profile:labels.position") : t("profile:labels.program")
             }
             value={user?.role === "teacher" ? user?.position : user?.program}
           />
-          <Divider className="opacity-(--opacity-subtle) mx-4" />
+          <Divider className="opacity-subtle mx-4" />
           <DetailRow
             label={t("profile:labels.about")}
             value={

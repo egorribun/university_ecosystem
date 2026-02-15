@@ -72,7 +72,7 @@ export const NewsList = ({
                   })}
                   action={
                     isAdmin ? (
-                      <Button size="lg" onClick={onAddClick} className="px-6">
+                      <Button id="news-empty-add-btn" size="lg" onClick={onAddClick} className="px-6">
                         {t("news:actions.add")}
                       </Button>
                     ) : undefined
@@ -88,6 +88,7 @@ export const NewsList = ({
       {hasNextPage && (
         <div className="mt-8 mb-8 flex justify-center">
           <Button
+            id="news-load-more-btn"
             variant="outline"
             size="lg"
             onClick={() => void fetchNextPage()}

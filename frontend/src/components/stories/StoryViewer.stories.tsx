@@ -41,11 +41,11 @@ export const Default: Story = {
     stories: mockStories,
     activeStoryIndex: 0,
     progress: 30,
-    onClose: () => console.log("close"),
-    onNext: () => console.log("next"),
-    onPrev: () => console.log("prev"),
-    onPause: () => console.log("pause"),
-    onResume: () => console.log("resume"),
+    onClose: () => {},
+    onNext: () => {},
+    onPrev: () => {},
+    onPause: () => {},
+    onResume: () => {},
   },
 }
 

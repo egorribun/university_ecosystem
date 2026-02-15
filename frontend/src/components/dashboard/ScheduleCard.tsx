@@ -114,12 +114,12 @@ export function ScheduleCard({
   }
 
   const listActionBase =
-    "group relative isolate w-full overflow-hidden rounded-sm border border-transparent bg-(--bg-surface)/(--opacity-subtle) px-4 py-3 text-left transition-all duration-300 ease-out hover:bg-(--bg-surface)/(--opacity-dim) hover:border-glass-border hover:-translate-y-0.5 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/(--opacity-medium)"
+    "group relative isolate w-full overflow-hidden rounded-sm border border-transparent bg-(--bg-surface)/(--opacity-subtle) px-4 py-3 text-left transition-all duration-base ease-out hover:bg-(--bg-surface)/(--opacity-dim) hover:border-glass-border hover:-translate-y-0.5 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/(--opacity-medium)"
 
   return (
     <Card
       className={cn(
-        "group bg-(--glass-bg) backdrop-blur-3xl transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
+        "group bg-(--glass-bg) backdrop-blur-3xl transition-all duration-base ease-[cubic-bezier(0.34,1.56,0.64,1)]",
         "hover:-translate-y-1 hover:scale-[1.01] hover:shadow-glass motion-reduce:hover:transform-none motion-reduce:hover:shadow-none",
         "dash-panel-schedule border-glass-border shadow-glass",
         className
@@ -129,7 +129,7 @@ export function ScheduleCard({
       style={style}
       {...props}
     >
-      <div className="relative z-(--z-base) space-y-5">
+      <div className="relative z-base space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-(--fs-card-title) font-extrabold">{t("dashboard:todaySchedule")}</h2>
           <div className="flex items-center gap-2">
@@ -138,7 +138,7 @@ export function ScheduleCard({
               to="/schedule"
               size="sm"
               variant="outline"
-              className="whitespace-nowrap px-5 transition-transform duration-300 hover:-translate-y-[2px]"
+              className="whitespace-nowrap px-5 transition-transform duration-base hover:-translate-y-[2px]"
               aria-label={t("dashboard:aria.openFullSchedule")}
               onPointerDown={warmSchedulePage}
               onKeyDown={(event) => prepareOnKey(event, warmSchedulePage)}
@@ -195,7 +195,7 @@ export function ScheduleCard({
             {[1, 2, 3].map((i) => (
               <div
                 key={i}
-                className="flex flex-col gap-2 rounded-sm border border-(--glass-border) bg-(--bg-surface)/(--opacity-dim) px-4 py-3 opacity-(--opacity-medium)"
+                className="flex flex-col gap-2 rounded-sm border border-(--glass-border) bg-(--bg-surface)/(--opacity-dim) px-4 py-3 opacity-medium"
               >
                 <div className="flex items-center gap-2">
                   <Skeleton width={80} height={18} />
@@ -232,7 +232,7 @@ export function ScheduleCard({
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-sm text-(--text-secondary)">
                     <Badge size="sm" tone="default" variant="outline" label={l.lesson_type} />
-                    <span className="truncate max-w-[150px] opacity-(--opacity-heavy)">
+                    <span className="truncate max-w-40 opacity-heavy">
                       {t("dashboard:lessonMeta", { teacher: l.teacher, room: l.room })}
                     </span>
                   </div>
@@ -254,23 +254,20 @@ export function ScheduleCard({
           repeat: Infinity,
           ease: "easeInOut",
         }}
-        className="pointer-events-none absolute inset-0 z-(--z-hide) bg-(--grad-schedule-flare) mix-blend-soft-light transition-opacity duration-500"
+        className="pointer-events-none absolute inset-0 z-hide bg-(--grad-schedule-flare) mix-blend-soft-light transition-opacity duration-slow"
       />
       <motion.span
         aria-hidden="true"
-        initial={{ opacity: "var(--opacity-medium)" }}
-        whileHover={{ opacity: "var(--opacity-strong)" }}
         animate={{
-          scale: [1, 1.15, 1],
-          x: [0, 8, 0],
-          y: [0, -8, 0],
+          opacity: [0.4, 0.7, 0.4],
+          scale: [1, 1.1, 1],
         }}
         transition={{
-          duration: 6,
+          duration: 4,
           repeat: Infinity,
           ease: "easeInOut",
         }}
-        className="pointer-events-none absolute -top-24 right-10 z-(--z-hide) h-(length:--space-36) w-(length:--space-36) rounded-full bg-(--flare-schedule-orb) blur-3xl mix-blend-soft-light transition-opacity duration-700"
+        className="pointer-events-none absolute -top-24 right-10 z-hide h-(--space-36) w-(--space-36) rounded-full bg-(--flare-schedule-orb) blur-3xl mix-blend-soft-light transition-opacity duration-slower"
       />
     </Card>
   )

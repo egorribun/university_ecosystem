@@ -54,9 +54,7 @@ export function AppearanceSection(_props: SettingsSectionProps) {
         <div className="flex flex-col gap-2 mb-4">
           <SectionTitle variant="subtitle1">{t("settings:appearance.title")}</SectionTitle>
           <SectionSubtitle variant="body2">
-            {t("settings:appearance.subtitle", {
-              defaultValue: "Настройте внешний вид и язык интерфейса",
-            })}
+            {t("settings:appearance.subtitle")}
           </SectionSubtitle>
         </div>
 
@@ -64,9 +62,7 @@ export function AppearanceSection(_props: SettingsSectionProps) {
           <li className="list-none">
             <AccordionSection
               title={t("settings:appearance.language.title")}
-              subtitle={t("settings:appearance.language.subtitle", {
-                defaultValue: "Выберите предпочитаемый язык интерфейса",
-              })}
+              subtitle={t("settings:appearance.language.subtitle")}
             >
               <RadioGroup
                 name="language"
@@ -89,9 +85,7 @@ export function AppearanceSection(_props: SettingsSectionProps) {
           <li className="list-none">
             <AccordionSection
               title={t("settings:appearance.theme.title")}
-              subtitle={t("settings:appearance.theme.subtitle", {
-                defaultValue: "Светлая, тёмная или системная тема",
-              })}
+              subtitle={t("settings:appearance.theme.subtitle")}
             >
               <RadioGroup
                 name="theme"
@@ -116,7 +110,7 @@ export function AppearanceSection(_props: SettingsSectionProps) {
               {theme === "system" && (
                 <p className="mt-2 text-xs text-text-muted">
                   {t("settings:appearance.theme.systemHint", {
-                    defaultValue: `Текущая системная тема: ${resolvedColorScheme === "dark" ? "тёмная" : "светлая"}`,
+                    value: t(`settings:appearance.theme.hintOptions.${resolvedColorScheme}`),
                   })}
                 </p>
               )}

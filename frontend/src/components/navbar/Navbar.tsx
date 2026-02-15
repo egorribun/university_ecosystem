@@ -41,8 +41,8 @@ const Navbar = () => {
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: motionTokens.navTransition, ease: [0.16, 1, 0.3, 1] }}
         className={cn(
-          "sticky top-0 z-(--z-navbar) w-full flex flex-col justify-center",
-          "border-b border-glass-border transition-all duration-500",
+          "sticky top-0 z-navbar w-full flex flex-col justify-center",
+          "border-b border-glass-border transition-all duration-slow",
           isScrolled
             ? "bg-nav/(--opacity-hover) shadow-glass backdrop-nav h-(--navbar-height-scrolled)"
             : "bg-transparent h-(--navbar-height)",

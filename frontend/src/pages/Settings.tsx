@@ -75,17 +75,17 @@ export default function Settings() {
         <div className="px-2 md:px-4">
           <div
             data-fade
-            className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5 animate-fade-in delay-100"
+            className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5 animate-fade-in delay-(--motion-delay-short)"
           >
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-subtle-bg text-brand shadow-premium transition-transform duration-200 hover:scale-105 backdrop-blur-sm">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-subtle-bg text-brand shadow-premium transition-transform duration-fast hover:scale-105 backdrop-blur-sm">
               <SettingsIcon className="h-6 w-6" />
             </div>
-            <h1 className="text-(length:--fs-page-title) font-bold tracking-tight text-(--text-primary)">
+            <h1 className="text-(--fs-page-title) font-bold tracking-tight text-(--text-primary)">
               {t("settings:page.title")}
             </h1>
           </div>
 
-          <div data-fade className="mb-8 animate-fade-in delay-150">
+          <div data-fade className="mb-8 animate-fade-in delay-(--motion-delay-base)">
             <Tabs
               value={tab}
               onChange={(_, value) => setTab(value)}
@@ -100,7 +100,7 @@ export default function Settings() {
             </Tabs>
           </div>
 
-          <div data-fade className="animate-fade-in delay-200">
+          <div data-fade className="animate-fade-in delay-(--motion-delay-long)">
             {tab === 0 && <SettingsGeneral setSnackbar={setSnackbar} />}
             {tab === 1 && <SettingsProfile setSnackbar={setSnackbar} />}
             {tab === 2 && (
@@ -129,7 +129,7 @@ export default function Settings() {
           >
             {snackbar ? (
               <div
-                className={`px-4 py-3 rounded-lg shadow-lg text-sm font-medium border ${
+                className={`px-4 py-3 rounded-xl shadow-lg text-sm font-medium border ${
                   snackbar.severity === "error"
                     ? "bg-error-bg text-error-text border-error-text/(--opacity-dim)"
                     : snackbar.severity === "success"

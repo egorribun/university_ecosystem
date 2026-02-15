@@ -231,7 +231,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
           <div className="flex flex-col md:flex-row gap-8">
             <div className="flex-1 flex flex-col gap-3">
               <div className="space-y-1">
-                <p className="text-xs font-bold uppercase tracking-wider text-brand opacity-(--opacity-strong)">
+                <p className="text-xs font-bold uppercase tracking-wider text-brand opacity-strong">
                   {t("stories:list.details.published", { date: "" }).split(":")[0]}
                 </p>
                 <p className="text-sm font-medium text-(--text-primary)">
@@ -239,7 +239,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
                 </p>
               </div>
               <div className="space-y-1">
-                <p className="text-xs font-bold uppercase tracking-wider text-brand opacity-(--opacity-strong)">
+                <p className="text-xs font-bold uppercase tracking-wider text-brand opacity-strong">
                   {t("stories:list.details.expires", { date: "" }).split(":")[0]}
                 </p>
                 <p className="text-sm font-medium text-(--text-primary)">
@@ -251,7 +251,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
               </Badge>
               {story.cta_url && (
                 <div className="mt-2 p-3 rounded-sm bg-(--bg-surface)/(--opacity-dim) border border-glass-border/(--opacity-dim)">
-                  <p className="text-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-(--opacity-medium) mb-1">
+                  <p className="text-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-medium mb-1">
                     {t("stories:list.details.cta")}
                   </p>
                   <p className="text-xs font-mono break-all text-brand">{story.cta_url}</p>
@@ -274,8 +274,8 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center p-6 text-center bg-linear-to-r from-blue-500 to-indigo-600 transition-all duration-300">
-                    <p className="text-xs font-medium text-(--text-secondary) opacity-(--opacity-strong)">
+                  <div className="w-full h-full flex items-center justify-center p-6 text-center bg-linear-to-r from-blue-500 to-indigo-600 transition-all duration-base">
+                    <p className="text-xs font-medium text-(--text-secondary) opacity-strong">
                       {t("stories:list.noCover")}
                     </p>
                   </div>
@@ -326,7 +326,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
             </div>
           </div>
 
-          <Divider className="opacity-(--opacity-subtle)" />
+          <Divider className="opacity-subtle" />
 
           <div className="flex flex-col gap-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -508,9 +508,7 @@ export default function StoriesAdmin() {
       <Layout>
         <PageFadeIn>
           <div className="flex min-h-[70vh] items-center justify-center px-4">
-            <h2 className="text-2xl font-bold opacity-(--opacity-medium)">
-              {t("stories:notAuthorized")}
-            </h2>
+            <h2 className="text-2xl font-bold opacity-medium">{t("stories:notAuthorized")}</h2>
           </div>
         </PageFadeIn>
       </Layout>
@@ -520,7 +518,7 @@ export default function StoriesAdmin() {
   return (
     <Layout>
       <PageFadeIn>
-        <div className="mx-auto max-w-(length:--layout-max-page) px-fluid-x py-(length:--space-8) md:py-(length:--space-12)">
+        <div className="mx-auto max-w-(--layout-max-page) px-fluid-x py-(--space-8) md:py-12">
           <div className="mb-10 flex items-center gap-4">
             <div className="flex h-12 w-12 items-center justify-center rounded-md bg-brand/(--opacity-subtle) text-brand">
               <RestartAltIcon className="h-7 w-7" />

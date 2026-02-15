@@ -73,7 +73,22 @@
   --news-hero-h: var(--h-news-hero);
   --news-hero-h-md: var(--h-news-hero-md);
 
-  /* Spacing Scale */
+  /* Spacing Scale - Standard Aliases */
+  --spacing-1: var(--space-1);
+  --spacing-2: var(--space-2);
+  --spacing-3: var(--space-3);
+  --spacing-4: var(--space-4);
+  --spacing-5: var(--space-5);
+  --spacing-6: var(--space-6);
+  --spacing-8: var(--space-8);
+  --spacing-10: var(--space-10);
+  --spacing-12: var(--space-12);
+  --spacing-16: var(--space-16);
+  --spacing-20: var(--space-20);
+  --spacing-24: var(--space-24);
+  --spacing-32: var(--space-32);
+
+  /* Spacing Scale (Legacy/Semantic) */
   --spacing-xs: var(--space-2);
   --spacing-sm: var(--space-3);
   --spacing-md: var(--space-4);
@@ -132,6 +147,7 @@
   --shadow-premium-lift: var(--shadow-premium-lift);
   --shadow-up: var(--shadow-up);
   --shadow-surface: var(--shadow-surface);
+  --shadow-focus: var(--shadow-focus);
 
   /* Z-Index — sourced from theme.css :root (14-item scale) */
 
@@ -528,6 +544,11 @@
 @layer utilities {
   .glass-high-fidelity {
     @apply border border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass backdrop-blur-3xl;
+
+    /* Performance fallback for low-power or reduced-motion preferences */
+    @media (prefers-reduced-motion: reduce) {
+      @apply backdrop-blur-none bg-(--bg-surface)/95;
+    }
   }
 
   .surface-raised {
@@ -667,4 +688,8 @@
 
 @utility card-interactive {
   @apply cursor-pointer hover:shadow-glass-strong active:scale-(--scale-active);
+}
+
+@utility focus-ring-premium {
+  @apply focus-visible:outline-none focus-visible:shadow-focus;
 }

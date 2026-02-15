@@ -148,9 +148,9 @@ export default function ResetPassword() {
   const isSuccess = resetStatus === "success"
 
   return (
-    <div className="min-h-screen bg-(--bg-page) text-(--text-primary) flex items-center justify-center p-(length:--fluid-px) relative overflow-hidden">
+    <div className="min-h-screen bg-page text-text-primary flex items-center justify-center p-(--fluid-px) relative overflow-hidden">
       {/* Background decorative elements */}
-      <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-(--opacity-dim)">
+      <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-dim">
         <div className="absolute top-[-10%] right-[-5%] w-[40%] h-[40%] bg-(--glow-spotlight-primary) rounded-full blur-(--glow-blur-massive)" />
         <div className="absolute bottom-[-10%] left-[-5%] w-[40%] h-[40%] bg-(--glow-spotlight-secondary) rounded-full blur-(--glow-blur-massive)" />
       </div>
@@ -158,9 +158,9 @@ export default function ResetPassword() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-(length:--layout-max-modal) z-(--z-modal)"
+        className="w-full max-w-(--layout-max-modal) z-modal"
       >
-        <SectionCard className="p-(length:--fluid-card-p) border-glass-border shadow-2xl backdrop-blur-2xl">
+        <SectionCard className="p-(--fluid-card-p) border-glass-border shadow-glass backdrop-blur-2xl rounded-4xl">
           <div className="space-y-8">
             <AnimatePresence mode="wait">
               {isSuccess ? (
@@ -171,24 +171,25 @@ export default function ResetPassword() {
                   className="space-y-6 pt-4 text-center"
                 >
                   <div className="flex justify-center">
-                    <div className="h-(--space-20) w-(--space-20) rounded-(--radius-lg) bg-(--success-bg) flex items-center justify-center text-(--success-text)">
+                    <div className="h-20 w-20 rounded-lg bg-success-bg flex items-center justify-center text-success-text">
                       <CheckCircle2 size={40} />
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <h2 className="text-2xl font-black tracking-tight text-(--text-primary)">
+                    <h2 className="text-2xl font-black tracking-tight text-text-primary">
                       {t("auth:reset.successTitle")}
                     </h2>
-                    <p className="text-sm text-(--text-secondary) font-medium leading-relaxed">
+                    <p className="text-sm text-text-secondary font-medium leading-relaxed">
                       {t("auth:reset.successMessage")}
                     </p>
                   </div>
                   <div className="pt-4">
                     <Button
+                      id="reset-success-login"
                       as={Link}
                       to="/login"
                       variant="solid"
-                      className="w-full h-(--space-12) rounded-(--radius-md)"
+                      className="w-full h-12 rounded-lg"
                     >
                       {t("auth:actions.goToLogin")}
                     </Button>
@@ -202,10 +203,10 @@ export default function ResetPassword() {
                   className="space-y-6"
                 >
                   <div className="text-center space-y-2">
-                    <h1 className="text-(length:--fs-h1) font-black tracking-tight text-(--text-primary)">
+                    <h1 className="text-5xl font-black tracking-tight text-text-primary">
                       {t("auth:reset.title")}
                     </h1>
-                    <p className="text-sm text-(--text-secondary) font-medium">
+                    <p className="text-sm text-text-secondary font-medium">
                       {t("auth:reset.subtitle")}
                     </p>
                   </div>
@@ -214,7 +215,7 @@ export default function ResetPassword() {
                     <div className="space-y-4">
                       <div className="space-y-2">
                         <TextField
-                          id="password"
+                          id="reset-password-input"
                           label={t("auth:fields.password")}
                           name="password"
                           type={showPass ? "text" : "password"}
@@ -229,12 +230,13 @@ export default function ResetPassword() {
                             setCapsPass(event.getModifierState("CapsLock"))
                           }
                           disabled={resetPending}
-                          className="rounded-md"
+                          className="rounded-lg"
                           trailingIcon={
                             <button
+                              id="reset-password-toggle"
                               type="button"
                               onClick={() => setShowPass(!showPass)}
-                              className="p-(length:--space-1) hover:bg-black/(--opacity-subtle) dark:hover:bg-white/(--opacity-subtle) rounded-(--radius-md) transition-colors"
+                              className="p-1 hover:bg-black/(--opacity-subtle) dark:hover:bg-white/(--opacity-subtle) rounded-md transition-colors"
                               tabIndex={-1}
                             >
                               {showPass ? <VisibilityOff size={16} /> : <Visibility size={16} />}
@@ -247,10 +249,10 @@ export default function ResetPassword() {
                             <ProgressBar
                               value={[10, 30, 55, 75, 100][strength]}
                               color={strength < 2 ? "error" : strength < 3 ? "warning" : "success"}
-                              className="h-(--space-15)"
+                              className="h-1.5"
                             />
                             <div className="flex justify-between items-center">
-                              <p className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-strong">
+                              <p className="text-label-xs font-bold uppercase tracking-widest text-text-secondary opacity-strong">
                                 {t("auth:register.passwordStrength")}
                               </p>
                               <p className="text-label-xs font-bold text-brand uppercase tracking-widest">
@@ -270,9 +272,9 @@ export default function ResetPassword() {
                       </div>
 
                       {!!feedback && (
-                        <div className="flex gap-(--space-2) px-(length:--space-2) py-(length:--space-2) rounded-(--radius-xs) bg-(--primary-main)/(--opacity-subtle) border border-(--primary-main)/(--opacity-subtle)">
+                        <div className="flex gap-2 px-2 py-2 rounded-xs bg-brand/(--opacity-subtle) border border-brand/(--opacity-subtle)">
                           <ShieldCheck size={16} className="text-(--primary-main) shrink-0 mt-05" />
-                          <p className="text-xs font-medium text-(--primary-main)/(--opacity-hover) leading-relaxed">
+                          <p className="text-xs font-medium text-brand/(--opacity-hover) leading-relaxed">
                             {feedback}
                           </p>
                         </div>
@@ -280,7 +282,7 @@ export default function ResetPassword() {
 
                       <div className="space-y-2">
                         <TextField
-                          id="confirm"
+                          id="reset-confirm-input"
                           label={t("auth:fields.confirmPassword")}
                           name="confirm"
                           type={showConfirm ? "text" : "password"}
@@ -305,12 +307,13 @@ export default function ResetPassword() {
                             }
                           }}
                           disabled={resetPending}
-                          className="rounded-md"
+                          className="rounded-lg"
                           trailingIcon={
                             <button
+                              id="reset-confirm-toggle"
                               type="button"
                               onClick={() => setShowConfirm(!showConfirm)}
-                              className="p-(length:--space-1) hover:bg-black/(--opacity-subtle) dark:hover:bg-white/(--opacity-subtle) rounded-(--radius-md) transition-colors"
+                              className="p-1 hover:bg-black/(--opacity-subtle) dark:hover:bg-white/(--opacity-subtle) rounded-md transition-colors"
                               tabIndex={-1}
                             >
                               {showConfirm ? <VisibilityOff size={16} /> : <Visibility size={16} />}
@@ -320,7 +323,7 @@ export default function ResetPassword() {
                       </div>
 
                       {(capsPass || capsConfirm) && (
-                        <div className="flex items-center gap-(--space-2) px-(length:--space-2) py-(length:--space-15) rounded-(--radius-xs) bg-(--warning-bg) border border-(--warning-text)/(--opacity-subtle) text-(--warning-text)">
+                        <div className="flex items-center gap-2 px-2 py-1.5 rounded-xs bg-warning-bg border border-warning-text/(--opacity-subtle) text-warning-text">
                           <AlertTriangle size={16} />
                           <p className="text-xs font-bold uppercase tracking-wider">
                             {t("auth:messages.capsLock")}
@@ -329,26 +332,24 @@ export default function ResetPassword() {
                       )}
 
                       {pwned && (
-                        <Alert
-                          severity="warning"
-                          className="rounded-(--radius-sm) py-(length:--space-2)"
-                        >
+                        <Alert severity="warning" className="rounded-sm py-2">
                           {t("auth:reset.pwnedWarning")}
                         </Alert>
                       )}
                     </div>
 
                     {resetErrorMessage && (
-                      <p className="text-sm font-bold text-(--error-text) text-center animate-bounce">
+                      <p className="text-sm font-bold text-error-text text-center animate-bounce">
                         {resetErrorMessage}
                       </p>
                     )}
 
                     <div className="space-y-4 pt-2">
                       <Button
+                        id="reset-submit-btn"
                         type="submit"
                         variant="solid"
-                        className="w-full h-(--space-14) rounded-(--radius-lg) text-(length:--fs-base) font-black shadow-lg shadow-brand/(--opacity-dim)"
+                        className="w-full h-14 rounded-lg text-base font-black shadow-premium hover:shadow-glass"
                         disabled={!canSubmit || resetPending}
                         loading={resetPending}
                         startIcon={<LockIcon size={20} />}
@@ -359,9 +360,9 @@ export default function ResetPassword() {
                       <div className="pt-2 text-center">
                         <Link
                           to="/forgot-password"
-                          className="inline-flex items-center gap-(--space-2) text-(length:--fs-sm) font-bold text-(--text-secondary) hover:text-brand transition-colors group"
+                          className="inline-flex items-center gap-2 text-sm font-bold text-text-secondary hover:text-brand transition-colors group"
                         >
-                          <ChevronLeft className="h-(--space-4) w-(--space-4) transition-transform group-hover:-translate-x-(--space-1)" />
+                          <ChevronLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
                           {t("auth:reset.linkHelp")}
                         </Link>
                       </div>

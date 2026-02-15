@@ -91,7 +91,7 @@ export function SyncStatus() {
         role="status"
         title={statusTitle}
         className={cn(
-          "flex items-center gap-1.5 px-2.5 py-1 rounded-full transition-all duration-300",
+          "flex items-center gap-1.5 px-2.5 py-1 rounded-full transition-all duration-base",
           "bg-glass-subtle border border-border-subtle shadow-sm",
           !isOnline && "border-warning-border/(--opacity-dim) bg-warning-bg/(--opacity-subtle)"
         )}
@@ -107,7 +107,7 @@ export function SyncStatus() {
           </motion.div>
         )}
         {pendingCount > 0 && (
-          <span className="z-(--z-deep) text-xs font-black uppercase tracking-tight text-(--text-primary)/(--opacity-strong) tabular-nums sf-pro">
+          <span className="z-deep text-xs font-black uppercase tracking-tight text-(--text-primary)/(--opacity-strong) tabular-nums sf-pro">
             {pendingCount}
           </span>
         )}

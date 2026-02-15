@@ -221,20 +221,20 @@ const Select = ({
         onClick={() => (isOpen ? closeListbox() : openListbox())}
         onKeyDown={handleKeyDown}
         className={cn(
-          "flex min-h-(--space-12) w-full items-center justify-between gap-2 rounded-xl border-2 px-4 py-2 text-left transition-colors duration-300",
+          "flex min-h-12 w-full items-center justify-between gap-2 rounded-xl border-2 px-4 py-2 text-left transition-colors duration-base",
           "border-glass-border bg-glass-bg backdrop-blur-glass shadow-glass",
           "hover:border-brand/(--opacity-medium) hover:bg-glass-tint1",
           "focus:outline-none focus:ring-4 focus:ring-brand/(--opacity-subtle)",
           isOpen && "border-brand ring-4 ring-brand/(--opacity-subtle) shadow-glow-primary",
           error && "border-error-text bg-error-bg focus:ring-error-text/(--opacity-subtle)",
-          disabled && "cursor-not-allowed opacity-(--opacity-medium) grayscale",
-          !selectedOption && "text-(--text-tertiary)"
+          disabled && "cursor-not-allowed opacity-medium grayscale",
+          !selectedOption && "text-text-tertiary"
         )}
       >
         <span className="truncate">{selectedOption ? selectedOption.label : placeholder}</span>
         <ChevronDown
           className={cn(
-            "h-4 w-4 shrink-0 text-(--text-secondary) transition-transform duration-300",
+            "h-4 w-4 shrink-0 text-text-secondary transition-transform duration-base",
             isOpen && "rotate-180"
           )}
           aria-hidden="true"
@@ -254,7 +254,7 @@ const Select = ({
             exit={{ opacity: 0, y: -10, scale: 0.98 }}
             transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
             className={cn(
-              "absolute z-(--z-dropdown) mt-1 w-full overflow-hidden rounded-xl border border-glass-border-subtle bg-glass-elevated shadow-lg backdrop-blur-xl",
+              "absolute z-dropdown mt-1 w-full overflow-hidden rounded-xl border border-glass-border-subtle bg-glass-elevated shadow-lg backdrop-blur-xl",
               "p-1.5"
             )}
           >
@@ -277,12 +277,12 @@ const Select = ({
                       selectOption(index)
                     }}
                     className={cn(
-                      "flex w-full cursor-pointer items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-200",
+                      "flex w-full cursor-pointer items-center rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-fast",
                       isSelected
                         ? "bg-brand text-inverse-text shadow-sm"
                         : isActive
                           ? "bg-brand/(--opacity-subtle) text-brand"
-                          : "text-(--text-primary) hover:bg-brand/(--opacity-subtle) hover:text-brand"
+                          : "text-text-primary hover:bg-brand/(--opacity-subtle) hover:text-brand"
                     )}
                   >
                     {option.label}

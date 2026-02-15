@@ -28,7 +28,7 @@ export function SpotlightOverlay({ mouseX, mouseY, className }: SpotlightOverlay
   return (
     <motion.div
       className={cn(
-        "pointer-events-none absolute -inset-px rounded-[inherit] opacity-0 transition duration-300 group-hover:opacity-100",
+        "pointer-events-none absolute -inset-px rounded-[inherit] opacity-0 transition duration-base group-hover:opacity-100",
         className
       )}
       style={{

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { QueryClientProvider } from "@tanstack/react-query"
 import { fireEvent, render, screen, waitFor, act } from "@testing-library/react"
 import { ThemeProvider } from "@/contexts/ThemeContext"

@@ -169,7 +169,7 @@ export const ActionMenu = ({
           tabIndex={-1}
           onKeyDown={handleKeyDown}
           className={cn(
-            "absolute top-full z-(--z-overlay) mt-1 w-40 overflow-hidden rounded-lg border border-glass-border-subtle bg-glass-elevated shadow-lg backdrop-blur-md",
+            "absolute top-full z-overlay mt-1 w-40 overflow-hidden rounded-lg border border-glass-border-subtle bg-glass-elevated shadow-lg backdrop-blur-md",
             placementStyles[placement],
             menuClassName
           )}
@@ -189,11 +189,11 @@ export const ActionMenu = ({
                 item.variant === "danger"
                   ? "text-error-text hover:bg-error-bg"
                   : "text-(--text-primary)",
-                item.disabled && "cursor-not-allowed opacity-(--opacity-medium)"
+                item.disabled && "cursor-not-allowed opacity-medium"
               )}
             >
               {item.icon && (
-                <span className="shrink-0 text-(--text-secondary) transition-transform duration-200 group-hover:scale-110">
+                <span className="shrink-0 text-(--text-secondary) transition-transform duration-fast group-hover:scale-110">
                   {item.icon}
                 </span>
               )}

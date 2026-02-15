@@ -32,26 +32,32 @@ export const EventMedia: React.FC<EventMediaProps> = ({
       <div
         className={cn(
           "relative w-full overflow-hidden rounded-lg",
-          "aspect-video max-h-[200px]",
+          "aspect-video max-h-50",
           "bg-linear-to-br from-event-media-tint-from to-event-media-tint-to",
           "border border-event-media-border"
         )}
       >
-        <SmartImage
-          srcRaw={imageUrl}
-          alt={alt || t("events:alt.image")}
-          sizes="(min-width: 1200px) 400px, (min-width: 900px) 350px, 100vw"
-          className="block h-full w-full object-cover object-center"
-          draggable={false}
+        <button
+          type="button"
+          className="block h-full w-full cursor-pointer p-0 border-0 bg-transparent"
           onClick={(e) => {
             e.stopPropagation()
             onImageClick?.()
           }}
-          onLoad={onReady}
-          onError={onReady}
-        />
+          disabled={!onImageClick}
+        >
+          <SmartImage
+            srcRaw={imageUrl}
+            alt={alt || t("events:alt.image")}
+            sizes="(min-width: 1200px) 400px, (min-width: 900px) 350px, 100vw"
+            className="block h-full w-full object-cover object-center"
+            draggable={false}
+            onLoad={onReady}
+            onError={onReady}
+          />
+        </button>
         {/* Gradient overlay for depth */}
-        <div className="absolute inset-0 bg-linear-to-t from-black/(--opacity-medium) via-transparent to-transparent opacity-(--opacity-medium) transition-opacity duration-300 group-hover:opacity-(--opacity-strong)" />
+        <div className="absolute inset-0 bg-linear-to-t from-black/(--opacity-medium) via-transparent to-transparent opacity-medium transition-opacity duration-base group-hover:opacity-strong" />
 
         {/* Event type badge on image */}
         {eventType && (
@@ -64,7 +70,7 @@ export const EventMedia: React.FC<EventMediaProps> = ({
         {timeStatus.status === "live" && (
           <div className="absolute top-3 right-3 px-3 py-1.5 rounded-lg bg-success-bg/(--opacity-strong) backdrop-blur-sm shadow-lg flex items-center gap-1.5 text-success-text">
             <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-(--opacity-strong)" />
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-strong" />
               <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
             </span>
             <span className="text-xs font-bold text-white">LIVE</span>

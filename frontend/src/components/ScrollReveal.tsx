@@ -69,6 +69,7 @@ export const ScrollReveal = ({
   viewportMargin = "0px 0px -100px 0px",
 }: Props) => {
   const ref = useRef(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const isInView = useInView(ref, { once: true, margin: viewportMargin as any })
   const controls = useAnimation()
 

@@ -23,7 +23,7 @@ interface NewsCardEditDialogProps {
 }
 
 const inputClass =
-  "w-full rounded-xl border border-glass-border bg-input-mix px-4 py-2.5 text-input text-(--text-primary) shadow-inner-premium transition focus:border-(--primary-main) focus:outline-none focus:shadow-focus placeholder:text-(--text-secondary)"
+  "w-full rounded-xl border border-glass-border bg-input-mix px-4 py-2.5 text-input text-(--text-primary) shadow-inner-premium transition focus:border-(--primary-main) focus-ring-premium placeholder:text-(--text-secondary)"
 const textareaClass = `${inputClass} min-h-(--space-32) resize-y leading-relaxed`
 
 type FieldProps = {
@@ -227,7 +227,7 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
             <SmartImage
               srcRaw={editImageUrl}
               alt={t("news:alt.preview")}
-              className="h-20 w-full max-w-[180px] rounded-lg border border-white/(--opacity-subtle) object-cover shadow-surface"
+              className="h-20 w-full max-w-44 rounded-lg border border-white/(--opacity-subtle) object-cover shadow-surface"
             />
           ) : null}
         </div>

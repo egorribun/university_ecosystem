@@ -100,7 +100,7 @@ export default function MobileBottomNav() {
   return (
     <>
       <nav
-        className="fixed bottom-0 left-0 right-0 z-(--z-navbar) flex h-navbar-height w-full items-center justify-around border-t border-glass-border bg-nav backdrop-blur-nav pb-(--safe-area-bottom) shadow-premium transition-all md:hidden"
+        className="fixed bottom-0 left-0 right-0 z-navbar flex h-navbar-height w-full items-center justify-around border-t border-glass-border bg-nav backdrop-blur-nav pb-(--safe-area-bottom) shadow-premium transition-all md:hidden"
         style={{
           transitionDuration: "600ms",
           transitionTimingFunction: "var(--ease-premium)",
@@ -123,7 +123,7 @@ export default function MobileBottomNav() {
                 }
               }}
               className={({ isActive }) =>
-                "group relative flex flex-1 flex-col items-center justify-center gap-(length:--space-2) py-(length:--space-1) text-(--text-primary) transition-all outline-none select-none " +
+                "group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-(--text-primary) transition-all outline-none select-none " +
                 (isActive
                   ? "active text-brand font-bold scale-110"
                   : "opacity-strong hover:opacity-100")
@@ -134,12 +134,12 @@ export default function MobileBottomNav() {
                 {isActive && (
                   <motion.div
                     layoutId="bottom-nav-active-glow"
-                    className="absolute inset-(length:calc(var(--space-4)*-1)) rounded-full bg-brand opacity-subtle blur-(--blur-glass) z-(--z-negative)"
+                    className="absolute inset-(calc(var(--space-4)*-1)) rounded-full bg-brand opacity-subtle blur-glass z-negative"
                     transition={springBouncy}
                   />
                 )}
                 <motion.span
-                  className="block z-(--z-decor)"
+                  className="block z-decor"
                   animate={{
                     y: isActive ? -2 : 0,
                     scale: isActive ? 1.15 : 1,
@@ -151,7 +151,7 @@ export default function MobileBottomNav() {
                 </motion.span>
               </div>
               <motion.span
-                className="z-(--z-decor) text-label-xs font-black uppercase tracking-tight"
+                className="z-decor text-label-xs font-black uppercase tracking-tight"
                 animate={{
                   opacity: isActive ? 1 : 0.7,
                 }}
@@ -166,7 +166,7 @@ export default function MobileBottomNav() {
       {/* Spacer for bottom nav */}
       {!pathname.startsWith("/messenger") && (
         <span
-          className="h-navbar-height bg-transparent transition-colors duration-500 md:hidden relative z-(--z-decor)"
+          className="h-navbar-height bg-transparent transition-colors duration-slow md:hidden relative z-decor"
           aria-hidden="true"
         />
       )}
