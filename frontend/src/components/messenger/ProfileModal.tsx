@@ -26,7 +26,7 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-overlay flex items-center justify-center bg-overlay/(--opacity-strong) p-(--space-4) backdrop-blur-md"
+          className="fixed inset-0 z-overlay flex items-center justify-center bg-overlay/(--opacity-strong) p-4 backdrop-blur-md"
         >
           <motion.div
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
@@ -34,7 +34,7 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
             exit={{ scale: 0.9, opacity: 0, y: 20 }}
             className="z-modal w-full max-w-lg overflow-hidden rounded-2xl border border-white/(--opacity-subtle) bg-(--bg-surface) shadow-2xl dark:bg-(--bg-page)"
           >
-            <div className="flex items-center justify-between border-b border-msg-border p-(--space-6) pb-(--space-4)">
+            <div className="flex items-center justify-between border-b border-msg-border p-6 pb-4">
               <h3 className="sf-pro text-xl font-bold tracking-tight">
                 {user?.full_name || t("messenger:profile", "Profile")}
               </h3>
@@ -48,7 +48,7 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
               </motion.button>
             </div>
 
-            <div className="p-(--space-8)">
+            <div className="p-8">
               {loading && (
                 <div className="flex flex-col items-center py-8">
                   <div className="h-12 w-12 animate-spin rounded-full border-4 border-t-[--primary-main] border-[--primary-main]/[--opacity-dim]"></div>
@@ -72,18 +72,18 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
                         srcRaw={user.avatar_url || AVATAR_PLACEHOLDER_URL}
                         fallback={AVATAR_PLACEHOLDER_URL}
                         alt={user.full_name ?? ""}
-                        className="size-(--space-24) rounded-md border-4 border-(--bg-surface) object-cover shadow-xl"
+                        className="size-24 rounded-md border-4 border-(--bg-surface) object-cover shadow-xl"
                       />
                       {user.is_active && (
-                        <span className="msg-online-indicator absolute -bottom-(--space-1) -right-(--space-1) size-(--space-6) border-4 border-(--bg-surface)"></span>
+                        <span className="msg-online-indicator absolute -bottom-1 -right-1 size-6 border-4 border-(--bg-surface)"></span>
                       )}
                     </div>
                     <h4 className="sf-pro text-2xl font-bold tracking-tight">{user.full_name}</h4>
                     <p className="font-medium text-[--text-secondary]">{user.email}</p>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-(--space-3) pb-(--space-2)">
-                    <div className="rounded-md border border-subtle bg-(--bg-surface-hover)/(--opacity-medium) p-(--space-4)">
+                  <div className="grid grid-cols-2 gap-3 pb-2">
+                    <div className="rounded-md border border-subtle bg-(--bg-surface-hover)/(--opacity-medium) p-4">
                       <p className="mb-1 text-xs font-bold uppercase tracking-widest text-[--text-secondary]/[--opacity-strong]">
                         {t("messenger:status", "Status")}
                       </p>
@@ -106,7 +106,7 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
                         href={user.avatar_url}
                         target="_blank"
                         rel="noreferrer"
-                        className="rounded-md border border-(--primary-main)/(--opacity-subtle) bg-(--primary-main)/(--opacity-subtle) p-(--space-4) transition-colors hover:bg-(--primary-main)/(--opacity-subtle)"
+                        className="rounded-md border border-(--primary-main)/(--opacity-subtle) bg-(--primary-main)/(--opacity-subtle) p-4 transition-colors hover:bg-(--primary-main)/(--opacity-subtle)"
                       >
                         <p className="mb-1 text-xs font-bold uppercase tracking-widest text-[--primary-main]">
                           {t("messenger:avatar", "Avatar")}

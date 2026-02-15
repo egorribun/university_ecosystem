@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/Input"
 import { Select } from "@/components/ui/Select"
 import { Button } from "@/components/ui/Button"
 import { suggestEmailDomain } from "@/utils/authUtils"
+import { cn } from "@/utils/cn"
 
 type RegisterState = {
   status: "idle" | "success" | "error"
@@ -19,8 +20,7 @@ type RegisterState = {
 // Email suggestion logic centralized in authUtils.ts
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-const chipClass =
-  "inline-flex items-center gap-2 rounded-full border border-brand/(--opacity-dim) px-4 py-1.5 text-xs font-semibold uppercase tracking-widest"
+
 
 const Register = () => {
   const { t } = useTranslation(["auth"])
@@ -215,7 +215,7 @@ const Register = () => {
           initial={{ x: -200 }}
           animate={{ x: 0 }}
           transition={{ duration: 0.5, ease: "easeOut" }}
-          className="flex w-full min-w-0 flex-col justify-center rounded-4xl border border-glass-border-subtle bg-surface/(--opacity-strong) p-8 shadow-glass backdrop-blur-3xl lg:p-12"
+          className="auth-card-glass flex w-full min-w-0 flex-col justify-center border-glass-border-subtle p-8 lg:p-12"
         >
           <div className="flex items-center gap-3 text-sm font-semibold uppercase tracking-widest text-text-primary/(--opacity-strong)">
             <Crown className="h-5 w-5" aria-hidden="true" />
@@ -234,7 +234,7 @@ const Register = () => {
             {heroPerks.map(({ icon: Icon, title, description }) => (
               <div
                 key={title}
-                className="rounded-lg border border-glass-border/(--opacity-heavy) bg-surface/(--opacity-medium) px-5 py-6 shadow-premium"
+                className="auth-perk-card group"
               >
                 <div className="flex items-center gap-3">
                   <div className="flex size-12 items-center justify-center rounded-md bg-brand-subtle-bg text-brand">
@@ -252,10 +252,10 @@ const Register = () => {
           initial={{ y: 200 }}
           animate={{ y: 0 }}
           transition={{ duration: 0.5, ease: "easeOut", delay: 0.2 }}
-          className="flex w-full min-w-0 flex-col justify-center rounded-4xl border border-glass-border-subtle bg-surface/(--opacity-hover) p-6 shadow-glass backdrop-blur-2xl sm:p-10"
+          className="auth-card-glass flex w-full min-w-0 flex-col justify-center border-glass-border-subtle bg-surface/(--opacity-hover) p-6 sm:p-10"
         >
           <form action={registerAction} autoComplete="off" className="flex flex-col gap-6">
-            <div className="grid gap-(--space-5) sm:grid-cols-2">
+            <div className="grid gap-5 sm:grid-cols-2">
               <div className="space-y-2">
                 <label htmlFor="full_name" className="text-sm font-semibold">
                   {t("auth:fields.name")}
@@ -324,7 +324,7 @@ const Register = () => {
               {emailSuggestion ? (
                 <button
                   type="button"
-                  className="inline-flex items-center gap-2 rounded-full border border-brand/(--opacity-dim) px-4 py-2 text-xs font-semibold uppercase tracking-widest text-brand transition hover:bg-brand/(--opacity-subtle)"
+                  className="badge-brand"
                   onClick={() => {
                     setForm((formState) => ({ ...formState, email: emailSuggestion }))
                     setEmailSuggestion(null)
@@ -413,20 +413,18 @@ const Register = () => {
               ) : null}
               <div className="flex flex-wrap gap-2">
                 <span
-                  className={`${chipClass} ${
-                    minLenOk
-                      ? "border-brand/(--opacity-medium) text-brand"
-                      : "text-text-muted-subtle"
-                  }`}
+                  className={cn(
+                    "badge-brand",
+                    minLenOk ? "border-brand/(--opacity-medium) text-brand" : "text-text-muted-subtle"
+                  )}
                 >
                   {t("auth:register.passwordChip.minLength")}
                 </span>
                 <span
-                  className={`${chipClass} ${
-                    matchOk
-                      ? "border-brand/(--opacity-medium) text-brand"
-                      : "text-text-muted-subtle"
-                  }`}
+                  className={cn(
+                    "badge-brand",
+                    matchOk ? "border-brand/(--opacity-medium) text-brand" : "text-text-muted-subtle"
+                  )}
                 >
                   {t("auth:register.passwordChip.match")}
                 </span>

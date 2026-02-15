@@ -178,7 +178,7 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
                     type="button"
                     className={cn(
                       listActionBase,
-                      "flex min-h-(--space-18) flex-col justify-center gap-2 border-0 bg-transparent px-4 py-3 hover:bg-white/(--opacity-faint) active:scale-[0.99] sm:gap-2.5"
+                      "flex min-h-18 flex-col justify-center gap-2 border-0 bg-transparent px-4 py-3 hover:bg-white/(--opacity-faint) active:scale-[0.99] sm:gap-2.5"
                     )}
                     onClick={() => navigate(`/events/${e.id}`)}
                     aria-label={t("dashboard:aria.eventItem", { title: e.title })}

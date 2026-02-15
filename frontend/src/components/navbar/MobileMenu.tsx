@@ -55,13 +55,14 @@ export function MobileMenu({
   }, [isOpen, prefersReducedMotion, setOverlayState])
 
   return createPortal(
-    <div
+    <button
       id="mobile-drawer"
+      type="button"
       className={cn(
-        "mobile-drawer fixed inset-0 z-overlay flex h-screen w-screen",
+        "mobile-drawer fixed inset-0 z-overlay flex h-screen w-screen border-none p-0 text-left outline-none",
         isOpen
           ? "pointer-events-auto bg-black/(--opacity-dim)"
-          : "pointer-events-none bg-transparent", // Darker overlay
+          : "pointer-events-none bg-transparent",
         !prefersReducedMotion && "transition-colors duration-fast"
       )}
       style={{
@@ -70,14 +71,13 @@ export function MobileMenu({
       onKeyDown={(e) => {
         if (e.key === "Escape") onClose()
       }}
-      role="button"
-      tabIndex={0}
-      aria-label={t("navigation:aria.mobileMenu")}
+      onClick={onClose}
+      role="none"
     >
-      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
-      <nav
+      <div
         role="dialog"
         aria-modal="true"
+        aria-label={t("navigation:aria.mobileMenu")}
         ref={drawerTrapRef}
         className={cn(
           "fixed inset-y-0 left-0 z-overlay flex h-full w-(--mobile-menu-w) max-w-(--w-drawer-mobile-max) flex-col bg-(--glass-bg) shadow-2xl transition-transform duration-slow ease-premium",
@@ -89,6 +89,7 @@ export function MobileMenu({
           if (e.key === "Escape") onClose()
           e.stopPropagation()
         }}
+        tabIndex={-1}
       >
         <div className="flex-1 overflow-y-auto px-4 py-8">
           <ul className="flex flex-col gap-2">
@@ -157,8 +158,8 @@ export function MobileMenu({
             © {new Date().getFullYear()} {t("navigation:brandName")}
           </div>
         </div>
-      </nav>
-    </div>,
+      </div>
+    </button>,
     document.body
   )
 }

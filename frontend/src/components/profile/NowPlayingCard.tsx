@@ -162,9 +162,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
     >
       <motion.div
         className={cn(
-          "nowplaying--spotify w-full grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 px-4 py-3.5 rounded-2xl relative overflow-hidden",
-          "border-glass-border bg-glass-bg backdrop-blur-glass shadow-glass text-(--text-primary)",
-          "transition-all duration-base hover:-translate-y-0.5"
+          "nowplaying--spotify card-glass card-glass-interactive w-full grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 px-4 py-3.5 rounded-2xl relative overflow-hidden",
         )}
         initial={isTest || prefersReduce || reduced ? false : { y: 12, opacity: 0.8, scale: 1 }}
         animate={{ y: 0, opacity: 1, scale: 1 }}

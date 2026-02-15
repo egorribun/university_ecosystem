@@ -82,7 +82,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
   }
 
   return (
-    <div className="shrink-0 p-(--space-3) z-popover relative border-t border-(--glass-border)/(--opacity-subtle) bg-(--bg-surface)/(--opacity-soft) backdrop-blur-xl">
+    <div className="shrink-0 p-3 z-popover relative border-t border-glass-border bg-surface/(--opacity-soft) backdrop-blur-xl">
       {selectedFiles.length > 0 && (
         <div className="flex gap-2 mb-3 overflow-x-auto pb-2 custom-scrollbar">
           {selectedFiles.map((file, index) => (

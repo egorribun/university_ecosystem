@@ -42,7 +42,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = memo(({ messages }) => {
   return (
     <div
       ref={containerRef}
-      className="msg-chat-area flex-1 min-h-0 overflow-y-auto p-(--space-4) custom-scrollbar"
+      className="msg-chat-area flex-1 min-h-0 overflow-y-auto p-4 custom-scrollbar"
     >
       <div
         style={{

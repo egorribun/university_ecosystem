@@ -31,7 +31,7 @@ export function ConfirmDialog({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-modal flex items-center justify-center bg-overlay/(--opacity-strong) p-(--space-4) backdrop-blur-md"
+          className="fixed inset-0 z-modal flex items-center justify-center bg-overlay/(--opacity-strong) p-4 backdrop-blur-md"
         >
           <motion.div
             initial={{ scale: 0.9, opacity: 0, y: 20 }}
@@ -39,10 +39,10 @@ export function ConfirmDialog({
             exit={{ scale: 0.9, opacity: 0, y: 20 }}
             className="w-full max-w-md overflow-hidden rounded-2xl border border-(--glass-border) bg-(--bg-surface) shadow-premium dark:bg-(--bg-page)"
           >
-            <div className="flex flex-col gap-(--space-4) p-(--space-8)">
+            <div className="flex flex-col gap-4 p-8">
               <h3 className="sf-pro text-xl font-bold tracking-tight">{title}</h3>
               <p className="text-base font-medium leading-relaxed text-text-secondary">{message}</p>
-              <div className="flex justify-end gap-(--space-3) pt-(--space-4)">
+              <div className="flex justify-end gap-3 pt-4">
                 <motion.button
                   whileHover={{ scale: 1.05, backgroundColor: "var(--bg-surface-hover)" }}
                   whileTap={{ scale: 0.95 }}

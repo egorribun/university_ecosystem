@@ -1,6 +1,51 @@
 @layer base {
   :root {
     /*
+     * BASE COLORS
+     * Foundational palette used by semantic tokens
+     */
+    --color-white: #ffffff;
+    --color-black: #000000;
+
+    /* Slate Palette (Standard Reference) */
+    --color-slate-50: #f8fafc;
+    --color-slate-100: #f1f5f9;
+    --color-slate-200: #e2e8f0;
+    --color-slate-300: #cbd5e1;
+    --color-slate-400: #94a3b8;
+    --color-slate-500: #64748b;
+    --color-slate-600: #475569;
+    --color-slate-700: #334155;
+    --color-slate-800: #1e293b;
+    --color-slate-900: #0f172a;
+    --color-slate-950: #020617;
+
+    /* Semantic Primary Palette (Blue/Sky) */
+    --color-blue-50: #eff6ff;
+    --color-blue-400: #60a5fa;
+    --color-blue-500: #3b82f6;
+    --color-blue-600: #2563eb;
+    --color-blue-700: #1d4ed8;
+    --color-sky-300: #7dd3fc;
+    --color-sky-400: #38bdf8;
+    --color-sky-500: #0ea5e9;
+
+    /* Functional Palette */
+    --color-emerald-400: #34d399;
+    --color-emerald-500: #10b981;
+    --color-green-100: #dcfce7;
+    --color-green-500: #22c55e;
+    --color-green-800: #166534;
+    --color-amber-100: #fef3c7;
+    --color-amber-400: #fbbf24;
+    --color-amber-500: #f59e0b;
+    --color-amber-700: #b45309;
+    --color-red-400: #f87171;
+    --color-red-600: #dc2626;
+    --color-indigo-400: #818cf8;
+    --color-indigo-500: #6366f1;
+
+    /*
      * RADIUS
      * Semantic tokens for border-radius
      */
@@ -11,6 +56,7 @@
     --radius-xl: 2rem;
     --radius-2xl: 3rem;
     --radius-3xl: 4rem;
+    --radius-4xl: 5rem;
     --radius-full: 9999px;
 
     /*
@@ -36,6 +82,13 @@
     --space-20: 5rem;
     --space-24: 6rem;
     --space-32: 8rem;
+    --space-36: 9rem;
+    --space-40: 10rem;
+    --space-48: 12rem;
+    --space-52: 13rem;
+    --space-56: 14rem;
+    --space-64: 16rem;
+    --space-80: 20rem;
 
     /* Fluid Typography (Mobile Optimized) */
     --fs-h1: clamp(2.25rem, 1.5rem + 3.75vw, 4rem);
@@ -251,6 +304,9 @@
     --motion-delay-long: 0.2s;
     /* 200ms */
 
+    --opacity-faint: 0.05;
+    --opacity-subtle: 0.1;
+    --opacity-dim: 0.2;
     --opacity-soft: 0.3;
     --opacity-medium: 0.5;
     --opacity-strong: 0.7;
@@ -311,76 +367,62 @@
     --gradient-brand: linear-gradient(135deg, var(--primary-main), var(--primary-hover));
 
     /* Shadow Scale — Single Source of Truth */
-    --shadow-sm:
+    --raw-shadow-sm:
       0 1px 3px color-mix(in srgb, black var(--opacity-subtle), transparent),
       0 1px 2px color-mix(in srgb, black var(--opacity-faint), transparent);
-    --shadow-md:
+    --raw-shadow-md:
       0 4px 12px color-mix(in srgb, black var(--opacity-subtle), transparent),
       0 2px 4px color-mix(in srgb, black var(--opacity-faint), transparent);
     /* Missing token fix */
-    --shadow-surface: var(--shadow-sm);
-    --shadow-premium:
+    --raw-shadow-surface: var(--raw-shadow-sm);
+    --raw-shadow-premium:
       0 20px 50px color-mix(in srgb, black var(--opacity-subtle), transparent),
       0 8px 16px color-mix(in srgb, black var(--opacity-faint), transparent);
-    --shadow-premium-lift: 0 20px 40px -12px
-      color-mix(in srgb, var(--primary-main) var(--opacity-dim), transparent);
-    --shadow-glass: 0 35px 80px color-mix(in srgb, black var(--opacity-dim), transparent);
-    --shadow-glass-strong: 0 45px 90px color-mix(in srgb, black var(--opacity-medium), transparent);
-    --shadow-up: 0 -4px 12px color-mix(in srgb, black var(--opacity-faint), transparent);
-    --shadow-inner-premium: inset 0 1px 0
-      color-mix(in srgb, white var(--opacity-subtle), transparent);
-    --shadow-glow-blue: 0 0 20px
-      color-mix(in srgb, var(--color-blue-500) var(--opacity-soft), transparent);
-    --shadow-glow-green: 0 0 16px
-      color-mix(in srgb, var(--color-green-500) var(--opacity-soft), transparent);
-    --shadow-focus: 0 0 0 2px var(--bg-page), 0 0 0 4px var(--primary-main);
+    --raw-shadow-premium-lift: 0 20px 40px -12px color-mix(in srgb, var(--primary-main) var(--opacity-dim), transparent);
+    --raw-shadow-glass: 0 35px 80px color-mix(in srgb, black var(--opacity-dim), transparent);
+    --raw-shadow-glass-strong: 0 45px 90px color-mix(in srgb, black var(--opacity-medium), transparent);
+    --raw-shadow-up: 0 -4px 12px color-mix(in srgb, black var(--opacity-faint), transparent);
+    --raw-shadow-inner-premium: inset 0 1px 0 color-mix(in srgb, white var(--opacity-subtle), transparent);
+    --shadow-glow-blue: 0 0 20px color-mix(in srgb, var(--color-blue-500) var(--opacity-soft), transparent);
+    --shadow-glow-green: 0 0 16px color-mix(in srgb, var(--color-green-500) var(--opacity-soft), transparent);
+    --raw-shadow-focus: 0 0 0 2px var(--bg-page), 0 0 0 4px var(--primary-main);
 
     /* Brand Specifics */
     --color-spotify: #1db954;
     --color-spotify-hover: #1ed760;
 
     /* Semantic Glows & Shadows */
-    --shadow-glow-primary: 0 0 12px
-      color-mix(in srgb, var(--primary-main) var(--opacity-dim), transparent);
-    --shadow-glow-error: 0 0 12px
-      color-mix(in srgb, var(--error-text) var(--opacity-dim), transparent);
-    --shadow-glow-warning: 0 0 12px
-      color-mix(in srgb, var(--warning-text) var(--opacity-dim), transparent);
-    --shadow-glow-success: 0 0 12px
-      color-mix(in srgb, var(--success-text) var(--opacity-dim), transparent);
-    --shadow-pulse-primary: 0 0 0 3px
-      color-mix(in srgb, var(--primary-main) var(--opacity-dim), transparent);
-    --shadow-pulse-warning: 0 0 0 3px
-      color-mix(in srgb, var(--warning-text) var(--opacity-dim), transparent);
-    --shadow-pulse-brand: 0 0 0 2px
-      color-mix(in srgb, var(--primary-main) var(--opacity-subtle), transparent);
+    --shadow-glow-primary: 0 0 12px color-mix(in srgb, var(--primary-main) var(--opacity-dim), transparent);
+    --shadow-glow-error: 0 0 12px color-mix(in srgb, var(--error-text) var(--opacity-dim), transparent);
+    --shadow-glow-warning: 0 0 12px color-mix(in srgb, var(--warning-text) var(--opacity-dim), transparent);
+    --shadow-glow-success: 0 0 12px color-mix(in srgb, var(--success-text) var(--opacity-dim), transparent);
+    --shadow-pulse-primary: 0 0 0 3px color-mix(in srgb, var(--primary-main) var(--opacity-dim), transparent);
+    --shadow-pulse-warning: 0 0 0 3px color-mix(in srgb, var(--warning-text) var(--opacity-dim), transparent);
+    --shadow-pulse-brand: 0 0 0 2px color-mix(in srgb, var(--primary-main) var(--opacity-subtle), transparent);
 
     /* Feature Specific */
     --lesson-type-default: var(--color-slate-400);
 
     /* Glass System Extensions */
+    --glass-alpha-low: 0.1;
+    --glass-alpha-high: 0.2;
+    --glass-blur: 12px;
     --glass-bg-low: color-mix(in srgb, white var(--glass-alpha-low), transparent);
     --glass-bg-high: color-mix(in srgb, white var(--glass-alpha-high), transparent);
     --glass-bg-low-dark: color-mix(in srgb, var(--bg-surface) 60%, transparent);
 
     /* Core Layout Gradients (Standardized) */
     --grad-nav-light:
-      radial-gradient(
-        120% 180% at -10% -20%,
-        color-mix(in srgb, #2491ff var(--opacity-medium)),
-        transparent 58%
-      ),
-      linear-gradient(
-        112deg,
+      radial-gradient(120% 180% at -10% -20%,
+        color-mix(in srgb, var(--color-blue-400) var(--opacity-medium)),
+        transparent 58%),
+      linear-gradient(112deg,
         var(--bg-surface) 0%,
-        color-mix(in srgb, var(--bg-surface) 96%, black 4%) 100%
-      );
+        color-mix(in srgb, var(--bg-surface) 96%, var(--color-black) 4%) 100%);
     --grad-nav-dark:
-      radial-gradient(
-        120% 180% at -10% -20%,
-        color-mix(in srgb, #38bdf8 var(--opacity-dim)),
-        transparent 58%
-      ),
+      radial-gradient(120% 180% at -10% -20%,
+        color-mix(in srgb, var(--color-sky-400) var(--opacity-dim)),
+        transparent 58%),
       linear-gradient(112deg, #0a1524 0%, #0b2b47 100%);
 
     /* Semantic Transparency (Alpha Mixes) */
@@ -396,16 +438,12 @@
     --fs-card-title: clamp(1.1rem, 2vw, 1.5rem);
 
     /* Gradients */
-    --grad-news-hero: linear-gradient(
-      180deg,
-      transparent 30%,
-      color-mix(in srgb, #0f172a var(--opacity-strong), transparent) 95%
-    );
-    --grad-overlay: linear-gradient(
-      180deg,
-      transparent 0%,
-      color-mix(in srgb, #0f172a var(--opacity-hover), transparent) 100%
-    );
+    --grad-news-hero: linear-gradient(180deg,
+        transparent 30%,
+        color-mix(in srgb, var(--color-slate-900) var(--opacity-strong), transparent) 95%);
+    --grad-overlay: linear-gradient(180deg,
+        transparent 0%,
+        color-mix(in srgb, var(--color-slate-900) var(--opacity-hover), transparent) 100%);
 
     --msg-online-pulse: color-mix(in srgb, var(--success-text) var(--opacity-soft), transparent);
 
@@ -416,8 +454,8 @@
     --badge-proj: var(--color-indigo-500);
 
     /* UI Specialty Colors (Light) */
-    --bg-nav-light: color-mix(in srgb, white var(--opacity-heavy), transparent);
-    --bg-nav-dark: color-mix(in srgb, #020617 var(--opacity-heavy), transparent);
+    --bg-nav-light: color-mix(in srgb, var(--color-white) var(--opacity-heavy), transparent);
+    --bg-nav-dark: color-mix(in srgb, var(--color-slate-950) var(--opacity-heavy), transparent);
     --bg-footer-light: var(--color-slate-50);
     --bg-footer-dark: var(--color-slate-950);
 
@@ -471,11 +509,11 @@
     --primary-main-rgb: 56, 189, 248;
     --primary-hover: var(--color-sky-300);
     --primary-hover-rgb: 125, 211, 252;
-    --primary-subtle: color-mix(in srgb, #38bdf8 var(--opacity-subtle), transparent);
+    --primary-subtle: color-mix(in srgb, var(--color-sky-400) var(--opacity-subtle), transparent);
     --primary-text: var(--color-sky-400);
 
     /* Status: Success */
-    --success-bg: color-mix(in srgb, #10b981 var(--opacity-dim), transparent);
+    --success-bg: color-mix(in srgb, var(--color-emerald-500) var(--opacity-dim), transparent);
     --success-text: var(--color-emerald-400);
 
     /* Status: Warning */
@@ -502,16 +540,12 @@
     --text-primary-ghost: color-mix(in srgb, var(--text-primary) 70%, transparent);
 
     /* Auth & Spotlight Glows */
-    --glow-spotlight-primary: color-mix(
-      in srgb,
-      var(--primary-main) var(--opacity-soft),
-      transparent
-    );
-    --glow-spotlight-secondary: color-mix(
-      in srgb,
-      var(--primary-main) var(--opacity-dim),
-      transparent
-    );
+    --glow-spotlight-primary: color-mix(in srgb,
+        var(--primary-main) var(--opacity-soft),
+        transparent);
+    --glow-spotlight-secondary: color-mix(in srgb,
+        var(--primary-main) var(--opacity-dim),
+        transparent);
     --glow-blur-md: 110px;
     --glow-blur-lg: 120px;
     --glow-blur-xl: 180px;
@@ -524,7 +558,7 @@
     --overlay-bg: color-mix(in srgb, black var(--opacity-hover), transparent);
     --overlay-blur: 16px;
 
-    --msg-online-pulse: color-mix(in srgb, #34d399 var(--opacity-soft), transparent);
+    --msg-online-pulse: color-mix(in srgb, var(--color-emerald-400) var(--opacity-soft), transparent);
 
     /* Badge & Chip Semantic Colors (Dark) */
     --badge-lec: var(--color-blue-400);
@@ -538,21 +572,18 @@
     --msg-header-bg: color-mix(in srgb, var(--color-slate-900) var(--opacity-heavy), transparent);
     --msg-header-border: var(--color-slate-700);
     --msg-sidebar-hover: var(--color-slate-800);
-    --msg-sidebar-active: color-mix(
-      in srgb,
-      var(--primary-main) var(--opacity-subtle),
-      transparent
-    );
+    --msg-sidebar-active: color-mix(in srgb,
+        var(--primary-main) var(--opacity-subtle),
+        transparent);
     --msg-online-color: var(--color-emerald-400);
 
     /* Glass Tints (Dark Mode) */
-    --glass-bg: color-mix(in srgb, #0f172a var(--opacity-subtle), transparent);
-    --glass-border: color-mix(in srgb, white var(--opacity-subtle), transparent);
-    --shadow-glass: 0 8px 32px 0 color-mix(in srgb, black var(--opacity-soft), transparent);
-    --shadow-glass-strong: 0 12px 48px 0
-      color-mix(in srgb, black var(--opacity-medium), transparent);
-    --glass-tint1: color-mix(in srgb, #38bdf8 var(--opacity-faint), transparent);
-    --glass-tint2: color-mix(in srgb, #8b5cf6 var(--opacity-faint), transparent);
-    --glass-tint3: color-mix(in srgb, black var(--opacity-soft), transparent);
+    --glass-bg: color-mix(in srgb, var(--color-slate-900) var(--opacity-subtle), transparent);
+    --glass-border: color-mix(in srgb, var(--color-white) var(--opacity-subtle), transparent);
+    --shadow-glass: 0 8px 32px 0 color-mix(in srgb, var(--color-black) var(--opacity-soft), transparent);
+    --shadow-glass-strong: 0 12px 48px 0 color-mix(in srgb, var(--color-black) var(--opacity-medium), transparent);
+    --glass-tint1: color-mix(in srgb, var(--color-sky-400) var(--opacity-faint), transparent);
+    --glass-tint2: color-mix(in srgb, var(--color-indigo-400) var(--opacity-faint), transparent);
+    --glass-tint3: color-mix(in srgb, var(--color-black) var(--opacity-soft), transparent);
   }
 }

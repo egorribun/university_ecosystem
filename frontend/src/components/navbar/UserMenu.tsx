@@ -70,7 +70,7 @@ export const UserMenu = ({ user, isAuth, loading, go, t }: UserMenuProps) => {
             fallback={AVATAR_PLACEHOLDER_URL}
             alt={profileAlt} // If t requires params, this might be broken. We'll fix in next step if needed.
             title={profileTitle}
-            className="block h-(--space-9) w-(--space-9) cursor-pointer rounded-full border border-(--border-subtle) bg-(--bg-surface-raised) object-cover shadow-sm hover:shadow-md transition-all duration-base"
+            className="block h-9 w-9 cursor-pointer rounded-full border border-(--border-subtle) bg-(--bg-surface-raised) object-cover shadow-sm hover:shadow-md transition-all duration-base"
             onClick={() => go("/profile")}
           />
         </motion.div>

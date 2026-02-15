@@ -47,8 +47,8 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
             value={otpauthUrl}
             size={192}
             includeMargin
-            bgColor="var(--color-white, #ffffff)"
-            fgColor="var(--color-slate-900, #111827)"
+            bgColor="var(--color-white)"
+            fgColor="var(--color-slate-900)"
           />
         </Suspense>
       </div>

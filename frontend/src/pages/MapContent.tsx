@@ -259,7 +259,7 @@ export default function MapContent() {
 
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-navbar pointer-events-none flex flex-col gap-3 pb-(--safe-area-bottom)">
           <div className="flex items-center gap-2 pointer-events-auto">
-            <div className="glass glass--panel rounded-md p-1 bg-(--bg-surface)/(--opacity-medium) backdrop-blur-xl border border-glass-border shadow-2xl flex items-center gap-(--space-1)">
+            <div className="glass glass--panel rounded-md p-1 bg-(--bg-surface)/(--opacity-medium) backdrop-blur-xl border border-glass-border shadow-2xl flex items-center gap-1">
               <button
                 onClick={() => setLayer("map")}
                 className={cn(
