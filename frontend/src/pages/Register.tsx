@@ -1,7 +1,7 @@
 import { useActionState, useEffect, useMemo, useRef, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { Eye, EyeOff, Sparkles, UsersRound, ShieldCheck, Crown, Calendar, Newspaper, MessageCircle } from "lucide-react"
+import { Eye, EyeOff, Sparkles, UsersRound, ShieldCheck, Crown } from "lucide-react"
 import { motion } from "framer-motion"
 import ParticleAuthBackground from "@/components/ui/ParticleAuthBackground"
 import api from "@/api/client"
