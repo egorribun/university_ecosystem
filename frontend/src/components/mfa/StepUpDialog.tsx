@@ -134,21 +134,25 @@ export const StepUpDialog = ({
   if (!open) return null
 
   return (
-    <div
-      role="presentation"
-      className="fixed inset-0 z-navbar flex items-center justify-center p-4 bg-black/(--opacity-medium)"
+    <button
+      type="button"
+      className="fixed inset-0 z-navbar flex items-center justify-center p-4 bg-black/(--opacity-medium) border-none w-full h-full text-left outline-none cursor-default"
       onClick={onClose}
       onKeyDown={(e) => {
         if (e.key === "Escape") onClose()
       }}
     >
-      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions */}
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="step-up-dialog-title"
         className="bg-card rounded-2xl shadow-2xl w-full max-w-sm"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onClose()
+          e.stopPropagation()
+        }}
+        tabIndex={-1}
       >
         <h2
           id="step-up-dialog-title"
@@ -180,7 +184,7 @@ export const StepUpDialog = ({
           </button>
         </div>
       </div>
-    </div>
+    </button>
   )
 }
 

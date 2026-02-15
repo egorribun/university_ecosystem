@@ -102,7 +102,7 @@ const EventCardComponent: FC<EventCardProps> = (props) => {
       <ContentCard
         hoverable={!editOpen}
         className={cn(
-          "card-glass group w-full transform-gpu will-change-transform rounded-fluid-lg bg-glass-elevated border-glass-border-subtle hover:shadow-premium-lift shadow-premium",
+          "card-glass group w-full transform-gpu will-change-transform rounded-fluid-lg hover:shadow-premium-lift",
           editOpen ? "cursor-default" : "card-interactive"
         )}
         onClick={onCardClick}

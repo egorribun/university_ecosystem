@@ -89,7 +89,7 @@ export function ChatArea({
                     <motion.button
                       whileTap={{ scale: 0.9 }}
                       onClick={() => navigate("/messenger")}
-                      className="-ml-(--space-1) rounded-full p-(--space-15) transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium)"
+                      className="-ml-1 rounded-full p-15 transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium)"
                     >
                       <ChevronLeft className="h-5 w-5" strokeWidth={2.5} />
                     </motion.button>
@@ -107,10 +107,10 @@ export function ChatArea({
                         }
                         fallback={AVATAR_PLACEHOLDER_URL}
                         alt={getOtherParticipant(activeChat)?.full_name || ""}
-                        className="size-(--space-11) rounded-full border-2 border-(--glass-border-subtle) object-cover"
+                        className="size-11 rounded-full border-2 border-(--glass-border-subtle) object-cover"
                       />
                       {presenceMap[getOtherParticipant(activeChat)?.id ?? ""]?.active && (
-                        <span className="msg-online-indicator absolute bottom-0 right-0 size-(--space-35)"></span>
+                        <span className="msg-online-indicator absolute bottom-0 right-0 size-35"></span>
                       )}
                     </div>
                     <div>
@@ -150,7 +150,7 @@ export function ChatArea({
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={() => setShowSearchInChat(true)}
-                    className="rounded-full p-(--space-25) transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium)"
+                    className="rounded-full p-25 transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium)"
                   >
                     <Search className="h-5 w-5 text-text-secondary" strokeWidth={2} />
                   </motion.button>
@@ -160,7 +160,7 @@ export function ChatArea({
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
                       onClick={() => setShowChatMenu(!showChatMenu)}
-                      className={`rounded-full p-(--space-25) transition-colors ${showChatMenu ? "bg-(--bg-surface-hover)" : "hover:bg-(--bg-surface-hover)/(--opacity-medium)"}`}
+                      className={`rounded-full p-25 transition-colors ${showChatMenu ? "bg-(--bg-surface-hover)" : "hover:bg-(--bg-surface-hover)/(--opacity-medium)"}`}
                     >
                       <MoreVertical className="h-5 w-5 text-text-secondary" strokeWidth={2} />
                     </motion.button>
@@ -170,7 +170,7 @@ export function ChatArea({
                           initial={{ opacity: 0, scale: 0.9, y: 10, x: 5 }}
                           animate={{ opacity: 1, scale: 1, y: 0, x: 0 }}
                           exit={{ opacity: 0, scale: 0.9, y: 10 }}
-                          className="z-navbar absolute right-0 top-full mt-2 min-w-sidebar overflow-hidden rounded-md border border-glass-border-subtle bg-glass-elevated py-2 shadow-premium backdrop-blur-xl"
+                          className="card-glass z-navbar absolute right-0 top-full mt-2 min-w-sidebar overflow-hidden rounded-md py-2"
                         >
                           {[
                             {
@@ -214,7 +214,7 @@ export function ChatArea({
                 initial={{ y: -20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 exit={{ y: -20, opacity: 0 }}
-                className="z-deep flex h-(--navbar-h-base) shrink-0 items-center border-b border-(--glass-border) bg-(--bg-surface-raised)/(--opacity-medium) px-(--space-4) backdrop-blur-xl"
+                className="header-glass z-deep flex h-(--navbar-h-base) shrink-0 items-center border-b border-glass-border bg-surface/(--opacity-medium) px-(--space-4) backdrop-blur-xl"
               >
                 <motion.button
                   whileTap={{ scale: 0.9 }}
@@ -251,14 +251,14 @@ export function ChatArea({
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             whileHover={{ rotate: 5, scale: 1.1 }}
-            className="mb-(--space-8) flex size-(--space-32) items-center justify-center rounded-2xl shadow-premium"
+            className="mb-(--space-8) flex size-32 items-center justify-center rounded-2xl shadow-premium"
             style={{
               background: "linear-gradient(135deg, var(--msg-sidebar-hover), var(--msg-header-bg))",
               border: "1px solid var(--msg-header-border)",
             }}
           >
             <MessageSquare
-              className="size-(--space-16) text-msg-active opacity-[--opacity-strong]"
+              className="size-16 text-msg-active opacity-[--opacity-strong]"
               strokeWidth={1}
             />
           </motion.div>

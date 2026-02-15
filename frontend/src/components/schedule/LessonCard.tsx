@@ -51,7 +51,7 @@ export const LessonCard = memo(function LessonCard({
         "group relative flex h-full min-h-32 flex-col overflow-hidden rounded-2xl border border-glass-border-subtle bg-glass-elevated p-3 shadow-premium transition-all duration-base sm:min-h-(--h-card-lesson-min)",
         hasBreakBefore ? "mt-6" : "",
         "hover:-translate-y-1 hover:shadow-glass hover:border-brand-subtle",
-        "dark:shadow-premium-dark dark:hover:shadow-glass-strong-dark",
+        "dark:shadow-premium dark:hover:shadow-glass-strong",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-page"
       )}
       title={isConflict ? t("schedule:lesson.conflict") : undefined}
@@ -74,7 +74,7 @@ export const LessonCard = memo(function LessonCard({
           <Badge
             size="xs"
             variant="outline"
-            className="chip-time font-medium border-brand/(--opacity-dim) bg-brand-subtle-bg text-brand dark:border-brand/(--opacity-soft) dark:bg-brand-subtle-bg/(--opacity-hover)"
+            className="chip-time"
             leadingIcon={<AccessTimeIcon size={15} />}
           >
             {`${getTimeStr(lesson)}–${getEndTimeStr(lesson)}`}
@@ -88,7 +88,7 @@ export const LessonCard = memo(function LessonCard({
             size="xs"
             variant="outline"
             leadingIcon={<TeacherIcon size={14} className="text-(--primary-main)" />}
-            className="font-medium text-(--text-primary)/(--opacity-hover) border-(--glass-border) bg-(--bg-surface)/(--opacity-dim) dark:text-(--text-primary)/(--opacity-heavy) dark:bg-(--bg-surface)/(--opacity-medium)"
+            className="badge-glass"
           >
             {lesson.teacher || "—"}
           </Badge>
@@ -96,7 +96,7 @@ export const LessonCard = memo(function LessonCard({
             size="xs"
             variant="outline"
             leadingIcon={<RoomIcon size={15} className="text-(--primary-main)" />}
-            className="font-medium text-(--text-primary)/(--opacity-hover) border-(--glass-border) bg-(--bg-surface)/(--opacity-dim) dark:text-(--text-primary)/(--opacity-heavy) dark:bg-(--bg-surface)/(--opacity-medium)"
+            className="badge-glass"
           >
             {lesson.room || "—"}
           </Badge>
@@ -116,15 +116,7 @@ export const LessonCard = memo(function LessonCard({
             e.stopPropagation()
             onDelete()
           }}
-          className={cn(
-            "absolute top-2 right-2 z-surface flex h-7 w-7 items-center justify-center rounded-lg opacity-0 transition-premium",
-            "bg-(--error-bg) text-(--error-text)",
-            "border border-(--error-text)/(--opacity-soft)",
-            "shadow-sm",
-            "hover:bg-(--error-text)/(--opacity-dim) hover:shadow-md",
-            "group-hover:opacity-100",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--error-text)/(--opacity-soft)"
-          )}
+          className={cn("button-icon-glass")}
         >
           <DeleteIcon size={16} />
         </button>

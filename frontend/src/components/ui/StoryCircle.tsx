@@ -34,7 +34,7 @@ export const StoryCircle = <T extends ElementType = "div">({
         "bg-linear-to-br from-(--primary-main) to-(--primary-main) shadow-lg",
         "transition-all duration-base ease-premium transform-gpu",
         "hover:shadow-xl hover:-translate-y-0.5",
-        "focus-visible:outline-(--primary-main) focus-visible:ring-(--space-1) focus-visible:ring-(--primary-main)/(--opacity-dim)",
+        "focus-visible:outline-(--primary-main) focus-visible:ring-1 focus-visible:ring-(--primary-main)/(--opacity-dim)",
         "motion-reduce:hover:translate-y-0",
         size === "sm" &&
           "h-(--size-story-sm) w-(--size-story-sm) min-h-(--size-story-sm) min-w-(--size-story-sm)",

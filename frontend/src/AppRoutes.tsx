@@ -128,9 +128,9 @@ export function AppRoutes() {
       style={{
         minHeight: "100dvh",
         background: isLHCI
-          ? "var(--color-white, #FFFFFF)"
-          : "var(--bg-page, var(--initial-bg, #060B14))",
-        color: isLHCI ? "var(--color-black, #000000)" : "var(--text-primary)",
+          ? "var(--color-white)"
+          : "var(--bg-page, var(--initial-bg, var(--color-slate-950)))",
+        color: isLHCI ? "var(--color-black)" : "var(--text-primary)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",

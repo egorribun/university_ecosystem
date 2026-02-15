@@ -47,7 +47,7 @@ const NewsCardContent = ({
         </Link>
       </ContentCard.Title>
 
-      <p className="min-h-(--space-12) text-sm text-(--text-secondary) line-clamp-2 md:min-h-(--space-18) md:line-clamp-3">
+      <p className="min-h-12 text-sm text-(--text-secondary) line-clamp-2 md:min-h-18 md:line-clamp-3">
         {preview}
       </p>
 

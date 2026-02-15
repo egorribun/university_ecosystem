@@ -16,7 +16,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         solid: cn(
-          "bg-linear-brand text-inverse-text shadow-surface ring-brand/dim transition-all duration-slow",
+          "bg-linear-brand text-inverse-text shadow-surface ring-brand/(--opacity-dim) transition-all duration-slow",
           "hover:shadow-premium-lift hover:scale-hover hover:opacity-heavy",
           "active:scale-95",
           "motion-reduce:hover:translate-y-0 motion-reduce:hover:scale-100 motion-reduce:active:translate-y-0 motion-reduce:active:scale-100",

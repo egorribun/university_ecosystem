@@ -30,8 +30,8 @@ function DefaultFallback({ onRetry }: { onRetry: () => void }) {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: "var(--bg-page, #0b0d11)",
-          color: "var(--text-primary, #f5f7fa)",
+          backgroundColor: "var(--bg-page, var(--color-slate-900))",
+          color: "var(--text-primary, var(--color-slate-50))",
         }}
       >
         ...
@@ -51,8 +51,8 @@ function DefaultFallback({ onRetry }: { onRetry: () => void }) {
         gap: "1.5rem",
         padding: "2rem",
         textAlign: "center",
-        backgroundColor: "var(--bg-page, #0b0d11)",
-        color: "var(--text-primary, #f5f7fa)",
+        backgroundColor: "var(--bg-page, var(--color-slate-900))",
+        color: "var(--text-primary, var(--color-slate-50))",
       }}
     >
       <div style={{ maxWidth: "32rem" }}>
@@ -79,8 +79,8 @@ function DefaultFallback({ onRetry }: { onRetry: () => void }) {
             borderRadius: "9999px",
             border: "none",
             cursor: "pointer",
-            background: "var(--primary-main, #2563eb)",
-            color: "white",
+            background: "var(--primary-main, var(--color-blue-600))",
+            color: "var(--color-white)",
             fontWeight: 600,
           }}
         >
@@ -93,7 +93,7 @@ function DefaultFallback({ onRetry }: { onRetry: () => void }) {
             padding: "0.75rem 1.5rem",
             fontSize: "1rem",
             borderRadius: "9999px",
-            border: "1px solid color-mix(in srgb, white var(--opacity-medium), transparent)",
+            border: "1px solid color-mix(in srgb, var(--color-white) var(--opacity-medium), transparent)",
             background: "transparent",
             color: "currentColor",
             cursor: "pointer",

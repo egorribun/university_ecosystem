@@ -15,7 +15,7 @@ export default function LoadingState({ label }: LoadingStateProps) {
       <header className="px-4 sm:px-8 py-6 sm:py-8 border-b border-glass-border/(--opacity-subtle)">
         <h1 className="sr-only">{loadingLabel}</h1>
         <Skeleton
-          className="w-[62%] sm:w-[44%] max-w-(--w-label-lg) h-(--space-8) sm:h-(--space-9) rounded-(--radius-xl)"
+          className="w-[62%] sm:w-[44%] max-w-(--w-label-lg) h-8 sm:h-9 rounded-xl"
           aria-hidden="true"
         />
       </header>

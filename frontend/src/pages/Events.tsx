@@ -443,7 +443,7 @@ const Events = () => {
                       className={inputClass}
                     />
                   </div>
-                  <div className="flex justify-end gap-(--space-2)">
+                  <div className="flex justify-end gap-2">
                     <Button
                       variant="ghost"
                       size="sm"
@@ -636,7 +636,7 @@ const Events = () => {
                         className={inputClass}
                       />
                     </div>
-                    <div className="space-y-(--space-3)">
+                    <div className="space-y-3">
                       <label className="block text-sm font-semibold text-(--text-secondary)">
                         {t("events:form.image")}
                       </label>
@@ -644,7 +644,7 @@ const Events = () => {
                         as="label"
                         variant="outline"
                         disabled={imageUploading}
-                        className="w-full justify-start gap-(--space-2) bg-(--bg-surface)/(--opacity-dim)"
+                        className="w-full justify-start gap-2 bg-(--bg-surface)/(--opacity-dim)"
                       >
                         {imageUploading ? (
                           t("common:statuses.uploading")

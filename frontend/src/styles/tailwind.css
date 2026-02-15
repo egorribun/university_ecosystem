@@ -54,13 +54,6 @@
   --brand-hover-rgb: var(--primary-hover-rgb);
 
   /* Radius — sourced from theme.css :root */
-  --radius-xs: var(--radius-xs);
-  --radius-sm: var(--radius-sm);
-  --radius-md: var(--radius-md);
-  --radius-lg: var(--radius-lg);
-  --radius-xl: var(--radius-xl);
-  --radius-2xl: var(--radius-2xl);
-  --radius-3xl: var(--radius-3xl);
   /* Mapped to 16/3xl in sync-tokens if needed, or custom */
   --radius-fluid-lg: var(--fluid-radius-lg);
 
@@ -120,7 +113,6 @@
     "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
     sans-serif;
   --font-display: "Outfit", "Inter", system-ui, sans-serif;
-  --font-sf: var(--font-sf);
 
   /* Micro-Label Typography (mirrors theme.css tokens) */
   --font-size-label-xs: var(--fs-label-xs);
@@ -139,15 +131,18 @@
   --font-size-icon-lg: var(--fs-icon-lg);
 
   /* Shadows */
-  --shadow-sm: var(--shadow-sm);
-  --shadow-md: var(--shadow-md);
-  --shadow-glass: var(--shadow-glass);
-  --shadow-glass-strong: var(--shadow-glass-strong);
-  --shadow-premium-lift: var(--shadow-premium-lift);
-  --shadow-premium-lift: var(--shadow-premium-lift);
-  --shadow-up: var(--shadow-up);
-  --shadow-surface: var(--shadow-surface);
-  --shadow-focus: var(--shadow-focus);
+  --shadow-sm: var(--raw-shadow-sm);
+  --shadow-md: var(--raw-shadow-md);
+  --shadow-premium: var(--raw-shadow-premium);
+  --shadow-premium-lift: var(--raw-shadow-premium-lift);
+  --shadow-glass: var(--raw-shadow-glass);
+  --shadow-glass-strong: var(--raw-shadow-glass-strong);
+  --shadow-up: var(--raw-shadow-up);
+  --shadow-surface: var(--raw-shadow-surface);
+  --shadow-focus: var(--raw-shadow-focus);
+  --shadow-inner-premium: var(--raw-shadow-inner-premium);
+
+  /* Shadows are automatically discovered if they follow --shadow-* pattern */
 
   /* Z-Index — sourced from theme.css :root (14-item scale) */
 
@@ -159,14 +154,8 @@
   --bg-linear-news-hero: var(--grad-news-hero);
 
   /* Opacity Scale */
-  --opacity-faint: var(--opacity-faint);
-  --opacity-subtle: var(--opacity-subtle);
-  --opacity-dim: var(--opacity-dim);
-  --opacity-soft: var(--opacity-soft);
-  --opacity-medium: var(--opacity-medium);
-  --opacity-strong: var(--opacity-strong);
-  --opacity-hover: var(--opacity-hover);
-  --opacity-heavy: var(--opacity-heavy);
+
+  /* Durations and Opacities are automatically discovered if they follow --duration-* and --opacity-* */
 
   /* Screens / Breakpoints */
   --breakpoint-mobile: 768px;
@@ -178,10 +167,14 @@
   --color-glass-tint1: var(--glass-tint1);
   --color-glass-tint2: var(--glass-tint2);
   --color-glass-tint3: var(--glass-tint3);
-  --blur-glass: var(--glass-blur);
+  --backdrop-blur-glass: var(--glass-blur);
+  --backdrop-blur-md: var(--blur-md);
+  --backdrop-blur-lg: var(--blur-lg);
+  --backdrop-blur-xl: var(--blur-xl);
+  --backdrop-blur-2xl: var(--blur-2xl);
+  --backdrop-blur-3xl: var(--blur-3xl);
 
   /* Scale */
-  --scale-hover: var(--scale-hover);
   --scale-active: 0.98;
   --scale-active-sm: 0.95;
 
@@ -221,27 +214,16 @@
   --animate-pulse-shadow: pulse-shadow 2s ease-in-out infinite;
 
   /* Dashboard Specialized Gradients & Effects */
-  --dash-hero-radial-top: var(
-    --dash-hero-radial-top,
-    color-mix(in srgb, #38bdf8 var(--opacity-dim), transparent)
-  );
-  --dash-hero-radial-bottom: var(--dash-hero-radial-bottom, transparent);
-  --dash-hero-orb: var(--dash-hero-orb);
-  --dash-hero-pulse: var(--dash-hero-highlight);
-  --dash-hero-conic-primary: var(--dash-conic-1);
-  --dash-hero-conic-secondary: var(--dash-conic-2);
-  --dash-hero-conic-tertiary: var(--dash-conic-3);
-  --dash-hero-conic-accent: var(--dash-conic-accent);
+
+  /* Dashboard Specialized Gradients & Effects are automatically discovered if they follow --dash-* pattern */
 
   /* Premium UI Gradients */
   --bg-nav-light: var(--grad-nav-light);
   --bg-nav-dark: var(--grad-nav-dark);
   --bg-footer-light:
-    radial-gradient(
-      120% 180% at -10% -20%,
-      color-mix(in srgb, #2491ff var(--glass-alpha-med), transparent),
-      transparent 60%
-    ),
+    radial-gradient(120% 180% at -10% -20%,
+      color-mix(in srgb, var(--color-blue-400) var(--glass-alpha-med), transparent),
+      transparent 60%),
     linear-gradient(112deg, var(--primary-main) 0%, var(--primary-hover) 100%);
   --bg-footer-dark: var(--grad-nav-dark);
 }
@@ -261,6 +243,7 @@
 }
 
 @keyframes dash-colon-blink {
+
   0%,
   100% {
     opacity: 1;
@@ -351,6 +334,7 @@
 }
 
 @keyframes msg-online-pulse {
+
   0%,
   100% {
     box-shadow: 0 0 0 0 var(--msg-online-pulse);
@@ -362,6 +346,7 @@
 }
 
 @keyframes msg-typing {
+
   0%,
   60%,
   100% {
@@ -390,6 +375,7 @@
 }
 
 @keyframes pulse-shadow {
+
   0%,
   100% {
     box-shadow: 0 4px 16px -4px color-mix(in srgb, var(--primary-main) 40%, transparent 60%);
@@ -435,7 +421,7 @@
 
 @utility footer-link-premium {
   display: inline-block;
-  color: #ffffff;
+  color: var(--color-white);
   text-decoration: none;
   opacity: var(--opacity-heavy);
   padding: 0.25rem 0;
@@ -480,33 +466,7 @@
 }
 
 @layer components {
-  /* Premium Glass Card - Elevated */
-  .card-glass {
-    @apply relative overflow-hidden rounded-4xl border border-glass-border bg-glass backdrop-blur-2xl shadow-glass;
-    transition-property: background-color, border-color, box-shadow, opacity, transform;
-    transition-duration: 500ms;
-    transition-timing-function: var(--ease-premium);
-  }
 
-  .card-glass::before {
-    content: "";
-    @apply pointer-events-none absolute inset-0 bg-linear-to-br from-glass-tint1 via-glass-tint2 to-glass-tint3 opacity-dim mix-blend-overlay;
-    z-index: -1;
-  }
-
-  /* Interactive Glass with refined physics */
-  .card-glass-interactive {
-    @apply cursor-pointer;
-  }
-
-  .card-glass-interactive:hover {
-    @apply border-white/(--opacity-dim) -translate-y-2;
-    box-shadow: var(--shadow-premium-lift);
-  }
-
-  .card-glass-interactive:active {
-    @apply scale-active translate-y-0 shadow-glass;
-  }
 
   /* Skeleton with organic pulse */
   .skeleton {
@@ -516,22 +476,18 @@
   .skeleton::after {
     content: "";
     @apply absolute inset-0;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      color-mix(in srgb, white var(--opacity-subtle), transparent) 50%,
-      transparent 100%
-    );
+    background: linear-gradient(90deg,
+        transparent 0%,
+        color-mix(in srgb, white var(--opacity-subtle), transparent) 50%,
+        transparent 100%);
     animation: skeleton-shimmer 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
   }
 
   .dark .skeleton::after {
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      color-mix(in srgb, white var(--opacity-faint), transparent) 50%,
-      transparent 100%
-    );
+    background: linear-gradient(90deg,
+        transparent 0%,
+        color-mix(in srgb, white var(--opacity-faint), transparent) 50%,
+        transparent 100%);
   }
 
   /* Skip-link for keyboard navigation */
@@ -541,27 +497,20 @@
   }
 }
 
+@utility glass-high-fidelity {
+  @apply border border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass backdrop-blur-3xl;
+
+  /* Performance fallback for low-power or reduced-motion preferences */
+  @media (prefers-reduced-motion: reduce) {
+    @apply backdrop-blur-none bg-(--bg-surface)/95;
+  }
+}
+
+@utility surface-raised {
+  @apply bg-(--bg-surface-raised) shadow-sm border border-border-subtle;
+}
+
 @layer utilities {
-  .glass-high-fidelity {
-    @apply border border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass backdrop-blur-3xl;
-
-    /* Performance fallback for low-power or reduced-motion preferences */
-    @media (prefers-reduced-motion: reduce) {
-      @apply backdrop-blur-none bg-(--bg-surface)/95;
-    }
-  }
-
-  .surface-raised {
-    @apply bg-(--bg-surface-raised) shadow-sm border border-border-subtle;
-  }
-
-  .transition-premium {
-    transition: all var(--transition-premium);
-  }
-
-  .transition-fast {
-    transition: all var(--transition-fast);
-  }
 
   .dash-panel-schedule,
   .dash-panel-news,
@@ -692,4 +641,64 @@
 
 @utility focus-ring-premium {
   @apply focus-visible:outline-none focus-visible:shadow-focus;
+}
+
+@utility badge-glass {
+  @apply font-medium text-(--text-primary)/(--opacity-hover) border-(--glass-border) bg-(--bg-surface)/(--opacity-dim) dark:text-(--text-primary)/(--opacity-heavy) dark:bg-(--bg-surface)/(--opacity-medium);
+}
+
+@utility badge-glass-dim {
+  @apply font-medium text-(--text-primary)/(--opacity-dim) border-(--glass-border-subtle) bg-(--bg-surface)/(--opacity-faint) dark:text-(--text-primary)/(--opacity-soft) dark:bg-(--bg-surface)/(--opacity-dim);
+}
+
+@utility chip-time {
+  @apply font-medium border-brand/(--opacity-dim) bg-brand-subtle-bg text-brand dark:border-brand/(--opacity-soft) dark:bg-brand-subtle-bg/(--opacity-hover);
+}
+
+@utility button-icon-glass {
+  @apply absolute top-2 right-2 z-surface flex h-7 w-7 items-center justify-center rounded-lg opacity-0 bg-(--error-bg) text-(--error-text) border border-(--error-text)/(--opacity-soft) shadow-sm hover:bg-(--error-text)/(--opacity-dim) hover:shadow-md group-hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--error-text)/(--opacity-soft);
+  transition: var(--transition-premium);
+}
+
+@utility auth-card-glass {
+  @apply border border-glass-border/(--opacity-hover) bg-surface/(--opacity-strong) shadow-glass backdrop-blur-3xl;
+  border-radius: var(--radius-4xl);
+}
+
+@utility auth-perk-card {
+  @apply relative overflow-hidden rounded-lg border border-glass-border/(--opacity-heavy) bg-surface/(--opacity-medium) px-5 py-6 shadow-premium hover:-translate-y-1;
+  transition-property: transform;
+  transition-duration: var(--motion-duration-base);
+}
+
+@utility auth-stat-glass {
+  @apply inline-flex items-center justify-center gap-2 rounded-full border border-glass-border-subtle/(--opacity-hover) bg-glass backdrop-blur-md px-4 py-2 text-sm font-semibold text-text-primary/(--opacity-heavy) shadow-sm;
+}
+
+@utility badge-brand {
+  @apply inline-flex items-center gap-2 rounded-full border border-brand/(--opacity-dim) px-4 py-2 text-xs font-semibold uppercase tracking-widest text-brand transition hover:bg-brand/(--opacity-subtle);
+}
+
+@utility card-glass {
+  @apply relative overflow-hidden rounded-4xl border border-glass-border-subtle bg-glass-elevated shadow-premium backdrop-blur-glass transition-premium text-text-primary;
+}
+
+@utility card-glass-interactive {
+  @apply cursor-pointer hover:-translate-y-1 hover:scale-hover hover:shadow-glass hover:border-brand-subtle active:scale-(--scale-active) motion-reduce:hover:transform-none;
+}
+
+@utility panel-glass {
+  @apply border-r border-glass-border bg-surface-raised transition-premium;
+}
+
+@utility header-glass {
+  @apply sticky top-0 z-deep border-b border-glass-border bg-surface/(--opacity-medium) backdrop-blur-xl;
+}
+
+@utility transition-premium {
+  transition: all var(--transition-premium);
+}
+
+@utility transition-fast {
+  transition: all var(--transition-fast);
 }

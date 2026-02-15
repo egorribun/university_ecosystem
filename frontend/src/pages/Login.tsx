@@ -13,7 +13,7 @@ import {
   Fingerprint,
   LogIn,
 } from "lucide-react"
-import { cn } from "@/utils/cn"
+
 import { FadeIn } from "@/components/ui/motion/FadeIn"
 import { ChallengeLockedError, useAuth } from "@/contexts/AuthContext"
 import type { PendingMfaState } from "@/types/Auth"
@@ -422,7 +422,7 @@ const Login = () => {
           direction="left"
           distance={200}
           duration={0.5}
-          className="flex w-full min-w-0 flex-col justify-center rounded-4xl border border-glass-border/(--opacity-hover) bg-surface/(--opacity-strong) p-8 shadow-glass backdrop-blur-3xl lg:p-12"
+          className="auth-card-glass flex w-full min-w-0 flex-col justify-center p-8 lg:p-12"
         >
           <p className="text-sm font-semibold uppercase tracking-[0.3em] text-text-primary/(--opacity-strong)">
             {t("auth:login.heroBadge", { defaultValue: "University Ecosystem" })}
@@ -443,7 +443,7 @@ const Login = () => {
             {heroHighlights.map(({ icon: Icon, title, description }) => (
               <div
                 key={title}
-                className="group relative overflow-hidden rounded-lg border border-glass-border/(--opacity-heavy) bg-surface/(--opacity-medium) px-5 py-6 shadow-premium transition-transform duration-base hover:-translate-y-1"
+                className="auth-perk-card group"
               >
                 <div className="relative z-base flex items-center gap-3">
                   <span className="flex size-12 items-center justify-center rounded-md bg-brand-subtle-bg text-brand">
@@ -457,13 +457,7 @@ const Login = () => {
           </div>
 
           <div className="mt-10 flex flex-wrap gap-4">
-            <div
-              className={cn(
-                "inline-flex w-40 items-center justify-center gap-2 rounded-full border border-glass-border-subtle/(--opacity-hover)",
-                "bg-glass backdrop-blur-md px-4 py-2 text-sm font-semibold",
-                "text-text-primary/(--opacity-heavy) shadow-sm"
-              )}
-            >
+            <div className="auth-stat-glass w-40">
               <Zap className="mr-1 h-4 w-4 text-brand" strokeWidth={3} />
               <span className="text-xs font-extrabold uppercase tracking-[0.2em]">
                 {t("auth:login.statFast", { defaultValue: "Быстро" })}
@@ -472,13 +466,7 @@ const Login = () => {
                 {t("auth:login.statFastLabel", { defaultValue: "и безопасно" })}
               </span>
             </div>
-            <div
-              className={cn(
-                "inline-flex w-40 items-center justify-center gap-2 rounded-full border border-glass-border-subtle/(--opacity-hover)",
-                "bg-glass backdrop-blur-md px-4 py-2 text-sm font-semibold",
-                "text-text-primary/(--opacity-heavy) shadow-sm"
-              )}
-            >
+            <div className="auth-stat-glass w-40">
               <Sparkles className="mr-1 h-4 w-4 text-brand" strokeWidth={3} />
               <span className="text-xs font-extrabold uppercase tracking-[0.2em]">
                 {t("auth:login.statSmart", { defaultValue: "Умный интерфейс" })}
@@ -492,7 +480,7 @@ const Login = () => {
           distance={200}
           duration={0.5}
           delay={0.2}
-          className="flex w-full min-w-0 flex-col justify-center rounded-4xl border border-glass-border/(--opacity-hover) bg-surface/(--opacity-hover) p-6 shadow-glass backdrop-blur-2xl sm:p-10"
+          className="auth-card-glass flex w-full min-w-0 flex-col justify-center bg-surface/(--opacity-hover) p-6 sm:p-10"
         >
           <form noValidate autoComplete="on" action={submitAction} className="flex flex-col gap-6">
             <div className="space-y-2 text-center">

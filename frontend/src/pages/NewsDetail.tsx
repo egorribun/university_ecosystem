@@ -38,7 +38,7 @@ dayjs.extend(utc)
 dayjs.extend(timezone)
 
 const iconButtonClass =
-  "inline-flex h-(--space-10) w-(--space-10) items-center justify-center rounded-full border border-(--glass-border) bg-(--bg-surface)/(--opacity-hover) text-(--text-secondary) shadow-sm transition hover:bg-(--bg-surface) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--brand-main)"
+  "inline-flex h-10 w-10 items-center justify-center rounded-full border border-(--glass-border) bg-(--bg-surface)/(--opacity-hover) text-(--text-secondary) shadow-sm transition hover:bg-(--bg-surface) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--brand-main)"
 
 type FieldProps = {
   label: ReactNode
@@ -49,7 +49,7 @@ type FieldProps = {
 
 function Field({ label, htmlFor, children, required = false }: FieldProps) {
   return (
-    <div className="flex flex-col gap-(--space-2)">
+    <div className="flex flex-col gap-2">
       <label
         htmlFor={htmlFor}
         className="text-sm font-semibold tracking-wide text-(--text-secondary)/(--opacity-hover)"

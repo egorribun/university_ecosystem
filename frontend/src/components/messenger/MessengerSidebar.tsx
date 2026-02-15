@@ -29,9 +29,9 @@ export function MessengerSidebar({
       animate={{ x: 0, opacity: 1 }}
       exit={isMobile ? { x: -300, opacity: 0 } : undefined}
       transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-      className="relative z-deep flex h-full w-full flex-col border-r border-(--glass-border) bg-(--bg-surface-raised) md:w-(--layout-max-sidebar) lg:w-(--layout-max-sidebar)"
+      className="panel-glass relative z-deep flex h-full w-full flex-col md:w-(--layout-max-sidebar) lg:w-(--layout-max-sidebar)"
     >
-      <div className="sticky top-0 z-deep flex items-center justify-between border-b border-(--glass-border) bg-(--bg-surface)/(--opacity-medium) p-(--space-4) backdrop-blur-xl">
+      <div className="header-glass flex items-center justify-between p-4">
         <h1 className="sf-pro text-2xl font-bold tracking-tight">
           {t("messenger:title", "Messages")}
         </h1>
@@ -40,21 +40,21 @@ export function MessengerSidebar({
           whileHover={{ scale: 1.1, backgroundColor: "var(--msg-sidebar-hover)" }}
           whileTap={{ scale: 0.9 }}
           onClick={() => setIsNewChatModalOpen(true)}
-          className="rounded-full bg-(--primary-main)/(--opacity-low) p-(--space-2) text-msg-active transition-colors"
+          className="rounded-full bg-(--primary-main)/(--opacity-low) p-2 text-msg-active transition-colors"
           aria-label={t("messenger:newChat", "New Chat")}
         >
           <SquarePen className="h-5 w-5" strokeWidth={2.5} />
         </motion.button>
       </div>
 
-      <div className="bg-(--bg-surface-raised) p-(--space-4)">
+      <div className="bg-(--bg-surface-raised) p-4">
         <div className="group relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary transition-colors group-focus-within:text-primary-main" />
           <input
             id="messenger-sidebar-search"
             type="text"
             placeholder={t("messenger:search", "Search")}
-            className="w-full rounded-md border-none bg-black/(--opacity-medium) py-(--space-25) pl-(--space-10) pr-(--space-4) text-(--fs-body) shadow-sm outline-none transition-all focus:ring-2 focus:ring-(--brand-main)/(--opacity-medium) dark:bg-white/(--opacity-medium)"
+            className="w-full rounded-md border-none bg-black/(--opacity-medium) py-25 pl-10 pr-4 text-(--fs-body) shadow-sm outline-none transition-all focus:ring-2 focus:ring-(--brand-main)/(--opacity-medium) dark:bg-white/(--opacity-medium)"
           />
         </div>
       </div>

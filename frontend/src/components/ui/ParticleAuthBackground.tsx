@@ -42,9 +42,9 @@ const ParticleAuthBackground = () => {
     const getThemeColors = () => {
       const styles = getComputedStyle(document.documentElement)
       const primary =
-        styles.getPropertyValue("--primary-main").trim() || "var(--primary-main, #0ea5e9)"
+        styles.getPropertyValue("--primary-main").trim() || "var(--color-blue-600)"
       const secondary =
-        styles.getPropertyValue("--primary-hover").trim() || "var(--primary-hover, #0284c7)"
+        styles.getPropertyValue("--primary-hover").trim() || "var(--color-blue-700)"
 
       // Generate variations based on the theme primary
       return [

@@ -25,12 +25,19 @@ export const spacingScale = {
   "3": "var(--space-3)",
   "32": "var(--space-32)",
   "35": "var(--space-35)",
+  "36": "var(--space-36)",
   "3xl": "var(--space-16)",
   "4": "var(--space-4)",
+  "40": "var(--space-40)",
+  "48": "var(--space-48)",
   "4xl": "var(--space-32)",
   "5": "var(--space-5)",
+  "52": "var(--space-52)",
+  "56": "var(--space-56)",
   "6": "var(--space-6)",
+  "64": "var(--space-64)",
   "8": "var(--space-8)",
+  "80": "var(--space-80)",
   "9": "var(--space-9)",
   lg: "var(--space-6)",
   md: "var(--space-4)",
@@ -42,6 +49,7 @@ export const spacingScale = {
 export const radiusScale = {
   "2xl": "var(--radius-2xl)",
   "3xl": "var(--radius-3xl)",
+  "4xl": "var(--radius-4xl)",
   lg: "var(--radius-lg)",
   md: "var(--radius-md)",
   pill: "var(--radius-full)",
@@ -83,18 +91,15 @@ export const zIndexTokens = {
 } as const
 
 export const focusRing = {
-  default: "var(--shadow-focus)",
 } as const
 
 export const shadows = {
   glass: "var(--shadow-glass)",
-  lg: "var(--shadow-premium-lift)",
-  md: "var(--shadow-md)",
-  sm: "var(--shadow-sm)",
 } as const
 
 export const glass = {
   bg: "var(--glass-bg)",
+  blur: "var(--glass-blur)",
   border: "var(--glass-border)",
   tint3: "var(--glass-tint3)",
 } as const
@@ -120,11 +125,14 @@ export const dimensions = {
 } as const
 
 export const opacity = {
+  dim: "var(--opacity-dim)",
+  faint: "var(--opacity-faint)",
   heavy: "var(--opacity-heavy)",
   hover: "var(--opacity-hover)",
   medium: "var(--opacity-medium)",
   soft: "var(--opacity-soft)",
   strong: "var(--opacity-strong)",
+  subtle: "var(--opacity-subtle)",
 } as const
 
 export const scale = {
@@ -138,3 +146,4 @@ export const motion = {
   durationMedium: 0.45,
   navTransition: 1.2,
 } as const
+

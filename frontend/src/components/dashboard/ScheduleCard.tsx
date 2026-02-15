@@ -119,9 +119,7 @@ export function ScheduleCard({
   return (
     <Card
       className={cn(
-        "group bg-(--glass-bg) backdrop-blur-3xl transition-all duration-base ease-[cubic-bezier(0.34,1.56,0.64,1)]",
-        "hover:-translate-y-1 hover:scale-[1.01] hover:shadow-glass motion-reduce:hover:transform-none motion-reduce:hover:shadow-none",
-        "dash-panel-schedule border-glass-border shadow-glass",
+        "card-glass card-glass-interactive dash-panel-schedule",
         className
       )}
       padding="lg"
@@ -267,7 +265,7 @@ export function ScheduleCard({
           repeat: Infinity,
           ease: "easeInOut",
         }}
-        className="pointer-events-none absolute -top-24 right-10 z-hide h-(--space-36) w-(--space-36) rounded-full bg-(--flare-schedule-orb) blur-3xl mix-blend-soft-light transition-opacity duration-slower"
+        className="pointer-events-none absolute -top-24 right-10 z-hide h-36 w-36 rounded-full bg-(--flare-schedule-orb) blur-3xl mix-blend-soft-light transition-opacity duration-slower"
       />
     </Card>
   )
