@@ -36,7 +36,7 @@ export default function CardShell({
         "relative flex h-full flex-col overflow-hidden rounded-2xl border border-glass-border-subtle backdrop-blur-xl [-webkit-backdrop-filter:blur(12px)]",
         TONE_CLASSES[tone],
         "shadow-premium",
-        "transition-all duration-180",
+        "transition-all duration-fast",
         reduceMotion ? "" : "hover:-translate-y-0.5 hover:shadow-premium",
         "active:translate-y-0",
         onClick &&

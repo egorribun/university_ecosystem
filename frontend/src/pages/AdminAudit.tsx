@@ -45,6 +45,7 @@ function Row({ log }: { log: AuditLog }) {
       >
         <td className="px-4 py-4">
           <button
+            id={`audit-row-toggle-${log.id}`}
             onClick={() => setOpen(!open)}
             className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-(--bg-surface-hover)/(--opacity-dim)"
           >
@@ -56,7 +57,7 @@ function Row({ log }: { log: AuditLog }) {
             <span className="text-sm font-bold text-(--text-primary)">
               {dayjs(log.created_at).format("MMM D")}
             </span>
-            <span className="text-xs text-(--text-secondary) opacity-(--opacity-strong)">
+            <span className="text-xs text-(--text-secondary) opacity-strong">
               {dayjs(log.created_at).format("HH:mm:ss")}
             </span>
           </div>
@@ -70,7 +71,7 @@ function Row({ log }: { log: AuditLog }) {
               <span className="truncate text-sm font-bold text-(--text-primary)">
                 {log.actor_name || t("audit.details.system")}
               </span>
-              <span className="truncate text-label-xs uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-medium)">
+              <span className="truncate text-label-xs uppercase tracking-wider text-(--text-secondary) opacity-medium">
                 {log.actor_user_id || "SYSTEM"}
               </span>
             </div>
@@ -88,7 +89,7 @@ function Row({ log }: { log: AuditLog }) {
         </td>
         <td className="px-4 py-4">
           <div className="flex items-center gap-1.5 text-sm text-(--text-secondary)">
-            <Activity className="h-3.5 w-3.5 opacity-(--opacity-medium)" />
+            <Activity className="h-3.5 w-3.5 opacity-medium" />
             <span>{log.resource_type}</span>
           </div>
         </td>
@@ -131,7 +132,7 @@ function Row({ log }: { log: AuditLog }) {
 
                   <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
                     <div className="space-y-1">
-                      <span className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-(--opacity-medium)">
+                      <span className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-medium">
                         {t("audit.details.resourceId")}
                       </span>
                       <p className="text-sm font-mono text-(--text-primary) select-all">
@@ -139,18 +140,18 @@ function Row({ log }: { log: AuditLog }) {
                       </p>
                     </div>
                     <div className="space-y-1">
-                      <span className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-(--opacity-medium)">
+                      <span className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-medium">
                         {t("audit.details.subject")}
                       </span>
                       <p className="text-sm text-(--text-primary)">
                         {log.subject_name || t("audit.details.notAvailable")}
-                        <span className="ml-1 text-xs opacity-(--opacity-medium)">
+                        <span className="ml-1 text-xs opacity-medium">
                           ({log.subject_user_id || t("audit.details.notAvailable")})
                         </span>
                       </p>
                     </div>
                     <div className="space-y-1">
-                      <span className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-(--opacity-medium)">
+                      <span className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-medium">
                         {t("audit.details.ipAddress")}
                       </span>
                       <p className="text-sm font-mono text-(--text-primary)">
@@ -158,7 +159,7 @@ function Row({ log }: { log: AuditLog }) {
                       </p>
                     </div>
                     <div className="space-y-1">
-                      <span className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-(--opacity-medium)">
+                      <span className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-medium">
                         {t("audit.details.userAgent")}
                       </span>
                       <p className="text-xs text-(--text-secondary) line-clamp-1 hover:line-clamp-none transition-all cursor-help">
@@ -169,11 +170,11 @@ function Row({ log }: { log: AuditLog }) {
 
                   {log.context && Object.keys(log.context).length > 0 && (
                     <div className="mt-6">
-                      <div className="mb-2 flex items-center gap-2 text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-(--opacity-medium)">
+                      <div className="mb-2 flex items-center gap-2 text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-medium">
                         <Terminal className="h-3 w-3" />
                         <span>{t("audit.details.executionContext")}</span>
                       </div>
-                      <div className="rounded-sm border border-glass-border/(--opacity-subtle) bg-black/(--opacity-medium) p-4 font-mono text-xs text-brand-light">
+                      <div className="rounded-md border border-glass-border/(--opacity-subtle) bg-black/(--opacity-medium) p-4 font-mono text-xs text-brand-light">
                         <pre className="overflow-x-auto whitespace-pre-wrap">
                           {JSON.stringify(log.context, null, 2)}
                         </pre>
@@ -277,19 +278,19 @@ export default function AdminAudit() {
                     <thead>
                       <tr className="border-b border-glass-border/(--opacity-subtle) bg-(--bg-surface-hover)/(--opacity-dim)">
                         <th className="w-12 px-4 py-4" />
-                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
+                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong">
                           {t("audit.table.time")}
                         </th>
-                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
+                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong">
                           {t("audit.table.actor")}
                         </th>
-                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
+                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong">
                           {t("audit.table.action")}
                         </th>
-                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
+                        <th className="px-4 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong">
                           {t("audit.table.target")}
                         </th>
-                        <th className="px-4 py-4 text-center text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
+                        <th className="px-4 py-4 text-center text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong">
                           {t("audit.table.integrity")}
                         </th>
                       </tr>

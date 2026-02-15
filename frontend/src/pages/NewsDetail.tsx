@@ -27,7 +27,7 @@ import { deleteNews, fetchNewsItem, updateNews, uploadNewsImage, type NewsItem }
 import Layout from "@/components/Layout"
 import { SEO } from "@/components/SEO"
 import SmartImage from "@/components/SmartImage"
-import { Button, Input, Textarea } from "@/components/ui"
+import { Button, Input, Textarea, ConfirmDialog } from "@/components/ui"
 import { NewsComments } from "@/components/news/NewsComments"
 import { useAuth } from "@/contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
@@ -153,7 +153,7 @@ export default function NewsDetail() {
   const heroFrame = useMemo(() => {
     if (!heroRatio || !Number.isFinite(heroRatio) || heroRatio <= 0) {
       return {
-        container: "h-(length:--h-hero-sm) min-h-80 max-h-(length:--layout-max-modal)",
+        container: "h-(--h-hero-sm) min-h-80 max-h-(--layout-max-modal)",
         image: "object-cover object-[50%_40%]",
         backdrop: "bg-black/(--opacity-dim)",
       }
@@ -163,7 +163,7 @@ export default function NewsDetail() {
 
     if (ratio < 0.82) {
       return {
-        container: "min-h-(length:--min-h-hero-lg) max-h-(length:--h-hero-max-portrait) aspect-3/4",
+        container: "min-h-(--min-h-hero-lg) max-h-(--h-hero-max-portrait) aspect-3/4",
         image: "object-contain object-center",
         backdrop: "bg-black/(--opacity-soft)",
       }
@@ -171,7 +171,7 @@ export default function NewsDetail() {
 
     if (ratio < 1.18) {
       return {
-        container: "min-h-(length:--min-h-hero-md) max-h-(length:--h-hero-max-square) aspect-5/4",
+        container: "min-h-(--min-h-hero-md) max-h-(--h-hero-max-square) aspect-5/4",
         image: "object-cover object-[50%_38%]",
         backdrop: "bg-(--bg-surface)/(--opacity-dim)",
       }
@@ -179,15 +179,14 @@ export default function NewsDetail() {
 
     if (ratio > 2.6) {
       return {
-        container: "min-h-(length:--min-h-hero-xs) max-h-(length:--h-hero-md) aspect-21/9",
+        container: "min-h-(--min-h-hero-xs) max-h-(--h-hero-md) aspect-21/9",
         image: "object-cover object-[50%_46%]",
         backdrop: "bg-black/(--opacity-dim)",
       }
     }
 
     return {
-      container:
-        "min-h-(length:--min-h-hero-sm) max-h-(length:--h-hero-max-landscape) aspect-video",
+      container: "min-h-(--min-h-hero-sm) max-h-(--h-hero-max-landscape) aspect-video",
       image: "object-cover object-[50%_40%]",
       backdrop: "bg-(--bg-surface)/(--opacity-dim)",
     }
@@ -267,10 +266,6 @@ export default function NewsDetail() {
       const { data } = await updateNews(query.data.id, payload)
       queryClient.setQueryData(["news", id, language], data)
       await queryClient.invalidateQueries({ queryKey: ["news", "list"] })
-      setSnackbar(t("news:notifications.updated"))
-      closeEdit()
-    } catch (error) {
-      console.error(error)
       setSnackbar(t("news:notifications.savedError"))
     } finally {
       setSaving(false)
@@ -287,8 +282,7 @@ export default function NewsDetail() {
       await queryClient.invalidateQueries({ queryKey: ["news", "list"] })
       if (window.history.length > 1) navigate(-1)
       else navigate("/news")
-    } catch (error) {
-      console.error(error)
+    } catch (_error) {
       setSnackbar(t("news:notifications.deleteError"))
     } finally {
       setDeleting(false)
@@ -350,7 +344,7 @@ export default function NewsDetail() {
     return (
       <Layout>
         <div className="flex min-h-(--h-hero-lg) items-center justify-center">
-          <span className="h-(--space-12) w-(--space-12) animate-spin rounded-full border-2 border-white/(--opacity-soft) border-t-(--brand-main)" />
+          <span className="h-12 w-12 animate-spin rounded-full border-2 border-white/(--opacity-soft) border-t-(--brand-main)" />
         </div>
       </Layout>
     )
@@ -359,7 +353,7 @@ export default function NewsDetail() {
   if (query.isError || !query.data)
     return (
       <Layout>
-        <div className="px-(length:--space-4) py-(length:--space-10)">
+        <div className="px-4 py-10">
           <p className="text-lg font-semibold text-(--error-text)">{t("news:states.loadError")}</p>
         </div>
       </Layout>
@@ -367,7 +361,7 @@ export default function NewsDetail() {
 
   return (
     <Layout>
-      <div className="flex w-full flex-col gap-(length:--fluid-gap) px-(length:--fluid-px) pb-(length:--space-16) pt-(length:--space-6) sm:gap-(length:--space-8) sm:pt-(length:--space-8) lg:px-(length:--fluid-px)">
+      <div className="flex w-full flex-col gap-(--fluid-gap) px-(--fluid-px) pb-16 pt-6 sm:gap-8 sm:pt-8 lg:px-(--fluid-px)">
         <Button
           variant="outline"
           onClick={handleBack}
@@ -377,18 +371,18 @@ export default function NewsDetail() {
           {t("common:buttons.back")}
         </Button>
 
-        <article className="flex w-full flex-col items-start gap-(--space-8)">
-          <header className="flex w-full flex-col gap-(--space-4) text-left">
-            <h1 className="max-w-5xl text-(length:--fs-fluid-h1) font-extrabold tracking-tight text-(--text-primary)">
+        <article className="flex w-full flex-col items-start gap-8">
+          <header className="flex w-full flex-col gap-4 text-left">
+            <h1 className="max-w-5xl text-fluid-h1 font-extrabold tracking-tight text-(--text-primary)">
               {displayTitle}
             </h1>
 
             <SEO title={displayTitle} description={content.slice(0, 160)} image={imageUrl} />
 
-            <div className="flex flex-col gap-(--space-3) sm:flex-row sm:flex-wrap sm:items-center">
-              <div className="flex flex-wrap items-center gap-(--space-2) text-sm text-(--text-secondary)">
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+              <div className="flex flex-wrap items-center gap-2 text-sm text-(--text-secondary)">
                 {createdAt ? (
-                  <span className="inline-flex items-center gap-(--space-2) rounded-full border border-(--glass-border) bg-(--bg-surface)/(--opacity-subtle) px-(length:--space-3) py-(length:--space-1) text-(length:--fs-xs) font-semibold uppercase tracking-widest text-(--text-secondary)">
+                  <span className="inline-flex items-center gap-2 rounded-full border border-(--glass-border) bg-(--bg-surface)/(--opacity-subtle) px-3 py-1 text-xs font-semibold uppercase tracking-widest text-(--text-secondary)">
                     <span>{t("news:meta.published")}</span>
                     <span aria-hidden>•</span>
                     <time dateTime={createdAtIso} className="text-(--text-primary)">
@@ -398,7 +392,7 @@ export default function NewsDetail() {
                 ) : null}
 
                 {readingTimeMinutes !== null && (
-                  <span className="inline-flex items-center gap-(--space-2) rounded-(--radius-pill) border border-(--glass-border)/(--opacity-dim) bg-(--bg-surface)/(--opacity-subtle) px-(length:--space-3) py-(length:--space-1) text-(length:--fs-xs) font-medium tracking-wide text-(--text-primary)">
+                  <span className="inline-flex items-center gap-2 rounded-pill border border-(--glass-border)/(--opacity-dim) bg-(--bg-surface)/(--opacity-subtle) px-3 py-1 text-xs font-medium tracking-wide text-(--text-primary)">
                     {t("news:meta.readingTime", { count: readingTimeMinutes ?? undefined })}
                   </span>
                 )}
@@ -432,7 +426,7 @@ export default function NewsDetail() {
                     />
                   }
                   className={cn(
-                    "w-full basis-full sm:w-auto sm:basis-auto transition-colors duration-200",
+                    "w-full basis-full sm:w-auto sm:basis-auto transition-colors duration-fast",
                     isLiked
                       ? "border-(--error-text)/(--opacity-dim) bg-(--error-text)/(--opacity-subtle)"
                       : "border-(--glass-border)/(--opacity-soft) bg-(--bg-surface)/(--opacity-medium)"
@@ -444,7 +438,7 @@ export default function NewsDetail() {
             </div>
 
             {user?.role === "admin" ? (
-              <div className="flex flex-wrap gap-(--space-2)">
+              <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={openEdit}
@@ -490,13 +484,13 @@ export default function NewsDetail() {
               />
             </div>
             {displayTitle ? null : (
-              <figcaption className="border-t border-(--glass-border) bg-(--bg-surface)/(--opacity-subtle) px-(length:--space-5) py-(length:--space-3) text-(length:--fs-sm) font-medium text-(--text-secondary)">
+              <figcaption className="border-t border-(--glass-border) bg-(--bg-surface)/(--opacity-subtle) px-5 py-3 text-sm font-medium text-(--text-secondary)">
                 {t("news:alt.heroFallback")}
               </figcaption>
             )}
           </figure>
 
-          <section className="max-w-4xl self-start space-y-(length:--fluid-gap) text-(length:--fs-body) leading-relaxed text-(--text-secondary)">
+          <section className="max-w-4xl self-start space-y-(--fluid-gap) text-body leading-relaxed text-(--text-secondary)">
             {content?.split(/\n{2,}/).map((chunk: string, index: number) => {
               const text = chunk.trim()
 
@@ -531,7 +525,7 @@ export default function NewsDetail() {
             {t("news:shareDialog.description")}
           </p>
 
-          <div className="grid gap-(--space-3) sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-3">
             {shareOptions.map((option) => {
               const Icon = option.icon
               return (
@@ -541,7 +535,7 @@ export default function NewsDetail() {
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={() => setShareDialogOpen(false)}
-                  className="group flex items-center gap-(--space-3) rounded-(--radius-md) border border-(--glass-border)/(--opacity-dim) bg-(--bg-surface)/(--opacity-medium) px-(length:--space-4) py-(length:--space-3) transition hover:border-(--glass-border)/(--opacity-soft) hover:bg-(--bg-surface)/(--opacity-strong)"
+                  className="group flex items-center gap-3 rounded-md border border-(--glass-border)/(--opacity-dim) bg-(--bg-surface)/(--opacity-medium) px-4 py-3 transition hover:border-(--glass-border)/(--opacity-soft) hover:bg-(--bg-surface)/(--opacity-strong)"
                 >
                   <span
                     className={cn(
@@ -559,7 +553,7 @@ export default function NewsDetail() {
             })}
           </div>
         </DialogContent>
-        <DialogActions className="p-(length:--space-6)">
+        <DialogActions className="p-6">
           <Button
             variant="solid"
             onClick={() => {
@@ -568,8 +562,8 @@ export default function NewsDetail() {
             disabled={copyingLink}
             className="w-full sm:w-auto"
           >
-            <div className="flex items-center gap-(--space-2)">
-              <ContentCopyIcon className="h-(--space-4) w-(--space-4)" />
+            <div className="flex items-center gap-2">
+              <ContentCopyIcon className="h-4 w-4" />
               {copiedLink ? t("news:shareDialog.copySuccess") : t("news:shareDialog.copy")}
             </div>
           </Button>
@@ -578,9 +572,9 @@ export default function NewsDetail() {
 
       <Dialog open={editOpen} onClose={closeEdit} maxWidth="lg" fullWidth>
         <DialogTitle>{t("news:dialogs.edit.title")}</DialogTitle>
-        <DialogContent className="space-y-(length:--space-6) pt-(length:--space-4)">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-(--space-6)">
-            <div className="space-y-(length:--space-4)">
+        <DialogContent className="space-y-6 pt-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-4">
               <Field label={t("news:form.title") ?? ""} htmlFor="edit-title" required>
                 <Input
                   id="edit-title"
@@ -701,40 +695,17 @@ export default function NewsDetail() {
         </DialogActions>
       </Dialog>
 
-      <Dialog
+      <ConfirmDialog
         open={confirmDeleteOpen}
-        onClose={() => setConfirmDeleteOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>{t("news:dialogs.delete.title")}</DialogTitle>
-        <DialogContent className="space-y-4">
-          <p className="text-md text-(--text-secondary)">{t("news:dialogs.delete.description")}</p>
-        </DialogContent>
-        <DialogActions className="flex-col-reverse gap-3 sm:flex-row p-6">
-          <Button
-            variant="ghost"
-            onClick={() => setConfirmDeleteOpen(false)}
-            disabled={deleting}
-            className="w-full sm:w-auto"
-          >
-            {t("common:buttons.cancel")}
-          </Button>
-          <Button
-            variant="solid"
-            onClick={() => {
-              void handleDelete()
-            }}
-            disabled={deleting}
-            className="w-full sm:w-auto bg-(--error-text) hover:bg-(--error-text)/(--opacity-hover)"
-          >
-            <div className="flex items-center gap-2">
-              <DeleteIcon className="h-4 w-4" />
-              {deleting ? t("common:statuses.deleting") : t("common:buttons.delete")}
-            </div>
-          </Button>
-        </DialogActions>
-      </Dialog>
+        title={t("news:dialogs.delete.title")}
+        message={t("news:dialogs.delete.description")}
+        confirmText={t("common:buttons.delete")}
+        cancelText={t("common:buttons.cancel")}
+        variant="danger"
+        onConfirm={() => void handleDelete()}
+        onCancel={() => setConfirmDeleteOpen(false)}
+        isLoading={deleting}
+      />
 
       {snackbar && (
         <Snackbar
@@ -742,7 +713,7 @@ export default function NewsDetail() {
           autoHideDuration={2400}
           onClose={() => setSnackbar("")}
           anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-          className="z-(--z-navbar)"
+          className="z-navbar"
         >
           <Alert severity="success" onClose={() => setSnackbar("")}>
             {snackbar}

@@ -173,9 +173,9 @@ export default function MapContent() {
     <div className="w-full bg-(--bg-surface) text-(--text-primary) rounded-none shadow-2xl overflow-hidden relative">
       <div
         ref={containerRef}
-        className="map-page bg-(--bg-canvas-light) dark:bg-(--bg-canvas-dark) transition-colors duration-300 h-full w-full relative"
+        className="map-page bg-(--bg-canvas-light) dark:bg-(--bg-canvas-dark) transition-colors duration-base h-full w-full relative"
       >
-        <div className="glass glass--panel glass--sheen map-head z-(--z-navbar) flex items-center justify-between px-6 py-4 absolute top-0 left-0 right-0">
+        <div className="glass glass--panel glass--sheen map-head z-navbar flex items-center justify-between px-6 py-4 absolute top-0 left-0 right-0">
           <div className="flex items-center gap-3">
             <MapIcon className={cn("text-brand", isMobile ? "h-6 w-6" : "h-8 w-8")} />
             <h1 className="map-title text-fluid-map-title font-black tracking-tight text-(--text-primary)">
@@ -187,7 +187,7 @@ export default function MapContent() {
               variant="ghost"
               size="sm"
               onClick={openInYandex}
-              className="h-10 w-10 p-0 rounded-(--radius-sm) bg-(--bg-surface)/(--opacity-dim) border border-glass-border/(--opacity-dim)"
+              className="h-10 w-10 p-0 rounded-sm bg-(--bg-surface)/(--opacity-dim) border border-glass-border/(--opacity-dim)"
               title={t("map.openInYandex") ?? ""}
             >
               <OpenInNewIcon className="h-5 w-5" />
@@ -196,7 +196,7 @@ export default function MapContent() {
               variant="ghost"
               size="sm"
               onClick={reset}
-              className="h-10 w-10 p-0 rounded-(--radius-sm) bg-(--bg-surface)/(--opacity-dim) border border-glass-border/(--opacity-dim) text-brand"
+              className="h-10 w-10 p-0 rounded-sm bg-(--bg-surface)/(--opacity-dim) border border-glass-border/(--opacity-dim) text-brand"
               title={t("map.reset") ?? ""}
             >
               <RestartAltIcon className="h-5 w-5" />
@@ -224,7 +224,7 @@ export default function MapContent() {
         )}
 
         {(!iframeLoaded || loadError) && !disableEmbeds && (
-          <div className="absolute inset-0 z-(--z-sidebar) grid place-items-center bg-background/(--opacity-heavy) backdrop-blur-sm">
+          <div className="absolute inset-0 z-sidebar grid place-items-center bg-background/(--opacity-heavy) backdrop-blur-sm">
             {!loadError ? (
               <div className="h-16 w-16 rounded-full border-4 border-surface/(--opacity-dim) border-t-brand animate-spin" />
             ) : (
@@ -257,13 +257,13 @@ export default function MapContent() {
 
         <div className="map-controls-shield absolute inset-0 pointer-events-none" />
 
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-(--z-navbar) pointer-events-none flex flex-col gap-3 pb-(--safe-area-bottom)">
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-navbar pointer-events-none flex flex-col gap-3 pb-(--safe-area-bottom)">
           <div className="flex items-center gap-2 pointer-events-auto">
-            <div className="glass glass--panel rounded-(--radius-md) p-1 bg-(--bg-surface)/(--opacity-medium) backdrop-blur-xl border border-glass-border shadow-2xl flex items-center gap-(--space-1)">
+            <div className="glass glass--panel rounded-md p-1 bg-(--bg-surface)/(--opacity-medium) backdrop-blur-xl border border-glass-border shadow-2xl flex items-center gap-(--space-1)">
               <button
                 onClick={() => setLayer("map")}
                 className={cn(
-                  "relative flex items-center gap-2 rounded-(--radius-sm) px-4 py-2 text-sm font-bold transition-all",
+                  "relative flex items-center gap-2 rounded-sm px-4 py-2 text-sm font-bold transition-all",
                   layer === "map"
                     ? "text-white"
                     : "text-(--text-secondary) hover:bg-(--bg-surface)/(--opacity-dim)"
@@ -272,11 +272,11 @@ export default function MapContent() {
                 {layer === "map" && (
                   <motion.div
                     layoutId="map-layer-indicator"
-                    className="absolute inset-0 bg-brand rounded-(--radius-sm) shadow-lg shadow-brand/(--opacity-dim)"
+                    className="absolute inset-0 bg-brand rounded-sm shadow-lg shadow-brand/(--opacity-dim)"
                     transition={{ type: "spring", stiffness: 400, damping: 30 }}
                   />
                 )}
-                <span className="relative z-(--z-base) flex items-center gap-2">
+                <span className="relative z-base flex items-center gap-2">
                   <MapIcon className="h-4 w-4" />
                   {!isMobile && <span>{t("map.layer.map")}</span>}
                 </span>
@@ -284,7 +284,7 @@ export default function MapContent() {
               <button
                 onClick={() => setLayer("hybrid")}
                 className={cn(
-                  "relative flex items-center gap-2 rounded-(--radius-sm) px-4 py-2 text-sm font-bold transition-all",
+                  "relative flex items-center gap-2 rounded-sm px-4 py-2 text-sm font-bold transition-all",
                   layer === "hybrid"
                     ? "text-white"
                     : "text-(--text-secondary) hover:bg-(--bg-surface)/(--opacity-dim)"
@@ -293,11 +293,11 @@ export default function MapContent() {
                 {layer === "hybrid" && (
                   <motion.div
                     layoutId="map-layer-indicator"
-                    className="absolute inset-0 bg-brand rounded-(--radius-sm) shadow-lg shadow-brand/(--opacity-dim)"
+                    className="absolute inset-0 bg-brand rounded-sm shadow-lg shadow-brand/(--opacity-dim)"
                     transition={{ type: "spring", stiffness: 400, damping: 30 }}
                   />
                 )}
-                <span className="relative z-(--z-base) flex items-center gap-2">
+                <span className="relative z-base flex items-center gap-2">
                   <SatelliteAltIcon className="h-4 w-4" />
                   {!isMobile && <span>{t("map.layer.hybrid")}</span>}
                 </span>

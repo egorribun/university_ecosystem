@@ -25,7 +25,7 @@ export default function BackToTop() {
     <AnimatePresence>
       {show && (
         <div
-          className="fixed bottom-6 right-6 z-(--z-tooltip)"
+          className="fixed bottom-6 right-6 z-tooltip"
           style={{ pointerEvents: show ? "auto" : "none" }}
         >
           <Magnetic strength={0.3}>

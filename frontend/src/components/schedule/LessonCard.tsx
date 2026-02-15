@@ -1,15 +1,10 @@
-/**
- * LessonCard Component
- *
- * A card component for displaying a lesson in the schedule.
- * Used in both desktop table and mobile card views.
- */
-
+import { memo } from "react"
 import {
   Trash2 as DeleteIcon,
   Info as InfoOutlinedIcon,
   Clock as AccessTimeIcon,
   MapPin as RoomIcon,
+  User as TeacherIcon,
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { Badge, Tooltip } from "@/components/ui"
@@ -28,7 +23,7 @@ export interface LessonCardProps {
   canEdit?: boolean
 }
 
-export function LessonCard({
+export const LessonCard = memo(function LessonCard({
   lesson,
   isConflict,
   onDelete,
@@ -42,6 +37,7 @@ export function LessonCard({
 
   return (
     <div
+      id={`lesson-card-${lesson.id}`}
       onClick={onOpen}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -52,7 +48,7 @@ export function LessonCard({
       role="button"
       tabIndex={0}
       className={cn(
-        "group relative flex h-full min-h-32 flex-col overflow-hidden rounded-2xl border border-glass-border-subtle bg-glass-elevated p-3 shadow-premium transition-all duration-300 sm:min-h-[130px]",
+        "group relative flex h-full min-h-32 flex-col overflow-hidden rounded-2xl border border-glass-border-subtle bg-glass-elevated p-3 shadow-premium transition-all duration-base sm:min-h-(--h-card-lesson-min)",
         hasBreakBefore ? "mt-6" : "",
         "hover:-translate-y-1 hover:shadow-glass hover:border-brand-subtle",
         "dark:shadow-premium-dark dark:hover:shadow-glass-strong-dark",
@@ -91,9 +87,10 @@ export function LessonCard({
           <Badge
             size="xs"
             variant="outline"
+            leadingIcon={<TeacherIcon size={14} className="text-(--primary-main)" />}
             className="font-medium text-(--text-primary)/(--opacity-hover) border-(--glass-border) bg-(--bg-surface)/(--opacity-dim) dark:text-(--text-primary)/(--opacity-heavy) dark:bg-(--bg-surface)/(--opacity-medium)"
           >
-            {lesson.teacher}
+            {lesson.teacher || "—"}
           </Badge>
           <Badge
             size="xs"
@@ -101,25 +98,26 @@ export function LessonCard({
             leadingIcon={<RoomIcon size={15} className="text-(--primary-main)" />}
             className="font-medium text-(--text-primary)/(--opacity-hover) border-(--glass-border) bg-(--bg-surface)/(--opacity-dim) dark:text-(--text-primary)/(--opacity-heavy) dark:bg-(--bg-surface)/(--opacity-medium)"
           >
-            {lesson.room}
+            {lesson.room || "—"}
           </Badge>
         </div>
       </div>
       <Tooltip content={t("schedule:lesson.details")}>
         <InfoOutlinedIcon
           size={18}
-          className="absolute bottom-3 right-3 text-text-muted-subtle opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+          className="absolute bottom-3 right-3 text-text-muted-subtle opacity-0 transition-opacity duration-fast group-hover:opacity-100"
         />
       </Tooltip>
       {canEdit && (
         <button
+          id={`delete-lesson-${lesson.id}`}
           aria-label={t("schedule:aria.deleteLesson")}
           onClick={(e) => {
             e.stopPropagation()
             onDelete()
           }}
           className={cn(
-            "absolute top-2 right-2 z-(--z-surface) flex h-7 w-7 items-center justify-center rounded-lg opacity-0 transition-premium",
+            "absolute top-2 right-2 z-surface flex h-7 w-7 items-center justify-center rounded-lg opacity-0 transition-premium",
             "bg-(--error-bg) text-(--error-text)",
             "border border-(--error-text)/(--opacity-soft)",
             "shadow-sm",
@@ -133,6 +131,6 @@ export function LessonCard({
       )}
     </div>
   )
-}
+})
 
 export default LessonCard

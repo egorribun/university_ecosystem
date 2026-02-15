@@ -19,7 +19,7 @@ export function SectionCard({
       className={cn(
         "relative flex flex-col gap-3 overflow-hidden rounded-2xl px-6 py-6",
         "border-glass-border bg-glass-bg shadow-glass backdrop-blur-glass text-(--text-primary)",
-        "transition-all duration-500",
+        "transition-all duration-slow",
         "before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit] before:opacity-soft",
         "before:bg-[radial-gradient(circle_at_0%_0%,var(--primary-main),transparent_60%)]",
         "dark:before:bg-[radial-gradient(circle_at_0%_0%,var(--primary-subtle),transparent_60%)]",
@@ -95,7 +95,7 @@ export function SessionItem({
       className={cn(
         "group relative flex items-stretch justify-between gap-4 rounded-xl px-4 py-3",
         "border-glass-border bg-glass-bg text-(--text-primary)",
-        "transition-all duration-500 ease-out backdrop-blur-glass",
+        "transition-all duration-slow ease-out backdrop-blur-glass",
         "hover:-translate-y-px hover:border-(--brand-main)/(--opacity-soft) hover:bg-glass-tint1 hover:shadow-glass",
         "max-sm:flex-col max-sm:items-start",
         "data-[revoked=true]:border-dashed data-[revoked=true]:border-(--border-subtle)",
@@ -128,7 +128,7 @@ export function AccordionSection({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-xl border transition-all duration-500",
+        "overflow-hidden rounded-xl border transition-all duration-slow",
         "border-glass-border bg-glass-bg backdrop-blur-glass",
         expanded
           ? "shadow-glass border-(--brand-main)/(--opacity-dim) bg-glass-tint1"
@@ -148,7 +148,7 @@ export function AccordionSection({
           </div>
           <motion.svg
             animate={{ rotate: expanded ? 180 : 0 }}
-            className="h-5 w-5 shrink-0 text-brand transition-transform duration-300"
+            className="h-5 w-5 shrink-0 text-brand transition-transform duration-base"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -159,7 +159,7 @@ export function AccordionSection({
       </button>
       <div
         className={cn(
-          "overflow-hidden transition-all duration-500",
+          "overflow-hidden transition-all duration-slow",
           expanded ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0"
         )}
       >
@@ -250,7 +250,7 @@ export function Tab({
       aria-selected={selected}
       onClick={onClick}
       className={cn(
-        "relative flex h-10 items-center justify-center rounded-xl px-5 text-sm font-black transition-all duration-500",
+        "relative flex h-10 items-center justify-center rounded-xl px-5 text-sm font-black transition-all duration-slow",
         selected
           ? "text-(--text-primary)"
           : "text-(--text-secondary) opacity-strong hover:opacity-100 hover:bg-(--bg-surface-hover)/(--opacity-dim)"
@@ -259,11 +259,11 @@ export function Tab({
       {selected && (
         <motion.div
           layoutId={layoutId}
-          className="absolute inset-0 z-(--z-hide) rounded-xl bg-brand/(--opacity-subtle) ring-1 ring-brand/(--opacity-dim)"
+          className="absolute inset-0 z-hide rounded-xl bg-brand/(--opacity-subtle) ring-1 ring-brand/(--opacity-dim)"
           transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
         />
       )}
-      <span className="relative z-(--z-deep)">{label}</span>
+      <span className="relative z-deep">{label}</span>
     </button>
   )
 }

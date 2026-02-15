@@ -142,22 +142,24 @@ export const StoryViewer = ({
   if (!isClient || !viewerStory || activeStoryIndex === null) return null
 
   return createPortal(
-    <div className="fixed inset-0 flex items-center justify-center p-(length:--fluid-px) z-(--z-overlay)">
-      <div
+    <div className="fixed inset-0 flex items-center justify-center p-(--fluid-px) z-overlay">
+      <button
+        type="button"
         aria-hidden
-        className="pointer-events-none absolute inset-0 z-(--z-base) bg-linear-to-b from-black/0 via-black/0 to-black/(--opacity-strong)"
+        className="pointer-events-auto absolute inset-0 z-base w-full h-full border-0 p-0 cursor-default bg-linear-to-b from-black/0 via-black/0 to-black/(--opacity-strong)"
         onClick={onClose}
+        tabIndex={-1}
       />
       <div
         ref={dialogTrapRef}
         role="dialog"
         aria-modal="true"
         aria-label={storyDialogLabel}
-        className="relative z-(--z-base) flex w-full justify-center"
+        className="relative z-base flex w-full justify-center"
       >
         <div
           className={cn(
-            "relative z-(--z-decor) flex aspect-9/16 w-(--story-card-w) max-h-[92vh] max-w-(--story-card-w) flex-col items-stretch justify-center overflow-hidden text-white sm:aspect-video sm:w-[min(96%,960px)] sm:max-h-(--h-hero-lg) sm:max-w-(--layout-max-content)",
+            "relative z-decor flex aspect-9/16 w-(--story-card-w) max-h-[92vh] max-w-(--story-card-w) flex-col items-stretch justify-center overflow-hidden text-white sm:aspect-video sm:w-[min(96%,960px)] sm:max-h-(--h-hero-lg) sm:max-w-(--layout-max-content)",
             viewerStory.cover_url ? "bg-(--bg-page)" : "bg-brand shadow-premium-lift",
             viewerStory.cover_url ? "rounded-none" : "rounded-md sm:rounded-lg"
           )}
@@ -180,7 +182,7 @@ export const StoryViewer = ({
             />
           ) : (
             <div className="flex w-full items-center justify-between px-fluid-x">
-              <span className="text-(length:--fs-fluid-display) font-extrabold uppercase">
+              <span className="text-(--fs-fluid-display) font-extrabold uppercase">
                 {viewerStory.title.slice(0, 2).toUpperCase()}
               </span>
             </div>
@@ -193,7 +195,7 @@ export const StoryViewer = ({
               className={cn(
                 "absolute bottom-0 left-0 right-0 flex flex-col",
                 viewerStory.cta_url ? "gap-5" : "gap-4",
-                "p-(length:--fluid-card-p) pt-(length:--space-12) sm:pt-(length:--space-16)"
+                "p-(--fluid-card-p) pt-12 sm:pt-16"
               )}
               style={{
                 backgroundImage: viewerStory.cover_url
@@ -204,10 +206,7 @@ export const StoryViewer = ({
               }}
             >
               {viewerStory.title && (
-                <h2
-                  id={dialogTitleId}
-                  className="text-(length:--fs-h2) font-extrabold leading-snug"
-                >
+                <h2 id={dialogTitleId} className="text-(--fs-h2) font-extrabold leading-snug">
                   {viewerStory.title}
                 </h2>
               )}
@@ -220,7 +219,7 @@ export const StoryViewer = ({
                     as={Link}
                     to={viewerStoryLink.to}
                     variant="solid"
-                    className="self-start rounded-full px-(length:--space-5)"
+                    className="self-start rounded-full px-(--space-5)"
                   >
                     {t("stories.viewer.openLink")}
                   </Button>
@@ -231,7 +230,7 @@ export const StoryViewer = ({
                     target={viewerStoryLink.target}
                     rel={viewerStoryLink.rel}
                     variant="solid"
-                    className="self-start rounded-full px-(length:--space-5)"
+                    className="self-start rounded-full px-(--space-5)"
                   >
                     {t("stories.viewer.openLink")}
                   </Button>
@@ -239,7 +238,7 @@ export const StoryViewer = ({
             </div>
           )}
 
-          <div className="absolute left-(--space-4) right-(--space-4) top-(--space-3) flex items-center gap-(--space-2) sm:left-(--space-6) sm:right-(--space-6) top-(--space-4)">
+          <div className="absolute left-(--space-4) right-(--space-4) top-(--space-4) flex items-center gap-(--space-2) sm:left-(--space-6) sm:right-(--space-6)">
             {stories.map((story, index) => (
               <ProgressBar
                 key={story.id}
@@ -249,12 +248,12 @@ export const StoryViewer = ({
                   total: stories.length,
                   title: story.title,
                 })}
-                className="h-[3px] flex-1 bg-white/(--opacity-soft)"
+                className="h-1 flex-1 bg-white/(--opacity-soft)"
                 barClassName={cn(
                   "bg-white",
                   prefersReducedMotion
                     ? "motion-reduce:transition-none"
-                    : "duration-150 ease-linear"
+                    : "duration-rapid ease-linear"
                 )}
                 animated={!prefersReducedMotion}
               />
@@ -266,7 +265,7 @@ export const StoryViewer = ({
             type="button"
             onClick={onClose}
             aria-label={t("stories.viewer.aria.close")}
-            className="absolute right-(--space-4) top-(--space-9) inline-flex h-(--space-11) w-(--space-11) items-center justify-center rounded-full bg-glass-bg/(--opacity-medium) text-white transition-colors duration-200 ease-out hover:bg-glass-bg/(--opacity-strong) focus-visible:outline focus-visible:ring-2 focus-visible:ring-white/(--opacity-strong) sm:right-(--space-6)"
+            className="absolute right-(--space-4) top-(--space-9) inline-flex h-(--space-11) w-(--space-11) items-center justify-center rounded-full bg-glass-bg/(--opacity-medium) text-white transition-colors duration-fast ease-out hover:bg-glass-bg/(--opacity-strong) focus-visible:outline focus-visible:ring-2 focus-visible:ring-white/(--opacity-strong) sm:right-(--space-6)"
           >
             <X size={20} aria-hidden="true" />
           </button>
@@ -277,7 +276,7 @@ export const StoryViewer = ({
                 type="button"
                 onClick={onPrev}
                 aria-label={t("stories.viewer.aria.prev")}
-                className="inline-flex h-(--space-12) w-(--space-12) items-center justify-center rounded-full bg-glass-bg/(--opacity-medium) text-white transition-colors duration-200 ease-out hover:bg-glass-bg/(--opacity-strong) focus-visible:outline focus-visible:ring-2 focus-visible:ring-white/(--opacity-strong)"
+                className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-glass-bg/(--opacity-medium) text-white transition-colors duration-fast ease-out hover:bg-glass-bg/(--opacity-strong) focus-visible:outline focus-visible:ring-2 focus-visible:ring-white/(--opacity-strong)"
               >
                 <ChevronLeft size={20} aria-hidden="true" />
               </button>
@@ -287,7 +286,7 @@ export const StoryViewer = ({
                 type="button"
                 onClick={onNext}
                 aria-label={t("stories.viewer.aria.next")}
-                className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-glass-bg/(--opacity-medium) text-white transition-colors duration-200 ease-out hover:bg-glass-bg/(--opacity-strong) focus-visible:outline focus-visible:ring-2 focus-visible:ring-white/(--opacity-strong)"
+                className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-glass-bg/(--opacity-medium) text-white transition-colors duration-fast ease-out hover:bg-glass-bg/(--opacity-strong) focus-visible:outline focus-visible:ring-2 focus-visible:ring-white/(--opacity-strong)"
               >
                 <ChevronRight size={20} aria-hidden="true" />
               </button>

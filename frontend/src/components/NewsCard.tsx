@@ -1,12 +1,11 @@
-import Dialog from "@/components/Dialog"
-import { Button, ContentCard, Snackbar } from "@/components/ui"
+import { ContentCard, Snackbar, ConfirmDialog } from "@/components/ui"
 import { SpotlightOverlay, useSpotlight } from "@/components/ui/Spotlight"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useNewsInteraction } from "@/hooks/useNewsInteraction"
+import { motion as motionTokens } from "@/theme/tokens"
 import { cn } from "@/utils/cn"
 import { sanitizeNewsText } from "@/utils/sanitize"
 import { motion } from "framer-motion"
-import { Trash2 as DeleteIcon } from "lucide-react"
 import { FC, lazy, memo, Suspense, useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import api from "../api/client"
@@ -131,10 +130,10 @@ const NewsCardComponent: FC<NewsCardProps> = ({
   return (
     <motion.article
       layout
-      initial={{ opacity: 0, y: 15 }}
+      initial={{ opacity: 0, y: 20 }} // consistent with FadeIn default
       animate={{ opacity: 1, y: 0 }}
       onMouseMove={spotlight.onMouseMove}
-      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: motionTokens.durationMedium, ease: [0.22, 1, 0.36, 1] }}
       whileHover={!hoveringDisabled ? { y: -4 } : undefined}
       className={cn("h-full outline-none", hoveringDisabled ? "cursor-default" : "cursor-pointer")}
     >
@@ -190,39 +189,17 @@ const NewsCardComponent: FC<NewsCardProps> = ({
           />
         </Suspense>
 
-        <Dialog
+        <ConfirmDialog
           open={confirmDeleteOpen}
-          onClose={closeDeletePrompt}
           title={t("news:dialogs.delete.title")}
-          bodyClassName="space-y-4"
-          footer={
-            <>
-              <Button
-                variant="outline"
-                onClick={closeDeletePrompt}
-                disabled={loading}
-                className="w-full sm:w-auto"
-              >
-                {t("common:buttons.cancel")}
-              </Button>
-              <Button
-                onClick={() => {
-                  void handleDelete()
-                }}
-                disabled={loading}
-                loading={loading}
-                className="w-full bg-error-bg text-error-text hover:bg-error-bg/(--opacity-heavy) sm:w-auto"
-              >
-                <DeleteIcon size={18} className="mr-1" />
-                {t("common:buttons.delete")}
-              </Button>
-            </>
-          }
-        >
-          <p className="text-input text-(--text-secondary)">
-            {t("news:dialogs.delete.description")}
-          </p>
-        </Dialog>
+          message={t("news:dialogs.delete.description")}
+          confirmText={t("common:buttons.delete")}
+          cancelText={t("common:buttons.cancel")}
+          variant="danger"
+          onConfirm={() => void handleDelete()}
+          onCancel={closeDeletePrompt}
+          isLoading={loading}
+        />
         <Snackbar open={!!error} message={error} onClose={() => setError("")} />
       </ContentCard>
     </motion.article>

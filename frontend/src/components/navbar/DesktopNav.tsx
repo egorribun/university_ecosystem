@@ -37,6 +37,7 @@ export const DesktopNav = ({
           whileTap={{ scale: 0.98 }}
         >
           <Link
+            id={`navbar-link-${item.to.replace(/\//g, "") || "home"}`}
             to={item.to}
             className={cn("menu-link", isActive(item.to) && "active")}
             onPointerDown={markScrollFromBottom}
@@ -47,9 +48,7 @@ export const DesktopNav = ({
               }
             }}
           >
-            <span className="relative z-(--z-surface) transition-colors duration-200">
-              {item.label}
-            </span>
+            <span className="relative z-surface transition-colors duration-fast">{item.label}</span>
             {isActive(item.to) && (
               <motion.div
                 layoutId="navbar-active-bar"

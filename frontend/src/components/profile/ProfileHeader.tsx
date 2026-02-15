@@ -63,7 +63,7 @@ export const ProfileHeader = ({
         <div
           className={cn(
             "absolute inset-0 bg-center bg-cover",
-            !reduceMotion && "transition-transform duration-1200 cubic-bezier-[0.33,1,0.68,1]"
+            !reduceMotion && "transition-transform duration-hero cubic-bezier-[0.33,1,0.68,1]"
           )}
           style={{
             transform: `translateY(${coverParallax}px) scale(${coverScale})`,
@@ -99,7 +99,7 @@ export const ProfileHeader = ({
           {/* Online Status Indicator */}
           {isOnline && (
             <div
-              className="absolute z-(--z-deep) rounded-full bg-(--success-bg) shadow-glow-green pointer-events-none"
+              className="absolute z-deep rounded-full bg-(--success-bg) shadow-glow-green pointer-events-none"
               style={{
                 right: `${statusOffset}px`,
                 bottom: `${statusOffset}px`,
@@ -130,19 +130,19 @@ export const ProfileHeader = ({
       <div className="grid grid-cols-2 gap-4 rounded-xl sm:rounded-2xl md:rounded-3xl p-4 bg-glass-bg border-glass-border backdrop-blur-glass shadow-glass">
         <div className="flex flex-col items-center justify-center py-2 text-center border-r border-glass-border">
           <span className="text-xl font-bold text-(--brand-main)">{user?.course || "—"}</span>
-          <span className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-(--opacity-medium)">
+          <span className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-medium">
             {t("profile:labels.course")}
           </span>
         </div>
         <div className="flex flex-col items-center justify-center py-2 text-center">
-          <div className="relative z-(--z-deep)">
+          <div className="relative z-deep">
             <div className="flex items-center gap-1">
               <span className="text-xl font-bold text-(--brand-main)">
                 {user?.record_book_number || "—"}
               </span>
             </div>
           </div>
-          <span className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-(--opacity-medium)">
+          <span className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-medium">
             {t("profile:labels.recordBook")}
           </span>
         </div>
@@ -178,7 +178,7 @@ export const ProfileHeader = ({
 
       {/* vCard QR Section */}
       <SectionCard className="p-5 flex flex-col gap-4">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-medium) flex items-center gap-2">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-medium flex items-center gap-2">
           <QrCodeIcon className="h-3.5 w-3.5" />
           {t("profile:labels.vcard")}
         </h2>

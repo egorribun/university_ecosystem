@@ -3,7 +3,7 @@ import { cva, type VariantProps } from "class-variance-authority"
 import type { ComponentPropsWithoutRef, ElementType, ReactNode } from "react"
 
 const badgeVariants = cva(
-  "inline-flex items-center justify-center gap-1 font-semibold tracking-tight transition-colors duration-200 ease-out leading-none",
+  "inline-flex items-center justify-center gap-1 font-semibold tracking-tight transition-colors duration-fast ease-out leading-none",
   {
     variants: {
       variant: {
@@ -33,29 +33,29 @@ const badgeVariants = cva(
       {
         shape: "pill",
         size: "xs",
-        class: "min-h-(--space-6) px-(length:--space-2) text-(length:--fs-badge)",
+        class: "min-h-6 px-2 text-(--fs-badge)",
       },
       {
         shape: "pill",
         size: "sm",
-        class: "min-h-(--space-7) px-(length:--space-2.5) text-(length:--fs-badge-sm)",
+        class: "min-h-7 px-2.5 text-(--fs-badge-sm)",
       },
       {
         shape: "pill",
         size: "md",
-        class: "min-h-(--space-8) px-(length:--space-3) text-(length:--fs-sm)",
+        class: "min-h-8 px-3 text-(--fs-sm)",
       },
       // Circle shape
       {
         shape: "circle",
         size: "xs",
-        class: "h-(--space-7) w-(--space-7) text-(length:--fs-badge)",
+        class: "h-7 w-7 text-(--fs-badge)",
       },
-      { shape: "circle", size: "sm", class: "h-(--space-8) w-(--space-8) text-(length:--fs-sm)" },
+      { shape: "circle", size: "sm", class: "h-8 w-8 text-(--fs-sm)" },
       {
         shape: "circle",
         size: "md",
-        class: "h-(--space-10) w-(--space-10) text-(length:--fs-base)",
+        class: "h-10 w-10 text-(--fs-base)",
       },
 
       // --- Tones & Variants ---

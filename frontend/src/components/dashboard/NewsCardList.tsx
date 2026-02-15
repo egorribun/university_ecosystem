@@ -17,7 +17,7 @@ export function NewsCardList({ news, loading, locale }: NewsCardListProps) {
   const navigate = useNavigate()
 
   const listActionBase =
-    "group relative isolate w-full overflow-hidden rounded-lg border border-border-subtle bg-surface-hover/subtle px-4 py-3 text-left transition-all duration-300 ease-out hover:bg-surface-hover/dim hover:border-border-strong hover:-translate-y-0.5 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/medium"
+    "group relative isolate w-full overflow-hidden rounded-lg border border-border-subtle bg-surface-hover/subtle px-4 py-3 text-left transition-all duration-base ease-out hover:bg-surface-hover/dim hover:border-border-strong hover:-translate-y-0.5 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/medium"
 
   if (loading) {
     return (
@@ -66,7 +66,7 @@ export function NewsCardList({ news, loading, locale }: NewsCardListProps) {
             </div>
             <span
               aria-hidden="true"
-              className="ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-glass-border bg-surface/dim text-(--text-primary) opacity-0 transition-all duration-300 group-hover:opacity-100 group-hover:border-brand group-hover:bg-brand/subtle group-hover:text-brand"
+              className="ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-glass-border bg-surface/dim text-(--text-primary) opacity-0 transition-all duration-base group-hover:opacity-100 group-hover:border-brand group-hover:bg-brand/subtle group-hover:text-brand"
             >
               <ArrowRight aria-hidden="true" className="h-4 w-4" />
             </span>

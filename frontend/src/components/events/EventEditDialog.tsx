@@ -43,7 +43,7 @@ export function EventEditDialog({
   const imageInputRef = useRef<HTMLInputElement>(null)
 
   const inputClass =
-    "w-full rounded-lg bg-(--input-bg) border border-(--input-border) px-3 py-2 text-sm text-(--text-primary) placeholder:text-(--input-placeholder) focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand transition-colors duration-200"
+    "w-full rounded-lg bg-(--input-bg) border border-(--input-border) px-3 py-2 text-sm text-(--text-primary) placeholder:text-(--input-placeholder) focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand transition-colors duration-fast"
 
   const getLocalizedEditValue = (field: "title" | "description" | "event_type" | "location") => {
     if (language === "en") {
@@ -224,7 +224,7 @@ export function EventEditDialog({
               <SmartImage
                 srcRaw={cardImageUrl}
                 alt={t("events:alt.preview")}
-                className="h-[140px] w-[220px] rounded-xl border border-(--glass-border) object-cover shadow-surface"
+                className="h-36 w-56 rounded-xl border border-(--glass-border) object-cover shadow-surface"
               />
             </div>
           )}

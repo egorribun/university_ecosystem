@@ -218,7 +218,7 @@ export default function InstallPrompt() {
             initial={{ opacity: 0, y: 50, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 50, scale: 0.95 }}
-            className="fixed bottom-24 right-4 left-4 sm:left-auto sm:right-6 z-(--z-toast) w-auto max-w-sm"
+            className="fixed bottom-24 right-4 left-4 sm:left-auto sm:right-6 z-toast w-auto max-w-sm"
           >
             <div className="bg-(--bg-surface)/(--opacity-heavy) backdrop-blur-2xl rounded-lg border border-glass-border shadow-2xl overflow-hidden ring-1 ring-black/(--opacity-faint) p-6">
               <div
@@ -246,7 +246,7 @@ export default function InstallPrompt() {
                         <X className="h-5 w-5" />
                       </button>
                     </div>
-                    <p className="text-sm font-medium text-(--text-secondary) leading-relaxed opacity-(--opacity-hover)">
+                    <p className="text-sm font-medium text-(--text-secondary) leading-relaxed opacity-hover">
                       {t("system:installPrompt.description")}
                     </p>
                     <div className="flex gap-2 pt-2">
@@ -294,7 +294,7 @@ export default function InstallPrompt() {
                       </button>
                     </div>
 
-                    <p className="text-sm font-medium text-(--text-secondary) leading-relaxed opacity-(--opacity-hover)">
+                    <p className="text-sm font-medium text-(--text-secondary) leading-relaxed opacity-hover">
                       {t("system:installPrompt.manageNotifications")}
                     </p>
 
@@ -338,14 +338,14 @@ export default function InstallPrompt() {
                           >
                             {t("system:installPrompt.check")}
                           </Button>
-                          <span className="text-label-md font-bold text-(--text-secondary) uppercase tracking-wider opacity-(--opacity-medium)">
+                          <span className="text-label-md font-bold text-(--text-secondary) uppercase tracking-wider opacity-medium">
                             {t("system:installPrompt.status", { status: permissionText })}
                           </span>
                         </div>
                       </div>
                     ) : notificationPermission === "default" ? (
                       <div className="space-y-4">
-                        <p className="text-xs font-bold text-(--text-secondary) opacity-(--opacity-medium) leading-relaxed px-1">
+                        <p className="text-xs font-bold text-(--text-secondary) opacity-medium leading-relaxed px-1">
                           {t("system:installPrompt.defaultPermissionDescription")}
                         </p>
                         <div className="flex items-center gap-3">
@@ -358,7 +358,7 @@ export default function InstallPrompt() {
                           >
                             {t("system:installPrompt.allow")}
                           </Button>
-                          <span className="text-label-md font-bold text-(--text-secondary) uppercase tracking-wider opacity-(--opacity-medium)">
+                          <span className="text-label-md font-bold text-(--text-secondary) uppercase tracking-wider opacity-medium">
                             {t("system:installPrompt.status", { status: permissionText })}
                           </span>
                         </div>
@@ -394,7 +394,7 @@ export default function InstallPrompt() {
                             </div>
                           ))}
                         </div>
-                        <p className="text-label-md font-bold text-(--text-secondary) opacity-(--opacity-dim) uppercase tracking-widest px-1">
+                        <p className="text-label-md font-bold text-(--text-secondary) opacity-dim uppercase tracking-widest px-1">
                           {t("system:installPrompt.browserPermission", { status: permissionText })}
                         </p>
                       </div>
@@ -413,7 +413,7 @@ export default function InstallPrompt() {
             initial={{ opacity: 0, scale: 0.9, y: -20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: -20 }}
-            className="fixed top-24 left-1/2 -translate-x-1/2 z-(--z-toast) w-full max-w-sm px-6"
+            className="fixed top-24 left-1/2 -translate-x-1/2 z-toast w-full max-w-sm px-6"
           >
             <div
               className={cn(
@@ -445,7 +445,7 @@ export default function InstallPrompt() {
             initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 50 }}
-            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-(--z-toast) w-full max-w-md px-6"
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-toast w-full max-w-md px-6"
           >
             <div className="flex items-center gap-4 p-4 rounded-2xl border border-brand/(--opacity-dim) bg-brand/(--opacity-faint) backdrop-blur-2xl shadow-2xl text-brand">
               <RefreshCw className="h-6 w-6 animate-spin-slow" />

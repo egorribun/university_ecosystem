@@ -211,12 +211,12 @@ const ParticleAuthBackground = () => {
   return (
     <div
       ref={containerRef}
-      className="absolute inset-0 z-(--z-hide) overflow-hidden pointer-events-none"
+      className="absolute inset-0 z-hide overflow-hidden pointer-events-none"
       aria-hidden="true"
     >
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
       {/* Overlay gradient to ensure text readability */}
-      <div className="absolute inset-0 bg-linear-to-b from-transparent via-transparent to-(--bg-page) opacity-(--opacity-strong)" />
+      <div className="absolute inset-0 bg-linear-to-b from-transparent via-transparent to-(--bg-page) opacity-strong" />
     </div>
   )
 }

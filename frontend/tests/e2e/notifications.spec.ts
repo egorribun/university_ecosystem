@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { expect, test, type Page } from "@playwright/test"
 import { useMockApi } from "./utils/mockApi"
 

@@ -82,7 +82,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
   }
 
   return (
-    <div className="shrink-0 p-(length:--space-3) z-(--z-popover) relative border-t border-(--glass-border)/(--opacity-subtle) bg-(--bg-surface)/(--opacity-soft) backdrop-blur-xl">
+    <div className="shrink-0 p-(--space-3) z-popover relative border-t border-(--glass-border)/(--opacity-subtle) bg-(--bg-surface)/(--opacity-soft) backdrop-blur-xl">
       {selectedFiles.length > 0 && (
         <div className="flex gap-2 mb-3 overflow-x-auto pb-2 custom-scrollbar">
           {selectedFiles.map((file, index) => (
@@ -109,9 +109,10 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
           ))}
         </div>
       )}
-      <div className="flex items-end gap-2 bg-(--bg-surface-hover)/(--opacity-subtle) rounded-2xl border border-(--glass-border)/(--opacity-dim) p-2 focus-within:ring-4 focus-within:ring-(--brand-main)/(--opacity-faint) focus-within:border-(--brand-main)/(--opacity-dim) transition-all duration-300">
+      <div className="flex items-end gap-2 bg-(--bg-surface-hover)/(--opacity-subtle) rounded-2xl border border-(--glass-border)/(--opacity-dim) p-2 focus-within:ring-4 focus-within:ring-(--brand-main)/(--opacity-faint) focus-within:border-(--brand-main)/(--opacity-dim) transition-all duration-base">
         <div className="relative">
           <motion.button
+            id="chat-attach-btn"
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             onClick={() => setShowAttachMenu(!showAttachMenu)}
@@ -125,7 +126,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
           >
             <Paperclip
               size={20}
-              className={cn("transition-transform duration-300", showAttachMenu && "rotate-45")}
+              className={cn("transition-transform duration-base", showAttachMenu && "rotate-45")}
             />
           </motion.button>
 
@@ -158,6 +159,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
                   },
                 ].map((item) => (
                   <button
+                    id={`chat-attach-type-${item.id}`}
                     key={item.id}
                     onClick={() => handleAttachmentClick(item.id as "photo" | "document" | "file")}
                     className="w-full px-4 py-3 flex items-center gap-3 hover:bg-(--bg-surface-hover) transition-colors text-left group"
@@ -182,6 +184,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
           <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileSelect} />
         </div>
         <textarea
+          id="chat-message-input"
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -190,12 +193,13 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
           rows={1}
         />
         <motion.button
+          id="chat-send-btn"
           whileHover={text.trim() || selectedFiles.length > 0 ? { scale: 1.1 } : {}}
           whileTap={text.trim() || selectedFiles.length > 0 ? { scale: 0.9 } : {}}
           onClick={handleSend}
           disabled={!text.trim() && selectedFiles.length === 0}
           className={cn(
-            "p-2.5 rounded-xl transition-all duration-300",
+            "p-2.5 rounded-xl transition-all duration-base",
             text.trim() || selectedFiles.length > 0
               ? "bg-(--brand-main) text-white shadow-lg shadow-(--brand-main)/(--opacity-soft)"
               : "bg-(--bg-surface-hover)/(--opacity-subtle) text-(--text-secondary) opacity-soft cursor-not-allowed"

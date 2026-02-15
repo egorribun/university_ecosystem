@@ -72,7 +72,7 @@ export default function WeatherWidget({ className }: WeatherWidgetProps) {
       <Tooltip content={tooltipContent}>
         <Badge
           size="sm"
-          className="chip-weather focus-visible:outline-none focus-visible:shadow-focus"
+          className="chip-weather focus-ring-premium"
           aria-live="polite"
           aria-label={ariaLabel}
           role="status"

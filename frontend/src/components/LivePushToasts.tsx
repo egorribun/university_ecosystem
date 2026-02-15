@@ -232,7 +232,7 @@ export default function LivePushToasts() {
   }[severity]
 
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-(--z-toast) w-full max-w-sm px-6 pointer-events-none">
+    <div className="fixed top-4 right-4 z-toast flex flex-col gap-2 pointer-events-none">
       <AnimatePresence>
         {open && current && (
           <motion.div
@@ -271,7 +271,7 @@ export default function LivePushToasts() {
               type="button"
               whileTap={{ scale: 0.94 }}
               onClick={() => handleClose()}
-              className="group/btn relative flex h-7 w-7 items-center justify-center rounded-full bg-linear-to-tr from-white/(--opacity-faint) to-white/(--opacity-subtle) text-white transition-all duration-300 hover:scale-110 hover:shadow-premium active:scale-95"
+              className="group/btn relative flex h-7 w-7 items-center justify-center rounded-full bg-linear-to-tr from-white/(--opacity-faint) to-white/(--opacity-subtle) text-white transition-all duration-base hover:scale-110 hover:shadow-premium active:scale-95"
               aria-label={t("common:buttons.close")}
             >
               <X className="h-3.5 w-3.5 opacity-hover transition-opacity group-hover/btn:opacity-100" />

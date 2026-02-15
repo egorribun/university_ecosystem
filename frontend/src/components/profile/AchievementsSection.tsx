@@ -37,7 +37,7 @@ export const AchievementsSection = ({
               <h3 className="text-sm font-bold text-(--text-primary) truncate group-hover:text-brand transition-colors">
                 {ach.name}
               </h3>
-              <p className="text-label-md text-(--text-secondary) opacity-(--opacity-strong) mt-0.5 line-clamp-1">
+              <p className="text-label-md text-(--text-secondary) opacity-strong mt-0.5 line-clamp-1">
                 {ach.issuer || "Academic Board"}
               </p>
             </div>

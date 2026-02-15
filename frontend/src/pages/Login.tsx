@@ -13,17 +13,18 @@ import {
   Fingerprint,
   LogIn,
 } from "lucide-react"
-import { motion } from "framer-motion"
+import { cn } from "@/utils/cn"
+import { FadeIn } from "@/components/ui/motion/FadeIn"
 import { ChallengeLockedError, useAuth } from "@/contexts/AuthContext"
 import type { PendingMfaState } from "@/types/Auth"
 import { isAxiosError } from "axios"
 import OtpEntry from "@/components/mfa/OtpEntry"
 import ParticleAuthBackground from "@/components/ui/ParticleAuthBackground"
 import { Input } from "@/components/ui/Input"
+import { Button } from "@/components/ui/Button"
 import { startAuthentication, browserSupportsWebAuthn } from "@simplewebauthn/browser"
 import { useLocalStorage } from "@/hooks/useLocalStorage"
-import { levenshtein } from "@/utils/levenshtein"
-import { COMMON_EMAIL_DOMAINS } from "@/constants/emailDomains"
+import { suggestEmailDomain } from "@/utils/authUtils"
 
 type ChallengeMethod = PendingMfaState["methods"][number]
 type ChallengeWithAttempts = ChallengeMethod &
@@ -31,40 +32,9 @@ type ChallengeWithAttempts = ChallengeMethod &
 
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-function suggestEmailDomain(email: string) {
-  const atIndex = email.indexOf("@")
-  if (atIndex < 0) return null
+// Email suggestion logic centralized in authUtils.ts
 
-  const localPart = email.slice(0, atIndex).trim()
-  const domain = email
-    .slice(atIndex + 1)
-    .trim()
-    .toLowerCase()
-
-  if (!localPart || !domain) return null
-  if ((COMMON_EMAIL_DOMAINS as ReadonlyArray<string>).includes(domain)) return null
-
-  let bestMatch: { domain: string; distance: number } | null = null
-  for (const candidate of COMMON_EMAIL_DOMAINS) {
-    const distance = levenshtein(domain, candidate)
-    if (distance <= 2 && (!bestMatch || distance < bestMatch.distance)) {
-      bestMatch = { domain: candidate, distance }
-    }
-  }
-  return bestMatch ? `${localPart}@${bestMatch.domain}` : null
-}
-
-const badgeClass =
-  "inline-flex w-40 items-baseline justify-center gap-2 rounded-full border border-glass-border-subtle/(--opacity-hover) " +
-  "bg-glass backdrop-blur-md px-4 py-2 text-sm font-semibold " +
-  "text-(--text-primary)/(--opacity-heavy) shadow-sm"
-
-const Spinner = () => (
-  <span
-    className="inline-flex h-5 w-5 animate-spin rounded-full border-2 border-current/(--opacity-strong) border-t-transparent"
-    aria-hidden="true"
-  />
-)
+// Removed badgeClass constant in favor of inline cn() usage
 
 const Login = () => {
   const { t } = useTranslation(["auth"])
@@ -334,10 +304,10 @@ const Login = () => {
     return (
       <div className="fixed inset-0 min-h-screen w-full bg-linear-to-b from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
         <ParticleAuthBackground />
-        <div className="relative z-(--z-navbar) flex min-h-screen items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
+        <div className="relative z-navbar flex min-h-screen items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
           <div className="w-full max-w-2xl rounded-4xl glass-high-fidelity p-8">
             <div className="flex flex-col items-center gap-6 text-center">
-              <div className="inline-flex items-center gap-2 rounded-full border border-glass-border-subtle bg-(--bg-surface-hover)/(--opacity-subtle) px-4 py-1 text-sm font-semibold tracking-wide text-(--text-primary)">
+              <div className="inline-flex items-center gap-2 rounded-full border border-glass-border-subtle bg-surface-hover/(--opacity-subtle) px-4 py-1 text-sm font-semibold tracking-wide text-text-primary">
                 <ShieldCheck className="h-4 w-4" aria-hidden="true" />
                 {t("auth:mfa.verifyTitle")}
               </div>
@@ -358,17 +328,21 @@ const Login = () => {
               {webauthnChallenge && (
                 <>
                   {webauthnSupported ? (
-                    <button
+                    <Button
                       type="button"
                       onClick={handleWebAuthnVerify}
                       disabled={mfaBusy}
-                      className="inline-flex w-full items-center justify-center gap-3 rounded-xl bg-brand/(--opacity-subtle) px-6 py-4 text-lg font-bold text-brand transition hover:bg-brand/(--opacity-dim) disabled:opacity-medium"
+                      loading={mfaBusy}
+                      variant="solid"
+                      size="lg"
+                      fullWidth
+                      leadingIcon={<Fingerprint className="h-6 w-6" />}
+                      className="bg-brand/(--opacity-subtle) text-brand hover:bg-brand/(--opacity-dim)"
                     >
-                      <Fingerprint className="h-6 w-6" />
                       {t("auth:mfa.webauthn.useSecurityKey", {
                         defaultValue: "Использовать ключ безопасности",
                       })}
-                    </button>
+                    </Button>
                   ) : (
                     <div className="w-full rounded-md border border-warning-border/(--opacity-medium) bg-warning-bg/(--opacity-subtle) px-4 py-3 text-sm font-semibold text-warning-text text-center">
                       {t("auth:mfa.webauthn.notSupported", {
@@ -383,12 +357,12 @@ const Login = () => {
               {otpChallenge && (
                 <>
                   {webauthnChallenge && (
-                    <div className="relative z-(--z-base) w-full py-2">
+                    <div className="relative z-base w-full py-2">
                       <div className="absolute inset-0 flex items-center">
                         <div className="w-full border-t border-glass-border-subtle"></div>
                       </div>
                       <div className="relative flex justify-center text-xs uppercase">
-                        <span className="bg-(--bg-surface) px-2 text-(--text-secondary)">
+                        <span className="bg-surface px-2 text-text-secondary">
                           {t("auth:mfa.or", { defaultValue: "ИЛИ" })}
                         </span>
                       </div>
@@ -404,7 +378,7 @@ const Login = () => {
                     />
                   </div>
 
-                  <label className="flex items-center gap-3 text-sm font-medium text-(--text-primary)">
+                  <label className="flex items-center gap-3 text-sm font-medium text-text-primary">
                     <input
                       type="checkbox"
                       className="size-5 rounded-lg border-brand/(--opacity-medium) bg-transparent accent-brand"
@@ -423,14 +397,16 @@ const Login = () => {
                 </div>
               )}
 
-              <button
+              <Button
                 type="button"
                 onClick={() => window.location.reload()}
-                className="inline-flex items-center gap-2 rounded-full border border-brand/(--opacity-medium) px-5 py-2 text-sm font-semibold text-brand transition hover:bg-brand/(--opacity-subtle)"
+                variant="outline"
+                size="sm"
+                className="rounded-full border-brand/(--opacity-medium) text-brand hover:bg-brand/(--opacity-subtle)"
+                leadingIcon={<Zap className="h-4 w-4" aria-hidden="true" />}
               >
-                <Zap className="h-4 w-4" aria-hidden="true" />
                 {t("auth:mfa.startOver")}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -439,24 +415,24 @@ const Login = () => {
   }
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden bg-(--bg-page) text-(--text-primary)">
+    <div className="relative min-h-screen w-full overflow-hidden bg-page text-text-primary">
       <ParticleAuthBackground />
-      <div className="relative z-(--z-navbar) mx-auto grid min-h-screen w-full max-w-7xl grid-cols-1 items-stretch gap-12 px-4 py-12 sm:px-6 lg:grid-cols-2 lg:px-8">
-        <motion.div
-          initial={{ x: -200 }}
-          animate={{ x: 0 }}
-          transition={{ duration: 0.5, ease: "easeOut" }}
-          className="flex w-full min-w-0 flex-col justify-center rounded-4xl border border-glass-border/(--opacity-hover) bg-(--bg-surface)/(--opacity-strong) p-8 shadow-glass backdrop-blur-3xl lg:p-12"
+      <div className="relative z-navbar mx-auto grid min-h-screen w-full max-w-7xl grid-cols-1 items-stretch gap-12 px-4 py-12 sm:px-6 lg:grid-cols-2 lg:px-8">
+        <FadeIn
+          direction="left"
+          distance={200}
+          duration={0.5}
+          className="flex w-full min-w-0 flex-col justify-center rounded-4xl border border-glass-border/(--opacity-hover) bg-surface/(--opacity-strong) p-8 shadow-glass backdrop-blur-3xl lg:p-12"
         >
-          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-(--text-primary)/(--opacity-strong)">
+          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-text-primary/(--opacity-strong)">
             {t("auth:login.heroBadge", { defaultValue: "University Ecosystem" })}
           </p>
-          <h1 className="mt-4 text-4xl font-extrabold leading-tight text-(--text-primary) sm:text-5xl">
+          <h1 className="mt-4 text-4xl font-extrabold leading-tight text-text-primary sm:text-5xl">
             {t("auth:login.heroHeading", {
               defaultValue: "Добро пожаловать в систему Университета",
             })}
           </h1>
-          <p className="mt-4 text-lg leading-relaxed text-(--text-secondary)">
+          <p className="mt-4 text-lg leading-relaxed text-text-secondary">
             {t("auth:login.heroDescription", {
               defaultValue:
                 "Расписание, новости, мероприятия и мессенджер — всё в одном месте для студентов и преподавателей.",
@@ -467,21 +443,27 @@ const Login = () => {
             {heroHighlights.map(({ icon: Icon, title, description }) => (
               <div
                 key={title}
-                className="group relative overflow-hidden rounded-lg border border-glass-border/(--opacity-heavy) bg-(--bg-surface)/(--opacity-medium) px-5 py-6 shadow-premium transition-transform duration-300 hover:-translate-y-1"
+                className="group relative overflow-hidden rounded-lg border border-glass-border/(--opacity-heavy) bg-surface/(--opacity-medium) px-5 py-6 shadow-premium transition-transform duration-base hover:-translate-y-1"
               >
-                <div className="relative z-(--z-base) flex items-center gap-3">
+                <div className="relative z-base flex items-center gap-3">
                   <span className="flex size-12 items-center justify-center rounded-md bg-brand-subtle-bg text-brand">
                     <Icon className="h-5 w-5" aria-hidden="true" />
                   </span>
                   <p className="text-base font-semibold">{title}</p>
                 </div>
-                <p className="mt-4 text-sm text-(--text-secondary)">{description}</p>
+                <p className="mt-4 text-sm text-text-secondary">{description}</p>
               </div>
             ))}
           </div>
 
           <div className="mt-10 flex flex-wrap gap-4">
-            <div className={badgeClass.replace("items-baseline", "items-center")}>
+            <div
+              className={cn(
+                "inline-flex w-40 items-center justify-center gap-2 rounded-full border border-glass-border-subtle/(--opacity-hover)",
+                "bg-glass backdrop-blur-md px-4 py-2 text-sm font-semibold",
+                "text-text-primary/(--opacity-heavy) shadow-sm"
+              )}
+            >
               <Zap className="mr-1 h-4 w-4 text-brand" strokeWidth={3} />
               <span className="text-xs font-extrabold uppercase tracking-[0.2em]">
                 {t("auth:login.statFast", { defaultValue: "Быстро" })}
@@ -490,25 +472,32 @@ const Login = () => {
                 {t("auth:login.statFastLabel", { defaultValue: "и безопасно" })}
               </span>
             </div>
-            <div className={badgeClass.replace("items-baseline", "items-center")}>
+            <div
+              className={cn(
+                "inline-flex w-40 items-center justify-center gap-2 rounded-full border border-glass-border-subtle/(--opacity-hover)",
+                "bg-glass backdrop-blur-md px-4 py-2 text-sm font-semibold",
+                "text-text-primary/(--opacity-heavy) shadow-sm"
+              )}
+            >
               <Sparkles className="mr-1 h-4 w-4 text-brand" strokeWidth={3} />
               <span className="text-xs font-extrabold uppercase tracking-[0.2em]">
                 {t("auth:login.statSmart", { defaultValue: "Умный интерфейс" })}
               </span>
             </div>
           </div>
-        </motion.div>
+        </FadeIn>
 
-        <motion.div
-          initial={{ y: 200 }}
-          animate={{ y: 0 }}
-          transition={{ duration: 0.5, ease: "easeOut", delay: 0.2 }}
-          className="flex w-full min-w-0 flex-col justify-center rounded-4xl border border-glass-border/(--opacity-hover) bg-(--bg-surface)/(--opacity-hover) p-6 shadow-glass backdrop-blur-2xl sm:p-10"
+        <FadeIn
+          direction="up"
+          distance={200}
+          duration={0.5}
+          delay={0.2}
+          className="flex w-full min-w-0 flex-col justify-center rounded-4xl border border-glass-border/(--opacity-hover) bg-surface/(--opacity-hover) p-6 shadow-glass backdrop-blur-2xl sm:p-10"
         >
           <form noValidate autoComplete="on" action={submitAction} className="flex flex-col gap-6">
             <div className="space-y-2 text-center">
               <h2 className="text-3xl font-extrabold">{t("auth:login.title")}</h2>
-              <p className="text-sm text-(--text-secondary)">
+              <p className="text-sm text-text-secondary">
                 {t("auth:login.subtitle", {
                   defaultValue: "Войдите, чтобы продолжить путешествие по университету",
                 })}
@@ -516,7 +505,7 @@ const Login = () => {
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="username" className="text-sm font-semibold text-(--text-primary)">
+              <label htmlFor="username" className="text-sm font-semibold text-text-primary">
                 {t("auth:fields.email")}
               </label>
               <Input
@@ -538,7 +527,7 @@ const Login = () => {
                 inputMode="email"
                 required
               />
-              <p className="text-xs text-(--text-secondary)/(--opacity-hover)">
+              <p className="text-xs text-text-secondary/(--opacity-hover)">
                 {!emailValid ? t("auth:messages.invalidFormat") : " "}
               </p>
               {emailSuggestion ? (
@@ -607,7 +596,7 @@ const Login = () => {
               {submitError || passkeyError}
             </div>
 
-            <label className="flex items-center gap-3 text-sm font-medium text-(--text-primary)">
+            <label className="flex items-center gap-3 text-sm font-medium text-text-primary">
               <input
                 type="checkbox"
                 className="size-5 rounded-lg border-brand/(--opacity-medium) bg-transparent accent-brand"
@@ -615,38 +604,38 @@ const Login = () => {
                 onChange={(e) => setTrustDevice(e.target.checked)}
                 disabled={isPending || submitting}
               />
-              {t("auth:actions.trustDevice", { defaultValue: "Доверять этому устройству" })}
+              {t("auth:actions.rememberEmail")}
             </label>
 
             <div className="flex flex-col gap-3">
-              <button
+              <Button
+                id="login-submit"
                 type="submit"
-                className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-linear-to-b from-brand to-brand-hover px-6 py-4 text-lg font-extrabold text-white shadow-premium transition hover:-translate-y-0.5 hover:shadow-glass-strong disabled:opacity-strong"
+                variant="solid"
+                size="lg"
+                fullWidth
+                loading={isPending || submitting}
                 disabled={isPending || submitting}
+                className="text-lg font-extrabold shadow-premium hover:shadow-glass-strong"
+                leadingIcon={!(isPending || submitting) ? <LogIn className="h-6 w-6" /> : undefined}
               >
-                {isPending || submitting ? (
-                  <>
-                    <Spinner />
-                    {t("auth:login.processing", { defaultValue: "Входим..." })}
-                  </>
-                ) : (
-                  <>
-                    <LogIn className="h-6 w-6 mr-2" />
-                    {t("auth:actions.signIn")}
-                  </>
-                )}
-              </button>
+                {t("auth:actions.signIn")}
+              </Button>
 
               {webauthnSupported && (
-                <button
+                <Button
+                  id="login-passkey"
                   type="button"
                   onClick={handlePasskeyLogin}
                   disabled={submitting}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-brand/(--opacity-medium) bg-brand/(--opacity-subtle) px-6 py-4 text-lg font-extrabold text-brand shadow-surface transition hover:-translate-y-0.5 hover:bg-brand/(--opacity-dim) disabled:opacity-strong"
+                  variant="outline"
+                  size="lg"
+                  fullWidth
+                  className="border-brand/(--opacity-medium) bg-brand/(--opacity-subtle) text-lg font-extrabold text-brand hover:bg-brand/(--opacity-dim)"
+                  leadingIcon={<Fingerprint className="h-6 w-6" />}
                 >
-                  <Fingerprint className="h-6 w-6" />
-                  {t("auth:login.signInWithPasskey", { defaultValue: "Войти с помощью Passkey" })}
-                </button>
+                  {t("auth:login.signInWithPasskey")}
+                </Button>
               )}
             </div>
 
@@ -668,7 +657,7 @@ const Login = () => {
               </div>
             </div>
           </form>
-        </motion.div>
+        </FadeIn>
       </div>
     </div>
   )

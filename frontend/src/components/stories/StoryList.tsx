@@ -42,7 +42,7 @@ export const StoryList = ({
     >
       {shouldShowHeading && <h2 className="sr-only">{t("stories.heading")}</h2>}
       {loading && (
-        <div className="flex flex-wrap gap-(length:--fluid-gap) py-(length:--space-3)">
+        <div className="flex flex-wrap gap-(--fluid-gap) py-(--space-3)">
           {Array.from({ length: SKELETON_COUNT }).map((_, index) => (
             <div
               key={index}
@@ -61,7 +61,7 @@ export const StoryList = ({
       )}
       {!loading && hasStories && (
         <ul
-          className="-mr-(length:--space-4) flex list-none gap-(length:--fluid-gap) overflow-x-auto p-0 pr-(length:--space-4) sm:mr-0 sm:flex-wrap sm:pr-0 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+          className="-mr-(--space-4) flex list-none gap-(--fluid-gap) overflow-x-auto p-0 pr-(--space-4) sm:mr-0 sm:flex-wrap sm:pr-0 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
           aria-label={listLabel}
         >
           {stories.map((story, index) => {
@@ -72,7 +72,7 @@ export const StoryList = ({
                 key={story.id}
                 className={cn(
                   "flex shrink-0 flex-col items-center justify-center overflow-visible",
-                  index === 0 ? "ml-(length:--space-3) sm:ml-(length:--space-2)" : ""
+                  index === 0 ? "ml-(--space-3) sm:ml-(--space-2)" : ""
                 )}
                 style={{
                   width: STORY_CIRCLE_DIAMETER,
@@ -93,10 +93,10 @@ export const StoryList = ({
                   title={tooltip ?? undefined}
                   data-active={activeStoryId === story.id ? "true" : undefined}
                   className={cn(
-                    "transition-transform data-[active=true]:ring-(length:--space-1) data-[active=true]:ring-brand/(--opacity-medium)"
+                    "transition-transform data-[active=true]:ring-(--space-1) data-[active=true]:ring-brand/(--opacity-medium)"
                   )}
                 >
-                  <div className="relative z-(--z-base) aspect-9/16 w-[--story-card-w] overflow-hidden rounded-md bg-(--bg-surface-raised) shadow-premium md:w-[--story-card-w-md]">
+                  <div className="relative z-base aspect-9/16 w-[--story-card-w] overflow-hidden rounded-md bg-(--bg-surface-raised) shadow-premium md:w-[--story-card-w-md]">
                     {story.cover_url ? (
                       <SmartImage
                         srcRaw={story.cover_url}
@@ -104,7 +104,7 @@ export const StoryList = ({
                         style={{ width: "100%", height: "100%", borderRadius: "inherit" }}
                       />
                     ) : (
-                      <div className="flex h-full w-full items-center justify-center text-(length:--fs-h3) font-bold uppercase tracking-wide text-white/(--opacity-heavy)">
+                      <div className="flex h-full w-full items-center justify-center text-(--fs-h3) font-bold uppercase tracking-wide text-white/(--opacity-heavy)">
                         {story.title.slice(0, 2).toUpperCase()}
                       </div>
                     )}

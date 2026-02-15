@@ -5,7 +5,7 @@ import {
   type FileOptimisticAction,
   type OptimisticEventFile,
   type UploadState,
-} from "@/pages/EventDetail.helpers"
+} from "../../components/events/helpers"
 
 describe("applyOptimisticFileAction", () => {
   const baseFile: OptimisticEventFile = {

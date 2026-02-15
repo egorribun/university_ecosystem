@@ -70,7 +70,7 @@ const initialEvent: EventDraft = {
 }
 
 const inputClass =
-  "w-full rounded-(--radius-sm) border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-4 py-3 text-md font-medium text-(--text-primary) shadow-sm focus:border-brand focus:outline-none transition-all placeholder:text-(--text-secondary)/(--opacity-medium)"
+  "w-full rounded-md border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-4 py-3 text-md font-medium text-(--text-primary) shadow-sm focus:border-brand focus:outline-none transition-all placeholder:text-(--text-secondary)/(--opacity-medium)"
 
 const Events = () => {
   const { user } = useAuth()
@@ -298,10 +298,10 @@ const Events = () => {
             {/* Header */}
             <header>
               <FadeSection delay="80ms" className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-(--bg-surface)/(--opacity-medium) border border-glass-border text-brand shadow-glass transition-transform duration-300 hover:scale-[1.08] overflow-hidden">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-(--bg-surface)/(--opacity-medium) border border-glass-border text-brand shadow-glass transition-transform duration-base hover:scale-[1.08] overflow-hidden">
                   <EventNoteIcon className="h-7 w-7" />
                 </div>
-                <h1 className="text-(length:--fs-page-title) font-bold tracking-tight text-(--text-primary)">
+                <h1 className="text-(--fs-page-title) font-bold tracking-tight">
                   {t("events:pageTitle")}
                 </h1>
               </FadeSection>
@@ -310,6 +310,7 @@ const Events = () => {
               {(user?.role === "admin" || user?.role === "teacher") && (
                 <FadeSection delay="140ms" className="mb-6 flex justify-start">
                   <Button
+                    id="create-event-btn"
                     size="lg"
                     onClick={() => setCreateOpen(true)}
                     disabled={imageUploading || loading}
@@ -321,7 +322,7 @@ const Events = () => {
               )}
             </header>
             {/* Tabs */}
-            <FadeSection delay="200ms" className="w-full max-w-md z-(--z-modal)" role="tablist">
+            <FadeSection delay="200ms" className="w-full max-w-md z-modal" role="tablist">
               <div
                 ref={tabContainerRef}
                 className={cn(
@@ -332,13 +333,14 @@ const Events = () => {
                 {tabs.map((tabItem) => (
                   <button
                     key={tabItem.key}
+                    id={`events-tab-${tabItem.key}`}
                     type="button"
                     role="tab"
                     aria-selected={tab === tabItem.key}
                     aria-controls={`events-tabpanel-${tabItem.key}`}
                     onClick={() => handleTabChange(tabItem.key)}
                     className={cn(
-                      "relative z-(--z-base) px-4 py-2 text-body-sm font-semibold rounded-(--radius-lg) transition-colors duration-200",
+                      "relative z-base px-4 py-2 text-body-sm font-semibold rounded-lg transition-colors duration-fast",
                       "sm:px-6 sm:text-base",
                       tab === tabItem.key
                         ? "text-(--text-primary)"
@@ -348,11 +350,11 @@ const Events = () => {
                     {tab === tabItem.key && (
                       <motion.div
                         layoutId="active-tab-indicator"
-                        className="absolute inset-0 bg-(--bg-surface) shadow-sm rounded-[inherit] z-(--z-negative)"
+                        className="absolute inset-0 bg-(--bg-surface) shadow-sm rounded-[inherit] z-negative"
                         transition={springSoft}
                       />
                     )}
-                    <span className="relative z-(--z-base)">{t(`events:tabs.${tabItem.key}`)}</span>
+                    <span className="relative z-base">{t(`events:tabs.${tabItem.key}`)}</span>
                   </button>
                 ))}
               </div>
@@ -363,6 +365,7 @@ const Events = () => {
               <div className="relative">
                 <SearchIcon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-(--text-secondary) pointer-events-none opacity-strong" />
                 <input
+                  id="events-search-input"
                   type="text"
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
@@ -371,7 +374,7 @@ const Events = () => {
                     "w-full rounded-md px-4 py-3.5 pl-11 pr-20 text-base text-(--text-primary)",
                     "bg-(--bg-surface)/(--opacity-medium) border border-glass-border shadow-glass backdrop-blur-md",
                     "placeholder:text-(--text-secondary)/(--opacity-medium)",
-                    "outline-none transition-all duration-200",
+                    "outline-none transition-all duration-fast",
                     "focus:border-brand/(--opacity-medium) focus:ring-4 focus:ring-brand/(--opacity-subtle)"
                   )}
                 />
@@ -380,7 +383,7 @@ const Events = () => {
                     <button
                       type="button"
                       onClick={() => setSearch("")}
-                      className="rounded-full p-2 text-(--text-secondary) transition-all duration-150 hover:bg-(--bg-surface)/(--opacity-dim) active:scale-95"
+                      className="rounded-full p-2 text-(--text-secondary) transition-all duration-rapid hover:bg-(--bg-surface)/(--opacity-dim) active:scale-95"
                       aria-label={t("events:aria.clearSearch")}
                     >
                       <ClearIcon className="h-4 w-4" />
@@ -390,7 +393,7 @@ const Events = () => {
                     type="button"
                     onClick={(event) => setFilterAnchor(event.currentTarget)}
                     className={cn(
-                      "relative rounded-full p-2 transition-all duration-150 hover:bg-(--bg-surface)/(--opacity-dim) active:scale-95",
+                      "relative rounded-full p-2 transition-all duration-rapid hover:bg-(--bg-surface)/(--opacity-dim) active:scale-95",
                       filtersActive ? "text-brand" : "text-(--text-secondary)"
                     )}
                     aria-label={t("events:aria.openFilters")}
@@ -411,7 +414,7 @@ const Events = () => {
             {filtersOpen && filterAnchor && (
               <div
                 ref={filterPopoverRef}
-                className="fixed z-(--z-modal) mt-2 min-w-64 rounded-md border border-glass-border bg-(--bg-surface)/(--opacity-heavy) p-4 shadow-glass backdrop-blur-xl"
+                className="fixed z-modal mt-2 min-w-64 rounded-md border border-glass-border bg-(--bg-surface)/(--opacity-heavy) p-4 shadow-glass backdrop-blur-xl"
                 style={{
                   top: filterAnchor.getBoundingClientRect().bottom + 8,
                   right: window.innerWidth - filterAnchor.getBoundingClientRect().right,
@@ -471,13 +474,13 @@ const Events = () => {
                 {loading &&
                   Array.from({ length: skeletonCount }).map((_, i) => (
                     <div key={`event-skel-${i}`} className="w-full">
-                      <div className="w-full space-y-4 rounded-(--radius-lg) border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-5 shadow-glass backdrop-blur-md">
+                      <div className="w-full space-y-4 rounded-lg border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-5 shadow-glass backdrop-blur-md">
                         <Skeleton height={isMobile ? 180 : 200} className="rounded-md" />
-                        <Skeleton height={28} className="rounded-(--radius-lg)" />
-                        <Skeleton height={20} width="75%" className="rounded-(--radius-lg)" />
+                        <Skeleton height={28} className="rounded-lg" />
+                        <Skeleton height={20} width="75%" className="rounded-lg" />
                         <div className="flex gap-3 pt-2">
-                          <Skeleton height={36} width={120} className="rounded-(--radius-sm)" />
-                          <Skeleton height={36} width={100} className="rounded-(--radius-sm)" />
+                          <Skeleton height={36} width={120} className="rounded-sm" />
+                          <Skeleton height={36} width={100} className="rounded-sm" />
                         </div>
                       </div>
                     </div>
@@ -495,9 +498,9 @@ const Events = () => {
                   ))}
 
                 {!loading && normalizedEvents.length === 0 && (
-                  <div className="col-span-full mt-12 flex w-full justify-center animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div className="flex w-full max-w-md flex-col items-center gap-5 rounded-(--radius-lg) border border-glass-border/(--opacity-soft) bg-(--bg-surface)/(--opacity-medium) px-8 py-14 text-center shadow-glass backdrop-blur-md">
-                      <div className="relative z-(--z-base) flex h-16 w-16 items-center justify-center rounded-full bg-brand/(--opacity-subtle) border border-brand/(--opacity-dim) shadow-brand/(--opacity-subtle) shadow-lg">
+                  <div className="col-span-full mt-12 flex w-full justify-center animate-in fade-in slide-in-from-bottom-4 duration-slow">
+                    <div className="flex w-full max-w-md flex-col items-center gap-5 rounded-lg border border-glass-border/(--opacity-soft) bg-(--bg-surface)/(--opacity-medium) px-8 py-14 text-center shadow-glass backdrop-blur-md">
+                      <div className="relative z-base flex h-16 w-16 items-center justify-center rounded-full bg-brand/(--opacity-subtle) border border-brand/(--opacity-dim) shadow-brand/(--opacity-subtle) shadow-lg">
                         <EventNoteIcon className="h-8 w-8 text-brand" />
                       </div>
                       <div className="space-y-2">
@@ -580,7 +583,7 @@ const Events = () => {
                           updateLocalizedDraftValue("description", event.target.value)
                         }
                         rows={3}
-                        className={cn(inputClass, "min-h-(length:--h-textarea-min) resize-y")}
+                        className={cn(inputClass, "min-h-(--h-textarea-min) resize-y")}
                       />
                     </div>
                     <div>
@@ -633,7 +636,7 @@ const Events = () => {
                         className={inputClass}
                       />
                     </div>
-                    <div className="space-y-(length:--space-3)">
+                    <div className="space-y-(--space-3)">
                       <label className="block text-sm font-semibold text-(--text-secondary)">
                         {t("events:form.image")}
                       </label>

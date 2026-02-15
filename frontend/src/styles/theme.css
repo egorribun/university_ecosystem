@@ -145,12 +145,17 @@
     --h-news-card-mobile: 400px;
     --h-news-card-desktop: 480px;
     /* Component Dimensions */
+    /* Component Dimensions (Refactored) */
     --w-index-col: 52px;
     --h-checkbox: 20px;
     --h-loading-spinner: 120px;
     --h-skeleton-row: 148px;
+    --h-card-lesson-min: 130px;
+    --w-drawer-mobile-max: 85%;
     --p-footer-y: 60px;
     --h-dialog-min: 320px;
+    --w-sidebar-collapsed: 52px;
+    /* Renamed from index-col for clarity */
     --w-sidebar-sm: 380px;
     --h-textarea-min: 120px;
     --size-pattern-min: 180px;
@@ -209,6 +214,42 @@
     --transition-premium: 500ms var(--ease-premium);
     --transition-fast: 200ms var(--ease-premium);
     --scale-hover: 1.02;
+
+    /* Motion System */
+    --motion-slide-sm: 10px;
+    --motion-slide-md: 20px;
+    --motion-slide-lg: 50px;
+    --motion-scale-in: 0.95;
+    --motion-scale-out: 1.05;
+
+    /* Durations */
+    --motion-duration-instant: 0.1s;
+    /* 100ms */
+    --motion-duration-rapid: 0.15s;
+    /* 150ms */
+    --motion-duration-fast: 0.2s;
+    /* 200ms */
+    --motion-duration-base: 0.3s;
+    /* 300ms */
+    --motion-duration-default: 0.35s;
+    /* 350ms */
+    --motion-duration-slow: 0.5s;
+    /* 500ms */
+    --motion-duration-slower: 0.7s;
+    /* 700ms */
+    --motion-duration-lazy: 0.9s;
+    /* 900ms */
+    --motion-duration-hero: 1.2s;
+    /* 1200ms */
+
+    /* Delays */
+    --motion-delay-none: 0s;
+    --motion-delay-short: 0.1s;
+    /* 100ms */
+    --motion-delay-base: 0.15s;
+    /* 150ms */
+    --motion-delay-long: 0.2s;
+    /* 200ms */
 
     --opacity-soft: 0.3;
     --opacity-medium: 0.5;

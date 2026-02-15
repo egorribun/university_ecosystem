@@ -12,7 +12,7 @@ const glassCardVariants = cva(
         high: "bg-(--glass-bg-high) backdrop-blur-2xl",
       },
       interactive: {
-        true: "transition-transform duration-300 hover:scale-[1.01] hover:bg-glass-tint1",
+        true: "transition-transform duration-base hover:scale-[1.01] hover:bg-glass-tint1",
         false: "",
       },
     },
@@ -35,9 +35,9 @@ export function GlassCard({
   return (
     <div className={cn(glassCardVariants({ intensity, interactive }), className)} {...rest}>
       {/* Premium Sheen Effect */}
-      <div className="pointer-events-none absolute inset-0 bg-linear-to-br from-white/(--opacity-subtle) via-transparent to-transparent opacity-(--opacity-medium)" />
+      <div className="pointer-events-none absolute inset-0 bg-linear-to-br from-white/(--opacity-subtle) via-transparent to-transparent opacity-medium" />
 
-      <div className="relative z-(--z-surface)">{children}</div>
+      <div className="relative z-surface">{children}</div>
     </div>
   )
 }

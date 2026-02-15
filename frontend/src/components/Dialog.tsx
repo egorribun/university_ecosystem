@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import useFocusTrap, { type UseFocusTrapOptions } from "@/hooks/useFocusTrap"
+import { X } from "lucide-react"
 import { cn } from "@/utils/cn"
 
 const isBrowser = typeof document !== "undefined"
@@ -98,7 +99,7 @@ export function Dialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-(--z-overlay) flex items-center justify-center overflow-y-auto px-fluid-x py-fluid-y"
+      className="fixed inset-0 z-overlay flex items-center justify-center overflow-y-auto px-fluid-x py-fluid-y"
       role="presentation"
     >
       <div
@@ -113,7 +114,7 @@ export function Dialog({
         aria-labelledby={labelledBy}
         aria-describedby={describedBy}
         className={cn(
-          "relative z-(--z-surface) w-full max-w-(--dialog-max-w)",
+          "relative z-surface w-full max-w-(--dialog-max-w)",
           sizeClassMap[size],
           fullScreenOnMobile
             ? "h-dvh max-h-dvh overflow-y-auto rounded-none bg-(--bg-surface) pb-6 pt-5 text-(--text-primary) shadow-surface-strong ring-1 ring-white/(--opacity-subtle) sm:h-auto sm:max-h-[90vh] sm:rounded-2xl sm:px-6 sm:pb-7"
@@ -142,23 +143,10 @@ export function Dialog({
             ref={closeButtonRef}
             type="button"
             onClick={onClose}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/(--opacity-subtle) bg-(--glass-bg)/(--opacity-hover) text-(--primary-main) shadow-surface transition hover:bg-(--glass-bg) focus-visible:outline-none focus-visible:shadow-focus"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/(--opacity-subtle) bg-(--glass-bg)/(--opacity-hover) text-(--primary-main) shadow-surface transition hover:bg-(--glass-bg) focus-ring-premium"
           >
             <span className="sr-only">{closeLabel}</span>
-            <svg
-              viewBox="0 0 20 20"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-4 w-4 text-(--primary-main)"
-              aria-hidden
-            >
-              <path
-                d="M5.5 5.5l9 9m0-9l-9 9"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-              />
-            </svg>
+            <X className="h-4 w-4 text-(--primary-main)" aria-hidden />
           </button>
         </div>
         <div className={cn("mt-5 space-y-5", bodyClassName)}>{children}</div>

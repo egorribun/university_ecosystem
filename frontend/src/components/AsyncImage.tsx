@@ -96,7 +96,7 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
           {shouldShowSkeleton && (
             <div
               key="skeleton"
-              className="absolute inset-0 z-(--z-decor)"
+              className="absolute inset-0 z-decor"
               data-testid="async-image-skeleton"
             >
               <Skeleton width="100%" height="100%" />
@@ -150,9 +150,7 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
             className="absolute inset-0 flex items-center justify-center bg-(--bg-surface)/(--opacity-dim) text-(--text-secondary)"
             data-testid="async-image-fallback"
           >
-            {fallback ?? (
-              <InsertPhotoOutlinedIcon className="h-10 w-10 opacity-(--opacity-dim) shrink-0" />
-            )}
+            {fallback ?? <InsertPhotoOutlinedIcon className="h-10 w-10 opacity-dim shrink-0" />}
           </div>
         )}
       </div>

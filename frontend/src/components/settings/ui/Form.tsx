@@ -30,9 +30,10 @@ export function Button<T extends React.ElementType = "button">({
   startIcon?: React.ReactNode
   endIcon?: React.ReactNode
 }) {
-  const isLegacyVariant = (v: any): v is LegacyVariant =>
-    ["contained", "outlined", "text"].includes(v)
-  const isLegacySize = (s: any): s is LegacySize => ["small", "medium", "large"].includes(s)
+  const isLegacyVariant = (v: unknown): v is LegacyVariant =>
+    ["contained", "outlined", "text"].includes(v as string)
+  const isLegacySize = (s: unknown): s is LegacySize =>
+    ["small", "medium", "large"].includes(s as string)
 
   const mappedVariant = (
     isLegacyVariant(variant)
@@ -69,7 +70,7 @@ export const fadeDelayStyle = (value: string): CSSProperties =>
 export const securityStatusChipClassName = cn(
   "font-bold tracking-tight px-3 py-1 rounded-full text-xs",
   "text-(--text-primary) border-glass-border bg-glass-bg",
-  "shadow-glass backdrop-blur-glass transition-all duration-300",
+  "shadow-glass backdrop-blur-glass transition-all duration-base",
   "dark:bg-glass-tint1 dark:border-white/(--opacity-subtle)"
 )
 
@@ -242,7 +243,7 @@ export function FormControlLabel({
     <label
       className={cn(
         "group inline-flex items-center gap-3 rounded-sm px-2 py-1.5",
-        "cursor-pointer transition-all duration-300",
+        "cursor-pointer transition-all duration-base",
         "hover:bg-(--primary-main)/5 border border-transparent",
         className
       )}

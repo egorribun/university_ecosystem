@@ -94,7 +94,7 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
       role="region"
       aria-labelledby={titleId}
       className={cn(
-        "absolute inset-0 z-(--z-sticky) overflow-y-auto px-6 py-8 sm:px-12 sm:py-12 flex justify-center",
+        "absolute inset-0 z-sticky overflow-y-auto px-6 py-8 sm:px-12 sm:py-12 flex justify-center",
         "bg-linear-to-br from-background/(--opacity-heavy) to-background/(--opacity-hover) backdrop-blur-3xl",
         "text-(--text-primary)"
       )}
@@ -167,7 +167,7 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
                   }
                 }}
                 className={cn(
-                  "group relative flex flex-col gap-3 rounded-lg p-6 transition-all duration-500 cursor-pointer outline-none",
+                  "group relative flex flex-col gap-3 rounded-lg p-6 transition-all duration-slow cursor-pointer outline-none",
                   "border backdrop-blur-xl shadow-glass",
                   isActive
                     ? "border-brand/(--opacity-soft) bg-(--bg-surface-raised)/(--opacity-medium) ring-1 ring-brand/(--opacity-dim) -translate-y-1"
@@ -186,7 +186,7 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
                   </div>
                   <div
                     className={cn(
-                      "p-2 rounded-md transition-all duration-500",
+                      "p-2 rounded-md transition-all duration-slow",
                       isActive
                         ? "bg-brand text-white shadow-lg shadow-brand/(--opacity-medium)"
                         : "bg-(--bg-surface-hover)/(--opacity-dim) text-(--text-tertiary) opacity-dim group-hover:opacity-100"

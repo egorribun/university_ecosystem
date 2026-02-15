@@ -134,7 +134,7 @@ export default function Activity() {
           >
             <header>
               <FadeSection delay="80ms" className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-subtle-bg text-brand shadow-glass transition-transform duration-200 hover:scale-105 backdrop-blur-sm">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-subtle-bg text-brand shadow-glass transition-transform duration-fast hover:scale-105 backdrop-blur-sm">
                   <TimelineIcon className="text-3xl" />
                 </div>
                 <h1 className="text-page-title font-bold tracking-tight text-(--text-primary)">
@@ -161,7 +161,7 @@ export default function Activity() {
                     key={option.value}
                     onClick={() => setPeriod(option.value)}
                     className={cn(
-                      "relative rounded-full border-0 px-4 py-1.5 text-sm font-bold transition-colors duration-150",
+                      "relative rounded-full border-0 px-4 py-1.5 text-sm font-bold transition-colors duration-rapid",
                       period === option.value
                         ? "text-white"
                         : "bg-transparent text-(--text-primary) hover:bg-brand-subtle-bg hover:text-brand"
@@ -174,7 +174,7 @@ export default function Activity() {
                         transition={{ type: "spring", stiffness: 400, damping: 30 }}
                       />
                     )}
-                    <span className="relative z-(--z-base)">{option.label}</span>
+                    <span className="relative z-base">{option.label}</span>
                   </button>
                 ))}
               </motion.div>
@@ -211,7 +211,7 @@ export default function Activity() {
                       <ProgressBar
                         value={progressAttendance}
                         className="h-2 rounded-full"
-                        barClassName="bg-(--success-text) rounded-full transition-[width] duration-600"
+                        barClassName="bg-(--success-text) rounded-full transition-[width] duration-slow"
                       />
                       <p className="truncate text-sm text-(--text-muted-subtle)">
                         {t("activity:sections.attendance.summary", {

@@ -136,9 +136,13 @@ export const StepUpDialog = ({
   return (
     <div
       role="presentation"
-      className="fixed inset-0 z-(--z-navbar) flex items-center justify-center p-4 bg-black/(--opacity-medium)"
+      className="fixed inset-0 z-navbar flex items-center justify-center p-4 bg-black/(--opacity-medium)"
       onClick={onClose}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onClose()
+      }}
     >
+      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions */}
       <div
         role="dialog"
         aria-modal="true"
@@ -170,7 +174,7 @@ export const StepUpDialog = ({
         <div className="flex gap-2 justify-end px-6 pb-6 pt-2">
           <button
             onClick={onClose}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 text-base font-bold rounded-lg transition-all duration-200 text-(--text-primary) hover:bg-(--text-primary)/(--opacity-subtle)"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 text-base font-bold rounded-lg transition-all duration-fast text-(--text-primary) hover:bg-(--text-primary)/(--opacity-subtle)"
           >
             {t("common:buttons.cancel")}
           </button>

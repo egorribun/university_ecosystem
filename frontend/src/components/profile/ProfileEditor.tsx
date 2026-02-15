@@ -85,7 +85,7 @@ export const ProfileEditor = ({
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
             maxLength={120}
-            className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-(--glass-border) bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary)/(--opacity-medium) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-200"
+            className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-(--glass-border) bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary)/(--opacity-medium) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-fast"
           />
         </div>
 
@@ -98,7 +98,7 @@ export const ProfileEditor = ({
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-200"
+            className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-fast"
           />
         </div>
 
@@ -111,7 +111,7 @@ export const ProfileEditor = ({
             type="text"
             value={telegram}
             onChange={(e) => setTelegram(e.target.value)}
-            className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-200"
+            className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-fast"
           />
           <p className="text-label-xs xs:text-xs text-hint">{t("profile:form.telegramHint")}</p>
         </div>
@@ -127,7 +127,7 @@ export const ProfileEditor = ({
                 type="text"
                 value={department}
                 onChange={(e) => setDepartment(e.target.value)}
-                className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-200"
+                className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-fast"
               />
             </div>
             <div className="flex flex-col gap-1.5 sm:gap-2">
@@ -138,7 +138,7 @@ export const ProfileEditor = ({
                 type="text"
                 value={position}
                 onChange={(e) => setPosition(e.target.value)}
-                className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-200"
+                className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-fast"
               />
             </div>
           </>
@@ -155,7 +155,7 @@ export const ProfileEditor = ({
                 value={about}
                 onChange={(e) => setAbout(e.target.value)}
                 rows={3}
-                className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-200 resize-y min-h-[70px] sm:min-h-[80px]"
+                className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-fast resize-y min-h-20"
               />
             </div>
             <div className="flex flex-col gap-1.5 sm:gap-2">
@@ -166,7 +166,7 @@ export const ProfileEditor = ({
                 type="text"
                 value={recordBookNumber}
                 onChange={(e) => setRecordBookNumber(e.target.value)}
-                className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-200"
+                className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-fast"
               />
             </div>
             <div className="flex flex-col gap-1.5 sm:gap-2">
@@ -177,7 +177,7 @@ export const ProfileEditor = ({
                 type="text"
                 value={status}
                 onChange={(e) => setStatus(e.target.value)}
-                className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-200"
+                className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-fast"
               />
             </div>
             <div className="flex flex-col gap-1.5 sm:gap-2">
@@ -188,7 +188,7 @@ export const ProfileEditor = ({
                 type="text"
                 value={institute}
                 onChange={(e) => setInstitute(e.target.value)}
-                className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-200"
+                className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-fast"
               />
             </div>
             <div className="flex flex-col gap-1.5 sm:gap-2">
@@ -199,7 +199,7 @@ export const ProfileEditor = ({
                 type="text"
                 value={course}
                 onChange={(e) => setCourse(e.target.value)}
-                className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-200"
+                className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-fast"
               />
             </div>
             <div className="flex flex-col gap-1.5 sm:gap-2">
@@ -210,7 +210,7 @@ export const ProfileEditor = ({
                 type="text"
                 value={educationLevel}
                 onChange={(e) => setEducationLevel(e.target.value)}
-                className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-200"
+                className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-fast"
               />
             </div>
             <div className="flex flex-col gap-1.5 sm:gap-2">
@@ -221,7 +221,7 @@ export const ProfileEditor = ({
                 type="text"
                 value={track}
                 onChange={(e) => setTrack(e.target.value)}
-                className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-200"
+                className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-fast"
               />
             </div>
             <div className="flex flex-col gap-1.5 sm:gap-2">
@@ -232,7 +232,7 @@ export const ProfileEditor = ({
                 type="text"
                 value={program}
                 onChange={(e) => setProgram(e.target.value)}
-                className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-200"
+                className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-fast"
               />
             </div>
             <div className="flex flex-col gap-1.5 sm:gap-2">
@@ -243,7 +243,7 @@ export const ProfileEditor = ({
                 value={achievements}
                 onChange={(e) => setAchievements(e.target.value)}
                 rows={2}
-                className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-200 resize-y min-h-[50px] sm:min-h-[60px]"
+                className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-(--bg-surface) text-(--text-primary) placeholder:text-(--text-secondary) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-fast resize-y min-h-12 sm:min-h-16"
               />
             </div>
           </>
@@ -254,13 +254,13 @@ export const ProfileEditor = ({
           <button
             onClick={onSave}
             disabled={saving}
-            className="w-full sm:w-auto py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg sm:rounded-xl bg-(--primary-main) text-white font-extrabold tracking-wide text-sm sm:text-base shadow-surface hover:shadow-surface-strong transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.01] active:scale-[0.98] disabled:opacity-(--opacity-medium) border border-(--primary-main)/(--opacity-dim)"
+            className="w-full sm:w-auto py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg sm:rounded-xl bg-(--primary-main) text-white font-extrabold tracking-wide text-sm sm:text-base shadow-surface hover:shadow-surface-strong transition-all duration-base hover:-translate-y-0.5 hover:scale-[1.01] active:scale-[0.98] disabled:opacity-medium disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none border border-(--primary-main)/(--opacity-dim)"
           >
             {saving ? t("profile:form.saving") : t("profile:form.save")}
           </button>
           <button
             onClick={onCancel}
-            className="w-full sm:w-auto py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg sm:rounded-xl border-2 border-glass-border bg-transparent hover:bg-(--bg-surface)-accent text-(--text-primary) font-extrabold tracking-wide text-sm sm:text-base transition-all duration-300 hover:-translate-y-0.5 hover:scale-[1.01] active:scale-[0.98]"
+            className="w-full sm:w-auto py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg sm:rounded-xl border-2 border-glass-border bg-transparent hover:bg-(--bg-surface)-accent text-(--text-primary) font-extrabold tracking-wide text-sm sm:text-base transition-all duration-base hover:-translate-y-0.5 hover:scale-[1.01] active:scale-[0.98]"
           >
             {t("profile:form.cancel")}
           </button>

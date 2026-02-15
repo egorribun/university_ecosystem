@@ -67,18 +67,12 @@ export function NotificationsSection({
     <SectionCard component="section">
       <div className="flex flex-col gap-2 mb-4">
         <SectionTitle variant="subtitle1">{t("settings:notifications.title")}</SectionTitle>
-        <SectionSubtitle variant="body2">
-          {t("settings:notifications.subtitle", {
-            defaultValue: "Настройте уведомления и режим «Не беспокоить»",
-          })}
-        </SectionSubtitle>
+        <SectionSubtitle variant="body2">{t("settings:notifications.subtitle")}</SectionSubtitle>
       </div>
 
       <AccordionSection
         title={t("settings:notifications.push.title")}
-        subtitle={t("settings:notifications.push.subtitle", {
-          defaultValue: "Push-уведомления и тихий режим",
-        })}
+        subtitle={t("settings:notifications.push.subtitle")}
       >
         {pushInitializing ? (
           <div className="flex items-center gap-2 py-2">

@@ -35,9 +35,13 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 bg-black/(--opacity-strong) backdrop-blur-md flex items-center justify-center z-(--z-modal) p-4"
-          onClick={onClose}
+          className="fixed inset-0 flex items-center justify-center z-modal p-4"
         >
+          <div
+            className="absolute inset-0 bg-black/(--opacity-strong) backdrop-blur-md cursor-default"
+            onClick={onClose}
+            aria-hidden="true"
+          />
           <motion.div
             initial={{ scale: 0.95, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
@@ -74,7 +78,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
                 />
               </div>
 
-              <div className="max-h-[350px] overflow-y-auto custom-scrollbar pr-1 -mr-1">
+              <div className="max-h-96 overflow-y-auto custom-scrollbar pr-1 -mr-1">
                 {isLoading && (
                   <div className="flex flex-col items-center py-10">
                     <div className="w-10 h-10 border-4 border-(--brand-main)/(--opacity-subtle) border-t-(--brand-main) rounded-full animate-spin"></div>

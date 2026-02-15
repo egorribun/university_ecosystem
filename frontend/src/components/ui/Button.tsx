@@ -11,12 +11,12 @@ import type { PolymorphicComponentProps, PolymorphicRef } from "@/types/polymorp
 import { useHaptics } from "@/hooks/useHaptics"
 
 const buttonVariants = cva(
-  "group/button relative inline-flex items-center justify-center gap-2 overflow-hidden rounded-md font-bold tracking-tight text-base transition-premium focus-visible:outline-none focus-visible:shadow-focus no-underline hover:no-underline focus-visible:no-underline motion-reduce:transition-shadow motion-reduce:hover:translate-y-0 motion-reduce:active:translate-y-0",
+  "group/button relative inline-flex items-center justify-center gap-2 overflow-hidden rounded-md font-bold tracking-tight text-base transition-premium focus-ring-premium no-underline hover:no-underline focus-visible:no-underline motion-reduce:transition-shadow motion-reduce:hover:translate-y-0 motion-reduce:active:translate-y-0",
   {
     variants: {
       variant: {
         solid: cn(
-          "bg-linear-brand text-inverse-text shadow-surface ring-brand/dim transition-all duration-500",
+          "bg-linear-brand text-inverse-text shadow-surface ring-brand/dim transition-all duration-slow",
           "hover:shadow-premium-lift hover:scale-hover hover:opacity-heavy",
           "active:scale-95",
           "motion-reduce:hover:translate-y-0 motion-reduce:hover:scale-100 motion-reduce:active:translate-y-0 motion-reduce:active:scale-100",
@@ -38,18 +38,18 @@ const buttonVariants = cva(
         glass: cn(
           "bg-glass backdrop-blur-glass text-(--text-primary) border border-glass-border shadow-glass",
           "hover:bg-glass-tint1 hover:scale-hover",
-          "active:scale-95 transition-all duration-300"
+          "active:scale-95 transition-all duration-base"
         ),
         gradient: cn(
           "bg-linear-brand text-inverse-text shadow-lg border-none",
           "hover:shadow-premium-lift hover:saturate-150 hover:scale-hover hover:opacity-heavy",
-          "active:scale-95 transition-all duration-500"
+          "active:scale-95 transition-all duration-slow"
         ),
       },
       size: {
-        sm: "min-h-(--space-10) px-(length:--space-3) py-(length:--space-2) text-(length:--fs-sm)",
-        md: "min-h-(--space-12) px-(length:--space-5) py-(length:--space-2.5) text-(length:--fs-base)",
-        lg: "min-h-(--space-14) px-(length:--space-7) py-(length:--space-3) text-(length:--fs-lg)",
+        sm: "min-h-10 px-3 py-2 text-(--fs-sm)",
+        md: "min-h-12 px-5 py-2.5 text-(--fs-base)",
+        lg: "min-h-14 px-7 py-3 text-(--fs-lg)",
       },
       fullWidth: {
         true: "w-full",

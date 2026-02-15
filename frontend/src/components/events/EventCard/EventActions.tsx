@@ -106,7 +106,7 @@ export const EventActions: React.FC<EventActionsProps> = ({
                   }}
                   className="p-4! sm:p-5! rounded-fluid-lg shadow-premium-lift group/qr"
                 >
-                  <QrCodeIcon className="w-8 h-8 text-white drop-shadow-sm relative z-(--z-decor)" />
+                  <QrCodeIcon className="w-8 h-8 text-white drop-shadow-sm relative z-decor" />
                 </Button>
               </Tooltip>
 

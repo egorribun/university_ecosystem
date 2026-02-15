@@ -185,6 +185,7 @@ const deriveKey = async (keyMaterial: CryptoKey, salt: Uint8Array) => {
   return subtle.deriveKey(
     {
       name: "PBKDF2",
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       salt: salt as any,
       iterations: 600000,
       hash: "SHA-256",

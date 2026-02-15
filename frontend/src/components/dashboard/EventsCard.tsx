@@ -86,12 +86,12 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
   const scopedEvents = eventsScope === "today" ? todayEvents : weekEvents
 
   const listActionBase =
-    "group relative isolate w-full overflow-hidden rounded-sm border border-border-subtle bg-(--bg-surface-hover)/(--opacity-subtle) px-4 py-3 text-left transition-all duration-300 ease-out hover:bg-(--bg-surface-hover)/(--opacity-dim) hover:border-border-strong hover:-translate-y-0.5 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/(--opacity-medium)"
+    "group relative isolate w-full overflow-hidden rounded-sm border border-border-subtle bg-(--bg-surface-hover)/(--opacity-subtle) px-4 py-3 text-left transition-all duration-base ease-out hover:bg-(--bg-surface-hover)/(--opacity-dim) hover:border-border-strong hover:-translate-y-0.5 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/(--opacity-medium)"
 
   return (
     <Card
       className={cn(
-        "group bg-glass backdrop-blur-3xl transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
+        "group bg-glass backdrop-blur-3xl transition-all duration-base ease-[cubic-bezier(0.34,1.56,0.64,1)]",
         "hover:-translate-y-1 hover:scale-[1.01] hover:shadow-glass motion-reduce:hover:transform-none motion-reduce:hover:shadow-none",
         "dash-panel-events border-glass-border",
         className
@@ -101,9 +101,9 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
       style={style}
       {...props}
     >
-      <div className="relative z-(--z-base) space-y-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-(length:--fs-fluid-h2) font-extrabold text-(--text-primary)">
+      <div className="relative z-base space-y-5">
+        <div className="relative z-base flex items-center justify-between gap-3">
+          <h2 className="text-fluid-h2 font-extrabold text-(--text-primary)">
             {t("dashboard:events.heading")}
           </h2>
           <Button
@@ -111,7 +111,7 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
             to="/events"
             size="sm"
             variant="outline"
-            className="whitespace-nowrap px-5 transition-transform duration-300 hover:-translate-y-[2px]"
+            className="whitespace-nowrap px-5 transition-transform duration-base hover:-translate-y-[2px]"
             aria-label={t("dashboard:aria.viewAllEvents")}
             onPointerDown={prefetchEventsList}
             onKeyDown={(event) => {
@@ -125,7 +125,7 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
           <Button
             size="sm"
             variant={eventsScope === "today" ? "solid" : "outline"}
-            className="whitespace-nowrap transition-transform duration-300 hover:-translate-y-px"
+            className="whitespace-nowrap transition-transform duration-base hover:-translate-y-px"
             onClick={() => setEventsScope("today")}
             aria-pressed={eventsScope === "today"}
           >
@@ -134,7 +134,7 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
           <Button
             size="sm"
             variant={eventsScope === "week" ? "solid" : "outline"}
-            className="whitespace-nowrap transition-transform duration-300 hover:-translate-y-px"
+            className="whitespace-nowrap transition-transform duration-base hover:-translate-y-px"
             onClick={() => setEventsScope("week")}
             aria-pressed={eventsScope === "week"}
           >
@@ -187,7 +187,7 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
                       <span className="text-base font-semibold leading-tight text-(--text-primary) line-clamp-2">
                         {e.title}
                       </span>
-                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-glass-border bg-(--bg-surface)/(--opacity-dim) text-brand transition-all duration-300 group-hover:bg-brand/(--opacity-subtle)">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-glass-border bg-(--bg-surface)/(--opacity-dim) text-brand transition-all duration-base group-hover:bg-brand/(--opacity-subtle)">
                         <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
                       </span>
                     </span>
@@ -201,7 +201,7 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
                         <Badge
                           size="sm"
                           variant="outline"
-                          className="max-w-[120px] truncate"
+                          className="max-w-32 truncate"
                           label={e.location}
                         />
                       )}
@@ -226,7 +226,7 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
           repeat: Infinity,
           ease: "easeInOut",
         }}
-        className="pointer-events-none absolute inset-0 z-(--z-hide) bg-[radial-gradient(circle_at_top_left,var(--dash-card-events-radial),transparent_70%)] mix-blend-soft-light transition-opacity duration-500"
+        className="pointer-events-none absolute inset-0 z-hide bg-[radial-gradient(circle_at_top_left,var(--dash-card-events-radial),transparent_70%)] mix-blend-soft-light transition-opacity duration-slow"
       />
       <motion.span
         aria-hidden="true"
@@ -242,7 +242,7 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
           repeat: Infinity,
           ease: "easeInOut",
         }}
-        className="pointer-events-none absolute -top-16 left-1/4 z-(--z-hide) h-40 w-40 rounded-full bg-[radial-gradient(circle,var(--dash-card-events-orb),transparent)] blur-3xl mix-blend-soft-light transition-opacity duration-700"
+        className="pointer-events-none absolute inset-0 z-hide bg-(--grad-events-flare) mix-blend-soft-light transition-opacity duration-slow"
       />
     </Card>
   )

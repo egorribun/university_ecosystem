@@ -57,6 +57,19 @@ const GROUPS = [
       return manualMap[suffix] || suffix
     },
     valueTransform: (k) => `var(--${k})`,
+    // Also generate numeric keys for standard Tailwind spacing (e.g. "4": "var(--space-4)")
+    extraKeysGenerator: (k, v) => {
+      const suffix = k.replace("space-", "")
+      // If suffix is numeric (including floating point like 0.5 -> 05 in name but 0.5 in tw),
+      // we map it. Our tokens are named space-05, space-1, etc.
+      // We want strict mapping: space-1 -> "1", space-05 -> "0.5"?
+      // Actually, Tailwind uses "0.5", "1.5". Our vars are "05", "15".
+      // Let's just map the exact suffix as a string key if it's numeric-ish.
+      if (/^\d+(\.\d+)?$/.test(suffix) || /^\d+$/.test(suffix)) {
+        return { key: suffix, value: `var(--${k})` }
+      }
+      return null
+    },
   },
   {
     name: "radiusScale",
@@ -116,8 +129,20 @@ const GROUPS = [
       // e.g. size-avatar-xl -> avatarXl
       // e.g. w-card-sm -> cardSm
 
-      if (k.startsWith("h-hero"))
+      if (k.startsWith("h-hero")) {
+        // Fix for h-hero-max-portrait etc.
+        // parts: [h, hero, max, portrait] -> want heroMaxPortrait
+        if (parts.length > 3) {
+          return (
+            "hero" +
+            parts
+              .slice(2)
+              .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+              .join("")
+          )
+        }
         return "hero" + parts[2].charAt(0).toUpperCase() + parts[2].slice(1)
+      }
       if (k === "h-screen-offset") return "screenOffset"
       if (k.startsWith("size-avatar"))
         return "avatar" + parts[2].charAt(0).toUpperCase() + parts[2].slice(1)
@@ -199,7 +224,10 @@ ${group.staticContent}
       const jsKey = group.transformKey(key)
       if (jsKey) {
         const jsValue = group.valueTransform(key)
-        entries.push({ key: jsKey, value: jsValue })
+        // Check if key already exists to prevent duplicates
+        if (!entries.some((e) => e.key === jsKey)) {
+          entries.push({ key: jsKey, value: jsValue })
+        }
       }
     }
   }
@@ -207,8 +235,25 @@ ${group.staticContent}
   // Add extras
   if (group.extraKeys) {
     Object.entries(group.extraKeys).forEach(([k, v]) => {
-      entries.push({ key: k, value: v })
+      if (!entries.some((e) => e.key === k)) {
+        entries.push({ key: k, value: v })
+      }
     })
+  }
+
+  // Add generated extra keys (new feature)
+  if (group.extraKeysGenerator) {
+    for (const [key, _] of themeVars.entries()) {
+      if (group.pattern.test(key)) {
+        const extra = group.extraKeysGenerator(key)
+        if (extra) {
+          // Only add if not already present
+          if (!entries.some((e) => e.key === extra.key)) {
+            entries.push(extra)
+          }
+        }
+      }
+    }
   }
 
   // Sort for stability

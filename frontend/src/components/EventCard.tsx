@@ -3,12 +3,11 @@ import type { Event } from "@/types/Event"
 
 import { motion } from "framer-motion"
 import { cn } from "@/utils/cn"
-import Dialog from "@/components/Dialog"
 import { SpotlightOverlay } from "@/components/ui/Spotlight"
 import { motion as motionTokens } from "@/theme/tokens"
 import { EASING } from "@/utils/motion"
 
-import { Button, Snackbar, ContentCard } from "@/components/ui"
+import { Snackbar, ContentCard, ConfirmDialog } from "@/components/ui"
 import { useEventCardLogic } from "@/hooks/useEventCardLogic"
 
 // Sub-components
@@ -112,12 +111,12 @@ const EventCardComponent: FC<EventCardProps> = (props) => {
         <SpotlightOverlay
           mouseX={spotlight.mouseX}
           mouseY={spotlight.mouseY}
-          className="z-(--z-hide) rounded-3xl"
+          className="z-hide rounded-3xl"
         />
 
         {/* Admin Menu */}
         {user && (user.role === "admin" || user.role === "teacher") && (
-          <ContentCard.Actions className="absolute top-3 right-3 z-(--z-surface)">
+          <ContentCard.Actions className="absolute top-3 right-3 z-surface">
             <Suspense fallback={<div className="w-8 h-8 rounded-full bg-glass animate-pulse" />}>
               <EventAdminActions
                 menuAnchor={menuAnchor}
@@ -186,28 +185,17 @@ const EventCardComponent: FC<EventCardProps> = (props) => {
           />
         </Suspense>
 
-        <Dialog
+        <ConfirmDialog
           open={confirmDeleteOpen}
-          onClose={() => setConfirmDeleteOpen(false)}
           title={t("events:card.dialogs.delete.title")}
-          footer={
-            <>
-              <Button variant="outline" onClick={() => setConfirmDeleteOpen(false)}>
-                {t("common:buttons.cancel")}
-              </Button>
-              <Button
-                variant="solid"
-                onClick={handleDelete}
-                disabled={loading}
-                className="bg-error-text hover:bg-error-text/(--opacity-heavy)"
-              >
-                {t("common:buttons.delete")}
-              </Button>
-            </>
-          }
-        >
-          <p className="text-(--text-primary)">{t("events:card.dialogs.delete.description")}</p>
-        </Dialog>
+          message={t("events:card.dialogs.delete.description")}
+          confirmText={t("common:buttons.delete")}
+          cancelText={t("common:buttons.cancel")}
+          variant="danger"
+          onConfirm={handleDelete}
+          onCancel={() => setConfirmDeleteOpen(false)}
+          isLoading={loading}
+        />
 
         <Snackbar open={!!snackbar} message={snackbar} onClose={() => setSnackbar("")} />
       </ContentCard>

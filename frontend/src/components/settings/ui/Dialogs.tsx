@@ -44,7 +44,7 @@ export function Dialog({
   return ReactDOM.createPortal(
     <div
       role="presentation"
-      className="fixed inset-0 z-(--z-overlay) flex items-center justify-center p-4"
+      className="fixed inset-0 z-overlay flex items-center justify-center p-4"
     >
       <motion.div
         initial={{ opacity: 0 }}
@@ -60,7 +60,7 @@ export function Dialog({
         role="dialog"
         aria-modal="true"
         className={cn(
-          "relative z-(--z-surface) w-full overflow-hidden rounded-2xl border-glass-border bg-glass-bg shadow-glass backdrop-blur-glass",
+          "relative z-surface w-full overflow-hidden rounded-2xl border-glass-border bg-glass-bg shadow-glass backdrop-blur-glass",
           fullWidth ? "w-full" : maxWidthClasses
         )}
       >

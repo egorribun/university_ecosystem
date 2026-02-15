@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { MemoryRouter, useLocation } from "react-router-dom"
 import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
@@ -54,6 +55,7 @@ vi.mock("@/components/NotificationsBell", () => ({
 
 vi.mock("@/components/SmartImage", () => ({
   default: ({ alt, onClick }: { alt: string; onClick?: () => void }) => (
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-redundant-roles
     <img src="avatar" alt={alt} role="img" data-testid="smart-image" onClick={onClick} />
   ),
 }))
@@ -189,9 +191,7 @@ describe("Navbar", () => {
     expect(document.body.classList.contains("blurred")).toBe(false)
     expect(document.body.style.overflow).toBe("")
     expect(drawer).toHaveStyle({ pointerEvents: "none" })
-    const drawerNav = drawer.querySelector("nav")
-    expect(drawerNav).not.toBeNull()
-    expect(drawerNav).toHaveClass("-translate-x-full")
+    expect(drawer).toHaveClass("-translate-x-full")
   })
 
   it("closes the drawer when navigating to another route", async () => {
@@ -209,7 +209,7 @@ describe("Navbar", () => {
     await waitFor(() => expect(burger).toHaveAttribute("aria-expanded", "false"))
     const drawer = screen.getByRole("dialog")
     expect(drawer).toHaveStyle({ pointerEvents: "none" })
-    expect(drawer.querySelector("nav")).toHaveClass("-translate-x-full")
+    expect(drawer).toHaveClass("-translate-x-full")
     expect(document.body.style.overflow).toBe("")
     expect(screen.getByTestId("location-display")).toHaveTextContent("/news")
   })

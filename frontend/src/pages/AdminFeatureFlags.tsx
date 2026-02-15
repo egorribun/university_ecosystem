@@ -83,16 +83,16 @@ export default function AdminFeatureFlags() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-glass-border/(--opacity-subtle) bg-(--bg-surface-hover)/(--opacity-dim)">
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
+                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-medium">
                       {t("featureFlags.table.flag", "Feature Flag")}
                     </th>
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
+                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-medium">
                       {t("featureFlags.table.status", "Status")}
                     </th>
-                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
+                    <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-medium">
                       {t("featureFlags.table.rollout", "Rollout")}
                     </th>
-                    <th className="px-6 py-4 text-right text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-(--opacity-strong)">
+                    <th className="px-6 py-4 text-right text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong">
                       {t("featureFlags.table.details", "Details")}
                     </th>
                   </tr>
@@ -112,7 +112,7 @@ export default function AdminFeatureFlags() {
                             <span className="text-base font-bold text-(--text-primary)">
                               {flag.name}
                             </span>
-                            <span className="text-xs text-(--text-secondary) max-w-xs opacity-(--opacity-strong)">
+                            <span className="text-xs text-(--text-secondary) max-w-xs opacity-strong">
                               {flag.description}
                             </span>
                           </div>
@@ -156,7 +156,7 @@ export default function AdminFeatureFlags() {
                               </div>
                             </div>
                           ) : (
-                            <span className="text-sm italic text-(--text-secondary) opacity-(--opacity-medium)">
+                            <span className="text-sm italic text-(--text-secondary) opacity-medium">
                               Global toggle active
                             </span>
                           )}

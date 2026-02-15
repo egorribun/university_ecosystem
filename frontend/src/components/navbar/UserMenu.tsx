@@ -41,7 +41,7 @@ export const UserMenu = ({ user, isAuth, loading, go, t }: UserMenuProps) => {
   if (loading) {
     return (
       <div className="ml-auto flex items-center gap-4" aria-hidden="true">
-        <Skeleton className="rounded-full w-(--space-10) h-(--space-10) bg-brand/(--opacity-dim)" />
+        <Skeleton className="rounded-full w-10 h-10 bg-brand/(--opacity-dim)" />
         <Skeleton className="w-24 h-5 rounded-md bg-brand/(--opacity-dim)" />
       </div>
     )
@@ -70,7 +70,7 @@ export const UserMenu = ({ user, isAuth, loading, go, t }: UserMenuProps) => {
             fallback={AVATAR_PLACEHOLDER_URL}
             alt={profileAlt} // If t requires params, this might be broken. We'll fix in next step if needed.
             title={profileTitle}
-            className="block h-(--space-9) w-(--space-9) cursor-pointer rounded-full border border-(--border-subtle) bg-(--bg-surface-raised) object-cover shadow-sm hover:shadow-md transition-all duration-300"
+            className="block h-(--space-9) w-(--space-9) cursor-pointer rounded-full border border-(--border-subtle) bg-(--bg-surface-raised) object-cover shadow-sm hover:shadow-md transition-all duration-base"
             onClick={() => go("/profile")}
           />
         </motion.div>
@@ -84,6 +84,7 @@ export const UserMenu = ({ user, isAuth, loading, go, t }: UserMenuProps) => {
           {user.full_name}
         </button>
         <motion.button
+          id="navbar-settings-btn"
           whileHover={{
             rotate: 90,
             scale: 1.1,
@@ -92,7 +93,7 @@ export const UserMenu = ({ user, isAuth, loading, go, t }: UserMenuProps) => {
           whileTap={{ scale: 0.9 }}
           transition={springSoft}
           type="button"
-          className="flex items-center justify-center w-(--space-10) h-(--space-10) rounded-2xl text-(--text-primary) transition-colors"
+          className="flex items-center justify-center w-10 h-10 rounded-2xl text-(--text-primary) transition-colors"
           onClick={() => go("/settings")}
           aria-label={t("navigation:menu.settings")}
           title={t("navigation:menu.settings")}

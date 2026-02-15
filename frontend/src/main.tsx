@@ -3,6 +3,10 @@ import { createRoot } from "react-dom/client"
 import { QueryClientProvider } from "@tanstack/react-query"
 import dayjs from "dayjs"
 import "dayjs/locale/ru"
+import isoWeek from "dayjs/plugin/isoWeek"
+
+dayjs.extend(isoWeek)
+dayjs.locale("ru")
 
 import App from "./App"
 import ErrorBoundary from "./app/ErrorBoundary"
@@ -21,7 +25,6 @@ initObservability()
 initGlobalErrorHandlers()
 const webVitalsEnabled = initWebVitals()
 ensureTrustedTypesPolicies()
-dayjs.locale("ru")
 
 async function setupServiceWorker() {
   if (!import.meta.env.PROD) return

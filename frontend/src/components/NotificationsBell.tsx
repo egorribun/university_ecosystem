@@ -117,6 +117,7 @@ export default function NotificationsBell() {
     <>
       <motion.button
         ref={buttonRef}
+        id="global-notifications-btn"
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         onClick={() => setIsOpen(!isOpen)}
@@ -131,14 +132,14 @@ export default function NotificationsBell() {
       >
         <Bell
           className={cn(
-            "w-[clamp(18px,4.5vw,22px)] h-[clamp(18px,4.5vw,22px)] transition-transform duration-500",
+            "w-[clamp(18px,4.5vw,22px)] h-[clamp(18px,4.5vw,22px)] transition-transform duration-slow",
             isOpen && "rotate-[-10deg]"
           )}
           strokeWidth={1.8}
         />
         {unreadCount ? (
           <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-error-border opacity-(--opacity-strong)"></span>
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-error-border opacity-strong"></span>
             <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-(--error-text) border-2 border-(--bg-surface) dark:border-(--bg-page)"></span>
           </span>
         ) : null}
@@ -153,11 +154,11 @@ export default function NotificationsBell() {
               exit="exit"
               variants={listVariants}
               className={cn(
-                "fixed z-(--z-popover) origin-top-right",
+                "fixed z-popover origin-top-right",
                 // Mobile styles: we handle translation in framer motion to avoid conflict
                 "max-sm:left-1/2 max-sm:w-[calc(100vw-2rem)]",
                 // Desktop styles
-                "sm:w-[400px]",
+                "sm:w-96",
                 // Glass styles applied directly to motion component for immediate effect
                 "bg-glass backdrop-blur-xl border border-glass-border rounded-2xl shadow-glass overflow-hidden ring-1 ring-black/(--opacity-faint)"
               )}
@@ -184,24 +185,10 @@ export default function NotificationsBell() {
                   <button
                     onClick={() => markAll()}
                     disabled={actionsDisabled}
-                    className="p-1.5 text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--text-secondary)/(--opacity-faint) rounded-lg transition-colors disabled:opacity-(--opacity-soft) disabled:hover:bg-transparent"
+                    className="p-1.5 text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--text-secondary)/(--opacity-faint) rounded-lg transition-colors disabled:opacity-soft disabled:hover:bg-transparent"
                     title={t("system:notificationsBell.markAll")}
                   >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 16 16"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                      className="w-4 h-4"
-                    >
-                      <polyline
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        points="1,8 4,11 11,4"
-                      />
-                      <polyline strokeLinecap="round" strokeLinejoin="round" points="7,11 14,4" />
-                    </svg>
+                    <CheckCheck className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() =>
@@ -210,7 +197,7 @@ export default function NotificationsBell() {
                       })
                     }
                     disabled={actionsDisabled}
-                    className="p-1.5 text-(--text-secondary) hover:text-error-text hover:bg-error-bg/(--opacity-subtle) rounded-lg transition-colors disabled:opacity-(--opacity-soft) disabled:hover:bg-transparent"
+                    className="p-1.5 text-(--text-secondary) hover:text-error-text hover:bg-error-bg/(--opacity-subtle) rounded-lg transition-colors disabled:opacity-soft disabled:hover:bg-transparent"
                     title={t("system:notificationsBell.clear")}
                   >
                     <Trash2 className="w-4 h-4" />
@@ -242,9 +229,9 @@ export default function NotificationsBell() {
                 ) : data.length === 0 ? (
                   <div className="p-12 text-center text-(--text-secondary) flex flex-col items-center gap-3">
                     <div className="w-16 h-16 rounded-2xl bg-(--text-secondary)/(--opacity-faint) flex items-center justify-center mb-2">
-                      <Bell className="w-8 h-8 opacity-(--opacity-dim)" />
+                      <Bell className="w-8 h-8 opacity-dim" />
                     </div>
-                    <p className="text-sm opacity-(--opacity-medium) font-medium">
+                    <p className="text-sm opacity-medium font-medium">
                       {t("system:notificationsBell.empty")}
                     </p>
                   </div>
@@ -329,7 +316,7 @@ export default function NotificationsBell() {
                         <button
                           onClick={() => fetchMore(nextCursor)}
                           disabled={!nextCursor || isFetchingMore}
-                          className="w-full py-2 flex items-center justify-center gap-2 text-xs font-medium text-(--text-secondary) hover:text-(--text-primary) bg-(--text-secondary)/(--opacity-faint) hover:bg-(--border-strong) rounded-lg transition-all disabled:opacity-(--opacity-medium)"
+                          className="w-full py-2 flex items-center justify-center gap-2 text-xs font-medium text-(--text-secondary) hover:text-(--text-primary) bg-(--text-secondary)/(--opacity-faint) hover:bg-(--border-strong) rounded-lg transition-all disabled:opacity-medium"
                         >
                           {isFetchingMore ? (
                             <>

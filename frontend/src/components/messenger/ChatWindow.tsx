@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, memo } from "react"
 import { motion } from "framer-motion" // Removed AnimatePresence, LayoutGroup as they are not used
-import { File } from "lucide-react"
+import { File, Check, CheckCheck } from "lucide-react"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import { cn } from "@/utils/cn"
 import SmartImage from "@/components/SmartImage"
@@ -42,7 +42,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = memo(({ messages }) => {
   return (
     <div
       ref={containerRef}
-      className="msg-chat-area flex-1 min-h-0 overflow-y-auto p-(length:--space-4) custom-scrollbar"
+      className="msg-chat-area flex-1 min-h-0 overflow-y-auto p-(--space-4) custom-scrollbar"
     >
       <div
         style={{
@@ -102,7 +102,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = memo(({ messages }) => {
                               <SmartImage
                                 srcRaw={attachment.url}
                                 alt={attachment.name}
-                                className="w-full h-auto max-h-72 object-cover cursor-pointer hover:scale-hover transition-transform duration-500"
+                                className="w-full h-auto max-h-72 object-cover cursor-pointer hover:scale-hover transition-transform duration-slow"
                                 onClick={() => {
                                   const safe = sanitizeUrl(attachment.url)
                                   if (safe) window.open(safe, "_blank", "noopener,noreferrer")
@@ -126,7 +126,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = memo(({ messages }) => {
                               </div>
                               <div className="flex-1 min-w-0">
                                 <p className="truncate text-sm font-bold">{attachment.name}</p>
-                                <p className="text-micro opacity-(--opacity-medium) font-medium">
+                                <p className="text-micro opacity-medium font-medium">
                                   {(attachment.size / 1024).toFixed(1)} KB
                                 </p>
                               </div>
@@ -139,7 +139,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = memo(({ messages }) => {
                   <p className="wrap-break-word leading-relaxed whitespace-pre-wrap">
                     {message.text}
                   </p>
-                  <div className="flex items-center justify-end gap-1.5 mt-(length:--space-1) opacity-hover">
+                  <div className="flex items-center justify-end gap-1.5 mt-(--space-1) opacity-hover">
                     <span
                       className="text-micro font-bold uppercase tracking-wider"
                       style={{
@@ -151,26 +151,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = memo(({ messages }) => {
                     {message.isMe && (
                       <span className="flex items-center opacity-hover">
                         {message.status === "read" ? (
-                          <svg
-                            viewBox="0 0 16 16"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth={2.5}
-                            className="w-3 h-3 text-white"
-                          >
-                            <polyline points="1,8 4,11 11,4" />
-                            <polyline points="7,11 14,4" />
-                          </svg>
+                          <CheckCheck className="w-3 h-3 text-white" />
                         ) : (
-                          <svg
-                            viewBox="0 0 16 16"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth={2.5}
-                            className="w-3 h-3 text-white opacity-medium"
-                          >
-                            <polyline points="4,12 8,16 16,8" />
-                          </svg>
+                          <Check className="w-3 h-3 text-white opacity-medium" />
                         )}
                       </span>
                     )}

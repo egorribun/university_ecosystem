@@ -19,6 +19,7 @@ export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, 
           <motion.div
             layout
             key={contact.id}
+            id={`messenger-contact-${contact.id}`}
             role="button"
             tabIndex={0}
             onClick={() => onSelect(contact.id)}
@@ -31,7 +32,7 @@ export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, 
             whileHover={{ x: 4 }}
             whileTap={{ scale: 0.98 }}
             className={cn(
-              "msg-contact-item flex items-center gap-3 p-3 mb-1 rounded-2xl cursor-pointer transition-all duration-300",
+              "msg-contact-item flex items-center gap-3 p-3 mb-1 rounded-2xl cursor-pointer transition-all duration-base",
               selectedId === contact.id
                 ? "active bg-(--brand-main) text-white"
                 : "hover:bg-(--bg-surface-hover)/(--opacity-subtle)"

@@ -17,6 +17,7 @@
  */
 
 import { Component, type ErrorInfo, type ReactNode } from "react"
+import { AlertTriangle } from "lucide-react"
 import * as Sentry from "@sentry/react"
 
 interface FeatureErrorBoundaryProps {
@@ -50,28 +51,16 @@ function FeatureErrorFallback({
       className="flex flex-col items-center justify-center gap-3 rounded-xl border border-(--text-primary)/(--opacity-subtle) bg-(--glass-bg) p-6 text-center"
     >
       <div className="flex h-10 w-10 items-center justify-center rounded-full bg-warning-bg/(--opacity-dim) text-warning-text">
-        <svg
-          className="h-5 w-5 text-warning-text"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-          />
-        </svg>
+        <AlertTriangle className="h-5 w-5 text-warning-text" />
       </div>
       <div>
-        <h3 className="text-sm font-bold text-[--text-primary]">
+        <h3 className="text-sm font-bold text-(--text-primary)">
           {featureName ? `${featureName} unavailable` : "Feature unavailable"}
         </h3>
-        <p className="text-xs text-[--text-primary]/(--opacity-medium)">Something went wrong</p>
+        <p className="text-xs text-(--text-primary)/(--opacity-medium)">Something went wrong</p>
       </div>
       <button type="button" onClick={onRetry} className="hover:underline">
-        <span className="text-xs font-black text-[--accent]">Try again</span>
+        <span className="text-xs font-black text-(--accent)">Try again</span>
       </button>
     </div>
   )

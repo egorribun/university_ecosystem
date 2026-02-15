@@ -195,9 +195,9 @@ export default function Profile() {
   return (
     <Layout className="bg-transparent!">
       <SEO title={t("profile:pageTitle", "My Profile")} />
-      <div className="fixed inset-0 z-(--z-hide) pointer-events-none overflow-hidden" aria-hidden>
+      <div className="fixed inset-0 z-hide pointer-events-none overflow-hidden" aria-hidden>
         <div
-          className="absolute inset-0 bg-repeat bg-size-[clamp(var(--size-pattern-min),22vw,var(--size-pattern-max))] opacity-(--opacity-medium) mix-blend-soft-light dark:opacity-(--opacity-dim) translate-z-0"
+          className="absolute inset-0 bg-repeat bg-size-[clamp(var(--size-pattern-min),22vw,var(--size-pattern-max))] opacity-medium mix-blend-soft-light dark:opacity-dim translate-z-0"
           style={{ backgroundImage: `url(${profileBg})` }}
         />
       </div>
@@ -209,13 +209,13 @@ export default function Profile() {
           transition={isTest ? { duration: 0 } : { type: "spring", stiffness: 460, damping: 34 }}
         >
           <section
-            className="profile-page relative min-h-screen flex flex-col py-(length:--space-12) sm:py-(length:--space-16) md:py-(length:--space-20) lg:py-(length:--space-24) px-(length:--space-3) sm:px-(length:--space-4) md:px-(length:--space-6) lg:px-(length:--space-8)"
+            className="profile-page relative min-h-screen flex flex-col py-(--space-12) sm:py-(--space-16) md:py-(--space-20) lg:py-(--space-24) px-(--space-3) sm:px-(--space-4) md:px-(--space-6) lg:px-(--space-8)"
             data-testid="profile-root"
             aria-label={t("profile:aria.page")}
           >
-            <div className="max-w-full sm:max-w-[98%] md:max-w-[96%] lg:max-w-[95%] xl:max-w-(--layout-max-ultrawide) mx-auto w-full relative z-(--z-base)">
+            <div className="max-w-full sm:max-w-[98%] md:max-w-[96%] lg:max-w-[95%] xl:max-w-(--layout-max-ultrawide) mx-auto w-full relative z-base">
               <motion.div
-                className="px-(length:--space-4) sm:px-(length:--space-6) md:px-(length:--space-8) lg:px-(length:--space-10) xl:px-(length:--space-12) py-(length:--space-8) sm:py-(length:--space-10) md:py-(length:--space-12) lg:py-(length:--space-14) rounded-sm sm:rounded-md md:rounded-lg relative overflow-hidden bg-primary-subtle-bg/(--opacity-subtle) shadow-glass border border-glass-border-subtle/(--opacity-dim) backdrop-blur-md"
+                className="px-(--space-4) sm:px-(--space-6) md:px-(--space-8) lg:px-(--space-10) xl:px-(--space-12) py-(--space-8) sm:py-(--space-10) md:py-(--space-12) lg:py-(--space-14) rounded-sm sm:rounded-md md:rounded-lg relative overflow-hidden bg-primary-subtle-bg/(--opacity-subtle) shadow-glass border border-glass-border-subtle/(--opacity-dim) backdrop-blur-md"
                 initial={isTest ? false : { opacity: "var(--opacity-strong)", y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={
@@ -314,11 +314,11 @@ export default function Profile() {
       {/* QR Code Dialog */}
       <Dialog open={qrOpen} onClose={() => setQrOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle className="text-center">{t("profile:dialog.qr.title")}</DialogTitle>
-        <DialogContent className="flex flex-col items-center justify-center gap-3 min-h-(length:--h-dialog-min)">
-          <div className="w-full md:w-80 lg:w-96 flex flex-col border-r border-msg-border h-full relative z-(--z-deep) bg-msg-sidebar">
+        <DialogContent className="flex flex-col items-center justify-center gap-3 min-h-(--h-dialog-min)">
+          <div className="w-full md:w-80 lg:w-96 flex flex-col border-r border-msg-border h-full relative z-deep bg-msg-sidebar">
             <QRCodeSVG value={vCardData} size={300} level="H" includeMargin />
           </div>
-          <p className="text-xs text-(--text-secondary) text-center mt-2 opacity-(--opacity-hover)">
+          <p className="text-xs text-(--text-secondary) text-center mt-2 opacity-hover">
             {t("profile:dialog.qr.hint")}
           </p>
         </DialogContent>
@@ -340,7 +340,7 @@ export default function Profile() {
         <DialogContent className="grid gap-4 py-4">
           {achievementOpen?.issuer && (
             <div className="flex flex-col gap-0.5">
-              <span className="text-label-xs font-bold uppercase tracking-wider text-brand opacity-(--opacity-strong)">
+              <span className="text-label-xs font-bold uppercase tracking-wider text-brand opacity-strong">
                 {t("profile:fields.organizer")}
               </span>
               <p className="text-(--text-primary) font-medium">{achievementOpen.issuer}</p>

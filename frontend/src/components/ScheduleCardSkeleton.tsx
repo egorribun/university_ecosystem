@@ -39,7 +39,7 @@ export function ScheduleCardSkeleton({ items = 3, className = "" }: ScheduleCard
             </div>
 
             {/* Divider */}
-            <div className="h-12 w-[2px] bg-glass-border-subtle/(--opacity-medium)" />
+            <div className="h-12 w-0.5 bg-glass-border-subtle/(--opacity-medium)" />
 
             {/* Content */}
             <div className="flex flex-1 flex-col gap-2">

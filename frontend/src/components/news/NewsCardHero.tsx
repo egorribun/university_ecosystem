@@ -36,7 +36,7 @@ const NewsCardHero = ({ image_url, title, created_at }: NewsCardHeroProps) => {
     <div className="relative w-full h-news-hero md:h-news-hero-md shrink-0 overflow-hidden border-b border-glass-border bg-linear-to-br from-brand/(--opacity-subtle) to-brand/(--opacity-faint)">
       <div
         className={cn(
-          "absolute inset-0 animate-pulse bg-input-mix transition-opacity duration-300",
+          "absolute inset-0 animate-pulse bg-input-mix transition-opacity duration-base",
           cardImageReady ? "opacity-0" : "opacity-100"
         )}
         aria-hidden
@@ -47,12 +47,12 @@ const NewsCardHero = ({ image_url, title, created_at }: NewsCardHeroProps) => {
             srcRaw={cardImageUrl}
             alt={title ? t("news:alt.hero", { title }) : t("news:alt.heroFallback")}
             sizes="(min-width: 1200px) 640px, (min-width: 900px) 520px, 100vw"
-            className="absolute inset-0 h-full w-full object-cover transition duration-700 ease-out"
+            className="absolute inset-0 h-full w-full object-cover transition duration-slower ease-out"
             onLoad={handleCardImageReady}
             onError={handleCardImageReady}
           />
           <div
-            className="pointer-events-none absolute inset-0 z-decor transition-opacity duration-300 group-hover:opacity-0 bg-linear-to-t from-black/(--opacity-heavy) via-black/(--opacity-medium) to-transparent opacity-strong"
+            className="pointer-events-none absolute inset-0 z-decor transition-opacity duration-base group-hover:opacity-0 bg-linear-to-t from-black/(--opacity-heavy) via-black/(--opacity-medium) to-transparent opacity-strong"
             aria-hidden
           />
         </>
@@ -68,7 +68,7 @@ const NewsCardHero = ({ image_url, title, created_at }: NewsCardHeroProps) => {
         {createdAtIso && (
           <time
             dateTime={createdAtIso}
-            className="rounded-full bg-black/(--opacity-strong) px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/(--opacity-heavy) transition duration-300 ease-out group-hover/content:-translate-y-0.5 group-hover/content:bg-black/(--opacity-strong)"
+            className="rounded-full bg-black/(--opacity-strong) px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/(--opacity-heavy) transition duration-base ease-out group-hover/content:-translate-y-0.5 group-hover/content:bg-black/(--opacity-strong)"
           >
             {createdAtLabel}
           </time>
