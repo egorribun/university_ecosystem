@@ -53,9 +53,7 @@ export function AppearanceSection(_props: SettingsSectionProps) {
       <SectionCard component="section">
         <div className="flex flex-col gap-2 mb-4">
           <SectionTitle variant="subtitle1">{t("settings:appearance.title")}</SectionTitle>
-          <SectionSubtitle variant="body2">
-            {t("settings:appearance.subtitle")}
-          </SectionSubtitle>
+          <SectionSubtitle variant="body2">{t("settings:appearance.subtitle")}</SectionSubtitle>
         </div>
 
         <ul className="flex flex-col gap-3 list-none m-0 p-0">

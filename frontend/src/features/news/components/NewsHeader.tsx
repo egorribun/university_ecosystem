@@ -22,7 +22,12 @@ export const NewsHeader = ({ onAddClick, isAdmin }: NewsHeaderProps) => {
 
       {isAdmin && (
         <FadeSection delay="140ms" className="mb-6 flex justify-start">
-          <Button id="news-header-add-btn" size="lg" onClick={onAddClick} className="px-6 text-fluid-title-sm">
+          <Button
+            id="news-header-add-btn"
+            size="lg"
+            onClick={onAddClick}
+            className="px-6 text-fluid-title-sm"
+          >
             {t("news:actions.add")}
           </Button>
         </FadeSection>

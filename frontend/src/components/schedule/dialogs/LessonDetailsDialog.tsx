@@ -1,9 +1,5 @@
 import { useTranslation } from "react-i18next"
-import {
-  Clock as AccessTimeIcon,
-  MapPin as RoomIcon,
-  User as TeacherIcon,
-} from "lucide-react"
+import { Clock as AccessTimeIcon, MapPin as RoomIcon, User as TeacherIcon } from "lucide-react"
 import { Badge, Button } from "@/components/ui"
 import { Dialog, DialogActions, DialogContent, DialogTitle } from "@/components/settings"
 import { getTimeStr, getEndTimeStr } from "@/components/schedule/scheduleUtils"
@@ -92,15 +88,15 @@ export function LessonDetailsDialog({
       </DialogContent>
       <DialogActions>
         {(userRole === "admin" || userRole === "teacher") && (
-            <Button
-              id="lesson-details-edit"
-              variant="outline"
-              onClick={() => {
-                openDialog("edit", lesson)
-              }}
-            >
-              {t("common:buttons.edit")}
-            </Button>
+          <Button
+            id="lesson-details-edit"
+            variant="outline"
+            onClick={() => {
+              openDialog("edit", lesson)
+            }}
+          >
+            {t("common:buttons.edit")}
+          </Button>
         )}
         <Button id="lesson-details-close" variant="ghost" onClick={closeDialog}>
           {t("common:buttons.close")}

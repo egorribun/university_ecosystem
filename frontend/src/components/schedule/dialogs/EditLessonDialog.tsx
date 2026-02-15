@@ -218,11 +218,17 @@ export function EditLessonDialog({
             </div>
           )}
         </DialogContent>
-         <DialogActions>
+        <DialogActions>
           <Button id="edit-lesson-cancel" variant="ghost" type="button" onClick={closeDialog}>
             {t("common:buttons.cancel")}
           </Button>
-          <Button id="edit-lesson-submit" variant="solid" type="submit" loading={isSaving} disabled={!isFormValid}>
+          <Button
+            id="edit-lesson-submit"
+            variant="solid"
+            type="submit"
+            loading={isSaving}
+            disabled={!isFormValid}
+          >
             {t("common:buttons.save")}
           </Button>
         </DialogActions>

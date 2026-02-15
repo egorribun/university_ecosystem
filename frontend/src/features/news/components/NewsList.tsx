@@ -72,7 +72,12 @@ export const NewsList = ({
                   })}
                   action={
                     isAdmin ? (
-                      <Button id="news-empty-add-btn" size="lg" onClick={onAddClick} className="px-6">
+                      <Button
+                        id="news-empty-add-btn"
+                        size="lg"
+                        onClick={onAddClick}
+                        className="px-6"
+                      >
                         {t("news:actions.add")}
                       </Button>
                     ) : undefined

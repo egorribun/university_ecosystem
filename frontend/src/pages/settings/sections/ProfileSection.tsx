@@ -28,9 +28,7 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
     <SectionCard component="section">
       <div className="flex flex-col gap-2 mb-4">
         <SectionTitle variant="subtitle1">{t("settings:account.profile.title")}</SectionTitle>
-        <SectionSubtitle variant="body2">
-          {t("settings:account.profile.subtitle")}
-        </SectionSubtitle>
+        <SectionSubtitle variant="body2">{t("settings:account.profile.subtitle")}</SectionSubtitle>
       </div>
 
       <ul className="flex flex-col gap-3 list-none m-0 p-0">
@@ -124,12 +122,18 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
         {/* User Info Section */}
         <li className="list-none">
           <AccordionSection
-            title={t("settings:account.profile.extra.title", { defaultValue: "Информация о пользователе" })}
-            subtitle={t("settings:account.profile.extra.subtitle", { defaultValue: "Имя, биография и другие данные профиля" })}
+            title={t("settings:account.profile.extra.title", {
+              defaultValue: "Информация о пользователе",
+            })}
+            subtitle={t("settings:account.profile.extra.subtitle", {
+              defaultValue: "Имя, биография и другие данные профиля",
+            })}
           >
             <div className="flex flex-col gap-3">
               <SectionSubtitle className="text-sm">
-                {t("settings:account.profile.extra.hint", { defaultValue: "Редактируйте информацию о себе на странице профиля" })}
+                {t("settings:account.profile.extra.hint", {
+                  defaultValue: "Редактируйте информацию о себе на странице профиля",
+                })}
               </SectionSubtitle>
               <Button
                 size="sm"

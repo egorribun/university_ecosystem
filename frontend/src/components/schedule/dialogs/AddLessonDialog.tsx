@@ -200,7 +200,13 @@ export function AddLessonDialog({
           <Button id="add-lesson-cancel" variant="ghost" type="button" onClick={closeDialog}>
             {t("common:buttons.cancel")}
           </Button>
-          <Button id="add-lesson-submit" variant="solid" type="submit" loading={isAdding} disabled={!isFormValid}>
+          <Button
+            id="add-lesson-submit"
+            variant="solid"
+            type="submit"
+            loading={isAdding}
+            disabled={!isFormValid}
+          >
             {t("schedule:buttons.add")}
           </Button>
         </DialogActions>

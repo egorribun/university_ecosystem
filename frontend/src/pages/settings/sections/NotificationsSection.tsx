@@ -67,9 +67,7 @@ export function NotificationsSection({
     <SectionCard component="section">
       <div className="flex flex-col gap-2 mb-4">
         <SectionTitle variant="subtitle1">{t("settings:notifications.title")}</SectionTitle>
-        <SectionSubtitle variant="body2">
-          {t("settings:notifications.subtitle")}
-        </SectionSubtitle>
+        <SectionSubtitle variant="body2">{t("settings:notifications.subtitle")}</SectionSubtitle>
       </div>
 
       <AccordionSection
