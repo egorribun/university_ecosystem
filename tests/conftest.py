@@ -106,10 +106,13 @@ def mock_cache_backend(monkeypatch, mock_global_redis):
 @pytest.fixture(autouse=True)
 async def clear_redis_between_tests(mock_global_redis):
     """
-    Clear the shared FakeRedis instance before each test.
+    Clear the shared FakeRedis instance and in-memory rate limiters before each test.
     This prevents rate limits and cache data from leaking between tests.
     """
     await mock_global_redis.flushall()
+    from app.core.rate_limit import clear_all_rate_limit_memory
+
+    await clear_all_rate_limit_memory()
     yield
 
 

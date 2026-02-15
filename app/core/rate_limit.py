@@ -806,6 +806,17 @@ class ProgressiveDelayTracker:
         return info
 
 
+async def clear_all_rate_limit_memory() -> None:
+    """
+    Clear all in-memory rate limit and progressive delay state.
+    Used primarily for testing to ensure isolation.
+    """
+    async with _memory_lock:
+        _memory_counters.clear()
+    async with _progressive_delay_memory_lock:
+        _progressive_delay_memory.clear()
+
+
 _tracker_instance: ProgressiveDelayTracker | None = None
 
 

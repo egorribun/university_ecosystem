@@ -26,6 +26,10 @@ def news_repo(mock_db):
 
 @pytest.mark.asyncio
 async def test_get_published(news_repo, mock_db):
+    from app.core.cache import news_cache
+
+    await news_cache.invalidate_prefix("news:published")
+
     mock_result = MagicMock()
     mock_result.scalars().all.return_value = ["news1", "news2"]
     mock_db.execute.return_value = mock_result

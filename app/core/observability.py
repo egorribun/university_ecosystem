@@ -628,26 +628,32 @@ class PeriodicTaskMetrics:
             self.duration_seconds.observe(elapsed)
 
 
-def get_periodic_task_metrics(name: str) -> PeriodicTaskMetrics:
+def get_periodic_task_metrics(
+    name: str, *, registry: CollectorRegistry | None = None
+) -> PeriodicTaskMetrics:
     if Counter is None or Histogram is None:  # pragma: no cover - safety
         raise RuntimeError("prometheus-client is required for periodic task metrics")
 
     metric_key = _sanitize_metric_name(name)
-    if metric_key in _periodic_task_metrics:
+    if registry is None and metric_key in _periodic_task_metrics:
         return _periodic_task_metrics[metric_key]
 
+    target_registry = registry or REGISTRY
     prefix = f"periodic_task_{metric_key}"
     runs = Counter(
         f"{prefix}_runs_total",
         "Total successful executions of the periodic task",
+        registry=target_registry,
     )
     errors = Counter(
         f"{prefix}_errors_total",
         "Total exceptions raised by the periodic task",
+        registry=target_registry,
     )
     deleted = Counter(
         f"{prefix}_deleted_total",
         "Total database rows deleted by the periodic task",
+        registry=target_registry,
     )
     duration = Histogram(
         f"{prefix}_duration_seconds",
@@ -665,6 +671,7 @@ def get_periodic_task_metrics(name: str) -> PeriodicTaskMetrics:
             60.0,
             120.0,
         ),
+        registry=target_registry,
     )
 
     metrics = PeriodicTaskMetrics(

@@ -79,22 +79,26 @@ jobs:
       - name: Generate flaky test report
         if: steps.flaky_detection.outputs.flaky_found == 'true'
         run: |
-          cat > flaky-report.md << 'EOF'
+          # Capture the output of the commands before writing to the file
+          FAILED_OUTPUT=$(grep -A 5 "FAILED" flaky-test-output.txt || echo "See full output below")
+          FULL_OUTPUT=$(cat flaky-test-output.txt)
+
+          cat > flaky-report.md << EOF
           ## 🧪 Flaky Test Detection Report
 
           The following tests showed inconsistent behavior across ${{ env.FLAKY_TEST_RUNS }} runs:
 
-          ```
-          $(grep -A 5 "FAILED" flaky-test-output.txt || echo "See full output below")
-          ```
+          \`\`\`
+          $FAILED_OUTPUT
+          \`\`\`
 
           ### Full Output
           <details>
           <summary>Click to expand</summary>
 
-          ```
-          $(cat flaky-test-output.txt)
-          ```
+          \`\`\`
+          $FULL_OUTPUT
+          \`\`\`
           </details>
 
           ---
