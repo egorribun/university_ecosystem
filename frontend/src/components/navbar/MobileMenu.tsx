@@ -85,7 +85,10 @@ export function MobileMenu({
           isOpen ? "translate-x-0" : "-translate-x-full"
         )}
         onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onClose()
+          e.stopPropagation()
+        }}
       >
         <div className="flex-1 overflow-y-auto px-4 py-8">
           <ul className="flex flex-col gap-2">

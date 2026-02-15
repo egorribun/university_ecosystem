@@ -3,14 +3,14 @@
 exports[`MobileBottomNav > renders links for main sections 1`] = `
 <nav
   aria-label="Main navigation"
-  class="fixed bottom-0 left-0 right-0 z-(--z-navbar) flex h-navbar-height w-full items-center justify-around border-t border-glass-border bg-nav backdrop-blur-nav pb-(--safe-area-bottom) shadow-premium transition-all md:hidden"
+  class="fixed bottom-0 left-0 right-0 z-navbar flex h-navbar-height w-full items-center justify-around border-t border-glass-border bg-nav backdrop-blur-nav pb-(--safe-area-bottom) shadow-premium transition-all md:hidden"
   role="navigation"
   style="transition-duration: 600ms; transition-timing-function: var(--ease-premium);"
 >
   <a
     aria-current="page"
     aria-label="Home"
-    class="group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--text-primary) transition-all outline-none select-none active text-brand font-bold scale-110"
+    class="group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-(--text-primary) transition-all outline-none select-none active text-brand font-bold scale-110"
     data-discover="true"
     href="/dashboard"
   >
@@ -18,10 +18,10 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
       class="relative"
     >
       <div
-        class="absolute inset-[-14px] rounded-full bg-brand opacity-(--opacity-subtle) blur-xl z-(--z-negative)"
+        class="absolute inset-(calc(var(--space-4)*-1)) rounded-full bg-brand opacity-subtle blur-glass z-negative"
       />
       <span
-        class="block z-(--z-decor)"
+        class="block z-decor"
         tabindex="0"
       >
         <svg
@@ -69,14 +69,14 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
       </span>
     </div>
     <span
-      class="z-(--z-decor) text-label-xs font-black uppercase tracking-tight"
+      class="z-decor text-label-xs font-black uppercase tracking-tight"
     >
       Home
     </span>
   </a>
   <a
     aria-label="News"
-    class="group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--text-primary) transition-all outline-none select-none opacity-(--opacity-strong) hover:opacity-100"
+    class="group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-(--text-primary) transition-all outline-none select-none opacity-strong hover:opacity-100"
     data-discover="true"
     href="/news"
   >
@@ -84,7 +84,7 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
       class="relative"
     >
       <span
-        class="block z-(--z-decor)"
+        class="block z-decor"
         tabindex="0"
       >
         <svg
@@ -120,14 +120,14 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
       </span>
     </div>
     <span
-      class="z-(--z-decor) text-label-xs font-black uppercase tracking-tight"
+      class="z-decor text-label-xs font-black uppercase tracking-tight"
     >
       News
     </span>
   </a>
   <a
     aria-label="Events"
-    class="group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--text-primary) transition-all outline-none select-none opacity-(--opacity-strong) hover:opacity-100"
+    class="group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-(--text-primary) transition-all outline-none select-none opacity-strong hover:opacity-100"
     data-discover="true"
     href="/events"
   >
@@ -135,7 +135,7 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
       class="relative"
     >
       <span
-        class="block z-(--z-decor)"
+        class="block z-decor"
         tabindex="0"
       >
         <svg
@@ -171,14 +171,14 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
       </span>
     </div>
     <span
-      class="z-(--z-decor) text-label-xs font-black uppercase tracking-tight"
+      class="z-decor text-label-xs font-black uppercase tracking-tight"
     >
       Events
     </span>
   </a>
   <a
     aria-label="Schedule"
-    class="group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--text-primary) transition-all outline-none select-none opacity-(--opacity-strong) hover:opacity-100"
+    class="group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-(--text-primary) transition-all outline-none select-none opacity-strong hover:opacity-100"
     data-discover="true"
     href="/schedule"
   >
@@ -186,7 +186,7 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
       class="relative"
     >
       <span
-        class="block z-(--z-decor)"
+        class="block z-decor"
         tabindex="0"
       >
         <svg
@@ -240,14 +240,14 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
       </span>
     </div>
     <span
-      class="z-(--z-decor) text-label-xs font-black uppercase tracking-tight"
+      class="z-decor text-label-xs font-black uppercase tracking-tight"
     >
       Schedule
     </span>
   </a>
   <a
     aria-label="Profile"
-    class="group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--text-primary) transition-all outline-none select-none opacity-(--opacity-strong) hover:opacity-100"
+    class="group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-(--text-primary) transition-all outline-none select-none opacity-strong hover:opacity-100"
     data-discover="true"
     href="/profile"
   >
@@ -255,7 +255,7 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
       class="relative"
     >
       <span
-        class="block z-(--z-decor)"
+        class="block z-decor"
         tabindex="0"
       >
         <svg
@@ -283,7 +283,7 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
       </span>
     </div>
     <span
-      class="z-(--z-decor) text-label-xs font-black uppercase tracking-tight"
+      class="z-decor text-label-xs font-black uppercase tracking-tight"
     >
       Profile
     </span>
@@ -295,14 +295,14 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
 <div>
   <nav
     aria-label="Main navigation"
-    class="fixed bottom-0 left-0 right-0 z-(--z-navbar) flex h-navbar-height w-full items-center justify-around border-t border-glass-border bg-nav backdrop-blur-nav pb-(--safe-area-bottom) shadow-premium transition-all md:hidden"
+    class="fixed bottom-0 left-0 right-0 z-navbar flex h-navbar-height w-full items-center justify-around border-t border-glass-border bg-nav backdrop-blur-nav pb-(--safe-area-bottom) shadow-premium transition-all md:hidden"
     role="navigation"
     style="transition-duration: 600ms; transition-timing-function: var(--ease-premium);"
   >
     <a
       aria-current="page"
       aria-label="Home"
-      class="group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--text-primary) transition-all outline-none select-none active text-brand font-bold scale-110"
+      class="group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-(--text-primary) transition-all outline-none select-none active text-brand font-bold scale-110"
       data-discover="true"
       href="/dashboard"
     >
@@ -310,10 +310,10 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
         class="relative"
       >
         <div
-          class="absolute inset-[-14px] rounded-full bg-brand opacity-(--opacity-subtle) blur-xl z-(--z-negative)"
+          class="absolute inset-(calc(var(--space-4)*-1)) rounded-full bg-brand opacity-subtle blur-glass z-negative"
         />
         <span
-          class="block z-(--z-decor)"
+          class="block z-decor"
           tabindex="0"
         >
           <svg
@@ -361,14 +361,14 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
         </span>
       </div>
       <span
-        class="z-(--z-decor) text-label-xs font-black uppercase tracking-tight"
+        class="z-decor text-label-xs font-black uppercase tracking-tight"
       >
         Home
       </span>
     </a>
     <a
       aria-label="News"
-      class="group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--text-primary) transition-all outline-none select-none opacity-(--opacity-strong) hover:opacity-100"
+      class="group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-(--text-primary) transition-all outline-none select-none opacity-strong hover:opacity-100"
       data-discover="true"
       href="/news"
     >
@@ -376,7 +376,7 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
         class="relative"
       >
         <span
-          class="block z-(--z-decor)"
+          class="block z-decor"
           tabindex="0"
         >
           <svg
@@ -412,14 +412,14 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
         </span>
       </div>
       <span
-        class="z-(--z-decor) text-label-xs font-black uppercase tracking-tight"
+        class="z-decor text-label-xs font-black uppercase tracking-tight"
       >
         News
       </span>
     </a>
     <a
       aria-label="Events"
-      class="group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--text-primary) transition-all outline-none select-none opacity-(--opacity-strong) hover:opacity-100"
+      class="group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-(--text-primary) transition-all outline-none select-none opacity-strong hover:opacity-100"
       data-discover="true"
       href="/events"
     >
@@ -427,7 +427,7 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
         class="relative"
       >
         <span
-          class="block z-(--z-decor)"
+          class="block z-decor"
           tabindex="0"
         >
           <svg
@@ -463,14 +463,14 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
         </span>
       </div>
       <span
-        class="z-(--z-decor) text-label-xs font-black uppercase tracking-tight"
+        class="z-decor text-label-xs font-black uppercase tracking-tight"
       >
         Events
       </span>
     </a>
     <a
       aria-label="Schedule"
-      class="group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--text-primary) transition-all outline-none select-none opacity-(--opacity-strong) hover:opacity-100"
+      class="group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-(--text-primary) transition-all outline-none select-none opacity-strong hover:opacity-100"
       data-discover="true"
       href="/schedule"
     >
@@ -478,7 +478,7 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
         class="relative"
       >
         <span
-          class="block z-(--z-decor)"
+          class="block z-decor"
           tabindex="0"
         >
           <svg
@@ -532,14 +532,14 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
         </span>
       </div>
       <span
-        class="z-(--z-decor) text-label-xs font-black uppercase tracking-tight"
+        class="z-decor text-label-xs font-black uppercase tracking-tight"
       >
         Schedule
       </span>
     </a>
     <a
       aria-label="Profile"
-      class="group relative flex flex-1 flex-col items-center justify-center gap-1.5 py-1 text-(--text-primary) transition-all outline-none select-none opacity-(--opacity-strong) hover:opacity-100"
+      class="group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-(--text-primary) transition-all outline-none select-none opacity-strong hover:opacity-100"
       data-discover="true"
       href="/profile"
     >
@@ -547,7 +547,7 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
         class="relative"
       >
         <span
-          class="block z-(--z-decor)"
+          class="block z-decor"
           tabindex="0"
         >
           <svg
@@ -575,7 +575,7 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
         </span>
       </div>
       <span
-        class="z-(--z-decor) text-label-xs font-black uppercase tracking-tight"
+        class="z-decor text-label-xs font-black uppercase tracking-tight"
       >
         Profile
       </span>
@@ -583,7 +583,7 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
   </nav>
   <span
     aria-hidden="true"
-    class="h-navbar-height bg-transparent transition-colors duration-500 md:hidden relative z-(--z-decor)"
+    class="h-navbar-height bg-transparent transition-colors duration-slow md:hidden relative z-decor"
   />
 </div>
 `;

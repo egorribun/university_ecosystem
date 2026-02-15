@@ -277,12 +277,13 @@ const Register = () => {
                 />
               </div>
               <div className="space-y-2">
-                <label htmlFor="role" className="text-sm font-semibold">
+                <label id="register-role-label" htmlFor="role" className="text-sm font-semibold">
                   {t("auth:fields.role")}
                 </label>
                 <div className="relative">
                   <Select
                     id="register-role"
+                    aria-labelledby="register-role-label"
                     value={form.role}
                     onValueChange={(val) => setForm((prev) => ({ ...prev, role: val }))}
                     options={[

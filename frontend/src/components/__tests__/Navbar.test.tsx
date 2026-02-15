@@ -191,9 +191,7 @@ describe("Navbar", () => {
     expect(document.body.classList.contains("blurred")).toBe(false)
     expect(document.body.style.overflow).toBe("")
     expect(drawer).toHaveStyle({ pointerEvents: "none" })
-    const drawerNav = drawer.querySelector("nav")
-    expect(drawerNav).not.toBeNull()
-    expect(drawerNav).toHaveClass("-translate-x-full")
+    expect(drawer).toHaveClass("-translate-x-full")
   })
 
   it("closes the drawer when navigating to another route", async () => {
@@ -211,7 +209,7 @@ describe("Navbar", () => {
     await waitFor(() => expect(burger).toHaveAttribute("aria-expanded", "false"))
     const drawer = screen.getByRole("dialog")
     expect(drawer).toHaveStyle({ pointerEvents: "none" })
-    expect(drawer.querySelector("nav")).toHaveClass("-translate-x-full")
+    expect(drawer).toHaveClass("-translate-x-full")
     expect(document.body.style.overflow).toBe("")
     expect(screen.getByTestId("location-display")).toHaveTextContent("/news")
   })

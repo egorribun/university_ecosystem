@@ -9,19 +9,19 @@ exports[`NowPlayingCard > matches snapshot when paused 1`] = `
   target="_blank"
 >
   <div
-    class="nowplaying--spotify w-full grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 px-4 py-3.5 rounded-2xl relative overflow-hidden border-glass-border bg-glass-bg backdrop-blur-glass shadow-glass text-(--text-primary) transition-all duration-300 hover:-translate-y-0.5"
+    class="nowplaying--spotify w-full grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 px-4 py-3.5 rounded-2xl relative overflow-hidden border-glass-border bg-glass-bg backdrop-blur-glass shadow-glass text-(--text-primary) transition-all duration-base hover:-translate-y-0.5"
     style="opacity: 1; transform: none;"
     tabindex="0"
   >
     <div
-      class="absolute inset-0 z-(--z-base) bg-linear-to-t from-black/(--opacity-hover) via-black/(--opacity-dim) to-transparent pointer-events-none"
+      class="absolute inset-0 z-base bg-linear-to-t from-black/(--opacity-hover) via-black/(--opacity-dim) to-transparent pointer-events-none"
     />
     <div
       class="relative w-14 h-14 rounded-lg overflow-hidden shadow-premium"
     >
       <img
         alt="Album"
-        class="w-full h-full rounded-lg object-cover transition-opacity duration-300 opacity-100 scale-[1.012] transition-transform duration-900 cubic-bezier-[0.22,0.61,0.36,1] hover:scale-[1.02]"
+        class="w-full h-full rounded-lg object-cover transition-opacity duration-base opacity-100 scale-[1.012] transition-transform duration-lazy cubic-bezier-[0.22,0.61,0.36,1] hover:scale-[1.02]"
         decoding="async"
         loading="eager"
         referrerpolicy="no-referrer"
@@ -30,15 +30,15 @@ exports[`NowPlayingCard > matches snapshot when paused 1`] = `
     </div>
     <div
       aria-live="polite"
-      class="min-w-0 flex flex-col gap-1.5 relative z-(--z-deep)"
+      class="min-w-0 flex flex-col gap-1.5 relative z-deep"
     >
       <h3
-        class="np-title font-bold leading-tight tracking-tight text-(--text-primary) text-base transition-opacity duration-200 opacity-100"
+        class="np-title font-bold leading-tight tracking-tight text-(--text-primary) text-base transition-opacity duration-fast opacity-100"
       >
         Test Track
       </h3>
       <p
-        class="np-art text-sm text-(--text-secondary) opacity-(--opacity-strong) truncate"
+        class="np-art text-sm text-(--text-secondary) opacity-strong truncate"
       >
         Tester
       </p>
@@ -87,19 +87,19 @@ exports[`NowPlayingCard > matches snapshot when playing 1`] = `
   target="_blank"
 >
   <div
-    class="nowplaying--spotify w-full grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 px-4 py-3.5 rounded-2xl relative overflow-hidden border-glass-border bg-glass-bg backdrop-blur-glass shadow-glass text-(--text-primary) transition-all duration-300 hover:-translate-y-0.5"
+    class="nowplaying--spotify w-full grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 px-4 py-3.5 rounded-2xl relative overflow-hidden border-glass-border bg-glass-bg backdrop-blur-glass shadow-glass text-(--text-primary) transition-all duration-base hover:-translate-y-0.5"
     style="opacity: 1; transform: none;"
     tabindex="0"
   >
     <div
-      class="absolute inset-0 z-(--z-base) bg-linear-to-t from-black/(--opacity-hover) via-black/(--opacity-dim) to-transparent pointer-events-none"
+      class="absolute inset-0 z-base bg-linear-to-t from-black/(--opacity-hover) via-black/(--opacity-dim) to-transparent pointer-events-none"
     />
     <div
       class="relative w-14 h-14 rounded-lg overflow-hidden shadow-premium"
     >
       <img
         alt="Album"
-        class="w-full h-full rounded-lg object-cover transition-opacity duration-300 opacity-100 scale-[1.012] transition-transform duration-900 cubic-bezier-[0.22,0.61,0.36,1] hover:scale-[1.02]"
+        class="w-full h-full rounded-lg object-cover transition-opacity duration-base opacity-100 scale-[1.012] transition-transform duration-lazy cubic-bezier-[0.22,0.61,0.36,1] hover:scale-[1.02]"
         decoding="async"
         loading="eager"
         referrerpolicy="no-referrer"
@@ -108,15 +108,15 @@ exports[`NowPlayingCard > matches snapshot when playing 1`] = `
     </div>
     <div
       aria-live="polite"
-      class="min-w-0 flex flex-col gap-1.5 relative z-(--z-deep)"
+      class="min-w-0 flex flex-col gap-1.5 relative z-deep"
     >
       <h3
-        class="np-title font-bold leading-tight tracking-tight text-(--text-primary) text-base transition-opacity duration-200 opacity-100"
+        class="np-title font-bold leading-tight tracking-tight text-(--text-primary) text-base transition-opacity duration-fast opacity-100"
       >
         Test Track
       </h3>
       <p
-        class="np-art text-sm text-(--text-secondary) opacity-(--opacity-strong) truncate"
+        class="np-art text-sm text-(--text-secondary) opacity-strong truncate"
       >
         Tester
       </p>
