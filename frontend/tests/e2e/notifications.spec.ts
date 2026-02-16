@@ -160,12 +160,9 @@ async function setupMockServiceWorker(page: Page) {
 
       const actions = normalizeActions(p?.actions)
       const data: Record<string, unknown> =
-        p && p.data && typeof p.data === "object"
-          ? { ...(p.data as Record<string, unknown>) }
-          : {}
+        p && p.data && typeof p.data === "object" ? { ...(p.data as Record<string, unknown>) } : {}
 
-      const rawUrl =
-        typeof p?.url === "string" ? p.url : (data.url as string | undefined)
+      const rawUrl = typeof p?.url === "string" ? p.url : (data.url as string | undefined)
       const resolvedUrl = rawUrl && rawUrl.trim() ? rawUrl.trim() : "/"
       data.url = resolvedUrl
 
@@ -180,10 +177,7 @@ async function setupMockServiceWorker(page: Page) {
       }
 
       const toast = {
-        title:
-          typeof p?.title === "string" && p.title.trim()
-            ? p.title
-            : "Экосистема ГУУ",
+        title: typeof p?.title === "string" && p.title.trim() ? p.title : "Экосистема ГУУ",
         body: typeof p?.body === "string" ? p.body : undefined,
         url: resolvedUrl,
         icon: typeof p?.icon === "string" && p.icon.trim() ? p.icon : defaultIcon,

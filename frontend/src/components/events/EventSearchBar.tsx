@@ -1,9 +1,5 @@
 import { useTranslation } from "react-i18next"
-import {
-  Search as SearchIcon,
-  Filter as FilterListIcon,
-  X as ClearIcon,
-} from "lucide-react"
+import { Search as SearchIcon, Filter as FilterListIcon, X as ClearIcon } from "lucide-react"
 import { cn } from "@/utils/cn"
 import { useEventFilterPopover } from "./EventFilterPopover"
 

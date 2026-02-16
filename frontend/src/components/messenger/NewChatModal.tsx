@@ -66,18 +66,18 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
             </div>
 
             <div className="p-6">
-                <TextField
-                  leadingIcon={<Search className="w-4.5 h-4.5" />}
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder={t("messenger:searchUsers", "Search users by name or email...")}
-                  className="w-full"
-                  ref={(input) => {
-                    if (input && open) {
-                      setTimeout(() => input.focus(), 0)
-                    }
-                  }}
-                />
+              <TextField
+                leadingIcon={<Search className="w-4.5 h-4.5" />}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={t("messenger:searchUsers", "Search users by name or email...")}
+                className="w-full"
+                ref={(input) => {
+                  if (input && open) {
+                    setTimeout(() => input.focus(), 0)
+                  }
+                }}
+              />
 
               <div className="max-h-96 overflow-y-auto custom-scrollbar pr-1 -mr-1">
                 {isLoading && (

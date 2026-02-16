@@ -90,8 +90,7 @@ export const zIndexTokens = {
   tooltip: "var(--z-tooltip)",
 } as const
 
-export const focusRing = {
-} as const
+export const focusRing = {} as const
 
 export const shadows = {
   glass: "var(--shadow-glass)",
@@ -150,3 +149,7 @@ export const motion = {
   navTransition: 1.2,
 } as const
 
+export const icon = {
+  fluid: "var(--size-icon-fluid)",
+  sm: "var(--size-icon-sm)",
+} as const

@@ -27,12 +27,12 @@ export const ProfileSkeleton = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="space-y-4">
                   {Array.from({ length: 4 }).map((_, i) => (
-                    <Skeleton key={i} width="100%" height={48} rounded="12px" />
+                    <Skeleton key={i} width="100%" height="3rem" rounded="12px" />
                   ))}
                 </div>
                 <div className="space-y-4">
-                  <Skeleton width="100%" height={120} rounded="16px" />
-                  <Skeleton width="100%" height={200} rounded="16px" />
+                  <Skeleton width="100%" height="7.5rem" rounded="16px" />
+                  <Skeleton width="100%" height="12.5rem" rounded="16px" />
                 </div>
               </div>
             </div>

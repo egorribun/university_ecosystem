@@ -176,9 +176,7 @@ export function DashboardHero({
       </div>
 
       {children && (
-        <div className="relative z-base -mt-10 px-4 sm:px-8 md:px-12 lg:px-16">
-          {children}
-        </div>
+        <div className="relative z-base -mt-10 px-4 sm:px-8 md:px-12 lg:px-16">{children}</div>
       )}
     </section>
   )

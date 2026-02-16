@@ -49,12 +49,7 @@ type EventCreateDialogProps = {
   language: "ru" | "en"
 }
 
-export function EventCreateDialog({
-  open,
-  onClose,
-  onCreated,
-  language,
-}: EventCreateDialogProps) {
+export function EventCreateDialog({ open, onClose, onCreated, language }: EventCreateDialogProps) {
   const { t } = useTranslation(["events", "common"])
 
   const [draft, setDraft] = useState<EventDraft>(INITIAL_DRAFT)
@@ -133,9 +128,7 @@ export function EventCreateDialog({
                   : t("events:form.title")
               }
               value={getLocalizedValue("title")}
-              onChange={(event) =>
-                updateLocalizedValue("title", event.target.value)
-              }
+              onChange={(event) => updateLocalizedValue("title", event.target.value)}
               fullWidth
             />
             <TextField
@@ -147,9 +140,7 @@ export function EventCreateDialog({
                   : t("events:form.description")
               }
               value={getLocalizedValue("description")}
-              onChange={(event) =>
-                updateLocalizedValue("description", event.target.value)
-              }
+              onChange={(event) => updateLocalizedValue("description", event.target.value)}
               multiline
               rows={3}
               fullWidth
@@ -163,9 +154,7 @@ export function EventCreateDialog({
                   : t("events:form.type")
               }
               value={getLocalizedValue("event_type")}
-              onChange={(event) =>
-                updateLocalizedValue("event_type", event.target.value)
-              }
+              onChange={(event) => updateLocalizedValue("event_type", event.target.value)}
               fullWidth
             />
             <TextField
@@ -177,9 +166,7 @@ export function EventCreateDialog({
                   : t("events:form.location")
               }
               value={getLocalizedValue("location")}
-              onChange={(event) =>
-                updateLocalizedValue("location", event.target.value)
-              }
+              onChange={(event) => updateLocalizedValue("location", event.target.value)}
               fullWidth
             />
           </div>
@@ -189,9 +176,7 @@ export function EventCreateDialog({
             <TextField
               label={t("events:form.speaker")}
               value={draft.speaker}
-              onChange={(event) =>
-                setDraft({ ...draft, speaker: event.target.value })
-              }
+              onChange={(event) => setDraft({ ...draft, speaker: event.target.value })}
               fullWidth
             />
             <div className="space-y-3">
@@ -239,24 +224,16 @@ export function EventCreateDialog({
                 label={t("events:form.start")}
                 type="datetime-local"
                 value={draft.starts_at}
-                onChange={(event) =>
-                  setDraft({ ...draft, starts_at: event.target.value })
-                }
+                onChange={(event) => setDraft({ ...draft, starts_at: event.target.value })}
                 fullWidth
               />
               <TextField
                 label={t("events:form.end")}
                 type="datetime-local"
                 value={draft.ends_at}
-                onChange={(event) =>
-                  setDraft({ ...draft, ends_at: event.target.value })
-                }
+                onChange={(event) => setDraft({ ...draft, ends_at: event.target.value })}
                 error={dateError}
-                helperText={
-                  dateError
-                    ? t("events:form.errors.endsBeforeStarts")
-                    : undefined
-                }
+                helperText={dateError ? t("events:form.errors.endsBeforeStarts") : undefined}
                 fullWidth
               />
             </div>
@@ -264,11 +241,7 @@ export function EventCreateDialog({
         </div>
       </DialogContent>
       <DialogActions className="flex-col-reverse gap-3 sm:flex-row p-6">
-        <Button
-          variant="ghost"
-          onClick={handleClose}
-          className="w-full sm:w-auto"
-        >
+        <Button variant="ghost" onClick={handleClose} className="w-full sm:w-auto">
           {t("common:buttons.cancel")}
         </Button>
         <Button

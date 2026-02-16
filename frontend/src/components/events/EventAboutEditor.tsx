@@ -67,11 +67,7 @@ export function EventAboutEditor({
   return (
     <div>
       <div className="mb-2 flex items-center gap-2">
-        <h2
-          ref={sectionRef}
-          tabIndex={-1}
-          className="text-fluid-h2 font-bold text-text-primary"
-        >
+        <h2 ref={sectionRef} tabIndex={-1} className="text-fluid-h2 font-bold text-text-primary">
           {t("events:detail.sections.about.title")}
         </h2>
         {canEdit && !editing && (

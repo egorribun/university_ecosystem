@@ -78,7 +78,7 @@ export const Card: Story = {
 
 export const MultipleLines: Story = {
   render: () => (
-    <div className="flex flex-col gap-2" style={{ width: 300 }}>
+    <div className="flex flex-col gap-2 w-72">
       <Skeleton width="100%" height={16} ariaLabel="Loading line 1" />
       <Skeleton width="90%" height={16} ariaLabel="Loading line 2" />
       <Skeleton width="75%" height={16} ariaLabel="Loading line 3" />

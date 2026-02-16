@@ -183,10 +183,7 @@ const Events = () => {
     <PageLayout
       seo={{
         title: t("events:pageTitle"),
-        description: t(
-          "events:pageDescription",
-          "Upcoming events, lectures, and activities."
-        ),
+        description: t("events:pageDescription", "Upcoming events, lectures, and activities."),
       }}
     >
       {/* Header */}
@@ -205,10 +202,7 @@ const Events = () => {
 
         {/* Create button */}
         {(user?.role === "admin" || user?.role === "teacher") && (
-          <FadeSection
-            delay={ANIMATION_DELAYS.createButton}
-            className="mb-6 flex justify-start"
-          >
+          <FadeSection delay={ANIMATION_DELAYS.createButton} className="mb-6 flex justify-start">
             <Button
               id="create-event-btn"
               size="lg"
@@ -259,19 +253,14 @@ const Events = () => {
                   transition={springSoft}
                 />
               )}
-              <span className="relative z-base">
-                {t(`events:tabs.${tabItem.key}`)}
-              </span>
+              <span className="relative z-base">{t(`events:tabs.${tabItem.key}`)}</span>
             </button>
           ))}
         </div>
       </FadeSection>
 
       {/* Search + filter popover */}
-      <FadeSection
-        delay={ANIMATION_DELAYS.search}
-        className="mb-6 lg:max-w-4xl"
-      >
+      <FadeSection delay={ANIMATION_DELAYS.search} className="mb-6 lg:max-w-4xl">
         <EventSearchBar
           search={search}
           onSearchChange={setSearch}
@@ -296,33 +285,14 @@ const Events = () => {
               <div key={`event-skel-${i}`} className="w-full">
                 <div className="w-full space-y-4 rounded-lg border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-5 shadow-glass backdrop-blur-md">
                   <Skeleton
-                    height={
-                      isMobile
-                        ? SKELETON_HEIGHTS.mobile
-                        : SKELETON_HEIGHTS.desktop
-                    }
+                    height={isMobile ? SKELETON_HEIGHTS.mobile : SKELETON_HEIGHTS.desktop}
                     className="rounded-md"
                   />
-                  <Skeleton
-                    height={SKELETON_HEIGHTS.title}
-                    className="rounded-lg"
-                  />
-                  <Skeleton
-                    height={SKELETON_HEIGHTS.meta}
-                    width="75%"
-                    className="rounded-lg"
-                  />
+                  <Skeleton height={SKELETON_HEIGHTS.title} className="rounded-lg" />
+                  <Skeleton height={SKELETON_HEIGHTS.meta} width="75%" className="rounded-lg" />
                   <div className="flex gap-3 pt-2">
-                    <Skeleton
-                      height={SKELETON_HEIGHTS.avatar}
-                      width={120}
-                      className="rounded-sm"
-                    />
-                    <Skeleton
-                      height={SKELETON_HEIGHTS.avatar}
-                      width={100}
-                      className="rounded-sm"
-                    />
+                    <Skeleton height={SKELETON_HEIGHTS.avatar} width={120} className="rounded-sm" />
+                    <Skeleton height={SKELETON_HEIGHTS.avatar} width={100} className="rounded-sm" />
                   </div>
                 </div>
               </div>

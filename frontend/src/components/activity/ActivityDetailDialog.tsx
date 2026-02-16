@@ -42,9 +42,7 @@ export function ActivityDetailDialog({
     <Dialog
       open={detail !== ""}
       onClose={onClose}
-      title={
-        detailSection ? t(`activity:sections.${detailSection}.dialogTitle`) : ""
-      }
+      title={detailSection ? t(`activity:sections.${detailSection}.dialogTitle`) : ""}
       size="md"
     >
       {detail === "attendance" && (
@@ -63,16 +61,11 @@ export function ActivityDetailDialog({
           />
           <div className="space-y-2">
             {(attendance?.recent ?? []).map((r, i) => (
-              <div
-                key={`${r.date}-${r.course}-${r.status}-${i}`}
-                className="space-y-0.5"
-              >
+              <div key={`${r.date}-${r.course}-${r.status}-${i}`} className="space-y-0.5">
                 <p className="text-sm font-semibold text-text-primary">
                   {`${r.course} — ${attendanceStatusLabel(r.status)}`}
                 </p>
-                <p className="text-xs text-(--text-caption)">
-                  {formatDate(r.date)}
-                </p>
+                <p className="text-xs text-(--text-caption)">{formatDate(r.date)}</p>
               </div>
             ))}
           </div>
@@ -89,16 +82,11 @@ export function ActivityDetailDialog({
           </p>
           <div className="space-y-2">
             {(grades?.recent ?? []).map((r, i) => (
-              <div
-                key={`${r.date}-${r.course}-${r.score}-${i}`}
-                className="space-y-0.5"
-              >
+              <div key={`${r.date}-${r.course}-${r.score}-${i}`} className="space-y-0.5">
                 <p className="text-sm font-semibold text-text-primary">
                   {`${r.course} — ${r.score}${r.max ? "/" + r.max : ""}`}
                 </p>
-                <p className="text-xs text-(--text-caption)">
-                  {formatDate(r.date)}
-                </p>
+                <p className="text-xs text-(--text-caption)">{formatDate(r.date)}</p>
               </div>
             ))}
           </div>
@@ -128,13 +116,8 @@ export function ActivityDetailDialog({
           </p>
           <div className="space-y-2">
             {(participation?.recent ?? []).map((r, i) => (
-              <div
-                key={`${r.date}-${r.title}-${r.role}-${i}`}
-                className="space-y-0.5"
-              >
-                <p className="text-sm font-semibold text-text-primary">
-                  {r.title}
-                </p>
+              <div key={`${r.date}-${r.title}-${r.role}-${i}`} className="space-y-0.5">
+                <p className="text-sm font-semibold text-text-primary">{r.title}</p>
                 <p className="text-xs text-(--text-caption)">
                   {[formatDate(r.date), r.role].filter(Boolean).join(separator)}
                 </p>
@@ -147,16 +130,11 @@ export function ActivityDetailDialog({
       {detail === "attendance_recent" && (
         <div className="space-y-2">
           {(attendance?.recent ?? []).map((r, i) => (
-            <div
-              key={`${r.date}-${r.course}-${r.status}-${i}-recent`}
-              className="space-y-0.5"
-            >
+            <div key={`${r.date}-${r.course}-${r.status}-${i}-recent`} className="space-y-0.5">
               <p className="text-sm font-semibold text-text-primary">
                 {`${r.course} — ${attendanceStatusLabel(r.status)}`}
               </p>
-              <p className="text-xs text-(--text-caption)">
-                {formatDate(r.date)}
-              </p>
+              <p className="text-xs text-(--text-caption)">{formatDate(r.date)}</p>
             </div>
           ))}
         </div>
@@ -164,16 +142,11 @@ export function ActivityDetailDialog({
       {detail === "grades_recent" && (
         <div className="space-y-2">
           {(grades?.recent ?? []).map((r, i) => (
-            <div
-              key={`${r.date}-${r.course}-${r.score}-${i}-recent`}
-              className="space-y-0.5"
-            >
+            <div key={`${r.date}-${r.course}-${r.score}-${i}-recent`} className="space-y-0.5">
               <p className="text-sm font-semibold text-text-primary">
                 {`${r.course} — ${r.score}${r.max ? "/" + r.max : ""}`}
               </p>
-              <p className="text-xs text-(--text-caption)">
-                {formatDate(r.date)}
-              </p>
+              <p className="text-xs text-(--text-caption)">{formatDate(r.date)}</p>
             </div>
           ))}
         </div>
@@ -181,13 +154,8 @@ export function ActivityDetailDialog({
       {detail === "participation_recent" && (
         <div className="space-y-2">
           {(participation?.recent ?? []).map((r, i) => (
-            <div
-              key={`${r.date}-${r.title}-${r.role}-${i}-recent`}
-              className="space-y-0.5"
-            >
-              <p className="text-sm font-semibold text-text-primary">
-                {r.title}
-              </p>
+            <div key={`${r.date}-${r.title}-${r.role}-${i}-recent`} className="space-y-0.5">
+              <p className="text-sm font-semibold text-text-primary">{r.title}</p>
               <p className="text-xs text-(--text-caption)">
                 {[formatDate(r.date), r.role].filter(Boolean).join(separator)}
               </p>

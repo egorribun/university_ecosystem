@@ -1,24 +1,12 @@
-import { ContentCard, Snackbar, ConfirmDialog } from "@/components/ui"
-import { SpotlightOverlay, useSpotlight } from "@/components/ui/Spotlight"
+import { useSpotlight } from "@/components/ui/Spotlight"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useNewsInteraction } from "@/hooks/useNewsInteraction"
-import { motion as motionTokens } from "@/theme/tokens"
-import { cn } from "@/utils/cn"
 import { sanitizeNewsText } from "@/utils/sanitize"
-import { motion } from "framer-motion"
-import { FC, lazy, memo, Suspense, useCallback, useEffect, useMemo, useState } from "react"
+import { FC, memo, useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import api from "@/api/client"
 import { useAuth } from "@/contexts/AuthContext"
-import NewsCardContent from "./news/NewsCardContent"
-import NewsCardHero from "./news/NewsCardHero"
-
-const NewsCardActions = lazy(() =>
-  import("./news/NewsCardActions").then((m) => ({ default: m.NewsCardActions }))
-)
-const NewsCardEditDialog = lazy(() =>
-  import("./news/NewsCardEditDialog").then((m) => ({ default: m.NewsCardEditDialog }))
-)
+import { NewsCardView } from "./news/NewsCardView"
 
 export type NewsCardProps = {
   id: string
@@ -33,8 +21,6 @@ export type NewsCardProps = {
   is_liked?: boolean
   onChange?: () => void
 }
-
-// getMoscowDate removed, imported from @/utils/date
 
 const NewsCardComponent: FC<NewsCardProps> = ({
   id,
@@ -124,85 +110,45 @@ const NewsCardComponent: FC<NewsCardProps> = ({
 
   const openDeletePrompt = useCallback(() => setConfirmDeleteOpen(true), [])
   const closeDeletePrompt = useCallback(() => setConfirmDeleteOpen(false), [])
+  const closeError = useCallback(() => setError(""), [])
 
-  const hoveringDisabled = editOpen
+  const handleEditSuccess = useCallback(() => {
+    onChange?.()
+  }, [onChange])
 
   return (
-    <motion.article
-      layout
-      initial={{ opacity: 0, y: 20 }} // consistent with FadeIn default
-      animate={{ opacity: 1, y: 0 }}
-      onMouseMove={spotlight.onMouseMove}
-      transition={{ duration: motionTokens.durationMedium, ease: [0.22, 1, 0.36, 1] }}
-      whileHover={!hoveringDisabled ? { y: -4 } : undefined}
-      className={cn("h-full outline-none", hoveringDisabled ? "cursor-default" : "cursor-pointer")}
-    >
-      <ContentCard
-        hoverable={!hoveringDisabled}
-        className={cn(
-          "card-news group h-full",
-          hoveringDisabled ? "cursor-default" : "card-interactive"
-        )}
-      >
-        <SpotlightOverlay mouseX={spotlight.mouseX} mouseY={spotlight.mouseY} className="z-hide" />
-
-        {user?.role === "admin" && (
-          <ContentCard.Actions className="absolute right-2 top-2 z-surface">
-            <Suspense fallback={null}>
-              <NewsCardActions
-                id={id}
-                onEdit={openEdit}
-                onDelete={openDeletePrompt}
-                isDisabled={loading}
-              />
-            </Suspense>
-          </ContentCard.Actions>
-        )}
-
-        <div
-          className={cn(
-            "group/content relative flex h-full flex-1 flex-col text-left",
-            hoveringDisabled ? "opacity-100" : ""
-          )}
-        >
-          <NewsCardHero image_url={image_url} title={localizedTitle} created_at={created_at} />
-
-          <NewsCardContent
-            id={id}
-            title={localizedTitle}
-            preview={sanitizedPreview}
-            isLiked={isLiked}
-            likesCount={likesCount}
-            commentsCount={commentsCount}
-            onToggleLike={toggleLike}
-            hoveringDisabled={hoveringDisabled}
-          />
-        </div>
-
-        <Suspense fallback={null}>
-          <NewsCardEditDialog
-            id={id}
-            open={editOpen}
-            onClose={closeEdit}
-            initialData={editData}
-            onSuccess={onChange}
-          />
-        </Suspense>
-
-        <ConfirmDialog
-          open={confirmDeleteOpen}
-          title={t("news:dialogs.delete.title")}
-          message={t("news:dialogs.delete.description")}
-          confirmText={t("common:buttons.delete")}
-          cancelText={t("common:buttons.cancel")}
-          variant="danger"
-          onConfirm={() => void handleDelete()}
-          onCancel={closeDeletePrompt}
-          isLoading={loading}
-        />
-        <Snackbar open={!!error} message={error} onClose={() => setError("")} />
-      </ContentCard>
-    </motion.article>
+    <NewsCardView
+      id={id}
+      title={localizedTitle}
+      created_at={created_at}
+      image_url={image_url}
+      previewText={sanitizedPreview}
+      isLiked={isLiked}
+      likesCount={likesCount}
+      commentsCount={commentsCount}
+      isAdmin={user?.role === "admin"}
+      loading={loading}
+      error={error}
+      hoveringDisabled={editOpen}
+      editOpen={editOpen}
+      confirmDeleteOpen={confirmDeleteOpen}
+      editData={editData}
+      spotlight={spotlight}
+      onToggleLike={toggleLike}
+      onEditOpen={openEdit}
+      onEditClose={closeEdit}
+      onDeleteOpen={openDeletePrompt}
+      onDeleteClose={closeDeletePrompt}
+      onDeleteConfirm={() => void handleDelete()}
+      onEditSuccess={handleEditSuccess}
+      onErrorClose={closeError}
+      t={{
+        deleteTitle: t("news:dialogs.delete.title"),
+        deleteDesc: t("news:dialogs.delete.description"),
+        confirm: t("common:buttons.delete"),
+        cancel: t("common:buttons.cancel"),
+      }}
+    />
   )
 }
 

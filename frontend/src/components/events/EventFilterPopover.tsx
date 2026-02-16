@@ -53,11 +53,7 @@ export function useEventFilterPopover({
   const dismiss = useDismiss(context, { outsidePressEvent: "mousedown" })
   const role = useRole(context, { role: "dialog" })
 
-  const { getReferenceProps, getFloatingProps } = useInteractions([
-    click,
-    dismiss,
-    role,
-  ])
+  const { getReferenceProps, getFloatingProps } = useInteractions([click, dismiss, role])
 
   const handleReset = () => {
     onTypeChange("")
@@ -93,11 +89,7 @@ export function useEventFilterPopover({
               <Button variant="ghost" size="sm" onClick={handleReset}>
                 {t("common:buttons.reset")}
               </Button>
-              <Button
-                variant="solid"
-                size="sm"
-                onClick={() => setIsOpen(false)}
-              >
+              <Button variant="solid" size="sm" onClick={() => setIsOpen(false)}>
                 {t("common:buttons.done")}
               </Button>
             </div>

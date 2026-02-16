@@ -15,6 +15,8 @@ import { Skeleton } from "@/components/settings"
 import { addVersionParam, resolveProxyImageUrl } from "@/utils/media"
 import { useIntersectionObserver } from "@/hooks/useIntersectionObserver"
 
+const LAZY_ROOT_MARGIN = "200px"
+
 type Status = "idle" | "loading" | "loaded" | "error"
 
 type AsyncImageProps = ComponentProps<"div"> & {
@@ -49,7 +51,7 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
   ) => {
     const containerRef = useMemo(() => ({ current: null as HTMLDivElement | null }), [])
     const observer = useIntersectionObserver(containerRef, {
-      rootMargin: "200px",
+      rootMargin: LAZY_ROOT_MARGIN,
       freezeOnceVisible: true,
     })
     const isVisible = !!observer?.isIntersecting

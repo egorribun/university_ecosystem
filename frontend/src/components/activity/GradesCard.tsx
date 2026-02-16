@@ -13,17 +13,11 @@ type GradesCardProps = {
   onClick: () => void
 }
 
-export function GradesCard({
-  grades,
-  hasInitiallyLoaded,
-  reduceMotion,
-  onClick,
-}: GradesCardProps) {
+export function GradesCard({ grades, hasInitiallyLoaded, reduceMotion, onClick }: GradesCardProps) {
   const { t } = useTranslation(["activity"])
 
   const gradeAverage = toNumber(grades?.average)
-  const gradeAnimatedValue =
-    grades?.scale === "100" ? Math.round(gradeAverage) : gradeAverage
+  const gradeAnimatedValue = grades?.scale === "100" ? Math.round(gradeAverage) : gradeAverage
   const gradesAnimated = useAnimatedNumber(
     gradeAnimatedValue,
     0.9,

@@ -228,9 +228,7 @@ export default function EventDetail() {
                 {t("events:card.participants", { count: event.participant_count || 0 })}
               </Badge>
             </div>
-            <p className="text-(--fs-base) font-semibold text-text-primary">
-              {event.description}
-            </p>
+            <p className="text-(--fs-base) font-semibold text-text-primary">{event.description}</p>
             <div className="space-y-2">
               <p className="text-base font-semibold text-text-primary">
                 {t("events:detail.fields.location")}: <strong>{event.location}</strong>
@@ -295,7 +293,11 @@ export default function EventDetail() {
         <div className="flex flex-row gap-8 items-start">
           <div className="w-[45%] space-y-6">
             {imageUrl && (
-              <GlassCard intensity="low" radius="3xl" className="relative w-full aspect-21/9 rounded-4xl">
+              <GlassCard
+                intensity="low"
+                radius="3xl"
+                className="relative w-full aspect-21/9 rounded-4xl"
+              >
                 <SmartImage
                   srcRaw={imageUrl}
                   alt={t("events:alt.image")}
@@ -321,9 +323,7 @@ export default function EventDetail() {
           </div>
 
           <div className="flex-1 min-w-0 space-y-4">
-            <h1 className="text-4xl font-extrabold text-text-primary sm:text-5xl">
-              {event.title}
-            </h1>
+            <h1 className="text-4xl font-extrabold text-text-primary sm:text-5xl">{event.title}</h1>
             <div className="flex flex-wrap items-center gap-3">
               {event.event_type && (
                 <Badge size="md" className="bg-(--primary-main) text-white">

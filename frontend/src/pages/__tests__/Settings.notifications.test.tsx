@@ -1,4 +1,3 @@
-
 import { act, renderHook, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ChangeEvent, ReactElement, ReactNode } from "react"
@@ -183,8 +182,8 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks()
-  delete (navigator as any).serviceWorker
-  delete (window as any).PushManager
+  delete (navigator as unknown as Record<string, unknown>).serviceWorker
+  delete (window as unknown as Record<string, unknown>).PushManager
   queryClient.clear()
 })
 

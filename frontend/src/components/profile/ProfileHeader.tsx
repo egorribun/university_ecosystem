@@ -62,7 +62,6 @@ export const ProfileHeader = ({
       >
         {/* Cover Image with Parallax */}
 
-
         <div
           className={cn(
             "absolute inset-0 bg-center bg-cover",

@@ -1,19 +1,20 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useActionState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate, useLocation } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { isAxiosError } from "axios"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
 
 import { ChallengeLockedError, useAuth } from "@/contexts/AuthContext"
 import type { PendingMfaState } from "@/types/Auth"
 import { startAuthentication, browserSupportsWebAuthn } from "@simplewebauthn/browser"
 import { useLocalStorage } from "@/hooks/useLocalStorage"
 import { suggestEmailDomain } from "@/utils/authUtils"
+import { loginSchema, type LoginFormValues } from "@/utils/validation"
 
 type ChallengeMethod = PendingMfaState["methods"][number]
 export type ChallengeWithAttempts = ChallengeMethod &
   Partial<{ attempt_limit: number | null; remaining_attempts: number | null }>
-
-const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export function useLoginForm() {
   const { t } = useTranslation(["auth"])
@@ -24,107 +25,97 @@ export function useLoginForm() {
   const state = location.state as { from?: { pathname: string } } | null
   const redirectPath = state?.from?.pathname || "/dashboard"
 
+  // Persistence for user convenience
   const [savedEmail, setSavedEmail] = useLocalStorage<string>("auth:lastEmail", "")
-  const savedEmailRef = useRef(savedEmail)
-  useEffect(() => {
-    savedEmailRef.current = savedEmail
-  }, [savedEmail])
-
   const [trustDeviceStored, setTrustDeviceStored] = useLocalStorage<string>("auth:trustDevice", "0")
-  const [trustDevice, setTrustDevice] = useState<boolean>(trustDeviceStored === "1")
+
+  // Local UI state
+  const [caps, setCaps] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+  const [emailSuggestion, setEmailSuggestion] = useState<string | null>(null)
+  const [passkeyError, setPasskeyError] = useState<string | null>(null)
+
+  // React Hook Form Setup
+  const form = useForm<LoginFormValues>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      username: savedEmail,
+      password: "",
+      trustDevice: trustDeviceStored === "1",
+    },
+    mode: "onBlur", // Validate on blur for better UX
+  })
+
+  const {
+    handleSubmit,
+    setValue,
+    watch,
+    setError,
+    formState: { errors, isSubmitting },
+    trigger,
+  } = form
+
+  // Watch values for UI logic
+  const currentEmail = watch("username")
+  const trustDevice = watch("trustDevice")
+
+  // Update persistence when trustDevice changes
   useEffect(() => {
     setTrustDeviceStored(trustDevice ? "1" : "0")
   }, [trustDevice, setTrustDeviceStored])
 
-  const [caps, setCaps] = useState(false)
-  const [showPassword, setShowPassword] = useState(false)
-  const [emailSuggestion, setEmailSuggestion] = useState<string | null>(null)
-  const [emailMirror, setEmailMirror] = useState(savedEmail)
+  const onSubmit = async (data: LoginFormValues) => {
+    setPasskeyError(null)
+    try {
+      const challenge = await login(data.username, data.password, data.trustDevice)
 
-  const emailRef = useRef<HTMLInputElement | null>(null)
-  const passwordRef = useRef<HTMLInputElement | null>(null)
-
-  const currentEmail = (emailRef.current?.value ?? emailMirror ?? "").trim()
-  const emailValid = useMemo(
-    () => currentEmail.length === 0 || emailRe.test(currentEmail),
-    [currentEmail]
-  )
-
-  const [pendingEmail, setPendingEmail] = useState<string | null>(savedEmail ? savedEmail : null)
-  const [submitting, setSubmitting] = useState(false)
-  const [passkeyError, setPasskeyError] = useState<string | null>(null)
-
-  const [submitError, submitAction, isPending] = useActionState(
-    async (_previousState: string | null, formData: FormData) => {
-      const username = String(formData.get("username") ?? "").trim()
-      const passwordValue = String(formData.get("password") ?? "")
-
-      if (!emailRe.test(username)) {
-        emailRef.current?.focus()
-        return t("auth:messages.invalidEmail")
+      if (data.trustDevice) {
+        setSavedEmail(data.username)
       }
 
-      if (!passwordValue) {
-        passwordRef.current?.focus()
-        return t("auth:messages.passwordRequired")
+      if (challenge) {
+        return // Handled by MFA flow
       }
 
-      setPendingEmail(username)
-
-      try {
-        const challenge = await login(username, passwordValue, trustDevice)
-
-        if (trustDevice) {
-          setSavedEmail(username)
-        }
-
-        if (challenge) {
-          return null
-        }
-
-        navigate(redirectPath, { replace: true })
-        return null
-      } catch (error) {
-        let message = t("auth:login.error")
-        if (error instanceof Error && error.message) {
-          message = error.message
-        }
-        if (isAxiosError(error) && error.response?.data?.detail) {
-          message = error.response.data.detail
-        }
-        return message
+      navigate(redirectPath, { replace: true })
+    } catch (error) {
+      let message = t("auth:login.error")
+      if (error instanceof Error && error.message) {
+        message = error.message
       }
-    },
-    null
-  )
+      if (isAxiosError(error) && error.response?.data?.detail) {
+        message = error.response.data.detail
+      }
+      // Set root error
+      setError("root", { type: "server", message })
+    }
+  }
 
-  const handleEmailBlur = () => {
-    const raw = (emailRef.current?.value ?? "").trim()
+  const handleEmailBlur = async () => {
+    // Trigger validation first
+    await trigger("username")
+    const raw = currentEmail?.trim()
     if (!raw) return
     const suggestion = suggestEmailDomain(raw)
-    setEmailSuggestion(suggestion)
+    setEmailSuggestion(suggestion && suggestion !== raw ? suggestion : null)
   }
 
   const applySuggestion = () => {
-    if (!emailSuggestion || !emailRef.current) return
-    emailRef.current.value = emailSuggestion
-    setEmailMirror(emailSuggestion)
+    if (!emailSuggestion) return
+    setValue("username", emailSuggestion, { shouldValidate: true })
     setEmailSuggestion(null)
-    emailRef.current.focus()
   }
 
   const handlePasskeyLogin = async () => {
-    const email = (emailRef.current?.value ?? emailMirror ?? "").trim()
-    if (!emailRe.test(email)) {
-      setPasskeyError(t("auth:messages.invalidEmail"))
-      emailRef.current?.focus()
-      return
+    // We can use the current email from form
+    if (!currentEmail || errors.username) {
+      await trigger("username")
+      if (errors.username) return
     }
 
     setPasskeyError(null)
-    setSubmitting(true)
     try {
-      await loginWithPasskey(email, trustDevice)
+      await loginWithPasskey(currentEmail, trustDevice)
       navigate(redirectPath, { replace: true })
     } catch (error) {
       let message = t("auth:login.error")
@@ -133,44 +124,43 @@ export function useLoginForm() {
         message = error.response.data.detail
       }
       setPasskeyError(message)
-    } finally {
-      setSubmitting(false)
     }
   }
 
-  const activeEmail = pendingEmail || currentEmail || savedEmail || ""
+  const activeEmail = currentEmail || savedEmail || ""
   const webauthnSupported = useMemo(() => browserSupportsWebAuthn(), [])
+  const submitting = isSubmitting
+
+  const setTrustDevice = (value: boolean) => {
+    setValue("trustDevice", value)
+  }
 
   return {
-    // Refs
-    emailRef,
-    passwordRef,
+    // Form instance
+    form,
+    savedEmail, // Exposed for default value logic if needed elsewhere
     // State
-    savedEmail,
-    trustDevice,
-    setTrustDevice,
     caps,
     setCaps,
     showPassword,
     setShowPassword,
     emailSuggestion,
-    emailMirror,
-    setEmailMirror,
-    emailValid,
+    applySuggestion,
+    handleEmailBlur,
+    // Computed
     activeEmail,
     submitting,
-    isPending,
-    submitError,
+    submitError: errors.root?.message,
     passkeyError,
     webauthnSupported,
+    trustDevice, // Exposed for MfaChallengeView
+    setTrustDevice, // Exposed for MfaChallengeView
+    // Actions
+    handlePasskeyLogin,
+    onSubmit: handleSubmit(onSubmit),
     // Auth context
     pendingMfa,
-    // Handlers
-    submitAction,
-    handleEmailBlur,
-    applySuggestion,
-    handlePasskeyLogin,
-  } as const
+  }
 }
 
 export function useMfaFlow() {

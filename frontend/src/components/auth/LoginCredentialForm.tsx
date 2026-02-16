@@ -12,31 +12,35 @@ type LoginCredentialFormProps = {
   form: ReturnType<typeof useLoginForm>
 }
 
+import { Controller } from "react-hook-form"
+
+// ... imports
+
 export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
   const { t } = useTranslation(["auth"])
 
   const {
-    emailRef,
-    passwordRef,
-    savedEmail,
-    trustDevice,
-    setTrustDevice,
+    form: {
+      register,
+      control,
+      formState: { errors },
+    },
+    // savedEmail, // removed unused
     caps,
     setCaps,
     showPassword,
     setShowPassword,
     emailSuggestion,
-    setEmailMirror,
-    emailValid,
+    applySuggestion,
+    handleEmailBlur,
+    // computed
     submitting,
-    isPending,
     submitError,
     passkeyError,
     webauthnSupported,
-    submitAction,
-    handleEmailBlur,
-    applySuggestion,
+    // actions
     handlePasskeyLogin,
+    onSubmit,
   } = form
 
   return (
@@ -47,7 +51,7 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
       delay={0.2}
       className="auth-card-glass flex w-full min-w-0 flex-col justify-center bg-surface/(--opacity-hover) p-6 sm:p-10"
     >
-      <form noValidate autoComplete="on" action={submitAction} className="flex flex-col gap-6">
+      <form noValidate autoComplete="on" onSubmit={onSubmit} className="flex flex-col gap-6">
         <div className="space-y-2 text-center">
           <h2 className="text-3xl font-extrabold">{t("auth:login.title")}</h2>
           <p className="text-sm text-text-secondary">
@@ -63,25 +67,21 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
           </label>
           <Input
             id="username"
-            name="username"
+            {...register("username")}
             type="email"
-            className={!emailValid ? "border-error-text focus:border-error-text" : ""}
-            defaultValue={savedEmail}
-            ref={(el) => {
-              emailRef.current = el
-              if (el) {
-                setTimeout(() => el.focus(), 0)
-              }
+            className={errors.username ? "border-error-text focus:border-error-text" : ""}
+            onBlur={(e) => {
+              register("username").onBlur(e)
+              handleEmailBlur()
             }}
-            onChange={(event) => setEmailMirror(event.target.value)}
-            onBlur={handleEmailBlur}
             autoComplete="username"
-            disabled={isPending || submitting}
+            disabled={submitting}
             inputMode="email"
             required
+            error={!!errors.username}
           />
           <p className="text-xs text-text-secondary/(--opacity-hover)">
-            {!emailValid ? t("auth:messages.invalidFormat") : " "}
+            {errors.username ? t(errors.username.message || "auth:messages.invalidFormat") : " "}
           </p>
           {emailSuggestion ? (
             <button
@@ -121,18 +121,16 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
           <div className="relative">
             <Input
               id="password"
-              name="password"
+              {...register("password")}
               type={showPassword ? "text" : "password"}
-              ref={passwordRef}
-              onKeyUp={(event: React.KeyboardEvent) =>
-                setCaps(event.getModifierState("CapsLock"))
-              }
+              onKeyUp={(event: React.KeyboardEvent) => setCaps(event.getModifierState("CapsLock"))}
               onKeyDown={(event: React.KeyboardEvent) =>
                 setCaps(event.getModifierState("CapsLock"))
               }
               autoComplete="current-password"
-              disabled={isPending || submitting}
+              disabled={submitting}
               required
+              error={!!errors.password}
             />
             {caps ? (
               <span className="absolute inset-y-0 right-4 flex items-center text-xs font-semibold text-warning-text">
@@ -140,6 +138,11 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
               </span>
             ) : null}
           </div>
+          {errors.password && (
+            <p className="text-xs text-error-text">
+              {t(errors.password.message || "auth:messages.passwordRequired")}
+            </p>
+          )}
         </div>
 
         <div
@@ -150,11 +153,18 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
         </div>
 
         <div className="flex items-center gap-3 text-sm font-medium text-text-primary">
-          <Checkbox
-            checked={trustDevice}
-            onCheckedChange={(checked) => setTrustDevice(checked === true)}
-            disabled={isPending || submitting}
-            aria-label={t("auth:actions.rememberEmail")}
+          <Controller
+            control={control}
+            name="trustDevice"
+            render={({ field: { value, onChange, ...field } }) => (
+              <Checkbox
+                {...field}
+                checked={!!value}
+                onCheckedChange={onChange}
+                disabled={submitting}
+                aria-label={t("auth:actions.rememberEmail")}
+              />
+            )}
           />
           {t("auth:actions.rememberEmail")}
         </div>
@@ -166,10 +176,10 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
             variant="solid"
             size="lg"
             fullWidth
-            loading={isPending || submitting}
-            disabled={isPending || submitting}
+            loading={submitting}
+            disabled={submitting}
             className="text-lg font-extrabold shadow-premium hover:shadow-glass-strong"
-            leadingIcon={!(isPending || submitting) ? <LogIn className="h-6 w-6" /> : undefined}
+            leadingIcon={!submitting ? <LogIn className="h-6 w-6" /> : undefined}
           >
             {t("auth:actions.signIn")}
           </Button>

@@ -19,7 +19,8 @@ const NEAR_BOTTOM_THRESHOLD = 24
 
 function markIfFromBottom() {
   const nearBottom =
-    window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - NEAR_BOTTOM_THRESHOLD
+    window.scrollY + window.innerHeight >=
+    document.documentElement.scrollHeight - NEAR_BOTTOM_THRESHOLD
   if (nearBottom) sessionStorage.setItem("__scrollTopNext", "1")
 }
 

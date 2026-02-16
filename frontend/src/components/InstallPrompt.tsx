@@ -14,8 +14,6 @@ interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
 }
 
-
-
 type NavigatorStandalone = Navigator & { standalone?: boolean }
 
 const DISMISS_TTL = 7 * 24 * 60 * 60 * 1000 // 7 days

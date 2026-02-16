@@ -172,13 +172,7 @@ export const StoryViewer = ({
             <SmartImage
               srcRaw={viewerStory.cover_url}
               alt={viewerStory.title}
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "contain",
-                objectPosition: "center",
-                backgroundColor: "var(--bg-page)",
-              }}
+              className="h-full w-full bg-page object-contain object-center"
             />
           ) : (
             <div className="flex w-full items-center justify-between px-fluid-x">
