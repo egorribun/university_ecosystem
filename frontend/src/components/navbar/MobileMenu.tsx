@@ -72,8 +72,9 @@ export function MobileMenu({
         if (e.key === "Escape") onClose()
       }}
       onClick={onClose}
-      role="none"
+      aria-label={t("navigation:aria.closeMenu")}
     >
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
       <div
         role="dialog"
         aria-modal="true"

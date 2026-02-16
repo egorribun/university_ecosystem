@@ -116,6 +116,7 @@ export const dimensions = {
   cardMd: "var(--w-card-md)",
   cardSm: "var(--w-card-sm)",
   heroLg: "var(--h-hero-lg)",
+  heroMax: "var(--h-hero-max)",
   heroMaxLandscape: "var(--h-hero-max-landscape)",
   heroMaxPortrait: "var(--h-hero-max-portrait)",
   heroMaxSquare: "var(--h-hero-max-square)",
@@ -127,12 +128,14 @@ export const dimensions = {
 export const opacity = {
   dim: "var(--opacity-dim)",
   faint: "var(--opacity-faint)",
+  glass: "var(--opacity-glass)",
   heavy: "var(--opacity-heavy)",
   hover: "var(--opacity-hover)",
   medium: "var(--opacity-medium)",
   soft: "var(--opacity-soft)",
   strong: "var(--opacity-strong)",
   subtle: "var(--opacity-subtle)",
+  trace: "var(--opacity-trace)",
 } as const
 
 export const scale = {

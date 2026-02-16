@@ -122,7 +122,7 @@ export default function Activity() {
   return (
     <Layout>
       <PageFadeIn>
-        <div className="w-screen min-h-screen bg-(--bg-page) text-(--text-primary) py-8 sm:py-10">
+        <div className="w-screen min-h-screen bg-page text-text-primary py-8 sm:py-10">
           <motion.div
             initial="hidden"
             animate="show"
@@ -137,7 +137,7 @@ export default function Activity() {
                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-subtle-bg text-brand shadow-glass transition-transform duration-fast hover:scale-105 backdrop-blur-sm">
                   <TimelineIcon className="text-3xl" />
                 </div>
-                <h1 className="text-page-title font-bold tracking-tight text-(--text-primary)">
+                <h1 className="text-page-title font-bold tracking-tight text-text-primary">
                   {t("activity:title")}
                 </h1>
               </FadeSection>
@@ -154,7 +154,7 @@ export default function Activity() {
                     : { willChange: "transform, opacity", transform: "translateZ(0)" }),
                   ...fadeDelayStyle("140ms"),
                 }}
-                className="mb-6 inline-flex items-center gap-1 rounded-full border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-1 shadow-premium backdrop-blur-xl [-webkit-backdrop-filter:blur(var(--blur-md))] dark:border-glass-border dark:bg-(--bg-page)/(--opacity-medium) dark:shadow-premium"
+                className="mb-6 inline-flex items-center gap-1 rounded-full border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-1 shadow-premium backdrop-blur-xl [-webkit-backdrop-filter:blur(var(--blur-md))] dark:border-glass-border dark:bg-page/(--opacity-medium) dark:shadow-premium"
               >
                 {periodOptions.map((option) => (
                   <button
@@ -164,7 +164,7 @@ export default function Activity() {
                       "relative rounded-full border-0 px-4 py-1.5 text-sm font-bold transition-colors duration-rapid",
                       period === option.value
                         ? "text-white"
-                        : "bg-transparent text-(--text-primary) hover:bg-brand-subtle-bg hover:text-brand"
+                        : "bg-transparent text-text-primary hover:bg-brand-subtle-bg hover:text-brand"
                     )}
                   >
                     {period === option.value && (
@@ -261,7 +261,7 @@ export default function Activity() {
                       {t("activity:sections.participation.title")}
                     </p>
                     <div className="flex items-center gap-2">
-                      <span className="text-card-stat font-black tracking-tighter tabular-nums lining-nums text-(--text-primary)">
+                      <span className="text-card-stat font-black tracking-tighter tabular-nums lining-nums text-text-primary">
                         {t("activity:sections.participation.eventsCount", {
                           value: partEventsAnimated,
                           count: participation?.events ?? 0,
@@ -305,7 +305,7 @@ export default function Activity() {
                   <div className="flex flex-col">
                     <div className="mb-2 flex items-center gap-2">
                       <EventAvailableIcon className="text-base text-brand" />
-                      <h3 className="font-black text-(--text-primary)">
+                      <h3 className="font-black text-text-primary">
                         {t("activity:sections.attendance.recent")}
                       </h3>
                     </div>
@@ -363,7 +363,7 @@ export default function Activity() {
                                   }}
                                 />
                                 <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-1.5">
-                                  <span className="font-bold text-(--text-primary)">
+                                  <span className="font-bold text-text-primary">
                                     {r.course || attendanceLessonFallback}
                                   </span>
                                   <span className="text-sm text-(--text-label)">
@@ -393,7 +393,7 @@ export default function Activity() {
                   <div className="flex flex-col">
                     <div className="mb-2 flex items-center gap-2">
                       <SchoolIcon className="text-base text-(--primary-main)" />
-                      <h3 className="font-black text-(--text-primary)">
+                      <h3 className="font-black text-text-primary">
                         {t("activity:sections.grades.recent")}
                       </h3>
                     </div>
@@ -420,7 +420,7 @@ export default function Activity() {
                               <div className="flex items-center gap-2">
                                 <div className="h-2 w-2 rounded-full bg-(--primary-main)/(--opacity-heavy) shadow-pulse-primary" />
                                 <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-1.5">
-                                  <span className="font-bold text-(--text-primary)">
+                                  <span className="font-bold text-text-primary">
                                     {r.course}
                                   </span>
                                   <span className="text-sm text-(--text-label)">
@@ -451,7 +451,7 @@ export default function Activity() {
                   <div className="flex flex-col">
                     <div className="mb-2 flex items-center gap-2">
                       <EmojiEventsIcon className="text-base text-(--primary-main)" />
-                      <h3 className="font-black text-(--text-primary)">
+                      <h3 className="font-black text-text-primary">
                         {t("activity:sections.participation.recent")}
                       </h3>
                     </div>
@@ -479,7 +479,7 @@ export default function Activity() {
                               <div className="flex items-center gap-2">
                                 <div className="h-2 w-2 rounded-full bg-(--warning-text)/(--opacity-heavy) shadow-pulse-warning" />
                                 <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-1.5">
-                                  <span className="font-bold text-(--text-primary)">{r.title}</span>
+                                  <span className="font-bold text-text-primary">{r.title}</span>
                                   <span className="text-sm text-(--text-label)">
                                     {[formatDate(r.date), r.role].filter(Boolean).join(separator)}
                                   </span>
@@ -507,7 +507,7 @@ export default function Activity() {
           >
             {detail === "attendance" && (
               <div className="space-y-4">
-                <p className="text-base text-(--text-primary)">
+                <p className="text-base text-text-primary">
                   {t("activity:sections.attendance.dialogTotal", {
                     present: attendance?.present ?? 0,
                     total: attendance?.total ?? 0,
@@ -522,7 +522,7 @@ export default function Activity() {
                 <div className="space-y-2">
                   {(attendance?.recent ?? []).map((r, i) => (
                     <div key={attendanceItemKey(r, i)} className="space-y-0.5">
-                      <p className="text-sm font-semibold text-(--text-primary)">
+                      <p className="text-sm font-semibold text-text-primary">
                         {`${r.course || attendanceLessonFallback} — ${attendanceStatusLabel(r.status)}`}
                       </p>
                       <p className="text-xs text-(--text-caption)">{formatDate(r.date)}</p>
@@ -533,7 +533,7 @@ export default function Activity() {
             )}
             {detail === "grades" && (
               <div className="space-y-4">
-                <p className="text-base font-semibold text-(--text-primary)">
+                <p className="text-base font-semibold text-text-primary">
                   {grades?.scale === "gpa"
                     ? `GPA ${(grades?.average ?? 0).toFixed(2)}`
                     : grades?.scale === "100"
@@ -543,7 +543,7 @@ export default function Activity() {
                 <div className="space-y-2">
                   {(grades?.recent ?? []).map((r, i) => (
                     <div key={gradeItemKey(r, i)} className="space-y-0.5">
-                      <p className="text-sm font-semibold text-(--text-primary)">
+                      <p className="text-sm font-semibold text-text-primary">
                         {`${r.course} — ${r.score}${r.max ? "/" + r.max : ""}`}
                       </p>
                       <p className="text-xs text-(--text-caption)">{formatDate(r.date)}</p>
@@ -554,7 +554,7 @@ export default function Activity() {
             )}
             {detail === "participation" && (
               <div className="space-y-4">
-                <p className="text-base text-(--text-primary)">
+                <p className="text-base text-text-primary">
                   {[
                     t("activity:sections.participation.eventsCount", {
                       value: String(participation?.events ?? 0),
@@ -577,7 +577,7 @@ export default function Activity() {
                 <div className="space-y-2">
                   {(participation?.recent ?? []).map((r, i) => (
                     <div key={participationItemKey(r, i)} className="space-y-0.5">
-                      <p className="text-sm font-semibold text-(--text-primary)">{r.title}</p>
+                      <p className="text-sm font-semibold text-text-primary">{r.title}</p>
                       <p className="text-xs text-(--text-caption)">
                         {[formatDate(r.date), r.role].filter(Boolean).join(separator)}
                       </p>
@@ -590,7 +590,7 @@ export default function Activity() {
               <div className="space-y-2">
                 {(attendance?.recent ?? []).map((r, i) => (
                   <div key={attendanceItemKey(r, i)} className="space-y-0.5">
-                    <p className="text-sm font-semibold text-(--text-primary)">
+                    <p className="text-sm font-semibold text-text-primary">
                       {`${r.course || attendanceLessonFallback} — ${attendanceStatusLabel(r.status)}`}
                     </p>
                     <p className="text-xs text-(--text-caption)">{formatDate(r.date)}</p>
@@ -602,7 +602,7 @@ export default function Activity() {
               <div className="space-y-2">
                 {(grades?.recent ?? []).map((r, i) => (
                   <div key={gradeItemKey(r, i)} className="space-y-0.5">
-                    <p className="text-sm font-semibold text-(--text-primary)">
+                    <p className="text-sm font-semibold text-text-primary">
                       {`${r.course} — ${r.score}${r.max ? "/" + r.max : ""}`}
                     </p>
                     <p className="text-xs text-(--text-caption)">{formatDate(r.date)}</p>
@@ -614,7 +614,7 @@ export default function Activity() {
               <div className="space-y-2">
                 {(participation?.recent ?? []).map((r, i) => (
                   <div key={participationItemKey(r, i)} className="space-y-0.5">
-                    <p className="text-sm font-semibold text-(--text-primary)">{r.title}</p>
+                    <p className="text-sm font-semibold text-text-primary">{r.title}</p>
                     <p className="text-xs text-(--text-caption)">
                       {[formatDate(r.date), r.role].filter(Boolean).join(separator)}
                     </p>

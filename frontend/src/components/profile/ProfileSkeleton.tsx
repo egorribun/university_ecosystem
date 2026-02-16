@@ -10,12 +10,12 @@ export const ProfileSkeleton = () => {
           <Card className="overflow-hidden">
             <div className="h-64 relative">
               <Skeleton width="100%" height="100%" />
-              <div className="absolute -bottom-16 left-1/2 -translate-x-1/2">
+              <div className="absolute -bottom-16 left-1/(--opacity-trace) -translate-x-1/(--opacity-trace)">
                 <Skeleton
                   width={160}
                   height={160}
                   rounded="50%"
-                  className="border-4 border-white"
+                  className="border-4 border-(--bg-surface)"
                 />
               </div>
             </div>

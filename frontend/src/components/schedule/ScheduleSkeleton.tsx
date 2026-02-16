@@ -2,7 +2,7 @@ import { Skeleton } from "@/components/ui"
 
 export function ScheduleSkeleton() {
   return (
-    <div className="w-full min-h-screen bg-(--bg-page) py-8 sm:py-10">
+    <div className="w-full min-h-screen bg-page py-8 sm:py-10">
       <div className="px-2 md:px-4">
         {/* Header Skeleton */}
         <div className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5">

@@ -9,6 +9,7 @@ import type { User } from "@/types/User"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 import profileBg from "@/assets/background.png"
 
+const COVER_IMAGE_FILTER = "saturate(1) contrast(1.02) brightness(0.98)"
 const DEFAULT_AVATAR = AVATAR_PLACEHOLDER_URL
 
 type ProfileHeaderProps = {
@@ -60,6 +61,8 @@ export const ProfileHeader = ({
         style={{ paddingBottom: heroPaddingBottom }}
       >
         {/* Cover Image with Parallax */}
+
+
         <div
           className={cn(
             "absolute inset-0 bg-center bg-cover",
@@ -67,7 +70,7 @@ export const ProfileHeader = ({
           )}
           style={{
             transform: `translateY(${coverParallax}px) scale(${coverScale})`,
-            filter: "saturate(1) contrast(1.02) brightness(0.98)",
+            filter: COVER_IMAGE_FILTER,
           }}
         >
           <SmartImage

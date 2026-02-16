@@ -25,7 +25,7 @@ export const EventInfo: React.FC<EventInfoProps> = ({
 
   return (
     <>
-      <h3 className="mb-2 text-xl font-extrabold leading-tight text-(--text-primary) sm:text-2xl">
+      <h3 className="mb-2 text-xl font-extrabold leading-tight text-text-primary sm:text-2xl">
         {title}
       </h3>
 
@@ -59,7 +59,7 @@ export const EventInfo: React.FC<EventInfoProps> = ({
 
       <div className="my-3 h-px bg-linear-to-r from-transparent via-event-divider to-transparent" />
 
-      <p className="mb-4 line-clamp-3 text-base text-(--text-primary) grow-0">{description}</p>
+      <p className="mb-4 line-clamp-3 text-base text-text-primary grow-0">{description}</p>
     </>
   )
 }

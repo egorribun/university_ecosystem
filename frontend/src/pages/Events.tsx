@@ -69,8 +69,26 @@ const initialEvent: EventDraft = {
   about_en: "",
 }
 
+const ANIMATION_DELAYS = {
+  header: "80ms",
+  createButton: "140ms",
+  tabs: "200ms",
+  search: "240ms",
+  grid: "260ms",
+}
+
+const DEBOUNCE_MS = 350
+
+const SKELETON_HEIGHTS = {
+  mobile: 180,
+  desktop: 200,
+  title: 28,
+  meta: 20,
+  avatar: 36,
+}
+
 const inputClass =
-  "w-full rounded-md border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-4 py-3 text-md font-medium text-(--text-primary) shadow-sm focus:border-brand focus:outline-none transition-all placeholder:text-(--text-secondary)/(--opacity-medium)"
+  "w-full rounded-md border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-4 py-3 text-md font-medium text-text-primary shadow-sm focus:border-brand focus:outline-none transition-all placeholder:text-(--text-secondary)/(--opacity-medium)"
 
 const Events = () => {
   const { user } = useAuth()
@@ -135,9 +153,9 @@ const Events = () => {
     setSearchParams(next, { replace: true })
   }, [tab, search, type, location, searchParams, setSearchParams])
 
-  const dSearch = useDebounced(search, 350)
-  const dType = useDebounced(type, 350)
-  const dLocation = useDebounced(location, 350)
+  const dSearch = useDebounced(search, DEBOUNCE_MS)
+  const dType = useDebounced(type, DEBOUNCE_MS)
+  const dLocation = useDebounced(location, DEBOUNCE_MS)
 
   const eventsListFilters = useMemo(() => {
     const isActiveFilter = tab === "active" ? true : tab === "archive" ? false : null
@@ -293,11 +311,11 @@ const Events = () => {
         description={t("events:pageDescription", "Upcoming events, lectures, and activities.")}
       />
       <PageFadeIn>
-        <div className="w-full min-h-full bg-transparent text-(--text-primary) py-8 sm:py-10">
+        <div className="w-full min-h-full bg-transparent text-text-primary py-8 sm:py-10">
           <div className="px-4 sm:px-6 lg:px-8">
             {/* Header */}
             <header>
-              <FadeSection delay="80ms" className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5">
+              <FadeSection delay={ANIMATION_DELAYS.header} className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5">
                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-(--bg-surface)/(--opacity-medium) border border-glass-border text-brand shadow-glass transition-transform duration-base hover:scale-[1.08] overflow-hidden">
                   <EventNoteIcon className="h-7 w-7" />
                 </div>
@@ -308,7 +326,7 @@ const Events = () => {
 
               {/* Create button */}
               {(user?.role === "admin" || user?.role === "teacher") && (
-                <FadeSection delay="140ms" className="mb-6 flex justify-start">
+                <FadeSection delay={ANIMATION_DELAYS.createButton} className="mb-6 flex justify-start">
                   <Button
                     id="create-event-btn"
                     size="lg"
@@ -322,7 +340,7 @@ const Events = () => {
               )}
             </header>
             {/* Tabs */}
-            <FadeSection delay="200ms" className="w-full max-w-md z-modal" role="tablist">
+            <FadeSection delay={ANIMATION_DELAYS.tabs} className="w-full max-w-md z-modal" role="tablist">
               <div
                 ref={tabContainerRef}
                 className={cn(
@@ -343,8 +361,8 @@ const Events = () => {
                       "relative z-base px-4 py-2 text-body-sm font-semibold rounded-lg transition-colors duration-fast",
                       "sm:px-6 sm:text-base",
                       tab === tabItem.key
-                        ? "text-(--text-primary)"
-                        : "text-(--text-secondary) hover:text-(--text-primary)"
+                        ? "text-text-primary"
+                        : "text-(--text-secondary) hover:text-text-primary"
                     )}
                   >
                     {tab === tabItem.key && (
@@ -361,7 +379,7 @@ const Events = () => {
             </FadeSection>
 
             {/* Search and filters */}
-            <FadeSection delay="240ms" className="mb-6 lg:max-w-4xl">
+            <FadeSection delay={ANIMATION_DELAYS.search} className="mb-6 lg:max-w-4xl">
               <div className="relative">
                 <SearchIcon className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-(--text-secondary) pointer-events-none opacity-strong" />
                 <input
@@ -371,7 +389,7 @@ const Events = () => {
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder={t("events:filters.search")}
                   className={cn(
-                    "w-full rounded-md px-4 py-3.5 pl-11 pr-20 text-base text-(--text-primary)",
+                    "w-full rounded-md px-4 py-3.5 pl-11 pr-20 text-base text-text-primary",
                     "bg-(--bg-surface)/(--opacity-medium) border border-glass-border shadow-glass backdrop-blur-md",
                     "placeholder:text-(--text-secondary)/(--opacity-medium)",
                     "outline-none transition-all duration-fast",
@@ -465,7 +483,7 @@ const Events = () => {
             {/* Events grid */}
             <section aria-label={t("events:pageTitle")}>
               <FadeSection
-                delay="260ms"
+                delay={ANIMATION_DELAYS.grid}
                 role="tabpanel"
                 id={`events-tabpanel-${tab}`}
                 aria-labelledby={`events-tab-${tab}`}
@@ -475,12 +493,12 @@ const Events = () => {
                   Array.from({ length: skeletonCount }).map((_, i) => (
                     <div key={`event-skel-${i}`} className="w-full">
                       <div className="w-full space-y-4 rounded-lg border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-5 shadow-glass backdrop-blur-md">
-                        <Skeleton height={isMobile ? 180 : 200} className="rounded-md" />
-                        <Skeleton height={28} className="rounded-lg" />
-                        <Skeleton height={20} width="75%" className="rounded-lg" />
+                        <Skeleton height={isMobile ? SKELETON_HEIGHTS.mobile : SKELETON_HEIGHTS.desktop} className="rounded-md" />
+                        <Skeleton height={SKELETON_HEIGHTS.title} className="rounded-lg" />
+                        <Skeleton height={SKELETON_HEIGHTS.meta} width="75%" className="rounded-lg" />
                         <div className="flex gap-3 pt-2">
-                          <Skeleton height={36} width={120} className="rounded-sm" />
-                          <Skeleton height={36} width={100} className="rounded-sm" />
+                          <Skeleton height={SKELETON_HEIGHTS.avatar} width={120} className="rounded-sm" />
+                          <Skeleton height={SKELETON_HEIGHTS.avatar} width={100} className="rounded-sm" />
                         </div>
                       </div>
                     </div>
@@ -504,7 +522,7 @@ const Events = () => {
                         <EventNoteIcon className="h-8 w-8 text-brand" />
                       </div>
                       <div className="space-y-2">
-                        <p className="text-lg font-semibold text-(--text-primary)">
+                        <p className="text-lg font-semibold text-text-primary">
                           {t("events:states.empty")}
                         </p>
                         <p className="text-sm text-(--text-secondary)">

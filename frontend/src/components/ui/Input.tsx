@@ -14,23 +14,31 @@ const inputVariants = cva(
         true: "w-full",
         false: "w-auto",
       },
+      size: {
+        sm: "px-3 py-2 text-sm min-h-9",
+        md: "px-4 py-3 text-base min-h-12",
+        lg: "px-5 py-4 text-lg min-h-14",
+      },
     },
     defaultVariants: {
       error: false,
       fullWidth: true,
+      size: "md",
     },
   }
 )
 
 export type InputProps = Omit<ComponentPropsWithoutRef<"input">, "size"> &
-  VariantProps<typeof inputVariants>
+  VariantProps<typeof inputVariants> & {
+    size?: "sm" | "md" | "lg"
+  }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ className, error, fullWidth, ...props }, ref) => {
+  ({ className, error, fullWidth, size, ...props }, ref) => {
     return (
       <input
         ref={ref}
-        className={cn(inputVariants({ error, fullWidth }), className)}
+        className={cn(inputVariants({ error, fullWidth, size }), className)}
         aria-invalid={!!error}
         {...props}
       />

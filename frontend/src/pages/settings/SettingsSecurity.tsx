@@ -214,7 +214,7 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor, isActive }: Setti
               {totpDraft ? (
                 <div className="flex flex-col gap-4 p-4 rounded-xs border border-(--border-subtle) bg-(--bg-surface-active)">
                   <div className="flex flex-col gap-1">
-                    <h4 className="text-sm font-bold text-(--text-primary)">
+                    <h4 className="text-sm font-bold text-text-primary">
                       {t("settings:security.totp.pendingTitle")}
                     </h4>
                     <p className="text-xs text-(--text-secondary)">

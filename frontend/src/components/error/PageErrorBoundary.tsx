@@ -60,15 +60,15 @@ function PageErrorFallback({
       className="flex min-h-(--h-hero-sm) flex-col items-center justify-center gap-6 p-8 text-center"
     >
       <div className="max-w-md">
-        <h1 className="mb-2 text-2xl font-bold text-(--text-primary)">
+        <h1 className="mb-2 text-2xl font-bold text-text-primary">
           {t("system:pageError.title", "Page Error")}
         </h1>
-        <p className="text-(--text-primary)/(--opacity-strong)">
+        <p className="text-text-primary/(--opacity-strong)">
           {t("system:pageError.description", "Something went wrong loading this page.")}
         </p>
         {import.meta.env.DEV && error && (
           <details className="mt-4 text-left">
-            <summary className="cursor-pointer text-sm text-(--text-primary)/(--opacity-medium)">
+            <summary className="cursor-pointer text-sm text-text-primary/(--opacity-medium)">
               Error details
             </summary>
             <pre className="mt-2 overflow-auto rounded bg-(--glass-bg) p-2 text-xs">
@@ -88,7 +88,7 @@ function PageErrorFallback({
         <button
           type="button"
           onClick={onGoHome}
-          className="rounded-full border border-(--text-primary)/(--opacity-soft) px-6 py-2 font-medium text-(--text-primary) transition-colors hover:bg-(--glass-bg)"
+          className="rounded-full border border-(--text-primary)/(--opacity-soft) px-6 py-2 font-medium text-text-primary transition-colors hover:bg-(--glass-bg)"
         >
           {t("system:pageError.home", "Go Home")}
         </button>

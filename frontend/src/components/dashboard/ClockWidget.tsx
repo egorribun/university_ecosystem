@@ -17,7 +17,7 @@ export function ClockWidget() {
         "before:pointer-events-none before:absolute before:inset-0 before:bg-(--flare-primary) before:opacity-subtle"
       )}
     >
-      <div className="text-5xl font-black tracking-tighter text-(--text-primary) sf-pro tabular-nums">
+      <div className="text-5xl font-black tracking-tighter text-text-primary sf-pro tabular-nums">
         {time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
       </div>
       <div className="mt-2 text-sm font-bold text-(--text-secondary) opacity-strong uppercase tracking-widest">

@@ -81,7 +81,7 @@ export const MediaSlot = forwardRef<HTMLDivElement, MediaSlotProps>(
           {fallback ?? (
             <div className="absolute inset-0 flex items-center justify-center">
               <ImageIcon
-                className="h-12 w-12 text-(--text-primary)/(--opacity-dim)"
+                className="h-12 w-12 text-text-primary/(--opacity-dim)"
                 strokeWidth={1.5}
               />
             </div>

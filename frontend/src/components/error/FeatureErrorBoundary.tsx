@@ -54,10 +54,10 @@ function FeatureErrorFallback({
         <AlertTriangle className="h-5 w-5 text-warning-text" />
       </div>
       <div>
-        <h3 className="text-sm font-bold text-(--text-primary)">
+        <h3 className="text-sm font-bold text-text-primary">
           {featureName ? `${featureName} unavailable` : "Feature unavailable"}
         </h3>
-        <p className="text-xs text-(--text-primary)/(--opacity-medium)">Something went wrong</p>
+        <p className="text-xs text-text-primary/(--opacity-medium)">Something went wrong</p>
       </div>
       <button type="button" onClick={onRetry} className="hover:underline">
         <span className="text-xs font-black text-(--accent)">Try again</span>

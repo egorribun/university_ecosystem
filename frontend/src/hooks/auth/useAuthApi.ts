@@ -16,6 +16,12 @@ import {
 } from "@/types/Auth"
 import { fetchCurrentUser } from "./useProfileSync"
 import i18n from "@/i18n/config"
+import {
+  recoverPushConsentFromBrowser,
+  hasPushConsent,
+  softSyncPushSubscription,
+  setPushConsent,
+} from "@/push/subscribe"
 import type { WebAuthnAuthenticationOptionsOut } from "@/types/Auth"
 import { clearAccessToken, persistAccessToken } from "./tokenStorage"
 import { logWarning, logError } from "@/app/logger"
@@ -171,15 +177,11 @@ export const useAuthApi = (
           }
 
           // Recover push consent if browser still has subscription after storage was cleared
-          import("@/push/subscribe")
-            .then(({ recoverPushConsentFromBrowser, hasPushConsent, softSyncPushSubscription }) => {
-              recoverPushConsentFromBrowser()
-                .then((recovered) => {
-                  if (recovered || hasPushConsent()) {
-                    softSyncPushSubscription().catch(() => {})
-                  }
-                })
-                .catch(() => {})
+          recoverPushConsentFromBrowser()
+            .then((recovered) => {
+              if (recovered || hasPushConsent()) {
+                softSyncPushSubscription().catch(() => {})
+              }
             })
             .catch(() => {})
 
@@ -220,7 +222,6 @@ export const useAuthApi = (
         // Don't fully unsubscribe - just clear local consent
         // This allows push subscription to be recovered on next login
         // The browser subscription remains, server association is cleared
-        const { setPushConsent, hasPushConsent } = await import("@/push/subscribe")
         if (hasPushConsent()) {
           setPushConsent(false)
         }
@@ -272,15 +273,11 @@ export const useAuthApi = (
           }
 
           // Recover push consent if browser still has subscription after storage was cleared
-          import("@/push/subscribe")
-            .then(({ recoverPushConsentFromBrowser, hasPushConsent, softSyncPushSubscription }) => {
-              recoverPushConsentFromBrowser()
-                .then((recovered) => {
-                  if (recovered || hasPushConsent()) {
-                    softSyncPushSubscription().catch(() => {})
-                  }
-                })
-                .catch(() => {})
+          recoverPushConsentFromBrowser()
+            .then((recovered) => {
+              if (recovered || hasPushConsent()) {
+                softSyncPushSubscription().catch(() => {})
+              }
             })
             .catch(() => {})
 
@@ -346,9 +343,6 @@ export const useAuthApi = (
       setUser(profile)
 
       // Try to recover push consent if localStorage was cleared but browser still has subscription
-      const { recoverPushConsentFromBrowser, hasPushConsent, softSyncPushSubscription } =
-        await import("@/push/subscribe")
-
       await recoverPushConsentFromBrowser()
 
       if (hasPushConsent()) {
@@ -408,15 +402,11 @@ export const useAuthApi = (
           }
 
           // Recover push consent if browser maintains subscription
-          import("@/push/subscribe")
-            .then(({ recoverPushConsentFromBrowser, hasPushConsent, softSyncPushSubscription }) => {
-              recoverPushConsentFromBrowser()
-                .then((recovered) => {
-                  if (recovered || hasPushConsent()) {
-                    softSyncPushSubscription().catch(() => {})
-                  }
-                })
-                .catch(() => {})
+          recoverPushConsentFromBrowser()
+            .then((recovered) => {
+              if (recovered || hasPushConsent()) {
+                softSyncPushSubscription().catch(() => {})
+              }
             })
             .catch(() => {})
 

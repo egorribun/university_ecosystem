@@ -131,7 +131,7 @@ const Title = forwardRef<HTMLHeadingElement, TitleProps>(
   ({ as: Component = "h3", children, className, ...props }, ref) => (
     <Component
       ref={ref}
-      className={cn("line-clamp-2 text-lg font-semibold text-(--text-primary)", className)}
+      className={cn("line-clamp-2 text-lg font-semibold text-text-primary", className)}
       {...props}
     >
       {children}
@@ -212,7 +212,7 @@ const badgeSlotVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-(--bg-surface-hover) text-(--text-primary)",
+        default: "bg-(--bg-surface-hover) text-text-primary",
         success: "bg-success-bg text-success-text",
         warning: "bg-warning-bg text-warning-text",
         error: "bg-error-bg text-error-text",

@@ -66,7 +66,7 @@ export const EventActions: React.FC<EventActionsProps> = ({
             />
           </Tooltip>
         </div>
-        <span className="text-body-sm text-(--text-primary)">
+        <span className="text-body-sm text-text-primary">
           {t("events:card.participants", { count: participantCount })}
         </span>
       </div>

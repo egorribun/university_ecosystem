@@ -43,7 +43,7 @@ export function EventEditDialog({
   const imageInputRef = useRef<HTMLInputElement>(null)
 
   const inputClass =
-    "w-full rounded-lg bg-(--input-bg) border border-(--input-border) px-3 py-2 text-sm text-(--text-primary) placeholder:text-(--input-placeholder) focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand transition-colors duration-fast"
+    "w-full rounded-lg bg-(--input-bg) border border-(--input-border) px-3 py-2 text-sm text-text-primary placeholder:text-(--input-placeholder) focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand transition-colors duration-fast"
 
   const getLocalizedEditValue = (field: "title" | "description" | "event_type" | "location") => {
     if (language === "en") {

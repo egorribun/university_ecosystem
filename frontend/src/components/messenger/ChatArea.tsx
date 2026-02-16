@@ -89,7 +89,7 @@ export function ChatArea({
                     <motion.button
                       whileTap={{ scale: 0.9 }}
                       onClick={() => navigate("/messenger")}
-                      className="-ml-1 rounded-full p-15 transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium)"
+                      className="-ml-1 rounded-full p-1.5 transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium)"
                     >
                       <ChevronLeft className="h-5 w-5" strokeWidth={2.5} />
                     </motion.button>
@@ -150,7 +150,7 @@ export function ChatArea({
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={() => setShowSearchInChat(true)}
-                    className="rounded-full p-25 transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium)"
+                    className="rounded-full p-2.5 transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium)"
                   >
                     <Search className="h-5 w-5 text-text-secondary" strokeWidth={2} />
                   </motion.button>
@@ -160,7 +160,7 @@ export function ChatArea({
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
                       onClick={() => setShowChatMenu(!showChatMenu)}
-                      className={`rounded-full p-25 transition-colors ${showChatMenu ? "bg-(--bg-surface-hover)" : "hover:bg-(--bg-surface-hover)/(--opacity-medium)"}`}
+                      className={`rounded-full p-2.5 transition-colors ${showChatMenu ? "bg-(--bg-surface-hover)" : "hover:bg-(--bg-surface-hover)/(--opacity-medium)"}`}
                     >
                       <MoreVertical className="h-5 w-5 text-text-secondary" strokeWidth={2} />
                     </motion.button>

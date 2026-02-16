@@ -27,7 +27,7 @@ export function OfflineFallback({ onRetry }: OfflineFallbackProps) {
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.1 }}
-        className="mb-4 text-2xl font-bold tracking-tight text-(--text-primary) sm:text-3xl"
+        className="mb-4 text-2xl font-bold tracking-tight text-text-primary sm:text-3xl"
       >
         {t("offlineFallback.title")}
       </motion.h1>

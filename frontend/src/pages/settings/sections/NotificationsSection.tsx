@@ -126,7 +126,7 @@ export function NotificationsSection({
                 onChange={onDndStartChange}
                 onBlur={onDndStartBlur}
                 disabled={!dndEnabled || dndSaving}
-                size="small"
+                size="sm"
               />
               <TextField
                 type="time"
@@ -135,7 +135,7 @@ export function NotificationsSection({
                 onChange={onDndEndChange}
                 onBlur={onDndEndBlur}
                 disabled={!dndEnabled || dndSaving}
-                size="small"
+                size="sm"
               />
             </div>
           </div>

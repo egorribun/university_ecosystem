@@ -7,12 +7,16 @@ import client from "../../api/client"
 import type { User } from "../../types/User"
 import SmartImage from "@/components/SmartImage"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
+import { TextField } from "@/components/ui"
 
 interface NewChatModalProps {
   open: boolean
   onClose: () => void
   onSelect: (userId: string) => void
 }
+
+const USERS_PAGE_LIMIT = 10
+const MIN_SEARCH_LENGTH = 1
 
 export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSelect }) => {
   const { t } = useTranslation(["messenger", "common"])
@@ -22,10 +26,10 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
     queryKey: ["users", search],
     queryFn: async () => {
       if (!search) return []
-      const response = await client.get<User[]>(`/users?limit=10&search=${search}`)
+      const response = await client.get<User[]>(`/users?limit=${USERS_PAGE_LIMIT}&search=${search}`)
       return response.data
     },
-    enabled: open && search.length > 1,
+    enabled: open && search.length > MIN_SEARCH_LENGTH,
   })
 
   return (
@@ -50,7 +54,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
             onClick={(event) => event.stopPropagation()}
           >
             <div className="p-6 pb-4 flex items-center justify-between border-b border-(--glass-border)/(--opacity-subtle) bg-(--bg-surface)/(--opacity-medium)">
-              <h3 className="text-xl font-black tracking-tight text-(--text-primary) sf-pro">
+              <h3 className="text-xl font-black tracking-tight text-text-primary sf-pro">
                 {t("messenger:newChat", "New Chat")}
               </h3>
               <button
@@ -62,30 +66,27 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
             </div>
 
             <div className="p-6">
-              <div className="relative group mb-6">
-                <Search className="w-4.5 h-4.5 absolute left-3.5 top-1/2 -translate-y-1/2 text-(--text-secondary) group-focus-within:text-(--brand-main) transition-colors" />
-                <input
-                  type="text"
+                <TextField
+                  leadingIcon={<Search className="w-4.5 h-4.5" />}
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder={t("messenger:searchUsers", "Search users by name or email...")}
+                  className="w-full"
                   ref={(input) => {
                     if (input && open) {
                       setTimeout(() => input.focus(), 0)
                     }
                   }}
-                  placeholder={t("messenger:searchUsers", "Search users by name or email...")}
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  className="w-full pl-11 pr-4 py-3 rounded-2xl border border-(--glass-border)/(--opacity-dim) bg-(--bg-surface-raised)/(--opacity-medium) focus:ring-4 focus:ring-(--brand-main)/(--opacity-subtle) focus:border-(--brand-main)/(--opacity-soft) outline-none transition-all text-base font-medium text-(--text-primary) placeholder:text-(--text-secondary) placeholder:opacity-medium"
                 />
-              </div>
 
               <div className="max-h-96 overflow-y-auto custom-scrollbar pr-1 -mr-1">
                 {isLoading && (
                   <div className="flex flex-col items-center py-10">
-                    <div className="w-10 h-10 border-4 border-(--brand-main)/(--opacity-subtle) border-t-(--brand-main) rounded-full animate-spin"></div>
+                    <div className="w-10 h-10 border-4 border-brand/(--opacity-subtle) border-t-brand rounded-full animate-spin"></div>
                   </div>
                 )}
 
-                {!isLoading && users.length === 0 && search.length > 1 && (
+                {!isLoading && users.length === 0 && search.length > MIN_SEARCH_LENGTH && (
                   <div className="text-center py-12 px-4 space-y-2">
                     <div className="w-16 h-16 rounded-full bg-(--bg-surface-raised) mx-auto flex items-center justify-center text-(--text-secondary) opacity-dim">
                       <Search className="w-8 h-8" />
@@ -114,7 +115,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ open, onClose, onSel
                         />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-base font-black truncate leading-tight text-(--text-primary) group-hover:text-(--brand-main) transition-colors sf-pro">
+                        <p className="text-base font-black truncate leading-tight text-text-primary group-hover:text-brand transition-colors sf-pro">
                           {user.full_name}
                         </p>
                         <p className="text-xs text-(--text-secondary) truncate font-medium opacity-medium">

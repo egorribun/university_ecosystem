@@ -50,6 +50,7 @@ function normalizeArg(value: unknown): unknown {
 }
 
 function callConsole(method: LogMethod, args: unknown[]): void {
+  // eslint-disable-next-line no-console
   const target = typeof console !== "undefined" ? console[method] : undefined
   if (typeof target === "function") {
     target(...(args as unknown[]))

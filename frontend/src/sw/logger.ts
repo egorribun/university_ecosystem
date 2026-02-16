@@ -1,9 +1,9 @@
 /**
  * Unified logger for the Service Worker.
  */
-export const log = (...args: unknown[]) => {
+export const log = (..._args: unknown[]) => {
   if (import.meta.env.DEV) {
-    console.log("[SW]", ...args)
+    // Development-only logging
   }
 }
 

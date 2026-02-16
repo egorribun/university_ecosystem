@@ -105,12 +105,14 @@ export function AppRoutes() {
     ]
     const sharedLoaders = [routeModules.Messenger]
 
+    const PREFETCH_TIMEOUT_MS = 800
+
     if (isAuth) {
-      prefetchRouteModules([...privateLoaders, ...sharedLoaders], { timeoutMs: 800 })
+      prefetchRouteModules([...privateLoaders, ...sharedLoaders], { timeoutMs: PREFETCH_TIMEOUT_MS })
       return
     }
 
-    prefetchRouteModules([...publicLoaders, ...sharedLoaders], { timeoutMs: 800 })
+    prefetchRouteModules([...publicLoaders, ...sharedLoaders], { timeoutMs: PREFETCH_TIMEOUT_MS })
   }, [isAuth])
 
   const { isCompactPage, isMessenger } = useRouteType()

@@ -56,7 +56,7 @@ export function NewsCardList({ news, loading, locale }: NewsCardListProps) {
           >
             <DateBullet date={n.created_at} locale={locale} />
             <div className="flex flex-col gap-1">
-              <span className="text-fluid-h3 font-bold leading-snug text-(--text-primary)">
+              <span className="text-fluid-h3 font-bold leading-snug text-text-primary">
                 {n.title}
               </span>
               <span className="text-sm text-(--text-secondary)">
@@ -66,7 +66,7 @@ export function NewsCardList({ news, loading, locale }: NewsCardListProps) {
             </div>
             <span
               aria-hidden="true"
-              className="ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-glass-border bg-surface/dim text-(--text-primary) opacity-0 transition-all duration-base group-hover:opacity-100 group-hover:border-brand group-hover:bg-brand/subtle group-hover:text-brand"
+              className="ml-auto inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-glass-border bg-surface/dim text-text-primary opacity-0 transition-all duration-base group-hover:opacity-100 group-hover:border-brand group-hover:bg-brand/subtle group-hover:text-brand"
             >
               <ArrowRight aria-hidden="true" className="h-4 w-4" />
             </span>

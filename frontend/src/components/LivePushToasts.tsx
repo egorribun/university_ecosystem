@@ -225,7 +225,7 @@ export default function LivePushToasts() {
   const severityClasses = {
     success:
       "bg-success-bg/(--opacity-subtle) border-success-border/(--opacity-dim) text-success-text",
-    info: "bg-info-bg/(--opacity-subtle) border-info-border/(--opacity-dim) text-info-text",
+    info: "bg-brand/(--opacity-subtle) border-brand/(--opacity-dim) text-brand",
     warning:
       "bg-warning-bg/(--opacity-subtle) border-warning-border/(--opacity-dim) text-warning-text",
     error: "bg-error-bg/(--opacity-subtle) border-error-border/(--opacity-dim) text-error-text",

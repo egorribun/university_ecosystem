@@ -56,7 +56,7 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
     >
       <div className="relative z-deep space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-fluid-h2 font-extrabold text-(--text-primary)">
+          <h2 className="text-fluid-h2 font-extrabold text-text-primary">
             {t("dashboard:news.heading")}
           </h2>
           <Button

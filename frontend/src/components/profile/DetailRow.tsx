@@ -10,7 +10,7 @@ export const DetailRow = ({ label, value }: DetailRowProps) => {
   return (
     <div className="profile-detail-row grid grid-cols-[12px_1fr] items-start gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-3 min-h-(--min-h-touch) sm:min-h-12 rounded-2xl transition-all duration-base border border-transparent hover:border-(--glass-border) hover:bg-(--bg-surface)/(--opacity-dim)">
       <div className="w-1.5 h-1.5 mt-2 rounded-full bg-(--brand-main) shadow-pulse-brand justify-self-center" />
-      <div className="text-xs sm:text-sm md:text-base leading-relaxed text-(--text-primary)">
+      <div className="text-xs sm:text-sm md:text-base leading-relaxed text-text-primary">
         <span className="font-bold text-(--brand-main) uppercase tracking-wider text-label-xs opacity-strong block mb-0.5">
           {label}
         </span>

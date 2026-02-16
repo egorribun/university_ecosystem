@@ -95,7 +95,7 @@ export default function AdminUsers() {
       <div className="min-h-screen w-full bg-background/(--opacity-medium) py-8">
         <div className="mx-auto max-w-(--layout-max-wide) px-4 sm:px-6 lg:px-8">
           <div className="mb-8 flex flex-col gap-6">
-            <h1 className="text-4xl font-bold tracking-tight text-(--text-primary) sm:text-5xl">
+            <h1 className="text-4xl font-bold tracking-tight text-text-primary sm:text-5xl">
               {t("users.title")}
             </h1>
 
@@ -195,7 +195,7 @@ export default function AdminUsers() {
                           className="h-10 w-10"
                         />
                       </td>
-                      <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-(--text-primary)">
+                      <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-text-primary">
                         {user.full_name}
                       </td>
                       <td className="whitespace-nowrap px-6 py-4 text-sm text-(--text-secondary)">
@@ -257,7 +257,7 @@ export default function AdminUsers() {
                   className="h-14 w-14"
                 />
                 <div className="flex flex-1 flex-col min-w-0">
-                  <h3 className="truncate text-base font-bold text-(--text-primary)">
+                  <h3 className="truncate text-base font-bold text-text-primary">
                     {user.full_name}
                   </h3>
                   <p className="truncate text-sm text-(--text-secondary)">{user.email}</p>
@@ -270,7 +270,7 @@ export default function AdminUsers() {
                         value={user.group_id ? String(user.group_id) : ""}
                         onChange={(event) => handleGroupSelectChange(user.id, event.target.value)}
                         className={cn(
-                          "rounded-lg border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-2 py-0.5 text-badge text-(--text-primary) shadow-sm outline-none transition-all",
+                          "rounded-lg border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-2 py-0.5 text-badge text-text-primary shadow-sm outline-none transition-all",
                           "focus:border-brand/(--opacity-medium) focus:ring-2 focus:ring-brand/(--opacity-subtle)"
                         )}
                       >

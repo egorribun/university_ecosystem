@@ -20,6 +20,32 @@
     --color-slate-900: #0f172a;
     --color-slate-950: #020617;
 
+    /* Sky Palette (Dashboard) */
+    --color-sky-50: #f0f9ff;
+    --color-sky-100: #e0f2fe;
+    --color-sky-200: #bae6fd;
+    --color-sky-300: #7dd3fc;
+    --color-sky-400: #38bdf8;
+    --color-sky-500: #0ea5e9;
+    --color-sky-600: #0284c7;
+    --color-sky-700: #0369a1;
+    --color-sky-800: #075985;
+    --color-sky-900: #0c4a6e;
+    --color-sky-950: #082f49;
+
+    /* Indigo Palette (Dashboard) */
+    --color-indigo-50: #eef2ff;
+    --color-indigo-100: #e0e7ff;
+    --color-indigo-200: #c7d2fe;
+    --color-indigo-300: #a5b4fc;
+    --color-indigo-400: #818cf8;
+    --color-indigo-500: #6366f1;
+    --color-indigo-600: #4f46e5;
+    --color-indigo-700: #4338ca;
+    --color-indigo-800: #3730a3;
+    --color-indigo-900: #312e81;
+    --color-indigo-950: #1e1b4b;
+
     /* Semantic Primary Palette (Blue/Sky) */
     --color-blue-50: #eff6ff;
     --color-blue-400: #60a5fa;
@@ -191,6 +217,11 @@
     --min-h-textarea: 100px;
     --min-h-hero-cover: clamp(280px, 50vw, 380px);
 
+    /* Common Percentages (Refactored from Magic Values) */
+    --w-2-5: 40%;
+    --h-2-5: 40%;
+    --h-hero-max: 92vh;
+
     /* Component Specific Dimensions */
     --w-story-card: min(92vw, 420px);
     --w-story-card-md: 420px;
@@ -234,6 +265,7 @@
     /* Touch Targets */
     --size-touch-target: 44px;
     /* Standard 44px touch target */
+    --size-icon-fluid: clamp(18px, 4.5vw, 22px);
 
     /* Unified Z-Index Scale - Single Source of Truth */
     --z-negative: -10;
@@ -304,8 +336,10 @@
     --motion-delay-long: 0.2s;
     /* 200ms */
 
+    --opacity-trace: 0.02;
     --opacity-faint: 0.05;
     --opacity-subtle: 0.1;
+    --opacity-glass: 0.16;
     --opacity-dim: 0.2;
     --opacity-soft: 0.3;
     --opacity-medium: 0.5;

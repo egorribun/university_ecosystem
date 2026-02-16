@@ -63,7 +63,7 @@ const badgeVariants = cva(
       {
         tone: "default",
         variant: "solid",
-        class: "bg-(--bg-surface-hover) text-(--text-primary) shadow-none",
+        class: "bg-(--bg-surface-hover) text-text-primary shadow-none",
       },
       {
         tone: "default",

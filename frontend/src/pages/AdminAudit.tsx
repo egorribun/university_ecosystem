@@ -54,7 +54,7 @@ function Row({ log }: { log: AuditLog }) {
         </td>
         <td className="px-4 py-4">
           <div className="flex flex-col">
-            <span className="text-sm font-bold text-(--text-primary)">
+            <span className="text-sm font-bold text-text-primary">
               {dayjs(log.created_at).format("MMM D")}
             </span>
             <span className="text-xs text-(--text-secondary) opacity-strong">
@@ -68,7 +68,7 @@ function Row({ log }: { log: AuditLog }) {
               <User className="h-4 w-4" />
             </div>
             <div className="flex flex-col min-w-0">
-              <span className="truncate text-sm font-bold text-(--text-primary)">
+              <span className="truncate text-sm font-bold text-text-primary">
                 {log.actor_name || t("audit.details.system")}
               </span>
               <span className="truncate text-label-xs uppercase tracking-wider text-(--text-secondary) opacity-medium">
@@ -125,7 +125,7 @@ function Row({ log }: { log: AuditLog }) {
                 className="overflow-hidden"
               >
                 <div className="mx-4 mb-4 mt-2 rounded-md border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-6 shadow-sm">
-                  <div className="mb-4 flex items-center gap-2 text-sm font-bold text-(--text-primary)">
+                  <div className="mb-4 flex items-center gap-2 text-sm font-bold text-text-primary">
                     <Info className="h-4 w-4 text-brand" />
                     <span>{t("audit.details.title")}</span>
                   </div>
@@ -135,7 +135,7 @@ function Row({ log }: { log: AuditLog }) {
                       <span className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-medium">
                         {t("audit.details.resourceId")}
                       </span>
-                      <p className="text-sm font-mono text-(--text-primary) select-all">
+                      <p className="text-sm font-mono text-text-primary select-all">
                         {log.resource_id || t("audit.details.notAvailable")}
                       </p>
                     </div>
@@ -143,7 +143,7 @@ function Row({ log }: { log: AuditLog }) {
                       <span className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-medium">
                         {t("audit.details.subject")}
                       </span>
-                      <p className="text-sm text-(--text-primary)">
+                      <p className="text-sm text-text-primary">
                         {log.subject_name || t("audit.details.notAvailable")}
                         <span className="ml-1 text-xs opacity-medium">
                           ({log.subject_user_id || t("audit.details.notAvailable")})
@@ -154,7 +154,7 @@ function Row({ log }: { log: AuditLog }) {
                       <span className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-medium">
                         {t("audit.details.ipAddress")}
                       </span>
-                      <p className="text-sm font-mono text-(--text-primary)">
+                      <p className="text-sm font-mono text-text-primary">
                         {log.ip_address || t("audit.details.unknown")}
                       </p>
                     </div>
@@ -232,7 +232,7 @@ export default function AdminAudit() {
             animate={{ opacity: 1, y: 0 }}
             className="mb-8"
           >
-            <h1 className="text-4xl font-bold tracking-tight text-(--text-primary) sm:text-5xl">
+            <h1 className="text-4xl font-bold tracking-tight text-text-primary sm:text-5xl">
               {t("audit.title")}
             </h1>
             <p className="mt-2 text-base text-(--text-secondary)">{t("audit.subtitle")}</p>
@@ -320,7 +320,7 @@ export default function AdminAudit() {
                     >
                       {t("audit.pagination.previous")}
                     </Button>
-                    <span className="flex items-center px-4 text-sm font-medium text-(--text-primary)">
+                    <span className="flex items-center px-4 text-sm font-medium text-text-primary">
                       {t("audit.pagination.page", { current: page + 1 })}
                     </span>
                     <Button

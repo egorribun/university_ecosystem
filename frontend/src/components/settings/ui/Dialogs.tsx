@@ -81,7 +81,7 @@ export function DialogTitle({
   return (
     <h2
       className={cn(
-        "px-6 pt-6 pb-2 text-xl font-bold tracking-tight text-(--text-primary) border-b border-(--glass-border)/(--opacity-subtle)",
+        "px-6 pt-6 pb-2 text-xl font-bold tracking-tight text-text-primary border-b border-(--glass-border)/(--opacity-subtle)",
         className
       )}
     >

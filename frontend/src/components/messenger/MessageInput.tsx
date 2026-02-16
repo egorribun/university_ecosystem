@@ -172,7 +172,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
                     >
                       <item.icon size={18} />
                     </div>
-                    <span className="text-sm font-bold text-(--text-primary)">
+                    <span className="text-sm font-bold text-text-primary">
                       {t(`messenger:attach${item.label}`)}
                     </span>
                   </button>
@@ -189,7 +189,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({ onSend }) => {
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={t("messenger:typeMessage", "Message...")}
-          className="flex-1 bg-transparent border-none focus:ring-0 outline-none resize-none max-h-48 py-2 md:py-2.5 px-1 text-base text-(--text-primary) placeholder:text-(--text-secondary) placeholder:opacity-medium"
+          className="flex-1 bg-transparent border-none focus:ring-0 outline-none resize-none max-h-48 py-2 md:py-2.5 px-1 text-base text-text-primary placeholder:text-(--text-secondary) placeholder:opacity-medium"
           rows={1}
         />
         <motion.button

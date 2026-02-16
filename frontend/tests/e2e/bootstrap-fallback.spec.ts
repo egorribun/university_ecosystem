@@ -12,16 +12,8 @@ test.describe.skip("bootstrap fallback", () => {
 
     await page.goto("/")
 
-    // Debug output
-    console.log("Bootstrap Fallback Body Text:", await page.textContent("body"))
-
     // Check for either the Russian text OR the key (if translation failed) OR English
     // This allows us to understand failure mode if it's i18n related
-    const heading = page.getByRole("heading")
-    const text = await heading.innerText()
-    if (text.includes("errorBoundary.title")) {
-      console.log("Warning: i18n translation missing, showing key")
-    }
 
     await expect(page.locator("body")).toContainText(
       /Что-то пошло не так|Something went wrong|errorBoundary.title/

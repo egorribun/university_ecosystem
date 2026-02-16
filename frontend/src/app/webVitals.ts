@@ -18,10 +18,12 @@ type ExtendedEnv = ImportMetaEnv & {
 let initialized = false
 let reporterRef: WebVitalReporter | undefined
 
+const TRUE_VALUES = new Set(["true", "1", "yes"])
+
 function isEnabled(value: string | undefined): boolean {
   if (!value) return false
   const normalized = value.trim().toLowerCase()
-  return normalized === "true" || normalized === "1" || normalized === "yes"
+  return TRUE_VALUES.has(normalized)
 }
 
 function hasLabel(metric: WebVitalMetric): metric is WebVitalMetric & { label: string } {
@@ -83,6 +85,7 @@ function createReporter(env: ExtendedEnv): WebVitalReporter | undefined {
 
   if (typeof console !== "undefined") {
     return (metric) => {
+      // eslint-disable-next-line no-console
       console.debug(`[web-vitals] ${metric.name}`, {
         value: metric.value,
         delta: metric.delta,

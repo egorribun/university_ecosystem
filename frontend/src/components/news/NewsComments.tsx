@@ -58,7 +58,7 @@ export function NewsComments({
     <footer className="w-full max-w-4xl mt-12 border-t border-glass-border/(--opacity-soft) pt-10">
       <div className="flex items-center gap-(--fluid-gap) mb-8">
         <ChatBubbleOutlineIcon className="h-6 w-6 text-brand" size={24} />
-        <h2 className="text-3xl font-extrabold text-(--text-primary)">
+        <h2 className="text-3xl font-extrabold text-text-primary">
           {t("news:sections.comments", { defaultValue: "Комментарии" })}
         </h2>
         <span className="px-2 py-0.5 rounded-full bg-brand/(--opacity-subtle) border border-brand/(--opacity-dim) text-xs font-bold tabular-nums text-brand">
@@ -80,7 +80,7 @@ export function NewsComments({
               className="flex flex-col gap-2 p-4 rounded-md bg-(--bg-surface)/(--opacity-dim) border border-glass-border/(--opacity-soft) shadow-sm"
             >
               <div className="flex items-center justify-between">
-                <span className="font-bold text-sm text-(--text-primary)">{comment.user_name}</span>
+                <span className="font-bold text-sm text-text-primary">{comment.user_name}</span>
                 <div className="flex items-center gap-3">
                   <time className="text-xs text-(--text-secondary) uppercase font-semibold">
                     {getMoscowDate(comment.created_at)}
@@ -92,7 +92,7 @@ export function NewsComments({
                           setEditingCommentId(comment.id)
                           setEditingCommentText(comment.content)
                         }}
-                        className="p-1.5 rounded-full hover:bg-(--bg-surface)/(--opacity-strong) text-(--text-secondary) hover:text-(--text-primary) transition-colors"
+                        className="p-1.5 rounded-full hover:bg-(--bg-surface)/(--opacity-strong) text-(--text-secondary) hover:text-text-primary transition-colors"
                         title={t("news:actions.editComment", { defaultValue: "Edit" })}
                       >
                         <EditIcon className="h-3.5 w-3.5" />
@@ -141,7 +141,7 @@ export function NewsComments({
                   </div>
                 </div>
               ) : (
-                <p className="text-base leading-relaxed whitespace-pre-wrap text-(--text-primary)">
+                <p className="text-base leading-relaxed whitespace-pre-wrap text-text-primary">
                   {comment.content}
                 </p>
               )}

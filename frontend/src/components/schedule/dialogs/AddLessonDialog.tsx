@@ -152,7 +152,7 @@ export function AddLessonDialog({
               />
             </div>
             <div className="flex gap-4">
-              <div className="w-1/2">
+              <div className="flex-1">
                 <label className="mb-2 block text-sm font-semibold opacity-strong">
                   {t("schedule:form.startTime")}
                 </label>
@@ -165,7 +165,7 @@ export function AddLessonDialog({
                   fullWidth
                 />
               </div>
-              <div className="w-1/2">
+              <div className="flex-1">
                 <label className="mb-2 block text-sm font-semibold opacity-strong">
                   {t("schedule:form.endTime")}
                 </label>

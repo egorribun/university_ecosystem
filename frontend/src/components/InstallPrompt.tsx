@@ -6,6 +6,7 @@ import { PWA_REFRESH_EVENT, type ServiceWorkerUpdateEventDetail } from "../app/p
 import { Trans, useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
 import { Button, SwitchControl } from "@/components/settings/SettingsUI"
+import { GlassCard } from "@/components/ui"
 
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms?: string[]
@@ -13,11 +14,25 @@ interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
 }
 
+
+
 type NavigatorStandalone = Navigator & { standalone?: boolean }
 
-const DISMISS_TTL = 1000 * 60 * 60 * 24 * 7
+const DISMISS_TTL = 7 * 24 * 60 * 60 * 1000 // 7 days
 const PWA_DISMISS_STORAGE_KEY = "ecosystem.pwa.install.dismissedAt"
 const PUSH_DISMISS_STORAGE_KEY = "ecosystem.push.education.dismissedAt"
+
+const ANIMATION_VARIANTS = {
+  initial: { opacity: 0, y: 50, scale: 0.95 },
+  animate: { opacity: 1, y: 0, scale: 1 },
+  exit: { opacity: 0, y: 50, scale: 0.95 },
+}
+
+const FEEDBACK_VARIANTS = {
+  initial: { opacity: 0, scale: 0.9, y: -20 },
+  animate: { opacity: 1, scale: 1, y: 0 },
+  exit: { opacity: 0, scale: 0.9, y: -20 },
+}
 
 const isStandalone = () => {
   if (typeof window === "undefined") return false
@@ -215,12 +230,16 @@ export default function InstallPrompt() {
       <AnimatePresence>
         {shouldRenderPrompt && (
           <motion.div
-            initial={{ opacity: 0, y: 50, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 50, scale: 0.95 }}
+            initial={ANIMATION_VARIANTS.initial}
+            animate={ANIMATION_VARIANTS.animate}
+            exit={ANIMATION_VARIANTS.exit}
             className="fixed bottom-24 right-4 left-4 sm:left-auto sm:right-6 z-toast w-auto max-w-sm"
           >
-            <div className="bg-(--bg-surface)/(--opacity-heavy) backdrop-blur-2xl rounded-lg border border-glass-border shadow-2xl overflow-hidden ring-1 ring-black/(--opacity-faint) p-6">
+            <GlassCard
+              intensity="high"
+              radius="lg"
+              className="z-toast w-auto max-w-sm border-glass-border shadow-2xl ring-1 ring-black/(--opacity-faint) p-6"
+            >
               <div
                 className={cn(
                   "flex flex-col",
@@ -234,7 +253,7 @@ export default function InstallPrompt() {
                         <div className="p-2.5 rounded-2xl bg-brand/(--opacity-subtle) text-brand">
                           <Download className="h-5 w-5" />
                         </div>
-                        <h3 className="text-lg font-black tracking-tight text-(--text-primary) sf-pro">
+                        <h3 className="text-lg font-black tracking-tight text-text-primary sf-pro">
                           {t("system:installPrompt.installTitle", { appName })}
                         </h3>
                       </div>
@@ -281,7 +300,7 @@ export default function InstallPrompt() {
                         <div className="p-2.5 rounded-2xl bg-brand/(--opacity-subtle) text-brand">
                           <Bell className="h-5 w-5" />
                         </div>
-                        <h3 className="text-lg font-black tracking-tight text-(--text-primary) sf-pro">
+                        <h3 className="text-lg font-black tracking-tight text-text-primary sf-pro">
                           {t("system:installPrompt.notificationsTitle")}
                         </h3>
                       </div>
@@ -310,7 +329,7 @@ export default function InstallPrompt() {
                           {t("system:installPrompt.blocked", { appName })}
                         </div>
                         {safariIOS && (
-                          <div className="p-4 rounded-2xl bg-info-bg/(--opacity-dim) border border-info-border/(--opacity-soft) text-info-text text-xs font-bold">
+                          <div className="p-4 rounded-2xl bg-brand/(--opacity-dim) border border-brand/(--opacity-soft) text-brand text-xs font-bold">
                             <Trans
                               i18nKey="system:installPrompt.safariGuide"
                               components={{
@@ -367,7 +386,7 @@ export default function InstallPrompt() {
                       <div className="space-y-4 pt-2">
                         <div className="rounded-2xl border border-glass-border/(--opacity-subtle) bg-(--bg-surface-raised)/(--opacity-soft) p-4 space-y-4">
                           <div className="flex items-center justify-between">
-                            <span className="text-sm font-bold text-(--text-primary)">
+                            <span className="text-sm font-bold text-text-primary">
                               {t("system:installPrompt.toggleLabel")}
                             </span>
                             <SwitchControl
@@ -402,7 +421,7 @@ export default function InstallPrompt() {
                   </div>
                 )}
               </div>
-            </div>
+            </GlassCard>
           </motion.div>
         )}
       </AnimatePresence>
@@ -410,9 +429,9 @@ export default function InstallPrompt() {
       <AnimatePresence>
         {feedback && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.9, y: -20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9, y: -20 }}
+            initial={FEEDBACK_VARIANTS.initial}
+            animate={FEEDBACK_VARIANTS.animate}
+            exit={FEEDBACK_VARIANTS.exit}
             className="fixed top-24 left-1/2 -translate-x-1/2 z-toast w-full max-w-sm px-6"
           >
             <div

@@ -75,12 +75,12 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       }
 
       return (
-        <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-(--bg-page) px-fluid-x">
+        <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-page px-fluid-x">
           {/* Ambient radial glow */}
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,color-mix(in_srgb,var(--primary-main)_var(--opacity-subtle),transparent)_0%,transparent_70%)]" />
 
           <div className="relative z-deep w-full max-w-(--layout-max-modal) rounded-2xl border border-border-subtle bg-(--bg-surface) p-10 text-center shadow-premium backdrop-blur-md">
-            <h1 className="mb-4 text-3xl font-black tracking-tight text-(--text-primary)">
+            <h1 className="mb-4 text-3xl font-black tracking-tight text-text-primary">
               Что-то пошло не так
             </h1>
             <p className="mb-8 text-base leading-relaxed text-(--text-secondary)">
@@ -112,14 +112,14 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               <button
                 type="button"
                 onClick={this.handleReload}
-                className="rounded-xl border border-border-subtle bg-(--bg-surface-hover) px-6 py-3.5 text-base font-extrabold text-(--text-primary) transition-all duration-slow hover:-translate-y-0.5 hover:bg-(--bg-surface-raised) active:scale-95"
+                className="rounded-xl border border-border-subtle bg-(--bg-surface-hover) px-6 py-3.5 text-base font-extrabold text-text-primary transition-all duration-slow hover:-translate-y-0.5 hover:bg-(--bg-surface-raised) active:scale-95"
               >
                 Перезагрузить страницу
               </button>
               <button
                 type="button"
                 onClick={this.handleGoHome}
-                className="rounded-xl border border-border-subtle bg-(--bg-surface-hover) px-6 py-3.5 text-base font-extrabold text-(--text-primary) transition-all duration-slow hover:-translate-y-0.5 hover:bg-(--bg-surface-raised) active:scale-95"
+                className="rounded-xl border border-border-subtle bg-(--bg-surface-hover) px-6 py-3.5 text-base font-extrabold text-text-primary transition-all duration-slow hover:-translate-y-0.5 hover:bg-(--bg-surface-raised) active:scale-95"
               >
                 На главную
               </button>

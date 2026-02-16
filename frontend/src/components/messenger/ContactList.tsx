@@ -54,7 +54,7 @@ export const ContactList: React.FC<ContactListProps> = ({ contacts, selectedId, 
                 <h3
                   className={cn(
                     "font-bold text-base truncate sf-pro",
-                    selectedId === contact.id ? "text-white" : "text-(--text-primary)"
+                    selectedId === contact.id ? "text-white" : "text-text-primary"
                   )}
                 >
                   {contact.name}

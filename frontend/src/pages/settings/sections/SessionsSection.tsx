@@ -74,7 +74,7 @@ export function SessionsSection({
         {sessions.length === 0 && sessionsFetching ? (
           <div className="mt-3 flex flex-row items-center gap-2.5">
             <CircularProgress size={18} />
-            <p className="text-sm font-semibold text-(--text-primary)">
+            <p className="text-sm font-semibold text-text-primary">
               {t("settings:sessions.loading")}
             </p>
           </div>
@@ -114,7 +114,7 @@ export function SessionsSection({
                         "text-sm wrap-break-word transition-colors",
                         session.is_current ? "font-semibold" : "font-medium",
                         isRevoked
-                          ? "text-(--text-primary)/(--opacity-strong)"
+                          ? "text-text-primary/(--opacity-strong)"
                           : "text-(--text-secondary)"
                       )}
                     >

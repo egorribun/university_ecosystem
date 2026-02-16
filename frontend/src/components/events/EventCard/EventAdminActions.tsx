@@ -50,7 +50,7 @@ export const EventAdminActions: React.FC<EventAdminActionsProps> = ({
           <div className="py-1">
             <button
               type="button"
-              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-(--text-primary) transition-colors hover:bg-(--glass-bg)/(--opacity-heavy)"
+              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-text-primary transition-colors hover:bg-(--glass-bg)/(--opacity-heavy)"
               onClick={() => {
                 setMenuAnchor(null)
                 onEdit()
@@ -61,7 +61,7 @@ export const EventAdminActions: React.FC<EventAdminActionsProps> = ({
             </button>
             <button
               type="button"
-              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-(--text-primary) transition-colors hover:bg-(--glass-bg)/(--opacity-heavy)"
+              className="flex w-full items-center gap-2 px-4 py-2 text-sm text-text-primary transition-colors hover:bg-(--glass-bg)/(--opacity-heavy)"
               onClick={() => {
                 setMenuAnchor(null)
                 onDelete()

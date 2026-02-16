@@ -107,7 +107,7 @@ export function SyncStatus() {
           </motion.div>
         )}
         {pendingCount > 0 && (
-          <span className="z-deep text-xs font-black uppercase tracking-tight text-(--text-primary)/(--opacity-strong) tabular-nums sf-pro">
+          <span className="z-deep text-xs font-black uppercase tracking-tight text-text-primary/(--opacity-strong) tabular-nums sf-pro">
             {pendingCount}
           </span>
         )}
