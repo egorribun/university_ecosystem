@@ -11,7 +11,7 @@ const ensureServiceWorkerIsReady = async (page: Page) => {
       break
     } catch (error) {
       if (attempt === 2) throw error
-      await page.waitForTimeout(250)
+      await page.waitForTimeout(OFFLINE_TEST_TIMEOUTS.serviceWorkerReady)
     }
   }
 
@@ -29,6 +29,13 @@ const ensureServiceWorkerIsReady = async (page: Page) => {
   expect(controlled).toBeTruthy()
 }
 
+const OFFLINE_TEST_TIMEOUTS = {
+  serviceWorkerReady: 250,
+  navigation: 10000,
+  elementVisible: 10000,
+  toastVisible: 5000,
+}
+
 test.describe("PWA offline support", () => {
   // Skip: Service Worker caching doesn't work properly in mocked E2E environment
   test.skip("shows offline fallback page when network is unavailable", async ({
@@ -41,7 +48,7 @@ test.describe("PWA offline support", () => {
     await ensureServiceWorkerIsReady(page)
 
     await page.goto("/offline.html", { waitUntil: "domcontentloaded" })
-    await expect(page.locator("h1")).toBeVisible({ timeout: 10000 })
+    await expect(page.locator("h1")).toBeVisible({ timeout: OFFLINE_TEST_TIMEOUTS.elementVisible })
     await expect(
       page.getByRole("heading", { name: /No network connection|Нет подключения к сети/i })
     ).toBeVisible()
@@ -55,7 +62,7 @@ test.describe("PWA offline support", () => {
       const offlineIndicator = page
         .locator('[role="status"]')
         .filter({ hasText: /offline|подключения/i })
-      await expect(offlineIndicator).toBeVisible({ timeout: 10000 })
+      await expect(offlineIndicator).toBeVisible({ timeout: OFFLINE_TEST_TIMEOUTS.elementVisible })
 
       // Explicitly check the fallback page too
       await page.goto("/offline.html", { waitUntil: "domcontentloaded" })
@@ -183,7 +190,7 @@ test.describe("PWA offline support", () => {
       const offlineToast = page.locator('[role="status"]').filter({
         hasText: /offline|подключения/i,
       })
-      await expect(offlineToast).toBeVisible({ timeout: 5000 })
+      await expect(offlineToast).toBeVisible({ timeout: OFFLINE_TEST_TIMEOUTS.toastVisible })
 
       // Go back online
       await context.setOffline(false)
@@ -195,10 +202,10 @@ test.describe("PWA offline support", () => {
       const onlineToast = page.locator('[role="status"]').filter({
         hasText: /online|восстановлено/i,
       })
-      await expect(onlineToast).toBeVisible({ timeout: 5000 })
+      await expect(onlineToast).toBeVisible({ timeout: OFFLINE_TEST_TIMEOUTS.toastVisible })
 
       // Toast should auto-hide after a few seconds
-      await expect(onlineToast).not.toBeVisible({ timeout: 5000 })
+      await expect(onlineToast).not.toBeVisible({ timeout: OFFLINE_TEST_TIMEOUTS.toastVisible })
     } finally {
       await context.setOffline(false)
     }

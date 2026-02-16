@@ -70,7 +70,7 @@ export default function AdminFeatureFlags() {
             transition={{ duration: 0.5 }}
             className="mb-8"
           >
-            <h1 className="text-4xl font-bold tracking-tight text-(--text-primary) sm:text-5xl">
+            <h1 className="text-4xl font-bold tracking-tight text-text-primary sm:text-5xl">
               {t("featureFlags.title", "Dynamic Feature Flags")}
             </h1>
             <p className="mt-2 text-base text-(--text-secondary)">
@@ -109,7 +109,7 @@ export default function AdminFeatureFlags() {
                       >
                         <td className="px-6 py-5">
                           <div className="flex flex-col gap-1">
-                            <span className="text-base font-bold text-(--text-primary)">
+                            <span className="text-base font-bold text-text-primary">
                               {flag.name}
                             </span>
                             <span className="text-xs text-(--text-secondary) max-w-xs opacity-strong">

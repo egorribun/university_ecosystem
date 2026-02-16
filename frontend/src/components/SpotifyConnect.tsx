@@ -71,7 +71,7 @@ export default function SpotifyConnect() {
   return (
     <div className="mt-4 overflow-hidden rounded-3xl border border-glass-border bg-(--bg-surface)/(--opacity-soft) backdrop-blur-xl transition-all duration-slow shadow-glass">
       <div className="px-6 py-4 border-b border-glass-border/(--opacity-subtle) bg-(--bg-surface)/(--opacity-subtle)">
-        <h3 className="text-lg font-black tracking-tight text-(--text-primary) flex items-center gap-2">
+        <h3 className="text-lg font-black tracking-tight text-text-primary flex items-center gap-2">
           <Music className="h-5 w-5 text-(--color-spotify)" />
           {t("settings:integrations.spotify.title")}
         </h3>
@@ -122,7 +122,7 @@ export default function SpotifyConnect() {
               <div className="rounded-2xl bg-(--bg-surface-raised)/(--opacity-soft) border border-glass-border/(--opacity-subtle) p-4 space-y-1 transition-all hover:bg-(--bg-surface-raised)/(--opacity-medium)">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
-                    <p className="text-base font-black tracking-tight text-(--text-primary) truncate">
+                    <p className="text-base font-black tracking-tight text-text-primary truncate">
                       {now.track_name || "—"}
                     </p>
                     <p className="text-sm font-bold text-(--text-secondary) truncate">

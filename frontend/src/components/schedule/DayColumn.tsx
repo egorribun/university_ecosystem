@@ -61,7 +61,7 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
         <div className="mb-4 flex items-center gap-2">
           <h3
             className={cn(
-              "text-lg font-extrabold tracking-tight text-(--text-primary) transition-colors duration-fast",
+              "text-lg font-extrabold tracking-tight text-text-primary transition-colors duration-fast",
               isToday && "text-primary-main dark:text-primary-light"
             )}
           >

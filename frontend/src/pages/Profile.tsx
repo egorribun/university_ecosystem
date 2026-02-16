@@ -213,7 +213,7 @@ export default function Profile() {
             data-testid="profile-root"
             aria-label={t("profile:aria.page")}
           >
-            <div className="max-w-full sm:max-w-[98%] md:max-w-[96%] lg:max-w-[95%] xl:max-w-(--layout-max-ultrawide) mx-auto w-full relative z-base">
+            <div className="container-fluid-responsive">
               <motion.div
                 className="px-(--space-4) sm:px-(--space-6) md:px-(--space-8) lg:px-(--space-10) xl:px-(--space-12) py-(--space-8) sm:py-(--space-10) md:py-(--space-12) lg:py-(--space-14) rounded-sm sm:rounded-md md:rounded-lg relative overflow-hidden bg-primary-subtle-bg/(--opacity-subtle) shadow-glass border border-glass-border-subtle/(--opacity-dim) backdrop-blur-md"
                 initial={isTest ? false : { opacity: "var(--opacity-strong)", y: 10 }}
@@ -343,7 +343,7 @@ export default function Profile() {
               <span className="text-label-xs font-bold uppercase tracking-wider text-brand opacity-strong">
                 {t("profile:fields.organizer")}
               </span>
-              <p className="text-(--text-primary) font-medium">{achievementOpen.issuer}</p>
+              <p className="text-text-primary font-medium">{achievementOpen.issuer}</p>
             </div>
           )}
           {achievementOpen?.url && (

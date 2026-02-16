@@ -117,8 +117,8 @@ export function Dialog({
           "relative z-surface w-full max-w-(--dialog-max-w)",
           sizeClassMap[size],
           fullScreenOnMobile
-            ? "h-dvh max-h-dvh overflow-y-auto rounded-none bg-(--bg-surface) pb-6 pt-5 text-(--text-primary) shadow-surface-strong ring-1 ring-white/(--opacity-subtle) sm:h-auto sm:max-h-[90vh] sm:rounded-2xl sm:px-6 sm:pb-7"
-            : "max-h-[92vh] overflow-y-auto rounded-2xl bg-(--bg-surface)/(--opacity-heavy) pb-6 pt-5 text-(--text-primary) shadow-surface-strong ring-1 ring-white/(--opacity-subtle) backdrop-blur-xl sm:px-6 sm:pb-7",
+            ? "h-dvh max-h-dvh overflow-y-auto rounded-none bg-(--bg-surface) pb-6 pt-5 text-text-primary shadow-surface-strong ring-1 ring-white/(--opacity-subtle) sm:h-auto sm:max-h-[90vh] sm:rounded-2xl sm:px-6 sm:pb-7"
+            : "max-h-hero-max overflow-y-auto rounded-2xl bg-(--bg-surface)/(--opacity-heavy) pb-6 pt-5 text-text-primary shadow-surface-strong ring-1 ring-white/(--opacity-subtle) backdrop-blur-xl sm:px-6 sm:pb-7",
           "focus:outline-none",
           className
         )}
@@ -128,7 +128,7 @@ export function Dialog({
             {title ? (
               <h2
                 id={dialogTitleId}
-                className="text-detail-title font-semibold text-(--text-primary)"
+                className="text-detail-title font-semibold text-text-primary"
               >
                 {title}
               </h2>

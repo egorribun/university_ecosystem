@@ -79,7 +79,7 @@ export const UserMenu = ({ user, isAuth, loading, go, t }: UserMenuProps) => {
           onClick={() => go("/profile")}
           aria-label={profileTitle}
           title={profileTitle}
-          className="cursor-pointer border-none bg-transparent p-0 m-0 font-bold text-(--text-primary) tracking-tight text-base hover:text-brand transition-colors"
+          className="cursor-pointer border-none bg-transparent p-0 m-0 font-bold text-text-primary tracking-tight text-base hover:text-brand transition-colors"
         >
           {user.full_name}
         </button>
@@ -93,7 +93,7 @@ export const UserMenu = ({ user, isAuth, loading, go, t }: UserMenuProps) => {
           whileTap={{ scale: 0.9 }}
           transition={springSoft}
           type="button"
-          className="flex items-center justify-center w-10 h-10 rounded-2xl text-(--text-primary) transition-colors"
+          className="flex items-center justify-center w-10 h-10 rounded-2xl text-text-primary transition-colors"
           onClick={() => go("/settings")}
           aria-label={t("navigation:menu.settings")}
           title={t("navigation:menu.settings")}

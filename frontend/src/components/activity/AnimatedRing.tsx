@@ -79,7 +79,7 @@ export default function AnimatedRing({
           style={{ strokeDashoffset: dash }}
         />
       </svg>
-      <div className="absolute inset-0 grid place-items-center font-black tracking-tighter tabular-nums lining-nums text-(--text-primary)">
+      <div className="absolute inset-0 grid place-items-center font-black tracking-tighter tabular-nums lining-nums text-text-primary">
         {Math.round(value)}%
       </div>
     </div>

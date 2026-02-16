@@ -37,7 +37,7 @@ export function ConfirmDialog({
             initial={{ scale: 0.9, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.9, opacity: 0, y: 20 }}
-            className="w-full max-w-md overflow-hidden rounded-2xl border border-(--glass-border) bg-(--bg-surface) shadow-premium dark:bg-(--bg-page)"
+            className="w-full max-w-md overflow-hidden rounded-2xl border border-(--glass-border) bg-(--bg-surface) shadow-premium dark:bg-page"
           >
             <div className="flex flex-col gap-4 p-8">
               <h3 className="sf-pro text-xl font-bold tracking-tight">{title}</h3>

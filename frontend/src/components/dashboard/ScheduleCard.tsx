@@ -156,7 +156,7 @@ export function ScheduleCard({
                   label={`${fmtTime(currentLesson.start_time)}–${fmtTime(currentLesson.end_time)}`}
                 />
               </div>
-              <span className="text-base font-semibold leading-tight text-(--text-primary) line-clamp-1">
+              <span className="text-base font-semibold leading-tight text-text-primary line-clamp-1">
                 {currentLesson.subject}
               </span>
             </div>
@@ -177,7 +177,7 @@ export function ScheduleCard({
               label={t("dashboard:next")}
             />
             <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-              <span className="text-base font-semibold leading-tight text-(--text-primary) truncate">
+              <span className="text-base font-semibold leading-tight text-text-primary truncate">
                 {nextLesson.subject}
               </span>
               <Badge
@@ -219,7 +219,7 @@ export function ScheduleCard({
                   )}
                 >
                   <div className="flex w-full items-start justify-between gap-3">
-                    <span className="text-base font-semibold leading-tight text-(--text-primary) line-clamp-2">
+                    <span className="text-base font-semibold leading-tight text-text-primary line-clamp-2">
                       {l.subject}
                     </span>
                     <Badge

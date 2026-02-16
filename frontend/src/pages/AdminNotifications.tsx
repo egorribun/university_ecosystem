@@ -318,11 +318,11 @@ export default function AdminNotifications() {
                         }
                       />
                     </td>
-                    <td className="px-4 py-3 text-sm text-(--text-primary)">
+                    <td className="px-4 py-3 text-sm text-text-primary">
                       {formatJobKind(job.kind, t)}
                     </td>
                     <td
-                      className="px-4 py-3 text-sm text-(--text-primary) font-mono truncate"
+                      className="px-4 py-3 text-sm text-text-primary font-mono truncate"
                       style={{ maxWidth: "var(--w-label-sm)" }}
                     >
                       {job.record_id}
@@ -333,7 +333,7 @@ export default function AdminNotifications() {
                     <td className="px-4 py-3 text-sm text-(--text-secondary) whitespace-nowrap">
                       {formatDate(new Date(job.enqueued_at), { preset: "datetime" })}
                     </td>
-                    <td className="px-4 py-3 text-sm font-bold text-(--text-primary)">
+                    <td className="px-4 py-3 text-sm font-bold text-text-primary">
                       {job.attempts}
                     </td>
                     <td
@@ -386,7 +386,7 @@ export default function AdminNotifications() {
         <PageFadeIn>
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="mb-8 flex flex-col gap-2">
-              <h1 className="text-4xl font-bold tracking-tight text-(--text-primary) sm:text-5xl">
+              <h1 className="text-4xl font-bold tracking-tight text-text-primary sm:text-5xl">
                 {t("admin:notifications.title")}
               </h1>
               <p className="text-base text-(--text-secondary)">
@@ -395,7 +395,7 @@ export default function AdminNotifications() {
             </div>
 
             <SectionCard className="p-6">
-              <h2 className="text-lg font-bold tracking-tight text-(--text-primary) mb-1">
+              <h2 className="text-lg font-bold tracking-tight text-text-primary mb-1">
                 {t("admin:notifications.topics.title")}
               </h2>
               <p className="text-sm text-(--text-secondary) mb-6">
@@ -443,7 +443,7 @@ export default function AdminNotifications() {
               {topicsData && (
                 <div className="mt-8 space-y-6">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-bold text-(--text-primary)">
+                    <h3 className="text-sm font-bold text-text-primary">
                       {t("admin:notifications.topics.userSummary", {
                         email: topicsData.email,
                         id: topicsData.user_id,
@@ -482,7 +482,7 @@ export default function AdminNotifications() {
                             />
                             <label
                               htmlFor={`topic-${normalized}`}
-                              className="text-sm font-medium text-(--text-primary) leading-none select-none"
+                              className="text-sm font-medium text-text-primary leading-none select-none"
                             >
                               {resolvedLabel}
                             </label>
@@ -510,7 +510,7 @@ export default function AdminNotifications() {
             <SectionCard className="mt-6 p-6">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h2 className="text-lg font-bold tracking-tight text-(--text-primary)">
+                  <h2 className="text-lg font-bold tracking-tight text-text-primary">
                     {t("admin:notifications.total", { count: total })}
                   </h2>
                 </div>

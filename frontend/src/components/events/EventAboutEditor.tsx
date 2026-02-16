@@ -70,7 +70,7 @@ export function EventAboutEditor({
         <h2
           ref={sectionRef}
           tabIndex={-1}
-          className="text-fluid-h2 font-bold text-(--text-primary)"
+          className="text-fluid-h2 font-bold text-text-primary"
         >
           {t("events:detail.sections.about.title")}
         </h2>
@@ -127,7 +127,7 @@ export function EventAboutEditor({
         <p
           className={cn(
             "whitespace-pre-line text-lg leading-relaxed",
-            event.about ? "text-(--text-primary)" : "text-(--text-secondary)"
+            event.about ? "text-text-primary" : "text-(--text-secondary)"
           )}
         >
           {event.about || t("events:detail.sections.about.empty")}

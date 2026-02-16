@@ -96,7 +96,7 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
       className={cn(
         "absolute inset-0 z-sticky overflow-y-auto px-6 py-8 sm:px-12 sm:py-12 flex justify-center",
         "bg-linear-to-br from-background/(--opacity-heavy) to-background/(--opacity-hover) backdrop-blur-3xl",
-        "text-(--text-primary)"
+        "text-text-primary"
       )}
     >
       <div className="w-full max-w-2xl flex flex-col gap-10">
@@ -176,7 +176,7 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex flex-col gap-1">
-                    <h3 className="text-lg font-black tracking-tight text-(--text-primary) sf-pro">
+                    <h3 className="text-lg font-black tracking-tight text-text-primary sf-pro">
                       {point.name}
                     </h3>
                     <div className="flex items-center gap-2 text-sm font-bold text-(--text-secondary) opacity-hover">

@@ -31,6 +31,11 @@ import {
   getTimeStr,
 } from "../components/schedule/scheduleUtils"
 
+const QUERY_STALE_TIME_MS = 60_000
+const QUERY_GC_TIME_MS = 5 * 60_000
+const TICKER_INTERVAL_MS = 30_000
+
+
 export function useScheduleData() {
   const { user } = useAuth()
   const queryClient = useQueryClient()
@@ -40,8 +45,9 @@ export function useScheduleData() {
   const [nowTick, setNowTick] = useState(dayjs())
 
   // Update time ticker
+  // Update time ticker
   useEffect(() => {
-    const id = setInterval(() => setNowTick(dayjs()), 30000)
+    const id = setInterval(() => setNowTick(dayjs()), TICKER_INTERVAL_MS)
     return () => clearInterval(id)
   }, [])
 
@@ -266,8 +272,8 @@ export function useScheduleData() {
       return Array.isArray(res.data) ? res.data : []
     },
     enabled: Boolean(user),
-    staleTime: 60_000,
-    gcTime: 5 * 60_000,
+    staleTime: QUERY_STALE_TIME_MS,
+    gcTime: QUERY_GC_TIME_MS,
     networkMode: "online",
     retry: 1,
     ...(groupsStorageSnapshot && {
@@ -336,8 +342,8 @@ export function useScheduleData() {
       if (previous !== undefined) return previous
       return scheduleStorageSnapshot?.value
     },
-    staleTime: 60_000,
-    gcTime: 5 * 60_000,
+    staleTime: QUERY_STALE_TIME_MS,
+    gcTime: QUERY_GC_TIME_MS,
     networkMode: "online",
     retry: 1,
     ...(scheduleStorageSnapshot && {

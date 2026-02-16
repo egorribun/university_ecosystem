@@ -18,6 +18,9 @@ import { ProgressBar } from "@/components/ui"
 
 const RESET_URL = "/password/reset"
 
+const MIN_PASSWORD_LENGTH = 8
+const STRENGTH_VALUES = [10, 30, 55, 75, 100]
+
 type ResetState = {
   status: "idle" | "success" | "error"
   error?: string
@@ -33,12 +36,15 @@ async function sha1Hex(str: string) {
     .toUpperCase()
 }
 
+const PWNED_API_URL = "https://api.pwnedpasswords.com/range/"
+const HASH_PREFIX_LEN = 5
+
 async function isPwnedPassword(pwd: string) {
   if (!pwd) return false
   const hash = await sha1Hex(pwd)
-  const prefix = hash.slice(0, 5)
-  const suffix = hash.slice(5)
-  const resp = await fetch(`https://api.pwnedpasswords.com/range/${prefix}`)
+  const prefix = hash.slice(0, HASH_PREFIX_LEN)
+  const suffix = hash.slice(HASH_PREFIX_LEN)
+  const resp = await fetch(`${PWNED_API_URL}${prefix}`)
   if (!resp.ok) return false
   const text = await resp.text()
   return text.split("\n").some((line) => line.split(":")[0] === suffix)
@@ -62,7 +68,7 @@ export default function ResetPassword() {
   const passwordRef = useRef<HTMLInputElement | null>(null)
   const confirmRef = useRef<HTMLInputElement | null>(null)
 
-  const minLenOk = password.length >= 8
+  const minLenOk = password.length >= MIN_PASSWORD_LENGTH
   const matchOk = confirm.length > 0 && password === confirm
   const canSubmit = token && minLenOk && matchOk
 
@@ -151,8 +157,8 @@ export default function ResetPassword() {
     <div className="min-h-screen bg-page text-text-primary flex items-center justify-center p-(--fluid-px) relative overflow-hidden">
       {/* Background decorative elements */}
       <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-dim">
-        <div className="absolute top-[-10%] right-[-5%] w-[40%] h-[40%] bg-(--glow-spotlight-primary) rounded-full blur-(--glow-blur-massive)" />
-        <div className="absolute bottom-[-10%] left-[-5%] w-[40%] h-[40%] bg-(--glow-spotlight-secondary) rounded-full blur-(--glow-blur-massive)" />
+        <div className="absolute top-[-10%] right-[-5%] w-2/5 h-2/5 bg-(--glow-spotlight-primary) rounded-full blur-(--glow-blur-massive)" />
+        <div className="absolute bottom-[-10%] left-[-5%] w-2/5 h-2/5 bg-(--glow-spotlight-secondary) rounded-full blur-(--glow-blur-massive)" />
       </div>
 
       <motion.div
@@ -247,7 +253,7 @@ export default function ResetPassword() {
                         {strength !== null && (
                           <div className="px-1 space-y-1">
                             <ProgressBar
-                              value={[10, 30, 55, 75, 100][strength]}
+                              value={STRENGTH_VALUES[strength]}
                               color={strength < 2 ? "error" : strength < 3 ? "warning" : "success"}
                               className="h-1.5"
                             />

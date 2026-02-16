@@ -10,6 +10,7 @@ import { suggestEmailDomain } from "@/utils/authUtils"
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 const FORGOT_URL = "/password/forgot"
+const RESEND_COOLDOWN_SEC = 30
 
 type ForgotState = {
   status: "idle" | "success" | "error"
@@ -62,7 +63,7 @@ export default function ForgotPassword() {
         // Ignore errors, message is same for security
       }
 
-      setCooldown(30)
+      setCooldown(RESEND_COOLDOWN_SEC)
       return { status: "success" as const, email: value }
     },
     { status: "idle" as const }
@@ -89,11 +90,11 @@ export default function ForgotPassword() {
   }
 
   return (
-    <div className="min-h-screen bg-(--bg-page) text-(--text-primary) flex items-center justify-center p-6 relative overflow-hidden">
+    <div className="min-h-screen bg-page text-text-primary flex items-center justify-center p-6 relative overflow-hidden">
       {/* Background decorative elements */}
       <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-dim">
-        <div className="absolute top-[-10%] left-[-5%] w-[40%] h-[40%] bg-(--glow-spotlight-primary) rounded-full blur-(--glow-blur-massive)" />
-        <div className="absolute bottom-[-10%] right-[-5%] w-[40%] h-[40%] bg-(--glow-spotlight-secondary) rounded-full blur-(--glow-blur-massive)" />
+        <div className="absolute top-[-10%] left-[-5%] w-2/5 h-2/5 bg-(--glow-spotlight-primary) rounded-full blur-(--glow-blur-massive)" />
+        <div className="absolute bottom-[-10%] right-[-5%] w-2/5 h-2/5 bg-(--glow-spotlight-secondary) rounded-full blur-(--glow-blur-massive)" />
       </div>
 
       <motion.div
@@ -104,7 +105,7 @@ export default function ForgotPassword() {
         <SectionCard className="p-8 sm:p-10 border-glass-border shadow-glass backdrop-blur-2xl rounded-4xl">
           <div className="space-y-8">
             <div className="text-center space-y-2">
-              <h1 className="text-3xl font-black tracking-tight text-(--text-primary) sm:text-4xl">
+              <h1 className="text-3xl font-black tracking-tight text-text-primary sm:text-4xl">
                 {t("auth:forgot.title")}
               </h1>
               <p className="text-sm text-(--text-secondary) font-medium">
@@ -134,7 +135,7 @@ export default function ForgotPassword() {
                         i18nKey="forgot.success"
                         values={{ email }}
                         components={{
-                          strong: <span className="font-extrabold text-(--text-primary)" />,
+                          strong: <span className="font-extrabold text-text-primary" />,
                         }}
                       />
                     </p>
@@ -158,7 +159,7 @@ export default function ForgotPassword() {
                       variant="ghost"
                       onClick={resetRequest}
                       disabled={cooldown > 0}
-                      className="w-full text-(--text-secondary) hover:text-(--text-primary)"
+                      className="w-full text-(--text-secondary) hover:text-text-primary"
                     >
                       {t("auth:forgot.enterAnother")}
                       {cooldown > 0 ? ` (${cooldown}s)` : ""}

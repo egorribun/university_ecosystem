@@ -10,6 +10,9 @@ type TotpQrDisplayProps = {
   label?: string | null
 }
 
+const QR_SIZE = 192
+const COPY_FEEDBACK_MS = 2500
+
 export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps) => {
   const { t } = useTranslation("auth")
   const [copied, setCopied] = useState(false)
@@ -21,7 +24,7 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
     try {
       await navigator.clipboard.writeText(normalizedSecret)
       setCopied(true)
-      setTimeout(() => setCopied(false), 2500)
+      setTimeout(() => setCopied(false), COPY_FEEDBACK_MS)
     } catch {
       // Ignored
       setCopied(false)
@@ -30,7 +33,7 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
 
   return (
     <div className="flex flex-col gap-4 items-center text-center">
-      <h3 className="text-lg font-semibold text-(--text-primary)">{t("mfa.totp.scanHeading")}</h3>
+      <h3 className="text-lg font-semibold text-text-primary">{t("mfa.totp.scanHeading")}</h3>
       {label ? (
         <p className="text-sm text-(--text-secondary)">{t("mfa.totp.accountLabel", { label })}</p>
       ) : null}
@@ -45,7 +48,7 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
           */}
           <QRCodeSVG
             value={otpauthUrl}
-            size={192}
+            size={QR_SIZE}
             includeMargin
             bgColor="var(--color-white)"
             fgColor="var(--color-slate-900)"
@@ -56,7 +59,7 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
         <div className="relative flex-1">
           <label
             htmlFor="totp-manual-code"
-            className="block text-xs font-medium text-(--text-primary) mb-1 px-1 bg-card"
+            className="block text-xs font-medium text-text-primary mb-1 px-1 bg-(--bg-surface)"
           >
             {t("mfa.totp.manualHeading")}
           </label>
@@ -65,7 +68,7 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
             type="text"
             readOnly
             value={normalizedSecret}
-            className="w-full px-3 py-1.5 text-sm rounded-lg border border-(--text-primary)/(--opacity-dim) bg-card text-(--text-primary) font-mono tracking-wider text-center select-all cursor-text"
+            className="w-full px-3 py-1.5 text-sm rounded-lg border border-(--text-primary)/(--opacity-dim) bg-(--bg-surface) text-text-primary font-mono tracking-wider text-center select-all cursor-text"
           />
         </div>
         <div className="relative mt-5">

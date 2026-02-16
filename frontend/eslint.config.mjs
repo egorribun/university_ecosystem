@@ -8,6 +8,7 @@ import reactHooks from "eslint-plugin-react-hooks";
 import jsxA11y from "eslint-plugin-jsx-a11y";
 import prettier from "eslint-config-prettier";
 import i18nextPlugin from "eslint-plugin-i18next";
+import boundaries from "eslint-plugin-boundaries";
 
 export default tseslint.config({
   ignores: ["dist", "node_modules", "public", "vite.config.mts", "src/api/generated"],
@@ -40,10 +41,17 @@ export default tseslint.config({
   },
   plugins: {
     "react-hooks": reactHooks,
-    i18next: i18nextPlugin
+    i18next: i18nextPlugin,
+    boundaries: boundaries
   },
   settings: {
-    react: { version: "detect" }
+    react: { version: "detect" },
+    "boundaries/elements": [
+      { "type": "shared", "pattern": "src/components/*" },
+      { "type": "feature", "pattern": "src/features/*" },
+      { "type": "page", "pattern": "src/pages/*" },
+      { "type": "app", "pattern": "src/app/*" }
+    ]
   },
   rules: {
     "@typescript-eslint/no-unused-vars": ["error", {
@@ -51,7 +59,9 @@ export default tseslint.config({
       "varsIgnorePattern": "^_",
       "caughtErrorsIgnorePattern": "^_"
     }],
-    "@typescript-eslint/no-explicit-any": "warn",
+    "@typescript-eslint/no-explicit-any": "error",
+    "no-console": ["warn", { "allow": ["warn", "error"] }],
+    "no-debugger": "error",
     "@typescript-eslint/no-unused-expressions": "warn",
     "@typescript-eslint/triple-slash-reference": "error",
     "@typescript-eslint/no-empty-object-type": "error",
@@ -65,7 +75,26 @@ export default tseslint.config({
     "react-hooks/rules-of-hooks": "error",
 
     "react/prop-types": "off",
-    "react/react-in-jsx-scope": "off"
+    "react/react-in-jsx-scope": "off",
+
+    "boundaries/element-types": [
+      "error",
+      {
+        "default": "allow",
+        "rules": [
+          {
+            "from": ["shared"],
+            "disallow": ["feature", "page", "app"],
+            "message": "Shared components cannot import from features, pages, or app layer."
+          },
+          {
+            "from": ["feature"],
+            "disallow": ["page", "app"],
+            "message": "Features cannot import from pages or app layer."
+          }
+        ]
+      }
+    ]
   }
 }, {
   files: [

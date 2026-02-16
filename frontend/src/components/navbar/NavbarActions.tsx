@@ -80,7 +80,7 @@ export const NavbarActions = ({
           whileTap={{ scale: 0.9 }}
           transition={springSoft}
           type="button"
-          className="flex shrink-0 cursor-pointer items-center justify-center rounded-2xl border border-(--glass-border) bg-(--bg-surface-hover)/(--opacity-subtle) p-0 shadow-sm backdrop-blur-md transition-all duration-base hover:bg-(--bg-surface-hover)/(--opacity-dim) size-touch text-(--text-primary)"
+          className="flex shrink-0 cursor-pointer items-center justify-center rounded-2xl border border-(--glass-border) bg-(--bg-surface-hover)/(--opacity-subtle) p-0 shadow-sm backdrop-blur-md transition-all duration-base hover:bg-(--bg-surface-hover)/(--opacity-dim) size-touch text-text-primary"
           onClick={() => setMobileMenu((v) => !v)}
           aria-label={mobileMenu ? t("navigation:aria.closeMenu") : t("navigation:aria.openMenu")}
           aria-expanded={mobileMenu}

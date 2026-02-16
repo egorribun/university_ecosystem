@@ -113,14 +113,19 @@ if (typeof HTMLCanvasElement !== "undefined") {
   )
 }
 
+const IGNORED_WARNINGS = ["Warning:"]
+
 const originalConsoleError = console.error
 const originalConsoleWarn = console.warn
 console.error = (...args: unknown[]) => {
-  if (typeof args[0] === "string" && args[0].includes("Warning:")) return
+  const firstArg = args[0]
+  if (typeof firstArg === "string" && IGNORED_WARNINGS.some((w) => firstArg.includes(w))) return
   originalConsoleError(...args)
 }
 console.warn = (...args: unknown[]) => {
-  if (typeof args[0] === "string" && args[0].includes("Warning:")) return
+  const firstArg = args[0]
+  if (typeof firstArg === "string" && IGNORED_WARNINGS.some((w) => firstArg.includes(w))) return
   originalConsoleWarn(...args)
 }
+// eslint-disable-next-line no-console
 console.log = (..._args: unknown[]) => {}

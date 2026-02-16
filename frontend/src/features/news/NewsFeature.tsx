@@ -41,7 +41,7 @@ export const NewsFeature = () => {
   }, [newsList, language])
 
   return (
-    <div className="w-full min-h-full bg-transparent text-(--text-primary) py-8 sm:py-10">
+    <div className="w-full min-h-full bg-transparent text-text-primary py-8 sm:py-10">
       <div className="px-4">
         <NewsHeader onAddClick={() => setAddOpen(true)} isAdmin={user?.role === "admin"} />
 

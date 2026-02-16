@@ -11,6 +11,11 @@ type NewsLogEntry = {
   status: number
 }
 
+const MOCK_NEWS_START_DATE = "2025-01-01T10:00:00Z"
+const MOCK_NEWS_2_DATE = "2025-01-03T12:30:00Z"
+const MOCK_IP_1 = "198.51.100.20"
+const MOCK_IP_2 = "203.0.113.50"
+
 type TotpState = {
   pending: TotpEnrollmentStartResponse | null
   enrollments: MfaTotpEnrollment[]
@@ -59,6 +64,8 @@ type MockState = {
   deadLetterJobs: AdminDeadLetterJob[]
 }
 
+const MOCK_TOTP_SECRET = "JBSW Y3DP EHJK"
+
 const createBaseProfile = (): User => ({
   id: "uuid-1",
   email: "student@example.com",
@@ -103,7 +110,7 @@ const mockNews = [
     title_en: "News of the day",
     content: "Кампус переходит на новую систему расписаний.",
     content_en: "The campus is switching to a new scheduling system.",
-    created_at: "2025-01-01T10:00:00Z",
+    created_at: MOCK_NEWS_START_DATE,
     image_url: "/fallbacks/news_placeholder.png",
     image_url_optimized: null,
   },
@@ -113,17 +120,21 @@ const mockNews = [
     title_en: "Library hours extended",
     content: "Расширены часы работы библиотечного центра.",
     content_en: "The library has extended its opening hours.",
-    created_at: "2025-01-03T12:30:00Z",
+    created_at: MOCK_NEWS_2_DATE,
     image_url: "/fallbacks/news_placeholder.png",
     image_url_optimized: null,
   },
 ]
 
+const MOCK_EVENTS_COUNT = 50
+const ONE_HOUR_MS = 60 * 60 * 1000
+const ONE_DAY_MS = 24 * ONE_HOUR_MS
+
 const now = new Date()
-const mockEvents = Array.from({ length: 50 }, (_, index) => {
+const mockEvents = Array.from({ length: MOCK_EVENTS_COUNT }, (_, index) => {
   const id = `uuid-${index + 10}`
-  const start = new Date(now.getTime() + (index + 1) * 24 * 60 * 60 * 1000)
-  const end = new Date(start.getTime() + 2 * 60 * 60 * 1000)
+  const start = new Date(now.getTime() + (index + 1) * ONE_DAY_MS)
+  const end = new Date(start.getTime() + 2 * ONE_HOUR_MS)
   return {
     id,
     title: `Событие ${id}`,
@@ -204,7 +215,7 @@ const createMockSessions = (): SessionMock[] => {
       created_at: new Date(now).toISOString(),
       expires_at: new Date(now + 60 * 60 * 1000).toISOString(),
       revoked_at: null,
-      ip_address: "198.51.100.20",
+      ip_address: MOCK_IP_1,
       user_agent: "Playwright Test Browser",
       last_seen_at: new Date(now).toISOString(),
       is_current: true,
@@ -216,7 +227,7 @@ const createMockSessions = (): SessionMock[] => {
       created_at: new Date(now - 2 * 60 * 60 * 1000).toISOString(),
       expires_at: new Date(now + 2 * 60 * 60 * 1000).toISOString(),
       revoked_at: null,
-      ip_address: "203.0.113.50",
+      ip_address: MOCK_IP_2,
       user_agent: "Safari/17.0 (iPhone; CPU iPhone OS)",
       last_seen_at: new Date(now - 15 * 60 * 1000).toISOString(),
       is_current: false,
@@ -345,6 +356,7 @@ export async function useMockApi(page: Page) {
       msg.text().includes("LivePushToasts") ||
       msg.text().includes("[usePushSync]")
     ) {
+      // eslint-disable-next-line no-console
       console.log(
         `[console:${msg.type()}] ${msg.text()}${location?.url ? ` (${location.url})` : ""}`
       )
@@ -371,6 +383,7 @@ export async function useMockApi(page: Page) {
     const normPath = pathname.replace(/^api\/v1\//u, "api/")
 
     if (state.offline && (normPath.startsWith("api/") || normPath.startsWith("auth/"))) {
+      // eslint-disable-next-line no-console
       console.log(`[mock] Simulating OFFLINE for ${normPath}`)
 
       await route.fulfill({
@@ -459,6 +472,7 @@ export async function useMockApi(page: Page) {
 
       const ifNoneMatch = request.headers()["if-none-match"] || request.headers()["If-None-Match"]
       const is304 = ifNoneMatch === state.newsVersion
+      // eslint-disable-next-line no-console
       console.log(
         `[mock] News request: If-None-Match="${ifNoneMatch}", state.newsVersion="${state.newsVersion}", is304=${is304}`
       )
@@ -580,9 +594,8 @@ export async function useMockApi(page: Page) {
       }
     }
 
-    // --- MFA ---
     if (normPath.includes("auth/mfa/totp/start")) {
-      const secret = "JBSW Y3DP EHJK"
+      const secret = MOCK_TOTP_SECRET
       const enrollment: MfaTotpEnrollment = {
         id: `uuid-${state.totp.nextId++}`,
         user_id: state.profile.id,
@@ -634,7 +647,7 @@ export async function useMockApi(page: Page) {
         status: 200,
         body: JSON.stringify({
           key: "mock-key-123",
-          expires_at: new Date(Date.now() + 3600000).toISOString(),
+          expires_at: new Date(Date.now() + ONE_HOUR_MS).toISOString(),
         }),
       })
       return
@@ -719,6 +732,7 @@ export async function useMockApi(page: Page) {
     // --- Catch-all for API/Auth to prevent external hits during tests ---
 
     if (normPath.startsWith("api/") || normPath.startsWith("auth/")) {
+      // eslint-disable-next-line no-console
       console.log(`[mock] Generic 200 for unhandled path: ${normPath}`)
       await route.fulfill({ status: 200, body: "{}" })
       return

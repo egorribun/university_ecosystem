@@ -199,7 +199,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
         </div>
         <div className="min-w-0 flex flex-col gap-1.5 relative z-deep" aria-live="polite">
           <h3
-            className={`np-title font-bold leading-tight tracking-tight text-(--text-primary) text-base transition-opacity duration-fast ${
+            className={`np-title font-bold leading-tight tracking-tight text-text-primary text-base transition-opacity duration-fast ${
               imageLoaded || !data.album_image_url || imageError ? "opacity-100" : "opacity-0"
             }`}
           >

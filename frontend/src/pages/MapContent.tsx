@@ -16,9 +16,14 @@ import { Button } from "@/components/settings"
 
 type LayerMode = "map" | "hybrid"
 
-const MAP_ID = "128006a9ca6ecba0793cdcd05524ff66e1c0b5187d421dfcae39dd12345e4b57" // trufflehog:ignore
-const Z_DEFAULT = 16
-const LOAD_TIMEOUT_MS = 12000
+import {
+  MAP_LOAD_TIMEOUT_MS,
+  MAP_Z_DEFAULT,
+  YANDEX_MAP_ID,
+  YANDEX_MAPS_BASE_URL,
+  YANDEX_WIDGET_BASE_URL,
+} from "@/constants/maps"
+
 /** Vertical offset to hide the Yandex Maps embed branding chrome */
 const MAP_IFRAME_OFFSET = "var(--offset-yandex-maps, 45px)"
 
@@ -75,12 +80,12 @@ export default function MapContent() {
 
   const mapSrc = useMemo(() => {
     if (layer === "map") {
-      return `https://yandex.ru/map-widget/v1/?um=constructor%3A${MAP_ID}&source=constructor`
+      return `${YANDEX_WIDGET_BASE_URL}?um=constructor%3A${YANDEX_MAP_ID}&source=constructor`
     }
     const ll = encodeURIComponent(
       `${CAMPUS_COORDINATES.lon.toFixed(6)},${CAMPUS_COORDINATES.lat.toFixed(6)}`
     )
-    return `https://yandex.ru/map-widget/v1/?ll=${ll}&z=${Z_DEFAULT}&l=${encodeURIComponent(lParam)}`
+    return `${YANDEX_WIDGET_BASE_URL}?ll=${ll}&z=${MAP_Z_DEFAULT}&l=${encodeURIComponent(lParam)}`
   }, [layer, lParam])
 
   const disableEmbeds = prefersReducedMotion || privacyBlocksEmbeds
@@ -98,7 +103,7 @@ export default function MapContent() {
     const seqNow = loadSeq.current
     loadTimer.current = window.setTimeout(() => {
       if (seqNow === loadSeq.current && !iframeLoadedRef.current) setLoadError(true)
-    }, LOAD_TIMEOUT_MS)
+    }, MAP_LOAD_TIMEOUT_MS)
   }, [disableEmbeds])
 
   useEffect(() => {
@@ -150,7 +155,7 @@ export default function MapContent() {
   const openInYandex = () => {
     if (layer === "map") {
       window.open(
-        `https://yandex.ru/maps/?um=constructor:${MAP_ID}&source=constructor`,
+        `${YANDEX_MAPS_BASE_URL}?um=constructor:${YANDEX_MAP_ID}&source=constructor`,
         "_blank",
         "noopener,noreferrer"
       )
@@ -158,7 +163,7 @@ export default function MapContent() {
     }
     const ll = `${CAMPUS_COORDINATES.lon.toFixed(6)},${CAMPUS_COORDINATES.lat.toFixed(6)}`
     window.open(
-      `https://yandex.ru/maps/?ll=${ll}&z=${Z_DEFAULT}&l=${lParam.replace(/%2C/g, ",")}`,
+      `${YANDEX_MAPS_BASE_URL}?ll=${ll}&z=${MAP_Z_DEFAULT}&l=${lParam.replace(/%2C/g, ",")}`,
       "_blank",
       "noopener,noreferrer"
     )
@@ -170,7 +175,7 @@ export default function MapContent() {
   }
 
   return (
-    <div className="w-full bg-(--bg-surface) text-(--text-primary) rounded-none shadow-2xl overflow-hidden relative">
+    <div className="w-full bg-(--bg-surface) text-text-primary rounded-none shadow-2xl overflow-hidden relative">
       <div
         ref={containerRef}
         className="map-page bg-(--bg-canvas-light) dark:bg-(--bg-canvas-dark) transition-colors duration-base h-full w-full relative"
@@ -178,7 +183,7 @@ export default function MapContent() {
         <div className="glass glass--panel glass--sheen map-head z-navbar flex items-center justify-between px-6 py-4 absolute top-0 left-0 right-0">
           <div className="flex items-center gap-3">
             <MapIcon className={cn("text-brand", isMobile ? "h-6 w-6" : "h-8 w-8")} />
-            <h1 className="map-title text-fluid-map-title font-black tracking-tight text-(--text-primary)">
+            <h1 className="map-title text-fluid-map-title font-black tracking-tight text-text-primary">
               {t("map.title")}
             </h1>
           </div>
@@ -255,7 +260,7 @@ export default function MapContent() {
           />
         )}
 
-        <div className="map-controls-shield absolute inset-0 pointer-events-none" />
+        <div className="absolute inset-0 pointer-events-none" />
 
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-navbar pointer-events-none flex flex-col gap-3 pb-(--safe-area-bottom)">
           <div className="flex items-center gap-2 pointer-events-auto">
@@ -265,7 +270,7 @@ export default function MapContent() {
                 className={cn(
                   "relative flex items-center gap-2 rounded-sm px-4 py-2 text-sm font-bold transition-all",
                   layer === "map"
-                    ? "text-white"
+                    ? "text-inverse"
                     : "text-(--text-secondary) hover:bg-(--bg-surface)/(--opacity-dim)"
                 )}
               >
@@ -286,7 +291,7 @@ export default function MapContent() {
                 className={cn(
                   "relative flex items-center gap-2 rounded-sm px-4 py-2 text-sm font-bold transition-all",
                   layer === "hybrid"
-                    ? "text-white"
+                    ? "text-inverse"
                     : "text-(--text-secondary) hover:bg-(--bg-surface)/(--opacity-dim)"
                 )}
               >

@@ -12,7 +12,7 @@ import { cn } from "@/utils/cn"
 import { type NewsFormState, initialNewsState } from "../types"
 
 const inputClass =
-  "w-full rounded-md border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-4 py-2.5 text-input text-(--text-primary) shadow-sm focus:border-brand focus:outline-none transition placeholder:text-(--text-secondary)/(--opacity-medium)"
+  "w-full rounded-md border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-4 py-2.5 text-input text-text-primary shadow-sm focus:border-brand focus:outline-none transition placeholder:text-(--text-secondary)/(--opacity-medium)"
 const textareaClass = cn(inputClass, "min-h-36 resize-y leading-relaxed")
 
 type FieldProps = {
