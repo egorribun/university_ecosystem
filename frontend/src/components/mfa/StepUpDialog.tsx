@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useAuth, ChallengeLockedError } from "@/contexts/AuthContext"
@@ -68,6 +69,17 @@ export const StepUpDialog = ({
     }
   }, [open, refreshChallenges, t])
 
+  // Handle Escape key globally
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && open && !e.defaultPrevented) {
+        onClose()
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [open, onClose])
+
   const handleSubmit = useCallback(
     async (payload: SubmitMfaChallengePayload) => {
       setVerifying(true)
@@ -133,59 +145,61 @@ export const StepUpDialog = ({
 
   if (!open) return null
 
-  return (
-    <button
-      type="button"
-      className="fixed inset-0 z-navbar flex items-center justify-center p-4 bg-black/(--opacity-medium) border-none w-full h-full text-left outline-none cursor-default"
-      onClick={onClose}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") onClose()
-      }}
-    >
-      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
+  return createPortal(
+    <>
+      <button
+        type="button"
+        className="mobile-drawer-backdrop fixed inset-0 z-overlay flex items-center justify-center p-4 bg-black/(--opacity-medium) border-none w-full h-full text-left outline-none cursor-default"
+        onClick={onClose}
+        aria-label={t("common:buttons.close")}
+        tabIndex={-1}
+        data-testid="step-up-backdrop"
+      />
+
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="step-up-dialog-title"
-        className="bg-card rounded-2xl shadow-2xl w-full max-w-sm"
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") onClose()
-          e.stopPropagation()
-        }}
-        tabIndex={-1}
+        className="fixed inset-0 z-overlay flex items-center justify-center pointer-events-none"
       >
-        <h2
-          id="step-up-dialog-title"
-          className="text-xl font-bold text-text-primary px-6 pt-6 pb-2"
+        <div
+            className="bg-card rounded-2xl shadow-2xl w-full max-w-sm pointer-events-auto"
+            // Removed onKeyDown, handled by useEffect
+            tabIndex={-1}
         >
-          {title ?? t("mfa.stepUp.title")}
-        </h2>
-        <div className="px-6 py-4">
-          <div className="flex flex-col gap-6 mt-2">
-            <p className="text-sm text-(--text-secondary)">
-              {description ?? t("mfa.stepUp.description")}
-            </p>
-            {challenge ? (
-              <OtpEntry
-                loading={verifying}
-                error={error}
-                helperText={helperText}
-                onSubmit={handleOtpSubmit}
-              />
-            ) : null}
-          </div>
-        </div>
-        <div className="flex gap-2 justify-end px-6 pb-6 pt-2">
-          <button
-            onClick={onClose}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 text-base font-bold rounded-lg transition-all duration-fast text-text-primary hover:bg-(--text-primary)/(--opacity-subtle)"
-          >
-            {t("common:buttons.cancel")}
-          </button>
+            <h2
+            id="step-up-dialog-title"
+            className="text-xl font-bold text-text-primary px-6 pt-6 pb-2"
+            >
+            {title ?? t("mfa.stepUp.title")}
+            </h2>
+            <div className="px-6 py-4">
+            <div className="flex flex-col gap-6 mt-2">
+                <p className="text-sm text-(--text-secondary)">
+                {description ?? t("mfa.stepUp.description")}
+                </p>
+                {challenge ? (
+                <OtpEntry
+                    loading={verifying}
+                    error={error}
+                    helperText={helperText}
+                    onSubmit={handleOtpSubmit}
+                />
+                ) : null}
+            </div>
+            </div>
+            <div className="flex gap-2 justify-end px-6 pb-6 pt-2">
+            <button
+                onClick={onClose}
+                className="inline-flex items-center justify-center gap-2 px-4 py-2 text-base font-bold rounded-lg transition-all duration-fast text-text-primary hover:bg-(--text-primary)/(--opacity-subtle)"
+            >
+                {t("common:buttons.cancel")}
+            </button>
+            </div>
         </div>
       </div>
-    </button>
+    </>,
+    document.body
   )
 }
 

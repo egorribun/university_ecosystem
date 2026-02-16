@@ -50,6 +50,7 @@ const buttonVariants = cva(
         sm: "min-h-10 px-3 py-2 text-(--fs-sm)",
         md: "min-h-12 px-5 py-2.5 text-(--fs-base)",
         lg: "min-h-14 px-7 py-3 text-(--fs-lg)",
+        icon: "h-10 w-10 min-h-0 p-0 rounded-lg",
       },
       fullWidth: {
         true: "w-full",

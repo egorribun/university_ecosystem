@@ -156,12 +156,6 @@ export default function AdminNotifications() {
       setTopicsState({})
       return
     }
-    if (!trimmed) {
-      setTopicsError(t("admin:notifications.topics.invalidId"))
-      setTopicsData(null)
-      setTopicsState({})
-      return
-    }
     resetTopicFeedback()
     setTopicsBusy(true)
     try {

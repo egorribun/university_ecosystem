@@ -4,8 +4,8 @@ import { useTranslation } from "react-i18next"
 import { Settings as SettingsIcon } from "lucide-react"
 
 import { PageLayout } from "@/components/PageLayout"
-import { Tabs, Tab, Snackbar } from "../components/settings"
-import { StepUpDialog } from "../components/mfa/StepUpDialog"
+import { Tabs, Tab, Snackbar } from "@/components/settings"
+import { StepUpDialog } from "@/components/mfa/StepUpDialog"
 
 import { SettingsGeneral } from "./settings/SettingsGeneral"
 import { SettingsProfile } from "./settings/SettingsProfile"

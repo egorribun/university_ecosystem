@@ -62,13 +62,9 @@ export const LessonCard = memo(function LessonCard({
         <div className="flex items-center justify-between gap-2">
           <Badge
             size="xs"
-            className="chip-type font-semibold shadow-sm"
+            className="chip-type h-6 px-2.5 font-semibold text-white shadow-sm"
             style={{
               background: getLessonTypeColor(lesson.lesson_type),
-              color: "white",
-              height: "24px",
-              paddingLeft: "10px",
-              paddingRight: "10px",
             }}
           >
             {getLessonTypeLabel(lesson.lesson_type)}

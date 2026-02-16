@@ -6,8 +6,8 @@ import {
   ArrowLeft as ArrowBackIcon,
   X as XIcon,
 } from "lucide-react"
-import { useAuth } from "../contexts/AuthContext"
-import Layout from "../components/Layout"
+import { useAuth } from "@/contexts/AuthContext"
+import Layout from "@/components/Layout"
 import SmartImage from "@/components/SmartImage"
 import type { Event } from "@/types/Event"
 import { useTranslation } from "react-i18next"
@@ -162,11 +162,9 @@ export default function EventDetail() {
   if (loading) {
     return (
       <Layout>
-      <Layout>
         <div className="flex min-h-(--h-hero-md) w-full items-center justify-center">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand border-t-transparent" />
         </div>
-      </Layout>
       </Layout>
     )
   }

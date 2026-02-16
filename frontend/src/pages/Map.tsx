@@ -1,6 +1,6 @@
 import { Suspense, lazy } from "react"
-import Layout from "../components/Layout"
-import PageFadeIn from "../components/PageFadeIn"
+import Layout from "@/components/Layout"
+import PageFadeIn from "@/components/PageFadeIn"
 import { Skeleton } from "@/components/ui"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"

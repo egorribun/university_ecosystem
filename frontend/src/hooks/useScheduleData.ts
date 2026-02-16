@@ -3,10 +3,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import dayjs from "dayjs"
 import isoWeek from "dayjs/plugin/isoWeek"
-import api from "../api/client"
+import api from "@/api/client"
 
 dayjs.extend(isoWeek)
-import { useAuth } from "../contexts/AuthContext"
+import { useAuth } from "@/contexts/AuthContext"
 import {
   type Lesson,
   type ScheduleGroup,
@@ -29,7 +29,7 @@ import {
   parseMinutes,
   getTodayIdx,
   getTimeStr,
-} from "../components/schedule/scheduleUtils"
+} from "@/components/schedule/scheduleUtils"
 
 const QUERY_STALE_TIME_MS = 60_000
 const QUERY_GC_TIME_MS = 5 * 60_000

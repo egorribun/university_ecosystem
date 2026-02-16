@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { WifiOff } from "lucide-react"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
-import { cn } from "../utils/cn"
+import { cn } from "@/utils/cn"
 import { fadeVariants } from "@/utils/animations"
 
 type LayoutProps = {
