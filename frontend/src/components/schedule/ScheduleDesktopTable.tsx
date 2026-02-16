@@ -144,7 +144,7 @@ export function ScheduleDesktopTable({
       <table className="w-full border-collapse">
         <thead className="sticky top-0 z-sticky shadow-sm">
           <tr>
-            <th className="sticky left-0 z-navbar w-(--w-index-col) border-r border-glass-border bg-surface-raised px-4 py-4 text-center font-extrabold text-primary shadow-md backdrop-blur-md">
+            <th className="sticky left-0 z-navbar w-(--w-sidebar-collapsed) border-r border-glass-border bg-surface-raised px-4 py-4 text-center font-extrabold text-primary shadow-md backdrop-blur-md">
               №
             </th>
             {weekdayBackend.map((day, idx) => {

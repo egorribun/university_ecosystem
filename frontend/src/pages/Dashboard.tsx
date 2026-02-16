@@ -6,7 +6,7 @@ import { SEO } from "@/components/SEO"
 
 import { PageLayout } from "@/components/PageLayout"
 import { DashboardStories } from "@/components/stories"
-import { useAuth } from "../contexts/AuthContext"
+import { useAuth } from "@/contexts/AuthContext"
 import { getLocaleForLanguage, useLanguage } from "@/contexts/LanguageContext"
 import { useDashboardStories, prefetchDashboardStories } from "@/hooks/useDashboardStories"
 import { useClock } from "@/hooks/useClock"

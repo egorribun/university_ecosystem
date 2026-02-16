@@ -1,6 +1,6 @@
 import type { FC } from "react"
 
-interface SEOProps {
+export interface SEOProps {
   title: string
   description?: string
   image?: string

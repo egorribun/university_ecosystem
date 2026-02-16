@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next"
-import Layout from "../components/Layout"
+import Layout from "@/components/Layout"
 import { SEO } from "@/components/SEO"
-import PageFadeIn from "../components/PageFadeIn"
+import PageFadeIn from "@/components/PageFadeIn"
 import { NewsFeature } from "@/features/news"
 
 const News = () => {

@@ -46,15 +46,15 @@
     --color-indigo-900: #312e81;
     --color-indigo-950: #1e1b4b;
 
-    /* Semantic Primary Palette (Blue/Sky) */
+    /* Purple Palette (Dashboard Accents) */
+    --color-purple-400: #c084fc;
+
+    /* Semantic Primary Palette (Blue) */
     --color-blue-50: #eff6ff;
     --color-blue-400: #60a5fa;
     --color-blue-500: #3b82f6;
     --color-blue-600: #2563eb;
     --color-blue-700: #1d4ed8;
-    --color-sky-300: #7dd3fc;
-    --color-sky-400: #38bdf8;
-    --color-sky-500: #0ea5e9;
 
     /* Functional Palette */
     --color-emerald-400: #34d399;
@@ -68,8 +68,6 @@
     --color-amber-700: #b45309;
     --color-red-400: #f87171;
     --color-red-600: #dc2626;
-    --color-indigo-400: #818cf8;
-    --color-indigo-500: #6366f1;
 
     /*
      * RADIUS
@@ -139,8 +137,8 @@
     --fs-detail-title: clamp(1.2rem, 3vw, 1.45rem);
 
     /* Micro-Label Typography */
-    --fs-label-xs: 10px;
-    --fs-label-md: 11px;
+    --fs-label-xs: 0.625rem;
+    --fs-label-md: 0.6875rem;
     --fs-micro: 0.65rem;
     --fs-badge: 0.7rem;
     --fs-badge-sm: 0.78rem;
@@ -229,8 +227,6 @@
     --h-news-card-mobile: 400px;
     --h-news-card-desktop: 480px;
     /* Component Dimensions */
-    /* Component Dimensions (Refactored) */
-    --w-index-col: 52px;
     --h-checkbox: 20px;
     --h-loading-spinner: 120px;
     --h-skeleton-row: 148px;
@@ -250,10 +246,7 @@
     --w-label-lg: 320px;
     --w-label-xl: 640px;
 
-    /* Animation Tokens */
-    --spring-stiff: stiffness: 520, damping: 34;
-    --spring-standard: stiffness: 460, damping: 34;
-    --spring-gentle: stiffness: 260, damping: 26;
+    /* Animation Tokens — Spring configs live in src/theme/tokens.ts */
 
     /* Semantic Blurs */
     --blur-none: 0px;
@@ -281,8 +274,8 @@
     --z-overlay: 1000;
     --z-dropdown: 1200;
     --z-modal: 1100;
-    --z-popover: 1200;
-    --z-floating: 1300;
+    --z-popover: 1300;
+    --z-floating: 1400;
     --z-toast: 2000;
     --z-tooltip: 2100;
     --z-offline: 9999;
@@ -439,6 +432,7 @@
 
     /* Glass System Extensions */
     --glass-alpha-low: 0.1;
+    --glass-alpha-med: 0.15;
     --glass-alpha-high: 0.2;
     --glass-blur: 12px;
     --glass-bg-low: color-mix(in srgb, white var(--glass-alpha-low), transparent);

@@ -44,9 +44,9 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
   return (
     <Card
       className={cn(
-        "group bg-glass backdrop-blur-3xl transition-all duration-base ease-[cubic-bezier(0.34,1.56,0.64,1)]",
+        "group backdrop-blur-3xl transition-all duration-base ease-[cubic-bezier(0.34,1.56,0.64,1)]",
         "hover:-translate-y-1 hover:scale-[1.01] hover:shadow-glass motion-reduce:hover:transform-none motion-reduce:hover:shadow-none",
-        "dash-panel-news border-glass-border",
+        "dash-panel-news",
         className
       )}
       padding="lg"

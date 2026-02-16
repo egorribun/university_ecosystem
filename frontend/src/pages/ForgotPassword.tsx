@@ -1,5 +1,5 @@
 import { useActionState, useEffect, useMemo, useRef, useState } from "react"
-import axios from "../api/client"
+import axios from "@/api/client"
 import { Link } from "react-router-dom"
 import { useTranslation, Trans } from "react-i18next"
 import { Button, TextField, SectionCard, Chip } from "@/components/settings"

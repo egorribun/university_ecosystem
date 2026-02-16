@@ -52,8 +52,7 @@ export const StoryCircle = <T extends ElementType = "div">({
     >
       <span
         aria-hidden
-        className="pointer-events-none absolute inset-0 rounded-full border border-(--primary-main)/(--opacity-subtle) opacity-0 transition-opacity duration-base group-focus-visible/story:opacity-100 group-hover/story:opacity-medium"
-        style={{ outlineOffset: 3 }}
+        className="pointer-events-none absolute inset-0 rounded-full border border-(--primary-main)/(--opacity-subtle) opacity-0 outline-offset-[3px] transition-opacity duration-base group-focus-visible/story:opacity-100 group-hover/story:opacity-medium"
       />
       <span className="relative z-deep flex h-full w-full items-center justify-center overflow-hidden rounded-full">
         {children}

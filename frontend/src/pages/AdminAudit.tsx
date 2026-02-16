@@ -12,11 +12,11 @@ import {
   User,
   Activity,
 } from "lucide-react"
-import api from "../api/client"
-import Layout from "../components/Layout"
+import api from "@/api/client"
+import Layout from "@/components/Layout"
 import { cn } from "@/utils/cn"
 import { SectionCard, TextField, Button } from "@/components/settings"
-import { AuditLog, AuditLogList } from "../types/Admin"
+import { AuditLog, AuditLogList } from "@/types/Admin"
 
 function Row({ log }: { log: AuditLog }) {
   const [open, setOpen] = useState(false)

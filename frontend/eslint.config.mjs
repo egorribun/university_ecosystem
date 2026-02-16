@@ -10,6 +10,7 @@ import prettier from "eslint-config-prettier";
 import i18nextPlugin from "eslint-plugin-i18next";
 import boundaries from "eslint-plugin-boundaries";
 
+
 export default tseslint.config({
   ignores: ["dist", "node_modules", "public", "vite.config.mts", "src/api/generated"],
 }, js.configs.recommended, ...tseslint.configs.recommended, reactPlugin.configs.flat.recommended, jsxA11y.flatConfigs.recommended, {
