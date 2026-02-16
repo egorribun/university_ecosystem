@@ -93,7 +93,8 @@ function DefaultFallback({ onRetry }: { onRetry: () => void }) {
             padding: "0.75rem 1.5rem",
             fontSize: "1rem",
             borderRadius: "9999px",
-            border: "1px solid color-mix(in srgb, var(--color-white) var(--opacity-medium), transparent)",
+            border:
+              "1px solid color-mix(in srgb, var(--color-white) var(--opacity-medium), transparent)",
             background: "transparent",
             color: "currentColor",
             cursor: "pointer",

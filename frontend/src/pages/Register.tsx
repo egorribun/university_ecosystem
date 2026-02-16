@@ -20,8 +20,6 @@ type RegisterState = {
 // Email suggestion logic centralized in authUtils.ts
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-
-
 const Register = () => {
   const { t } = useTranslation(["auth"])
   const navigate = useNavigate()
@@ -232,10 +230,7 @@ const Register = () => {
           </p>
           <div className="mt-8 grid gap-5 sm:grid-cols-2">
             {heroPerks.map(({ icon: Icon, title, description }) => (
-              <div
-                key={title}
-                className="auth-perk-card group"
-              >
+              <div key={title} className="auth-perk-card group">
                 <div className="flex items-center gap-3">
                   <div className="flex size-12 items-center justify-center rounded-md bg-brand-subtle-bg text-brand">
                     <Icon className="h-5 w-5" aria-hidden="true" />
@@ -415,7 +410,9 @@ const Register = () => {
                 <span
                   className={cn(
                     "badge-brand",
-                    minLenOk ? "border-brand/(--opacity-medium) text-brand" : "text-text-muted-subtle"
+                    minLenOk
+                      ? "border-brand/(--opacity-medium) text-brand"
+                      : "text-text-muted-subtle"
                   )}
                 >
                   {t("auth:register.passwordChip.minLength")}
@@ -423,7 +420,9 @@ const Register = () => {
                 <span
                   className={cn(
                     "badge-brand",
-                    matchOk ? "border-brand/(--opacity-medium) text-brand" : "text-text-muted-subtle"
+                    matchOk
+                      ? "border-brand/(--opacity-medium) text-brand"
+                      : "text-text-muted-subtle"
                   )}
                 >
                   {t("auth:register.passwordChip.match")}

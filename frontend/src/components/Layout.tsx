@@ -11,8 +11,6 @@ type LayoutProps = {
   className?: string
 }
 
-const OFFLINE_ICON_SIZE = 14
-
 const Layout = ({ children, className }: LayoutProps) => {
   const isOnline = useOnlineStatus()
   const { t } = useTranslation("system")
@@ -26,10 +24,7 @@ const Layout = ({ children, className }: LayoutProps) => {
       animate="visible"
       exit="exit"
       variants={fadeVariants}
-      className={cn(
-        "box-border min-h-screen w-full bg-page text-text-primary",
-        className
-      )}
+      className={cn("box-border min-h-screen w-full bg-page text-text-primary", className)}
     >
       <AnimatePresence>
         {!isOnline && (
@@ -39,7 +34,7 @@ const Layout = ({ children, className }: LayoutProps) => {
             exit={{ height: 0, opacity: 0 }}
             className="sticky top-0 z-sticky flex w-full items-center justify-center gap-2 bg-warning-bg/(--opacity-heavy) py-1 text-badge font-bold uppercase tracking-wider text-warning-text backdrop-blur-md"
           >
-            <WifiOff size={OFFLINE_ICON_SIZE} />
+            <WifiOff className="size-(--size-icon-sm)" />
             <span>{t("offlineIndicator.offline")}</span>
           </motion.div>
         )}

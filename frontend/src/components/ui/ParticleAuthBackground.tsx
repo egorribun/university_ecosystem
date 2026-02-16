@@ -41,10 +41,8 @@ const ParticleAuthBackground = () => {
     // Note: Hex fallbacks are required for Canvas API when CSS variables aren't computed yet
     const getThemeColors = () => {
       const styles = getComputedStyle(document.documentElement)
-      const primary =
-        styles.getPropertyValue("--primary-main").trim() || "var(--color-blue-600)"
-      const secondary =
-        styles.getPropertyValue("--primary-hover").trim() || "var(--color-blue-700)"
+      const primary = styles.getPropertyValue("--primary-main").trim() || "var(--color-blue-600)"
+      const secondary = styles.getPropertyValue("--primary-hover").trim() || "var(--color-blue-700)"
 
       // Generate variations based on the theme primary
       return [

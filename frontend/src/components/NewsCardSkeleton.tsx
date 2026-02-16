@@ -3,9 +3,7 @@ import { Skeleton } from "@/components/ui"
 
 const NewsCardSkeleton = () => {
   return (
-    <article
-      className="relative flex h-full w-full max-w-lg flex-col overflow-hidden rounded-md border border-white/(--opacity-subtle) bg-input-mix text-text-primary shadow-surface"
-    >
+    <article className="relative flex h-full w-full max-w-lg flex-col overflow-hidden rounded-md border border-white/(--opacity-subtle) bg-input-mix text-text-primary shadow-surface">
       <Skeleton className="h-56 w-full sm:h-56" aria-hidden />
       <div className="flex flex-1 flex-col gap-4 px-4 py-5 sm:px-5 sm:py-6">
         <Skeleton width="75%" height={20} aria-hidden />

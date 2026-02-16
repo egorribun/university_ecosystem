@@ -44,14 +44,9 @@ export function RecentActivityGrid({
 }: RecentActivityGridProps) {
   const { t } = useTranslation(["activity"])
 
-  const pickKeyCandidate = useCallback(
-    (value: unknown): string | number | undefined => {
-      return typeof value === "number" || typeof value === "string"
-        ? value
-        : undefined
-    },
-    []
-  )
+  const pickKeyCandidate = useCallback((value: unknown): string | number | undefined => {
+    return typeof value === "number" || typeof value === "string" ? value : undefined
+  }, [])
 
   const attendanceItemKey = useCallback(
     (item: AttendanceStats["recent"][number], index: number) =>
@@ -158,19 +153,14 @@ export function RecentActivityGrid({
                         </span>
                       </div>
                     </div>
-                    <p className="ml-4 text-xs text-(--text-label)">
-                      {formatDate(r.date)}
-                    </p>
+                    <p className="ml-4 text-xs text-(--text-label)">{formatDate(r.date)}</p>
                   </motion.div>
                 )
               })}
             </AnimatePresence>
-            {!loading &&
-              (!attendance?.recent || attendance.recent.length === 0) && (
-                <p className="px-1 py-1 text-sm text-(--text-label)">
-                  {noDataText}
-                </p>
-              )}
+            {!loading && (!attendance?.recent || attendance.recent.length === 0) && (
+              <p className="px-1 py-1 text-sm text-(--text-label)">{noDataText}</p>
+            )}
           </div>
         </div>
       </CardShell>
@@ -184,16 +174,13 @@ export function RecentActivityGrid({
         <div className="flex flex-col">
           <div className="mb-2 flex items-center gap-2">
             <SchoolIcon className="text-base text-(--primary-main)" />
-            <h3 className="font-black text-text-primary">
-              {t("activity:sections.grades.recent")}
-            </h3>
+            <h3 className="font-black text-text-primary">{t("activity:sections.grades.recent")}</h3>
           </div>
           <div className="space-y-1">
             <AnimatePresence initial={false}>
               {(grades?.recent ?? []).slice(0, 6).map((r, i) => {
                 const gradeRecord = r as Partial<{ id?: number | string }>
-                const itemKey =
-                  pickKeyCandidate(gradeRecord.id) ?? gradeItemKey(r, i)
+                const itemKey = pickKeyCandidate(gradeRecord.id) ?? gradeItemKey(r, i)
                 return (
                   <motion.div
                     key={itemKey}
@@ -210,26 +197,20 @@ export function RecentActivityGrid({
                     <div className="flex items-center gap-2">
                       <div className="h-2 w-2 rounded-full bg-(--primary-main)/(--opacity-heavy) shadow-pulse-primary" />
                       <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-1.5">
-                        <span className="font-bold text-text-primary">
-                          {r.course}
-                        </span>
+                        <span className="font-bold text-text-primary">{r.course}</span>
                         <span className="text-sm text-(--text-label)">
                           {r.score}
                           {r.max ? "/" + r.max : ""}
                         </span>
                       </div>
                     </div>
-                    <p className="ml-4 text-xs text-(--text-label)">
-                      {formatDate(r.date)}
-                    </p>
+                    <p className="ml-4 text-xs text-(--text-label)">{formatDate(r.date)}</p>
                   </motion.div>
                 )
               })}
             </AnimatePresence>
             {!loading && (!grades?.recent || grades.recent.length === 0) && (
-              <p className="px-1 py-1 text-sm text-(--text-label)">
-                {noDataText}
-              </p>
+              <p className="px-1 py-1 text-sm text-(--text-label)">{noDataText}</p>
             )}
           </div>
         </div>
@@ -255,8 +236,7 @@ export function RecentActivityGrid({
                   id?: number | string
                 }>
                 const itemKey =
-                  pickKeyCandidate(participationRecord.id) ??
-                  participationItemKey(r, i)
+                  pickKeyCandidate(participationRecord.id) ?? participationItemKey(r, i)
                 return (
                   <motion.div
                     key={itemKey}
@@ -273,13 +253,9 @@ export function RecentActivityGrid({
                     <div className="flex items-center gap-2">
                       <div className="h-2 w-2 rounded-full bg-(--warning-text)/(--opacity-heavy) shadow-pulse-warning" />
                       <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-1.5">
-                        <span className="font-bold text-text-primary">
-                          {r.title}
-                        </span>
+                        <span className="font-bold text-text-primary">{r.title}</span>
                         <span className="text-sm text-(--text-label)">
-                          {[formatDate(r.date), r.role]
-                            .filter(Boolean)
-                            .join(separator)}
+                          {[formatDate(r.date), r.role].filter(Boolean).join(separator)}
                         </span>
                       </div>
                     </div>
@@ -287,12 +263,9 @@ export function RecentActivityGrid({
                 )
               })}
             </AnimatePresence>
-            {!loading &&
-              (!participation?.recent || participation.recent.length === 0) && (
-                <p className="px-1 py-1 text-sm text-(--text-label)">
-                  {noDataText}
-                </p>
-              )}
+            {!loading && (!participation?.recent || participation.recent.length === 0) && (
+              <p className="px-1 py-1 text-sm text-(--text-label)">{noDataText}</p>
+            )}
           </div>
         </div>
       </CardShell>

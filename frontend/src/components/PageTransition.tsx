@@ -56,7 +56,7 @@ const PageTransition: FC<Props> = ({ children }) => {
 
   if (reduceMotion || !motionModule) {
     return (
-      <div style={{ position: "relative", minHeight: "100%", background: "var(--bg-page)" }}>
+      <div className="relative min-h-full bg-page">
         <div className="relative z-base">{children}</div>
       </div>
     )
@@ -67,7 +67,7 @@ const PageTransition: FC<Props> = ({ children }) => {
 
   return (
     <LazyMotion features={domAnimation}>
-      <div style={{ position: "relative", minHeight: "100%", background: "var(--bg-page)" }}>
+      <div className="relative min-h-full bg-page">
         <motion.div
           initial={initial}
           animate={{
@@ -93,12 +93,7 @@ const PageTransition: FC<Props> = ({ children }) => {
               ease: EASING.premium,
             },
           }}
-          className="relative z-base"
-          style={{
-            willChange: "transform, opacity, filter",
-            backfaceVisibility: "hidden",
-            transform: "translateZ(0)",
-          }}
+          className="relative z-base [backface-visibility:hidden] [transform:translateZ(0)] will-change-[transform,opacity,filter]"
         >
           {children}
         </motion.div>

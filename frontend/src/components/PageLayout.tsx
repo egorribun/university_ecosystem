@@ -20,21 +20,12 @@ const variants: Record<PageLayoutVariant, string> = {
   full: "p-0",
 }
 
-export const PageLayout = ({
-  children,
-  className,
-  variant = "default",
-  seo,
-}: PageLayoutProps) => {
+export const PageLayout = ({ children, className, variant = "default", seo }: PageLayoutProps) => {
   return (
     <Layout>
       {seo && <SEO {...seo} />}
       <PageFadeIn>
-        <div
-          className={cn("w-full py-6 md:py-8", variants[variant], className)}
-        >
-          {children}
-        </div>
+        <div className={cn("w-full py-(--fluid-py)", variants[variant], className)}>{children}</div>
       </PageFadeIn>
     </Layout>
   )

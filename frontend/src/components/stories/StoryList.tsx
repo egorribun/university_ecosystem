@@ -103,7 +103,7 @@ export const StoryList = ({
                       <SmartImage
                         srcRaw={story.cover_url}
                         alt={story.title}
-                        style={{ width: "100%", height: "100%", borderRadius: "inherit" }}
+                        className="h-full w-full rounded-[inherit]"
                       />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center text-(--fs-h3) font-bold uppercase tracking-wide text-white/(--opacity-heavy)">

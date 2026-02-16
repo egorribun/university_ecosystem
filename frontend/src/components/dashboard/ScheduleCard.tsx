@@ -118,10 +118,7 @@ export function ScheduleCard({
 
   return (
     <Card
-      className={cn(
-        "card-glass card-glass-interactive dash-panel-schedule",
-        className
-      )}
+      className={cn("card-glass card-glass-interactive dash-panel-schedule", className)}
       padding="lg"
       aria-busy={loadingSched}
       style={style}

@@ -22,11 +22,7 @@ export function ParticipationCard({
 }: ParticipationCardProps) {
   const { t } = useTranslation(["activity"])
 
-  const partEventsAnimated = useAnimatedNumber(
-    Math.round(participation?.events ?? 0),
-    0.9,
-    0
-  )
+  const partEventsAnimated = useAnimatedNumber(Math.round(participation?.events ?? 0), 0.9, 0)
 
   return (
     <CardShell

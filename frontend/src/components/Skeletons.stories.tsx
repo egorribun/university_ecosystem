@@ -82,7 +82,7 @@ export const EventCardGrid: StoryObj = {
 
 export const NewsCardList: StoryObj = {
   render: () => (
-    <div className="flex flex-col gap-4" style={{ maxWidth: 600 }}>
+    <div className="flex flex-col gap-4 max-w-xl">
       <NewsCardSkeleton />
       <NewsCardSkeleton />
     </div>

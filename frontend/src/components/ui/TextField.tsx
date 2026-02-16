@@ -65,7 +65,7 @@ export const TextField = React.forwardRef<
         )}
         <div className="relative">
           {leadingIcon && (
-    <div className='absolute left-4 top-1/2 -translate-y-1/2 text-(--text-tertiary)'>
+            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-(--text-tertiary)">
               {leadingIcon}
             </div>
           )}
@@ -82,7 +82,12 @@ export const TextField = React.forwardRef<
               disabled={disabled}
               placeholder={placeholder}
               rows={rows}
-              className={cn("resize-none", leadingIcon ? "pl-11" : "", trailingIcon ? "pr-11" : "", inputClassName)}
+              className={cn(
+                "resize-none",
+                leadingIcon ? "pl-11" : "",
+                trailingIcon ? "pr-11" : "",
+                inputClassName
+              )}
               {...props}
             />
           ) : (

@@ -209,10 +209,10 @@ export function ScheduleDesktopTable({
                   if (!lesson) {
                     return (
                       <td
-        key={`empty-${rowIdx}-${colIdx}`}
-        className={cn("p-3", colIsToday ? "bg-(--bg-surface-hover)" : "")}
-      >
-        <div className="min-h-(--h-skeleton-row) w-full animate-pulse rounded-sm bg-surface-hover/(--opacity-subtle)" />
+                        key={`empty-${rowIdx}-${colIdx}`}
+                        className={cn("p-3", colIsToday ? "bg-(--bg-surface-hover)" : "")}
+                      >
+                        <div className="min-h-(--h-skeleton-row) w-full animate-pulse rounded-sm bg-surface-hover/(--opacity-subtle)" />
                       </td>
                     )
                   }

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { MemoryRouter, useLocation } from "react-router-dom"
 import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
@@ -66,7 +66,12 @@ vi.mock("@/components/MessengerButton", () => ({
 
 vi.mock("framer-motion", () => {
   const motionComponent = (Tag: string) => {
-    const Component = ({ children, className, onClick, ...props }: any) => {
+    const Component = ({
+      children,
+      className,
+      onClick,
+      ...props
+    }: React.ComponentProps<"div"> & { [key: string]: unknown }) => {
       const filteredProps = { ...props }
       const motionProps = [
         "initial",
@@ -84,17 +89,18 @@ vi.mock("framer-motion", () => {
         "layoutId",
       ]
       motionProps.forEach((prop) => delete filteredProps[prop])
+      const Element = Tag as React.ElementType
       return (
-        <Tag className={className} onClick={onClick} {...filteredProps}>
+        <Element className={className} onClick={onClick} {...filteredProps}>
           {children}
-        </Tag>
+        </Element>
       )
     }
     Component.displayName = `Motion(${Tag})`
-    return Component
+    return Component as unknown as React.ComponentType<unknown>
   }
   return {
-    AnimatePresence: ({ children }: any) => <>{children}</>,
+    AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
     motion: {
       nav: motionComponent("nav"),
       div: motionComponent("div"),

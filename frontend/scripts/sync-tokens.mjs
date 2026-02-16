@@ -176,6 +176,12 @@ const GROUPS = [
   durationMedium: 0.45,
   navTransition: 1.2,`,
   },
+  {
+    name: "icon",
+    pattern: /^size-icon-/,
+    transformKey: (k) => k.replace("size-icon-", ""),
+    valueTransform: (k) => `var(--${k})`,
+  },
 ]
 
 // 3. Generate Content

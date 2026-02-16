@@ -545,9 +545,7 @@ export default function NewsDetail() {
                   >
                     <Icon className="h-5 w-5" />
                   </span>
-                  <span className="text-sm font-semibold text-text-primary">
-                    {option.label}
-                  </span>
+                  <span className="text-sm font-semibold text-text-primary">{option.label}</span>
                 </a>
               )
             })}

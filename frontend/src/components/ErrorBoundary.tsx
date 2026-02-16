@@ -75,7 +75,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       }
 
       return (
-        <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-page px-fluid-x">
+        <div className="relative flex min-h-(--min-h-hero-sm) items-center justify-center overflow-hidden bg-page px-fluid-x">
           {/* Ambient radial glow */}
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,color-mix(in_srgb,var(--primary-main)_var(--opacity-subtle),transparent)_0%,transparent_70%)]" />
 
@@ -105,21 +105,21 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               <button
                 type="button"
                 onClick={this.handleRetry}
-                className="rounded-xl bg-(--primary-main) px-6 py-3.5 text-base font-extrabold text-(--text-inverse) shadow-glass transition-all duration-slow hover:-translate-y-0.5 hover:bg-(--primary-hover) hover:shadow-premium-lift active:scale-95"
+                className="rounded-xl bg-(--primary-main) px-(--space-6) py-(--space-35) text-base font-extrabold text-(--text-inverse) shadow-glass transition-all duration-slow hover:-translate-y-0.5 hover:bg-(--primary-hover) hover:shadow-premium-lift active:scale-95"
               >
                 Попробовать снова
               </button>
               <button
                 type="button"
                 onClick={this.handleReload}
-                className="rounded-xl border border-border-subtle bg-(--bg-surface-hover) px-6 py-3.5 text-base font-extrabold text-text-primary transition-all duration-slow hover:-translate-y-0.5 hover:bg-(--bg-surface-raised) active:scale-95"
+                className="rounded-xl border border-border-subtle bg-(--bg-surface-hover) px-(--space-6) py-(--space-35) text-base font-extrabold text-text-primary transition-all duration-slow hover:-translate-y-0.5 hover:bg-(--bg-surface-raised) active:scale-95"
               >
                 Перезагрузить страницу
               </button>
               <button
                 type="button"
                 onClick={this.handleGoHome}
-                className="rounded-xl border border-border-subtle bg-(--bg-surface-hover) px-6 py-3.5 text-base font-extrabold text-text-primary transition-all duration-slow hover:-translate-y-0.5 hover:bg-(--bg-surface-raised) active:scale-95"
+                className="rounded-xl border border-border-subtle bg-(--bg-surface-hover) px-(--space-6) py-(--space-35) text-base font-extrabold text-text-primary transition-all duration-slow hover:-translate-y-0.5 hover:bg-(--bg-surface-raised) active:scale-95"
               >
                 На главную
               </button>

@@ -108,7 +108,9 @@ export function AppRoutes() {
     const PREFETCH_TIMEOUT_MS = 800
 
     if (isAuth) {
-      prefetchRouteModules([...privateLoaders, ...sharedLoaders], { timeoutMs: PREFETCH_TIMEOUT_MS })
+      prefetchRouteModules([...privateLoaders, ...sharedLoaders], {
+        timeoutMs: PREFETCH_TIMEOUT_MS,
+      })
       return
     }
 

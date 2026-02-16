@@ -5,8 +5,6 @@ import SmartImage from "@/components/SmartImage"
 import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui"
 
-
-
 export default function Footer() {
   const { t } = useTranslation(["navigation"])
   const currentYear = new Date().getFullYear()

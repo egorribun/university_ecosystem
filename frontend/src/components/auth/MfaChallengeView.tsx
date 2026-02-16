@@ -117,7 +117,9 @@ export function MfaChallengeView({
                     checked={trustDevice}
                     onCheckedChange={(checked) => onTrustDeviceChange(checked === true)}
                     disabled={mfaBusy}
-                    aria-label={t("auth:actions.trustDevice", { defaultValue: "Доверять этому устройству" })}
+                    aria-label={t("auth:actions.trustDevice", {
+                      defaultValue: "Доверять этому устройству",
+                    })}
                   />
                   {t("auth:actions.trustDevice", { defaultValue: "Доверять этому устройству" })}
                 </div>

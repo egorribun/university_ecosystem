@@ -67,17 +67,9 @@ export default function Activity() {
         description: t("activity:pageDescription", "Your academic activity dashboard."),
       }}
     >
-      <motion.div
-        initial="hidden"
-        animate="show"
-        variants={headerVariants}
-        className="pb-16"
-      >
+      <motion.div initial="hidden" animate="show" variants={headerVariants} className="pb-16">
         <header>
-          <FadeSection
-            delay="80ms"
-            className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5"
-          >
+          <FadeSection delay="80ms" className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-subtle-bg text-brand shadow-glass transition-transform duration-fast hover:scale-105 backdrop-blur-sm">
               <TimelineIcon className="text-3xl" />
             </div>
@@ -154,11 +146,7 @@ export default function Activity() {
 
           <div className="my-4 border-t border-glass-border-subtle md:my-6" />
 
-          <motion.div
-            variants={gridVariants}
-            initial="hidden"
-            animate="show"
-          >
+          <motion.div variants={gridVariants} initial="hidden" animate="show">
             <RecentActivityGrid
               attendance={attendance}
               grades={grades}

@@ -148,7 +148,7 @@ export function EditLessonDialog({
                 />
               </div>
               <div className="flex gap-4">
-              <div className="flex-1">
+                <div className="flex-1">
                   <label className="mb-2 block text-sm font-semibold opacity-strong">
                     {t("schedule:form.startTime")}
                   </label>
@@ -171,7 +171,7 @@ export function EditLessonDialog({
                     fullWidth
                   />
                 </div>
-              <div className="flex-1">
+                <div className="flex-1">
                   <label className="mb-2 block text-sm font-semibold opacity-strong">
                     {t("schedule:form.endTime")}
                   </label>

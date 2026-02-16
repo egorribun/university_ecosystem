@@ -62,11 +62,21 @@ export const Interactive: Story = {
 export const Radii: Story = {
   render: () => (
     <div className="flex flex-col gap-4">
-      <GlassCard radius="sm" className="p-4">Small Radius</GlassCard>
-      <GlassCard radius="md" className="p-4">Medium Radius</GlassCard>
-      <GlassCard radius="lg" className="p-4">Large Radius</GlassCard>
-      <GlassCard radius="2xl" className="p-4">2XL Radius</GlassCard>
-      <GlassCard radius="3xl" className="p-4">3XL Radius</GlassCard>
+      <GlassCard radius="sm" className="p-4">
+        Small Radius
+      </GlassCard>
+      <GlassCard radius="md" className="p-4">
+        Medium Radius
+      </GlassCard>
+      <GlassCard radius="lg" className="p-4">
+        Large Radius
+      </GlassCard>
+      <GlassCard radius="2xl" className="p-4">
+        2XL Radius
+      </GlassCard>
+      <GlassCard radius="3xl" className="p-4">
+        3XL Radius
+      </GlassCard>
     </div>
   ),
 }

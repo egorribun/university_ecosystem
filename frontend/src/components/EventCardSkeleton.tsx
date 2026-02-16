@@ -8,16 +8,14 @@ import { Skeleton } from "@/components/ui/Skeleton"
 export function EventCardSkeleton() {
   return (
     <article
-      className="relative flex flex-col overflow-hidden rounded-2xl border border-white/(--opacity-subtle) bg-input-mix text-text-primary shadow-surface"
-      style={{ width: "100%", maxWidth: "420px" }}
+      className="relative flex w-full max-w-(--w-story-card-md) flex-col overflow-hidden rounded-2xl border border-white/(--opacity-subtle) bg-input-mix text-text-primary shadow-surface"
       aria-busy="true"
       aria-label="Loading event"
     >
       {/* Image placeholder */}
       <Skeleton
         width="100%"
-        height="200px"
-        className="h-40 w-full animate-skeleton-wave bg-skeleton sm:h-44"
+        className="h-48 w-full animate-skeleton-wave bg-skeleton sm:h-44"
         aria-hidden
       />
 

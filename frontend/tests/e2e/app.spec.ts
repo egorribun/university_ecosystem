@@ -149,7 +149,9 @@ test.describe.skip("University ecosystem app", () => {
 
     // 3. Verify status chip updated to "Завершена" using data-testid
     const statusChip = page.getByTestId("session-status-2")
-    await expect(statusChip).toContainText(/Завершена|Revoked|Ended/i, { timeout: TEST_TIMEOUTS.long })
+    await expect(statusChip).toContainText(/Завершена|Revoked|Ended/i, {
+      timeout: TEST_TIMEOUTS.long,
+    })
     await expect(page.getByTestId("session-revoke-2")).toBeHidden()
   })
 

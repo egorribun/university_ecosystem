@@ -58,11 +58,7 @@ export function AttendanceCard({
       reduceMotion={reduceMotion}
     >
       <div className="flex items-center gap-4">
-        <AnimatedRing
-          value={attendance?.percent ?? 0}
-          size={ringSize}
-          tone="success"
-        />
+        <AnimatedRing value={attendance?.percent ?? 0} size={ringSize} tone="success" />
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <p className="text-micro font-semibold uppercase tracking-wider text-(--text-tertiary)">
             {t("activity:sections.attendance.title")}

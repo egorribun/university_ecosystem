@@ -26,23 +26,17 @@ export function EventsEmptyState({ tab, onTabChange }: EventsEmptyStateProps) {
           <EventNoteIcon className="h-8 w-8 text-brand" />
         </div>
         <div className="space-y-2">
-          <p className="text-lg font-semibold text-text-primary">
-            {t("events:states.empty")}
-          </p>
+          <p className="text-lg font-semibold text-text-primary">{t("events:states.empty")}</p>
           <p className="text-sm text-(--text-secondary)">{t(hintKey)}</p>
         </div>
         {tab !== "my" && (
           <Button
             variant="ghost"
             size="sm"
-            onClick={() =>
-              onTabChange(tab === "active" ? "archive" : "active")
-            }
+            onClick={() => onTabChange(tab === "active" ? "archive" : "active")}
             className="mt-2 text-brand hover:bg-brand/(--opacity-subtle)"
           >
-            {tab === "active"
-              ? t("events:tabs.archive")
-              : t("events:tabs.active")}
+            {tab === "active" ? t("events:tabs.archive") : t("events:tabs.active")}
           </Button>
         )}
       </div>
