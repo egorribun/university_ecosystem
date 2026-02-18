@@ -33,6 +33,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
+import { TIMEOUTS } from "@/config/timeouts"
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
@@ -208,7 +209,7 @@ export default function NewsDetail() {
 
   useEffect(() => {
     if (!snackbar) return
-    const timeout = window.setTimeout(() => setSnackbar(""), 2400)
+    const timeout = window.setTimeout(() => setSnackbar(""), TIMEOUTS.TOAST_SHORT)
     return () => window.clearTimeout(timeout)
   }, [snackbar])
 

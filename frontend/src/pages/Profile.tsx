@@ -222,7 +222,7 @@ export default function Profile() {
                   isTest ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 34 }
                 }
               >
-                <div className="grid grid-cols-1 lg:grid-cols-[minmax(280px,380px)_minmax(0,1fr)] gap-x-8 gap-y-8 items-start">
+                <div className="grid grid-cols-1 lg:grid-cols-[minmax(var(--min-w-sidebar),var(--w-sidebar-sm))_minmax(0,1fr)] gap-x-8 gap-y-8 items-start">
                   {/* Left Column */}
                   <div className="flex flex-col gap-6 items-stretch">
                     <ProfileHeader

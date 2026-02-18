@@ -33,3 +33,21 @@ export function AdminRoute({ children }: RouteGuardProps) {
 
   return children
 }
+
+export function PublicRoute({ children }: RouteGuardProps) {
+  const { isAuth, loading } = useAuth()
+  const location = useLocation()
+
+  if (loading) {
+    return <LoadingState />
+  }
+
+  if (isAuth) {
+    // Redirect to dashboard, but preserve the source location if they were trying to go somewhere else
+    // though usually PublicRoute is for Login/Register which don't have a "from" state in this direction
+    const from = (location.state as { from?: { pathname: string } })?.from?.pathname || "/dashboard"
+    return <Navigate to={from} replace />
+  }
+
+  return children
+}

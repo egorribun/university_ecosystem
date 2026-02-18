@@ -19,7 +19,6 @@ import type { StoryItem } from "@/types/Story"
 import { createStory, deleteStory, updateStory, uploadStoryCover } from "@/api/stories"
 import apiClient from "@/api/client"
 import { useLocaleFormatters } from "@/i18n/formatters"
-import { sanitizeUrl } from "@/utils/media"
 import { cn } from "@/utils/cn"
 import {
   Alert,
@@ -29,7 +28,7 @@ import {
   SectionCard,
   Divider,
 } from "@/components/settings"
-import { Badge, Card } from "@/components/ui"
+import { Badge, Card, ConfirmDialog } from "@/components/ui"
 
 dayjs.extend(utc)
 
@@ -120,6 +119,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
   const [updatingCover, setUpdatingCover] = useState(false)
   const [unpublishing, setUnpublishing] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -215,19 +215,21 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
     }
   }
 
-  const handleDelete = async () => {
-    if (!window.confirm(t("stories:list.confirmDelete"))) return
+  const executeDelete = async () => {
     setActionError(null)
     setDeleting(true)
     try {
       await deleteStory(story.id)
       onRefresh()
+      setShowDeleteConfirm(false)
     } catch (error: unknown) {
       setActionError(getErrorMessage(error, t("stories:errors.deleteFailed")))
     } finally {
       setDeleting(false)
     }
   }
+
+  const handleDelete = () => setShowDeleteConfirm(true)
 
   return (
     <Card className="overflow-hidden border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass backdrop-blur-md">
@@ -271,8 +273,8 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
             <div className="w-full md:w-56 flex flex-col items-center gap-4">
               <div className="relative w-full aspect-[9/16] rounded-md overflow-hidden bg-(--bg-surface)/(--opacity-dim) border border-glass-border shadow-inner group">
                 {coverPreview ? (
-                  <img
-                    src={sanitizeUrl(coverPreview) ?? ""}
+                  <SmartImage
+                    srcRaw={coverPreview || ""}
                     alt={t("stories:list.coverAlt", { title: story.title })}
                     className="w-full h-full object-cover"
                   />
@@ -389,6 +391,17 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
           )}
         </div>
       </div>
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        title={t("stories:list.confirmDelete")}
+        message={t("stories:list.confirmDeleteDescription", { defaultValue: "Are you sure you want to delete this story? This action cannot be undone." })}
+        confirmText={t("common:buttons.delete")}
+        cancelText={t("common:buttons.cancel")}
+        variant="danger"
+        onConfirm={() => void executeDelete()}
+        onCancel={() => setShowDeleteConfirm(false)}
+        isLoading={deleting}
+      />
     </Card>
   )
 }

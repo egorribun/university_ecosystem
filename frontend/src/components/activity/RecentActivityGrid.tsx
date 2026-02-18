@@ -1,6 +1,7 @@
 import { useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { motion, AnimatePresence } from "framer-motion"
+import { motion as motionTokens } from "@/theme/tokens"
 import {
   CalendarCheck as EventAvailableIcon,
   GraduationCap as SchoolIcon,
@@ -14,6 +15,7 @@ import type {
   ParticipationStats,
 } from "@/components/activity/activityTypes"
 import type { DetailSection } from "@/components/activity/activityTypes"
+import { cn } from "@/utils/cn"
 
 type RecentActivityGridProps = {
   attendance?: AttendanceStats | null
@@ -68,10 +70,10 @@ export function RecentActivityGrid({
 
   const listItemVariants = {
     hidden: { opacity: 0, y: reduceMotion ? 0 : 8 },
-    show: { opacity: 1, y: 0, transition: { duration: 0.28 } },
+    show: { opacity: 1, y: 0, transition: { duration: motionTokens.durationBase } },
   }
 
-  const noDataText = t("activity:states.noData")
+  const noDataText = t("activity:common.noData")
 
   const styleProps = reduceMotion
     ? undefined
@@ -95,18 +97,17 @@ export function RecentActivityGrid({
           <div className="space-y-1">
             <AnimatePresence initial={false}>
               {(attendance?.recent ?? []).slice(0, 6).map((r, i) => {
-                const color =
-                  r.status === "present"
-                    ? "var(--success-text)"
-                    : r.status === "late"
-                      ? "var(--warning-text)"
-                      : "var(--error-text)"
-                const darkColor =
-                  r.status === "present"
-                    ? "var(--success-text)"
-                    : r.status === "late"
-                      ? "var(--warning-text)"
-                      : "var(--error-text)"
+                const statusStyles = {
+                  present: "bg-success-text ring-success-text/15",
+                  late: "bg-warning-text ring-warning-text/15",
+                  absent: "bg-error-text ring-error-text/15",
+                }
+
+                const statusClass =
+                  r.status && r.status in statusStyles
+                    ? statusStyles[r.status as keyof typeof statusStyles]
+                    : "bg-error-text ring-error-text/15"
+
                 const attendanceRecord = r as Partial<{
                   id?: number | string
                   lesson_id?: number | string
@@ -124,25 +125,14 @@ export function RecentActivityGrid({
                     animate="show"
                     exit={{ opacity: 0 }}
                     transition={{
-                      delay: reduceMotion || hasInitiallyLoaded ? 0 : i * 0.04,
+                      delay: reduceMotion || hasInitiallyLoaded ? 0 : i * motionTokens.staggerFast,
                     }}
                     className="py-1"
                     style={styleProps}
                   >
                     <div className="flex items-center gap-2">
                       <div
-                        className="h-2 w-2 rounded-full dark:hidden"
-                        style={{
-                          background: color,
-                          boxShadow: `0 0 0 3px ${color}18`,
-                        }}
-                      />
-                      <div
-                        className="hidden h-2 w-2 rounded-full dark:block"
-                        style={{
-                          background: darkColor,
-                          boxShadow: `0 0 0 3px ${darkColor}18`,
-                        }}
+                        className={cn("h-2 w-2 rounded-full ring", statusClass)}
                       />
                       <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-1.5">
                         <span className="font-bold text-text-primary">
@@ -189,13 +179,13 @@ export function RecentActivityGrid({
                     animate="show"
                     exit={{ opacity: 0 }}
                     transition={{
-                      delay: reduceMotion || hasInitiallyLoaded ? 0 : i * 0.04,
+                      delay: reduceMotion || hasInitiallyLoaded ? 0 : i * motionTokens.staggerFast,
                     }}
                     className="py-1"
                     style={styleProps}
                   >
                     <div className="flex items-center gap-2">
-                      <div className="h-2 w-2 rounded-full bg-(--primary-main)/(--opacity-heavy) shadow-pulse-primary" />
+                      <div className="h-2 w-2 rounded-full bg-(--primary-main)/(--opacity-heavy) ring ring-(--primary-main)/15" />
                       <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-1.5">
                         <span className="font-bold text-text-primary">{r.course}</span>
                         <span className="text-sm text-(--text-label)">
@@ -245,13 +235,13 @@ export function RecentActivityGrid({
                     animate="show"
                     exit={{ opacity: 0 }}
                     transition={{
-                      delay: reduceMotion || hasInitiallyLoaded ? 0 : i * 0.04,
+                      delay: reduceMotion || hasInitiallyLoaded ? 0 : i * motionTokens.staggerFast,
                     }}
                     className="py-1"
                     style={styleProps}
                   >
                     <div className="flex items-center gap-2">
-                      <div className="h-2 w-2 rounded-full bg-(--warning-text)/(--opacity-heavy) shadow-pulse-warning" />
+                      <div className="h-2 w-2 rounded-full bg-(--warning-text)/(--opacity-heavy) ring ring-(--warning-text)/15" />
                       <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-1.5">
                         <span className="font-bold text-text-primary">{r.title}</span>
                         <span className="text-sm text-(--text-label)">

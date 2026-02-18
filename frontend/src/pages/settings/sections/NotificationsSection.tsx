@@ -2,7 +2,7 @@ import { useCallback, type ChangeEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { Bell } from "lucide-react"
 
-import { usePushPreferences } from "../../../hooks/usePushPreferences"
+import { usePushPreferences } from "@/hooks/usePushPreferences"
 
 import {
   TextField,
@@ -11,9 +11,9 @@ import {
   SectionTitle,
   SectionSubtitle,
   AccordionSection,
-} from "../../../components/settings"
+} from "@/components/settings"
 
-import type { SettingsSectionProps } from "../types"
+import type { SettingsSectionProps } from "@/pages/settings/types"
 
 interface NotificationsSectionProps extends SettingsSectionProps {
   dndEnabled: boolean

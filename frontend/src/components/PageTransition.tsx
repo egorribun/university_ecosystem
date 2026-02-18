@@ -63,7 +63,7 @@ const PageTransition: FC<Props> = ({ children }) => {
   }
 
   const { LazyMotion, domAnimation, motion } = motionModule
-  const initial = hasPainted ? { opacity: 0, scale: 0.98, y: 12, filter: "blur(4px)" } : false
+  const initial = hasPainted ? { opacity: 0, scale: 0.98, y: "0.75rem", filter: "blur(0.25rem)" } : false
 
   return (
     <LazyMotion features={domAnimation}>
@@ -74,7 +74,7 @@ const PageTransition: FC<Props> = ({ children }) => {
             opacity: 1,
             y: 0,
             scale: 1,
-            filter: "blur(0px)",
+            filter: "blur(0rem)",
             transition: {
               type: "spring",
               stiffness: 200,
@@ -87,7 +87,7 @@ const PageTransition: FC<Props> = ({ children }) => {
             opacity: 0,
             scale: 0.99,
             y: -12,
-            filter: "blur(2px)",
+            filter: "blur(0.125rem)",
             transition: {
               duration: DURATIONS.medium,
               ease: EASING.premium,

@@ -1,5 +1,6 @@
 import type { Metric } from "web-vitals"
 import { onCLS, onFCP, onFID, onINP, onLCP, onTTFB } from "web-vitals"
+import { logDebug } from "@/app/logger"
 
 type MetricRating = Metric["rating"]
 
@@ -85,8 +86,7 @@ function createReporter(env: ExtendedEnv): WebVitalReporter | undefined {
 
   if (typeof console !== "undefined") {
     return (metric) => {
-      // eslint-disable-next-line no-console
-      console.debug(`[web-vitals] ${metric.name}`, {
+      logDebug(`[web-vitals] ${metric.name}`, {
         value: metric.value,
         delta: metric.delta,
         rating: metric.rating,

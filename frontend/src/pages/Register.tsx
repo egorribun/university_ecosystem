@@ -1,8 +1,11 @@
-import { useActionState, useEffect, useMemo, useRef, useState } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { Eye, EyeOff, Sparkles, UsersRound, ShieldCheck, Crown } from "lucide-react"
 import { motion } from "framer-motion"
+import { useForm, Controller, type SubmitHandler } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+
 import ParticleAuthBackground from "@/components/ui/ParticleAuthBackground"
 import api from "@/api/client"
 import { Input } from "@/components/ui/Input"
@@ -10,27 +13,11 @@ import { Select } from "@/components/ui/Select"
 import { Button } from "@/components/ui/Button"
 import { suggestEmailDomain } from "@/utils/authUtils"
 import { cn } from "@/utils/cn"
-
-type RegisterState = {
-  status: "idle" | "success" | "error"
-  error?: string
-  field?: "full_name" | "email" | "password" | "confirm" | "invite_code"
-}
-
-// Email suggestion logic centralized in authUtils.ts
-const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+import { registerSchema, type RegisterValues } from "@/features/auth/schemas"
 
 const Register = () => {
   const { t } = useTranslation(["auth"])
   const navigate = useNavigate()
-  const [form, setForm] = useState({
-    full_name: "",
-    email: "",
-    password: "",
-    confirm: "",
-    role: "student",
-    invite_code: "",
-  })
   const [showPass, setShowPass] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [capsPass, setCapsPass] = useState(false)
@@ -38,128 +25,89 @@ const Register = () => {
   const [strength, setStrength] = useState<number | null>(null)
   const [emailSuggestion, setEmailSuggestion] = useState<string | null>(null)
 
-  const fullNameRef = useRef<HTMLInputElement | null>(null)
-  const emailRef = useRef<HTMLInputElement | null>(null)
-  const inviteRef = useRef<HTMLInputElement | null>(null)
-  const passwordRef = useRef<HTMLInputElement | null>(null)
-  const confirmRef = useRef<HTMLInputElement | null>(null)
+  const {
+    register,
+    handleSubmit,
+    control,
+    watch,
+    setValue,
+    setError,
+    trigger,
+    formState: { errors, isSubmitting },
+  } = useForm<RegisterValues>({
+    resolver: zodResolver(registerSchema),
+    defaultValues: {
+      full_name: "",
+      email: "",
+      role: "student",
+      invite_code: "",
+      password: "",
+      confirmPassword: "",
+    },
+    mode: "onBlur",
+  })
 
-  const needsInvite = form.role === "teacher" || form.role === "admin"
-  const minLenOk = form.password.length >= 8
-  const matchOk = form.confirm.length > 0 && form.password === form.confirm
-  const emailValid = form.email.length === 0 || emailRe.test(form.email)
-  const isValid =
-    form.full_name.trim().length > 1 &&
-    emailRe.test(form.email) &&
-    minLenOk &&
-    matchOk &&
-    (!needsInvite || form.invite_code.trim().length > 0)
+  // Watch fields for UI logic
+  const role = watch("role")
+  const password = watch("password")
+  const email = watch("email")
+  const confirmPassword = watch("confirmPassword")
 
-  const handleChange = (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setForm((formState) => ({ ...formState, [event.target.name]: event.target.value }))
-  }
+  // Calculate strict checks for UI feedback chips
+  const minLenOk = (password?.length || 0) >= 8
+  const matchOk = (confirmPassword?.length || 0) > 0 && password === confirmPassword
+  const needsInvite = role === "teacher" || role === "admin"
 
   const handleEmailBlur = () => {
-    const suggestion = suggestEmailDomain(form.email)
-    setEmailSuggestion(suggestion && suggestion !== form.email ? suggestion : null)
+    trigger("email")
+    if (email) {
+      const suggestion = suggestEmailDomain(email)
+      setEmailSuggestion(suggestion && suggestion !== email ? suggestion : null)
+    }
   }
 
-  const handlePass = async (value: string) => {
-    setForm((formState) => ({ ...formState, password: value }))
-    if (!value) {
+  // Password strength calculation
+  useEffect(() => {
+    if (!password) {
       setStrength(null)
       return
     }
+
+    const checkStrength = async () => {
+      try {
+        const { zxcvbn, zxcvbnOptions } = await import("@zxcvbn-ts/core")
+        const zxcvbnCommon = await import("@zxcvbn-ts/language-common")
+        zxcvbnOptions.setOptions(zxcvbnCommon)
+        const strengthScore = zxcvbn(password).score
+        setStrength(strengthScore)
+      } catch {
+        setStrength(null)
+      }
+    }
+    void checkStrength()
+  }, [password])
+
+  const onSubmit: SubmitHandler<RegisterValues> = async (data) => {
     try {
-      const { zxcvbn, zxcvbnOptions } = await import("@zxcvbn-ts/core")
-      const zxcvbnCommon = await import("@zxcvbn-ts/language-common")
-      zxcvbnOptions.setOptions(zxcvbnCommon)
-      const strengthScore = zxcvbn(value).score
-      setStrength(strengthScore)
-    } catch {
-      setStrength(null)
+      await api.post("/auth/register", {
+        full_name: data.full_name,
+        email: data.email,
+        password: data.password,
+        role: data.role,
+        invite_code: data.invite_code,
+      })
+      navigate("/login")
+    } catch (error: unknown) {
+      let errorMessage = t("auth:register.error")
+      if (typeof error === "object" && error !== null && "response" in error) {
+        const axiosError = error as { response?: { data?: { detail?: string | string[] } } }
+        const detail = axiosError.response?.data?.detail
+        if (typeof detail === "string") errorMessage = detail
+        else if (Array.isArray(detail)) errorMessage = detail.join("; ")
+      }
+      setError("root", { message: errorMessage })
     }
   }
-
-  const [registerState, registerAction, registerPending] = useActionState<RegisterState, FormData>(
-    async (_previousState, formData) => {
-      const fullName = String(formData.get("full_name") ?? "").trim()
-      const email = String(formData.get("email") ?? "").trim()
-      const password = String(formData.get("password") ?? "")
-      const confirm = String(formData.get("confirm") ?? "")
-      const role = String(formData.get("role") ?? "student")
-      const inviteCode = String(formData.get("invite_code") ?? "").trim()
-
-      if (!fullName || !email || !password) {
-        const field: RegisterState["field"] = !fullName
-          ? "full_name"
-          : !email
-            ? "email"
-            : "password"
-        return { status: "error" as const, error: t("auth:register.requireFields"), field }
-      }
-
-      if (!emailRe.test(email)) {
-        return {
-          status: "error" as const,
-          error: t("auth:messages.invalidFormat"),
-          field: "email" as const,
-        }
-      }
-
-      if (password !== confirm) {
-        return {
-          status: "error" as const,
-          error: t("auth:register.passwordMismatch"),
-          field: "confirm" as const,
-        }
-      }
-
-      if ((role === "teacher" || role === "admin") && !inviteCode) {
-        return {
-          status: "error" as const,
-          error: t("auth:register.inviteRequired"),
-          field: "invite_code" as const,
-        }
-      }
-
-      try {
-        await api.post("/auth/register", {
-          full_name: fullName,
-          email,
-          password,
-          role,
-          invite_code: inviteCode,
-        })
-        navigate("/login")
-        return { status: "success" as const }
-      } catch (error: unknown) {
-        let errorMessage = t("auth:register.error")
-        if (typeof error === "object" && error !== null && "response" in error) {
-          const axiosError = error as { response?: { data?: { detail?: string | string[] } } }
-          const detail = axiosError.response?.data?.detail
-          if (typeof detail === "string") errorMessage = detail
-          else if (Array.isArray(detail)) errorMessage = detail.join("; ")
-        }
-        return { status: "error" as const, error: errorMessage }
-      }
-    },
-    { status: "idle" as const }
-  )
-
-  const registerStatus = registerState.status
-  const registerErrorField = registerState.field
-  const registerErrorMessage = registerStatus === "error" ? (registerState.error ?? "") : ""
-
-  useEffect(() => {
-    if (!registerPending && registerStatus === "error" && registerErrorField) {
-      if (registerErrorField === "full_name") fullNameRef.current?.focus()
-      else if (registerErrorField === "email") emailRef.current?.focus()
-      else if (registerErrorField === "password") passwordRef.current?.focus()
-      else if (registerErrorField === "confirm") confirmRef.current?.focus()
-      else if (registerErrorField === "invite_code") inviteRef.current?.focus()
-    }
-  }, [registerPending, registerStatus, registerErrorField])
 
   const passwordStrengthPercent = useMemo(() => {
     if (strength === null) return null
@@ -209,6 +157,7 @@ const Register = () => {
     <div className="relative min-h-screen w-full overflow-hidden bg-page text-text-primary">
       <ParticleAuthBackground />
       <div className="relative z-surface mx-auto grid min-h-screen w-full max-w-7xl grid-cols-1 items-stretch gap-10 px-4 py-12 sm:px-6 lg:grid-cols-2 lg:px-8">
+        {/* Left Column - Hero */}
         <motion.div
           initial={{ x: -200 }}
           animate={{ x: 0 }}
@@ -243,85 +192,94 @@ const Register = () => {
           </div>
         </motion.div>
 
+        {/* Right Column - Form */}
         <motion.div
           initial={{ y: 200 }}
           animate={{ y: 0 }}
           transition={{ duration: 0.5, ease: "easeOut", delay: 0.2 }}
           className="auth-card-glass flex w-full min-w-0 flex-col justify-center border-glass-border-subtle bg-surface/(--opacity-hover) p-6 sm:p-10"
         >
-          <form action={registerAction} autoComplete="off" className="flex flex-col gap-6">
+          <form
+            onSubmit={handleSubmit(onSubmit)}
+            autoComplete="off"
+            className="flex flex-col gap-6"
+            noValidate
+          >
             <div className="grid gap-5 sm:grid-cols-2">
               <div className="space-y-2">
                 <label htmlFor="full_name" className="text-sm font-semibold">
                   {t("auth:fields.name")}
                 </label>
-
                 <Input
                   id="full_name"
-                  name="full_name"
-                  value={form.full_name}
-                  onChange={handleChange}
+                  {...register("full_name")}
                   autoComplete="name"
-                  ref={fullNameRef}
-                  disabled={registerPending}
-                  error={registerStatus === "error" && registerErrorField === "full_name"}
+                  disabled={isSubmitting}
+                  error={!!errors.full_name}
                   placeholder={
                     t("auth:register.namePlaceholder", { defaultValue: "Имя и фамилия" }) ??
                     undefined
                   }
                 />
+                {errors.full_name && (
+                  <p className="text-xs text-error-text">{errors.full_name.message}</p>
+                )}
               </div>
+
               <div className="space-y-2">
                 <label id="register-role-label" htmlFor="role" className="text-sm font-semibold">
                   {t("auth:fields.role")}
                 </label>
                 <div className="relative">
-                  <Select
-                    id="register-role"
-                    aria-labelledby="register-role-label"
-                    value={form.role}
-                    onValueChange={(val) => setForm((prev) => ({ ...prev, role: val }))}
-                    options={[
-                      { value: "student", label: t("auth:register.role.student") },
-                      { value: "teacher", label: t("auth:register.role.teacher") },
-                      { value: "admin", label: t("auth:register.role.admin") },
-                    ]}
-                    disabled={registerPending}
-                    placeholder={t("auth:fields.role")}
+                  <Controller
+                    control={control}
+                    name="role"
+                    render={({ field }) => (
+                      <Select
+                        id="register-role"
+                        aria-labelledby="register-role-label"
+                        value={field.value}
+                        onValueChange={field.onChange}
+                        options={[
+                          { value: "student", label: t("auth:register.role.student") },
+                          { value: "teacher", label: t("auth:register.role.teacher") },
+                          { value: "admin", label: t("auth:register.role.admin") },
+                        ]}
+                        disabled={isSubmitting}
+                        placeholder={t("auth:fields.role")}
+                      />
+                    )}
                   />
-
                   <span className="text-text-muted-subtle text-sm">{inviteHint}</span>
                 </div>
               </div>
             </div>
+
             <div className="space-y-2">
               <label htmlFor="email" className="text-sm font-semibold">
                 {t("auth:fields.email")}
               </label>
               <Input
                 id="email"
-                name="email"
-                type="email"
-                value={form.email}
-                onChange={handleChange}
-                onBlur={handleEmailBlur}
-                error={
-                  !emailValid || (registerStatus === "error" && registerErrorField === "email")
-                }
+                {...register("email")}
                 autoComplete="email"
-                ref={emailRef}
-                disabled={registerPending}
+                onBlur={(e) => {
+                  register("email").onBlur(e)
+                  handleEmailBlur()
+                }}
+                disabled={isSubmitting}
+                error={!!errors.email}
                 placeholder="name@university.edu"
               />
               <p className="text-text-secondary text-xs font-medium">
-                {!emailValid ? t("auth:messages.invalidFormat") : " "}
+                {errors.email ? t(errors.email.message || "auth:messages.invalidFormat") : " "}
               </p>
               {emailSuggestion ? (
                 <button
                   type="button"
                   className="badge-brand"
                   onClick={() => {
-                    setForm((formState) => ({ ...formState, email: emailSuggestion }))
+                    setValue("email", emailSuggestion, { shouldValidate: true })
                     setEmailSuggestion(null)
                   }}
                 >
@@ -339,15 +297,15 @@ const Register = () => {
 
                 <Input
                   id="invite_code"
-                  name="invite_code"
-                  value={form.invite_code}
-                  onChange={handleChange}
+                  {...register("invite_code")}
                   autoComplete="one-time-code"
-                  ref={inviteRef}
-                  disabled={registerPending}
-                  error={registerStatus === "error" && registerErrorField === "invite_code"}
+                  disabled={isSubmitting}
+                  error={!!errors.invite_code}
                   placeholder="ABCD-1234"
                 />
+                {errors.invite_code && (
+                  <p className="text-xs text-error-text">{errors.invite_code.message}</p>
+                )}
               </div>
             ) : null}
 
@@ -358,10 +316,8 @@ const Register = () => {
               <div className="relative">
                 <Input
                   id="password"
-                  name="password"
+                  {...register("password")}
                   type={showPass ? "text" : "password"}
-                  value={form.password}
-                  onChange={(event) => handlePass(event.target.value)}
                   onKeyUp={(event: React.KeyboardEvent) =>
                     setCapsPass(event.getModifierState("CapsLock"))
                   }
@@ -369,9 +325,8 @@ const Register = () => {
                     setCapsPass(event.getModifierState("CapsLock"))
                   }
                   autoComplete="new-password"
-                  ref={passwordRef}
-                  disabled={registerPending}
-                  error={registerStatus === "error" && registerErrorField === "password"}
+                  disabled={isSubmitting}
+                  error={!!errors.password}
                 />
                 <button
                   type="button"
@@ -428,24 +383,25 @@ const Register = () => {
                   {t("auth:register.passwordChip.match")}
                 </span>
               </div>
-              {capsPass ? (
+              {capsPass && (
                 <p className="text-xs font-semibold text-warning-text">
                   {t("auth:messages.capsLock")}
                 </p>
-              ) : null}
+              )}
+              {errors.password && (
+                <p className="text-xs text-error-text">{errors.password.message}</p>
+              )}
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="confirm" className="text-sm font-semibold">
+              <label htmlFor="confirmPassword" className="text-sm font-semibold">
                 {t("auth:fields.confirmPassword")}
               </label>
               <div className="relative">
                 <Input
-                  id="confirm"
-                  name="confirm"
+                  id="confirmPassword"
+                  {...register("confirmPassword")}
                   type={showConfirm ? "text" : "password"}
-                  value={form.confirm}
-                  onChange={handleChange}
                   onKeyUp={(event: React.KeyboardEvent) =>
                     setCapsConfirm(event.getModifierState("CapsLock"))
                   }
@@ -453,9 +409,8 @@ const Register = () => {
                     setCapsConfirm(event.getModifierState("CapsLock"))
                   }
                   autoComplete="new-password"
-                  ref={confirmRef}
-                  disabled={registerPending}
-                  error={registerStatus === "error" && registerErrorField === "confirm"}
+                  disabled={isSubmitting}
+                  error={!!errors.confirmPassword}
                 />
                 <button
                   type="button"
@@ -474,19 +429,24 @@ const Register = () => {
                   )}
                 </button>
               </div>
-              {capsConfirm ? (
+              {capsConfirm && (
                 <p className="text-xs font-semibold text-warning-text">
                   {t("auth:messages.capsLock")}
                 </p>
-              ) : null}
+              )}
+              {errors.confirmPassword && (
+                <p className="text-xs text-error-text">{errors.confirmPassword.message}</p>
+              )}
             </div>
 
-            <div
-              className="min-h-6 text-center text-sm font-semibold text-error-text"
-              aria-live="assertive"
-            >
-              {registerErrorMessage}
-            </div>
+            {errors.root?.message && (
+              <div
+                className="min-h-6 text-center text-sm font-semibold text-error-text"
+                aria-live="assertive"
+              >
+                {errors.root.message}
+              </div>
+            )}
 
             <Button
               id="register-submit"
@@ -494,8 +454,8 @@ const Register = () => {
               variant="solid"
               size="lg"
               fullWidth
-              loading={registerPending}
-              disabled={registerPending || !isValid}
+              loading={isSubmitting}
+              disabled={isSubmitting}
               className="text-lg font-extrabold shadow-premium hover:shadow-glass disabled:opacity-strong"
             >
               {t("auth:actions.signUp")}

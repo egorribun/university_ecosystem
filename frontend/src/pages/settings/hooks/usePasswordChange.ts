@@ -3,8 +3,8 @@ import { useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { isAxiosError } from "axios"
 
-import api from "../../../api/client"
-import type { SetSnackbar } from "../types"
+import api from "@/api/client"
+import type { SetSnackbar } from "@/pages/settings/types"
 
 export interface UsePasswordChangeOptions {
   setSnackbar: SetSnackbar

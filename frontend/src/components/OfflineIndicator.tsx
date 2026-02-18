@@ -3,6 +3,7 @@ import { createPortal } from "react-dom"
 import { WifiOff, Wifi } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
+import { TIMEOUTS } from "@/config/timeouts"
 
 /**
  * Displays a toast notification when the user goes offline.
@@ -24,7 +25,7 @@ export function OfflineIndicator() {
     const handleOnline = () => {
       setIsOffline(false)
       setShow(true) // Briefly show "back online" message
-      const timer = setTimeout(() => setShow(false), 3000)
+      const timer = setTimeout(() => setShow(false), TIMEOUTS.OFFLINE_INDICATOR)
       return () => clearTimeout(timer)
     }
 
@@ -45,7 +46,7 @@ export function OfflineIndicator() {
   // Hide after showing online state
   useEffect(() => {
     if (!isOffline && show) {
-      const timer = setTimeout(() => setShow(false), 3000)
+      const timer = setTimeout(() => setShow(false), TIMEOUTS.OFFLINE_INDICATOR)
       return () => clearTimeout(timer)
     }
   }, [isOffline, show])

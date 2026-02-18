@@ -62,7 +62,7 @@
       "project": {
         "backend": ["Проектная деятельность", "Project work", "Project"],
         "label": "Project work",
-        "color": "#607d8b"
+        "color": "var(--badge-project)"
       }
     }
   },

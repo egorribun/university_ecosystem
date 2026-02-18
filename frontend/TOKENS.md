@@ -42,15 +42,21 @@ npm run tokens:sync
 ### Layout `(--layout-*)`
 - Max widths for containers: `page`, `content`, `wide`, `ultrawide`
 
-### Shadows & Glass `(--shadow-*, --glass-*)`
-- Premium shadows with mixed opacity
-- Glassmorphism tokens for blur and transparency
+### Letter Spacing `(--tracking-*)`
+- `widest-xl`: `0.25em` (Primary for micro-labels)
+- `hero`: `0.3em` (Specialized for hero section branding)
+
+### Shadows & Effects `(--shadow-*, --glass-*)`
+- Premium shadows with mixed opacity.
+- **Pulse Shadows**: Deprecated in favor of Tailwind `ring` utilities (`ring-brand/15`) for better consistency with the spacing scale.
+- Glassmorphism tokens for blur and transparency.
+
+### Motion `(--motion-*)`
+- **Durations**: `fast` (0.2s), `base` (0.3s), `medium` (0.45s), `slow` (0.5s), `lazy` (0.9s).
+- **Usage**: Always use the `motion` export from `@/theme/tokens` for `framer-motion` components to ensure synchronization with CSS.
 
 ## Best Practices
 1. **Never hardcode values**. Use tokens.
 2. **Favor semantic tokens** (`bg-surface`) over raw colors (`slate-50`).
-3. **Use fluid tokens** for responsive typography and spacing.
+3. **Use Tailwind Ring** for status glows instead of custom `box-shadow` styles.
 4. **Clean up**: If a token is deprecated, remove it from `theme.css` and run sync.
-
-## Deprecated Tokens (Removed)
-- `--w-index-col`: Replaced by `--w-sidebar-collapsed`.

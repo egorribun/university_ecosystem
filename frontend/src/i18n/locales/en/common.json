@@ -24,6 +24,30 @@
   "statuses": {
     "loading": "Loading…",
     "uploading": "Uploading…",
-    "publishing": "Publishing…"
+    "publishing": "Publishing…",
+    "error": "Something went wrong",
+    "tryAgain": "Try again",
+    "live": "LIVE"
+  },
+  "errors": {
+    "generic": "An error occurred"
+  },
+  "pagination": {
+    "rowsPerPage": "Rows per page",
+    "firstPage": "Go to first page",
+    "prevPage": "Go to previous page",
+    "nextPage": "Go to next page",
+    "lastPage": "Go to last page"
+  },
+  "errorBoundary": {
+    "title": "Something went wrong",
+    "description": "An unexpected error occurred. We are already working on fixing it.",
+    "details": "Error Details",
+    "retry": "Try again",
+    "reload": "Reload page",
+    "goHome": "To Main"
+  },
+  "select": {
+    "placeholder": "Select..."
   }
 }

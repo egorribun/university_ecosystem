@@ -5,7 +5,7 @@ import {
   Trash2 as DeleteIcon,
   Send as SendIcon,
 } from "lucide-react"
-import { Button, Textarea } from "@/components/ui"
+import { Button, Textarea, ConfirmDialog } from "@/components/ui"
 
 interface Comment {
   id: number
@@ -39,6 +39,7 @@ export function NewsComments({
   const [editingCommentId, setEditingCommentId] = useState<number | null>(null)
   const [editingCommentText, setEditingCommentText] = useState("")
   const [commentText, setCommentText] = useState("")
+  const [deleteConfirmationId, setDeleteConfirmationId] = useState<number | null>(null)
 
   const handlePostComment = () => {
     if (commentText.trim()) {
@@ -98,17 +99,7 @@ export function NewsComments({
                         <EditIcon className="h-3.5 w-3.5" />
                       </button>
                       <button
-                        onClick={() => {
-                          if (
-                            confirm(
-                              t("news:dialogs.deleteComment.confirm", {
-                                defaultValue: "Delete this comment?",
-                              })
-                            )
-                          ) {
-                            void deleteComment(comment.id)
-                          }
-                        }}
+                        onClick={() => setDeleteConfirmationId(comment.id)}
                         className="p-1.5 rounded-full hover:bg-(--error-text)/(--opacity-subtle) text-(--error-text) hover:text-(--error-text)/(--opacity-hover) transition-colors"
                         title={t("news:actions.deleteComment", { defaultValue: "Delete" })}
                       >
@@ -172,6 +163,24 @@ export function NewsComments({
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={deleteConfirmationId !== null}
+        title={t("news:dialogs.deleteComment.title", { defaultValue: "Deleting comment" })}
+        message={t("news:dialogs.deleteComment.confirm", {
+          defaultValue: "Are you sure you want to delete this comment? This action cannot be undone.",
+        })}
+        confirmText={t("common:buttons.delete")}
+        cancelText={t("common:buttons.cancel")}
+        variant="danger"
+        onConfirm={() => {
+          if (deleteConfirmationId) {
+            void deleteComment(deleteConfirmationId)
+            setDeleteConfirmationId(null)
+          }
+        }}
+        onCancel={() => setDeleteConfirmationId(null)}
+      />
     </footer>
   )
 }

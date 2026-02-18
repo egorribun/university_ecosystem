@@ -16,7 +16,7 @@ const meta: Meta<typeof Skeleton> = {
     },
     rounded: {
       control: "select",
-      options: [true, false, "50%", "9999px"],
+      options: [true, false, "50%", "9999rem"],
       description: "Border radius (true for default, string for custom)",
     },
     ariaLabel: {
@@ -63,7 +63,7 @@ export const Button: Story = {
   args: {
     width: 120,
     height: 40,
-    rounded: "9999px",
+    rounded: "9999rem",
     ariaLabel: "Loading button",
   },
 }

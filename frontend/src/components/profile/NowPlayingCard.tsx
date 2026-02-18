@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { motion, useReducedMotion } from "framer-motion"
 import { useTranslation } from "react-i18next"
+import { motion as motionTokens } from "@/theme/tokens"
 import { cn } from "@/utils/cn"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import type { NowPlaying } from "@/types/spotify"
@@ -143,9 +144,9 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
 
   const progressBarTransition = useMemo(() => {
     if (shouldAnimate && !prefersReduce && !reduced) {
-      return "transform 0.1s linear"
+      return `transform ${motionTokens.durationInstant}s linear`
     }
-    return "transform 0.2s ease-out"
+    return `transform ${motionTokens.durationFast}s ease-out`
   }, [shouldAnimate, prefersReduce, reduced])
 
   return (
@@ -164,7 +165,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
         className={cn(
           "nowplaying--spotify card-glass card-glass-interactive w-full grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 px-4 py-3.5 rounded-2xl relative overflow-hidden"
         )}
-        initial={isTest || prefersReduce || reduced ? false : { y: 12, opacity: 0.8, scale: 1 }}
+        initial={isTest || prefersReduce || reduced ? false : { y: motionTokens.slideSm, opacity: 0.8, scale: 1 }}
         animate={{ y: 0, opacity: 1, scale: 1 }}
         whileHover={prefersReduce || reduced ? {} : { y: -1, scale: 1.002 }}
         whileTap={prefersReduce || reduced ? {} : { scale: 0.997 }}

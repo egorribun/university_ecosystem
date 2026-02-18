@@ -4,16 +4,16 @@ import { useTranslation } from "react-i18next"
 import { isAxiosError } from "axios"
 import { startRegistration, browserSupportsWebAuthn } from "@simplewebauthn/browser"
 
-import { useAuth } from "../../../contexts/AuthContext"
-import { currentUserQueryKey, fetchCurrentUser } from "../../../hooks/auth/useProfileSync"
+import { useAuth } from "@/contexts/AuthContext"
+import { currentUserQueryKey, fetchCurrentUser } from "@/hooks/auth/useProfileSync"
 import {
   startWebAuthnRegistration,
   confirmWebAuthnRegistration,
   listWebAuthnCredentials,
   deleteWebAuthnCredential,
-} from "../../../api/mfa"
-import type { User } from "../../../types/User"
-import type { SetSnackbar } from "../types"
+} from "@/api/mfa"
+import type { User } from "@/types/User"
+import type { SetSnackbar } from "@/pages/settings/types"
 
 interface WebAuthnCredential {
   id: string

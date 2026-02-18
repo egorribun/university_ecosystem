@@ -1,4 +1,5 @@
 import type { TrustedHTML, TrustedTypePolicyFactory } from "trusted-types/lib"
+import { logWarning } from "@/app/logger"
 
 let dompurifyInstance: (typeof import("dompurify"))["default"] | null = null
 async function getDOMPurify() {
@@ -42,7 +43,7 @@ const createPolicy = async (windowInstance: TrustedTypesWindow): Promise<Trusted
       }
     )
   } catch (error) {
-    console.warn("Unable to create dompurify-news trusted types policy", error)
+    logWarning("Unable to create dompurify-news trusted types policy", { error })
     windowInstance.__dompurifyNewsPolicy = false
   }
   return windowInstance.__dompurifyNewsPolicy || null

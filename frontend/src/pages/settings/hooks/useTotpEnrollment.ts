@@ -4,21 +4,21 @@ import { useTranslation } from "react-i18next"
 import { isAxiosError } from "axios"
 import dayjs from "dayjs"
 
-import { useAuth } from "../../../contexts/AuthContext"
-import { currentUserQueryKey, fetchCurrentUser } from "../../../hooks/auth/useProfileSync"
+import { useAuth } from "@/contexts/AuthContext"
+import { currentUserQueryKey, fetchCurrentUser } from "@/hooks/auth/useProfileSync"
 import {
   startTotpEnrollment,
   confirmTotpEnrollment,
   deleteTotpEnrollment,
   deletePendingTotpEnrollment,
-} from "../../../api/mfa"
+} from "@/api/mfa"
 import type {
   MfaTotpEnrollment,
   TotpEnrollmentStartResponse,
   TotpEnrollmentStartPayload,
-} from "../../../types/Mfa"
-import type { User } from "../../../types/User"
-import type { SetSnackbar } from "../types"
+} from "@/types/Mfa"
+import type { User } from "@/types/User"
+import type { SetSnackbar } from "@/pages/settings/types"
 
 export interface UseTotpEnrollmentOptions {
   setSnackbar: SetSnackbar

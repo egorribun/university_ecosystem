@@ -15,7 +15,7 @@ import { Skeleton } from "@/components/settings"
 import { addVersionParam, resolveProxyImageUrl } from "@/utils/media"
 import { useIntersectionObserver } from "@/hooks/useIntersectionObserver"
 
-const LAZY_ROOT_MARGIN = "200px"
+const LAZY_ROOT_MARGIN = "12.5rem"
 
 type Status = "idle" | "loading" | "loaded" | "error"
 

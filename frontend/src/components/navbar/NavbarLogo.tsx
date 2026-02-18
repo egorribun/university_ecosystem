@@ -39,7 +39,7 @@ export const NavbarLogo = ({ t, isMobile, onLogoClick, markScrollFromBottom }: N
           className="object-contain w-[65%] h-[65%]"
           loading="eager"
           fetchPriority="high"
-          sizes={`(min-width: ${breakpoints.wide}) 44px, (min-width: ${breakpoints.mobile}) 36px, 26px`}
+          sizes={`(min-width: ${breakpoints.wide}) 2.75rem, (min-width: ${breakpoints.mobile}) 2.25rem, 1.625rem`}
           responsiveWidths={[28, 48, 64]}
           decoding="async"
         />

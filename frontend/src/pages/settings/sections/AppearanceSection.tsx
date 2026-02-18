@@ -2,8 +2,8 @@ import { useCallback, type ChangeEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { Moon, Sun, Monitor } from "lucide-react"
 
-import { useLanguage, type SupportedLanguage } from "../../../contexts/LanguageContext"
-import { useTheme } from "../../../contexts/ThemeContext"
+import { useLanguage, type SupportedLanguage } from "@/contexts/LanguageContext"
+import { useTheme } from "@/contexts/ThemeContext"
 
 import {
   RadioGroup,
@@ -14,9 +14,9 @@ import {
   SectionSubtitle,
   AccordionSection,
   type ThemeMode,
-} from "../../../components/settings"
+} from "@/components/settings"
 
-import type { SettingsSectionProps } from "../types"
+import type { SettingsSectionProps } from "@/pages/settings/types"
 
 const languageNames: Record<SupportedLanguage, string> = {
   en: "English",

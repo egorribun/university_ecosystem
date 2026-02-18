@@ -2,11 +2,15 @@ import { useSpotlight } from "@/components/ui/Spotlight"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useNewsInteraction } from "@/hooks/useNewsInteraction"
 import { sanitizeNewsText } from "@/utils/sanitize"
-import { FC, memo, useCallback, useEffect, useMemo, useState } from "react"
+import { FC, memo, useCallback, useEffect, useMemo, useState, lazy } from "react"
 import { useTranslation } from "react-i18next"
 import api from "@/api/client"
 import { useAuth } from "@/contexts/AuthContext"
-import { NewsCardView } from "./news/NewsCardView"
+
+
+const NewsCardView = lazy(() =>
+  import("./NewsCardView").then((m) => ({ default: m.NewsCardView }))
+)
 
 export type NewsCardProps = {
   id: string

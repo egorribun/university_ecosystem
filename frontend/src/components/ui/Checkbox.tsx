@@ -51,9 +51,9 @@ const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
                 className="text-brand"
               >
                 {isIndeterminate ? (
-                  <Minus className="h-4 w-4 stroke-[3px]" />
+                  <Minus className="h-4 w-4 stroke-[0.1875rem]" />
                 ) : (
-                  <Check className="h-4 w-4 stroke-[4px]" />
+                  <Check className="h-4 w-4 stroke-[0.25rem]" />
                 )}
               </motion.div>
             )}

@@ -11,15 +11,15 @@ import { Snackbar, ContentCard, ConfirmDialog } from "@/components/ui"
 import { useEventCardLogic } from "@/hooks/useEventCardLogic"
 
 // Sub-components
-import { EventMedia } from "./events/EventCard/EventMedia"
-import { EventInfo } from "./events/EventCard/EventInfo"
-import { EventActions } from "./events/EventCard/EventActions"
+import { EventMedia } from "./EventMedia"
+import { EventInfo } from "./EventInfo"
+import { EventActions } from "./EventActions"
 
 const EventEditDialog = lazy(() =>
   import("@/components/events/EventEditDialog").then((m) => ({ default: m.EventEditDialog }))
 )
 const EventAdminActions = lazy(() =>
-  import("./events/EventCard/EventAdminActions").then((m) => ({ default: m.EventAdminActions }))
+  import("./EventAdminActions").then((m) => ({ default: m.EventAdminActions }))
 )
 
 interface EventCardProps extends Partial<Event> {
@@ -28,6 +28,10 @@ interface EventCardProps extends Partial<Event> {
   onChange?: () => void
   maxWidth?: string
 }
+
+// Animation Constants
+const STAGGER_BATCH_SIZE = 10
+const HOVER_Y_OFFSET = -4
 
 const EventCardComponent: FC<EventCardProps> = (props) => {
   const {
@@ -78,20 +82,23 @@ const EventCardComponent: FC<EventCardProps> = (props) => {
   } = useEventCardLogic(props)
 
   return (
-    <motion.div
+    <motion.article
       layout
       initial={{ opacity: 0, y: 16, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{
         duration: motionTokens.durationMedium,
-        delay: (animationIndex % 10) * motionTokens.staggerDelay,
+        delay: (animationIndex % STAGGER_BATCH_SIZE) * motionTokens.staggerDelay,
         ease: EASING.premium,
       }}
       whileHover={{
-        y: -4,
+        y: HOVER_Y_OFFSET,
         transition: { duration: motionTokens.durationFast, ease: EASING.premium },
       }}
       className="w-full outline-none"
+      tabIndex={editOpen ? -1 : 0}
+      aria-labelledby={`event-title-${id}`}
+      aria-describedby={`event-location-${id}`}
       onKeyDown={(e) => {
         if (!editOpen && (e.key === "Enter" || e.key === " ")) {
           e.preventDefault()
@@ -143,6 +150,7 @@ const EventCardComponent: FC<EventCardProps> = (props) => {
 
           {/* Info Section */}
           <EventInfo
+            titleId={`event-title-${id}`}
             title={title || ""}
             speaker={speaker || undefined}
             startsAt={starts_at || ""}
@@ -199,7 +207,7 @@ const EventCardComponent: FC<EventCardProps> = (props) => {
 
         <Snackbar open={!!snackbar} message={snackbar} onClose={() => setSnackbar("")} />
       </ContentCard>
-    </motion.div>
+    </motion.article>
   )
 }
 

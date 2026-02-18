@@ -1,4 +1,5 @@
 import { type CSSProperties, type ReactNode, useEffect, useState } from "react"
+import { motion as motionTokens } from "@/theme/tokens"
 
 type PageFadeInProps = {
   children: ReactNode
@@ -6,7 +7,11 @@ type PageFadeInProps = {
   effect?: "default" | "soft-blur"
 }
 
-export default function PageFadeIn({ children, delay = 80, effect = "default" }: PageFadeInProps) {
+export default function PageFadeIn({
+  children,
+  delay = motionTokens.delayShort * 1000,
+  effect = "default"
+}: PageFadeInProps) {
   const isTestEnvironment = import.meta.env.MODE === "test"
 
   const [ready, setReady] = useState(() => isTestEnvironment)

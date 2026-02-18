@@ -2,10 +2,10 @@ import { useState, useCallback, useEffect, type ChangeEvent, type FocusEvent } f
 import { useTranslation } from "react-i18next"
 import { isAxiosError } from "axios"
 
-import api from "../../../api/client"
-import { useAuth } from "../../../contexts/AuthContext"
-import type { User } from "../../../types/User"
-import type { SetSnackbar } from "../types"
+import api from "@/api/client"
+import { useAuth } from "@/contexts/AuthContext"
+import type { User } from "@/types/User"
+import type { SetSnackbar } from "@/pages/settings/types"
 
 const DEFAULT_DND_START = "22:00"
 const DEFAULT_DND_END = "07:00"

@@ -159,7 +159,7 @@ export const StoryViewer = ({
       >
         <div
           className={cn(
-            "relative z-decor flex aspect-9/16 w-(--story-card-w) max-h-hero-max max-w-(--story-card-w) flex-col items-stretch justify-center overflow-hidden text-white sm:aspect-video sm:w-[min(96%,960px)] sm:max-h-(--h-hero-lg) sm:max-w-(--layout-max-content)",
+            "relative z-decor flex aspect-9/16 w-(--story-card-w) max-h-hero-max max-w-(--story-card-w) flex-col items-stretch justify-center overflow-hidden text-white sm:aspect-video sm:w-[min(96%,60rem)] sm:max-h-(--h-hero-lg) sm:max-w-(--layout-max-content)",
             viewerStory.cover_url ? "bg-page" : "bg-brand shadow-premium-lift",
             viewerStory.cover_url ? "rounded-none" : "rounded-md sm:rounded-lg"
           )}
@@ -265,7 +265,7 @@ export const StoryViewer = ({
           </button>
 
           <div className="pointer-events-none absolute inset-0">
-            <div className="pointer-events-auto absolute left-(--space-2) top-1/(--opacity-trace) -translate-y-1/(--opacity-trace) sm:left-(--space-6)">
+            <div className="pointer-events-auto absolute left-(--space-2) top-1/2 -translate-y-1/2 sm:left-(--space-6)">
               <button
                 type="button"
                 onClick={onPrev}
@@ -275,7 +275,7 @@ export const StoryViewer = ({
                 <ChevronLeft size={20} aria-hidden="true" />
               </button>
             </div>
-            <div className="pointer-events-auto absolute right-2 top-1/(--opacity-trace) -translate-y-1/(--opacity-trace) sm:right-6">
+            <div className="pointer-events-auto absolute right-2 top-1/2 -translate-y-1/2 sm:right-6">
               <button
                 type="button"
                 onClick={onNext}

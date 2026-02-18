@@ -1,6 +1,8 @@
 import { motion, useAnimation, useInView, Variants, TargetAndTransition } from "framer-motion"
-import { ReactNode, useEffect, useRef } from "react"
-import { springHeavy, easePremium } from "@/utils/animations"
+import { ReactNode, useEffect, useRef, useMemo } from "react"
+import { springHeavy } from "@/utils/animations"
+import { motion as motionTokens } from "@/theme/tokens"
+import { EASING } from "@/utils/motion"
 
 type Props = {
   children: ReactNode
@@ -12,13 +14,13 @@ type Props = {
   width?: "fit-content" | "100%"
   stagger?: number
   threshold?: number
-  viewportMargin?: string
+  viewportMargin?: NonNullable<Parameters<typeof useInView>[1]>["margin"]
 }
 
 const getVariants = (mode: string, direction: string): Variants => {
-  const distance = 30
+  const distance = motionTokens.slideMd
 
-  const baseHidden: TargetAndTransition = { opacity: 0, filter: "blur(8px)" }
+  const baseHidden: TargetAndTransition = { opacity: 0, filter: "blur(0.5rem)" }
   const baseVisible: TargetAndTransition = { opacity: 1, filter: "blur(0px)" }
 
   if (mode === "pop") {
@@ -33,7 +35,7 @@ const getVariants = (mode: string, direction: string): Variants => {
         baseVisible.y = 0
         break
       case "down":
-        baseHidden.y = -distance
+        baseHidden.y = `-${distance}`
         baseVisible.y = 0
         break
       case "left":
@@ -41,7 +43,7 @@ const getVariants = (mode: string, direction: string): Variants => {
         baseVisible.x = 0
         break
       case "right":
-        baseHidden.x = -distance
+        baseHidden.x = `-${distance}`
         baseVisible.x = 0
         break
     }
@@ -63,15 +65,16 @@ export const ScrollReveal = ({
   mode = "slide",
   direction = "up",
   delay = 0,
-  duration = 0.8,
+  duration = motionTokens.durationSlow,
   className,
   width = "100%",
   viewportMargin = "0px 0px -100px 0px",
 }: Props) => {
-  const ref = useRef(null)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const isInView = useInView(ref, { once: true, margin: viewportMargin as any })
+  const ref = useRef<HTMLDivElement>(null)
+  const isInView = useInView(ref, { once: true, margin: viewportMargin })
   const controls = useAnimation()
+
+  const variants = useMemo(() => getVariants(mode, direction), [mode, direction])
 
   useEffect(() => {
     if (isInView) {
@@ -83,12 +86,12 @@ export const ScrollReveal = ({
   const transition =
     mode === "pop" || mode === "scale"
       ? { ...springHeavy, delay }
-      : { duration, ease: easePremium, delay }
+      : { duration, ease: EASING.premium, delay }
 
   return (
     <div ref={ref} style={{ width }} className={className}>
       <motion.div
-        variants={getVariants(mode, direction)}
+        variants={variants}
         initial="hidden"
         animate={controls}
         transition={transition}

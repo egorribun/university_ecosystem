@@ -19,6 +19,7 @@ import { Component, type ErrorInfo, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { useLocation, useNavigate } from "react-router-dom"
 import * as Sentry from "@sentry/react"
+import { logError } from "@/app/logger"
 
 interface PageErrorBoundaryProps {
   children: ReactNode
@@ -49,7 +50,7 @@ function PageErrorFallback({
   if (!ready) {
     return (
       <div className="flex min-h-(--h-hero-sm) items-center justify-center">
-        <div className="animate-pulse">Loading...</div>
+        <div className="animate-pulse">{t("common:statuses.loading")}</div>
       </div>
     )
   }
@@ -158,7 +159,7 @@ class PageErrorBoundaryClass extends Component<
     })
 
     if (import.meta.env.DEV) {
-      console.error("[PageErrorBoundary]", { error, errorInfo, page: this.props.pageName })
+      logError("[PageErrorBoundary]", { error, errorInfo, page: this.props.pageName })
     }
   }
 

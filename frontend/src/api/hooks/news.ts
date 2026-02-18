@@ -8,7 +8,7 @@ import {
 } from "@tanstack/react-query"
 import { useMemo } from "react"
 
-import { apiClient, type TypedRequestOptions } from "../client"
+import { apiClient, type TypedRequestOptions } from "@/api/client"
 import type { NewsItem } from "@/api/news"
 import type { PaginatedResponse } from "@/types/Pagination"
 import { StorageItem } from "@/utils/storage"

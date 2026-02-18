@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite"
-import { EventCardSkeleton } from "./EventCardSkeleton"
+import { EventCardSkeleton } from "@/components/events/EventCard/EventCardSkeleton"
 import NewsCardSkeleton from "./NewsCardSkeleton"
 import { ProfileCardSkeleton } from "./ProfileCardSkeleton"
 import { ScheduleCardSkeleton } from "./ScheduleCardSkeleton"

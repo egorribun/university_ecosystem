@@ -1,4 +1,4 @@
-import { useActionState, useEffect, useRef, useState } from "react"
+import { useState, useEffect } from "react"
 import api from "@/api/client"
 import { useParams, useSearchParams, Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
@@ -12,20 +12,15 @@ import {
   ShieldCheck,
   AlertTriangle,
 } from "lucide-react"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
 
 import { Button, TextField, SectionCard, Alert } from "@/components/settings"
 import { ProgressBar } from "@/components/ui"
+import { newPasswordSchema, type NewPasswordValues } from "@/features/auth/schemas"
 
 const RESET_URL = "/password/reset"
-
-const MIN_PASSWORD_LENGTH = 8
 const STRENGTH_VALUES = [10, 30, 55, 75, 100]
-
-type ResetState = {
-  status: "idle" | "success" | "error"
-  error?: string
-  field?: "password" | "confirm"
-}
 
 async function sha1Hex(str: string) {
   const buf = new TextEncoder().encode(str)
@@ -51,13 +46,11 @@ async function isPwnedPassword(pwd: string) {
 }
 
 export default function ResetPassword() {
-  const { t } = useTranslation(["auth"])
+  const { t } = useTranslation(["auth", "common"])
   const routeParameters = useParams<{ token?: string }>()
   const [searchParameters] = useSearchParams()
   const token = routeParameters.token || searchParameters.get("token") || ""
 
-  const [password, setPassword] = useState("")
-  const [confirm, setConfirm] = useState("")
   const [capsPass, setCapsPass] = useState(false)
   const [capsConfirm, setCapsConfirm] = useState(false)
   const [showPass, setShowPass] = useState(false)
@@ -65,93 +58,93 @@ export default function ResetPassword() {
   const [strength, setStrength] = useState<number | null>(null)
   const [feedback, setFeedback] = useState<string>("")
   const [pwned, setPwned] = useState(false)
-  const passwordRef = useRef<HTMLInputElement | null>(null)
-  const confirmRef = useRef<HTMLInputElement | null>(null)
+  const [isSuccess, setIsSuccess] = useState(false)
 
-  const minLenOk = password.length >= MIN_PASSWORD_LENGTH
-  const matchOk = confirm.length > 0 && password === confirm
-  const canSubmit = token && minLenOk && matchOk
+  const {
+    register,
+    handleSubmit,
+    watch,
+    setError,
+    formState: { errors, isSubmitting },
+  } = useForm<NewPasswordValues>({
+    resolver: zodResolver(newPasswordSchema),
+    defaultValues: {
+      password: "",
+      confirmPassword: "",
+    },
+    mode: "onBlur",
+  })
 
-  const onPass = async (value: string) => {
-    setPassword(value)
-    setFeedback("")
-    if (!value) {
+  const password = watch("password")
+  const confirmPassword = watch("confirmPassword")
+
+  // Password analysis effect
+  useEffect(() => {
+    if (!password) {
       setStrength(null)
       setPwned(false)
+      setFeedback("")
       return
     }
-    try {
-      const { zxcvbn, zxcvbnOptions } = await import("@zxcvbn-ts/core")
-      const zxcvbnCommon = await import("@zxcvbn-ts/language-common")
-      zxcvbnOptions.setOptions(zxcvbnCommon)
-      const complexityResult = zxcvbn(value)
-      setStrength(complexityResult.score)
-      const tips =
-        (complexityResult.feedback?.warning || "") +
-        (complexityResult.feedback?.suggestions?.length
-          ? " · " + complexityResult.feedback.suggestions.join(" · ")
-          : "")
-      setFeedback(tips)
-    } catch {
-      setStrength(null)
-    }
-    try {
-      const bad = await isPwnedPassword(value)
-      if (value === password) setPwned(bad)
-    } catch {
-      // ignore
-    }
-  }
 
-  const [resetState, resetAction, resetPending] = useActionState<ResetState, FormData>(
-    async (_previousState, formData) => {
-      if (formData.get("__set_error__")) {
-        return { status: "error" as const, error: String(formData.get("__set_error__")) }
-      }
-
-      const pwd = String(formData.get("password") ?? "")
-      const confirmValue = String(formData.get("confirm") ?? "")
-
-      if (!token) {
-        return { status: "error" as const, error: t("auth:reset.invalidLink") }
-      }
-
-      if (pwd !== confirmValue) {
-        return {
-          status: "error" as const,
-          error: t("auth:register.passwordMismatch"),
-          field: "confirm" as const,
-        }
+    const checkPassword = async () => {
+      try {
+        const { zxcvbn, zxcvbnOptions } = await import("@zxcvbn-ts/core")
+        const zxcvbnCommon = await import("@zxcvbn-ts/language-common")
+        zxcvbnOptions.setOptions(zxcvbnCommon)
+        const complexityResult = zxcvbn(password)
+        setStrength(complexityResult.score)
+        const tips =
+          (complexityResult.feedback?.warning || "") +
+          (complexityResult.feedback?.suggestions?.length
+            ? " · " + complexityResult.feedback.suggestions.join(" · ")
+            : "")
+        setFeedback(tips)
+      } catch {
+        // ignore
       }
 
       try {
-        await api.post(RESET_URL, { token, password: pwd })
-        return { status: "success" as const }
-      } catch (error: unknown) {
-        let errorMessage = t("auth:reset.errorGeneric")
-        if (typeof error === "object" && error !== null && "response" in error) {
-          const axiosError = error as { response?: { data?: { detail?: string } } }
-          errorMessage = axiosError.response?.data?.detail || errorMessage
-        }
-        return { status: "error" as const, error: errorMessage }
+        const bad = await isPwnedPassword(password)
+        setPwned(bad)
+      } catch {
+        // ignore
       }
-    },
-    token
-      ? { status: "idle" as const }
-      : { status: "error" as const, error: t("auth:reset.invalidLink") }
-  )
-
-  const resetStatus = resetState.status
-  const resetErrorMessage = resetStatus === "error" ? (resetState.error ?? "") : ""
-
-  useEffect(() => {
-    if (!resetPending && resetStatus === "error" && resetState.field) {
-      if (resetState.field === "password") passwordRef.current?.focus()
-      else if (resetState.field === "confirm") confirmRef.current?.focus()
     }
-  }, [resetPending, resetStatus, resetState.field])
 
-  const isSuccess = resetStatus === "success"
+    // Debounce slightly to avoid heavy computation on every keystroke
+    const handler = setTimeout(() => {
+      void checkPassword()
+    }, 300)
+
+    return () => clearTimeout(handler)
+  }, [password])
+
+  const onSubmit = async (data: NewPasswordValues) => {
+    if (!token) {
+      setError("root", { message: t("auth:reset.invalidLink") })
+      return
+    }
+
+    try {
+      await api.post(RESET_URL, { token, password: data.password })
+      setIsSuccess(true)
+    } catch (error: unknown) {
+      let errorMessage = t("auth:reset.errorGeneric")
+      if (typeof error === "object" && error !== null && "response" in error) {
+        const axiosError = error as { response?: { data?: { detail?: string } } }
+        errorMessage = axiosError.response?.data?.detail || errorMessage
+      }
+      setError("root", { message: errorMessage })
+    }
+  }
+
+  // Initial token check
+  useEffect(() => {
+    if (!token) {
+      setError("root", { message: t("auth:reset.invalidLink") })
+    }
+  }, [token, setError, t])
 
   return (
     <div className="min-h-screen bg-page text-text-primary flex items-center justify-center p-(--fluid-px) relative overflow-hidden">
@@ -217,26 +210,25 @@ export default function ResetPassword() {
                     </p>
                   </div>
 
-                  <form action={resetAction} autoComplete="off" className="space-y-6">
+                  <form onSubmit={handleSubmit(onSubmit)} autoComplete="off" className="space-y-6">
                     <div className="space-y-4">
                       <div className="space-y-2">
                         <TextField
                           id="reset-password-input"
                           label={t("auth:fields.password")}
-                          name="password"
-                          type={showPass ? "text" : "password"}
+                          {...register("password")}
                           value={password}
-                          onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-                            onPass(event.target.value)
-                          }
+                          type={showPass ? "text" : "password"}
                           onKeyUp={(event: React.KeyboardEvent<HTMLInputElement>) =>
                             setCapsPass(event.getModifierState("CapsLock"))
                           }
                           onKeyDown={(event: React.KeyboardEvent<HTMLInputElement>) =>
                             setCapsPass(event.getModifierState("CapsLock"))
                           }
-                          disabled={resetPending}
+                          disabled={isSubmitting}
                           className="rounded-lg"
+                          error={!!errors.password}
+                          helperText={errors.password?.message}
                           trailingIcon={
                             <button
                               id="reset-password-toggle"
@@ -290,12 +282,9 @@ export default function ResetPassword() {
                         <TextField
                           id="reset-confirm-input"
                           label={t("auth:fields.confirmPassword")}
-                          name="confirm"
+                          {...register("confirmPassword")}
+                          value={confirmPassword}
                           type={showConfirm ? "text" : "password"}
-                          value={confirm}
-                          onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-                            setConfirm(event.target.value)
-                          }
                           onKeyUp={(event: React.KeyboardEvent<HTMLInputElement>) =>
                             setCapsConfirm(event.getModifierState("CapsLock"))
                           }
@@ -304,16 +293,10 @@ export default function ResetPassword() {
                           }
                           fullWidth
                           autoComplete="new-password"
-                          ref={(input) => {
-                            if (input) {
-                              confirmRef.current = input as HTMLInputElement
-                              // If you want to auto-focus on initial render of this field,
-                              // you can uncomment the line below.
-                              // setTimeout(() => input.focus(), 0);
-                            }
-                          }}
-                          disabled={resetPending}
+                          disabled={isSubmitting}
                           className="rounded-lg"
+                          error={!!errors.confirmPassword}
+                          helperText={errors.confirmPassword?.message}
                           trailingIcon={
                             <button
                               id="reset-confirm-toggle"
@@ -344,9 +327,9 @@ export default function ResetPassword() {
                       )}
                     </div>
 
-                    {resetErrorMessage && (
+                    {errors.root?.message && (
                       <p className="text-sm font-bold text-error-text text-center animate-bounce">
-                        {resetErrorMessage}
+                        {errors.root.message}
                       </p>
                     )}
 
@@ -356,8 +339,8 @@ export default function ResetPassword() {
                         type="submit"
                         variant="solid"
                         className="w-full h-14 rounded-lg text-base font-black shadow-premium hover:shadow-glass"
-                        disabled={!canSubmit || resetPending}
-                        loading={resetPending}
+                        disabled={isSubmitting}
+                        loading={isSubmitting}
                         startIcon={<LockIcon size={20} />}
                       >
                         {t("auth:reset.saveButton")}

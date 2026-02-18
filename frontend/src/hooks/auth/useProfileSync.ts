@@ -8,6 +8,7 @@ import api, { resetEtagCache } from "@/api/client"
 import type { User } from "@/types/User"
 import type { PendingMfaState, SetUserArg, UserState } from "@/types/Auth"
 import { clearAccessToken } from "./tokenStorage"
+import { logError, logWarning } from "@/app/logger"
 
 const PROFILE_CACHE_BASE_KEY = "ecosystem.profile.cache"
 const PROFILE_CACHE_SCHEMA_VERSION = 7
@@ -226,7 +227,7 @@ const encryptData = async (
 
     return `${saltHex}:${ivHex}:${ciphertextBase64}`
   } catch (e) {
-    console.error("Encryption failed", e)
+    logError("Encryption failed", { error: e })
     return null
   }
 }
@@ -597,7 +598,7 @@ export const useProfileSync = (
       channel.close()
     } catch (_error) {
       if (import.meta.env.DEV) {
-        console.warn("Failed to broadcast profile event", _error)
+        logWarning("Failed to broadcast profile event", { error: _error })
       }
     }
   }, [])
@@ -766,7 +767,7 @@ export const useProfileSync = (
         channel.addEventListener("message", onBroadcastMessage as EventListener)
       } catch (_error) {
         if (import.meta.env.DEV) {
-          console.warn("Failed to subscribe to profile broadcast channel", _error)
+          logWarning("Failed to subscribe to profile broadcast channel", { error: _error })
         }
       }
     }
@@ -804,7 +805,7 @@ export const useProfileSync = (
           await ensureSessionSigningKey()
         } catch (_error) {
           if (!controller.signal.aborted && import.meta.env.DEV) {
-            console.warn("Failed to obtain session signing key", _error)
+            logWarning("Failed to obtain session signing key", { error: _error })
           }
         }
         if (!areDeepEqual(userStateRef.current, profile)) {
@@ -816,7 +817,7 @@ export const useProfileSync = (
           handleUnauthorized()
           return
         }
-        console.error("Failed to fetch current user", error)
+        logError("Failed to fetch current user", { error })
       } finally {
         if (!controller.signal.aborted && activeRequestRef.current === controller) {
           activeRequestRef.current = null

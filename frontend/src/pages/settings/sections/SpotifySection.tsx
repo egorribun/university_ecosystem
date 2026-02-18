@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next"
 
-import { Button, Chip, SectionTitle } from "../../../components/settings"
-import type { SettingsSectionProps } from "../types"
+import { Button, Chip, SectionTitle } from "@/components/settings"
+import type { SettingsSectionProps } from "@/pages/settings/types"
 
 const SpotifyLogo = ({ className }: { className?: string }) => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className={className}>

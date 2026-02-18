@@ -1,30 +1,43 @@
-import { useActionState, useEffect, useMemo, useRef, useState } from "react"
+import { useState, useEffect } from "react"
 import axios from "@/api/client"
 import { Link } from "react-router-dom"
 import { useTranslation, Trans } from "react-i18next"
 import { Button, TextField, SectionCard, Chip } from "@/components/settings"
 import { motion, AnimatePresence } from "framer-motion"
 import { ChevronLeft, Send as SendIcon, CheckCircle2 } from "lucide-react"
-import { suggestEmailDomain } from "@/utils/authUtils"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
 
-const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+import { suggestEmailDomain } from "@/utils/authUtils"
+import { resetPasswordSchema, type ResetPasswordValues } from "@/features/auth/schemas"
 
 const FORGOT_URL = "/password/forgot"
 const RESEND_COOLDOWN_SEC = 30
 
-type ForgotState = {
-  status: "idle" | "success" | "error"
-  email?: string
-  error?: string
-}
-
 export default function ForgotPassword() {
   const { t } = useTranslation(["auth"])
-  const [email, setEmail] = useState("")
   const [emailSuggestion, setEmailSuggestion] = useState<string | null>(null)
   const [cooldown, setCooldown] = useState(0)
-  const emailInputRef = useRef<HTMLInputElement | null>(null)
-  const emailValid = useMemo(() => email.length === 0 || emailRe.test(email), [email])
+  const [isSuccess, setIsSuccess] = useState(false)
+
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    trigger,
+    formState: { errors, isSubmitting },
+    reset,
+  } = useForm<ResetPasswordValues>({
+    resolver: zodResolver(resetPasswordSchema),
+    defaultValues: {
+      email: "",
+    },
+    mode: "onBlur",
+  })
+
+  // Watch email for suggestions and UI logic
+  const email = watch("email")
 
   useEffect(() => {
     if (!cooldown) return
@@ -32,61 +45,45 @@ export default function ForgotPassword() {
     return () => clearInterval(id)
   }, [cooldown])
 
-  const onBlurEmail = () => {
-    const s = suggestEmailDomain(email)
-    setEmailSuggestion(s && s !== email ? s : null)
+  const onBlurEmail = async () => {
+    await trigger("email")
+    if (email) {
+      const s = suggestEmailDomain(email)
+      setEmailSuggestion(s && s !== email ? s : null)
+    }
   }
 
   const applySuggestion = () => {
     if (emailSuggestion) {
-      setEmail(emailSuggestion)
+      setValue("email", emailSuggestion, { shouldValidate: true })
       setEmailSuggestion(null)
     }
   }
 
-  const [forgotState, forgotAction, forgotPending] = useActionState(
-    async (_prev: ForgotState, input: FormData) => {
-      if (input.get("__reset__") === "1") {
-        return { status: "idle" as const }
-      }
+  const onSubmit = async (data: ResetPasswordValues) => {
+    if (cooldown > 0) return
 
-      const value = String(input.get("email") ?? "").trim()
-      if (!emailRe.test(value)) {
-        return { status: "error" as const, error: t("auth:messages.invalidEmail") }
-      }
-
-      setEmail(value)
-
-      try {
-        await axios.post(FORGOT_URL, { email: value })
-      } catch {
-        // Ignore errors, message is same for security
-      }
+    try {
+      await axios.post(FORGOT_URL, { email: data.email })
+      // Even if API fails (security reasons), we often show success or generic message.
+      // But here we'll assume success for the UX flow if no error thrown.
+      // If the backend throws for non-existent email, we might want to catch that.
+      // The original code caught all errors and ignored them ("Ignore errors, message is same for security").
 
       setCooldown(RESEND_COOLDOWN_SEC)
-      return { status: "success" as const, email: value }
-    },
-    { status: "idle" as const }
-  )
-
-  const forgotStatus = forgotState.status
-  const forgotErrorMessage = forgotStatus === "error" ? (forgotState.error ?? "") : ""
-  const canSubmit = emailRe.test(email) && !forgotPending && cooldown === 0
-
-  useEffect(() => {
-    if (!forgotPending && forgotStatus === "error") {
-      emailInputRef.current?.focus()
+      setIsSuccess(true)
+    } catch {
+      // Ignore errors for security, pretend it worked
+      setCooldown(RESEND_COOLDOWN_SEC)
+      setIsSuccess(true)
     }
-  }, [forgotPending, forgotStatus])
+  }
 
   const resetRequest = () => {
-    const marker = new FormData()
-    marker.append("__reset__", "1")
-    forgotAction(marker)
+    setIsSuccess(false)
+    reset()
     setCooldown(0)
-    setEmail("")
     setEmailSuggestion(null)
-    emailInputRef.current?.focus()
   }
 
   return (
@@ -109,14 +106,14 @@ export default function ForgotPassword() {
                 {t("auth:forgot.title")}
               </h1>
               <p className="text-sm text-(--text-secondary) font-medium">
-                {forgotStatus === "success"
+                {isSuccess
                   ? t("auth:forgot.successSent")
                   : t("auth:forgot.subtitle")}
               </p>
             </div>
 
             <AnimatePresence mode="wait">
-              {forgotStatus === "success" ? (
+              {isSuccess ? (
                 <motion.div
                   key="success"
                   initial={{ opacity: 0, scale: 0.95 }}
@@ -173,24 +170,20 @@ export default function ForgotPassword() {
                   animate={{ opacity: 1 }}
                   className="space-y-6"
                 >
-                  <form action={forgotAction} autoComplete="off" className="space-y-6">
+                  <form onSubmit={handleSubmit(onSubmit)} autoComplete="off" className="space-y-6">
                     <div className="space-y-3">
                       <TextField
                         id="forgot-email-input"
                         label={t("auth:fields.email")}
-                        name="email"
-                        type="email"
+                        {...register("email")}
                         value={email}
-                        onChange={(e) => setEmail(e.target.value)}
+                        type="email"
                         onBlur={onBlurEmail}
                         fullWidth
                         autoComplete="email"
-                        error={!emailValid && email.length > 0}
-                        helperText={
-                          !emailValid && email.length > 0 ? t("auth:messages.invalidFormat") : ""
-                        }
-                        ref={emailInputRef}
-                        disabled={forgotPending || cooldown > 0}
+                        error={!!errors.email}
+                        helperText={errors.email?.message ? t(errors.email.message) : ""}
+                        disabled={isSubmitting || cooldown > 0}
                         className="rounded-lg h-14"
                       />
 
@@ -208,12 +201,12 @@ export default function ForgotPassword() {
                       )}
                     </div>
 
-                    {forgotErrorMessage && (
+                    {errors.root?.message && (
                       <div
                         className="min-h-6 text-center text-sm font-semibold text-error-text animate-bounce"
                         aria-live="assertive"
                       >
-                        {forgotErrorMessage}
+                        {errors.root.message}
                       </div>
                     )}
 
@@ -223,8 +216,8 @@ export default function ForgotPassword() {
                         type="submit"
                         variant="solid"
                         className="w-full h-14 rounded-lg text-base font-black shadow-premium hover:shadow-glass hover:-translate-y-0.5 active:translate-y-0"
-                        disabled={!canSubmit}
-                        loading={forgotPending}
+                        disabled={isSubmitting || cooldown > 0}
+                        loading={isSubmitting}
                         startIcon={<SendIcon className="h-5 w-5" />}
                       >
                         {t("auth:forgot.sendLink")}

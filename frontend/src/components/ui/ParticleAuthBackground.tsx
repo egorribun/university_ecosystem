@@ -32,10 +32,16 @@ const ParticleAuthBackground = () => {
     let width = 0
     let height = 0
 
-    // Configuration
-    const particleCount = 1000 // Increased count for denser swarm
-    const baseRadius = 280 // Increased radius for larger cloud
-    const swarmSpeed = 12 // Speed at which the swarm follows the path (pixels per frame)
+    // Physics & Swarm Configuration
+    const CONFIG = {
+      particleCount: 1000,
+      baseRadius: 280,
+      swarmSpeed: 12, // Pixels per frame
+      mouseDistanceThreshold: 5,
+    }
+
+    // Gaussian-like distribution factor
+    const GAUSSIAN_FACTOR = 3
 
     // Colors for different themes
     // Note: Hex fallbacks are required for Canvas API when CSS variables aren't computed yet
@@ -57,10 +63,10 @@ const ParticleAuthBackground = () => {
       const colors = getThemeColors()
       const newParticles: Particle[] = []
 
-      for (let i = 0; i < particleCount; i++) {
+      for (let i = 0; i < CONFIG.particleCount; i++) {
         const angle = Math.random() * Math.PI * 2
         // Gaussian-like distribution for radius (more dense in center)
-        const r = ((Math.random() + Math.random() + Math.random()) / 3) * baseRadius * 2
+        const r = ((Math.random() + Math.random() + Math.random()) / GAUSSIAN_FACTOR) * CONFIG.baseRadius * 2
 
         newParticles.push({
           x: width / 2 + Math.cos(angle) * r, // Start at center
@@ -102,7 +108,7 @@ const ParticleAuthBackground = () => {
 
       // Add to history only if distance is significant to prevent buildup
       const last = mouseHistoryRef.current[mouseHistoryRef.current.length - 1]
-      if (!last || Math.hypot(x - last.x, y - last.y) > 5) {
+      if (!last || Math.hypot(x - last.x, y - last.y) > CONFIG.mouseDistanceThreshold) {
         mouseHistoryRef.current.push({ x, y })
       }
     }
@@ -121,14 +127,14 @@ const ParticleAuthBackground = () => {
         const dy = target.y - virtualMouseRef.current.y
         const dist = Math.hypot(dx, dy)
 
-        if (dist < swarmSpeed) {
+        if (dist < CONFIG.swarmSpeed) {
           // Reached the point, snap to it and remove from history
           virtualMouseRef.current = target
           mouseHistoryRef.current.shift()
         } else {
           // Move towards point
-          virtualMouseRef.current.x += (dx / dist) * swarmSpeed
-          virtualMouseRef.current.y += (dy / dist) * swarmSpeed
+          virtualMouseRef.current.x += (dx / dist) * CONFIG.swarmSpeed
+          virtualMouseRef.current.y += (dy / dist) * CONFIG.swarmSpeed
         }
       } else {
         // No history, ease towards current mouse (catch up)
@@ -137,8 +143,8 @@ const ParticleAuthBackground = () => {
         const dist = Math.hypot(dx, dy)
 
         if (dist > 1) {
-          virtualMouseRef.current.x += (dx / dist) * Math.min(dist, swarmSpeed)
-          virtualMouseRef.current.y += (dy / dist) * Math.min(dist, swarmSpeed)
+          virtualMouseRef.current.x += (dx / dist) * Math.min(dist, CONFIG.swarmSpeed)
+          virtualMouseRef.current.y += (dy / dist) * Math.min(dist, CONFIG.swarmSpeed)
         }
       }
 

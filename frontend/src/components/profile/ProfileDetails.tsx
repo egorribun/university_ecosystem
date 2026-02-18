@@ -35,7 +35,7 @@ export const ProfileDetails = ({ user, isOpen, onToggle }: ProfileDetailsProps) 
       <div
         className={cn(
           "transition-all duration-base overflow-hidden",
-          isOpen ? "max-h-[1000px] opacity-100" : "max-h-0 opacity-0"
+          isOpen ? "max-h-[150vh] opacity-100" : "max-h-0 opacity-0"
         )}
       >
         <div className="px-3 pb-6 flex flex-col gap-1">

@@ -2,6 +2,7 @@ import { useCallback } from "react"
 import api from "@/api/client"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useAuth } from "@/contexts/AuthContext"
+import { logWarning } from "@/app/logger"
 
 const NEWS_INTERACTION_STORE = "pending-news-interactions"
 const NEWS_INTERACTION_SYNC_TAG = "news-interaction:sync"
@@ -59,7 +60,7 @@ async function queueInteraction(url: string, payload: unknown, method = "POST") 
     try {
       await registration.sync.register(NEWS_INTERACTION_SYNC_TAG)
     } catch (e) {
-      console.warn("Failed to register background sync", e)
+      logWarning("Failed to register background sync", { error: e })
     }
   }
 }

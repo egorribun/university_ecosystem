@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next"
 import { sanitizeHttpUrl } from "@/utils/sanitize"
 import { CheckCircle2, Info, AlertTriangle, XCircle, X, ExternalLink } from "lucide-react"
 import { cn } from "@/utils/cn"
+import { TIMEOUTS } from "@/config/timeouts"
 
 type SnackbarSeverity = "success" | "info" | "warning" | "error"
 
@@ -206,7 +207,7 @@ export default function LivePushToasts() {
 
   useEffect(() => {
     if (open && current) {
-      const timer = setTimeout(handleClose, 6000)
+      const timer = setTimeout(handleClose, TIMEOUTS.TOAST_LONG)
       return () => clearTimeout(timer)
     }
   }, [open, current, handleClose])
