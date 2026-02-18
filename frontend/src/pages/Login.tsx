@@ -13,7 +13,7 @@ const Login = () => {
     return (
       <MfaChallengeView
         activeEmail={form.activeEmail}
-        trustDevice={form.trustDevice}
+        trustDevice={!!form.trustDevice}
         onTrustDeviceChange={form.setTrustDevice}
         webauthnSupported={form.webauthnSupported}
         mfa={mfa}

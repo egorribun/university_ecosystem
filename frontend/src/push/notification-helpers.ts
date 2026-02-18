@@ -1,8 +1,8 @@
 // Simple fallback strings for Service Worker context
 // No i18n import to keep SW bundle small
 const fallbackNotifications = {
-  defaultTitle: "Новое уведомление",
-  defaultBody: "У вас есть новое уведомление.",
+  defaultTitle: "University Ecosystem",
+  defaultBody: "You have a new notification.",
 }
 
 const translateNotification = (key: keyof typeof fallbackNotifications) =>

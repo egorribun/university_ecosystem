@@ -1,7 +1,7 @@
 import { Newspaper as ArticleIcon } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import FadeSection from "@/components/FadeSection"
-import NewsCard from "@/components/NewsCard"
+import NewsCard from "@/components/news/NewsCard"
 import NewsCardSkeleton from "@/components/NewsCardSkeleton"
 import OfflineFallback from "@/components/OfflineFallback"
 import { Button } from "@/components/ui"

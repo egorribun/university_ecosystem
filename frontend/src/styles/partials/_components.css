@@ -1,0 +1,83 @@
+@layer base {
+    :root {
+        /* Component Specific Dimensions */
+        --w-story-card: min(92vw, 26.25rem);
+        --w-story-card-md: 26.25rem;
+        --w-mobile-menu: 18.75rem;
+        --h-news-card-mobile: 25rem;
+        --h-news-card-desktop: 30rem;
+        /* Component Dimensions */
+        --h-checkbox: 1.25rem;
+        --h-loading-spinner: 7.5rem;
+        --h-skeleton-row: 9.25rem;
+        --h-card-lesson-min: 8.125rem;
+        --w-drawer-mobile-max: 85%;
+        --p-footer-y: 3.75rem;
+        --h-dialog-min: 20rem;
+        --w-sidebar-collapsed: 3.25rem;
+        /* Renamed from index-col for clarity */
+        --w-sidebar-sm: 23.75rem;
+        --h-textarea-min: 7.5rem;
+        --size-pattern-min: 11.25rem;
+        --size-pattern-max: 22.5rem;
+        --offset-yandex-maps: 2.8125rem;
+        --w-label-sm: 6.875rem;
+        --w-label-md: 9.375rem;
+        --w-label-lg: 20rem;
+        --w-label-xl: 40rem;
+
+        /* Touch Targets */
+        --size-touch-target: 2.75rem;
+        /* 44px */
+        /* Standard 44px touch target */
+        --size-icon-fluid: clamp(1.125rem, 4.5vw, 1.375rem);
+        /* 18px to 22px */
+        --size-icon-sm: 0.875rem;
+        /* 14px */
+
+        /* Feature Specific */
+        --lesson-type-default: var(--color-slate-400);
+
+        /* Badge & Chip Semantic Colors (Light) */
+        --badge-lec: var(--color-blue-500);
+        --badge-prac: var(--color-emerald-500);
+        --badge-lab: var(--color-amber-500);
+        --badge-proj: var(--color-indigo-500);
+        --badge-project: var(--color-slate-500);
+
+        /* UI Specialty Colors (Light) */
+        --bg-nav-light: color-mix(in srgb, var(--color-white) var(--opacity-heavy), transparent);
+        --bg-nav-dark: color-mix(in srgb, var(--color-slate-950) var(--opacity-heavy), transparent);
+        --bg-footer-light: var(--color-slate-50);
+        --bg-footer-dark: var(--color-slate-950);
+
+        /* Messenger Semantic Colors (Light) */
+        --msg-sidebar-bg: var(--color-slate-50);
+        --msg-chat-bg: var(--color-white);
+        --msg-header-bg: color-mix(in srgb, white var(--opacity-heavy), transparent);
+        --msg-header-border: var(--color-slate-200);
+        --msg-sidebar-hover: var(--color-slate-100);
+        --msg-sidebar-active: var(--color-blue-50);
+        --msg-online-color: var(--color-green-500);
+    }
+
+    .dark {
+        /* Badge & Chip Semantic Colors (Dark) */
+        --badge-lec: var(--color-blue-400);
+        --badge-prac: var(--color-emerald-400);
+        --badge-lab: var(--color-amber-400);
+        --badge-proj: var(--color-indigo-400);
+        --badge-project: var(--color-slate-400);
+
+        /* Messenger Semantic Colors (Dark) */
+        --msg-sidebar-bg: var(--color-slate-900);
+        --msg-chat-bg: var(--color-slate-950);
+        --msg-header-bg: color-mix(in srgb, var(--color-slate-900) var(--opacity-heavy), transparent);
+        --msg-header-border: var(--color-slate-700);
+        --msg-sidebar-hover: var(--color-slate-800);
+        --msg-sidebar-active: color-mix(in srgb,
+                var(--primary-main) var(--opacity-subtle),
+                transparent);
+        --msg-online-color: var(--color-emerald-400);
+    }
+}

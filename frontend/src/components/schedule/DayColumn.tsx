@@ -51,7 +51,7 @@ export const DayColumn = forwardRef<HTMLDivElement, DayColumnProps>(
       <div
         ref={ref}
         className={cn(
-          "group relative isolate mb-2 rounded-2xl border border-glass-border p-4 sm:p-6 shadow-premium [content-visibility:auto] [contain-intrinsic-size:400px] transition-all duration-base",
+          "group relative isolate mb-2 rounded-2xl border border-glass-border p-4 sm:p-6 shadow-premium [content-visibility:auto] [contain-intrinsic-size:var(--h-news-card-mobile)] transition-all duration-base",
           isToday
             ? "bg-primary-main/(--opacity-faint) ring-2 ring-primary-main/(--opacity-dim) dark:bg-primary-main/(--opacity-subtle) dark:ring-primary-main/(--opacity-soft)"
             : "bg-(--bg-surface)/(--opacity-hover) dark:bg-(--bg-surface)/(--opacity-heavy) shadow-md dark:shadow-xl",

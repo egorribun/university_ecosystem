@@ -32,6 +32,7 @@ import {
 } from "react"
 
 import { cn } from "@/utils/cn"
+import SmartImage from "@/components/SmartImage"
 import { Card, type CardProps } from "./Card"
 
 /** Card context for sharing state between compound components */
@@ -92,10 +93,9 @@ const Media = forwardRef<HTMLDivElement, MediaProps>(
         className={cn("relative w-full overflow-hidden", className)}
         style={{ aspectRatio }}
       >
-        <img
-          src={src}
+        <SmartImage
+          srcRaw={src}
           alt={alt}
-          loading="lazy"
           className="h-full w-full object-cover transition-premium group-hover:scale-hover"
           {...props}
         />

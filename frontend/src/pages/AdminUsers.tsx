@@ -11,6 +11,7 @@ import { cn } from "@/utils/cn"
 import { TextField, SectionCard, Avatar } from "@/components/settings"
 import { DataTable } from "@/components/ui/data-table/DataTable"
 import { DataTableColumnHeader } from "@/components/ui/data-table/DataTableColumnHeader"
+import { ConfirmDialog } from "@/components/ui"
 
 type UserRole = "student" | "teacher" | "admin"
 
@@ -37,6 +38,8 @@ export default function AdminUsers() {
   const [filters, setFilters] = useState<UserFilters>({ full_name: "", group_id: "", role: "" })
   const { user: userContext } = useAuth()
   const { t } = useTranslation("admin")
+  const [userToDelete, setUserToDelete] = useState<string | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   const roleOptions: Record<UserRole, string> = {
     student: t("users.roles.student"),
@@ -75,14 +78,21 @@ export default function AdminUsers() {
     [fetchUsers]
   )
 
-  const handleDelete = useCallback(
-    async (userId: string) => {
-      if (!window.confirm(t("users.confirmDelete"))) return
-      await api.delete(`/users/${userId}`)
+  const handleDelete = useCallback((userId: string) => {
+    setUserToDelete(userId)
+  }, [])
+
+  const executeDelete = useCallback(async () => {
+    if (!userToDelete) return
+    setIsDeleting(true)
+    try {
+      await api.delete(`/users/${userToDelete}`)
       void fetchUsers()
-    },
-    [fetchUsers, t]
-  )
+      setUserToDelete(null)
+    } finally {
+      setIsDeleting(false)
+    }
+  }, [userToDelete, fetchUsers])
 
   const handleFilterChange = useCallback(
     (field: keyof UserFilters) => (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -311,6 +321,17 @@ export default function AdminUsers() {
           </div>
         </div>
       </div>
+      <ConfirmDialog
+        open={userToDelete !== null}
+        title={t("users.confirmDelete")}
+        message={t("users.confirmDeleteDescription", { defaultValue: "Are you sure you want to delete this user? This action cannot be undone." })}
+        confirmText={t("common:buttons.delete")}
+        cancelText={t("common:buttons.cancel")}
+        variant="danger"
+        onConfirm={() => void executeDelete()}
+        onCancel={() => setUserToDelete(null)}
+        isLoading={isDeleting}
+      />
     </Layout>
   )
 }

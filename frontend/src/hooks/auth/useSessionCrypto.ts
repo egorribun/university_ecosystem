@@ -5,6 +5,7 @@ import {
   type ApiCacheControlMessage,
 } from "@/constants/serviceWorkerMessages"
 import type { components } from "@/api/generated/schema"
+import { logWarning } from "@/app/logger"
 
 const PROFILE_CACHE_BASE_KEY = "ecosystem.profile.cache"
 export const SESSION_SIGNING_KEY_STORAGE_KEY = `${PROFILE_CACHE_BASE_KEY}.sessionKey`
@@ -122,7 +123,7 @@ export const useSessionCrypto = () => {
         target.postMessage(message)
       } catch (error) {
         if (import.meta.env.DEV) {
-          console.warn("Failed to post message to service worker", error)
+          logWarning("Failed to post message to service worker", { error })
         }
       }
     }
@@ -140,7 +141,7 @@ export const useSessionCrypto = () => {
         })
         .catch((error) => {
           if (import.meta.env.DEV) {
-            console.warn("Failed to deliver message to service worker", error)
+            logWarning("Failed to deliver message to service worker", { error })
           }
         })
     }

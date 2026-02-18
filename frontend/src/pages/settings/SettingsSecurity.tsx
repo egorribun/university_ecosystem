@@ -1,6 +1,6 @@
 import React from "react"
 import { useTranslation } from "react-i18next"
-import { useAuth } from "../../contexts/AuthContext"
+import { useAuth } from "@/contexts/AuthContext"
 
 import { EmailSection, PasswordSection, SessionsSection } from "./sections"
 
@@ -19,10 +19,10 @@ import {
   AccordionSection,
   Button,
   Alert,
-} from "../../components/settings"
+} from "@/components/settings"
 
-import { TotpQrDisplay } from "../../components/mfa/TotpQrDisplay"
-import { OtpEntry } from "../../components/mfa/OtpEntry"
+import { TotpQrDisplay } from "@/components/mfa/TotpQrDisplay"
+import { OtpEntry } from "@/components/mfa/OtpEntry"
 import { Smartphone, Fingerprint, Trash2 } from "lucide-react"
 
 import type { SetSnackbar } from "./types"

@@ -1,4 +1,4 @@
-import { type CSSProperties, type KeyboardEvent } from "react"
+import { type CSSProperties, type KeyboardEvent, useCallback } from "react"
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 
@@ -35,11 +35,14 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
     void prefetchDashboardNews(queryClient, language)
   }
 
-  const prepareOnKey = (event: KeyboardEvent, callback: () => void) => {
-    if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
-      callback()
-    }
-  }
+  const prepareOnKey = useCallback(
+    (event: KeyboardEvent, callback: () => void) => {
+      if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
+        callback()
+      }
+    },
+    []
+  )
 
   return (
     <Card
@@ -64,7 +67,7 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
             to="/news"
             size="sm"
             variant="outline"
-            className="whitespace-nowrap px-5 transition-transform duration-base hover:-translate-y-[2px]"
+            className="whitespace-nowrap px-5 transition-transform duration-base hover:-translate-y-0.5"
             aria-label={t("dashboard:aria.viewAllNews")}
             onPointerDown={prefetchNewsList}
             onKeyDown={(event) => {

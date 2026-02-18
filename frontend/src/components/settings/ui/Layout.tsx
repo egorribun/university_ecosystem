@@ -96,7 +96,7 @@ export function SessionItem({
         "group relative flex items-stretch justify-between gap-4 rounded-xl px-4 py-3",
         "border-glass-border bg-glass-bg text-text-primary",
         "transition-all duration-slow ease-out backdrop-blur-glass",
-        "hover:-translate-y-px hover:border-(--brand-main)/(--opacity-soft) hover:bg-glass-tint1 hover:shadow-glass",
+        "hover:-translate-y-[0.125rem] hover:border-(--brand-main)/(--opacity-soft) hover:bg-glass-tint1 hover:shadow-glass",
         "max-sm:flex-col max-sm:items-start",
         "data-[revoked=true]:border-dashed data-[revoked=true]:border-(--border-subtle)",
         "data-[revoked=true]:bg-(--bg-surface)/(--opacity-dim) data-[revoked=true]:shadow-none data-[revoked=true]:backdrop-blur-none",
@@ -160,7 +160,7 @@ export function AccordionSection({
       <div
         className={cn(
           "overflow-hidden transition-all duration-slow",
-          expanded ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0"
+          expanded ? "max-h-[125rem] opacity-100" : "max-h-0 opacity-0"
         )}
       >
         <div className="px-4 pb-4 pt-2">{children}</div>

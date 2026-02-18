@@ -62,26 +62,26 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
         </div>
 
         <div className="space-y-2">
-          <label htmlFor="username" className="text-sm font-semibold text-text-primary">
+          <label htmlFor="email" className="text-sm font-semibold text-text-primary">
             {t("auth:fields.email")}
           </label>
           <Input
-            id="username"
-            {...register("username")}
+            id="email"
+            {...register("email")}
             type="email"
-            className={errors.username ? "border-error-text focus:border-error-text" : ""}
+            className={errors.email ? "border-error-text focus:border-error-text" : ""}
             onBlur={(e) => {
-              register("username").onBlur(e)
+              register("email").onBlur(e)
               handleEmailBlur()
             }}
             autoComplete="username"
             disabled={submitting}
             inputMode="email"
             required
-            error={!!errors.username}
+            error={!!errors.email}
           />
           <p className="text-xs text-text-secondary/(--opacity-hover)">
-            {errors.username ? t(errors.username.message || "auth:messages.invalidFormat") : " "}
+            {errors.email ? t(errors.email.message || "auth:messages.invalidFormat") : " "}
           </p>
           {emailSuggestion ? (
             <button

@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next"
-import { cn } from "../../../utils/cn"
+import { cn } from "@/utils/cn"
 
 import {
   Button,
@@ -9,9 +9,9 @@ import {
   SectionSubtitle,
   AccordionSection,
   SessionItem,
-} from "../../../components/settings"
+} from "@/components/settings"
 
-import type { SettingsSectionProps } from "../types"
+import type { SettingsSectionProps } from "@/pages/settings/types"
 
 interface ActiveSession {
   id: string

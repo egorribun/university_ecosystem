@@ -1,11 +1,10 @@
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useAuth } from "@/contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { useNewsListQuery } from "@/api/hooks/news"
 import { resetEtagCache } from "@/api/client"
-import { StorageItem } from "@/utils/storage"
 import { NewsHeader } from "./components/NewsHeader"
 import { NewsList } from "./components/NewsList"
 import { NewsFormDialog } from "./components/NewsFormDialog"
@@ -31,14 +30,6 @@ export const NewsFeature = () => {
     resetEtagCache()
     void queryClient.invalidateQueries({ queryKey: ["news", "list"] })
   }, [queryClient])
-
-  // Persist to localStorage
-  useEffect(() => {
-    if (newsList.length > 0) {
-      const storage = new StorageItem<typeof newsList>(`news:list:${language}`)
-      storage.set(newsList)
-    }
-  }, [newsList, language])
 
   return (
     <div className="w-full min-h-full bg-transparent text-text-primary py-8 sm:py-10">

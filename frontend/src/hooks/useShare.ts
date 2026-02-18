@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { logError } from "@/app/logger"
 import {
   Send as TelegramIcon,
   MessageCircle as WhatsAppIcon,
@@ -93,7 +94,7 @@ export function useShare({ title, url, onNotify, translations = {} }: ShareOptio
     } catch (error) {
       const message = (error as DOMException | Error)?.name ?? ""
       if (message === "AbortError") return
-      console.error(error)
+      logError(error)
       onNotify?.(translations.shareError || "Share failed")
     } finally {
       setSharing(false)
@@ -112,7 +113,7 @@ export function useShare({ title, url, onNotify, translations = {} }: ShareOptio
         textarea.value = shareUrl
         textarea.setAttribute("readonly", "")
         textarea.style.position = "absolute"
-        textarea.style.left = "-9999px"
+        textarea.style.left = "-9999rem"
         document.body.appendChild(textarea)
         textarea.select()
         document.execCommand("copy")
@@ -130,7 +131,7 @@ export function useShare({ title, url, onNotify, translations = {} }: ShareOptio
         copyTimeoutRef.current = null
       }, 2200)
     } catch (error) {
-      console.error(error)
+      logError(error)
       onNotify?.(translations.shareError || "Copy failed")
     } finally {
       setCopyingLink(false)

@@ -1,4 +1,4 @@
-import { useMemo, type KeyboardEvent, type CSSProperties } from "react"
+import { useMemo, useCallback, type KeyboardEvent, type CSSProperties } from "react"
 import { motion } from "framer-motion"
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
@@ -107,14 +107,17 @@ export function ScheduleCard({
 
   const warmSchedulePage = () => import("../../pages/Schedule").catch(() => {})
 
-  const prepareOnKey = (event: KeyboardEvent, callback: () => void) => {
-    if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
-      callback()
-    }
-  }
+  const prepareOnKey = useCallback(
+    (event: KeyboardEvent, callback: () => void) => {
+      if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
+        callback()
+      }
+    },
+    []
+  )
 
   const listActionBase =
-    "group relative isolate w-full overflow-hidden rounded-sm border border-transparent bg-(--bg-surface)/(--opacity-subtle) px-4 py-3 text-left transition-all duration-base ease-out hover:bg-(--bg-surface)/(--opacity-dim) hover:border-glass-border hover:-translate-y-0.5 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/(--opacity-medium)"
+    "group relative isolate w-full overflow-hidden rounded-sm border border-transparent bg-(--bg-surface)/(--opacity-subtle) px-4 py-3 text-left transition-all duration-base ease-out hover:bg-(--bg-surface)/(--opacity-dim) hover:border-glass-border hover:-translate-y-1 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/(--opacity-medium)"
 
   return (
     <Card
@@ -133,7 +136,7 @@ export function ScheduleCard({
               to="/schedule"
               size="sm"
               variant="outline"
-              className="whitespace-nowrap px-5 transition-transform duration-base hover:-translate-y-[2px]"
+              className="whitespace-nowrap px-5 transition-transform duration-base hover:-translate-y-0.5"
               aria-label={t("dashboard:aria.openFullSchedule")}
               onPointerDown={warmSchedulePage}
               onKeyDown={(event) => prepareOnKey(event, warmSchedulePage)}

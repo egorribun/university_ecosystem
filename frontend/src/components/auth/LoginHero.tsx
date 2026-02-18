@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next"
 import { Calendar, MessageCircle, Newspaper, Zap, Sparkles } from "lucide-react"
 
 import { FadeIn } from "@/components/ui/motion/FadeIn"
+import { motion } from "@/theme/tokens"
 
 export function LoginHero() {
   const { t } = useTranslation(["auth"])
@@ -40,10 +41,10 @@ export function LoginHero() {
     <FadeIn
       direction="left"
       distance={200}
-      duration={0.5}
+      duration={motion.durationSlow}
       className="auth-card-glass flex w-full min-w-0 flex-col justify-center p-8 lg:p-12"
     >
-      <p className="text-sm font-semibold uppercase tracking-[0.3em] text-text-primary/(--opacity-strong)">
+      <p className="text-sm font-semibold uppercase tracking-hero text-text-primary/(--opacity-strong)">
         {t("auth:login.heroBadge", { defaultValue: "University Ecosystem" })}
       </p>
       <h1 className="mt-4 text-4xl font-extrabold leading-tight text-text-primary sm:text-5xl">
@@ -75,16 +76,16 @@ export function LoginHero() {
       <div className="mt-10 flex flex-wrap gap-4">
         <div className="auth-stat-glass w-auto px-6">
           <Zap className="mr-1 h-4 w-4 text-brand" strokeWidth={3} />
-          <span className="text-xs font-extrabold uppercase tracking-[0.2em]">
+          <span className="text-xs font-extrabold uppercase tracking-widest-xl">
             {t("auth:login.statFast", { defaultValue: "Быстро" })}
           </span>
-          <span className="text-xs font-extrabold uppercase tracking-[0.2em] ml-1">
+          <span className="text-xs font-extrabold uppercase tracking-widest-xl ml-1">
             {t("auth:login.statFastLabel", { defaultValue: "и безопасно" })}
           </span>
         </div>
         <div className="auth-stat-glass w-auto px-6">
           <Sparkles className="mr-1 h-4 w-4 text-brand" strokeWidth={3} />
-          <span className="text-xs font-extrabold uppercase tracking-[0.2em]">
+          <span className="text-xs font-extrabold uppercase tracking-widest-xl">
             {t("auth:login.statSmart", { defaultValue: "Умный интерфейс" })}
           </span>
         </div>

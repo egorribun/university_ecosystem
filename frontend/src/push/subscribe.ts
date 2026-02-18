@@ -1,20 +1,16 @@
 import { isAxiosError } from "axios"
 import { deleteSubscription, getVapidPublicKey, saveSubscription } from "@/api/notifications"
 import { logError, logWarning } from "@/app/logger"
+import { StorageItem, profileCacheStorage, pushConsentStorage } from "@/utils/storage"
 
 const SUBSCRIPTION_EXPIRY_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000 // 3 days
 const PERSIST_MAX_ATTEMPTS = 3
 const PERSIST_BASE_DELAY_MS = 500
 const PUSH_TOPICS_STORAGE_VERSION = 2
-import { StorageItem, profileCacheStorage, pushConsentStorage } from "@/utils/storage"
 
 // Storage Items for Push
 const pushLastSyncStorage = new StorageItem<string>("push:last_sync")
 const pushSubStorage = new StorageItem<unknown>("push:last_payload")
-// Topics storage handles its own parsing logic for legacy reasons,
-// but we can treat it as storing a JSON string if we want raw access
-// OR we can trust the object. The existing code does complex raw string parsing.
-// To minimize risk, we can use StorageItem<unknown> and let it parse.
 const pushTopicsStorage = new StorageItem<unknown>("push:last_topics")
 
 // Global lock to prevent ANY concurrent ensurePushSubscription calls

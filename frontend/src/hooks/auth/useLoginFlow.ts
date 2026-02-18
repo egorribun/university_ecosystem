@@ -10,7 +10,7 @@ import type { PendingMfaState } from "@/types/Auth"
 import { startAuthentication, browserSupportsWebAuthn } from "@simplewebauthn/browser"
 import { useLocalStorage } from "@/hooks/useLocalStorage"
 import { suggestEmailDomain } from "@/utils/authUtils"
-import { loginSchema, type LoginFormValues } from "@/utils/validation"
+import { loginSchema, type LoginValues } from "@/features/auth/schemas"
 
 type ChallengeMethod = PendingMfaState["methods"][number]
 export type ChallengeWithAttempts = ChallengeMethod &
@@ -36,10 +36,10 @@ export function useLoginForm() {
   const [passkeyError, setPasskeyError] = useState<string | null>(null)
 
   // React Hook Form Setup
-  const form = useForm<LoginFormValues>({
+  const form = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      username: savedEmail,
+      email: savedEmail,
       password: "",
       trustDevice: trustDeviceStored === "1",
     },
@@ -56,7 +56,7 @@ export function useLoginForm() {
   } = form
 
   // Watch values for UI logic
-  const currentEmail = watch("username")
+  const currentEmail = watch("email")
   const trustDevice = watch("trustDevice")
 
   // Update persistence when trustDevice changes
@@ -64,13 +64,13 @@ export function useLoginForm() {
     setTrustDeviceStored(trustDevice ? "1" : "0")
   }, [trustDevice, setTrustDeviceStored])
 
-  const onSubmit = async (data: LoginFormValues) => {
+  const onSubmit = async (data: LoginValues) => {
     setPasskeyError(null)
     try {
-      const challenge = await login(data.username, data.password, data.trustDevice)
+      const challenge = await login(data.email, data.password, !!data.trustDevice)
 
       if (data.trustDevice) {
-        setSavedEmail(data.username)
+        setSavedEmail(data.email)
       }
 
       if (challenge) {
@@ -93,7 +93,7 @@ export function useLoginForm() {
 
   const handleEmailBlur = async () => {
     // Trigger validation first
-    await trigger("username")
+    await trigger("email")
     const raw = currentEmail?.trim()
     if (!raw) return
     const suggestion = suggestEmailDomain(raw)
@@ -102,20 +102,20 @@ export function useLoginForm() {
 
   const applySuggestion = () => {
     if (!emailSuggestion) return
-    setValue("username", emailSuggestion, { shouldValidate: true })
+    setValue("email", emailSuggestion, { shouldValidate: true })
     setEmailSuggestion(null)
   }
 
   const handlePasskeyLogin = async () => {
     // We can use the current email from form
-    if (!currentEmail || errors.username) {
-      await trigger("username")
-      if (errors.username) return
+    if (!currentEmail || errors.email) {
+      await trigger("email")
+      if (errors.email) return
     }
 
     setPasskeyError(null)
     try {
-      await loginWithPasskey(currentEmail, trustDevice)
+      await loginWithPasskey(currentEmail || "", trustDevice)
       navigate(redirectPath, { replace: true })
     } catch (error) {
       let message = t("auth:login.error")

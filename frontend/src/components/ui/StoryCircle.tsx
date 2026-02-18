@@ -45,14 +45,16 @@ export const StoryCircle = <T extends ElementType = "div">({
         className
       )}
       style={{
-        border: `${borderWidth}px solid color-mix(in srgb, var(--text-primary) 15%, transparent)`,
+        borderWidth: typeof borderWidth === "number" ? `${borderWidth * 0.0625}rem` : borderWidth,
+        borderStyle: "solid",
+        borderColor: "color-mix(in srgb, var(--text-primary) 15%, transparent)",
         ...style,
       }}
       {...rest}
     >
       <span
         aria-hidden
-        className="pointer-events-none absolute inset-0 rounded-full border border-(--primary-main)/(--opacity-subtle) opacity-0 outline-offset-[3px] transition-opacity duration-base group-focus-visible/story:opacity-100 group-hover/story:opacity-medium"
+        className="pointer-events-none absolute inset-0 rounded-full border border-(--primary-main)/(--opacity-subtle) opacity-0 outline-offset-[0.1875rem] transition-opacity duration-base group-focus-visible/story:opacity-100 group-hover/story:opacity-medium"
       />
       <span className="relative z-deep flex h-full w-full items-center justify-center overflow-hidden rounded-full">
         {children}

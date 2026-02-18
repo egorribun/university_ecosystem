@@ -1,5 +1,6 @@
 import * as Sentry from "@sentry/react"
 import { initTelemetry } from "./telemetry"
+import { logInfo } from "./logger"
 
 let initialized = false
 
@@ -24,8 +25,7 @@ export function initObservability(env: ImportMetaEnv = import.meta.env): boolean
 
   if (env.DEV) {
     if (typeof console !== "undefined") {
-      // eslint-disable-next-line no-console
-      console.info("Sentry disabled in development mode; skipping initialization")
+      logInfo("Sentry disabled in development mode; skipping initialization")
     }
     return false
   }

@@ -1,8 +1,9 @@
 import { useEffect, useState, useMemo, useRef } from "react"
 import { motion, useMotionValue, useTransform, animate, useReducedMotion } from "framer-motion"
 import { EASE_OUT_EXPO } from "./activityTypes"
+import { motion as motionTokens } from "@/theme/tokens"
 
-function useAnimatedNumber(target: number, duration = 0.9, fraction = 0) {
+function useAnimatedNumber(target: number, duration = motionTokens.durationLazy, fraction = 0) {
   const reduce = useReducedMotion()
   const mv = useMotionValue(reduce ? target : 0)
   const [val, setVal] = useState<number>(reduce ? target : 0)
@@ -35,7 +36,7 @@ export default function AnimatedRing({
 
   useEffect(() => {
     const controls = animate(mv, value, {
-      duration: reduce ? 0 : 0.8,
+      duration: reduce ? 0 : motionTokens.durationLazy,
       ease: EASE_OUT_EXPO,
     })
     prevValueRef.current = value

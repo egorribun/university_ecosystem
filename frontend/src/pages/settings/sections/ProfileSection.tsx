@@ -1,9 +1,9 @@
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
 
-import { useAuth } from "../../../contexts/AuthContext"
-import { useAvatarUpload } from "../hooks/useAvatarUpload"
-import { useCoverUpload } from "../hooks/useCoverUpload"
+import { useAuth } from "@/contexts/AuthContext"
+import { useAvatarUpload } from "@/pages/settings/hooks/useAvatarUpload"
+import { useCoverUpload } from "@/pages/settings/hooks/useCoverUpload"
 
 import {
   Button,
@@ -12,9 +12,9 @@ import {
   SectionTitle,
   SectionSubtitle,
   AccordionSection,
-} from "../../../components/settings"
+} from "@/components/settings"
 
-import type { SettingsSectionProps } from "../types"
+import type { SettingsSectionProps } from "@/pages/settings/types"
 
 export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
   const { t } = useTranslation(["settings", "common"])

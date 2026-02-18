@@ -25,7 +25,7 @@ import {
 } from "@/constants/maps"
 
 /** Vertical offset to hide the Yandex Maps embed branding chrome */
-const MAP_IFRAME_OFFSET = "var(--offset-yandex-maps, 45px)"
+const MAP_IFRAME_OFFSET = "var(--offset-yandex-maps, 2.8125rem)"
 
 const detectEmbedOptOut = (): boolean => {
   if (typeof window === "undefined") return false
@@ -178,7 +178,7 @@ export default function MapContent() {
     <div className="w-full bg-(--bg-surface) text-text-primary rounded-none shadow-2xl overflow-hidden relative">
       <div
         ref={containerRef}
-        className="map-page bg-(--bg-canvas-light) dark:bg-(--bg-canvas-dark) transition-colors duration-base h-full w-full relative"
+        className="map-page bg-(--bg-page) transition-colors duration-base h-full w-full relative"
       >
         <div className="glass glass--panel glass--sheen map-head z-navbar flex items-center justify-between px-6 py-4 absolute top-0 left-0 right-0">
           <div className="flex items-center gap-3">

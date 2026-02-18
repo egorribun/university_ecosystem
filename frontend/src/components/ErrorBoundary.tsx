@@ -1,5 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from "react"
 import * as Sentry from "@sentry/react"
+import i18n from "i18next"
+import { logError } from "@/app/logger"
 
 interface ErrorBoundaryProps {
   children: ReactNode
@@ -48,7 +50,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
     // Log to console in development
     if (import.meta.env.DEV) {
-      console.error("ErrorBoundary caught an error:", error, errorInfo)
+    logError("ErrorBoundary caught an error:", { error, errorInfo })
     }
   }
 
@@ -81,15 +83,15 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
           <div className="relative z-deep w-full max-w-(--layout-max-modal) rounded-2xl border border-border-subtle bg-(--bg-surface) p-10 text-center shadow-premium backdrop-blur-md">
             <h1 className="mb-4 text-3xl font-black tracking-tight text-text-primary">
-              Что-то пошло не так
+              {i18n.t("common:errorBoundary.title")}
             </h1>
             <p className="mb-8 text-base leading-relaxed text-(--text-secondary)">
-              Произошла непредвиденная ошибка. Мы уже работаем над её исправлением.
+              {i18n.t("common:errorBoundary.description")}
             </p>
             {import.meta.env.DEV && this.state.error && (
               <details className="mb-8 rounded-lg border border-border-subtle bg-(--bg-surface-hover) p-4 text-left">
                 <summary className="cursor-pointer text-sm font-semibold text-(--text-tertiary)">
-                  Подробности ошибки
+                  {i18n.t("common:errorBoundary.details")}
                 </summary>
                 <pre className="mt-4 overflow-x-auto whitespace-pre-wrap wrap-break-word rounded-md border border-error-text bg-black/(--opacity-faint) p-3 text-xs text-error-text">
                   {this.state.error.toString()}
@@ -107,21 +109,21 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
                 onClick={this.handleRetry}
                 className="rounded-xl bg-(--primary-main) px-(--space-6) py-(--space-35) text-base font-extrabold text-(--text-inverse) shadow-glass transition-all duration-slow hover:-translate-y-0.5 hover:bg-(--primary-hover) hover:shadow-premium-lift active:scale-95"
               >
-                Попробовать снова
+                {i18n.t("common:errorBoundary.retry")}
               </button>
               <button
                 type="button"
                 onClick={this.handleReload}
                 className="rounded-xl border border-border-subtle bg-(--bg-surface-hover) px-(--space-6) py-(--space-35) text-base font-extrabold text-text-primary transition-all duration-slow hover:-translate-y-0.5 hover:bg-(--bg-surface-raised) active:scale-95"
               >
-                Перезагрузить страницу
+                {i18n.t("common:errorBoundary.reload")}
               </button>
               <button
                 type="button"
                 onClick={this.handleGoHome}
                 className="rounded-xl border border-border-subtle bg-(--bg-surface-hover) px-(--space-6) py-(--space-35) text-base font-extrabold text-text-primary transition-all duration-slow hover:-translate-y-0.5 hover:bg-(--bg-surface-raised) active:scale-95"
               >
-                На главную
+                {i18n.t("common:errorBoundary.goHome")}
               </button>
             </div>
           </div>

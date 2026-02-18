@@ -1,5 +1,6 @@
 import { PageLayout } from "@/components/PageLayout"
-import EventCard from "@/components/EventCard"
+import { logError } from "@/app/logger"
+import EventCard from "@/components/events/EventCard/EventCard"
 import { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { createEvent } from "@/api/events"
@@ -8,7 +9,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import { useSearchParams } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { EVENTS_PAGE_SIZE, useEventsListQuery, useMyEventsQuery } from "@/api/hooks/events"
-import { Button, Skeleton } from "@/components/ui"
+import { Button } from "@/components/ui"
 import { motion } from "framer-motion"
 import { springSoft } from "@/utils/animations"
 import { cn } from "@/utils/cn"
@@ -19,6 +20,7 @@ import FadeSection from "@/components/FadeSection"
 import { EventCreateDialog } from "@/components/events/EventCreateDialog"
 import { EventSearchBar } from "@/components/events/EventSearchBar"
 import { EventsEmptyState } from "@/components/events/EventsEmptyState"
+import { EventCardSkeleton } from "@/components/events/EventCard/EventCardSkeleton"
 
 type EventTabKey = "active" | "archive" | "my"
 type EventTab = { key: EventTabKey; is_active?: boolean }
@@ -39,13 +41,7 @@ const ANIMATION_DELAYS = {
 
 const DEBOUNCE_MS = 350
 
-const SKELETON_HEIGHTS = {
-  mobile: 180,
-  desktop: 200,
-  title: 28,
-  meta: 20,
-  avatar: 36,
-}
+
 
 const Events = () => {
   const { user } = useAuth()
@@ -165,7 +161,7 @@ const Events = () => {
       void queryClient.invalidateQueries({ queryKey: ["events"] })
       window.scrollTo({ top: 0, behavior: "smooth" })
     } catch (error) {
-      console.error("[Events] Failed to create event:", error)
+      logError("[Events] Failed to create event:", error)
     }
   }
 
@@ -282,20 +278,7 @@ const Events = () => {
         >
           {loading &&
             Array.from({ length: skeletonCount }).map((_, i) => (
-              <div key={`event-skel-${i}`} className="w-full">
-                <div className="w-full space-y-4 rounded-lg border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-5 shadow-glass backdrop-blur-md">
-                  <Skeleton
-                    height={isMobile ? SKELETON_HEIGHTS.mobile : SKELETON_HEIGHTS.desktop}
-                    className="rounded-md"
-                  />
-                  <Skeleton height={SKELETON_HEIGHTS.title} className="rounded-lg" />
-                  <Skeleton height={SKELETON_HEIGHTS.meta} width="75%" className="rounded-lg" />
-                  <div className="flex gap-3 pt-2">
-                    <Skeleton height={SKELETON_HEIGHTS.avatar} width={120} className="rounded-sm" />
-                    <Skeleton height={SKELETON_HEIGHTS.avatar} width={100} className="rounded-sm" />
-                  </div>
-                </div>
-              </div>
+              <EventCardSkeleton key={`event-skel-${i}`} />
             ))}
 
           {!loading &&
