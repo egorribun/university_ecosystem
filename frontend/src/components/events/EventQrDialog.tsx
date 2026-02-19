@@ -14,7 +14,10 @@ export function EventQrDialog({ open, onClose, qr }: EventQrDialogProps) {
   return (
     <Dialog open={open} onClose={onClose} title="" size="sm">
       <div className="space-y-4">
-        <div className="mx-auto w-full max-w-[min(80vw,80vh,400px)] rounded-2xl bg-surface p-6 shadow-glass">
+        <div
+          className="mx-auto w-full rounded-2xl bg-surface p-6 shadow-glass"
+          style={{ maxWidth: "min(80vw, 80vh, 400px)" }}
+        >
           <img
             src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(
               qr

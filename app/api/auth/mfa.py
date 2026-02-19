@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from fastapi import (
@@ -13,7 +13,6 @@ from fastapi import (
     status,
 )
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
     get_audit_service,
@@ -32,7 +31,6 @@ from app.auth.schemas import (
     TotpEnrollmentStartOut,
 )
 from app.models.auth import MfaTotpEnrollment
-from app.models.models import ActiveSession, User
 from app.schemas.schemas import (
     MfaFactorStatusOut,
     MfaTotpEnrollmentOut,
@@ -40,8 +38,13 @@ from app.schemas.schemas import (
     WebAuthnRegistrationOptionsOut,
     WebAuthnRegistrationVerifyIn,
 )
-from app.services.audit_service import AuditService
-from app.services.auth.login_service import LoginService
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.models.models import ActiveSession, User
+    from app.services.audit_service import AuditService
+    from app.services.auth.login_service import LoginService
 
 logger = logging.getLogger("app.auth.mfa")
 
@@ -62,6 +65,12 @@ async def start_totp_enrollment_endpoint(
 ):
     label = payload.label if payload else None
     reuse_existing = bool(payload.reuse_existing) if payload else False
+
+    user_id = user.id
+    from app.models.user_loaders import ensure_mfa_relationships_loaded
+
+    await ensure_mfa_relationships_loaded(db, user)
+
     enrollment, secret, otpauth_url = await mfa.start_totp_enrollment(
         db,
         user=user,
@@ -74,7 +83,7 @@ async def start_totp_enrollment_endpoint(
     audit.log(
         "auth.mfa.totp.enroll_start",
         request,
-        user_id=user.id,
+        user_id=user_id,
         reason="issued",
         extra={"enrollment_id": enrollment.id, "label": label},
     )

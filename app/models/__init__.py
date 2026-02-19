@@ -85,6 +85,6 @@ from app.models.users import (
     UserPreferences as UserPreferences,
 )
 from app.models.users import (
-    UserProfileDetail as UserProfileDetail,
+    UserProfile as UserProfile,
 )
 from app.workers.dead_letter_queue import DeadLetterJob as DeadLetterJob

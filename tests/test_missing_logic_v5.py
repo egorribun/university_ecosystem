@@ -37,7 +37,8 @@ async def test_service_missing_branches():
     repo = AsyncMock()
     audit = MagicMock()
     notifications = AsyncMock()
-    service = UserService(db, repo, audit, notifications)
+    stats_repo = MagicMock()
+    service = UserService(repo, stats_repo, audit, notifications)
 
     user_in = schemas.UserCreate(
         email="test@e.com",

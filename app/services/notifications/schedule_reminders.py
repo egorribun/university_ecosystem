@@ -7,14 +7,12 @@ for upcoming lessons.
 from __future__ import annotations
 
 import datetime as dt
-import uuid
 from collections import defaultdict
 from collections.abc import Mapping
 from datetime import UTC
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import and_, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.localization import SUPPORTED_LOCALES, translate, translate_lesson_type
 from app.models.models import Notification, Schedule, User
@@ -27,6 +25,11 @@ from app.services.notifications.delivery import (
     create_notifications_for_users,
     only_active_users,
 )
+
+if TYPE_CHECKING:
+    import uuid
+
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def build_schedule_reminder_message(

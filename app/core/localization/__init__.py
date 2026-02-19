@@ -15,13 +15,13 @@ from .formatting import (
 )
 
 __all__ = [
-    "SUPPORTED_LOCALES",
     "DEFAULT_LOCALE",
-    "resolve_locale",
-    "normalize_locale",
+    "SUPPORTED_LOCALES",
     "localized_text",
+    "normalize_locale",
+    "resolve_locale",
+    "resolve_weekday_index",
     "translate",
     "translate_lesson_type",
     "weekday_aliases",
-    "resolve_weekday_index",
 ]

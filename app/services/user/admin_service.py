@@ -1,7 +1,6 @@
 import logging
 
 from fastapi import Request
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.security import get_password_hash
 from app.core.exceptions.domain import (
@@ -25,12 +24,10 @@ logger = logging.getLogger(__name__)
 class UserAdminService:
     def __init__(
         self,
-        db: AsyncSession,
         repo: UserRepository,
         audit: AuditService,
         notifications: NotificationService,
     ) -> None:
-        self.db = db
         self.repo = repo
         self.audit = audit
         self.notifications = notifications
@@ -86,11 +83,11 @@ class UserAdminService:
         if reset_requested:
             from app.auth import mfa
 
-            reset_stats = await mfa.reset_user_mfa(self.db, user=db_user)
+            reset_stats = await mfa.reset_user_mfa(self.repo.db, user=db_user)
 
-        await self.db.commit()
-        await self.db.refresh(db_user)
-        await ensure_mfa_relationships_loaded(self.db, db_user)
+        await self.repo.commit()
+        await self.repo.refresh(db_user)
+        await ensure_mfa_relationships_loaded(self.repo.db, db_user)
 
         updated_user = db_user
 
@@ -141,7 +138,7 @@ class UserAdminService:
             "users.admin_delete", request, user_id=user_id, reason="admin_delete"
         )
 
-        await self.db.commit()
+        await self.repo.commit()
         return {"deleted": True, "user_id": user_id}
 
     async def create_user(
@@ -164,7 +161,7 @@ class UserAdminService:
             raise EntityAlreadyExists("User", data.email)
 
         password = data.password
-        hashed = get_password_hash(password)
+        hashed = await get_password_hash(password)
 
         user_data = data.model_dump(
             exclude={"invite_code", "password", "spotify_connected"}
@@ -174,6 +171,6 @@ class UserAdminService:
         user = await self.repo.create(user_data)
 
         self.audit.log("users.create", request, user_id=user.id, reason="admin_create")
-        await ensure_mfa_relationships_loaded(self.db, user)
-        await attach_pending_email(self.db, user)
+        await ensure_mfa_relationships_loaded(self.repo.db, user)
+        await attach_pending_email(self.repo.db, user)
         return user

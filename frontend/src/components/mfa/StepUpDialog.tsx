@@ -134,34 +134,31 @@ export const StepUpDialog = ({
   if (!open) return null
 
   return (
-    <button
-      type="button"
-      className="fixed inset-0 z-navbar flex items-center justify-center p-4 bg-black/(--opacity-medium) border-none w-full h-full text-left outline-none cursor-default"
-      onClick={onClose}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") onClose()
-      }}
-    >
+    <div className="fixed inset-0 z-navbar flex items-center justify-center p-4">
+      <div
+        className="fixed inset-0 bg-black/(--opacity-medium) transition-opacity"
+        aria-hidden="true"
+        onClick={onClose}
+      />
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="step-up-dialog-title"
-        className="bg-card rounded-2xl shadow-2xl w-full max-w-sm"
-        onClick={(e) => e.stopPropagation()}
+        className="bg-card relative z-content w-full max-w-sm rounded-2xl shadow-2xl"
         onKeyDown={(e) => {
           if (e.key === "Escape") onClose()
-          e.stopPropagation()
         }}
         tabIndex={-1}
       >
         <h2
           id="step-up-dialog-title"
-          className="text-xl font-bold text-(--text-primary) px-6 pt-6 pb-2"
+          className="px-6 pb-2 pt-6 text-xl font-bold text-(--text-primary)"
         >
           {title ?? t("mfa.stepUp.title")}
         </h2>
         <div className="px-6 py-4">
-          <div className="flex flex-col gap-6 mt-2">
+          <div className="mt-2 flex flex-col gap-6">
             <p className="text-sm text-(--text-secondary)">
               {description ?? t("mfa.stepUp.description")}
             </p>
@@ -175,16 +172,16 @@ export const StepUpDialog = ({
             ) : null}
           </div>
         </div>
-        <div className="flex gap-2 justify-end px-6 pb-6 pt-2">
+        <div className="flex justify-end gap-2 px-6 pb-6 pt-2">
           <button
             onClick={onClose}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2 text-base font-bold rounded-lg transition-all duration-fast text-(--text-primary) hover:bg-(--text-primary)/(--opacity-subtle)"
+            className="text-base font-bold text-(--text-primary) transition-all duration-fast hover:bg-(--text-primary)/(--opacity-subtle) inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2"
           >
             {t("common:buttons.cancel")}
           </button>
         </div>
       </div>
-    </button>
+    </div>
   )
 }
 

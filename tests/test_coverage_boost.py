@@ -1,5 +1,5 @@
-from datetime import UTC
-from unittest.mock import MagicMock
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
@@ -13,6 +13,14 @@ from app.api.notifications import (
     _parse_datetime,
 )
 from app.models import models
+from app.repositories.active_session_repository import ActiveSessionRepository
+from app.services.session_service import SessionService
+
+
+async def create_token(sub, db):
+    repo = ActiveSessionRepository(db)
+    service = SessionService(db, repo)
+    return await service.create_access_token(sub=sub)
 
 
 @pytest.mark.asyncio
@@ -52,7 +60,6 @@ async def test_mark_read_single_forbidden(
 ):
     user1 = await user_factory()
     user2 = await user_factory()
-    from datetime import datetime
 
     from app.utils.uuid_v7 import generate_uuid7
 
@@ -64,9 +71,7 @@ async def test_mark_read_single_forbidden(
     db_session.add(notif)
     await db_session.commit()
 
-    from app.auth.security import create_access_token
-
-    token2, _ = await create_access_token(sub=str(user2.id), db=db_session)
+    token2, _ = await create_token(sub=str(user2.id), db=db_session)
 
     response = await root_client.patch(
         f"/api/v1/notifications/{notif_id}/read",
@@ -80,7 +85,6 @@ async def test_mark_read_single_already_read(
     root_client: AsyncClient, db_session, user_factory
 ):
     user = await user_factory()
-    from datetime import datetime
 
     from app.utils.uuid_v7 import generate_uuid7
 
@@ -97,9 +101,7 @@ async def test_mark_read_single_already_read(
     db_session.add(notif)
     await db_session.commit()
 
-    from app.auth.security import create_access_token
-
-    token, _ = await create_access_token(sub=str(user.id), db=db_session)
+    token, _ = await create_token(sub=str(user.id), db=db_session)
 
     response = await root_client.patch(
         f"/api/v1/notifications/{notif_id}/read",
@@ -114,9 +116,7 @@ async def test_list_notifications_bad_cursor(
     root_client: AsyncClient, user_factory, db_session
 ):
     user = await user_factory()
-    from app.auth.security import create_access_token
-
-    token, _ = await create_access_token(sub=str(user.id), db=db_session)
+    token, _ = await create_token(sub=str(user.id), db=db_session)
 
     response = await root_client.get(
         "/api/v1/notifications?cursor=invalid",
@@ -132,9 +132,7 @@ async def test_clear_notifications(root_client: AsyncClient, db_session, user_fa
     db_session.add(notif)
     await db_session.commit()
 
-    from app.auth.security import create_access_token
-
-    token, _ = await create_access_token(sub=str(user.id), db=db_session)
+    token, _ = await create_token(sub=str(user.id), db=db_session)
 
     response = await root_client.delete(
         "/api/v1/notifications", headers={"Authorization": f"Bearer {token}"}
@@ -149,20 +147,37 @@ async def test_auth_service_coverage(db_session, user_factory):
     from app.auth.security import get_password_hash
     from app.services.auth_service import AuthService
 
-    user.hashed_password = get_password_hash("Password123!", validate_policy=False)
+    user.hashed_password = await get_password_hash(
+        "Password123!", validate_policy=False
+    )
 
     audit = MagicMock()
-    service = AuthService(db_session, audit)
+    # Mock repos
+    auth_repo = AsyncMock()
+    user_repo = AsyncMock()
+
+    # Configure user_repo.get_by_email to return user for initiate logic
+    user_repo.get_by_email.return_value = user
+    # Configure user_repo.get to return user
+    user_repo.get.return_value = user
+
+    service = AuthService(audit, auth_repo, user_repo)
 
     request = MagicMock()
     request.state.active_session = None
 
     # initiate_password_reset user not found
     bg = MagicMock()
+
+    # Logic: if user not found, get_by_email returns None
+    user_repo.get_by_email.return_value = None
+
     await service.initiate_password_reset("nonexistent@e.com", request, bg)
     audit.log.assert_called()
 
     # perform_password_reset invalid token
+    auth_repo.get_valid_password_reset_token.return_value = None
+
     with pytest.raises(HTTPException):
         await service.perform_password_reset("invalid", "newpass", request)
 
@@ -179,9 +194,7 @@ async def test_check_schedule_no_group(
     root_client: AsyncClient, user_factory, db_session
 ):
     user = await user_factory(group_id=None)
-    from app.auth.security import create_access_token
-
-    token, _ = await create_access_token(sub=str(user.id), db=db_session)
+    token, _ = await create_token(sub=str(user.id), db=db_session)
 
     response = await root_client.post(
         "/api/v1/notifications/check-schedule",

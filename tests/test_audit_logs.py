@@ -1,6 +1,7 @@
 import json
 import logging
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -28,7 +29,7 @@ def _find_event(caplog, logger_name: str, event: str) -> dict:
 async def test_login_success_logs_audit(async_client, user_factory, caplog):
     caplog.set_level(logging.INFO)
     caplog.clear()
-    hashed = get_password_hash("StrongPass123!")
+    hashed = await get_password_hash("StrongPass123!")
     user = await user_factory(hashed_password=hashed, is_active=True)
 
     response = await async_client.post(
@@ -48,7 +49,7 @@ async def test_login_success_logs_audit(async_client, user_factory, caplog):
 async def test_login_failure_logs_audit(async_client, user_factory, caplog):
     caplog.set_level(logging.INFO)
     caplog.clear()
-    hashed = get_password_hash("ValidPass123!")
+    hashed = await get_password_hash("ValidPass123!")
     user = await user_factory(hashed_password=hashed, is_active=True)
 
     response = await async_client.post(
@@ -67,7 +68,7 @@ async def test_login_failure_logs_audit(async_client, user_factory, caplog):
 async def test_logout_revocation_logs_audit(async_client, user_factory, caplog):
     caplog.set_level(logging.INFO)
     caplog.clear()
-    hashed = get_password_hash("LogoutPass123!")
+    hashed = await get_password_hash("LogoutPass123!")
     user = await user_factory(hashed_password=hashed, is_active=True)
 
     login_response = await async_client.post(
@@ -92,7 +93,7 @@ async def test_logout_revocation_logs_audit(async_client, user_factory, caplog):
 async def test_password_reset_initiation_audit(async_client, user_factory, caplog):
     caplog.set_level(logging.INFO)
     caplog.clear()
-    hashed = get_password_hash("ResetInitPass123!")
+    hashed = await get_password_hash("ResetInitPass123!")
     user = await user_factory(hashed_password=hashed, is_active=True)
 
     response = await async_client.post(
@@ -112,7 +113,7 @@ async def test_password_reset_completed_audit(
 ):
     caplog.set_level(logging.INFO)
     caplog.clear()
-    hashed = get_password_hash("ResetCompletePass123!")
+    hashed = await get_password_hash("ResetCompletePass123!")
     user = await user_factory(hashed_password=hashed, is_active=True)
 
     token = "reset-token-value"
@@ -128,10 +129,13 @@ async def test_password_reset_completed_audit(
     )
     await db_session.commit()
 
-    response = await async_client.post(
-        "/password/reset",
-        json={"token": token, "password": "BrandNewPass123!"},
-    )
+    with patch(
+        "app.services.auth_service._validate_password_hibp", new_callable=AsyncMock
+    ):
+        response = await async_client.post(
+            "/password/reset",
+            json={"token": token, "password": "BrandNewPass123!"},
+        )
 
     assert response.status_code == 200
 

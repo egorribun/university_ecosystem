@@ -1,11 +1,12 @@
 import base64
 import logging
-import os
 import uuid
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
+from uuid import uuid4
 
 import httpx
+import jwt
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,7 +18,7 @@ from app.api.validation import (
     raise_unauthorized,
     raise_validation_error,
 )
-from app.auth.security import AccessTokenConfig, create_access_token, decode_token
+from app.auth.security import decode_token
 from app.core.circuit_breaker import (
     CircuitBreaker,
     CircuitBreakerConfig,
@@ -43,6 +44,28 @@ _spotify_circuit_breaker = CircuitBreaker(
         excluded_exceptions=(HTTPException,),  # Don't count app-level errors
     ),
 )
+
+
+def _mint_state_token(subject: str, *, expires_minutes: int) -> str:
+    """Mint a short-lived pure-JWT state token for the Spotify OAuth round-trip.
+
+    This token is never stored or revoked — it only carries the user ID
+    through the Spotify redirect callback so we can identify the user.
+    """
+    now = datetime.now(UTC)
+    payload = {
+        "sub": subject,
+        "iat": now,
+        "nbf": now,
+        "exp": now + timedelta(minutes=expires_minutes),
+        "jti": str(uuid4()),
+    }
+    return jwt.encode(
+        payload,
+        settings.jwt_signing_active_secret,
+        algorithm=settings.algorithm,
+        headers={"kid": settings.jwt_signing_active_kid},
+    )
 
 
 def _now_utc() -> datetime:
@@ -221,16 +244,7 @@ async def _ensure_access_token(
 
 @router.get("/auth-url", response_model=SpotifyAuthURL)
 async def spotify_auth_url(user: User = Depends(get_current_user)):
-    state_result = await create_access_token(
-        str(user.id), config=AccessTokenConfig(expires_delta=10)
-    )
-    state_token = state_result[0] if isinstance(state_result, tuple) else state_result
-    logger.error(
-        f"DEBUG: spotify_client_id from settings: '{settings.spotify_client_id}'"
-    )
-    logger.error(
-        f"DEBUG: env var SPOTIFY_CLIENT_ID: '{os.environ.get('SPOTIFY_CLIENT_ID')}'"
-    )
+    state_token = _mint_state_token(str(user.id), expires_minutes=10)
     params = {
         "client_id": settings.spotify_client_id,
         "response_type": "code",
@@ -240,7 +254,6 @@ async def spotify_auth_url(user: User = Depends(get_current_user)):
         "show_dialog": "false",
     }
     url = "https://accounts.spotify.com/authorize?" + urlencode(params)
-    logger.error(f"DEBUG: Generated URL: {url}")
     return {"url": url}
 
 

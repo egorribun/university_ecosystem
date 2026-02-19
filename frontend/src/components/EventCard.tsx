@@ -1,13 +1,13 @@
 import { memo, lazy, Suspense, type FC } from "react"
 import type { Event } from "@/types/Event"
 
-import { motion } from "framer-motion"
+
 import { cn } from "@/utils/cn"
 import { SpotlightOverlay } from "@/components/ui/Spotlight"
 import { motion as motionTokens } from "@/theme/tokens"
 import { EASING } from "@/utils/motion"
 
-import { Snackbar, ContentCard, ConfirmDialog } from "@/components/ui"
+import { Snackbar, ContentCard, ConfirmDialog, CardActionArea } from "@/components/ui"
 import { useEventCardLogic } from "@/hooks/useEventCardLogic"
 
 // Sub-components
@@ -78,8 +78,7 @@ const EventCardComponent: FC<EventCardProps> = (props) => {
   } = useEventCardLogic(props)
 
   return (
-    <motion.div
-      layout
+    <CardActionArea
       initial={{ opacity: 0, y: 16, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{
@@ -87,17 +86,8 @@ const EventCardComponent: FC<EventCardProps> = (props) => {
         delay: (animationIndex % 10) * motionTokens.staggerDelay,
         ease: EASING.premium,
       }}
-      whileHover={{
-        y: -4,
-        transition: { duration: motionTokens.durationFast, ease: EASING.premium },
-      }}
-      className="w-full outline-none"
-      onKeyDown={(e) => {
-        if (!editOpen && (e.key === "Enter" || e.key === " ")) {
-          e.preventDefault()
-          navigateToDetails()
-        }
-      }}
+      onClick={onCardClick}
+      className="h-full"
     >
       <ContentCard
         hoverable={!editOpen}
@@ -105,7 +95,6 @@ const EventCardComponent: FC<EventCardProps> = (props) => {
           "card-glass group w-full transform-gpu will-change-transform rounded-fluid-lg hover:shadow-premium-lift",
           editOpen ? "cursor-default" : "card-interactive"
         )}
-        onClick={onCardClick}
         onMouseMove={spotlight.onMouseMove}
       >
         <SpotlightOverlay
@@ -199,7 +188,7 @@ const EventCardComponent: FC<EventCardProps> = (props) => {
 
         <Snackbar open={!!snackbar} message={snackbar} onClose={() => setSnackbar("")} />
       </ContentCard>
-    </motion.div>
+    </CardActionArea>
   )
 }
 

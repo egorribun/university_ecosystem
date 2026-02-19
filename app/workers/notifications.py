@@ -5,8 +5,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
-from collections.abc import Awaitable, Callable
 from contextlib import suppress
+from typing import TYPE_CHECKING
 
 from app.core.config import settings
 from app.core.database import async_session, wait_db
@@ -19,6 +19,9 @@ from app.core.observability import (
 )
 from app.services import webpush
 from app.services.notifications import generate_schedule_reminders
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 

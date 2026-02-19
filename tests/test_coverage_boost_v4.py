@@ -3,9 +3,9 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from httpx import AsyncClient
 
-from app.auth.security import create_access_token
 from app.models import models
 from app.utils.uuid_v7 import generate_uuid7
+from tests.fixtures.auth.auth_fixtures import create_access_token
 
 
 @pytest.mark.asyncio

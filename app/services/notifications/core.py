@@ -9,20 +9,23 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import re
-import uuid
-from collections.abc import Mapping, Sequence
 from datetime import UTC
 from html import unescape
 from textwrap import shorten
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import async_session as _async_session
 from app.core.localization import SUPPORTED_LOCALES, translate
 from app.models.models import User
+
+if TYPE_CHECKING:
+    import uuid
+    from collections.abc import Mapping, Sequence
+
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 

@@ -7,9 +7,12 @@ sending notifications.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING
 
 from app.services.notifications.core import async_session
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 
 async def start_notifications_scheduler(

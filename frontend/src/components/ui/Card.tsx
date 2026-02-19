@@ -13,7 +13,7 @@ const cardVariants = cva(
         lg: "p-6",
       },
       hoverable: {
-        true: "hover:-translate-y-1.5 hover:scale-[1.015] hover:shadow-premium-lift focus-ring-premium motion-reduce:hover:translate-y-0 motion-reduce:hover:scale-100 motion-reduce:transition-shadow",
+        true: "hover:-translate-y-1.5 hover:scale-hover-lift hover:shadow-premium-lift focus-ring-premium motion-reduce:hover:translate-y-0 motion-reduce:hover:scale-100 motion-reduce:transition-shadow",
         false: "",
       },
     },

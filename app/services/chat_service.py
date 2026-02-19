@@ -1,9 +1,14 @@
+from __future__ import annotations
+
 import asyncio
 import uuid
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from fastapi import UploadFile
-from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.validation import (
     ensure_exists,
@@ -35,7 +40,6 @@ from app.utils.files import delete_static_file, save_attachment
 
 class ChatService:
     def __init__(self, session: AsyncSession):
-        self.session = session
         self.repository = ChatRepository(session)
 
     async def _cleanup_orphaned_files(self, urls: list[str]) -> None:
@@ -141,7 +145,9 @@ class ChatService:
                 )
             )
 
-        presence_map = await build_presence_map(participant_ids, session=self.session)
+        presence_map = await build_presence_map(
+            participant_ids, session=self.repository.session
+        )
 
         # Enrich with presence
         enriched_chats = []
@@ -203,7 +209,7 @@ class ChatService:
         if participant_id == user.id:
             raise_validation_error("errors.chat.self_chat", locale)
 
-        participant = await self.session.get(User, participant_id)
+        participant = await self.repository.get_user(participant_id)
         ensure_exists(participant, "users", locale)
 
         existing_chat = await self.repository.find_existing_dm(user.id, participant_id)
@@ -221,8 +227,8 @@ class ChatService:
             )
 
         new_chat = await self.repository.create_chat([user, participant])
-        await self.session.commit()
-        await self.session.refresh(new_chat)
+        await self.repository.commit()
+        await self.repository.refresh(new_chat)
 
         # Invalidate caches for participants and the new chat
         participant_ids = [p.id for p in new_chat.participants]
@@ -230,7 +236,7 @@ class ChatService:
         await invalidate_presence_audience_cache(*participant_ids)
 
         presence_map = await build_presence_map(
-            [p.id for p in new_chat.participants], session=self.session
+            [p.id for p in new_chat.participants], session=self.repository.session
         )
 
         return ChatResponse(
@@ -271,7 +277,7 @@ class ChatService:
         last_message = await self.repository.get_last_message(chat_id)
 
         presence_map = await build_presence_map(
-            [p.id for p in chat.participants], session=self.session
+            [p.id for p in chat.participants], session=self.repository.session
         )
         participant_status = {
             p.id: presence_map.get(p.id, PresenceStatus()) for p in chat.participants
@@ -330,7 +336,7 @@ class ChatService:
         messages = list(reversed(messages))
 
         presence_map = await build_presence_map(
-            {msg.sender_id for msg in messages}, session=self.session
+            {msg.sender_id for msg in messages}, session=self.repository.session
         )
 
         response_items = [
@@ -410,27 +416,27 @@ class ChatService:
                     filename=meta["filename"],
                     size=meta["size"],
                 )
-                self.session.add(attachment)
+                self.repository.add(attachment)
 
             await self.repository.update_timestamp(chat, datetime.now(UTC))
-            await self.session.commit()
+            await self.repository.commit()
         except Exception:
-            await self.session.rollback()
+            await self.repository.rollback()
             await self._cleanup_orphaned_files(saved_urls)
             raise
 
-        await self.session.refresh(message)
-        await self.session.refresh(message, ["sender", "attachments"])
+        await self.repository.refresh(message)
+        await self.repository.refresh(message)
 
         # Notifications
         await notify_new_message(message, exclude_user_id=user.id)
 
         other_participants = [p.id for p in chat.participants if p.id != user.id]
         if other_participants:
-            sender_name = user.full_name or "User"
+            sender_name = (user.profile and user.profile.full_name) or "User"
             body_preview = content[:100] + "..." if len(content) > 100 else content
             await create_notifications_for_users(
-                self.session,
+                self.repository.session,
                 title=sender_name,
                 body=body_preview,
                 type="chat.message",
@@ -446,7 +452,7 @@ class ChatService:
             )
 
         presence_map = await build_presence_map(
-            [message.sender_id], session=self.session
+            [message.sender_id], session=self.repository.session
         )
 
         return MessageResponse(
@@ -477,7 +483,7 @@ class ChatService:
             raise_forbidden(locale, "errors.chat.not_participant")
 
         await self.repository.mark_messages_read(chat_id, user.id)
-        await self.session.commit()
+        await self.repository.commit()
 
     async def clear_history(
         self, chat_id: uuid.UUID, user: User, locale: str
@@ -511,9 +517,9 @@ class ChatService:
             # chat.messages is available.
             await self.repository.delete_messages(list(chat.messages))
             await self.repository.update_timestamp(chat, datetime.now(UTC))
-            await self.session.commit()
+            await self.repository.commit()
         except Exception:
-            await self.session.rollback()
+            await self.repository.rollback()
             raise
 
         await self._cleanup_orphaned_files(attachment_urls)
@@ -554,13 +560,13 @@ class ChatService:
 
         try:
             await self.repository.delete_chat(chat)
-            await self.session.commit()
+            await self.repository.commit()
 
             # Invalidate caches
             await invalidate_chat_participants_cache(chat_id)
             await invalidate_presence_audience_cache(*participant_ids)
         except Exception:
-            await self.session.rollback()
+            await self.repository.rollback()
             raise
 
         await self._cleanup_orphaned_files(attachment_urls)

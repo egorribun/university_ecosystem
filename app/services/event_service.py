@@ -1,12 +1,11 @@
+import contextlib
 import logging
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import selectinload
 
 from app.core.events import EventCreated, EventUpdated
 from app.core.exceptions.domain import EntityNotFound
@@ -205,8 +204,8 @@ class EventService:
         obj_data["created_by"] = user_id
         event = await self.repo.create(obj_data)
         event.record_event(EventCreated(event_id_entity=event.id, title=event.title))
-        await self.repo.db.commit()
-        await self.repo.db.refresh(event)
+        await self.repo.commit()
+        await self.repo.refresh(event)
         return event
 
     async def update_event(
@@ -237,8 +236,8 @@ class EventService:
                 )
             )
 
-        await self.repo.db.commit()
-        await self.repo.db.refresh(updated_event)
+        await self.repo.commit()
+        await self.repo.refresh(updated_event)
         return updated_event
 
     async def delete_event(self, event_id: uuid.UUID | int) -> bool:
@@ -246,36 +245,24 @@ class EventService:
         if not event:
             return False
 
-        # Get file URLs before deletion
-        result = await self.repo.db.execute(
-            select(models.EventFile.file_url).where(
-                models.EventFile.event_id == event_id
-            )
-        )
-        file_urls = [row[0] for row in result.all() if row[0]]
+        # Get file URLs via repo before deletion
+        file_urls = await self.repo.get_event_file_urls(event_id)
         image_url = event.image_url
 
-        from sqlalchemy import delete
-
-        await self.repo.db.execute(
-            delete(models.EventFile).where(models.EventFile.event_id == event_id)
-        )
+        # Delete files records via repo
+        await self.repo.delete_event_files(event_id)
         await self.repo.delete(event_id)
-        await self.repo.db.commit()
+        await self.repo.commit()
 
         from app.utils.files import delete_static_file
 
         if image_url:
-            try:
+            with contextlib.suppress(Exception):
                 await delete_static_file(image_url)
-            except Exception:
-                pass
 
         for url in file_urls:
-            try:
+            with contextlib.suppress(Exception):
                 await delete_static_file(url)
-            except Exception:
-                pass
 
         return True
 
@@ -284,15 +271,8 @@ class EventService:
     ) -> models.EventAttendance:
         cache_kinds = ("attendance", "participation")
 
-        # Check existing using repo/session directly for now
-        # as repo might not have this specific method
-        # Ideally move this query to repo, but keeping logic here for migration speed
-        stmt = (
-            select(models.EventAttendance)
-            .where(models.EventAttendance.event_id == data.event_id)
-            .where(models.EventAttendance.user_id == user_id)
-        )
-        exist = (await self.repo.db.execute(stmt)).scalar_one_or_none()
+        # Use repository to find existing attendance
+        exist = await self.repo.get_attendance(data.event_id, user_id)
 
         if exist:
             updated = False
@@ -302,9 +282,8 @@ class EventService:
             if attendance_tokens.ensure_secret_material(exist):
                 updated = True
             if updated:
-                self.repo.db.add(exist)
-                await self.repo.db.commit()
-                await self.repo.db.refresh(exist)
+                await self.repo.commit()
+                await self.repo.refresh(exist)
 
             # Helper logic to set token attribute for response
             exist.qr_token = attendance_tokens.issue_token(exist)
@@ -315,20 +294,19 @@ class EventService:
             return exist
 
         secret = attendance_tokens.generate_secret()
-        record = models.EventAttendance(
-            user_id=user_id,
-            event_id=data.event_id,
-            qr_secret=secret,
-            qr_hmac=attendance_tokens.compute_secret_hmac(secret),
-            registered_at=datetime.now(UTC),
-        )
-        self.repo.db.add(record)
         try:
-            await self.repo.db.commit()
+            record = await self.repo.create_attendance(
+                user_id=user_id,
+                event_id=data.event_id,
+                qr_secret=secret,
+                qr_hmac=attendance_tokens.compute_secret_hmac(secret),
+                registered_at=datetime.now(UTC),
+            )
+            await self.repo.commit()
         except IntegrityError:
-            await self.repo.db.rollback()
+            await self.repo.rollback()
             # Race condition retry
-            exist = (await self.repo.db.execute(stmt)).scalar_one_or_none()
+            exist = await self.repo.get_attendance(data.event_id, user_id)
             if not exist:
                 event = await self.repo.get(data.event_id)
                 if not event:
@@ -343,9 +321,8 @@ class EventService:
             if attendance_tokens.ensure_secret_material(exist):
                 updated = True
             if updated:
-                self.repo.db.add(exist)
-                await self.repo.db.commit()
-                await self.repo.db.refresh(exist)
+                await self.repo.commit()
+                await self.repo.refresh(exist)
 
             exist.qr_token = attendance_tokens.issue_token(exist)
             await stats_cache.invalidate_user_stats_cache(
@@ -354,7 +331,7 @@ class EventService:
             )
             return exist
 
-        await self.repo.db.refresh(record)
+        await self.repo.refresh(record)
         record.qr_token = attendance_tokens.issue_token(record)
         await stats_cache.invalidate_user_stats_cache(
             user_ids=user_id,
@@ -365,36 +342,19 @@ class EventService:
     async def unregister_attendance(
         self, data: schemas.EventAttendanceCreate, user_id: uuid.UUID | int
     ) -> dict[str, bool]:
-        stmt = (
-            select(models.EventAttendance)
-            .where(models.EventAttendance.event_id == data.event_id)
-            .where(models.EventAttendance.user_id == user_id)
-        )
-        record = (await self.repo.db.execute(stmt)).scalar_one_or_none()
-        if not record:
-            return {"ok": False}
-
-        await self.repo.db.delete(record)
-        await self.repo.db.commit()
-        await stats_cache.invalidate_user_stats_cache(
-            user_ids=user_id,
-            kinds=("attendance", "participation"),
-        )
-        return {"ok": True}
+        ok = await self.repo.delete_attendance(data.event_id, user_id)
+        if ok:
+            await self.repo.commit()
+            await stats_cache.invalidate_user_stats_cache(
+                user_ids=user_id,
+                kinds=("attendance", "participation"),
+            )
+        return {"ok": ok}
 
     async def get_my_events(
         self, user_id: uuid.UUID | int, *, locale: str | None = None
     ) -> list[schemas.EventOut]:
-        # Logic from get_my_events in crud
-        stmt = (
-            select(models.Event)
-            .join(models.EventAttendance)
-            .where(models.EventAttendance.user_id == user_id)
-            .options(
-                selectinload(models.Event.files), selectinload(models.Event.attendance)
-            )
-        )
-        events = (await self.repo.db.execute(stmt)).scalars().all()
+        events = await self.repo.list_user_attended_events(user_id)
 
         result: list[schemas.EventOut] = []
         for event in events:
@@ -422,33 +382,8 @@ class EventService:
     async def get_event_detail(
         self, event_id: Any, user_id: Any, *, locale: str | None = None
     ) -> schemas.EventOut | None:
-        """Fetch event details with optimized loading (JOIN instead of N+1)."""
-        from sqlalchemy import and_, func
-
-        stmt = (
-            select(
-                models.Event,
-                (
-                    select(func.count())
-                    .select_from(models.EventAttendance)
-                    .where(models.EventAttendance.event_id == event_id)
-                    .scalar_subquery()
-                ).label("participant_count"),
-                models.EventAttendance,
-            )
-            .outerjoin(
-                models.EventAttendance,
-                and_(
-                    models.EventAttendance.event_id == event_id,
-                    models.EventAttendance.user_id == user_id,
-                ),
-            )
-            .where(models.Event.id == event_id)
-            .options(selectinload(models.Event.files))
-        )
-
-        result = await self.repo.db.execute(stmt)
-        row = result.first()
+        """Fetch event details with optimized loading."""
+        row = await self.repo.get_event_with_details(event_id, user_id)
         if not row:
             return None
 
@@ -458,9 +393,9 @@ class EventService:
         if attendance:
             # Ensure QR secret material exists before issuing token
             if attendance_tokens.ensure_secret_material(attendance):
-                self.repo.db.add(attendance)
-                await self.repo.db.commit()
-                await self.repo.db.refresh(attendance)
+                self.repo.add(attendance)
+                await self.repo.commit()
+                await self.repo.refresh(attendance)
             qr_token = attendance_tokens.issue_token(attendance)
 
         return self.serialize_event(

@@ -52,13 +52,19 @@ def login_service(
     mock_lockout_service,
     mock_audit_service,
 ):
-    return LoginService(
+    ls = LoginService(
         db=mock_db,
         user_service=mock_user_service,
         session_service=mock_session_service,
         lockout_service=mock_lockout_service,
         audit=mock_audit_service,
     )
+    # Mock result chaining globally for this service's repo
+    ls.repo.db.execute.return_value = MagicMock()
+    ls.repo.db.execute.return_value.scalars.return_value = MagicMock()
+    ls.repo.db.execute.return_value.scalars.return_value.first.return_value = None
+    ls.repo.db.execute.return_value.scalars.return_value.all.return_value = []
+    return ls
 
 
 @pytest.fixture
@@ -94,6 +100,7 @@ async def test_perform_login_success_no_mfa(
     # Mock password verification
     with patch(
         "app.services.auth.login_service.verify_and_update_password",
+        new_callable=AsyncMock,
         return_value=(True, None),
     ):
         # Mock mfa check
@@ -177,6 +184,7 @@ async def test_perform_login_invalid_password(
 
     with patch(
         "app.services.auth.login_service.verify_and_update_password",
+        new_callable=AsyncMock,
         return_value=(False, None),
     ):
         # Should raise 401
@@ -206,6 +214,7 @@ async def test_perform_login_mfa_required_no_factors(
 
     with patch(
         "app.services.auth.login_service.verify_and_update_password",
+        new_callable=AsyncMock,
         return_value=(True, None),
     ):
         # Mock no active factors found during resolve
@@ -245,6 +254,7 @@ async def test_perform_login_mfa_required_success(
 
     with patch(
         "app.services.auth.login_service.verify_and_update_password",
+        new_callable=AsyncMock,
         return_value=(True, None),
     ):
         # Mock mfa setup
@@ -381,20 +391,15 @@ async def test_resolve_mfa_capabilities_legacy_totp(login_service, mock_db):
     user.mfa_default_method = "totp"  # Trigger legacy check
 
     # Mock DB execution
-    # 1. Active TOTP -> None
-    # 2. Legacy TOTP -> Found
-    # 3. WebAuthn -> None
-
-    mock_active = MagicMock()
-    mock_active.scalars.return_value.first.return_value = None
-
-    mock_legacy = MagicMock()
-    mock_legacy.scalars.return_value.first.return_value = uuid4()
+    # 1. TOTP (unified search) -> Found (legacy or active)
+    # 2. WebAuthn -> None
+    mock_totp = MagicMock()
+    mock_totp.scalars.return_value.first.return_value = uuid4()
 
     mock_webauthn = MagicMock()
     mock_webauthn.scalars.return_value.first.return_value = None
 
-    mock_db.execute.side_effect = [mock_active, mock_legacy, mock_webauthn]
+    mock_db.execute.side_effect = [mock_totp, mock_webauthn]
 
     caps = await login_service._resolve_mfa_capabilities(user)
 

@@ -54,7 +54,7 @@ async def add_schedule(
     request: Request,
     service: ScheduleService = Depends(get_schedule_service),
     user: models.User = Depends(get_current_user),
-):
+) -> schemas.ScheduleOut:
     locale = resolve_locale(request=request, user=user)
     require_teacher_or_admin(user, locale)
 
@@ -79,7 +79,7 @@ async def get_schedule(
     response: Response,
     if_none_match: str | None = Header(default=None),
     handler: GetScheduleHandler = Depends(get_read_schedule_handler),
-):
+) -> list[schemas.ScheduleOut] | Response:
     locale = resolve_locale(request=request)
     _get_vary_helper()(response, "Accept-Language")
     response.headers["Content-Language"] = locale
@@ -110,7 +110,7 @@ async def update_schedule(
     request: Request,
     service: ScheduleService = Depends(get_schedule_service),
     user: models.User = Depends(get_current_user),
-):
+) -> schemas.ScheduleOut:
     locale = resolve_locale(request=request, user=user)
     require_teacher_or_admin(user, locale)
 
@@ -138,7 +138,7 @@ async def delete_schedule(
     request: Request,
     service: ScheduleService = Depends(get_schedule_service),
     user: models.User = Depends(get_current_user),
-):
+) -> dict[str, bool]:
     locale = resolve_locale(request=request, user=user)
     require_teacher_or_admin(user, locale)
 

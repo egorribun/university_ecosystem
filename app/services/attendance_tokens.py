@@ -190,11 +190,11 @@ def verify_token(
 
 
 __all__ = [
+    "TOKEN_PURPOSE",
     "AttendanceTokenError",
     "AttendanceTokenExpired",
     "AttendanceTokenInvalid",
     "AttendanceTokenPayload",
-    "TOKEN_PURPOSE",
     "compute_secret_hmac",
     "ensure_secret_material",
     "generate_secret",

@@ -1,3 +1,4 @@
+import contextlib
 import uuid
 
 from app.core.localization import localized_text, normalize_locale
@@ -117,8 +118,6 @@ class StoryService:
         await self.repo.db.commit()
 
         if cover_url:
-            try:
+            with contextlib.suppress(Exception):
                 await delete_static_file(cover_url)
-            except Exception:
-                pass
         return True

@@ -68,7 +68,7 @@ async def test_totp_enrollment_pending_state(async_client, user_factory, db_sess
     password = "PendingTotp123!"
     user = await user_factory(
         email="mfa-pending@example.com",
-        hashed_password=get_password_hash(password),
+        hashed_password=await get_password_hash(password),
     )
 
     token = await _login_for_token(async_client, user.email, password)
@@ -108,7 +108,7 @@ async def test_totp_start_requires_reuse(async_client, user_factory):
     password = "TotpReuseRequired123!"
     user = await user_factory(
         email="mfa-totp-reuse-required@example.com",
-        hashed_password=get_password_hash(password),
+        hashed_password=await get_password_hash(password),
     )
 
     token = await _login_for_token(async_client, user.email, password)
@@ -129,7 +129,7 @@ async def test_totp_start_reuse_returns_same_secret(async_client, user_factory):
     password = "TotpReuseSameSecret123!"
     user = await user_factory(
         email="mfa-totp-reuse@example.com",
-        hashed_password=get_password_hash(password),
+        hashed_password=await get_password_hash(password),
     )
 
     token = await _login_for_token(async_client, user.email, password)
@@ -158,7 +158,7 @@ async def test_pending_totp_enrollment_can_be_cancelled(
     password = "TotpCancelPending123!"
     user = await user_factory(
         email="mfa-totp-cancel-pending@example.com",
-        hashed_password=get_password_hash(password),
+        hashed_password=await get_password_hash(password),
     )
 
     token = await _login_for_token(async_client, user.email, password)
@@ -188,7 +188,7 @@ async def test_pending_totp_enrollment_cancel_rejected_for_confirmed(
     password = "TotpCancelConfirmed123!"
     user = await user_factory(
         email="mfa-totp-cancel-confirmed@example.com",
-        hashed_password=get_password_hash(password),
+        hashed_password=await get_password_hash(password),
     )
 
     token = await _login_for_token(async_client, user.email, password)
@@ -222,7 +222,7 @@ async def test_totp_start_rejects_when_active_factor_exists(
     password = "TotpStepUpStart123!"
     user = await user_factory(
         email="mfa-stepup-start@example.com",
-        hashed_password=get_password_hash(password),
+        hashed_password=await get_password_hash(password),
     )
 
     token = await _login_for_token(async_client, user.email, password)
@@ -271,7 +271,7 @@ async def test_totp_enrollment_and_verification_flow(
     password = "TotpFlowPass123!"
     user = await user_factory(
         email="mfa-totp@example.com",
-        hashed_password=get_password_hash(password),
+        hashed_password=await get_password_hash(password),
     )
 
     secret = await _enroll_totp(async_client, user, password, db_session)
@@ -344,7 +344,7 @@ async def test_totp_login_requires_mfa_even_when_toggle_disabled(
     password = "TotpOptIn123!"
     user = await user_factory(
         email="mfa-toggle@example.com",
-        hashed_password=get_password_hash(password),
+        hashed_password=await get_password_hash(password),
     )
 
     await _enroll_totp(async_client, user, password, db_session)
@@ -370,7 +370,7 @@ async def test_totp_login_handles_legacy_records_without_confirmed_at(
     password = "TotpLegacy123!"
     user = await user_factory(
         email="mfa-legacy@example.com",
-        hashed_password=get_password_hash(password),
+        hashed_password=await get_password_hash(password),
     )
 
     secret = await _enroll_totp(async_client, user, password, db_session)
@@ -414,7 +414,7 @@ async def test_totp_challenge_expiry_blocks_verification(
     password = "TotpExpiryPass123!"
     user = await user_factory(
         email="mfa-expiry@example.com",
-        hashed_password=get_password_hash(password),
+        hashed_password=await get_password_hash(password),
     )
 
     secret = await _enroll_totp(async_client, user, password, db_session)
@@ -458,7 +458,7 @@ async def test_totp_attempt_limit_blocks_challenge(
     password = "TotpLockPass123!"
     user = await user_factory(
         email="mfa-totp-lock@example.com",
-        hashed_password=get_password_hash(password),
+        hashed_password=await get_password_hash(password),
     )
 
     secret = await _enroll_totp(async_client, user, password, db_session)
@@ -519,7 +519,7 @@ async def test_login_fails_when_mfa_required_but_no_totp(async_client, user_fact
     password = "MissingTotp123!"
     user = await user_factory(
         email="missing-totp@example.com",
-        hashed_password=get_password_hash(password),
+        hashed_password=await get_password_hash(password),
         mfa_required=True,
     )
 
@@ -541,7 +541,7 @@ async def test_step_up_request_without_enrollment_returns_error(
     password = "StepUpNone123!"
     user = await user_factory(
         email="stepup-missing@example.com",
-        hashed_password=get_password_hash(password),
+        hashed_password=await get_password_hash(password),
     )
 
     token = await _login_for_token(async_client, user.email, password)
@@ -562,7 +562,7 @@ async def test_disabling_last_factor_clears_mfa_requirement(
     password = "LastFactorLoop123!"
     user = await user_factory(
         email="mfa-last-factor@example.com",
-        hashed_password=get_password_hash(password),
+        hashed_password=await get_password_hash(password),
     )
 
     secret = await _enroll_totp(async_client, user, password, db_session)
@@ -631,7 +631,7 @@ async def test_admin_reset_endpoint_clears_mfa_state(
     admin_password = "AdminResetPass123!"
     admin = await user_factory(
         email="admin-reset@example.com",
-        hashed_password=get_password_hash(admin_password),
+        hashed_password=await get_password_hash(admin_password),
         role="admin",
     )
 
@@ -801,7 +801,8 @@ async def test_mfa_verification_rejects_revoked_session(
 ):
     password = "RevokedSession123!"
     user = await user_factory(
-        email="mfa-revoked@example.com", hashed_password=get_password_hash(password)
+        email="mfa-revoked@example.com",
+        hashed_password=await get_password_hash(password),
     )
 
     enrollment = models.MfaTotpEnrollment(
@@ -844,7 +845,8 @@ async def test_mfa_verification_rejects_revoked_session(
 async def test_totp_reenrollment_after_reset(async_client, user_factory, db_session):
     password = "ReenrollMfa123!"
     user = await user_factory(
-        email="mfa-reenroll@example.com", hashed_password=get_password_hash(password)
+        email="mfa-reenroll@example.com",
+        hashed_password=await get_password_hash(password),
     )
 
     await _enroll_totp(async_client, user, password, db_session)

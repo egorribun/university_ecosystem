@@ -96,7 +96,7 @@ async def test_totp_enrollment_flow(db_session, user_factory):
     assert exc.value.status_code == 400
 
     # Reuse existing
-    enrollment2, secret2, uri2 = await mfa.start_totp_enrollment(
+    enrollment2, _secret2, _uri2 = await mfa.start_totp_enrollment(
         db_session, user=user, reuse_existing=True
     )
     assert enrollment2.id == enrollment.id
@@ -173,7 +173,7 @@ async def test_consume_challenge_totp(db_session, user_factory):
 
 
 async def test_trusted_device_flow(db_session, test_user):
-    token, expires_at = await mfa.create_trusted_device_token(
+    token, _expires_at = await mfa.create_trusted_device_token(
         db_session, user=test_user
     )
     assert token is not None
@@ -374,7 +374,7 @@ async def test_verify_totp_for_user_edge_cases(db_session, user_factory):
     assert res_enr.id == enrollment.id
 
     # Invalid code
-    with pytest.raises(Exception):  # raise_validation_error raises HTTPException
+    with pytest.raises(HTTPException):  # raise_validation_error raises HTTPException
         await mfa.verify_totp_for_user(db_session, user=user, code="000000")
 
     # With challenge token
@@ -393,7 +393,7 @@ async def test_verify_totp_for_user_edge_cases(db_session, user_factory):
         db_session, user_id=user.id, challenge_type="wrong"
     )
     await db_session.commit()
-    with pytest.raises(Exception):
+    with pytest.raises(HTTPException):
         await mfa.verify_totp_for_user(
             db_session, user=user, code=totp.now(), challenge_token=bad_challenge.token
         )
@@ -419,7 +419,7 @@ async def test_verify_totp_for_user_edge_cases(db_session, user_factory):
         session_id=sid1,
     )
     await db_session.commit()
-    with pytest.raises(Exception):
+    with pytest.raises(HTTPException):
         await mfa.verify_totp_for_user(
             db_session,
             user=user,

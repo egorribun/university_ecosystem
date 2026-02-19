@@ -7,15 +7,18 @@ import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from fastapi import Request
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse, Response
 
 from app.core.config import settings
 from app.core.localization import resolve_locale, translate
+
+if TYPE_CHECKING:
+    from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 _TIME_UNITS = {
     "s": 1,
@@ -53,10 +56,7 @@ def parse_rate_limit(
         return fallback
 
     normalized = normalized.replace("per", "/")
-    if "/" in normalized:
-        parts = normalized.split("/", 1)
-    else:
-        parts = normalized.split()
+    parts = normalized.split("/", 1) if "/" in normalized else normalized.split()
 
     if len(parts) != 2:
         return fallback
@@ -133,10 +133,7 @@ _cleanup_running: bool = False
 
 def set_rate_limit_client_factory(factory: _RedisFactory | None) -> None:
     global _redis_factory
-    if factory is None:
-        _redis_factory = _create_redis_pool
-    else:
-        _redis_factory = factory
+    _redis_factory = _create_redis_pool if factory is None else factory
 
 
 @dataclass(frozen=True, slots=True)
@@ -260,10 +257,18 @@ def get_default_endpoint_limits() -> tuple[EndpointRateLimit, ...]:
 DEFAULT_ENDPOINT_LIMITS: tuple[EndpointRateLimit, ...] = get_default_endpoint_limits()
 
 
-class RateLimitMiddleware(BaseHTTPMiddleware):
+class RateLimitMiddleware:
+    """Pure ASGI rate-limiting middleware.
+
+    Replaces BaseHTTPMiddleware to avoid full response body buffering and
+    to preserve streaming responses (SSE, chunked transfer encoding).
+    Rate-limit decisions are made on request metadata only (path, headers,
+    client IP) — no body is read or buffered.
+    """
+
     def __init__(
         self,
-        app,
+        app: ASGIApp,
         *,
         redis_url: str | None = None,
         limit: int = 120,
@@ -273,7 +278,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         storage_backend: str = "redis",
         endpoint_limits: tuple[EndpointRateLimit, ...] | None = None,
     ) -> None:
-        super().__init__(app)
+        self._app = app
         backend = (storage_backend or "redis").strip().lower()
         if backend not in {"memory", "redis"}:
             raise ValueError("storage_backend must be either 'memory' or 'redis'")
@@ -288,38 +293,36 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._endpoint_limits = endpoint_limits or DEFAULT_ENDPOINT_LIMITS
         self._namespace = f"middleware:{uuid.uuid4().hex}"
 
-    def _get_limits_for_path(self, path: str) -> tuple[int, int, str]:
-        for endpoint_limit in self._endpoint_limits:
-            if path.startswith(endpoint_limit.pattern):
-                return (
-                    endpoint_limit.limit,
-                    endpoint_limit.window_seconds,
-                    endpoint_limit.pattern,
-                )
-        return self._limit, self._window_seconds, "default"
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        # Only rate-limit HTTP requests; pass WebSocket / lifespan through.
+        if scope["type"] != "http":
+            await self._app(scope, receive, send)
+            return
 
-    async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+        request = Request(scope, receive)
         method = request.method.upper()
         path = request.url.path or ""
 
         if method == "HEAD" and self._is_static_like_path(path):
-            return Response(status_code=200)
+            response = Response(status_code=200)
+            await response(scope, receive, send)
+            return
 
         if not self._enabled or self._should_skip(method, path):
-            return await call_next(request)
+            await self._app(scope, receive, send)
+            return
 
         path_limit, path_window, path_pattern = self._get_limits_for_path(path)
-
         base_identifier = self._build_identifier(request)
-        if path_pattern:
-            identifier = f"{base_identifier}:{path_pattern}"
-        else:
-            identifier = base_identifier
+        identifier = (
+            f"{base_identifier}:{path_pattern}" if path_pattern else base_identifier
+        )
 
         try:
             info = await self._check_limit(identifier, path_limit, path_window)
         except (RedisError, OSError):
-            return await call_next(request)
+            await self._app(scope, receive, send)
+            return
 
         if not info.allowed:
             retry_after_seconds = max(0, info.retry_after)
@@ -330,23 +333,49 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 headers["X-RateLimit-Reset"] = str(
                     int(time.time()) + retry_after_seconds
                 )
-
             locale = resolve_locale(request=request)
             message = translate("errors.rate_limit.generic", locale=locale)
-
-            return JSONResponse(
+            response = JSONResponse(
                 status_code=429,
                 content={"detail": message},
                 headers=headers,
             )
+            await response(scope, receive, send)
+            return
 
-        response = await call_next(request)
+        # Inject rate-limit headers into the downstream response without buffering.
         if self._headers_enabled:
-            response.headers.setdefault("X-RateLimit-Limit", str(path_limit))
-            response.headers.setdefault(
-                "X-RateLimit-Remaining", str(max(0, info.remaining))
-            )
-        return response
+            remaining = str(max(0, info.remaining))
+            limit_str = str(path_limit)
+
+            async def send_with_headers(message: Message) -> None:
+                if message["type"] == "http.response.start":
+                    headers_list: list[tuple[bytes, bytes]] = list(
+                        message.get("headers", [])
+                    )
+                    existing_names = {h[0].lower() for h in headers_list}
+                    if b"x-ratelimit-limit" not in existing_names:
+                        headers_list.append((b"x-ratelimit-limit", limit_str.encode()))
+                    if b"x-ratelimit-remaining" not in existing_names:
+                        headers_list.append(
+                            (b"x-ratelimit-remaining", remaining.encode())
+                        )
+                    message = {**message, "headers": headers_list}
+                await send(message)
+
+            await self._app(scope, receive, send_with_headers)
+        else:
+            await self._app(scope, receive, send)
+
+    def _get_limits_for_path(self, path: str) -> tuple[int, int, str]:
+        for endpoint_limit in self._endpoint_limits:
+            if path.startswith(endpoint_limit.pattern):
+                return (
+                    endpoint_limit.limit,
+                    endpoint_limit.window_seconds,
+                    endpoint_limit.pattern,
+                )
+        return self._limit, self._window_seconds, "default"
 
     async def _check_limit(
         self,
@@ -357,24 +386,21 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         redis_url = self._redis_url if self._storage_backend == "redis" else None
         namespace = self._namespace if self._storage_backend == "memory" else ""
         effective_limit = limit if limit is not None else self._limit
-        if window_seconds is not None:
-            effective_window = window_seconds
-        else:
-            effective_window = self._window_seconds
-        info = await check_rate_limit(
+        effective_window = (
+            window_seconds if window_seconds is not None else self._window_seconds
+        )
+        return await check_rate_limit(
             identifier=identifier,
             namespace=namespace,
             limit=effective_limit,
             window_seconds=effective_window,
             redis_url=redis_url,
         )
-        return info
 
     def _build_identifier(self, request: Request) -> str:
         token = self._extract_bearer_token(request.headers.get("authorization"))
         if token:
             return f"token:{token}"
-
         cookie_token = self._fingerprint_token(request.cookies.get("access_token"))
         if cookie_token:
             return f"token:{cookie_token}"
@@ -404,7 +430,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return None
         from app.core.config import settings
 
-        key = (settings.secret_key or "fallback-key").encode("utf-8")
+        # A missing secret_key means the application is misconfigured.
+        # Falling back to a known string would make HMAC fingerprints predictable.
+        if not settings.secret_key:
+            raise RuntimeError("SECRET_KEY must be configured for token fingerprinting")
+        key = settings.secret_key.encode("utf-8")
         digest = hmac.new(key, normalized.encode("utf-8"), "sha256").hexdigest()
         return digest
 
@@ -413,9 +443,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return True
         if path in {"/", "/healthz", "/ready", "/metrics"}:
             return True
-        if self._is_static_like_path(path) and method == "GET":
-            return True
-        return False
+        return bool(self._is_static_like_path(path) and method == "GET")
 
     @staticmethod
     def _is_static_like_path(path: str) -> bool:
@@ -493,20 +521,17 @@ async def _redis_rate_limit_fallback(
     window_ms: int,
     limit: int,
 ) -> RateLimitInfo:
-    # Minimal fallback using Multi/Exec if Lua fails (unlikely in Redis 7)
-    # Using simple INCR
-    pipe = client.pipeline()
+    # Atomic fallback: SET NX initialises the key with TTL in one round-trip,
+    # then INCR bumps the counter.  Both commands are pipelined so the key
+    # can never exist without a TTL (eliminates the TOCTOU race of the old
+    # INCR-then-PEXPIRE pattern).
+    pipe = client.pipeline(transaction=True)
+    pipe.set(redis_key, 0, px=window_ms, nx=True)  # only sets if key is absent
     pipe.incr(redis_key)
     pipe.pttl(redis_key)
-    results = await pipe.execute()
+    _, current, ttl = await pipe.execute()
 
-    current = results[0]
-    ttl = results[1]
-
-    if current == 1:
-        await client.pexpire(redis_key, window_ms)
-        ttl = window_ms
-
+    current = int(current)
     if current > limit:
         return RateLimitInfo(False, 0, math.ceil(ttl / 1000) if ttl > 0 else 0)
 
@@ -635,10 +660,14 @@ async def _periodic_memory_cleanup() -> None:
             # Simple LRU-like eviction if too big
             if len(_memory_counters) > MEMORY_COUNTERS_MAX_ENTRIES:
                 async with _memory_lock:
-                    # Remove random 20%
-                    keys = list(_memory_counters.keys())
-                    to_remove = keys[: int(len(keys) * 0.2)]
-                    for k in to_remove:
+                    # Evict the oldest 20% by expiry time (FIFO by window end).
+                    # This is deterministic and avoids discarding active windows
+                    # that random eviction could accidentally remove.
+                    evict_count = max(1, int(len(_memory_counters) * 0.2))
+                    sorted_keys = sorted(
+                        _memory_counters, key=lambda k: _memory_counters[k][1]
+                    )
+                    for k in sorted_keys[:evict_count]:
                         del _memory_counters[k]
 
         except asyncio.CancelledError:
@@ -743,8 +772,15 @@ class ProgressiveDelayTracker:
         if self._redis_url:
             try:
                 client = await _get_shared_client(self._redis_url)
-                failures = await client.incr(key)
-                await client.expire(key, self._ttl)
+                # Atomic pipeline: INCR and EXPIRE in a single round-trip.
+                # Prevents TOCTOU race where a Redis restart between the two
+                # calls would leave the counter without a TTL, blocking the
+                # user permanently.
+                pipe = client.pipeline(transaction=True)
+                pipe.incr(key)
+                pipe.expire(key, self._ttl)
+                results = await pipe.execute()
+                failures = int(results[0])
                 delay = self._calculate_delay(failures)
                 return ProgressiveDelayInfo(failures, delay, delay > 0)
             except (RedisError, OSError):
@@ -796,8 +832,7 @@ class ProgressiveDelayTracker:
                 pass
 
         async with _progressive_delay_memory_lock:
-            if key in _progressive_delay_memory:
-                del _progressive_delay_memory[key]
+            _progressive_delay_memory.pop(key, None)
 
     async def apply_delay_if_needed(self, identifier: str) -> ProgressiveDelayInfo:
         info = await self.get_delay(identifier)
@@ -817,21 +852,25 @@ async def clear_all_rate_limit_memory() -> None:
         _progressive_delay_memory.clear()
 
 
-_tracker_instance: ProgressiveDelayTracker | None = None
-
-
 def get_progressive_delay_tracker() -> ProgressiveDelayTracker:
-    global _tracker_instance
-    if _tracker_instance is None:
-        try:
-            from app.core.config import settings
+    """FastAPI-injectable factory for ProgressiveDelayTracker.
 
-            redis_url = (
-                settings.rate_limit_storage_uri
-                if settings.rate_limit_storage_backend == "redis"
-                else None
-            )
-        except ImportError:
-            redis_url = None
-        _tracker_instance = ProgressiveDelayTracker(redis_url=redis_url)
-    return _tracker_instance
+    Replaces the global singleton pattern, which prevented test isolation.
+    Usage in route handlers:
+        tracker: ProgressiveDelayTracker = Depends(get_progressive_delay_tracker)
+
+    The tracker is constructed from application settings on each call, but
+    since ProgressiveDelayTracker is stateless (state lives in Redis/memory),
+    constructing a new instance is cheap and safe.
+    """
+    try:
+        from app.core.config import settings
+
+        redis_url = (
+            settings.rate_limit_storage_uri
+            if settings.rate_limit_storage_backend == "redis"
+            else None
+        )
+    except ImportError:
+        redis_url = None
+    return ProgressiveDelayTracker(redis_url=redis_url)

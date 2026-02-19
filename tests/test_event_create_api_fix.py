@@ -22,7 +22,7 @@ async def test_create_event_frontend_payload_reproduction(async_client, user_fac
     password = "EventFix123!"
     teacher = await user_factory(
         role="teacher",
-        hashed_password=get_password_hash(password),
+        hashed_password=await get_password_hash(password),
         is_active=True,
     )
 
@@ -77,7 +77,7 @@ async def test_create_event_success_db(async_client, user_factory):
     password = "EventFix123!"
     teacher = await user_factory(
         role="teacher",
-        hashed_password=get_password_hash(password),
+        hashed_password=await get_password_hash(password),
         is_active=True,
     )
 

@@ -6,8 +6,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Least-privilege defaults — individual jobs extend as needed.
+# Prevents Poisoned Pipeline Execution (PPE) from fork PRs (OWASP CI/CD C-PPE-1).
 permissions:
-  contents: write
+  contents: read
   pull-requests: write
   security-events: write
 
@@ -34,6 +36,8 @@ jobs:
   run-hooks:
     name: Pre-commit & Linting
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required to push pre-commit autofix commits back to the branch
     steps:
       - uses: actions/checkout@v5
         with:

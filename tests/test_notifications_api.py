@@ -41,7 +41,7 @@ async def test_clear_notifications_removes_only_current_user(
     db_session,
 ):
     password = "ClearIt123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True)
     other = await user_factory(hashed_password=hashed, is_active=True)
 
@@ -92,7 +92,7 @@ async def test_list_notifications_handles_invalid_data(
     db_session,
 ):
     password = "DataMismatch123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True)
 
     headers = await _login(async_client, user.email, password)
@@ -158,7 +158,7 @@ async def test_list_notifications_sets_language_and_cache_headers(
     db_session,
 ):
     password = "Headers123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True)
 
     headers = await _login(async_client, user.email, password)
@@ -215,7 +215,7 @@ async def test_notifications_list_returns_bilingual_fields(
     db_session,
 ):
     password = "Bilingual123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True)
 
     await create_notifications_for_users(
@@ -315,7 +315,7 @@ async def test_check_schedule_creates_notifications(
     from app.models.models import Group
 
     password = "ScheduleCheck123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
 
     # Create group first
     group_id = uuid.uuid4()

@@ -26,7 +26,7 @@ export default function WeatherWidget({ className }: WeatherWidgetProps) {
         <Skeleton
           width={88}
           height={30}
-          rounded="999px"
+          rounded="full"
           ariaLabel={t("common:loading")}
           className="chip-weather__skeleton"
         />

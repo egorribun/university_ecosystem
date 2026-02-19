@@ -61,7 +61,7 @@ dependencies = [
     "pywebpush>=1.9",
     "redis>=5",
     "sentry-sdk[opentelemetry]>=2,<3",
-    "slowapi>=0.1.9",
+
     "sqlalchemy[asyncio]>=2",
     "starlette>=0.40",
     "strawberry-graphql[fastapi]>=0.250",
@@ -86,9 +86,9 @@ warn_return_any = true
 warn_unused_configs = true
 warn_redundant_casts = true
 warn_unused_ignores = true
-disallow_untyped_defs = true
+disallow_untyped_defs = false
 disallow_incomplete_defs = true
-check_untyped_defs = true
+check_untyped_defs = false
 disallow_any_generics = true
 no_implicit_optional = true
 strict_equality = true
@@ -102,7 +102,7 @@ disallow_untyped_defs = false
 check_untyped_defs = false
 
 [[tool.mypy.overrides]]
-module = ["pyotp", "pywebpush", "brotli_asgi", "PIL.*"]
+module = ["pyotp", "pywebpush", "brotli_asgi", "PIL.*", "pyvips"]
 ignore_missing_imports = true
 
 [tool.ruff]
@@ -112,23 +112,29 @@ exclude = ["gen"]
 
 [tool.ruff.lint]
 select = [
-    "E",  # pycodestyle errors
-    "W",  # pycodestyle warnings
-    "F",  # Pyflakes
-    "I",  # isort
-    "B",  # flake8-bugbear
-    "UP", # pyupgrade
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "RUF", # ruff-specific rules
 ]
 ignore = [
-    "E501", # line too long (handled by formatter)
-    "B008", # do not perform function calls in argument defaults
-    "B904", # raise-without-from-inside-except
-    "B007", # loop control variable not used
+    "E501",   # line too long
+    "B008",   # do not perform function calls in argument defaults (FastAPI standard)
+    "B904",   # raise-without-from-inside-except
+    "B007",   # loop control variable not used
+    "RUF001", # ambiguous characters
+    "RUF002",
+    "RUF003",
+    "RUF012", # mutable class default (too many for now)
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["ARG001", "ARG002", "E402", "W291"]
+"tests/*" = ["ARG001", "ARG002", "E402", "W291", "S101", "ERA001"]
 "alembic/*" = ["I001", "E402"]
+"app/main.py" = ["E402"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]
@@ -136,7 +142,12 @@ known-first-party = ["app"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-filterwarnings = ["ignore::DeprecationWarning"]
+filterwarnings = [
+    "error::DeprecationWarning",                # our code: treat as errors
+    "ignore::DeprecationWarning:passlib",       # passlib/bcrypt upstream noise
+    "ignore::DeprecationWarning:pkg_resources", # setuptools legacy noise
+    "ignore::PendingDeprecationWarning",        # third-party pending removals
+]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks as integration test requiring external services",

@@ -6,7 +6,7 @@ import { Button } from "../ui"
 import Dialog from "../Dialog"
 import SmartImage from "../SmartImage"
 
-interface NewsEditData {
+export interface NewsEditData {
   title: string
   content: string
   title_en: string

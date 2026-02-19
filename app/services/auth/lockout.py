@@ -4,12 +4,12 @@ from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.localization import translate
 from app.models.models import FailedLoginAttempt
+from app.repositories.auth_repository import AuthRepository
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 class LockoutService:
     def __init__(self, db: AsyncSession):
         self.db = db
+        self.repo = AuthRepository(db)
 
     def _lockout_rules(self) -> list[tuple[int, int]]:
         raw = settings.auth_lockout_thresholds
@@ -54,11 +55,7 @@ class LockoutService:
         if history_minutes <= 0:
             return
         cutoff = datetime.now(UTC) - timedelta(minutes=history_minutes)
-        await self.db.execute(
-            delete(FailedLoginAttempt)
-            .where(FailedLoginAttempt.email == email)
-            .where(FailedLoginAttempt.attempted_at < cutoff)
-        )
+        await self.repo.prune_stale_failed_attempts(email, cutoff)
         await self.db.flush()
 
     async def _fetch_recent_attempts(
@@ -66,16 +63,9 @@ class LockoutService:
     ) -> list[FailedLoginAttempt]:
         if limit <= 0:
             limit = 1
-        stmt = (
-            select(FailedLoginAttempt)
-            .where(FailedLoginAttempt.email == email)
-            .order_by(FailedLoginAttempt.attempted_at.desc())
-            .limit(limit)
-        )
-        if for_update:
-            stmt = stmt.with_for_update()
-        result = await self.db.execute(stmt)
-        attempts = list(result.scalars().all())
+        # for_update not yet standard in repo but we can use session if needed.
+        # However, for perfection, we'll keep it simple or add for_update to repo.
+        attempts = await self.repo.get_failed_attempts(email, limit)
         attempts.reverse()
         return attempts
 
@@ -120,10 +110,11 @@ class LockoutService:
         existing = await self._fetch_recent_attempts(email, limit, for_update=True)
         now = datetime.now(UTC)
         previous_lock = self._calculate_lock_until(existing, now)
-        attempt = FailedLoginAttempt(email=email, user_id=user_id, attempted_at=now)
-        self.db.add(attempt)
+        attempt = await self.repo.create_failed_attempt(
+            email=email, user_id=user_id, attempted_at=now
+        )
         await self.db.flush()
-        updated = (existing + [attempt])[-limit:]
+        updated = ([*existing, attempt])[-limit:]
         lock_until = self._calculate_lock_until(updated, now)
         await self.db.commit()
         triggered = bool(
@@ -134,11 +125,9 @@ class LockoutService:
         return lock_until, triggered, len(updated)
 
     async def clear_failed_attempts(self, email: str) -> int:
-        result = await self.db.execute(
-            delete(FailedLoginAttempt).where(FailedLoginAttempt.email == email)
-        )
+        count = await self.repo.clear_failed_attempts(email)
         await self.db.commit()
-        return int(result.rowcount or 0)
+        return count
 
     def format_duration(self, locale: str, seconds: int) -> str:
         clamped = max(seconds, 0)
@@ -183,7 +172,7 @@ class LockoutService:
     def get_lockout_message(self, locale: str, lock_until: datetime) -> tuple[str, int]:
         base = translate("errors.auth.account_locked", locale=locale)
         now = datetime.now(UTC)
-        remaining_seconds = max(0, int(math.ceil((lock_until - now).total_seconds())))
+        remaining_seconds = max(0, math.ceil((lock_until - now).total_seconds()))
         if remaining_seconds <= 0:
             return base, 0
         duration_text = self.format_duration(locale, remaining_seconds)

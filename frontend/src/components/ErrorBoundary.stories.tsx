@@ -75,13 +75,22 @@ export const CustomFallback: Story = {
   args: {
     children: <ErrorThrowingComponent />,
     fallback: (
-      <div className="flex min-h-[300px] items-center justify-center bg-red-500/(--opacity-subtle) p-8">
+      <div
+        className="flex items-center justify-center p-8"
+        style={{
+          minHeight: "300px",
+          backgroundColor: "rgb(239 68 68 / var(--opacity-subtle))"
+        }}
+      >
         <div className="text-center">
           <span className="text-4xl" role="img" aria-label="error">
             💥
           </span>
           <h2 className="mt-4 text-xl font-bold text-red-400">Custom Error UI</h2>
-          <p className="mt-2 text-red-300/(--opacity-strong)">
+          <p
+            className="mt-2 text-red-300"
+            style={{ opacity: "var(--opacity-strong)" }}
+          >
             This is a custom fallback component.
           </p>
         </div>

@@ -136,7 +136,7 @@ export function ScheduleCard({
               to="/schedule"
               size="sm"
               variant="outline"
-              className="whitespace-nowrap px-5 transition-transform duration-base hover:-translate-y-[2px]"
+              className="whitespace-nowrap px-5 transition-transform duration-base hover:-translate-y-0.5"
               aria-label={t("dashboard:aria.openFullSchedule")}
               onPointerDown={warmSchedulePage}
               onKeyDown={(event) => prepareOnKey(event, warmSchedulePage)}

@@ -4,15 +4,19 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from sqlalchemy import update
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import async_session
 from app.models.models import User
 from app.utils.files import normalize_filename_prefix
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -31,10 +35,7 @@ def _normalize_path(path: Path) -> tuple[Path, str] | None:
     else:
         prefix, remainder = stem, ""
     safe_prefix = normalize_filename_prefix(prefix)
-    if remainder:
-        new_stem = f"{safe_prefix}_{remainder}"
-    else:
-        new_stem = safe_prefix
+    new_stem = f"{safe_prefix}_{remainder}" if remainder else safe_prefix
     new_name = f"{new_stem}{suffix}"
     if new_name == path.name:
         return None
@@ -90,10 +91,9 @@ async def main() -> None:
     if not combined:
         logger.info("Static assets already normalized")
         return
-    async with async_session() as session:
-        async with session.begin():
-            await _update_column(session, avatar_mapping, "avatar_url")
-            await _update_column(session, cover_mapping, "cover_url")
+    async with async_session() as session, session.begin():
+        await _update_column(session, avatar_mapping, "avatar_url")
+        await _update_column(session, cover_mapping, "cover_url")
     logger.info(
         "Updated %s avatar URLs and %s cover URLs",
         len(avatar_mapping),

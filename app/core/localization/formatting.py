@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 from functools import lru_cache
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .dictionary import TRANSLATIONS
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 _LESSON_TYPE_TRANSLATIONS: Mapping[str, str] = {
     "lecture": "schedule.lesson.type.lecture",

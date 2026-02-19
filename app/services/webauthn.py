@@ -4,10 +4,8 @@ import base64
 import json
 import logging
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from webauthn import (
     generate_authentication_options,
     generate_registration_options,
@@ -25,6 +23,10 @@ from webauthn.helpers.structs import (
 
 from app.core.config import settings
 from app.models.models import User, WebAuthnCredential
+from app.repositories.auth_repository import AuthRepository
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,7 @@ logger = logging.getLogger(__name__)
 class WebAuthnService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
+        self.repo = AuthRepository(db)
 
     def _get_rp_id(self) -> str:
         return settings.webauthn_rp_id
@@ -55,14 +58,13 @@ class WebAuthnService:
         user_id_bytes = base64.urlsafe_b64decode(user.webauthn_id + "==")
 
         # Get existing credentials to exclude them
-        result = await self.db.execute(
-            select(WebAuthnCredential.credential_id).where(
-                WebAuthnCredential.user_id == user.id
-            )
-        )
+        result = await self.repo.list_user_webauthn_credentials(user.id)
         exclude_credentials = [
-            {"id": base64.urlsafe_b64decode(row[0] + "=="), "type": "public-key"}
-            for row in result.all()
+            {
+                "id": base64.urlsafe_b64decode(cre.credential_id + "=="),
+                "type": "public-key",
+            }
+            for cre in result
         ]
 
         options = generate_registration_options(
@@ -96,7 +98,7 @@ class WebAuthnService:
             require_user_verification=False,  # We use PREFERRED in options
         )
 
-        credential = WebAuthnCredential(
+        credential = await self.repo.create_webauthn_credential(
             user_id=user.id,
             credential_id=base64.urlsafe_b64encode(verification.credential_id)
             .decode("utf-8")
@@ -110,24 +112,17 @@ class WebAuthnService:
             backing_up=verification.credential_device_type == "multi_device",
             backup_state=verification.credential_backed_up,
         )
-
-        self.db.add(credential)
-        await self.db.flush()
         return credential
 
     async def get_authentication_options(self, user: User) -> dict[str, Any]:
         """Generate options for WebAuthn authentication."""
-        result = await self.db.execute(
-            select(WebAuthnCredential.credential_id).where(
-                WebAuthnCredential.user_id == user.id
-            )
-        )
+        result = await self.repo.list_user_webauthn_credentials(user.id)
         allow_credentials = [
             PublicKeyCredentialDescriptor(
-                id=base64.urlsafe_b64decode(row[0] + "=="),
+                id=base64.urlsafe_b64decode(cre.credential_id + "=="),
                 type=PublicKeyCredentialType.PUBLIC_KEY,
             )
-            for row in result.all()
+            for cre in result
         ]
 
         options = generate_authentication_options(
@@ -166,13 +161,7 @@ class WebAuthnService:
     ) -> WebAuthnCredential:
         """Verify the authentication response."""
         credential_id = response.get("id")
-        result = await self.db.execute(
-            select(WebAuthnCredential).where(
-                WebAuthnCredential.user_id == user.id,
-                WebAuthnCredential.credential_id == credential_id,
-            )
-        )
-        db_credential = result.scalar_one_or_none()
+        db_credential = await self.repo.get_webauthn_credential(user.id, credential_id)
         if not db_credential:
             raise ValueError("Credential not found")
 

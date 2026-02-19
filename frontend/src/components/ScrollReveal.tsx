@@ -1,6 +1,6 @@
-import { motion, useAnimation, useInView, Variants, TargetAndTransition } from "framer-motion"
-import { ReactNode, useEffect, useRef } from "react"
-import { springHeavy, easePremium } from "@/utils/animations"
+import { ReactNode } from "react"
+import { useIntersectionObserver } from "@/hooks/ui/useIntersectionObserver"
+import { cn } from "@/utils/cn"
 
 type Props = {
   children: ReactNode
@@ -10,52 +10,7 @@ type Props = {
   duration?: number
   className?: string
   width?: "fit-content" | "100%"
-  stagger?: number
-  threshold?: number
   viewportMargin?: string
-}
-
-const getVariants = (mode: string, direction: string): Variants => {
-  const distance = 30
-
-  const baseHidden: TargetAndTransition = { opacity: 0, filter: "blur(8px)" }
-  const baseVisible: TargetAndTransition = { opacity: 1, filter: "blur(0px)" }
-
-  if (mode === "pop") {
-    baseHidden.scale = 0.94
-    baseVisible.scale = 1
-  }
-
-  if (mode === "slide" || mode === "fade") {
-    switch (direction) {
-      case "up":
-        baseHidden.y = distance
-        baseVisible.y = 0
-        break
-      case "down":
-        baseHidden.y = -distance
-        baseVisible.y = 0
-        break
-      case "left":
-        baseHidden.x = distance
-        baseVisible.x = 0
-        break
-      case "right":
-        baseHidden.x = -distance
-        baseVisible.x = 0
-        break
-    }
-  }
-
-  if (mode === "scale") {
-    baseHidden.scale = 0.96
-    baseVisible.scale = 1
-  }
-
-  return {
-    hidden: baseHidden,
-    visible: baseVisible,
-  }
 }
 
 export const ScrollReveal = ({
@@ -63,38 +18,46 @@ export const ScrollReveal = ({
   mode = "slide",
   direction = "up",
   delay = 0,
-  duration = 0.8,
+  duration, // CSS duration handles this, but kept for API compat if needed in future inline styles
   className,
   width = "100%",
-  viewportMargin = "0px 0px -100px 0px",
+  viewportMargin = "0px 0px -50px 0px",
 }: Props) => {
-  const ref = useRef(null)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const isInView = useInView(ref, { once: true, margin: viewportMargin as any })
-  const controls = useAnimation()
+  const [ref, isVisible] = useIntersectionObserver({
+    rootMargin: viewportMargin,
+    freezeOnceVisible: true,
+    threshold: 0.1,
+  })
 
-  useEffect(() => {
-    if (isInView) {
-      void controls.start("visible")
+  const getHiddenClass = () => {
+    if (mode === "fade") return "reveal-hidden-fade"
+    if (mode === "scale" || mode === "pop") return "reveal-hidden-scale"
+
+    // Slide direction
+    switch (direction) {
+      case "up": return "reveal-hidden-slide-up"
+      case "down": return "reveal-hidden-slide-up" // Fallback to up for now, or add slide-down if needed
+      case "left": return "reveal-hidden-slide-left"
+      case "right": return "reveal-hidden-slide-right"
+      default: return "reveal-hidden-slide-up"
     }
-  }, [isInView, controls])
-
-  // Determine transition based on mode
-  const transition =
-    mode === "pop" || mode === "scale"
-      ? { ...springHeavy, delay }
-      : { duration, ease: easePremium, delay }
+  }
 
   return (
-    <div ref={ref} style={{ width }} className={className}>
-      <motion.div
-        variants={getVariants(mode, direction)}
-        initial="hidden"
-        animate={controls}
-        transition={transition}
-      >
-        {children}
-      </motion.div>
+    <div
+      ref={ref}
+      style={{
+        width,
+        transitionDelay: `${delay}s`,
+        transitionDuration: `${duration}s`
+      }}
+      className={cn(
+        "reveal-base",
+        isVisible ? "reveal-visible" : getHiddenClass(),
+        className
+      )}
+    >
+      {children}
     </div>
   )
 }

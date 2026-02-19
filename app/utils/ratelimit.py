@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Awaitable, Callable
+from typing import TYPE_CHECKING
 
 from fastapi import Request, status
 
@@ -13,6 +13,9 @@ from app.core.rate_limit import (
     enforce_rate_limit,
     parse_rate_limit,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 DEFAULT_LIMIT = 5
 DEFAULT_WINDOW_SECONDS = 60

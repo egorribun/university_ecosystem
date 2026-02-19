@@ -6,6 +6,7 @@ Create Date: 2026-01-26 15:22:00.000000
 
 """
 
+import contextlib
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -68,19 +69,15 @@ def downgrade() -> None:
         op.drop_column("stored_events", "last_error")
 
     if "error_count" in existing_columns:
-        try:
+        with contextlib.suppress(Exception):
             op.drop_index(
                 op.f("ix_stored_events_error_count"), table_name="stored_events"
             )
-        except Exception:
-            pass
         op.drop_column("stored_events", "error_count")
 
     if "processed_at" in existing_columns:
-        try:
+        with contextlib.suppress(Exception):
             op.drop_index(
                 op.f("ix_stored_events_processed_at"), table_name="stored_events"
             )
-        except Exception:
-            pass
         op.drop_column("stored_events", "processed_at")

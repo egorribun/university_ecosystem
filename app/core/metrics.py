@@ -6,8 +6,8 @@ import hmac
 import importlib.util
 import logging
 import time
-from collections.abc import Iterable
 from ipaddress import ip_address, ip_network
+from typing import TYPE_CHECKING
 
 import psutil
 from fastapi import FastAPI, Request
@@ -17,6 +17,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.config import settings
 from app.core.database import engine
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 try:  # pragma: no cover - optional dependency guard
     from prometheus_client import (  # type: ignore
@@ -730,7 +733,7 @@ async def _record_cache_metrics() -> None:
     backend = get_cache()
     if isinstance(backend, RedisCache):
         try:
-            client = await backend._get_client()  # noqa: SLF001 - metrics probe only
+            client = await backend._get_client()
             start = time.perf_counter()
             pong = await client.ping()
             latency = max(time.perf_counter() - start, 0.0)

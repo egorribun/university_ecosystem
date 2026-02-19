@@ -14,13 +14,14 @@ from __future__ import annotations
 
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
@@ -93,7 +94,7 @@ class AnalyticsService:
     ) -> dict[str, Any]:
         """Compute news statistics using Polars (runs in thread pool)."""
         df = pl.DataFrame(
-            [dict(zip(columns, row)) for row in rows],
+            [dict(zip(columns, row, strict=False)) for row in rows],
         )
 
         # Daily aggregation
@@ -179,7 +180,7 @@ class AnalyticsService:
     ) -> dict[str, Any]:
         """Compute event statistics using Polars."""
         df = pl.DataFrame(
-            [dict(zip(columns, row)) for row in rows],
+            [dict(zip(columns, row, strict=False)) for row in rows],
         )
 
         # By location

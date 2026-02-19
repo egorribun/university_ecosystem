@@ -25,10 +25,7 @@ def localized_text(
 
     normalized = normalize_locale(locale)
     candidates: tuple[str | None, str | None]
-    if normalized == "en":
-        candidates = (en, ru)
-    else:
-        candidates = (ru, en)
+    candidates = (en, ru) if normalized == "en" else (ru, en)
     for candidate in candidates:
         if isinstance(candidate, str) and candidate.strip():
             return candidate

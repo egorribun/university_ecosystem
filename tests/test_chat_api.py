@@ -29,7 +29,7 @@ async def _login(
 @pytest.mark.asyncio
 async def test_create_chat_errors(async_client, user_factory):
     password = "TestPassword123!"
-    user = await user_factory(hashed_password=get_password_hash(password))
+    user = await user_factory(hashed_password=await get_password_hash(password))
     headers = await _login(async_client, user.email, password)
 
     # 1. Create chat with self
@@ -52,7 +52,7 @@ async def test_create_chat_errors(async_client, user_factory):
 @pytest.mark.asyncio
 async def test_create_chat_idempotency(async_client, user_factory):
     password = "TestPassword123!"
-    user = await user_factory(hashed_password=get_password_hash(password))
+    user = await user_factory(hashed_password=await get_password_hash(password))
     other = await user_factory()
     headers = await _login(async_client, user.email, password)
 
@@ -74,7 +74,7 @@ async def test_create_chat_idempotency(async_client, user_factory):
 @pytest.mark.asyncio
 async def test_get_chats_list_simple(async_client, user_factory, db_session):
     password = "TestPassword123!"
-    user = await user_factory(hashed_password=get_password_hash(password))
+    user = await user_factory(hashed_password=await get_password_hash(password))
     headers = await _login(async_client, user.email, password)
 
     # Create 3 chats
@@ -100,7 +100,7 @@ async def test_get_chats_list_simple(async_client, user_factory, db_session):
 @pytest.mark.asyncio
 async def test_get_messages_errors(async_client, user_factory, db_session):
     password = "TestPassword123!"
-    user = await user_factory(hashed_password=get_password_hash(password))
+    user = await user_factory(hashed_password=await get_password_hash(password))
     headers = await _login(async_client, user.email, password)
 
     # 1. Non-existent chat
@@ -123,7 +123,7 @@ async def test_get_messages_errors(async_client, user_factory, db_session):
 @pytest.mark.asyncio
 async def test_send_message_errors(async_client, user_factory, db_session, monkeypatch):
     password = "TestPassword123!"
-    user = await user_factory(hashed_password=get_password_hash(password))
+    user = await user_factory(hashed_password=await get_password_hash(password))
     headers = await _login(async_client, user.email, password)
 
     # 1. Non-existent chat
@@ -164,7 +164,7 @@ async def test_send_message_errors(async_client, user_factory, db_session, monke
 @pytest.mark.asyncio
 async def test_mark_read_logic(async_client, user_factory, db_session):
     password = "TestPassword123!"
-    user = await user_factory(hashed_password=get_password_hash(password))
+    user = await user_factory(hashed_password=await get_password_hash(password))
     other = await user_factory()
     headers = await _login(async_client, user.email, password)
 
@@ -221,7 +221,7 @@ async def test_cursor_helpers():
 @pytest.mark.asyncio
 async def test_delete_chat_permissions(async_client, user_factory, db_session):
     password = "TestPassword123!"
-    user = await user_factory(hashed_password=get_password_hash(password))
+    user = await user_factory(hashed_password=await get_password_hash(password))
     other1 = await user_factory()
     other2 = await user_factory()
     headers = await _login(async_client, user.email, password)
@@ -243,7 +243,7 @@ async def test_delete_chat_permissions(async_client, user_factory, db_session):
 @pytest.mark.asyncio
 async def test_messaging_flow_success(async_client, user_factory, db_session):
     password = "TestPassword123!"
-    user = await user_factory(hashed_password=get_password_hash(password))
+    user = await user_factory(hashed_password=await get_password_hash(password))
     other = await user_factory()
     headers = await _login(async_client, user.email, password)
 

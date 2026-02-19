@@ -6,13 +6,16 @@ delivery statistics.
 
 from __future__ import annotations
 
-import datetime as dt
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.models import NotificationDelivery
+
+if TYPE_CHECKING:
+    import datetime as dt
+
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def aggregate_notification_delivery_stats(

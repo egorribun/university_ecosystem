@@ -54,6 +54,7 @@ export function MessengerSidebar({
             id="messenger-sidebar-search"
             type="text"
             placeholder={t("messenger:search", "Search")}
+            aria-label={t("messenger:search", "Search")}
             className="w-full rounded-md border-none bg-black/(--opacity-medium) py-25 pl-10 pr-4 text-(--fs-body) shadow-sm outline-none transition-all focus:ring-2 focus:ring-(--brand-main)/(--opacity-medium) dark:bg-white/(--opacity-medium)"
           />
         </div>

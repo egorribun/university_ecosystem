@@ -165,6 +165,14 @@ class TestProgressiveDelayTrackerRedis:
         client.expire = AsyncMock()
         client.get = AsyncMock(return_value=b"1")
         client.delete = AsyncMock()
+
+        # Mock pipeline
+        mock_pipe = MagicMock()
+        mock_pipe.incr = MagicMock()
+        mock_pipe.expire = MagicMock()
+        mock_pipe.execute = AsyncMock(return_value=[1, True])
+        client.pipeline.return_value = mock_pipe
+
         return client
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -181,8 +189,10 @@ class TestProgressiveDelayTrackerRedis:
         ):
             info = await tracker.record_failure("test:redis1")
 
-            mock_redis_client.incr.assert_called_once()
-            mock_redis_client.expire.assert_called_once()
+            mock_pipe = mock_redis_client.pipeline.return_value
+            mock_pipe.incr.assert_called_once()
+            mock_pipe.expire.assert_called_once()
+            mock_pipe.execute.assert_called_once()
             assert info.failures == 1
 
     @pytest.mark.asyncio(loop_scope="session")
@@ -262,8 +272,10 @@ class TestGlobalProgressiveDelayTracker:
         tracker = get_progressive_delay_tracker()
         assert isinstance(tracker, ProgressiveDelayTracker)
 
-    def test_get_progressive_delay_tracker_singleton(self) -> None:
-        """Same instance returned on subsequent calls."""
+    def test_get_progressive_delay_tracker_factory(self) -> None:
+        """New instance returned on subsequent calls for test isolation."""
         tracker1 = get_progressive_delay_tracker()
         tracker2 = get_progressive_delay_tracker()
-        assert tracker1 is tracker2
+        assert tracker1 is not tracker2
+        assert isinstance(tracker1, ProgressiveDelayTracker)
+        assert isinstance(tracker2, ProgressiveDelayTracker)

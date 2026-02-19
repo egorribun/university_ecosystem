@@ -27,7 +27,7 @@ async def test_profile_cache_missing_signing_key_localized(
     async_client: AsyncClient, user_factory, db_session, locale: str
 ):
     password = "ProfileLocale123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True)
 
     token = await _login(async_client, user.email, password)
@@ -68,7 +68,7 @@ async def test_profile_cache_invalid_envelope_localized(
     async_client: AsyncClient, user_factory, locale: str
 ):
     password = "ProfileInvalidEnvelope123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True)
 
     token = await _login(async_client, user.email, password)
@@ -92,7 +92,7 @@ async def test_profile_cache_invalid_signature_localized(
     async_client: AsyncClient, user_factory, locale: str
 ):
     password = "ProfileInvalidSignature123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True)
 
     token = await _login(async_client, user.email, password)

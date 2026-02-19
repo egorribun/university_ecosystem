@@ -391,31 +391,31 @@ event_bus = EventBus()
 
 
 __all__ = [
-    # Types
-    "EventHandler",
-    "EventMiddleware",
-    "EventMetadata",
     # Core
     "DomainEvent",
     "EventBus",
-    "event_bus",
-    # User events
-    "UserCreated",
-    "UserUpdated",
-    "UserDeleted",
+    # Event events
+    "EventCreated",
+    # Persistence
+    "EventEmitterMixin",
+    # Types
+    "EventHandler",
+    "EventMetadata",
+    "EventMiddleware",
+    "EventRegistration",
+    "EventUpdated",
+    "MfaEnabled",
     # News events
     "NewsCreated",
     "NewsUpdated",
-    # Auth events
-    "UserLoggedIn",
-    "MfaEnabled",
-    # Event events
-    "EventCreated",
-    "EventUpdated",
-    "EventRegistration",
     # Notification events
     "NotificationSent",
-    # Persistence
-    "EventEmitterMixin",
+    # User events
+    "UserCreated",
+    "UserDeleted",
+    # Auth events
+    "UserLoggedIn",
+    "UserUpdated",
+    "event_bus",
     "register_event_listeners",
 ]

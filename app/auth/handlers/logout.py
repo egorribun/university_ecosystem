@@ -7,16 +7,19 @@ from __future__ import annotations
 
 import secrets
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from starlette import status
 
 from app.api.deps import get_db
 from app.auth.security import decode_token
 from app.models.models import ActiveSession
 from app.services.auth.login_service import LoginService
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(tags=["auth"])
 

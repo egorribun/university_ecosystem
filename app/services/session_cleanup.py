@@ -5,19 +5,23 @@ from __future__ import annotations
 import asyncio
 import logging
 import secrets
-from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import delete, or_, select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql.elements import ClauseElement
 
 from app.auth.redis_session import get_session_backend
 from app.core.database import async_session
 from app.core.observability import get_periodic_task_metrics
 from app.models.models import ActiveSession, MfaChallenge
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
+    from sqlalchemy.ext.asyncio import AsyncSession
+    from sqlalchemy.sql.elements import ClauseElement
 
 logger = logging.getLogger(__name__)
 
@@ -82,8 +86,8 @@ async def revoke_sessions_matching(
 ) -> int:
     """Mark matching sessions as revoked without deleting their rows."""
 
-    result = await db.execute(select(ActiveSession).where(whereclause))
-    sessions = result.scalars().all()
+    exec_result = await db.execute(select(ActiveSession).where(whereclause))
+    sessions = exec_result.scalars().all()
     if not sessions:
         return 0
 

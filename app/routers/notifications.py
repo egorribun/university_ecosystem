@@ -38,7 +38,6 @@ from app.services.webpush import WebPushResult, send_web_push
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/push", tags=["push"])
-legacy_router = APIRouter(prefix="/webpush", tags=["webpush"])
 
 
 class NotificationAction(BaseModel):
@@ -1068,44 +1067,3 @@ async def broadcast(
         },
     )
     return summary
-
-
-legacy_router.add_api_route(
-    "/vapid-public-key",
-    get_vapid_public_key,
-    methods=["GET"],
-)
-legacy_router.add_api_route(
-    "/subscribe",
-    subscribe,
-    methods=["POST"],
-    response_model=PushSubscriptionOut,
-)
-legacy_router.add_api_route(
-    "/subscribe/topics",
-    update_subscription_topics,
-    methods=["PATCH"],
-    response_model=PushSubscriptionOut,
-)
-legacy_router.add_api_route(
-    "/unsubscribe",
-    unsubscribe,
-    methods=["POST"],
-)
-legacy_router.add_api_route(
-    "/send-test",
-    send_test,
-    methods=["POST"],
-    response_model=SendTestResponse,
-)
-legacy_router.add_api_route(
-    "/admin/disable-user",
-    disable_user_push,
-    methods=["POST"],
-)
-legacy_router.add_api_route(
-    "/broadcast",
-    broadcast,
-    methods=["POST"],
-    response_model=SendTestResponse,
-)

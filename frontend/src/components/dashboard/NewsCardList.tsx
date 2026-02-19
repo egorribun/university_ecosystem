@@ -25,7 +25,7 @@ export function NewsCardList({ news, loading, locale }: NewsCardListProps) {
         {[1, 2].map((i) => (
           <div
             key={i}
-            className="flex items-start gap-4 rounded-lg border border-[--dash-panel-item-divider] bg-[--dash-panel-item-bg] px-4 py-3 opacity-medium"
+            className="flex items-start gap-4 rounded-lg border border-border-subtle bg-(--bg-surface)/(--opacity-dim) px-4 py-3 opacity-medium"
           >
             <Skeleton width={44} height={44} rounded="9999px" className="shrink-0" />
             <div className="flex-1 space-y-2">

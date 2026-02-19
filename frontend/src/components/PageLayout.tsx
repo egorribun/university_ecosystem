@@ -12,9 +12,9 @@ interface PageLayoutProps {
 }
 
 const variants: Record<PageLayoutVariant, string> = {
-  default: "px-[var(--fluid-px)] max-w-(--layout-max-page) mx-auto",
-  wide: "px-[var(--fluid-px)] max-w-(--layout-max-wide) mx-auto",
-  narrow: "px-[var(--fluid-px)] max-w-(--layout-max-content) mx-auto",
+  default: "px-fluid-x max-w-(--layout-max-page) mx-auto",
+  wide: "px-fluid-x max-w-(--layout-max-wide) mx-auto",
+  narrow: "px-fluid-x max-w-(--layout-max-content) mx-auto",
   full: "p-0",
 }
 

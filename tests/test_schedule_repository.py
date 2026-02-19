@@ -90,8 +90,8 @@ async def test_schedule_repository_create_ensures_utc(db_session):
         "group_id": group_id,
         "subject": "Chemistry",
         "weekday": "3",
-        "start_time": datetime(2026, 1, 1, 10, 0),  # noqa: DTZ001
-        "end_time": datetime(2026, 1, 1, 11, 30),  # noqa: DTZ001
+        "start_time": datetime(2026, 1, 1, 10, 0),
+        "end_time": datetime(2026, 1, 1, 11, 30),
         "parity": "odd",
         "lesson_type": "lab",
         "teacher": "Lab Prof",

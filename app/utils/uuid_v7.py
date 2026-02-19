@@ -12,10 +12,7 @@ def generate_uuid7(dt: datetime | None = None) -> uuid.UUID:
     This is useful for backfilling historical records while maintaining
     temporal locality.
     """
-    if dt is None:
-        ts_ms = int(time.time() * 1000)
-    else:
-        ts_ms = int(dt.timestamp() * 1000)
+    ts_ms = int(time.time() * 1000) if dt is None else int(dt.timestamp() * 1000)
 
     # 48-bit timestamp (octets 0-5)
     unix_ts_ms = ts_ms & 0xFFFFFFFFFFFF

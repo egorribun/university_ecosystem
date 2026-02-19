@@ -6,9 +6,8 @@ import asyncio
 import io
 import logging
 import time
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import IO, Any
+from typing import IO, TYPE_CHECKING, Any
 
 from fastapi import UploadFile, status
 
@@ -19,6 +18,9 @@ from app.core.circuit_breaker import (
     CircuitBreakerOpenError,
 )
 from app.core.config import settings
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -148,7 +150,7 @@ def _scanner_duration_limit_seconds() -> float:
 class _UploadStream:
     """File-like adapter that enforces scanner size limits."""
 
-    __slots__ = ("_wrapped", "_limit", "_chunk_size", "bytes_scanned")
+    __slots__ = ("_chunk_size", "_limit", "_wrapped", "bytes_scanned")
 
     def __init__(
         self,

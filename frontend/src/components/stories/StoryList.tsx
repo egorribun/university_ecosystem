@@ -92,11 +92,19 @@ export const StoryList = ({
                   aria-label={label}
                   title={tooltip ?? undefined}
                   data-active={activeStoryId === story.id ? "true" : undefined}
-                  className={cn(
-                    "transition-transform data-[active=true]:ring-(--space-1) data-[active=true]:ring-brand/(--opacity-medium)"
-                  )}
+                  className="transition-transform"
+                  style={activeStoryId === story.id ? {
+                    boxShadow: "0 0 0 var(--space-1) color-mix(in_srgb, var(--brand-main) var(--opacity-medium), transparent)"
+                  } : undefined}
                 >
-                  <div className="relative z-base aspect-9/16 w-[--story-card-w] overflow-hidden rounded-md bg-(--bg-surface-raised) shadow-premium md:w-[--story-card-w-md]">
+                  <div
+                    className="relative z-base overflow-hidden rounded-md bg-(--bg-surface-raised) shadow-premium"
+                    style={{
+                      aspectRatio: "9/16",
+                      width: "var(--story-card-w)",
+                      ["--story-card-w-md" as string]: "var(--story-card-w-md, 120px)"
+                    }}
+                  >
                     {story.cover_url ? (
                       <SmartImage
                         srcRaw={story.cover_url}
@@ -104,7 +112,13 @@ export const StoryList = ({
                         style={{ width: "100%", height: "100%", borderRadius: "inherit" }}
                       />
                     ) : (
-                      <div className="flex h-full w-full items-center justify-center text-(--fs-h3) font-bold uppercase tracking-wide text-white/(--opacity-heavy)">
+                      <div
+                        className="flex h-full w-full items-center justify-center font-bold uppercase tracking-wide"
+                        style={{
+                          fontSize: "var(--fs-h3)",
+                          color: "rgb(255 255 255 / var(--opacity-heavy))"
+                        }}
+                      >
                         {story.title.slice(0, 2).toUpperCase()}
                       </div>
                     )}

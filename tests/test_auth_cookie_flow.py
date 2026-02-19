@@ -17,7 +17,7 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 async def _create_active_user(user_factory, password: str):
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     return await user_factory(hashed_password=hashed, is_active=True)
 
 

@@ -1,4 +1,4 @@
-const DUMMY_BASE = "http://__dummy__"
+const DUMMY_BASE = "http://internal.placeholder"
 
 const hasProtocol = (value: string) => /^(?:https?:)?\/\//i.test(value)
 const isBlobUrl = (value: string) => /^blob:/i.test(value)
@@ -73,13 +73,13 @@ export function resolveProxyImageUrl(
       proxyPath = withLeadingSlash.replace("/api/v1/img/", "/")
     }
 
-    const url = new URL(`${base}${apiBase}${proxyPath}`, "http://dummy.com")
+    const url = new URL(`${base}${apiBase}${proxyPath}`, DUMMY_BASE)
     if (width) {
       url.searchParams.set("w", String(width))
     }
 
     // Return absolute URL or path-relative depending on origin presence
-    const result = url.toString().replace("http://dummy.com", "")
+    const result = url.toString().replace(DUMMY_BASE, "")
     return result
   }
 
@@ -113,7 +113,7 @@ export function sanitizeUrl(url: string): string | null {
   if (!url) return null
   try {
     // If it's a relative URL, we need a base to parse it
-    const base = typeof window !== "undefined" ? window.location.origin : "http://dummy.com"
+    const base = typeof window !== "undefined" ? window.location.origin : DUMMY_BASE
     const parsed = new URL(url, base)
     const protocol = parsed.protocol.toLowerCase()
 
@@ -138,8 +138,8 @@ export function sanitizeUrl(url: string): string | null {
 
     // Return a normalized, sanitized URL string. For relative URLs we strip the dummy base.
     const sanitized = parsed.toString()
-    if (base === "http://dummy.com") {
-      return sanitized.replace(base, "")
+    if (base === DUMMY_BASE) {
+      return sanitized.replace(DUMMY_BASE, "")
     }
     return sanitized
   } catch {

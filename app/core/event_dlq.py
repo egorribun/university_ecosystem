@@ -268,7 +268,7 @@ dead_letter_queue = DeadLetterQueue()
 
 
 __all__ = [
-    "FailedEvent",
     "DeadLetterQueue",
+    "FailedEvent",
     "dead_letter_queue",
 ]

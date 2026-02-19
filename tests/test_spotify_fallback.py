@@ -108,7 +108,7 @@ async def test_now_playing_returns_204_when_user_has_no_track(
     async_client: AsyncClient, user_factory
 ) -> None:
     password = "SpotifyP@ss1"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True)
 
     headers = await _login(async_client, user, password)
@@ -124,7 +124,7 @@ async def test_now_playing_uses_last_known_track_from_fallback(
     async_client: AsyncClient, user_factory, db_session
 ) -> None:
     password = "SpotifyP@ss2"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True)
 
     user.spotify.last_track_id = "track-xyz"
@@ -152,7 +152,7 @@ async def test_now_playing_returns_401_when_refresh_fails(
     async_client: AsyncClient, user_factory, db_session, monkeypatch
 ) -> None:
     password = "SpotifyP@ss3"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True)
 
     user.spotify.access_token = "expired"
@@ -196,7 +196,7 @@ async def test_now_playing_refreshes_when_access_token_missing(
     async_client: AsyncClient, user_factory, db_session, monkeypatch
 ) -> None:
     password = "SpotifyP@ss4"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True)
 
     user.spotify.access_token = None
@@ -258,7 +258,7 @@ async def test_now_playing_retries_after_unauthorized_response(
     async_client: AsyncClient, user_factory, db_session, monkeypatch
 ) -> None:
     password = "SpotifyP@ss4b"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True)
 
     user.spotify.access_token = "valid"
@@ -338,7 +338,7 @@ async def test_now_playing_disconnects_on_unauthorized_response(
     async_client: AsyncClient, user_factory, db_session, monkeypatch
 ) -> None:
     password = "SpotifyP@ss5"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True)
 
     user.spotify.access_token = "valid"

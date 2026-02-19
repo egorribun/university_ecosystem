@@ -134,7 +134,7 @@ export function AppRoutes() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        fontSize: isLHCI ? "32px" : "inherit",
+        fontSize: isLHCI ? "2rem" : "inherit",
         fontWeight: isLHCI ? "bold" : "normal",
       }}
     >

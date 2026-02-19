@@ -1,3 +1,4 @@
+import contextlib
 import logging
 from typing import Any
 
@@ -35,10 +36,8 @@ class NewsService:
             decoded = decode_datetime_cursor(cursor)
             if decoded:
                 dt, id_str = decoded
-                try:
+                with contextlib.suppress(ValueError, TypeError):
                     decoded_cursor = (dt, id_str)
-                except (ValueError, TypeError):
-                    pass
 
         # Fetch limit + 1 to determine has_more
         results = await self.repo.list_news(
@@ -155,10 +154,8 @@ class NewsService:
         from app.utils.files import delete_static_file
 
         if old_image_url and updated_news.image_url != old_image_url:
-            try:
+            with contextlib.suppress(Exception):
                 await delete_static_file(old_image_url)
-            except Exception:
-                pass
 
         return updated_news
 
@@ -178,10 +175,8 @@ class NewsService:
         from app.utils.files import delete_static_file
 
         if image_url:
-            try:
+            with contextlib.suppress(Exception):
                 await delete_static_file(image_url)
-            except Exception:
-                pass
         return True
 
     async def create_comment(

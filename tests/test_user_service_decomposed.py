@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -14,7 +14,8 @@ async def test_update_user_profile_decomposed_fields():
     repo = AsyncMock()
     audit = MagicMock()
     notifications = MagicMock()
-    service = UserService(db, repo, audit, notifications)
+    stats_repo = MagicMock()
+    service = UserService(repo, stats_repo, audit, notifications)
 
     user = models.User(id=1, email="test@example.com")
     repo.get.return_value = user
@@ -28,13 +29,16 @@ async def test_update_user_profile_decomposed_fields():
     request = MagicMock()
 
     # Execute
-    updated_user = await service.update_user_profile(user, update_data, request)
+    with patch(
+        "app.services.user_service.attach_pending_email", new_callable=AsyncMock
+    ):
+        updated_user = await service.update_user_profile(user, update_data, request)
 
     # Verify
-    assert updated_user.profile_detail.about == "New about"
+    assert updated_user.profile.about == "New about"
     assert updated_user.education_path.institute == "New institute"
     assert updated_user.preferences.timezone == "Europe/Moscow"
-    db.commit.assert_called_once()
+    repo.commit.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -44,7 +48,8 @@ async def test_update_user_profile_email_change():
     repo = AsyncMock()
     audit = MagicMock()
     notifications = MagicMock()
-    service = UserService(db, repo, audit, notifications)
+    stats_repo = MagicMock()
+    service = UserService(repo, stats_repo, audit, notifications)
 
     user = models.User(id=1, email="old@example.com")
     repo.get.return_value = user
@@ -60,8 +65,11 @@ async def test_update_user_profile_email_change():
     request = MagicMock()
 
     # Execute
-    updated_user = await service.update_user_profile(user, update_data, request)
+    with patch(
+        "app.services.user_service.attach_pending_email", new_callable=AsyncMock
+    ):
+        updated_user = await service.update_user_profile(user, update_data, request)
 
     # Verify
     assert updated_user.email == "new@example.com"
-    db.commit.assert_called_once()
+    repo.commit.assert_called_once()

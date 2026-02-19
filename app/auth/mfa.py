@@ -10,13 +10,11 @@ import secrets
 from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
-from uuid import UUID
+from typing import TYPE_CHECKING, Any
 
 import pyotp
 from fastapi import status
 from sqlalchemy import delete, func, or_, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.validation import raise_http_error, raise_validation_error
 from app.auth.constants import (
@@ -42,6 +40,11 @@ from app.models.models import (
 )
 from app.services.session_cleanup import revoke_sessions_matching
 from app.utils import ratelimit as ratelimit_utils
+
+if TYPE_CHECKING:
+    from uuid import UUID
+
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 _TOTP_SECRET_LENGTH = 32
 _TOTP_VALID_WINDOW = settings.mfa_totp_initial_skew_windows
@@ -1040,7 +1043,7 @@ async def generate_recovery_codes(db: AsyncSession, *, user: User) -> list[str]:
         codes.append(formatted)
 
         # Hash
-        hashed = get_password_hash(formatted, validate_policy=False)
+        hashed = await get_password_hash(formatted, validate_policy=False)
 
         db.add(
             RecoveryCode(
@@ -1069,7 +1072,7 @@ async def verify_recovery_code(db: AsyncSession, *, user: User, code: str) -> bo
     normalized_code = code.strip().upper()
 
     for record in available_codes:
-        if verify_password(normalized_code, record.code_hash):
+        if await verify_password(normalized_code, record.code_hash):
             record.is_used = True
             record.used_at = _utcnow()
             await db.flush()

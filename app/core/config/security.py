@@ -1,10 +1,17 @@
+"""SecuritySettings: composed from focused mixin classes.
+
+Each mixin addresses a single logical concern (JWT, CORS, rate-limiting,
+MFA/password policy, CSP/headers). SecuritySettings assembles them into a
+single Pydantic model that is loaded from environment variables.
+
+Adding a new concern: create a new mixin in app/core/config/mixins/ and
+add it to the SecuritySettings inheritance chain here.
+"""
+
 from __future__ import annotations
 
 import logging
 import os
-from functools import cached_property
-from typing import Any
-from urllib.parse import urlparse
 
 from pydantic import ValidationInfo, field_validator
 
@@ -13,172 +20,45 @@ from .base import (
     BaseAppSettings,
     _coerce_str_list,
     _validate_non_empty,
-    _validate_positive_int,
+)
+from .mixins import (
+    CorsSettingsMixin,
+    CspSettingsMixin,
+    JwtSettingsMixin,
+    MfaSettingsMixin,
+    RateLimitSettingsMixin,
 )
 
 _logger = logging.getLogger(__name__)
 
 
-class SecuritySettings(BaseAppSettings):
-    secret_key: str
-    jwt_signing_keys: list[str] | str = ""
-    jwt_active_kid: str | None = None
-    algorithm: str = "HS256"
-    access_token_expire_minutes: int = 60
+class SecuritySettings(
+    JwtSettingsMixin,
+    CorsSettingsMixin,
+    RateLimitSettingsMixin,
+    MfaSettingsMixin,
+    CspSettingsMixin,
+    BaseAppSettings,
+):
+    """Application security configuration.
+
+    Assembled from focused mixin classes — see app/core/config/mixins/ for
+    the individual concerns. All fields are loaded from environment variables
+    via Pydantic BaseSettings.
+    """
+
+    # ── General ──────────────────────────────────────────────────────────────
     api_v2_prefix: str = "/api/v2"
     monitoring_heavy_probe_enabled: bool = False
+    geoip_database_path: str | None = None
+
+    # ── Audit log ────────────────────────────────────────────────────────────
     audit_log_secret: str = "development-audit-secret-change-me"
 
-    max_sessions_per_user: int = 5
-    frontend_origin: str = "http://localhost:5173"
-    frontend_origins: str | list[str] = ""
-    app_base_url: str = "http://localhost:5173"
-    trusted_hosts: str | list[str] = "localhost,127.0.0.1"
-    # Allowed hosts for TrustedHostMiddleware - validates Host headers.
-    # Set to empty string to disable. Use "*" to allow all (not for production).
-    allowed_hosts: str | list[str] = ""
-
-    request_id_header: str = "x-request-id"
-    trace_header: str = "x-trace-id"
-
-    internal_allowed_ips: str | list[str] = "127.0.0.1,::1"
-    internal_auth_header: str = "X-Internal-Token"
-    internal_auth_token: str | None = None
-
+    # ── Image proxy ──────────────────────────────────────────────────────────
     imgproxy_key: str | None = None
     imgproxy_salt: str | None = None
     imgproxy_base_url: str = "http://localhost:8081"
-
-    cors_allow_credentials: bool = True
-    cors_allow_methods: str | list[str] = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
-    cors_allow_headers: str | list[str] = (
-        "Accept,Accept-Language,Authorization,Content-Language,Content-Type,Origin,X-Requested-With,x-profile-cache-envelope"
-    )
-    cors_expose_headers: str | list[str] = ""
-
-    rate_limit_enabled: bool = True
-    rate_limit_default: str | list[str] = "200/minute"
-    rate_limit_sensitive: str = "5/minute"
-    rate_limit_auth: str = "5/minute"
-    rate_limit_auth_login: str = "5/minute"
-    rate_limit_auth_register: str = "5/minute"
-    rate_limit_auth_password_reset: str = "3/minute"
-    rate_limit_auth_mfa: str = "5/minute"
-    rate_limit_auth_totp: str = "5/minute"
-    rate_limit_users_me: str = "120/minute"
-    rate_limit_users_avatar: str = "10/minute"
-    rate_limit_notifications: str = "120/minute"
-    rate_limit_notifications_check: str = "60/minute"
-    rate_limit_news: str = "120/minute"
-    rate_limit_events: str = "120/minute"
-    rate_limit_chat: str = "120/minute"
-    rate_limit_stories: str = "120/minute"
-    rate_limit_schedule: str = "120/minute"
-    rate_limit_interactions: str = "200/minute"
-    rate_limit_upload: str = "10/minute"
-    rate_limit_admin: str = "100/minute"
-    rate_limit_websocket: str = "60/minute"
-    rate_limit_static: str = "300/minute"
-    rate_limit_graphql: str = "30/minute"
-    rate_limit_storage_backend: str = "memory"
-    rate_limit_storage_uri: str = "memory://"
-    rate_limit_headers_enabled: bool = True
-    trusted_proxies: str | list[str] = ""
-
-    auth_lockout_thresholds: str | list[str] = "5:30,8:300,10:3600"
-    auth_lockout_history_minutes: int = 1_440
-    password_min_length: int = 8
-    password_max_length: int = 200
-    password_min_character_classes: int = 3
-    password_require_uppercase: bool = True
-    password_require_lowercase: bool = True
-    password_require_digit: bool = True
-    password_require_special: bool = True
-    password_zxcvbn_min_score: int = 1
-    password_hibp_check_enabled: bool = False
-    password_hibp_api_url: str = "https://api.pwnedpasswords.com/range"
-    password_hibp_timeout_seconds: int = 5
-    mfa_enabled: bool = False
-    mfa_default_method: str | None = None
-    mfa_totp_issuer: str = "University Ecosystem"
-    mfa_totp_initial_skew_windows: int = 1
-    mfa_challenge_ttl_seconds: int = 300
-    mfa_challenge_max_attempts: int = 5
-    mfa_step_up_ttl_seconds: int = 300
-    mfa_totp_attempt_limit: int = 5
-    webauthn_rp_id: str = "localhost"
-    webauthn_rp_name: str = "University Ecosystem"
-    webauthn_origin: str = "http://localhost:5173"
-    trusted_device_expire_days: int = 30
-    trusted_device_cookie_name: str = "trusted_device"
-    auth_dummy_hash: str = (
-        "$argon2id$v=19$m=65536,t=3,p=4$c29tZXNhbHQ$"
-        "RytvY29SUnlxS3V5dWdyS3V5dWdyS3V5dWdyS3V5dWdyS3V5dw"
-    )
-    geoip_database_path: str | None = None
-    auth_min_response_time: float = 0.5  # Seconds. Used to mitigate timing attacks.
-
-    security_csp: str = ""
-    # security_csp_dev/prod moved to app.core.policies.csp
-
-    security_connect_src_extra: str | list[str] = (
-        "https://api.spotify.com,"
-        "https://fcm.googleapis.com,"
-        "https://fcmregistrations.googleapis.com,"
-        "https://*.push.services.mozilla.com,"
-        "https://updates.push.services.mozilla.com,"
-        "https://*.push.apple.com"
-    )
-    security_csp_report_only: bool | None = None
-    security_csp_report_uri: str = ""
-    security_hsts_enabled: bool = True
-    security_hsts_max_age: int = 31536000
-    security_hsts_include_subdomains: bool = True
-    security_hsts_preload: bool = True
-    security_x_frame_options: str = "DENY"
-    security_permissions_policy: str = "geolocation=(), microphone=(), camera=()"
-    security_referrer_policy: str = "no-referrer"
-    security_x_content_type_options: str = "nosniff"
-    enable_strict_security_headers: bool | None = None
-    enable_coop: bool = False
-    enable_coep: bool = False
-    coep_value: str = "require-corp"
-    enable_corp: bool = False
-    corp_value: str = "same-site"
-
-    @field_validator("coep_value")
-    @classmethod
-    def _validate_coep_value(cls, value: str) -> str:
-        normalized = value.strip().lower()
-        if normalized not in {"require-corp", "credentialless"}:
-            raise ValueError(
-                "COEP_VALUE must be either 'require-corp' or 'credentialless'"
-            )
-        return normalized
-
-    @field_validator("corp_value")
-    @classmethod
-    def _validate_corp_value(cls, value: str) -> str:
-        normalized = value.strip().lower()
-        if normalized not in {"same-origin", "same-site", "cross-origin"}:
-            raise ValueError(
-                "CORP_VALUE must be one of 'same-origin', 'same-site', "
-                "or 'cross-origin'"
-            )
-        return normalized
-
-    @field_validator("rate_limit_storage_backend")
-    @classmethod
-    def _validate_rate_limit_storage_backend(cls, value: str) -> str:
-        normalized = value.strip().lower()
-        if normalized not in {"memory", "redis"}:
-            raise ValueError("RATE_LIMIT_STORAGE_BACKEND must be 'memory' or 'redis'")
-        return normalized
-
-    @field_validator("mfa_totp_issuer")
-    @classmethod
-    def _validate_mfa_totp_issuer(cls, value: str) -> str:
-        return _validate_non_empty(value, label="MFA_TOTP_ISSUER")
 
     @field_validator("audit_log_secret")
     @classmethod
@@ -205,452 +85,3 @@ class SecuritySettings(BaseAppSettings):
                     "AUDIT_LOG_SECRET entries must be at least 32 characters long"
                 )
         return ",".join(secrets)
-
-    @field_validator(
-        "mfa_challenge_ttl_seconds",
-        "mfa_challenge_max_attempts",
-        "mfa_step_up_ttl_seconds",
-    )
-    @classmethod
-    def _validate_positive_mfa_values(cls, value: int, info: ValidationInfo) -> int:
-        field_name = getattr(info, "field_name", None) or "mfa_value"
-        return _validate_positive_int(value, label=field_name.upper())
-
-    @field_validator("password_min_length", "password_max_length")
-    @classmethod
-    def _validate_password_length_bounds(cls, value: int, info: ValidationInfo) -> int:
-        field_name = getattr(info, "field_name", None) or "password_length"
-        validated = _validate_positive_int(value, label=field_name.upper())
-        if field_name == "password_max_length":
-            min_length = info.data.get("password_min_length", 1)
-            if validated < int(min_length):
-                raise ValueError("PASSWORD_MAX_LENGTH must be >= PASSWORD_MIN_LENGTH")
-        return validated
-
-    @field_validator("password_min_character_classes")
-    @classmethod
-    def _validate_password_character_classes(cls, value: int) -> int:
-        if value < 0 or value > 4:
-            raise ValueError("PASSWORD_MIN_CHARACTER_CLASSES must be between 0 and 4")
-        return value
-
-    @field_validator("password_zxcvbn_min_score")
-    @classmethod
-    def _validate_password_zxcvbn_score(cls, value: int) -> int:
-        if value < 0 or value > 4:
-            raise ValueError("PASSWORD_ZXCVBN_MIN_SCORE must be between 0 and 4")
-        return value
-
-    @field_validator("password_hibp_timeout_seconds")
-    @classmethod
-    def _validate_password_hibp_timeout(cls, value: int) -> int:
-        return _validate_positive_int(value, label="PASSWORD_HIBP_TIMEOUT_SECONDS")
-
-    @field_validator("mfa_totp_initial_skew_windows")
-    @classmethod
-    def _validate_totp_skew(cls, value: int) -> int:
-        if value < 0:
-            raise ValueError("MFA_TOTP_INITIAL_SKEW_WINDOWS must be zero or positive")
-        return value
-
-    @field_validator("secret_key")
-    @classmethod
-    def _validate_secret_key_entropy(cls, v: str, info: ValidationInfo) -> str:
-        if not v:
-            raise ValueError("SECRET_KEY must not be empty")
-
-        # Try to detect environment from context or os
-        env = (
-            info.data.get("environment") or os.environ.get("ENVIRONMENT", "development")
-        ).lower()
-        if env not in _DEVELOPMENT_ENVIRONMENTS:
-            if len(v) < 32:
-                raise ValueError(
-                    "SECRET_KEY must be at least 32 characters long in production"
-                )
-        return v
-
-    @field_validator("jwt_signing_keys")
-    @classmethod
-    def _validate_jwt_signing_keys_entropy(
-        cls, v: str | list[str], info: ValidationInfo
-    ) -> str | list[str]:
-        keys = _coerce_str_list(v)
-        if not keys:
-            return v
-
-        env = (
-            info.data.get("environment") or os.environ.get("ENVIRONMENT", "development")
-        ).lower()
-        if env not in _DEVELOPMENT_ENVIRONMENTS:
-            for entry in keys:
-                if ":" in entry:
-                    _, secret = entry.split(":", 1)
-                    if len(secret.strip()) < 32:
-                        raise ValueError(
-                            "JWT_SIGNING_KEYS entries must be at least 32 characters "
-                            "long in production"
-                        )
-        return v
-
-    def _build_jwt_signing_key_entries(self) -> list[tuple[str, str]]:
-        entries: list[tuple[str, str]] = []
-        seen_kids: set[str] = set()
-        for raw_entry in _coerce_str_list(self.jwt_signing_keys):
-            if ":" not in raw_entry:
-                raise RuntimeError(
-                    "JWT_SIGNING_KEYS entries must be in '<kid>:<secret>' format"
-                )
-            kid, secret = raw_entry.split(":", 1)
-            kid = kid.strip()
-            secret = secret.strip()
-            if not kid:
-                raise RuntimeError(
-                    "JWT_SIGNING_KEYS entries must specify a non-empty kid value"
-                )
-            if not secret:
-                raise RuntimeError(
-                    "JWT_SIGNING_KEYS entries must specify a non-empty secret value"
-                )
-            if kid in seen_kids:
-                raise RuntimeError(
-                    "JWT_SIGNING_KEYS entries must use unique kid values"
-                )
-            entries.append((kid, secret))
-            seen_kids.add(kid)
-
-        if not entries:
-            fallback_kid = (self.jwt_active_kid or "primary").strip() or "primary"
-            entries.append((fallback_kid, self.secret_key))
-        return entries
-
-    @property
-    def jwt_signing_key_registry(self) -> dict[str, str]:
-        registry: dict[str, str] = {}
-        for kid, secret in self._build_jwt_signing_key_entries():
-            registry[kid] = secret
-        return registry
-
-    @property
-    def jwt_signing_active_kid(self) -> str:
-        registry = self.jwt_signing_key_registry
-        configured = (
-            self.jwt_active_kid.strip()
-            if isinstance(self.jwt_active_kid, str)
-            else None
-        )
-        if configured:
-            if configured not in registry:
-                raise RuntimeError(
-                    "JWT_ACTIVE_KID must match one of the configured JWT_SIGNING_KEYS"
-                )
-            return configured
-        return next(iter(registry))
-
-    @property
-    def jwt_signing_active_secret(self) -> str:
-        registry = self.jwt_signing_key_registry
-        active_kid = self.jwt_signing_active_kid
-        secret = registry.get(active_kid)
-        if secret is None:
-            raise RuntimeError(
-                "Configured JWT signing key registry does not contain the active kid"
-            )
-        return secret
-
-    @cached_property
-    def SECRET_KEY(self) -> str:
-        return self.jwt_signing_active_secret
-
-    @cached_property
-    def ALGORITHM(self) -> str:
-        return self.algorithm
-
-    @cached_property
-    def frontend_origins_list(self) -> list[str]:
-        raw: list[str] = []
-
-        def _extend(values: Any) -> None:
-            if not values:
-                return
-            if isinstance(values, str):
-                raw.extend([v.strip() for v in values.split(",") if v.strip()])
-            else:
-                raw.extend([str(v).strip() for v in values if str(v).strip()])
-
-        _extend(self.frontend_origins)
-        _extend(self.frontend_origin)
-        _extend(self.app_base_url)
-        _extend(self.webauthn_origin)
-
-        # We can't use self.is_development here directly if we want this as a mixin,
-        # but BaseAppSettings has it.
-        if getattr(self, "is_development", False):
-            raw.extend(["http://localhost:5173", "http://127.0.0.1:5173"])
-
-        seen: set[str] = set()
-        result: list[str] = []
-        for origin in raw:
-            normalized = origin.rstrip("/")
-            key = normalized.lower()
-            if normalized and key not in seen:
-                seen.add(key)
-                result.append(normalized)
-        return result
-
-    @cached_property
-    def cors_allow_origins_list(self) -> list[str]:
-        allowed: list[str] = []
-        seen: set[str] = set()
-        for origin in self.frontend_origins_list:
-            candidate = origin.strip()
-            if not candidate or candidate == "*":
-                continue
-            parsed = urlparse(candidate)
-            scheme = parsed.scheme.lower()
-            hostname = (parsed.hostname or "").lower()
-            if self.strict_security_headers_enabled and hostname not in {
-                "localhost",
-                "127.0.0.1",
-            }:
-                if scheme != "https":
-                    continue
-            key = candidate.lower()
-            if key not in seen:
-                seen.add(key)
-                allowed.append(candidate)
-        return allowed
-
-    @cached_property
-    def cors_allow_credentials_effective(self) -> bool:
-        if not self.cors_allow_credentials:
-            return False
-        if not self.cors_allow_origins_list:
-            return False
-        if self.strict_security_headers_enabled:
-            for origin in self.cors_allow_origins_list:
-                parsed = urlparse(origin)
-                scheme = parsed.scheme.lower()
-                hostname = (parsed.hostname or "").lower()
-                if hostname in {"localhost", "127.0.0.1"}:
-                    continue
-                if scheme != "https":
-                    return False
-        return True
-
-    @cached_property
-    def trusted_hosts_list(self) -> list[str]:
-        if isinstance(self.trusted_hosts, list | tuple | set):
-            items = [str(v).strip() for v in self.trusted_hosts]
-        else:
-            items = [p.strip() for p in str(self.trusted_hosts).split(",")]
-        return [host for host in items if host]
-
-    @cached_property
-    def allowed_hosts_list(self) -> list[str]:
-        """Hosts allowed by TrustedHostMiddleware for Host header validation."""
-        if isinstance(self.allowed_hosts, list | tuple | set):
-            items = [str(v).strip() for v in self.allowed_hosts]
-        else:
-            items = [p.strip() for p in str(self.allowed_hosts).split(",")]
-        # Filter out empty strings but keep "*" if specified
-        result = [host for host in items if host]
-        # In development, auto-add localhost variants if list is empty
-        if not result and getattr(self, "is_development", False):
-            result = ["localhost", "127.0.0.1", "testserver"]
-        return result
-
-    @cached_property
-    def internal_allowed_ips_list(self) -> list[str]:
-        return [ip for ip in _coerce_str_list(self.internal_allowed_ips) if ip]
-
-    @cached_property
-    def cors_allow_methods_list(self) -> list[str]:
-        methods = _coerce_str_list(self.cors_allow_methods)
-        return methods or ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-
-    @cached_property
-    def cors_allow_headers_list(self) -> list[str]:
-        headers = _coerce_str_list(self.cors_allow_headers)
-        return headers or ["Authorization", "Content-Type"]
-
-    @cached_property
-    def cors_expose_headers_list(self) -> list[str]:
-        headers = {
-            header.strip(): None
-            for header in _coerce_str_list(self.cors_expose_headers)
-        }
-        headers[self.request_id_header] = None
-        headers[self.trace_header] = None
-        return [key for key in headers if key]
-
-    @cached_property
-    def rate_limit_default_list(self) -> list[str]:
-        return _coerce_str_list(self.rate_limit_default)
-
-    @cached_property
-    def rate_limit_sensitive_value(self) -> str | None:
-        value = str(self.rate_limit_sensitive).strip()
-        return value or None
-
-    @cached_property
-    def trusted_proxies_list(self) -> list[str]:
-        return [proxy for proxy in _coerce_str_list(self.trusted_proxies) if proxy]
-
-    @cached_property
-    def strict_security_headers_enabled(self) -> bool:
-        value = self.enable_strict_security_headers
-        if value is None:
-            # We need is_development here too.
-            return not getattr(self, "is_development", False)
-        return bool(value)
-
-    @property
-    def cookie_secure(self) -> bool:
-        return self.strict_security_headers_enabled
-
-    @property
-    def cookie_samesite(self) -> str:
-        if getattr(self, "is_development", False):
-            return "lax"
-        return "strict"
-
-    @cached_property
-    def security_csp_report_only_effective(self) -> bool:
-        if self.security_csp_report_only is not None:
-            return bool(self.security_csp_report_only)
-        return not self.strict_security_headers_enabled
-
-    @cached_property
-    def security_connect_src_values(self) -> list[str]:
-        values: list[str] = []
-        seen: set[str] = set()
-        for candidate in ["'self'"] + _coerce_str_list(self.security_connect_src_extra):
-            parts = [part.strip() for part in str(candidate).split() if part.strip()]
-            for part in parts:
-                key = part.lower()
-                if key not in seen:
-                    seen.add(key)
-                    values.append(part)
-        return values
-
-    def _development_connect_overrides(self) -> list[str]:
-        if not getattr(self, "is_development", False):
-            return []
-        overrides: list[str] = []
-        seen: set[str] = {value.lower() for value in self.security_connect_src_values}
-        for host in (
-            "127.0.0.1:8000",
-            "localhost:5173",
-            "127.0.0.1:5173",
-            "localhost:8081",
-            "127.0.0.1:8081",
-        ):
-            http_origin = f"http://{host}"
-            key = http_origin.lower()
-            if key not in seen:
-                overrides.append(http_origin)
-                seen.add(key)
-        for host in ("localhost:5173", "127.0.0.1:5173"):
-            ws_origin = f"ws://{host}"
-            key = ws_origin.lower()
-            if key not in seen:
-                overrides.append(ws_origin)
-                seen.add(key)
-        for origin in self.frontend_origins_list:
-            cleaned = origin.rstrip("/")
-            if not cleaned:
-                continue
-            lower = cleaned.lower()
-            if lower not in seen:
-                overrides.append(cleaned)
-                seen.add(lower)
-            parsed = urlparse(cleaned)
-            scheme = parsed.scheme.lower()
-            if scheme in {"http", "https"}:
-                ws_scheme = "ws" if scheme == "http" else "wss"
-                ws_origin = f"{ws_scheme}://{parsed.netloc}" if parsed.netloc else ""
-                if ws_origin:
-                    key = ws_origin.lower()
-                    if key not in seen:
-                        overrides.append(ws_origin)
-                        seen.add(key)
-        return overrides
-
-    @cached_property
-    def coop_enabled(self) -> bool:
-        return bool(self.enable_coop)
-
-    @cached_property
-    def coep_enabled(self) -> bool:
-        return bool(self.enable_coep)
-
-    @cached_property
-    def coep_header_value(self) -> str:
-        return self.coep_value
-
-    @cached_property
-    def corp_enabled(self) -> bool:
-        return bool(self.enable_corp)
-
-    @cached_property
-    def corp_header_value(self) -> str:
-        return self.corp_value
-
-    @cached_property
-    def security_hsts_enabled_effective(self) -> bool:
-        if not self.strict_security_headers_enabled:
-            return False
-        if not self.security_hsts_enabled:
-            return False
-        # app_base_url_clean will be needed.
-        return getattr(self, "app_base_url_clean", "").startswith("https://")
-
-    @cached_property
-    def should_inject_csp_nonce(self) -> bool:
-        if self.security_csp_report_only_effective:
-            return False
-        return self.strict_security_headers_enabled
-
-    @cached_property
-    def strict_security_csp(self) -> str:
-        # Late import to avoid circular dependencies if any
-        from app.core.policies.csp import ContentSecurityPolicy
-
-        # Aggregate connect sources
-        connect_sources = self.security_connect_src_values + (
-            self._development_connect_overrides()
-            if getattr(self, "is_development", False)
-            else []
-        )
-
-        policy_gen = ContentSecurityPolicy(
-            is_development=getattr(self, "is_development", False),
-            report_only=self.security_csp_report_only_effective,
-            report_uri=self.security_csp_report_uri,
-            connect_src_extra=connect_sources,
-            custom_policy=self.security_csp,
-        )
-        return policy_gen.generate(nonce="{nonce}")
-
-    def build_csp_policy(self, *, nonce: str | None, report_only: bool) -> str:
-        """
-        Backward compatibility wrapper using the new Policy engine.
-        """
-        from app.core.policies.csp import ContentSecurityPolicy
-
-        # Aggregate connect sources
-        connect_sources = self.security_connect_src_values + (
-            self._development_connect_overrides()
-            if getattr(self, "is_development", False)
-            else []
-        )
-
-        policy_gen = ContentSecurityPolicy(
-            is_development=getattr(self, "is_development", False),
-            report_only=report_only,
-            report_uri=self.security_csp_report_uri,
-            connect_src_extra=connect_sources,
-            custom_policy=self.security_csp,
-        )
-        return policy_gen.generate(nonce=nonce)

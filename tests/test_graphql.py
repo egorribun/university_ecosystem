@@ -158,11 +158,13 @@ async def test_graphql_me_unauthenticated(root_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_graphql_me_authenticated(root_client: AsyncClient, user_factory):
+async def test_graphql_me_authenticated(
+    root_client: AsyncClient, user_factory, db_session
+):
     user = await user_factory()
-    from app.auth.security import create_access_token
+    from tests.fixtures.auth.auth_fixtures import create_access_token
 
-    token = await create_access_token(sub=str(user.id))
+    token, _ = await create_access_token(sub=str(user.id), db=db_session)
 
     query = """
     query {
@@ -207,11 +209,13 @@ async def test_graphql_context_non_bearer_auth(root_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_graphql_context_user_not_found(root_client: AsyncClient, monkeypatch):
+async def test_graphql_context_user_not_found(
+    root_client: AsyncClient, monkeypatch, db_session
+):
     # Test with valid token but non-existent user ID
-    from app.auth.security import create_access_token
+    from tests.fixtures.auth.auth_fixtures import create_access_token
 
-    token = await create_access_token(sub=str(uuid.uuid4()))
+    token, _ = await create_access_token(sub=str(uuid.uuid4()), db=db_session)
 
     query = "{ me { email } }"
     response = await root_client.post(
@@ -224,11 +228,13 @@ async def test_graphql_context_user_not_found(root_client: AsyncClient, monkeypa
 
 
 @pytest.mark.asyncio
-async def test_graphql_context_db_error(root_client: AsyncClient, monkeypatch):
+async def test_graphql_context_db_error(
+    root_client: AsyncClient, monkeypatch, db_session
+):
     # Test with database error during user fetching
-    from app.auth.security import create_access_token
+    from tests.fixtures.auth.auth_fixtures import create_access_token
 
-    token = await create_access_token(sub=str(uuid.uuid4()))
+    token, _ = await create_access_token(sub=str(uuid.uuid4()), db=db_session)
 
     # Mock select to raise error
 

@@ -9,10 +9,10 @@ def test_stories_cleanup_main():
         "app.management.stories_cleanup.cleanup_expired_stories", new_callable=AsyncMock
     ) as mock_cleanup:
         mock_cleanup.return_value = 5
-        with patch("builtins.print") as mock_print:
+        with patch("app.management.stories_cleanup.logger") as mock_log:
             stories_main()
             mock_cleanup.assert_called_once()
-            mock_print.assert_any_call("Removed 5 expired stories")
+            mock_log.info.assert_any_call("Removed 5 expired stories")
 
 
 def test_weekly_cleanup_main():
@@ -24,10 +24,9 @@ def test_weekly_cleanup_main():
             "subscriptions_orphaned": 4,
             "subscriptions_stale": 6,
         }
-        with patch("builtins.print") as mock_print:
+        with patch("app.management.weekly_cleanup.logger") as mock_log:
             weekly_main()
             mock_run.assert_called_once()
-            # print("Weekly cleanup finished:", stats)
-            mock_print.assert_any_call(
-                "Weekly cleanup finished:", mock_run.return_value
+            mock_log.info.assert_any_call(
+                f"Weekly cleanup finished: {mock_run.return_value}"
             )

@@ -260,7 +260,10 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
             </div>
 
             <div className="w-full md:w-56 flex flex-col items-center gap-4">
-              <div className="relative w-full aspect-9/16 rounded-md overflow-hidden bg-(--bg-surface)/(--opacity-dim) border border-glass-border shadow-inner group">
+              <div
+                className="relative w-full rounded-md overflow-hidden bg-(--bg-surface)/(--opacity-dim) border border-glass-border shadow-inner group"
+                style={{ aspectRatio: "9/16" }}
+              >
                 {coverPreview ? (
                   <img
                     src={sanitizeUrl(coverPreview) ?? ""}
@@ -298,6 +301,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
                       type="file"
                       accept="image/*"
                       hidden
+                      aria-label={t("stories:list.actions.pickCover")}
                       onChange={handleCoverChange}
                       ref={fileInputRef}
                     />
@@ -507,7 +511,7 @@ export default function StoriesAdmin() {
     return (
       <Layout>
         <PageFadeIn>
-          <div className="flex min-h-[70vh] items-center justify-center px-4">
+          <div className="flex items-center justify-center px-4" style={{ minHeight: "70vh" }}>
             <h2 className="text-2xl font-bold opacity-medium">{t("stories:notAuthorized")}</h2>
           </div>
         </PageFadeIn>
@@ -597,6 +601,7 @@ export default function StoriesAdmin() {
                         type="file"
                         accept="image/*"
                         hidden
+                        aria-label={t("common:buttons.uploadPhoto")}
                         onChange={handleCoverChange}
                         ref={fileInputRef}
                       />
@@ -614,7 +619,10 @@ export default function StoriesAdmin() {
                   </div>
 
                   {coverPreview && (
-                    <div className="relative w-full sm:w-80 aspect-9/16 rounded-lg overflow-hidden border border-glass-border shadow-2xl mt-2 group mx-auto md:mx-0">
+                    <div
+                      className="relative w-full sm:w-80 rounded-lg overflow-hidden border border-glass-border shadow-2xl mt-2 group mx-auto md:mx-0"
+                      style={{ aspectRatio: "9/16" }}
+                    >
                       <SmartImage
                         srcRaw={coverPreview || ""}
                         alt={t("stories:form.previewAlt")}

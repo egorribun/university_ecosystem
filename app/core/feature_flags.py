@@ -8,6 +8,7 @@ percentage rollouts, user targeting, and environment-based defaults.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import json
 import logging
@@ -152,10 +153,8 @@ class FeatureFlagService:
         """Shutdown the service."""
         if self._pubsub_task:
             self._pubsub_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._pubsub_task
-            except asyncio.CancelledError:
-                pass
         if self._redis:
             # If we created our own client, we should close it.
             # But usually it's passed from lifespan.

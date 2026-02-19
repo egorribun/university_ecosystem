@@ -52,9 +52,7 @@ def mock_request():
 
 @pytest.mark.asyncio
 async def test_auth_url(mock_user):
-    with patch(
-        "app.api.spotify.create_access_token", new_callable=AsyncMock
-    ) as mock_create_token:
+    with patch("app.api.spotify._mint_state_token") as mock_create_token:
         mock_create_token.return_value = "state_token"
         response = await spotify_auth_url(user=mock_user)
         assert "url" in response

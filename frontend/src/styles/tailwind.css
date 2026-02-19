@@ -1,6 +1,6 @@
 @import "tailwindcss";
 @import "./theme.css";
-@import "./dashboard-theme.css";
+
 
 @theme {
   /*
@@ -176,7 +176,9 @@
 
   /* Scale */
   --scale-active: 0.98;
-  --scale-active-sm: 0.95;
+  --scale-hover-subtle: 1.01;
+  --scale-hover-standard: 1.015;
+  --scale-hover-lift: 1.015;
 
   /* Messenger Utilities */
   --color-msg-sidebar: var(--msg-sidebar-bg);
@@ -186,6 +188,25 @@
   --color-msg-hover: var(--msg-sidebar-hover);
   --color-msg-active: var(--msg-sidebar-active);
   --color-msg-online: var(--msg-online-color);
+
+  /* Glow & Positioning */
+  --glow-inset-neg: -10%;
+  --glow-inset-subtle-neg: -5%;
+
+  /* Animations */
+  @keyframes bounce-subtle {
+
+    0%,
+    100% {
+      transform: translateY(-5%);
+      animation-timing-function: cubic-bezier(0.8, 0, 1, 1);
+    }
+
+    50% {
+      transform: none;
+      animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+    }
+  }
 
   /* Semantic Color Mixtures */
   --color-session-revoked: var(--text-session-revoked);
@@ -213,6 +234,12 @@
   --animate-dash-colon-blink: dash-colon-blink 2s var(--ease-premium) infinite;
   --animate-pulse-shadow: pulse-shadow 2s ease-in-out infinite;
 
+  --animate-pulse-shadow: pulse-shadow 2s ease-in-out infinite;
+
+  /* Easing */
+  --ease-back-out: var(--ease-back-out);
+  --ease-premium: var(--ease-premium);
+
   /* Dashboard Specialized Gradients & Effects */
 
   /* Dashboard Specialized Gradients & Effects are automatically discovered if they follow --dash-* pattern */
@@ -220,11 +247,10 @@
   /* Premium UI Gradients */
   --bg-nav-light: var(--grad-nav-light);
   --bg-nav-dark: var(--grad-nav-dark);
-  --bg-footer-light:
-    radial-gradient(120% 180% at -10% -20%,
-      color-mix(in srgb, var(--color-blue-400) var(--glass-alpha-med), transparent),
-      transparent 60%),
-    linear-gradient(112deg, var(--primary-main) 0%, var(--primary-hover) 100%);
+  --bg-footer-light: radial-gradient(120% 180% at -10% -20%,
+    color-mix(in srgb, var(--color-blue-400) var(--glass-alpha-med), transparent),
+    transparent 60%),
+  linear-gradient(112deg, var(--primary-main) 0%, var(--primary-hover) 100%);
   --bg-footer-dark: var(--grad-nav-dark);
 }
 
@@ -583,6 +609,54 @@
   z-index: var(--z-decor);
 }
 
+/* ── Scroll Reveal Utilities ── */
+@layer utilities {
+  .reveal-base {
+    transition-property: opacity, transform, filter;
+    transition-duration: 0.8s;
+    transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+    /* ease-premium */
+    will-change: opacity, transform;
+  }
+
+  /* Hidden States */
+  .reveal-hidden-fade {
+    opacity: 0;
+  }
+
+  .reveal-hidden-slide-up {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+
+  .reveal-hidden-slide-left {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+
+  .reveal-hidden-slide-right {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+
+  .reveal-hidden-scale {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+
+  .reveal-hidden-blur {
+    filter: blur(8px);
+  }
+
+  /* Visible State */
+  .reveal-visible {
+    opacity: 1;
+    transform: translate(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+
 @utility z-surface {
   z-index: var(--z-surface);
 }
@@ -701,4 +775,34 @@
 
 @utility transition-fast {
   transition: all var(--transition-fast);
+}
+
+@layer components {
+  .bg-radial-gradient-primary {
+    background-image: radial-gradient(circle at 0% 0%, var(--primary-main), transparent 60%);
+  }
+
+  .dark .bg-radial-gradient-primary-dark {
+    background-image: radial-gradient(circle at 0% 0%, var(--primary-subtle), transparent 60%);
+  }
+
+
+  .before-rounded-inherit::before {
+    border-radius: inherit;
+  }
+
+  @media (min-width: 1024px) {
+    .grid-profile {
+      grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
+    }
+  }
+
+  /* Data attributes */
+  .data-revoked[data-revoked="true"] {
+    border-style: dashed;
+    border-color: var(--border-subtle);
+    background-color: rgb(var(--bg-surface) / var(--opacity-dim));
+    box-shadow: none;
+    backdrop-filter: none;
+  }
 }

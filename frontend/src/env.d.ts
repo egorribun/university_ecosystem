@@ -8,14 +8,16 @@ interface ImportMetaEnv {
   readonly VITE_SENTRY_DSN?: string
   readonly VITE_SENTRY_TRACES_SAMPLE_RATE?: string
   readonly VITE_SENTRY_PROFILES_SAMPLE_RATE?: string
-  readonly VITE_API_RATE_LIMIT_PER_MINUTE?: string
-  readonly VITE_API_RATE_LIMIT_MAX_CONCURRENT?: string
+  readonly VITE_OTEL_EXPORTER_OTLP_ENDPOINT?: string
+  readonly VITE_OTEL_SERVICE_NAME?: string
+  readonly VITE_SERVICE_VERSION?: string
   readonly VITE_VAPID_PUBLIC_KEY?: string
   readonly VITE_LHCI?: string
   readonly VITE_RELEASE?: string
   readonly VITE_SENTRY_RELEASE?: string
   readonly VITE_QUERY_STALE_TIME_MS?: string
   readonly VITE_QUERY_CACHE_TTL_MS?: string
+  readonly VITE_TRACE_HEADER?: string
 }
 
 interface ImportMeta {

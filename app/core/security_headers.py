@@ -1,15 +1,17 @@
 from __future__ import annotations
 
+import contextlib
 import secrets
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import FileResponse, Response
-from starlette.types import ASGIApp
 
 if TYPE_CHECKING:
+    from fastapi import Request
+    from starlette.types import ASGIApp
+
     from app.core.config import Settings
 
 
@@ -42,10 +44,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     def _apply_hsts(self, response: Response) -> None:
         headers = response.headers
         if not self._settings.security_hsts_enabled_effective:
-            try:
+            with contextlib.suppress(KeyError):
                 del headers["Strict-Transport-Security"]
-            except KeyError:
-                pass
             return
         value = f"max-age={int(self._settings.security_hsts_max_age)}"
         if self._settings.security_hsts_include_subdomains:
@@ -61,20 +61,16 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         header_name = "Content-Security-Policy"
         if report_only:
             header_name = "Content-Security-Policy-Report-Only"
-            try:
+            with contextlib.suppress(KeyError):
                 del headers["Content-Security-Policy"]
-            except KeyError:
-                pass
         headers[header_name] = policy
         other_header = (
             "Content-Security-Policy"
             if header_name == "Content-Security-Policy-Report-Only"
             else "Content-Security-Policy-Report-Only"
         )
-        try:
+        with contextlib.suppress(KeyError):
             del headers[other_header]
-        except KeyError:
-            pass
 
     def _inject_nonce_into_html(self, response: Response, nonce: str) -> Response:
         content_type = response.headers.get("content-type", "")
@@ -131,25 +127,19 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         if self._settings.coop_enabled:
             headers["Cross-Origin-Opener-Policy"] = "same-origin"
         else:
-            try:
+            with contextlib.suppress(KeyError):
                 del headers["Cross-Origin-Opener-Policy"]
-            except KeyError:
-                pass
         if self._settings.coep_enabled:
             # Allow switching between require-corp and credentialless.
             headers["Cross-Origin-Embedder-Policy"] = self._settings.coep_header_value
         else:
-            try:
+            with contextlib.suppress(KeyError):
                 del headers["Cross-Origin-Embedder-Policy"]
-            except KeyError:
-                pass
         if self._settings.corp_enabled:
             headers["Cross-Origin-Resource-Policy"] = self._settings.corp_header_value
         else:
-            try:
+            with contextlib.suppress(KeyError):
                 del headers["Cross-Origin-Resource-Policy"]
-            except KeyError:
-                pass
 
     def _apply_frame_options(self, response: Response) -> None:
         headers = response.headers
@@ -157,10 +147,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         if value:
             headers["X-Frame-Options"] = value
         else:
-            try:
+            with contextlib.suppress(KeyError):
                 del headers["X-Frame-Options"]
-            except KeyError:
-                pass
 
     def _apply_permissions_policy(self, response: Response) -> None:
         headers = response.headers
@@ -168,10 +156,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         if value:
             headers["Permissions-Policy"] = value
         else:
-            try:
+            with contextlib.suppress(KeyError):
                 del headers["Permissions-Policy"]
-            except KeyError:
-                pass
 
     def _apply_content_type_options(self, response: Response) -> None:
         headers = response.headers
@@ -179,10 +165,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         if value:
             headers["X-Content-Type-Options"] = value
         else:
-            try:
+            with contextlib.suppress(KeyError):
                 del headers["X-Content-Type-Options"]
-            except KeyError:
-                pass
 
     def _apply_referrer_policy(self, response: Response) -> None:
         headers = response.headers
@@ -190,7 +174,5 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         if value:
             headers["Referrer-Policy"] = value
         else:
-            try:
+            with contextlib.suppress(KeyError):
                 del headers["Referrer-Policy"]
-            except KeyError:
-                pass

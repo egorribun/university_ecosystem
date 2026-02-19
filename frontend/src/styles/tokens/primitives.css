@@ -1,0 +1,166 @@
+@layer base {
+  :root {
+    /*
+     * BASE COLORS
+     * Foundational palette used by semantic tokens
+     */
+    --color-white: #ffffff;
+    --color-black: #000000;
+
+    /* Slate Palette (Standard Reference) */
+    --color-slate-50: #f8fafc;
+    --color-slate-100: #f1f5f9;
+    --color-slate-200: #e2e8f0;
+    --color-slate-300: #cbd5e1;
+    --color-slate-400: #94a3b8;
+    --color-slate-500: #64748b;
+    --color-slate-600: #475569;
+    --color-slate-700: #334155;
+    --color-slate-800: #1e293b;
+    --color-slate-900: #0f172a;
+    --color-slate-950: #020617;
+
+    /* Semantic Primary Palette (Blue/Sky) */
+    --color-blue-50: #eff6ff;
+    --color-blue-400: #60a5fa;
+    --color-blue-500: #3b82f6;
+    --color-blue-600: #2563eb;
+    --color-blue-700: #1d4ed8;
+    --color-sky-300: #7dd3fc;
+    --color-sky-400: #38bdf8;
+    --color-sky-500: #0ea5e9;
+
+    /* Functional Palette */
+    --color-emerald-400: #34d399;
+    --color-emerald-500: #10b981;
+    --color-green-100: #dcfce7;
+    --color-green-500: #22c55e;
+    --color-green-800: #166534;
+    --color-amber-100: #fef3c7;
+    --color-amber-400: #fbbf24;
+    --color-amber-500: #f59e0b;
+    --color-amber-700: #b45309;
+    --color-red-400: #f87171;
+    --color-red-600: #dc2626;
+    --color-indigo-400: #818cf8;
+    --color-indigo-500: #6366f1;
+
+    /* Extended Decorative Palette */
+    --color-purple-400: #c084fc;
+    --color-purple-500: #a855f7;
+    --color-violet-500: #8b5cf6;
+    --color-pink-400: #f472b6;
+    --color-rose-500: #f43f5e;
+
+    /* RADIUS */
+    --radius-xs: 0.5rem;
+    --radius-sm: 0.75rem;
+    --radius-md: 1rem;
+    --radius-lg: 1.5rem;
+    --radius-xl: 2rem;
+    --radius-2xl: 3rem;
+    --radius-3xl: 4rem;
+    --radius-4xl: 5rem;
+    --radius-full: 9999px;
+
+    /* SPACING */
+    --space-05: 0.125rem;
+    --space-1: 0.25rem;
+    --space-125: 0.3125rem;
+    --space-15: 0.375rem;
+    --space-2: 0.5rem;
+    --space-25: 0.625rem;
+    --space-3: 0.75rem;
+    --space-35: 0.875rem;
+    --space-4: 1rem;
+    --space-5: 1.25rem;
+    --space-6: 1.5rem;
+    --space-8: 2rem;
+    --space-9: 2.25rem;
+    --space-10: 2.5rem;
+    --space-12: 3rem;
+    --space-16: 4rem;
+    --space-20: 5rem;
+    --space-24: 6rem;
+    --space-32: 8rem;
+    --space-36: 9rem;
+    --space-40: 10rem;
+    --space-48: 12rem;
+    --space-52: 13rem;
+    --space-56: 14rem;
+    --space-64: 16rem;
+    --space-80: 20rem;
+
+    /* Fluid Typography (Mobile Optimized) */
+    --fs-h1: clamp(2.25rem, 1.5rem + 3.75vw, 4rem);
+    --fs-h2: clamp(1.875rem, 1.3rem + 2.875vw, 3rem);
+    --fs-h3: clamp(1.5rem, 1.1rem + 2vw, 2.25rem);
+    --fs-body: clamp(0.9375rem, 0.9rem + 0.2vw, 1.125rem);
+
+    /* Fixed Scale */
+    --fs-xs: 0.75rem;
+    --fs-sm: 0.875rem;
+    --fs-base: var(--fs-body);
+    --fs-lg: 1.125rem;
+    --fs-xl: 1.25rem;
+    --fs-2xl: 1.5rem;
+
+    /* Font Stacks */
+    --font-sf: "SF Pro Display", "SF Pro Icons", "Helvetica Neue", "Helvetica", "Arial", sans-serif;
+
+    /* Z-Index Scale */
+    --z-negative: -10;
+    --z-hide: -1;
+    --z-base: 0;
+    --z-decor: 5;
+    --z-deep: 10;
+    --z-surface: 20;
+    --z-content: 30;
+    --z-sticky: 100;
+    --z-sidebar: 400;
+    --z-navbar: 500;
+    --z-overlay: 1000;
+    --z-dropdown: 1200;
+    --z-modal: 1100;
+    --z-popover: 1200;
+    --z-floating: 1300;
+    --z-toast: 2000;
+    --z-tooltip: 2100;
+    --z-offline: 9999;
+
+    /* Animation Tokens */
+    --spring-stiff: stiffness: 520, damping: 34;
+    --spring-standard: stiffness: 460, damping: 34;
+    --spring-gentle: stiffness: 260, damping: 26;
+
+    --ease-premium: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-back-out: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+    /* Durations */
+    --motion-duration-instant: 0.1s;
+    --motion-duration-rapid: 0.15s;
+    --motion-duration-fast: 0.2s;
+    --motion-duration-base: 0.3s;
+    --motion-duration-default: 0.35s;
+    --motion-duration-slow: 0.5s;
+    --motion-duration-slower: 0.7s;
+    --motion-duration-lazy: 0.9s;
+    --motion-duration-hero: 1.2s;
+
+    /* Delays */
+    --motion-delay-none: 0s;
+    --motion-delay-short: 0.1s;
+    --motion-delay-base: 0.15s;
+    --motion-delay-long: 0.2s;
+
+    /* Opacities */
+    --opacity-faint: 0.05;
+    --opacity-subtle: 0.1;
+    --opacity-dim: 0.2;
+    --opacity-soft: 0.3;
+    --opacity-medium: 0.5;
+    --opacity-strong: 0.7;
+    --opacity-hover: 0.8;
+    --opacity-heavy: 0.9;
+  }
+}

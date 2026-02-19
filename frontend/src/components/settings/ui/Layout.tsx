@@ -20,9 +20,10 @@ export function SectionCard({
         "relative flex flex-col gap-3 overflow-hidden rounded-2xl px-6 py-6",
         "border-glass-border bg-glass-bg shadow-glass backdrop-blur-glass text-(--text-primary)",
         "transition-all duration-slow",
-        "before:pointer-events-none before:absolute before:inset-0 before:rounded-[inherit] before:opacity-soft",
-        "before:bg-[radial-gradient(circle_at_0%_0%,var(--primary-main),transparent_60%)]",
-        "dark:before:bg-[radial-gradient(circle_at_0%_0%,var(--primary-subtle),transparent_60%)]",
+        "transition-all duration-slow",
+        "before:pointer-events-none before:absolute before:inset-0 before-rounded-inherit before:opacity-soft",
+        "before:bg-radial-gradient-primary",
+        "dark:before:bg-radial-gradient-primary-dark",
         className
       )}
       {...props}
@@ -85,10 +86,12 @@ export function SectionSubtitle({
 export function SessionItem({
   children,
   className = "",
+  revoked = false,
   ...props
 }: {
   children: React.ReactNode
   className?: string
+  revoked?: boolean
 } & React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
@@ -98,11 +101,10 @@ export function SessionItem({
         "transition-all duration-slow ease-out backdrop-blur-glass",
         "hover:-translate-y-px hover:border-(--brand-main)/(--opacity-soft) hover:bg-glass-tint1 hover:shadow-glass",
         "max-sm:flex-col max-sm:items-start",
-        "data-[revoked=true]:border-dashed data-[revoked=true]:border-(--border-subtle)",
-        "data-[revoked=true]:bg-(--bg-surface)/(--opacity-dim) data-[revoked=true]:shadow-none data-[revoked=true]:backdrop-blur-none",
-        "data-[revoked=true]:hover:translate-y-0",
         className
       )}
+      style={revoked ? { transform: "translateY(0)" } : undefined}
+      data-revoked={revoked}
       {...props}
     >
       {children}
@@ -160,8 +162,9 @@ export function AccordionSection({
       <div
         className={cn(
           "overflow-hidden transition-all duration-slow",
-          expanded ? "max-h-[2000px] opacity-100" : "max-h-0 opacity-0"
+          expanded ? "opacity-100" : "opacity-0"
         )}
+        style={{ maxHeight: expanded ? "2000px" : "0px" }}
       >
         <div className="px-4 pb-4 pt-2">{children}</div>
       </div>
@@ -180,10 +183,11 @@ export function Divider({
   return (
     <hr
       className={cn(
-        "h-px w-full border-0 bg-glass-border opacity-medium",
+        "h-px w-full border-0 bg-glass-border",
         flexItem ? "self-stretch" : "",
         className
       )}
+      style={{ opacity: "var(--opacity-medium)" }}
     />
   )
 }

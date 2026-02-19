@@ -3,16 +3,17 @@ from collections.abc import Sequence
 from datetime import datetime
 
 from sqlalchemy import delete, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
 from sqlalchemy.sql.elements import ClauseElement
 
 from app.models.models import ActiveSession
+from app.repositories.base import ReadOnlyRepository
 
 
-class ActiveSessionRepository:
-    def __init__(self, db: AsyncSession):
-        self.db = db
+class ActiveSessionRepository(ReadOnlyRepository[ActiveSession]):
+    @property
+    def model(self) -> type[ActiveSession]:
+        return ActiveSession
 
     async def create(self, data: dict) -> ActiveSession:
         obj = ActiveSession(**data)

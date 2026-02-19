@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import copy
 import uuid
-from collections.abc import Iterable, Sequence
+from typing import TYPE_CHECKING
 
 from app.core.config import settings
 from app.deps.cache import BaseCache, CacheEntry, get_cache
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence
 
 _STATS_CACHE_PREFIX = "stats"
 _STATS_KNOWN_KINDS = ("attendance", "grades", "participation")
@@ -33,7 +36,7 @@ def resolve_period_key(period_key: str | None, period_days: int | None) -> str:
 def _make_cache_key(kind: str, user_id: uuid.UUID | int, period_key: str) -> str:
     normalized_kind = kind.strip().lower()
     normalized_period = _normalize_period_key(period_key)
-    return f"{_STATS_CACHE_PREFIX}:{normalized_kind}:{str(user_id)}:{normalized_period}"
+    return f"{_STATS_CACHE_PREFIX}:{normalized_kind}:{user_id!s}:{normalized_period}"
 
 
 async def get_cached_stats(

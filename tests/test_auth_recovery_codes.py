@@ -23,7 +23,7 @@ async def unit_user_mfa(db_session: AsyncSession) -> User:
     email = f"user_{secrets.token_hex(4)}@example.com"
     user = User(
         email=email,
-        hashed_password=get_password_hash("Ab1!Ab1!Ab1!"),
+        hashed_password=await get_password_hash("Ab1!Ab1!Ab1!"),
         is_active=True,
     )
     db_session.add(user)
@@ -76,9 +76,11 @@ async def test_generate_recovery_codes_unit(
     # Check that at least one code matches
     # (Checking all is expensive in bcrypt, checking one is enough for unit test logic)
     # To be precise: valid_code = codes[0]. We need to find the corresponding record.
-    match = next(
-        (c for c in user_codes if verify_password(codes[0], c.code_hash)), None
-    )
+    match = None
+    for c in user_codes:
+        if await verify_password(codes[0], c.code_hash):
+            match = c
+            break
     assert match is not None
 
 

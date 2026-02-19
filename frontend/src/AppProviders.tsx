@@ -7,6 +7,7 @@ import { AppShellProvider } from "./contexts/AppShellContext"
 import { AuthProvider } from "./contexts/AuthContext"
 import { MessengerProvider } from "./contexts/MessengerContext"
 import { LanguageProvider } from "./contexts/LanguageContext"
+import { GlobalHapticsListener } from "./components/GlobalHapticsListener"
 
 interface AppProvidersProps {
   children: ReactNode
@@ -31,7 +32,10 @@ function ProvidersInner({ children }: AppProvidersProps) {
 export function AppProviders({ children }: AppProvidersProps) {
   return (
     <LanguageProvider>
-      <ProvidersInner>{children}</ProvidersInner>
+      <ProvidersInner>
+        <GlobalHapticsListener />
+        {children}
+      </ProvidersInner>
     </LanguageProvider>
   )
 }

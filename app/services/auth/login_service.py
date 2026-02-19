@@ -1,15 +1,11 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
-from typing import Any
-from uuid import UUID
+from typing import TYPE_CHECKING, Any
 
 import anyio
 from fastapi import BackgroundTasks, Request, Response, status
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 # Removed circular dependency on app.api.deps
 from app.auth import mfa
@@ -20,14 +16,22 @@ from app.core import metrics
 from app.core.config import settings
 from app.core.database import async_session
 from app.core.localization import resolve_locale
-from app.models.models import ActiveSession, LoginHistory, User
+from app.models.models import ActiveSession, User
 from app.models.user_loaders import ensure_mfa_relationships_loaded
+from app.repositories.auth_repository import AuthRepository
 from app.schemas import schemas
-from app.services.audit_service import AuditService
-from app.services.auth.lockout import LockoutService
-from app.services.session_service import SessionService
-from app.services.user_service import UserService
 from app.tasks.email import send_lockout_alert
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
+    from uuid import UUID
+
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.services.audit_service import AuditService
+    from app.services.auth.lockout import LockoutService
+    from app.services.session_service import SessionService
+    from app.services.user_service import UserService
 
 logger = logging.getLogger(__name__)
 
@@ -41,11 +45,11 @@ class LoginService:
         lockout_service: LockoutService,
         audit: AuditService,
     ):
-        self.db = db
         self.user_service = user_service
         self.session_service = session_service
         self.lockout_service = lockout_service
         self.audit = audit
+        self.repo = AuthRepository(db)
 
     async def perform_login(
         self,
@@ -65,7 +69,7 @@ class LoginService:
         # 1. Check Lockout
         lock_until = await self.lockout_service.get_active_lockout(normalized_email)
         if lock_until:
-            detail, retry_after = self.lockout_service.get_lockout_message(
+            _detail, retry_after = self.lockout_service.get_lockout_message(
                 locale, lock_until
             )
             self.audit.log(
@@ -93,7 +97,7 @@ class LoginService:
 
         # 2. Timing attack mitigation: always perform password verification
         target_hash = user.hashed_password if user else settings.auth_dummy_hash
-        verified, new_hash = verify_and_update_password(password, target_hash)
+        verified, new_hash = await verify_and_update_password(password, target_hash)
 
         if not user:
             return await self._handle_invalid_user(
@@ -108,7 +112,9 @@ class LoginService:
         # 3. Valid credentials, check MFA
         if new_hash:
             user.hashed_password = new_hash
-            self.db.add(user)
+            # self.db.add(user) handled by SQLAlchemy identity map usually,
+            # but we explicitly add via repo if needed.
+            # actually user is already attached to session from userService.
 
         if await self.lockout_service.clear_failed_attempts(normalized_email) > 0:
             self.audit.log(
@@ -118,7 +124,7 @@ class LoginService:
                 reason="successful_login",
             )
 
-        if user.mfa_required or await mfa.user_has_active_factor(self.db, user):
+        if user.mfa_required or await self.repo.has_active_mfa(user.id):
             return await self._handle_mfa_required(user, request, response, locale)
 
         # 4. Success - Create Session
@@ -201,11 +207,11 @@ class LoginService:
         session: ActiveSession | None,
     ) -> schemas.TokenWithProfile:
         # Optimization: use optimized loader
-        user = await ensure_mfa_relationships_loaded(self.db, user)
+        user = await ensure_mfa_relationships_loaded(self.repo.db, user)
 
         from app.services.auth_service import attach_pending_email
 
-        user = await attach_pending_email(self.db, user)
+        user = await attach_pending_email(self.repo.db, user)
 
         from app.schemas.schemas import SessionSigningKeyOut, UserOut
 
@@ -243,7 +249,7 @@ class LoginService:
             duration_text = self.lockout_service.format_duration(
                 locale, int((lock_until - datetime.now(UTC)).total_seconds())
             )
-            detail, retry_after = self.lockout_service.get_lockout_message(
+            _detail, retry_after = self.lockout_service.get_lockout_message(
                 locale, lock_until
             )
             self.audit.log(
@@ -302,7 +308,7 @@ class LoginService:
             duration_text = self.lockout_service.format_duration(
                 locale, int((lock_until - datetime.now(UTC)).total_seconds())
             )
-            detail, retry_after = self.lockout_service.get_lockout_message(
+            _detail, retry_after = self.lockout_service.get_lockout_message(
                 locale, lock_until
             )
             self.audit.log(
@@ -359,12 +365,16 @@ class LoginService:
         if response:
             response.status_code = status.HTTP_202_ACCEPTED
 
-        await self.db.commit()
+        await self.repo.commit()
         return auth_schemas.PendingMfaResponse(
             user_id=user.id,
             default_method=user.mfa_default_method or mfa.MFA_METHOD_TOTP,
             methods=methods,
         )
+
+    async def _resolve_mfa_capabilities(self, user: User) -> dict[str, bool]:
+        """Helper to resolve MFA capabilities for a user."""
+        return await self.repo.get_user_mfa_capabilities(user.id)
 
     async def _trigger_lockout_alert(
         self,
@@ -378,43 +388,6 @@ class LoginService:
         # We don't log to audit again here as it's already logged in the caller
         # but we could add more metadata if needed.
 
-    async def _resolve_mfa_capabilities(self, user: User) -> dict[str, bool]:
-        totp_stmt = (
-            select(mfa.MfaTotpEnrollment.id)
-            .where(mfa.MfaTotpEnrollment.user_id == user.id)
-            .where(mfa.MfaTotpEnrollment.is_active.is_(True))
-            .where(mfa.MfaTotpEnrollment.revoked_at.is_(None))
-            .where(mfa.MfaTotpEnrollment.confirmed_at.is_not(None))
-            .limit(1)
-        )
-        totp_available = bool((await self.db.execute(totp_stmt)).scalars().first())
-        if not totp_available and user.mfa_default_method == mfa.MFA_METHOD_TOTP:
-            legacy_stmt = (
-                select(mfa.MfaTotpEnrollment.id)
-                .where(mfa.MfaTotpEnrollment.user_id == user.id)
-                .where(mfa.MfaTotpEnrollment.is_active.is_(True))
-                .where(mfa.MfaTotpEnrollment.revoked_at.is_(None))
-                .where(mfa.MfaTotpEnrollment.confirmed_at.is_(None))
-                .limit(1)
-            )
-            totp_available = bool(
-                (await self.db.execute(legacy_stmt)).scalars().first()
-            )
-
-        webauthn_stmt = (
-            select(mfa.WebAuthnCredential.id)
-            .where(mfa.WebAuthnCredential.user_id == user.id)
-            .limit(1)
-        )
-        webauthn_available = bool(
-            (await self.db.execute(webauthn_stmt)).scalars().first()
-        )
-
-        return {
-            mfa.MFA_METHOD_TOTP: totp_available,
-            mfa.MFA_METHOD_WEBAUTHN: webauthn_available,
-        }
-
     async def _collect_mfa_challenges(
         self,
         user: User,
@@ -426,7 +399,7 @@ class LoginService:
 
         if capabilities.get(mfa.MFA_METHOD_TOTP):
             challenge = await mfa.start_totp_verification(
-                self.db, user=user, session=session, locale=locale
+                self.repo.db, user=user, session=session, locale=locale
             )
             attempt_count, attempt_limit, remaining_attempts = (
                 mfa.describe_challenge_attempts(
@@ -447,11 +420,11 @@ class LoginService:
         if capabilities.get(mfa.MFA_METHOD_WEBAUTHN):
             from app.services.webauthn import WebAuthnService
 
-            service = WebAuthnService(self.db)
+            service = WebAuthnService(self.repo.db)
             webauthn_options = await service.get_authentication_options(user)
 
             challenge = await mfa.issue_challenge(
-                self.db,
+                self.repo.db,
                 user_id=user.id,
                 session_id=session.id if session else None,
                 challenge_type=mfa.CHALLENGE_TYPE_WEBAUTHN_AUTH,
@@ -533,7 +506,9 @@ class LoginService:
                 GeolocationService().resolve, client_ip or ""
             )
 
-            entry = LoginHistory(
+            # Use repo for record creation
+            repo = AuthRepository(db)
+            await repo.record_login_history(
                 user_id=user_id,
                 ip_address=client_ip or "unknown",
                 user_agent=user_agent[:512] if user_agent else None,
@@ -544,5 +519,4 @@ class LoginService:
                 status=status_value,
                 is_suspicious=is_suspicious,
             )
-            db.add(entry)
             await db.commit()

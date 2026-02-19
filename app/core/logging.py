@@ -125,8 +125,8 @@ def clear_context() -> None:
 
 
 __all__ = [
-    "configure_logging",
-    "get_logger",
     "bind_context",
     "clear_context",
+    "configure_logging",
+    "get_logger",
 ]

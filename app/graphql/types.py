@@ -5,15 +5,9 @@ Types are designed to be flexible for client queries while maintaining
 strong typing and documentation.
 """
 
-from __future__ import annotations
-
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 import strawberry
-
-if TYPE_CHECKING:
-    pass
 
 
 @strawberry.type(description="User profile information")

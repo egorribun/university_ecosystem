@@ -12,7 +12,7 @@ const glassCardVariants = cva(
         high: "bg-(--glass-bg-high) backdrop-blur-2xl",
       },
       interactive: {
-        true: "transition-transform duration-base hover:scale-[1.01] hover:bg-glass-tint1",
+        true: "transition-transform duration-base hover:scale-hover-subtle hover:bg-glass-tint1",
         false: "",
       },
     },

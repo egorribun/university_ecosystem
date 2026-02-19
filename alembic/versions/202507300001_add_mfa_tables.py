@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 
 import sqlalchemy as sa
 
 from alembic import op
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 revision: str = "202507300001"
 down_revision: str | None = "202507200001"

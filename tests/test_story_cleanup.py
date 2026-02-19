@@ -99,7 +99,7 @@ async def test_cleanup_expired_stories_naive_datetime():
     mock_result.rowcount = 2
     mock_db.execute.return_value = mock_result
 
-    naive_now = datetime.now()  # noqa: DTZ005  # Naive datetime
+    naive_now = datetime.now()  # Naive datetime
     result = await cleanup_expired_stories(db=mock_db, now=naive_now)
 
     assert result == 2

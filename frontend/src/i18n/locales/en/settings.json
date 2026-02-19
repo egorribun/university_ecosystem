@@ -102,7 +102,12 @@
   "account": {
     "profile": {
       "title": "Profile",
-      "subtitle": "Name, contact details, and social links"
+      "subtitle": "Name, contact details, and social links",
+      "extra": {
+        "title": "User information",
+        "subtitle": "Name, bio, and other profile data",
+        "hint": "Edit your personal information on the profile page"
+      }
     },
     "logout": {
       "button": "Sign out",

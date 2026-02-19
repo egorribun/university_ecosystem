@@ -99,9 +99,8 @@ async def test_get_current_admin_user():
     assert result == user
 
     checker.check_admin = AsyncMock(return_value=False)
-    with patch("app.api.deps.resolve_locale"):
-        with pytest.raises(HTTPException) as exc:
-            await get_current_admin_user(request, user, checker)
+    with patch("app.api.deps.resolve_locale"), pytest.raises(HTTPException) as exc:
+        await get_current_admin_user(request, user, checker)
     assert exc.value.status_code == 403
 
 

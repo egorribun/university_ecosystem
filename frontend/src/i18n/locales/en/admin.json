@@ -108,5 +108,20 @@
       "next": "Next",
       "page": "Page {{current}}"
     }
+  },
+  "featureFlags": {
+    "title": "Dynamic Feature Flags",
+    "subtitle": "Real-time control over application features and rollout strategies.",
+    "table": {
+      "flag": "Feature Flag",
+      "status": "Status",
+      "rollout": "Rollout",
+      "details": "Details"
+    },
+    "rollout": {
+      "range": "Rollout Percentage",
+      "percentage": "{{value}}% of users",
+      "global": "Global toggle active"
+    }
   }
 }

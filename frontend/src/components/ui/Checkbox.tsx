@@ -37,9 +37,10 @@ const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
             "hover:border-brand/(--opacity-medium) hover:bg-glass-tint1",
             "peer-focus-visible:ring-4 peer-focus-visible:ring-brand/(--opacity-dim)",
             isChecked && "border-brand bg-brand/(--opacity-dim) shadow-glow-primary",
-            disabled && "cursor-not-allowed opacity-medium grayscale",
+            disabled && "cursor-not-allowed grayscale",
             className
           )}
+          style={disabled ? { opacity: "var(--opacity-medium)" } : undefined}
         >
           <AnimatePresence mode="wait">
             {isChecked && (
@@ -51,9 +52,9 @@ const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
                 className="text-brand"
               >
                 {isIndeterminate ? (
-                  <Minus className="h-4 w-4 stroke-[3px]" />
+                  <Minus className="h-4 w-4" style={{ strokeWidth: 3 }} />
                 ) : (
-                  <Check className="h-4 w-4 stroke-[4px]" />
+                  <Check className="h-4 w-4" style={{ strokeWidth: 4 }} />
                 )}
               </motion.div>
             )}

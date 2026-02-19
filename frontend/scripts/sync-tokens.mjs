@@ -13,15 +13,34 @@ const TOKENS_TS_PATH = path.resolve(__dirname, "../src/theme/tokens.ts")
 console.log("🔄 Starting Token Synchronization...")
 
 // 1. Parse CSS content to extract variables
-function extractCssVariables(filePath) {
-  if (!fs.existsSync(filePath)) {
-    console.error(`❌ File not found: ${filePath}`)
-    process.exit(1)
+function extractCssVariables(filePath, visited = new Set()) {
+  const absolutePath = path.isAbsolute(filePath) ? filePath : path.resolve(path.dirname(entryPath), filePath)
+
+  // Prevent cycles
+  if (visited.has(absolutePath)) return new Map()
+  visited.add(absolutePath)
+
+  if (!fs.existsSync(absolutePath)) {
+    console.warn(`⚠️  File not found: ${absolutePath}`)
+    return new Map()
   }
-  const content = fs.readFileSync(filePath, "utf-8")
-  const variableRegex = /--([a-zA-Z0-9-]+):\s*([^;]+);/g
+
+  const content = fs.readFileSync(absolutePath, "utf-8")
+  const dir = path.dirname(absolutePath)
   const variables = new Map()
 
+  // 1. Handle Imports
+  const importRegex = /@import\s+["']([^"']+)["'];/g
+  let importMatch
+  while ((importMatch = importRegex.exec(content)) !== null) {
+    const importPath = importMatch[1]
+    const resolvedImport = path.resolve(dir, importPath)
+    const importedVars = extractCssVariables(resolvedImport, visited)
+    importedVars.forEach((v, k) => variables.set(k, v))
+  }
+
+  // 2. Extract Variables
+  const variableRegex = /--([a-zA-Z0-9-]+):\s*([^;]+);/g
   let match
   while ((match = variableRegex.exec(content)) !== null) {
     const [_, name, value] = match
@@ -29,6 +48,10 @@ function extractCssVariables(filePath) {
   }
   return variables
 }
+// Store entry path for relative resolution context if needed,
+// strictly speaking recursion handles it if we pass absolute paths.
+// But initial call needs to be correct.
+const entryPath = THEME_CSS_PATH
 
 const themeVars = extractCssVariables(THEME_CSS_PATH)
 console.log(`✅ Found ${themeVars.size} CSS variables in theme.css`)

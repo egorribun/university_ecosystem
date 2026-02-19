@@ -11,7 +11,7 @@ async def test_logout_success_cookie(async_client, user_factory):
     password = "LogoutPass123!"
     from app.auth.security import get_password_hash
 
-    user = await user_factory(hashed_password=get_password_hash(password))
+    user = await user_factory(hashed_password=await get_password_hash(password))
 
     login_response = await async_client.post(
         "/auth/login",
@@ -36,7 +36,7 @@ async def test_logout_success_bearer(async_client, user_factory, db_session):
     password = "LogoutBearer123!"
     from app.auth.security import get_password_hash
 
-    user = await user_factory(hashed_password=get_password_hash(password))
+    user = await user_factory(hashed_password=await get_password_hash(password))
 
     login_response = await async_client.post(
         "/auth/login",

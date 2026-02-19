@@ -16,7 +16,10 @@ function MapSkeleton() {
       <div className="map-page bg-(--bg-canvas-light) dark:bg-(--bg-canvas-dark) relative h-full w-full">
         <div className="glass glass--panel glass--sheen map-head flex items-center justify-between px-6 py-4 absolute top-0 left-0 right-0 z-navbar">
           <div className="flex items-center gap-3">
-            <Skeleton className={`rounded-full h-[${iconSize}px] w-[${iconSize}px]`} />
+            <Skeleton
+              className="rounded-full"
+              style={{ height: iconSize, width: iconSize }}
+            />
             <Skeleton className={isMobile ? "h-8 w-40" : "h-10 w-60"} />
           </div>
           <div className="flex items-center gap-2">

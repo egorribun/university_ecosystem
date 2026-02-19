@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import secrets
-from collections.abc import Sequence
 
 import sqlalchemy as sa
 
 from alembic import op
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 # revision identifiers, used by Alembic.
 revision: str = "202507200001"

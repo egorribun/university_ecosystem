@@ -13,13 +13,10 @@ Features:
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from elasticsearch import AsyncElasticsearch
 from elasticsearch.helpers import async_bulk
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -274,8 +271,8 @@ def get_search_service() -> SearchService:
 
 
 __all__ = [
+    "EVENTS_MAPPINGS",
+    "NEWS_MAPPINGS",
     "SearchService",
     "get_search_service",
-    "NEWS_MAPPINGS",
-    "EVENTS_MAPPINGS",
 ]

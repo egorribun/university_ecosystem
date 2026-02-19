@@ -4,14 +4,18 @@ Story repository for story data access operations.
 
 from __future__ import annotations
 
-import uuid
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.stories import Story
 from app.repositories.base import BaseRepository
+
+if TYPE_CHECKING:
+    import uuid
+
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class StoryRepository(BaseRepository[Story, dict, dict]):

@@ -11,10 +11,13 @@ import logging
 import time
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.asyncio import AsyncSession
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -116,8 +119,8 @@ async def check_database_connectivity(
 
 
 __all__ = [
-    "HealthStatus",
     "DatabaseHealthResult",
-    "check_database_health",
+    "HealthStatus",
     "check_database_connectivity",
+    "check_database_health",
 ]

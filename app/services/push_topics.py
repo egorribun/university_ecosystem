@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
-from collections.abc import Collection, Iterable, Sequence
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import attributes as orm_attributes
 
 from app.core.config import Settings
 from app.core.config import settings as app_settings
 from app.models.models import PushSubscription, UserPushTopic
+
+if TYPE_CHECKING:
+    from collections.abc import Collection, Iterable, Sequence
+
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 def get_allowed_topics(settings_obj: Settings | None = None) -> list[str]:

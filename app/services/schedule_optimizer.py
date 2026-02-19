@@ -39,7 +39,7 @@ class ScheduleItemInternal(BaseModel):
 class ScheduleOptimizerService:
     """Service to interact with the Rust-based schedule optimizer."""
 
-    def __init__(self, base_url: str = None, grpc_addr: str = None):
+    def __init__(self, base_url: str | None = None, grpc_addr: str | None = None):
         self.base_url = base_url or getattr(
             settings, "RUST_OPTIMIZER_URL", "http://rust-optimizer:8080"
         )

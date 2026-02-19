@@ -27,7 +27,7 @@ export default function MessengerButton() {
       aria-label={t("navigation:aria.messenger")}
     >
       <MessageSquare
-        className="w-5.5 h-5.5 transition-all duration-slow group-hover:rotate-[-8deg] group-hover:scale-110 text-(--text-secondary) group-hover:text-brand"
+        className="w-5.5 h-5.5 transition-all duration-slow group-hover:-rotate-6 group-hover:scale-110 text-(--text-secondary) group-hover:text-brand"
         strokeWidth={2}
       />
       {unreadCount > 0 && (
@@ -36,7 +36,7 @@ export default function MessengerButton() {
           animate={{ scale: 1 }}
           className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center"
         >
-          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-[10px] font-bold text-white opacity-dim shadow-sm"></span>
+          <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-micro font-bold text-white opacity-dim shadow-sm"></span>
           <span className="relative inline-flex rounded-full h-4 w-4 bg-(--brand-main) border-2 border-(--bg-surface) dark:border-(--bg-page) text-label-xs font-bold text-white items-center justify-center">
             {unreadCount}
           </span>

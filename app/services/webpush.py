@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
-import uuid
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime, time
 from hashlib import sha256
 from threading import Lock
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -27,6 +27,9 @@ from app.models.models import PushSubscription, User
 from app.services import push_schema
 from app.services.notification_templates import render_notification_template
 from app.services.push_topics import normalize_topic, subscription_supports_topic
+
+if TYPE_CHECKING:
+    import uuid
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.NOTSET)
@@ -58,7 +61,7 @@ def _ensure_sync_sessionmaker() -> sessionmaker:
         with _sync_init_lock:
             if _Session is None:
                 _initialize_sync_resources()
-    return cast(sessionmaker, _Session)
+    return cast("sessionmaker", _Session)
 
 
 async def _ensure_async_sessionmaker() -> sessionmaker:
@@ -66,7 +69,7 @@ async def _ensure_async_sessionmaker() -> sessionmaker:
         async with _async_init_lock:
             if _Session is None:
                 await asyncio.to_thread(_ensure_sync_sessionmaker)
-    return cast(sessionmaker, _Session)
+    return cast("sessionmaker", _Session)
 
 
 def cleanup() -> None:
@@ -543,10 +546,8 @@ def build_payload(
     if "silent" in source:
         options["silent"] = bool(source.get("silent"))
     if "timestamp" in source:
-        try:
+        with contextlib.suppress(TypeError, ValueError):
             options["timestamp"] = int(source.get("timestamp"))
-        except (TypeError, ValueError):
-            pass
     meta: dict[str, Any] = {}
     for key in _META_KEYS:
         value = source.get(key)

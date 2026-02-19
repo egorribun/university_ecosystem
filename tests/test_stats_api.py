@@ -39,7 +39,7 @@ async def test_attendance_stats_returns_expected_payload(
     now = datetime.now(UTC)
     admin = await user_factory(role="admin")
     password = "StatsPass123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     student = await user_factory(hashed_password=hashed, is_active=True)
 
     def build_event(
@@ -70,7 +70,7 @@ async def test_attendance_stats_returns_expected_payload(
     previous_missed = build_event("Computer Science", timedelta(days=50))
 
     db_session.add_all(
-        current_attended_events + [current_missed, previous_attended, previous_missed]
+        [*current_attended_events, current_missed, previous_attended, previous_missed]
     )
     await db_session.commit()
 
@@ -121,7 +121,7 @@ async def test_attendance_stats_returns_expected_payload(
 @pytest.mark.asyncio
 async def test_attendance_stats_period_label_localized(async_client, user_factory):
     password = "LocalizedPass123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     student = await user_factory(hashed_password=hashed, is_active=True)
 
     headers = await _login(async_client, student.email, password)
@@ -139,7 +139,7 @@ async def test_attendance_stats_period_label_localized(async_client, user_factor
 async def test_grade_stats_parse_notifications(async_client, db_session, user_factory):
     now = datetime.now(UTC)
     password = "GradesPass456!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     student = await user_factory(hashed_password=hashed, is_active=True)
 
     current_grade_one = models.Notification(
@@ -213,7 +213,7 @@ async def test_participation_stats_summarize_events(
     now = datetime.now(UTC)
     admin = await user_factory(role="admin")
     password = "Participate789!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     student = await user_factory(hashed_password=hashed, is_active=True)
 
     event_one = models.Event(
@@ -290,7 +290,7 @@ async def test_attendance_stats_uses_cache(
     async_client, fake_cache, user_factory, monkeypatch
 ):
     password = "CachePass123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     student = await user_factory(hashed_password=hashed, is_active=True)
 
     headers = await _login(async_client, student.email, password)
@@ -385,7 +385,7 @@ async def test_registering_for_event_invalidates_stats_cache(
     now = datetime.now(UTC)
     admin = await user_factory(role="admin")
     password = "CacheInvalidate456!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     student = await user_factory(hashed_password=hashed, is_active=True)
 
     event = models.Event(

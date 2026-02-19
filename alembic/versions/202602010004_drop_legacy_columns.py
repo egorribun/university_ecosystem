@@ -6,6 +6,7 @@ Create Date: 2026-02-01 06:00:00.000000
 
 """
 
+import contextlib
 import logging
 
 import sqlalchemy as sa
@@ -125,12 +126,10 @@ def upgrade():
             else:
                 with op.batch_alter_table(table) as batch_op:
                     if dialect != "sqlite":
-                        try:
+                        with contextlib.suppress(Exception):
                             batch_op.drop_constraint(
                                 f"uq_{table}_legacy_id", type_="unique"
                             )
-                        except Exception:
-                            pass
                     batch_op.drop_column("legacy_id")
                 logger.info(f"Dropped legacy_id from {table}")
         except Exception as e:

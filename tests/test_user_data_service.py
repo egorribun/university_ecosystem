@@ -1,7 +1,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import models
 from app.services.user.data_service import UserDataService
@@ -9,11 +8,10 @@ from app.services.user.data_service import UserDataService
 
 @pytest.mark.asyncio
 async def test_export_user_data():
-    mock_db = AsyncMock(spec=AsyncSession)
     mock_repo = AsyncMock()
     mock_audit = AsyncMock()
 
-    service = UserDataService(mock_db, mock_repo, mock_audit)
+    service = UserDataService(mock_repo, mock_audit)
 
     # Mock user (lightweight)
     mock_user = MagicMock(spec=models.User)

@@ -46,7 +46,7 @@ async def test_login_lockout_enforced(
     caplog.set_level(logging.INFO)
     caplog.clear()
 
-    hashed = get_password_hash("ValidPass123!")
+    hashed = await get_password_hash("ValidPass123!")
     user = await user_factory(hashed_password=hashed, is_active=True)
 
     first = await _login(async_client, user.email, "WrongPass!1")
@@ -86,7 +86,7 @@ async def test_login_lockout_clears_after_success(
     caplog.clear()
 
     password = "ValidPass123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True)
 
     await _login(async_client, user.email, "WrongPass!1")
@@ -116,7 +116,7 @@ async def test_login_lockout_race_condition(
     monkeypatch.setattr(settings, "auth_lockout_thresholds", "2:5")
     monkeypatch.setattr(settings, "auth_lockout_history_minutes", 5)
 
-    hashed = get_password_hash("RacePass123!")
+    hashed = await get_password_hash("RacePass123!")
     user = await user_factory(hashed_password=hashed, is_active=True)
 
     async def attempt():

@@ -197,8 +197,12 @@ export default function Profile() {
       <SEO title={t("profile:pageTitle", "My Profile")} />
       <div className="fixed inset-0 z-hide pointer-events-none overflow-hidden" aria-hidden>
         <div
-          className="absolute inset-0 bg-repeat bg-size-[clamp(var(--size-pattern-min),22vw,var(--size-pattern-max))] opacity-medium mix-blend-soft-light dark:opacity-dim translate-z-0"
-          style={{ backgroundImage: `url(${profileBg})` }}
+          className="absolute inset-0 bg-repeat mix-blend-soft-light translate-z-0"
+          style={{
+            backgroundImage: `url(${profileBg})`,
+            backgroundSize: "clamp(var(--size-pattern-min), 22vw, var(--size-pattern-max))",
+            opacity: "var(--opacity-medium)",
+          }}
         />
       </div>
 
@@ -209,20 +213,20 @@ export default function Profile() {
           transition={isTest ? { duration: 0 } : { type: "spring", stiffness: 460, damping: 34 }}
         >
           <section
-            className="profile-page relative min-h-screen flex flex-col py-(--space-12) sm:py-(--space-16) md:py-(--space-20) lg:py-(--space-24) px-(--space-3) sm:px-(--space-4) md:px-(--space-6) lg:px-(--space-8)"
+            className="profile-page relative min-h-screen flex flex-col py-12 sm:py-16 md:py-20 lg:py-24 px-3 sm:px-4 md:px-6 lg:px-8"
             data-testid="profile-root"
             aria-label={t("profile:aria.page")}
           >
-            <div className="max-w-full sm:max-w-[98%] md:max-w-[96%] lg:max-w-[95%] xl:max-w-(--layout-max-ultrawide) mx-auto w-full relative z-base">
+            <div className="max-w-full mx-auto w-full relative z-base">
               <motion.div
-                className="px-(--space-4) sm:px-(--space-6) md:px-(--space-8) lg:px-(--space-10) xl:px-(--space-12) py-(--space-8) sm:py-(--space-10) md:py-(--space-12) lg:py-(--space-14) rounded-sm sm:rounded-md md:rounded-lg relative overflow-hidden bg-primary-subtle-bg/(--opacity-subtle) shadow-glass border border-glass-border-subtle/(--opacity-dim) backdrop-blur-md"
+                className="px-4 sm:px-6 md:px-8 lg:px-10 xl:px-12 py-8 sm:py-10 md:py-12 lg:py-14 rounded-sm sm:rounded-md md:rounded-lg relative overflow-hidden bg-primary-subtle-bg/(--opacity-subtle) shadow-glass border border-glass-border-subtle/(--opacity-dim) backdrop-blur-md"
                 initial={isTest ? false : { opacity: "var(--opacity-strong)", y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={
                   isTest ? { duration: 0 } : { type: "spring", stiffness: 520, damping: 34 }
                 }
               >
-                <div className="grid grid-cols-1 lg:grid-cols-[minmax(280px,380px)_minmax(0,1fr)] gap-x-8 gap-y-8 items-start">
+                <div className="grid grid-cols-1 lg:grid-profile gap-x-8 gap-y-8 items-start">
                   {/* Left Column */}
                   <div className="flex flex-col gap-6 items-stretch">
                     <ProfileHeader

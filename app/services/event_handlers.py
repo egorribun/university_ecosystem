@@ -8,7 +8,6 @@ These handlers are registered with the EventBus during application startup.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
 
 from app.core.container import get_vector_service
 from app.core.database import async_session
@@ -24,9 +23,6 @@ from app.core.events import (
     event_bus,
 )
 from app.models import models
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -173,11 +169,11 @@ def configure_event_handlers() -> None:
 
 __all__ = [
     "configure_event_handlers",
-    "log_all_events",
-    "handle_user_created",
-    "handle_user_logged_in",
-    "handle_mfa_enabled",
     "handle_event_created",
     "handle_event_registration",
+    "handle_mfa_enabled",
     "handle_notification_sent",
+    "handle_user_created",
+    "handle_user_logged_in",
+    "log_all_events",
 ]

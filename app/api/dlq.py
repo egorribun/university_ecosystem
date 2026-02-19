@@ -8,17 +8,20 @@ and allow manual intervention for job processing.
 from __future__ import annotations
 
 from datetime import UTC
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_admin_user
 from app.api.validation import raise_not_found, raise_validation_error
 from app.core.database import get_db, get_read_db
-from app.models import models
 from app.workers.dead_letter_queue import DeadLetterQueue, JobStatus
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.models import models
 
 router = APIRouter(prefix="/admin/dlq", tags=["admin"])
 

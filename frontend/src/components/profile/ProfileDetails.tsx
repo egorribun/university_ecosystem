@@ -35,8 +35,9 @@ export const ProfileDetails = ({ user, isOpen, onToggle }: ProfileDetailsProps) 
       <div
         className={cn(
           "transition-all duration-base overflow-hidden",
-          isOpen ? "max-h-[1000px] opacity-100" : "max-h-0 opacity-0"
+          isOpen ? "opacity-100" : "opacity-0"
         )}
+        style={{ maxHeight: isOpen ? "1000px" : "0px" }}
       >
         <div className="px-3 pb-6 flex flex-col gap-1">
           <DetailRow label={t("profile:labels.institute")} value={user?.institute} />

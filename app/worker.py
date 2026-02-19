@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 # This is a dedicated entrypoint for the worker and scheduler.
 # In production, run:
@@ -7,12 +8,14 @@ import asyncio
 #   taskiq worker app.core.tkq:broker app.main:app
 #   taskiq scheduler app.core.tkq:scheduler app.main:app
 
+logger = logging.getLogger(__name__)
+
 
 async def main():
     """Main entrypoint for starting the worker and scheduler combined if needed,
     or just as a placeholder for CLI usage documentation.
     """
-    print("TaskIQ Worker/Scheduler entrypoint initialized.")
+    logger.info("TaskIQ Worker/Scheduler entrypoint initialized.")
     # Usually you use the CLI, but we can provide a programmatic way if desired.
     # For now, this file serves as the discovery point for TaskIQ tasks.
 

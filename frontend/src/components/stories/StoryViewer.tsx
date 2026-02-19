@@ -159,10 +159,15 @@ export const StoryViewer = ({
       >
         <div
           className={cn(
-            "relative z-decor flex aspect-9/16 w-(--story-card-w) max-h-[92vh] max-w-(--story-card-w) flex-col items-stretch justify-center overflow-hidden text-white sm:aspect-video sm:w-[min(96%,960px)] sm:max-h-(--h-hero-lg) sm:max-w-(--layout-max-content)",
+            "relative z-decor flex w-(--story-card-w) max-w-(--story-card-w) flex-col items-stretch justify-center overflow-hidden text-white sm:max-w-(--layout-max-content)",
             viewerStory.cover_url ? "bg-(--bg-page)" : "bg-brand shadow-premium-lift",
             viewerStory.cover_url ? "rounded-none" : "rounded-md sm:rounded-lg"
           )}
+          style={{
+            maxHeight: "92vh",
+            aspectRatio: "9/16",
+            width: "min(96%, 960px)"
+          }}
           onPointerDown={handlePointerDown}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerCancel}

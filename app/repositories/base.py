@@ -14,6 +14,26 @@ class ReadOnlyRepository[T: Base](abc.ABC):
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    async def commit(self) -> None:
+        """Commit the current transaction."""
+        await self.db.commit()
+
+    async def rollback(self) -> None:
+        """Rollback the current transaction."""
+        await self.db.rollback()
+
+    async def flush(self) -> None:
+        """Flush changes to the database."""
+        await self.db.flush()
+
+    async def refresh(self, obj: Any) -> None:
+        """Refresh an object from the database."""
+        await self.db.refresh(obj)
+
+    def add(self, obj: Any) -> None:
+        """Add an object to the current session."""
+        self.db.add(obj)
+
     @property
     @abc.abstractmethod
     def model(self) -> type[T]: ...

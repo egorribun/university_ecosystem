@@ -108,7 +108,7 @@ def sanitize_rich_text(html_content: str) -> str:
     if not html_content:
         return ""
 
-    def replace_tag(match: re.Match) -> str:
+    def replace_tag(match: re.Match[str]) -> str:
         closing_slash = match.group(1)
         tag_name = match.group(2).lower()
         attributes_str = match.group(3)
@@ -367,13 +367,13 @@ def sanitize_optional_text(value: Any) -> str | None:
 
 
 __all__ = [
-    "sanitize_html",
-    "sanitize_rich_text",
-    "sanitize_filename",
-    "sanitize_path",
     "sanitize_email",
+    "sanitize_filename",
+    "sanitize_html",
+    "sanitize_optional_text",
+    "sanitize_path",
+    "sanitize_rich_text",
     "sanitize_url",
     "strip_control_chars",
     "truncate",
-    "sanitize_optional_text",
 ]

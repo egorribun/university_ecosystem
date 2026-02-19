@@ -6,10 +6,12 @@ import json
 import pathlib
 import subprocess
 import sys
-from collections.abc import Iterable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 
 class AuditFailure(Exception):

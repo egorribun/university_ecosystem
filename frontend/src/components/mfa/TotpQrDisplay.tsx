@@ -34,21 +34,24 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
       {label ? (
         <p className="text-sm text-(--text-secondary)">{t("mfa.totp.accountLabel", { label })}</p>
       ) : null}
-      <div className="p-4 rounded-lg border border-glass-border bg-surface shadow-sm min-h-56 flex items-center justify-center">
+      <div
+        className="p-4 rounded-lg border border-glass-border bg-surface shadow-sm min-h-56 flex items-center justify-center"
+        role="img"
+        aria-label={t("mfa.totp.qrAriaLabel", { defaultValue: "QR code for TOTP setup" })}
+      >
         <Suspense
           fallback={<div className="w-48 h-48 animate-pulse bg-(--border-subtle) rounded" />}
         >
           {/*
             QR codes require high-contrast colors for reliable scanning.
             These values are accessibility-compliant and scanner-tested.
-            Do not replace with CSS variables.
           */}
           <QRCodeSVG
             value={otpauthUrl}
             size={192}
             includeMargin
-            bgColor="var(--color-white)"
-            fgColor="var(--color-slate-900)"
+            bgColor="#FFFFFF"
+            fgColor="#0F172A"
           />
         </Suspense>
       </div>

@@ -211,7 +211,8 @@ export default function Activity() {
                       <ProgressBar
                         value={progressAttendance}
                         className="h-2 rounded-full"
-                        barClassName="bg-(--success-text) rounded-full transition-[width] duration-slow"
+                        barClassName="bg-(--success-text) rounded-full duration-slow"
+                        style={{ transitionProperty: "width" }}
                       />
                       <p className="truncate text-sm text-(--text-muted-subtle)">
                         {t("activity:sections.attendance.summary", {

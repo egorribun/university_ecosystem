@@ -105,8 +105,8 @@ def default_serializer(obj: Any) -> Any:
 
 __all__ = [
     "ORJSON_OPTIONS",
+    "default_serializer",
     "orjson_dumps",
     "orjson_dumps_str",
     "orjson_loads",
-    "default_serializer",
 ]

@@ -8,7 +8,7 @@ import {
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/utils/cn"
 import type { PolymorphicComponentProps, PolymorphicRef } from "@/types/polymorphic"
-import { useHaptics } from "@/hooks/useHaptics"
+
 
 const buttonVariants = cva(
   "group/button relative inline-flex items-center justify-center gap-2 overflow-hidden rounded-md font-bold tracking-tight text-base transition-premium focus-ring-premium no-underline hover:no-underline focus-visible:no-underline motion-reduce:transition-shadow motion-reduce:hover:translate-y-0 motion-reduce:active:translate-y-0",
@@ -70,7 +70,7 @@ type ButtonOwnProps = VariantProps<typeof buttonVariants> & {
   trailingIcon?: ReactNode
   className?: string
   disabled?: boolean
-  haptics?: boolean | "light" | "medium" | "heavy"
+  haptics?: boolean | "light" | "medium" | "heavy" | "success" | "warning" | "error"
 }
 
 export type ButtonProps<T extends ElementType = "button"> = PolymorphicComponentProps<
@@ -102,16 +102,14 @@ const ButtonBase = <T extends ElementType = "button">(
     disabled?: boolean
     onClick?: (e: MouseEvent) => void
   }
-  const { trigger } = useHaptics()
+
   const Component = (as ?? "button") as ElementType
   const isButtonElement = typeof Component === "string" && Component === "button"
   const isDisabled = Boolean(disabled || loading)
 
   const handleClick = (e: MouseEvent) => {
     if (isDisabled) return
-    if (haptics) {
-      trigger(typeof haptics === "string" ? haptics : "light")
-    }
+
     onClick?.(e)
   }
 
@@ -132,6 +130,7 @@ const ButtonBase = <T extends ElementType = "button">(
       aria-busy={loading ? "true" : undefined}
       onClick={handleClick}
       {...sharedProps}
+      data-haptic={haptics ? (typeof haptics === "string" ? haptics : "light") : undefined}
       {...otherProps}
     >
       {leadingIcon ? <span className="-ml-1 inline-flex items-center">{leadingIcon}</span> : null}

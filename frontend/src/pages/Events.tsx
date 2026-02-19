@@ -298,7 +298,7 @@ const Events = () => {
             {/* Header */}
             <header>
               <FadeSection delay="80ms" className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-(--bg-surface)/(--opacity-medium) border border-glass-border text-brand shadow-glass transition-transform duration-base hover:scale-[1.08] overflow-hidden">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-(--bg-surface)/(--opacity-medium) border border-glass-border text-brand shadow-glass transition-transform duration-base hover:scale-105 overflow-hidden">
                   <EventNoteIcon className="h-7 w-7" />
                 </div>
                 <h1 className="text-(--fs-page-title) font-bold tracking-tight">
@@ -350,7 +350,8 @@ const Events = () => {
                     {tab === tabItem.key && (
                       <motion.div
                         layoutId="active-tab-indicator"
-                        className="absolute inset-0 bg-(--bg-surface) shadow-sm rounded-[inherit] z-negative"
+                        className="absolute inset-0 bg-(--bg-surface) shadow-sm z-negative"
+                        style={{ borderRadius: "inherit" }}
                         transition={springSoft}
                       />
                     )}

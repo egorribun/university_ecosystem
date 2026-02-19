@@ -6,10 +6,7 @@ Provides a single point of commit/rollback for multiple repository operations.
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import TYPE_CHECKING
-
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.event_repository import EventRepository
 from app.repositories.news_repository import NewsRepository
@@ -19,7 +16,9 @@ from app.repositories.story_repository import StoryRepository
 from app.repositories.user_repository import UserRepository
 
 if TYPE_CHECKING:
-    pass
+    from collections.abc import Callable
+
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class UnitOfWork:

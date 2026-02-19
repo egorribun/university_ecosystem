@@ -83,7 +83,7 @@ class ContentSecurityPolicy:
 
         # 2. Connect Sources
         # Merge extra sources with 'self' and dedup
-        sources = ["'self'"] + self.connect_src_extra
+        sources = ["'self'", *self.connect_src_extra]
         # Add dev-specific overrides if needed
         # (though ideally these should be passed in)
         if self.is_development:

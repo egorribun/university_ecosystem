@@ -4,14 +4,18 @@ Notification repository for notification data access operations.
 
 from __future__ import annotations
 
-import uuid
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import and_, func, select, update
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.notifications import Notification
 from app.repositories.base import BaseRepository
+
+if TYPE_CHECKING:
+    import uuid
+
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class NotificationRepository(BaseRepository[Notification, dict, dict]):

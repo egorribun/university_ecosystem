@@ -122,18 +122,12 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
         {/* User Info Section */}
         <li className="list-none">
           <AccordionSection
-            title={t("settings:account.profile.extra.title", {
-              defaultValue: "Информация о пользователе",
-            })}
-            subtitle={t("settings:account.profile.extra.subtitle", {
-              defaultValue: "Имя, биография и другие данные профиля",
-            })}
+            title={t("settings:account.profile.extra.title")}
+            subtitle={t("settings:account.profile.extra.subtitle")}
           >
             <div className="flex flex-col gap-3">
               <SectionSubtitle className="text-sm">
-                {t("settings:account.profile.extra.hint", {
-                  defaultValue: "Редактируйте информацию о себе на странице профиля",
-                })}
+                {t("settings:account.profile.extra.hint")}
               </SectionSubtitle>
               <Button
                 size="sm"

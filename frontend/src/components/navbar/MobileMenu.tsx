@@ -55,25 +55,27 @@ export function MobileMenu({
   }, [isOpen, prefersReducedMotion, setOverlayState])
 
   return createPortal(
-    <button
+    <div
       id="mobile-drawer"
-      type="button"
       className={cn(
         "mobile-drawer fixed inset-0 z-overlay flex h-screen w-screen border-none p-0 text-left outline-none",
-        isOpen
-          ? "pointer-events-auto bg-black/(--opacity-dim)"
-          : "pointer-events-none bg-transparent",
-        !prefersReducedMotion && "transition-colors duration-fast"
+        isOpen ? "pointer-events-auto" : "pointer-events-none"
       )}
       style={{
         pointerEvents: isOpen ? "auto" : "none",
       }}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") onClose()
-      }}
-      onClick={onClose}
       role="none"
     >
+      <div
+        className={cn(
+          "absolute inset-0 bg-black/(--opacity-dim)",
+          !prefersReducedMotion && "transition-colors duration-fast",
+          isOpen ? "opacity-100" : "opacity-0"
+        )}
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
       <div
         role="dialog"
         aria-modal="true"
@@ -84,7 +86,6 @@ export function MobileMenu({
           "border-r border-(--glass-border) backdrop-blur-(--glass-blur)",
           isOpen ? "translate-x-0" : "-translate-x-full"
         )}
-        onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           if (e.key === "Escape") onClose()
           e.stopPropagation()
@@ -159,7 +160,7 @@ export function MobileMenu({
           </div>
         </div>
       </div>
-    </button>,
+    </div>,
     document.body
   )
 }

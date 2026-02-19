@@ -67,10 +67,7 @@ class ScheduleRepository(
         # though BaseRepository doesn't do it automatically for fields.
         # crud.create_schedule did _ensure_utc.
 
-        if hasattr(obj_in, "model_dump"):
-            data = obj_in.model_dump()
-        else:
-            data = obj_in.copy()
+        data = obj_in.model_dump() if hasattr(obj_in, "model_dump") else obj_in.copy()
 
         data["start_time"] = self._ensure_utc(data["start_time"])
         data["end_time"] = self._ensure_utc(data["end_time"])

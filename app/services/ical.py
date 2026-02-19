@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
 from datetime import UTC, date, datetime, time, timedelta
+from typing import TYPE_CHECKING
 
 from app.core.localization import (
     resolve_weekday_index,
     translate,
     translate_lesson_type,
 )
-from app.models import models
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence
+
+    from app.models import models
 
 
 def _weekday_index(value: str | None) -> int | None:

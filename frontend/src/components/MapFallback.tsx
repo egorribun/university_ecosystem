@@ -142,7 +142,8 @@ export default function MapFallback({ reason, onRetry }: MapFallbackProps) {
         >
           <p
             id={listLabelId}
-            className="text-label-xs font-black uppercase tracking-[0.2em] text-(--text-tertiary) opacity-medium px-1"
+            className="text-label-xs font-black uppercase text-(--text-tertiary) opacity-medium px-1"
+            style={{ letterSpacing: "0.2em" }}
           >
             {t("map.fallback.listLabel")}
           </p>

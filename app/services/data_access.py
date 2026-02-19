@@ -5,11 +5,12 @@ from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 
 from fastapi import Request
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import async_session
 from app.models.models import DataAccessLog
+from app.repositories.audit_repository import AuditRepository
 
 
 def _normalize_time(value: datetime | None) -> datetime | None:
@@ -49,19 +50,21 @@ async def log_data_access(
         created_at=created_at,
     )
 
-    log_entry = DataAccessLog(
-        actor_user_id=actor_user_id,
-        subject_user_id=subject_user_id,
-        resource_type=resource_type,
-        resource_id=resource_id,
-        action=action,
-        context=context or {},
-        ip_address=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"),
-        created_at=created_at,
-        signature=signature,
+    repo = AuditRepository(db)
+    log_entry = await repo.create(
+        {
+            "actor_user_id": actor_user_id,
+            "subject_user_id": subject_user_id,
+            "resource_type": resource_type,
+            "resource_id": resource_id,
+            "action": action,
+            "context": context or {},
+            "ip_address": request.client.host if request.client else None,
+            "user_agent": request.headers.get("user-agent"),
+            "created_at": created_at,
+            "signature": signature,
+        }
     )
-    db.add(log_entry)
     if commit:
         await db.commit()
         await db.refresh(log_entry)
@@ -106,21 +109,22 @@ async def batch_log_data_access(
         )
 
         log_entries.append(
-            DataAccessLog(
-                actor_user_id=actor_user_id,
-                subject_user_id=subject_user_id,
-                resource_type=resource_type,
-                resource_id=resource_id,
-                action=action,
-                context=context,
-                ip_address=ip_address,
-                user_agent=user_agent,
-                created_at=created_at,
-                signature=signature,
-            )
+            {
+                "actor_user_id": actor_user_id,
+                "subject_user_id": subject_user_id,
+                "resource_type": resource_type,
+                "resource_id": resource_id,
+                "action": action,
+                "context": context,
+                "ip_address": ip_address,
+                "user_agent": user_agent,
+                "created_at": created_at,
+                "signature": signature,
+            }
         )
 
-    db.add_all(log_entries)
+    repo = AuditRepository(db)
+    await repo.batch_create(log_entries)
     if commit:
         await db.commit()
 
@@ -132,14 +136,13 @@ async def cleanup_access_logs(
     retention = max(0, int(retention_days))
     if retention <= 0:
         return 0
-    cutoff = datetime.now(UTC) - timedelta(days=retention)
     if owns_session:
         async with async_session() as session:
             return await cleanup_access_logs(db=session, retention_days=retention)
-    stmt = delete(DataAccessLog).where(DataAccessLog.created_at < cutoff)
-    result = await db.execute(stmt.execution_options(synchronize_session=False))
-    await db.commit()
-    return int(result.rowcount or 0)
+    cutoff = datetime.now(UTC) - timedelta(days=retention_days)
+    repo = AuditRepository(db)
+    count = await repo.prune_logs(cutoff)
+    return count
 
 
 async def export_access_logs(

@@ -14,7 +14,16 @@ export function initTelemetry(env: ImportMetaEnv = import.meta.env) {
 
   const serviceName = env.VITE_OTEL_SERVICE_NAME || "university-ecosystem-frontend"
   const serviceVersion = env.VITE_SERVICE_VERSION || "1.0.0"
-  const endpoint = env.VITE_OTEL_EXPORTER_OTLP_ENDPOINT || "http://localhost:4318/v1/traces"
+
+  // Only provide a localhost fallback in development mode.
+  // Production MUST strictly use the configured endpoint.
+  const defaultEndpoint = env.DEV ? "http://localhost:4318/v1/traces" : ""
+  const endpoint = env.VITE_OTEL_EXPORTER_OTLP_ENDPOINT || defaultEndpoint
+
+  if (!endpoint && !env.DEV) {
+    // Silently disable telemetry if no endpoint is configured in production
+    return
+  }
 
   provider = new WebTracerProvider({
     resource: new Resource({

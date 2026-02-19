@@ -7,6 +7,7 @@ import { NavbarActions } from "./NavbarActions"
 import { useNavbarLogic } from "./useNavbarLogic"
 
 const Navbar = () => {
+  const logic = useNavbarLogic()
   const {
     navRef,
     isScrolled,
@@ -15,23 +16,16 @@ const Navbar = () => {
     markScrollFromBottom,
     isSameTarget,
     scrollToTop,
-    go,
     mobileMenu,
     setMobileMenu,
     drawerTrapRef,
     menuLinks,
     isActive,
-    loading,
     isAuth,
     user,
-    avatarSource,
-    avatarFallback,
-    avatarCacheV,
-    profileAlt,
-    profileTitle,
+    go,
     t,
-    burgerBtnRef,
-  } = useNavbarLogic()
+  } = logic
 
   return (
     <>
@@ -39,7 +33,7 @@ const Navbar = () => {
         ref={navRef}
         initial={{ y: -100, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: motionTokens.navTransition, ease: [0.16, 1, 0.3, 1] }}
+        transition={{ duration: motionTokens.navTransition, ease: motionTokens.ease.outExpo }}
         className={cn(
           "sticky top-0 z-navbar w-full flex flex-col justify-center",
           "border-b border-glass-border transition-all duration-slow",
@@ -64,28 +58,7 @@ const Navbar = () => {
             markScrollFromBottom={markScrollFromBottom}
           />
 
-          <NavbarActions
-            isMobile={isMobile}
-            mobileMenu={mobileMenu}
-            setMobileMenu={setMobileMenu}
-            isAuth={Boolean(isAuth)}
-            user={user}
-            loading={loading}
-            avatarSource={avatarSource}
-            avatarFallback={avatarFallback}
-            avatarCacheV={avatarCacheV}
-            profileAlt={profileAlt}
-            profileTitle={profileTitle}
-            go={go}
-            menuLinks={menuLinks}
-            isActive={isActive}
-            isSameTarget={isSameTarget}
-            scrollToTop={scrollToTop}
-            markScrollFromBottom={markScrollFromBottom}
-            prefersReducedMotion={prefersReducedMotion}
-            t={t}
-            burgerBtnRef={burgerBtnRef}
-          />
+          <NavbarActions logic={logic} />
         </div>
       </motion.nav>
 

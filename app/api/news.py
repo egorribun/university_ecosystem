@@ -293,9 +293,9 @@ async def get_news(
 
     news_obj, l_count, c_count, liked = row
     # Map database row to model object with extra attributes
-    setattr(news_obj, "likes_count", l_count or 0)
-    setattr(news_obj, "comments_count", c_count or 0)
-    setattr(news_obj, "is_liked", bool(liked))
+    news_obj.likes_count = l_count or 0
+    news_obj.comments_count = c_count or 0
+    news_obj.is_liked = bool(liked)
 
     serialized = service.serialize_news(news_obj, locale)
     encoded = jsonable_encoder(serialized)

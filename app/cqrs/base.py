@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
 
-class Query(ABC):
+class Query:
     """Base class for all queries."""
 
     pass

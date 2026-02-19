@@ -16,7 +16,8 @@ Note: pyvips requires libvips to be installed at the system level:
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+
+import pyvips
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +34,6 @@ except (ImportError, OSError) as exc:
     logger.debug(
         "pyvips not available (%s), will use Pillow fallback", type(exc).__name__
     )
-
-if TYPE_CHECKING:
-    import pyvips  # noqa: F811
 
 
 def optimize_image_vips(
@@ -108,6 +106,6 @@ def get_image_dimensions_vips(data: bytes) -> tuple[int, int]:
 
 __all__ = [
     "VIPS_AVAILABLE",
-    "optimize_image_vips",
     "get_image_dimensions_vips",
+    "optimize_image_vips",
 ]

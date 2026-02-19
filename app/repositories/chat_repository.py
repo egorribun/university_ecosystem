@@ -340,3 +340,31 @@ class ChatRepository:
         """
         chat.updated_at = timestamp
         self.session.add(chat)
+
+    # ------------------------------------------------------------------ #
+    # Transaction proxies — callers should never access session directly.  #
+    # ------------------------------------------------------------------ #
+
+    async def commit(self) -> None:
+        """Commit the current unit of work."""
+        await self.session.commit()
+
+    async def rollback(self) -> None:
+        """Roll back the current unit of work."""
+        await self.session.rollback()
+
+    async def refresh(self, obj: object) -> None:
+        """Refresh *obj* from the database."""
+        await self.session.refresh(obj)
+
+    def add(self, obj: object) -> None:
+        """Stage *obj* for insertion/update."""
+        self.session.add(obj)
+
+    async def delete_obj(self, obj: object) -> None:
+        """Delete *obj* from the database."""
+        await self.session.delete(obj)
+
+    async def get_user(self, user_id: uuid.UUID) -> User | None:
+        """Fetch a User by primary key — used by ChatService to resolve participants."""
+        return await self.session.get(User, user_id)

@@ -424,19 +424,17 @@ const Login = () => {
           duration={0.5}
           className="auth-card-glass flex w-full min-w-0 flex-col justify-center p-8 lg:p-12"
         >
-          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-text-primary/(--opacity-strong)">
-            {t("auth:login.heroBadge", { defaultValue: "University Ecosystem" })}
+          <p
+            className="text-sm font-semibold uppercase text-text-primary/(--opacity-strong)"
+            style={{ letterSpacing: "0.3em" }}
+          >
+            {t("auth:login.hero.badge")}
           </p>
           <h1 className="mt-4 text-4xl font-extrabold leading-tight text-text-primary sm:text-5xl">
-            {t("auth:login.heroHeading", {
-              defaultValue: "Добро пожаловать в систему Университета",
-            })}
+            {t("auth:login.hero.heading")}
           </h1>
           <p className="mt-4 text-lg leading-relaxed text-text-secondary">
-            {t("auth:login.heroDescription", {
-              defaultValue:
-                "Расписание, новости, мероприятия и мессенджер — всё в одном месте для студентов и преподавателей.",
-            })}
+            {t("auth:login.hero.description")}
           </p>
 
           <div className="mt-8 grid gap-4 sm:grid-cols-2">
@@ -459,16 +457,25 @@ const Login = () => {
           <div className="mt-10 flex flex-wrap gap-4">
             <div className="auth-stat-glass w-40">
               <Zap className="mr-1 h-4 w-4 text-brand" strokeWidth={3} />
-              <span className="text-xs font-extrabold uppercase tracking-[0.2em]">
+              <span
+                className="text-xs font-extrabold uppercase"
+                style={{ letterSpacing: "0.2em" }}
+              >
                 {t("auth:login.statFast", { defaultValue: "Быстро" })}
               </span>
-              <span className="text-xs font-extrabold uppercase tracking-[0.2em] ml-1">
+              <span
+                className="text-xs font-extrabold uppercase ml-1"
+                style={{ letterSpacing: "0.2em" }}
+              >
                 {t("auth:login.statFastLabel", { defaultValue: "и безопасно" })}
               </span>
             </div>
             <div className="auth-stat-glass w-40">
               <Sparkles className="mr-1 h-4 w-4 text-brand" strokeWidth={3} />
-              <span className="text-xs font-extrabold uppercase tracking-[0.2em]">
+              <span
+                className="text-xs font-extrabold uppercase"
+                style={{ letterSpacing: "0.2em" }}
+              >
                 {t("auth:login.statSmart", { defaultValue: "Умный интерфейс" })}
               </span>
             </div>
@@ -522,7 +529,8 @@ const Login = () => {
                 <button
                   type="button"
                   onClick={applySuggestion}
-                  className="inline-flex items-center gap-2 rounded-full border border-border-focus/(--opacity-strong) px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-brand transition hover:bg-brand-subtle"
+                  className="inline-flex items-center gap-2 rounded-full border border-border-focus/(--opacity-strong) px-4 py-2 text-xs font-semibold uppercase text-brand transition hover:bg-brand-subtle"
+                  style={{ letterSpacing: "0.2em" }}
                 >
                   <Sparkles className="h-4 w-4" aria-hidden="true" />
                   {t("auth:messages.emailSuggestion", { suggestion: emailSuggestion })}
@@ -541,7 +549,8 @@ const Login = () => {
                   onMouseUp={() => setShowPassword(false)}
                   onMouseLeave={() => setShowPassword(false)}
                   onClick={() => setShowPassword((v) => !v)}
-                  className="inline-flex items-center gap-2 rounded-full border border-transparent px-3 py-1 text-xs font-bold uppercase tracking-widest text-brand transition hover:bg-brand/5 focus:outline-none focus:ring-2 focus:ring-brand/20"
+                  className="inline-flex items-center gap-2 rounded-full border border-transparent px-3 py-1 text-xs font-bold uppercase tracking-widest text-brand transition focus:outline-none focus:ring-2 focus:ring-brand/20"
+                  style={{ backgroundColor: "rgba(var(--brand-main), 0.05)" }}
                   title={t("auth:actions.holdReveal") ?? undefined}
                   aria-label={t("auth:actions.showPassword") ?? undefined}
                 >

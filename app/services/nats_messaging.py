@@ -13,7 +13,6 @@ Features:
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Coroutine
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -23,6 +22,8 @@ from nats.js.api import StreamConfig
 from app.core.orjson_utils import orjson
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Coroutine
+
     from nats.aio.client import Client as NatsClient
     from nats.js import JetStreamContext
 
@@ -243,4 +244,4 @@ def get_nats_service() -> NatsService:
     return _nats_service
 
 
-__all__ = ["NatsService", "NatsMessage", "get_nats_service"]
+__all__ = ["NatsMessage", "NatsService", "get_nats_service"]

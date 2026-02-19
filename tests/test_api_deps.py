@@ -130,14 +130,16 @@ async def test_get_current_admin_user_forbidden(mock_request):
 @pytest.mark.asyncio
 async def test_enforce_fresh_mfa_no_session(mock_request):
     mock_request.state.active_session = None
-    with patch("app.api.deps.resolve_locale", return_value="en"):
-        with patch(
+    with (
+        patch("app.api.deps.resolve_locale", return_value="en"),
+        patch(
             "app.api.deps.raise_forbidden", side_effect=HTTPException(status_code=403)
-        ) as mock_raise:
-            with pytest.raises(HTTPException) as excinfo:
-                _enforce_fresh_mfa(mock_request)
-            assert excinfo.value.status_code == 403
-            mock_raise.assert_called_once()
+        ) as mock_raise,
+    ):
+        with pytest.raises(HTTPException) as excinfo:
+            _enforce_fresh_mfa(mock_request)
+        assert excinfo.value.status_code == 403
+        mock_raise.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -321,15 +323,15 @@ async def test_require_fresh_mfa_confirmed(mock_request, db_session):
 @pytest.mark.asyncio
 async def test_require_fresh_mfa_not_confirmed(mock_request, db_session):
     user = MagicMock(spec=User)
-    with patch(
-        "app.auth.mfa.user_has_confirmed_interactive_factor", return_value=False
+    with (
+        patch("app.auth.mfa.user_has_confirmed_interactive_factor", return_value=False),
+        patch("app.api.deps.ensure_mfa_relationships_loaded"),
     ):
-        with patch("app.api.deps.ensure_mfa_relationships_loaded"):
-            with patch("app.api.deps._enforce_fresh_mfa") as mock_enforce:
-                from app.api.deps import require_fresh_mfa
+        with patch("app.api.deps._enforce_fresh_mfa") as mock_enforce:
+            from app.api.deps import require_fresh_mfa
 
-                await require_fresh_mfa(mock_request, user, db_session)
-                mock_enforce.assert_not_called()
+            await require_fresh_mfa(mock_request, user, db_session)
+            mock_enforce.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -340,7 +342,8 @@ async def test_get_chat_service(db_session):
     from app.services.chat_service import ChatService
 
     assert isinstance(service, ChatService)
-    assert service.session == db_session
+    # The service delegates session management to the repository (architectural boundary).
+    assert service.repository.session == db_session
 
 
 @pytest.mark.asyncio

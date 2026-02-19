@@ -44,8 +44,8 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
   return (
     <Card
       className={cn(
-        "group bg-glass backdrop-blur-3xl transition-all duration-base ease-[cubic-bezier(0.34,1.56,0.64,1)]",
-        "hover:-translate-y-1 hover:scale-[1.01] hover:shadow-glass motion-reduce:hover:transform-none motion-reduce:hover:shadow-none",
+        "group bg-glass backdrop-blur-3xl transition-all duration-base ease-back-out",
+        "hover:-translate-y-1 hover:scale-105 hover:shadow-glass motion-reduce:hover:transform-none motion-reduce:hover:shadow-none",
         "dash-panel-news border-glass-border",
         className
       )}
@@ -64,7 +64,7 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
             to="/news"
             size="sm"
             variant="outline"
-            className="whitespace-nowrap px-5 transition-transform duration-base hover:-translate-y-[2px]"
+            className="whitespace-nowrap px-5 transition-transform duration-base hover:-translate-y-0.5"
             aria-label={t("dashboard:aria.viewAllNews")}
             onPointerDown={prefetchNewsList}
             onKeyDown={(event) => {

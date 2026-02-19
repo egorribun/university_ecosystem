@@ -2,8 +2,6 @@
 Tests for event file uploads.
 """
 
-# ruff: noqa: E501
-
 import asyncio
 import io
 from datetime import UTC, datetime, timedelta
