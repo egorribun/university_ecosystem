@@ -23,12 +23,9 @@ import {
   setPushConsent,
 } from "@/push/subscribe"
 import type { WebAuthnAuthenticationOptionsOut } from "@/types/Auth"
-import { clearAccessToken, persistAccessToken } from "./tokenStorage"
 import { logWarning, logError } from "@/app/logger"
 
 type TokenWithProfileResponse = {
-  access_token: string
-  token_type: string
   user?: User
   session?: { signing_key: string } | null
 }
@@ -46,9 +43,6 @@ const isTokenWithProfileResponse = (
     return false
   }
   const candidate = value as Record<string, unknown>
-  if (typeof candidate.access_token !== "string") {
-    return false
-  }
   if (!candidate.user || typeof candidate.user !== "object") {
     return false
   }
@@ -171,7 +165,6 @@ export const useAuthApi = (
           updateSessionSigningKey(extractSigningKey(data))
           setUser(data.user)
           updatePendingMfa(null)
-          persistAccessToken(data.access_token)
           if (data.user.spotify_connected) {
             window.dispatchEvent(new Event(SPOTIFY_REAUTH_EVENT))
           }
@@ -230,7 +223,6 @@ export const useAuthApi = (
     } catch (error) {
       logError("Logout failed", { error })
     } finally {
-      clearAccessToken()
       handleUnauthorized()
     }
   }, [handleUnauthorized, user])
@@ -267,7 +259,6 @@ export const useAuthApi = (
           updateSessionSigningKey(extractSigningKey(data))
           setUser(data.user)
           updatePendingMfa(null)
-          persistAccessToken(data.access_token)
           if (data.user.spotify_connected) {
             window.dispatchEvent(new Event(SPOTIFY_REAUTH_EVENT))
           }
@@ -396,7 +387,6 @@ export const useAuthApi = (
           updateSessionSigningKey(extractSigningKey(data))
           setUser(data.user)
           updatePendingMfa(null)
-          persistAccessToken(data.access_token)
           if (data.user.spotify_connected) {
             window.dispatchEvent(new Event(SPOTIFY_REAUTH_EVENT))
           }

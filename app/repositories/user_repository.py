@@ -78,7 +78,12 @@ class UserRepository(BaseRepository[User, schemas.UserCreate, dict]):
             select(User)
             .join(User.profile)
             .where(UserProfile.status != "deleted")
-            .options(*USER_MFA_LOAD_OPTIONS, selectinload(User.group))
+            .options(
+                *__import__(
+                    "app.models.user_loaders", fromlist=["USER_LIST_LOAD_OPTIONS"]
+                ).USER_LIST_LOAD_OPTIONS,
+                selectinload(User.group),
+            )
         )
         if filters.group_id:
             stmt = stmt.where(User.group_id == filters.group_id)

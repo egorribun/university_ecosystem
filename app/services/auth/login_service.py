@@ -221,8 +221,6 @@ class LoginService:
             session_payload = SessionSigningKeyOut(signing_key=signing_key)
 
         return schemas.TokenWithProfile(
-            access_token=token,
-            token_type="bearer",
             user=UserOut.model_validate(user),
             session=session_payload,
         )

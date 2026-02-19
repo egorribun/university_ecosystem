@@ -107,15 +107,13 @@ async def _warm_stats_for_user(
 
     days = _period_days_from_key(resolved_period) or 30
     from app.repositories.user_repository import UserRepository
-    from app.repositories.user_stats_repository import UserStatsRepository
     from app.services.audit_service import audit_service
     from app.services.notification_service import NotificationService
     from app.services.user_service import UserService
 
     repo = UserRepository(db)
-    stats_repo = UserStatsRepository(db)
     notifications = NotificationService(db)
-    service = UserService(repo, stats_repo, audit_service, notifications)
+    service = UserService(repo, audit_service, notifications)
 
     tasks = [
         service.get_attendance_stats(

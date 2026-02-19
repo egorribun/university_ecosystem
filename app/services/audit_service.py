@@ -235,6 +235,71 @@ class AuditService:
 audit_service = AuditService()
 
 
+def auditable(
+    event: str | SecurityEvent,
+    *,
+    user_id_param: str | None = None,
+    include_args: bool = False,
+    include_result: bool = False,
+) -> Any:
+    """Decorator to automatically log security audit events.
+
+    This decorator simplifies service methods by removing manual audit.log calls.
+    It expects the first argument to be 'self' (a service instance with an 'audit' attribute)
+    and one of the arguments to be 'request' (FastAPI Request).
+    """
+    from functools import wraps
+
+    def decorator(func: Any) -> Any:
+        @wraps(func)
+        async def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
+            # We need to find the request object in args/kwargs
+            import inspect
+
+            request = kwargs.get("request")
+            if not request:
+                # Fallback: look in args
+                sig = inspect.signature(func)
+                bound_args = sig.bind(self, *args, **kwargs)
+                request = bound_args.arguments.get("request")
+
+            # Find user_id if specified
+            user_id = None
+            if user_id_param:
+                sig = inspect.signature(func)
+                bound_args = sig.bind(self, *args, **kwargs)
+                user_val = bound_args.arguments.get(user_id_param)
+                if user_val:
+                    if hasattr(user_val, "id"):
+                        user_id = user_val.id
+                    else:
+                        user_id = user_val
+
+            try:
+                result = await func(self, *args, **kwargs)
+
+                # Log SUCCESS
+                log_kwargs: dict[str, Any] = {}
+                if include_args:
+                    log_kwargs["args"] = kwargs
+                if include_result:
+                    log_kwargs["result"] = str(result)
+
+                # Use self.audit if available, else fallback to global audit_service
+                auditor = getattr(self, "audit", audit_service)
+                auditor.log(event, request=request, user_id=user_id, **log_kwargs)
+
+                return result
+            except Exception as e:
+                # Log FAILURE if needed? Usually we only log successful security actions
+                # or explicit access denials.
+                raise e
+
+        return wrapper
+
+    return decorator
+
+
 # ============================================================================
 # Secure Audit Service with HMAC Integrity
 # ============================================================================

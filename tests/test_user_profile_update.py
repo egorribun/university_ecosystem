@@ -310,7 +310,7 @@ async def test_upload_avatar_cleans_up_on_commit_failure(
 
     from unittest.mock import AsyncMock
 
-    service = UserService(AsyncMock(), AsyncMock(), AuditService(), AsyncMock())
+    service = UserService(AsyncMock(), AuditService(), AsyncMock())
     service.repo.get.return_value = user
 
     async def failing_commit(*_args, **_kwargs):
@@ -355,7 +355,7 @@ async def test_upload_cover_cleans_up_on_commit_failure(
 
     from unittest.mock import AsyncMock
 
-    service = UserService(AsyncMock(), AsyncMock(), AuditService(), AsyncMock())
+    service = UserService(AsyncMock(), AuditService(), AsyncMock())
     service.repo.get.return_value = user
 
     async def failing_commit(*_args, **_kwargs):

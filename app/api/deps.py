@@ -534,15 +534,13 @@ def get_user_service(
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> Any:
     from app.repositories.user_repository import UserRepository
-    from app.repositories.user_stats_repository import UserStatsRepository
     from app.services.audit_service import audit_service
     from app.services.notification_service import NotificationService
     from app.services.user_service import UserService
 
     user_repo = UserRepository(session)
-    stats_repo = UserStatsRepository(session)
     notifications = NotificationService(session)
-    return UserService(user_repo, stats_repo, audit_service, notifications)
+    return UserService(user_repo, audit_service, notifications)
 
 
 def get_audit_service() -> Any:

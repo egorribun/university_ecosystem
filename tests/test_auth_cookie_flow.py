@@ -38,7 +38,7 @@ async def test_session_signing_key_missing_localized(
 
     response = await _login(async_client, user.email, password)
     assert response.status_code == 200
-    token = response.json()["access_token"]
+    token = async_client.cookies.get("access_token_v2")
 
     session = (
         (
@@ -147,7 +147,7 @@ async def test_token_reuse_after_logout_rejected(
 
     login_response = await _login(async_client, user.email, password)
     assert login_response.status_code == 200
-    token = login_response.json()["access_token"]
+    token = async_client.cookies.get("access_token_v2")
 
     payload = decode_token(token)
     assert payload is not None
@@ -180,7 +180,7 @@ async def test_profile_cache_envelope_validation(async_client, user_factory):
 
     login_response = await _login(async_client, user.email, password)
     assert login_response.status_code == 200
-    token = login_response.json()["access_token"]
+    token = async_client.cookies.get("access_token_v2")
     headers = {"Authorization": f"Bearer {token}"}
 
     signing_key_response = await async_client.get(
@@ -232,7 +232,7 @@ async def test_logout_rotates_session_signing_key(
 
     login_response = await _login(async_client, user.email, password)
     assert login_response.status_code == 200
-    token = login_response.json()["access_token"]
+    token = async_client.cookies.get("access_token_v2")
     payload = decode_token(token)
     assert payload is not None
     jti = payload.get("jti")
