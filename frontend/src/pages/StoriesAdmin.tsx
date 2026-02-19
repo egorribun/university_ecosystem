@@ -271,14 +271,10 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
             </div>
 
             <div className="w-full md:w-56 flex flex-col items-center gap-4">
-<<<<<<< HEAD
               <div
                 className="relative w-full rounded-md overflow-hidden bg-(--bg-surface)/(--opacity-dim) border border-glass-border shadow-inner group"
                 style={{ aspectRatio: "9/16" }}
               >
-=======
-              <div className="relative w-full aspect-[9/16] rounded-md overflow-hidden bg-(--bg-surface)/(--opacity-dim) border border-glass-border shadow-inner group">
->>>>>>> origin/main
                 {coverPreview ? (
                   <SmartImage
                     srcRaw={coverPreview || ""}

@@ -145,16 +145,6 @@ export const StepUpDialog = ({
 
   if (!open) return null
 
-<<<<<<< HEAD
-  return (
-    <div className="fixed inset-0 z-navbar flex items-center justify-center p-4">
-      <div
-        className="fixed inset-0 bg-black/(--opacity-medium) transition-opacity"
-        aria-hidden="true"
-        onClick={onClose}
-      />
-      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
-=======
   return createPortal(
     <>
       <button
@@ -166,50 +156,10 @@ export const StepUpDialog = ({
         data-testid="step-up-backdrop"
       />
 
->>>>>>> origin/main
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="step-up-dialog-title"
-<<<<<<< HEAD
-        className="bg-card relative z-content w-full max-w-sm rounded-2xl shadow-2xl"
-        onKeyDown={(e) => {
-          if (e.key === "Escape") onClose()
-        }}
-        tabIndex={-1}
-      >
-        <h2
-          id="step-up-dialog-title"
-          className="px-6 pb-2 pt-6 text-xl font-bold text-(--text-primary)"
-        >
-          {title ?? t("mfa.stepUp.title")}
-        </h2>
-        <div className="px-6 py-4">
-          <div className="mt-2 flex flex-col gap-6">
-            <p className="text-sm text-(--text-secondary)">
-              {description ?? t("mfa.stepUp.description")}
-            </p>
-            {challenge ? (
-              <OtpEntry
-                loading={verifying}
-                error={error}
-                helperText={helperText}
-                onSubmit={handleOtpSubmit}
-              />
-            ) : null}
-          </div>
-        </div>
-        <div className="flex justify-end gap-2 px-6 pb-6 pt-2">
-          <button
-            onClick={onClose}
-            className="text-base font-bold text-(--text-primary) transition-all duration-fast hover:bg-(--text-primary)/(--opacity-subtle) inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2"
-          >
-            {t("common:buttons.cancel")}
-          </button>
-        </div>
-      </div>
-    </div>
-=======
         className="fixed inset-0 z-overlay flex items-center justify-center pointer-events-none"
       >
         <div
@@ -250,7 +200,6 @@ export const StepUpDialog = ({
       </div>
     </>,
     document.body
->>>>>>> origin/main
   )
 }
 

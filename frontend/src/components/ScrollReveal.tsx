@@ -1,14 +1,8 @@
-<<<<<<< HEAD
-import { ReactNode } from "react"
-import { useIntersectionObserver } from "@/hooks/ui/useIntersectionObserver"
-import { cn } from "@/utils/cn"
-=======
 import { motion, useAnimation, useInView, Variants, TargetAndTransition } from "framer-motion"
 import { ReactNode, useEffect, useRef, useMemo } from "react"
 import { springHeavy } from "@/utils/animations"
 import { motion as motionTokens } from "@/theme/tokens"
 import { EASING } from "@/utils/motion"
->>>>>>> origin/main
 
 type Props = {
   children: ReactNode
@@ -18,11 +12,6 @@ type Props = {
   duration?: number
   className?: string
   width?: "fit-content" | "100%"
-<<<<<<< HEAD
-  viewportMargin?: string
-}
-
-=======
   stagger?: number
   threshold?: number
   viewportMargin?: NonNullable<Parameters<typeof useInView>[1]>["margin"]
@@ -71,58 +60,16 @@ const getVariants = (mode: string, direction: string): Variants => {
   }
 }
 
->>>>>>> origin/main
 export const ScrollReveal = ({
   children,
   mode = "slide",
   direction = "up",
   delay = 0,
-<<<<<<< HEAD
-  duration, // CSS duration handles this, but kept for API compat if needed in future inline styles
-=======
   duration = motionTokens.durationSlow,
->>>>>>> origin/main
   className,
   width = "100%",
   viewportMargin = "0px 0px -50px 0px",
 }: Props) => {
-<<<<<<< HEAD
-  const [ref, isVisible] = useIntersectionObserver({
-    rootMargin: viewportMargin,
-    freezeOnceVisible: true,
-    threshold: 0.1,
-  })
-
-  const getHiddenClass = () => {
-    if (mode === "fade") return "reveal-hidden-fade"
-    if (mode === "scale" || mode === "pop") return "reveal-hidden-scale"
-
-    // Slide direction
-    switch (direction) {
-      case "up": return "reveal-hidden-slide-up"
-      case "down": return "reveal-hidden-slide-up" // Fallback to up for now, or add slide-down if needed
-      case "left": return "reveal-hidden-slide-left"
-      case "right": return "reveal-hidden-slide-right"
-      default: return "reveal-hidden-slide-up"
-    }
-  }
-
-  return (
-    <div
-      ref={ref}
-      style={{
-        width,
-        transitionDelay: `${delay}s`,
-        transitionDuration: `${duration}s`
-      }}
-      className={cn(
-        "reveal-base",
-        isVisible ? "reveal-visible" : getHiddenClass(),
-        className
-      )}
-    >
-      {children}
-=======
   const ref = useRef<HTMLDivElement>(null)
   const isInView = useInView(ref, { once: true, margin: viewportMargin })
   const controls = useAnimation()
@@ -151,7 +98,6 @@ export const ScrollReveal = ({
       >
         {children}
       </motion.div>
->>>>>>> origin/main
     </div>
   )
 }

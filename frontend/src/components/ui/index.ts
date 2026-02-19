@@ -19,8 +19,5 @@ export * from "./GlassCard"
 export * from "./Spotlight"
 export * from "./Textarea"
 export * from "./ConfirmDialog"
-<<<<<<< HEAD
 export * from "./CardActionArea"
-=======
 export * from "./TextField"
->>>>>>> origin/main

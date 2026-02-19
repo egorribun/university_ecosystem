@@ -162,11 +162,7 @@ export function AccordionSection({
       <div
         className={cn(
           "overflow-hidden transition-all duration-slow",
-<<<<<<< HEAD
-          expanded ? "opacity-100" : "opacity-0"
-=======
           expanded ? "max-h-[125rem] opacity-100" : "max-h-0 opacity-0"
->>>>>>> origin/main
         )}
         style={{ maxHeight: expanded ? "2000px" : "0px" }}
       >

@@ -69,12 +69,8 @@ export const ProfileHeader = ({
           )}
           style={{
             transform: `translateY(${coverParallax}px) scale(${coverScale})`,
-<<<<<<< HEAD
-            filter: "saturate(1) contrast(1.02) brightness(0.98)",
-            transitionTimingFunction: !reduceMotion ? "cubic-bezier(0.33,1,0.68,1)" : undefined
-=======
             filter: COVER_IMAGE_FILTER,
->>>>>>> origin/main
+            transitionTimingFunction: !reduceMotion ? "cubic-bezier(0.33,1,0.68,1)" : undefined
           }}
         >
           <SmartImage

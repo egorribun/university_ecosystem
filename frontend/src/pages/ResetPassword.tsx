@@ -150,7 +150,6 @@ export default function ResetPassword() {
     <div className="min-h-screen bg-page text-text-primary flex items-center justify-center p-(--fluid-px) relative overflow-hidden">
       {/* Background decorative elements */}
       <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-dim">
-<<<<<<< HEAD
         <div
           className="absolute bg-(--glow-spotlight-primary) rounded-full blur-(--glow-blur-massive)"
           style={{ top: "var(--glow-inset-neg)", right: "var(--glow-inset-subtle-neg)", width: "40%", height: "40%" }}
@@ -159,10 +158,6 @@ export default function ResetPassword() {
           className="absolute bg-(--glow-spotlight-secondary) rounded-full blur-(--glow-blur-massive)"
           style={{ bottom: "var(--glow-inset-neg)", left: "var(--glow-inset-subtle-neg)", width: "40%", height: "40%" }}
         />
-=======
-        <div className="absolute top-[-10%] right-[-5%] w-2/5 h-2/5 bg-(--glow-spotlight-primary) rounded-full blur-(--glow-blur-massive)" />
-        <div className="absolute bottom-[-10%] left-[-5%] w-2/5 h-2/5 bg-(--glow-spotlight-secondary) rounded-full blur-(--glow-blur-massive)" />
->>>>>>> origin/main
       </div>
 
       <motion.div
@@ -338,15 +333,9 @@ export default function ResetPassword() {
                       )}
                     </div>
 
-<<<<<<< HEAD
-                    {resetErrorMessage && (
-                      <p className="text-sm font-bold text-error-text text-center animate-bounce-subtle">
-                        {resetErrorMessage}
-=======
                     {errors.root?.message && (
                       <p className="text-sm font-bold text-error-text text-center animate-bounce">
                         {errors.root.message}
->>>>>>> origin/main
                       </p>
                     )}
 

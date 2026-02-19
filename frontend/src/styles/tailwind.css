@@ -266,15 +266,9 @@
   --bg-nav-light: var(--grad-nav-light);
   --bg-nav-dark: var(--grad-nav-dark);
   --bg-footer-light: radial-gradient(120% 180% at -10% -20%,
-<<<<<<< HEAD
     color-mix(in srgb, var(--color-blue-400) var(--glass-alpha-med), transparent),
     transparent 60%),
   linear-gradient(112deg, var(--primary-main) 0%, var(--primary-hover) 100%);
-=======
-      color-mix(in srgb, var(--color-blue-400) var(--glass-alpha-med), transparent),
-      transparent 60%),
-    linear-gradient(112deg, var(--primary-main) 0%, var(--primary-hover) 100%);
->>>>>>> origin/main
   --bg-footer-dark: var(--grad-nav-dark);
 }
 
@@ -831,7 +825,6 @@
   transition: all var(--transition-fast);
 }
 
-<<<<<<< HEAD
 @layer components {
   .bg-radial-gradient-primary {
     background-image: radial-gradient(circle at 0% 0%, var(--primary-main), transparent 60%);
@@ -840,7 +833,6 @@
   .dark .bg-radial-gradient-primary-dark {
     background-image: radial-gradient(circle at 0% 0%, var(--primary-subtle), transparent 60%);
   }
-
 
   .before-rounded-inherit::before {
     border-radius: inherit;
@@ -859,7 +851,9 @@
     background-color: rgb(var(--bg-surface) / var(--opacity-dim));
     box-shadow: none;
     backdrop-filter: none;
-=======
+  }
+}
+
 @utility container-fluid-responsive {
   @apply max-w-full mx-auto w-full relative z-base;
   max-width: 100%;
@@ -878,6 +872,7 @@
 
   @media (min-width: 1350px) {
     max-width: var(--layout-max-ultrawide);
->>>>>>> origin/main
   }
+}
+}
 }

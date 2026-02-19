@@ -99,18 +99,7 @@ export const StoryList = ({
                     boxShadow: "0 0 0 var(--space-1) color-mix(in_srgb, var(--brand-main) var(--opacity-medium), transparent)"
                   } : undefined}
                 >
-<<<<<<< HEAD
-                  <div
-                    className="relative z-base overflow-hidden rounded-md bg-(--bg-surface-raised) shadow-premium"
-                    style={{
-                      aspectRatio: "9/16",
-                      width: "var(--story-card-w)",
-                      ["--story-card-w-md" as string]: "var(--story-card-w-md, 120px)"
-                    }}
-                  >
-=======
                   <div className="relative z-base aspect-[9/16] w-[--story-card-w] overflow-hidden rounded-md bg-(--bg-surface-raised) shadow-premium md:w-[--story-card-w-md]">
->>>>>>> origin/main
                     {story.cover_url ? (
                       <SmartImage
                         srcRaw={story.cover_url}

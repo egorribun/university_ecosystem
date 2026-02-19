@@ -121,14 +121,7 @@ export function ScheduleDesktopTable({
     const gap = minutesDiff(prev.end_time, curr.start_time)
     if (gap <= 0) return null
     return (
-<<<<<<< HEAD
-      <div
-        className="pointer-events-none absolute left-1/2 z-deep -translate-x-1/2"
-        style={{ top: "calc(var(--space-4) * -1)" }}
-      >
-=======
       <div className="pointer-events-none absolute left-1/(--opacity-trace) top-[calc(var(--space-4)*-1)] z-deep -translate-x-1/(--opacity-trace)">
->>>>>>> origin/main
         <Badge
           size="xs"
           className="chip-break font-medium bg-warning-bg/(--opacity-dim) border border-warning-border/(--opacity-soft) text-warning-text shadow-sm"

@@ -52,18 +52,6 @@ export function MessengerSidebar({
       </div>
 
       <div className="bg-(--bg-surface-raised) p-4">
-<<<<<<< HEAD
-        <div className="group relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary transition-colors group-focus-within:text-primary-main" />
-          <input
-            id="messenger-sidebar-search"
-            type="text"
-            placeholder={t("messenger:search", "Search")}
-            aria-label={t("messenger:search", "Search")}
-            className="w-full rounded-md border-none bg-black/(--opacity-medium) py-25 pl-10 pr-4 text-(--fs-body) shadow-sm outline-none transition-all focus:ring-2 focus:ring-(--brand-main)/(--opacity-medium) dark:bg-white/(--opacity-medium)"
-          />
-        </div>
-=======
         <TextField
           id="messenger-sidebar-search"
           value={searchQuery}
@@ -73,7 +61,6 @@ export function MessengerSidebar({
           placeholder={t("messenger:search", "Search")}
           className="w-full"
         />
->>>>>>> origin/main
       </div>
 
       <ContactList

@@ -1,6 +1,7 @@
 import { motion } from "framer-motion"
 import { cn } from "@/utils/cn"
 import { motion as motionTokens } from "@/theme/tokens"
+import { EASING } from "@/utils/motion"
 import { MobileMenu } from "./MobileMenu"
 import { NavbarLogo } from "./NavbarLogo"
 import { NavbarActions } from "./NavbarActions"
@@ -33,7 +34,7 @@ const Navbar = () => {
         ref={navRef}
         initial={{ y: -100, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: motionTokens.navTransition, ease: motionTokens.ease.outExpo }}
+        transition={{ duration: motionTokens.navTransition, ease: EASING.premium }}
         className={cn(
           "sticky top-0 z-navbar w-full flex flex-col justify-center",
           "border-b border-glass-border transition-all duration-slow",

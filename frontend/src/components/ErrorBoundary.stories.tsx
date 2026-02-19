@@ -75,17 +75,7 @@ export const CustomFallback: Story = {
   args: {
     children: <ErrorThrowingComponent />,
     fallback: (
-<<<<<<< HEAD
-      <div
-        className="flex items-center justify-center p-8"
-        style={{
-          minHeight: "300px",
-          backgroundColor: "rgb(239 68 68 / var(--opacity-subtle))"
-        }}
-      >
-=======
       <div className="flex min-h-72 items-center justify-center bg-red-500/(--opacity-subtle) p-8">
->>>>>>> origin/main
         <div className="text-center">
           <span className="text-4xl" role="img" aria-label="error">
             💥

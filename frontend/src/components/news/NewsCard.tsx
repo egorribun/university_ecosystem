@@ -1,11 +1,3 @@
-<<<<<<< HEAD:frontend/src/components/NewsCard.tsx
-import { memo } from "react"
-import { NewsCardContainer } from "./news/NewsCardContainer"
-import { NewsCardView } from "./news/NewsCardView"
-
-export { NewsCardView }
-export default memo(NewsCardContainer)
-=======
 import { useSpotlight } from "@/components/ui/Spotlight"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useNewsInteraction } from "@/hooks/useNewsInteraction"
@@ -175,4 +167,3 @@ const areNewsCardPropsEqual = (prev: NewsCardProps, next: NewsCardProps) =>
   prev.onChange === next.onChange
 
 export default memo(NewsCardComponent, areNewsCardPropsEqual)
->>>>>>> origin/main:frontend/src/components/news/NewsCard.tsx

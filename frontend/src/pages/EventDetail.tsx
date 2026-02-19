@@ -162,11 +162,7 @@ export default function EventDetail() {
   if (loading) {
     return (
       <Layout>
-<<<<<<< HEAD
-        <div className="flex w-full items-center justify-center" style={{ height: "60vh" }}>
-=======
         <div className="flex min-h-(--h-hero-md) w-full items-center justify-center">
->>>>>>> origin/main
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand border-t-transparent" />
         </div>
       </Layout>
@@ -232,16 +228,7 @@ export default function EventDetail() {
                 {t("events:card.participants", { count: event.participant_count || 0 })}
               </Badge>
             </div>
-<<<<<<< HEAD
-            <p
-              className="font-semibold text-(--text-primary)"
-              style={{ fontSize: "var(--fs-base)" }}
-            >
-              {event.description}
-            </p>
-=======
             <p className="text-(--fs-base) font-semibold text-text-primary">{event.description}</p>
->>>>>>> origin/main
             <div className="space-y-2">
               <p className="text-base font-semibold text-text-primary">
                 {t("events:detail.fields.location")}: <strong>{event.location}</strong>
@@ -253,14 +240,7 @@ export default function EventDetail() {
                 </strong>
               </p>
               {event.speaker && (
-<<<<<<< HEAD
-              <p
-                  className="text-(--text-primary)"
-                  style={{ fontSize: "var(--fs-base)" }}
-                >
-=======
                 <p className="text-(--fs-base) text-text-primary">
->>>>>>> origin/main
                   {t("events:detail.fields.speaker")}: <strong>{event.speaker}</strong>
                 </p>
               )}
@@ -313,16 +293,10 @@ export default function EventDetail() {
         <div className="flex flex-row gap-8 items-start">
           <div className="space-y-6" style={{ width: "45%" }}>
             {imageUrl && (
-<<<<<<< HEAD
-              <div
-                className="relative w-full overflow-hidden rounded-4xl border border-glass-border bg-black/(--opacity-faint) shadow-premium"
-                style={{ aspectRatio: "21/9" }}
-=======
               <GlassCard
                 intensity="low"
                 radius="3xl"
                 className="relative w-full aspect-21/9 rounded-4xl"
->>>>>>> origin/main
               >
                 <SmartImage
                   srcRaw={imageUrl}
@@ -365,14 +339,7 @@ export default function EventDetail() {
               </Badge>
             </div>
             <div className="h-px bg-(--glass-border)" />
-<<<<<<< HEAD
-            <p
-              className="whitespace-pre-line font-semibold leading-relaxed text-(--text-primary)"
-              style={{ fontSize: "var(--fs-lg)" }}
-            >
-=======
             <p className="whitespace-pre-line text-(--fs-lg) font-semibold leading-relaxed text-text-primary">
->>>>>>> origin/main
               {event.description}
             </p>
             <div className="h-px bg-(--glass-border)" />

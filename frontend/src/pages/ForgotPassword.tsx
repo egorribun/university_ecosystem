@@ -90,19 +90,8 @@ export default function ForgotPassword() {
     <div className="min-h-screen bg-page text-text-primary flex items-center justify-center p-6 relative overflow-hidden">
       {/* Background decorative elements */}
       <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-dim">
-<<<<<<< HEAD
-        <div
-          className="absolute bg-(--glow-spotlight-primary) rounded-full blur-(--glow-blur-massive)"
-          style={{ top: "-10%", left: "-5%", width: "40%", height: "40%" }}
-        />
-        <div
-          className="absolute bg-(--glow-spotlight-secondary) rounded-full blur-(--glow-blur-massive)"
-          style={{ bottom: "-10%", right: "-5%", width: "40%", height: "40%" }}
-        />
-=======
         <div className="absolute top-[-10%] left-[-5%] w-2/5 h-2/5 bg-(--glow-spotlight-primary) rounded-full blur-(--glow-blur-massive)" />
         <div className="absolute bottom-[-10%] right-[-5%] w-2/5 h-2/5 bg-(--glow-spotlight-secondary) rounded-full blur-(--glow-blur-massive)" />
->>>>>>> origin/main
       </div>
 
       <motion.div

@@ -163,16 +163,10 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
     >
       <motion.div
         className={cn(
-<<<<<<< HEAD
           "nowplaying--spotify card-glass card-glass-interactive w-full grid items-center gap-x-4 gap-y-2 px-4 py-3.5 rounded-2xl relative overflow-hidden",
         )}
         style={{ gridTemplateColumns: "auto 1fr" }}
-        initial={isTest || prefersReduce || reduced ? false : { y: 12, opacity: 0.8, scale: 1 }}
-=======
-          "nowplaying--spotify card-glass card-glass-interactive w-full grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 px-4 py-3.5 rounded-2xl relative overflow-hidden"
-        )}
         initial={isTest || prefersReduce || reduced ? false : { y: motionTokens.slideSm, opacity: 0.8, scale: 1 }}
->>>>>>> origin/main
         animate={{ y: 0, opacity: 1, scale: 1 }}
         whileHover={prefersReduce || reduced ? {} : { y: -1, scale: 1.002 }}
         whileTap={prefersReduce || reduced ? {} : { scale: 0.997 }}

@@ -5,9 +5,10 @@ import type { Event } from "@/types/Event"
 import { cn } from "@/utils/cn"
 import { SpotlightOverlay } from "@/components/ui/Spotlight"
 import { motion as motionTokens } from "@/theme/tokens"
+import { motion } from "framer-motion"
 import { EASING } from "@/utils/motion"
 
-import { Snackbar, ContentCard, ConfirmDialog, CardActionArea } from "@/components/ui"
+import { Snackbar, ContentCard, ConfirmDialog } from "@/components/ui"
 import { useEventCardLogic } from "@/hooks/useEventCardLogic"
 
 // Sub-components
@@ -78,16 +79,11 @@ const EventCardComponent: FC<EventCardProps> = (props) => {
     handleEdit,
     handleDelete,
     navigate: navigateToDetails,
-    onCardClick,
   } = useEventCardLogic(props)
 
   return (
-<<<<<<< HEAD:frontend/src/components/EventCard.tsx
-    <CardActionArea
-=======
     <motion.article
       layout
->>>>>>> origin/main:frontend/src/components/events/EventCard/EventCard.tsx
       initial={{ opacity: 0, y: 16, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{
@@ -95,10 +91,6 @@ const EventCardComponent: FC<EventCardProps> = (props) => {
         delay: (animationIndex % STAGGER_BATCH_SIZE) * motionTokens.staggerDelay,
         ease: EASING.premium,
       }}
-<<<<<<< HEAD:frontend/src/components/EventCard.tsx
-      onClick={onCardClick}
-      className="h-full"
-=======
       whileHover={{
         y: HOVER_Y_OFFSET,
         transition: { duration: motionTokens.durationFast, ease: EASING.premium },
@@ -113,7 +105,6 @@ const EventCardComponent: FC<EventCardProps> = (props) => {
           navigateToDetails()
         }
       }}
->>>>>>> origin/main:frontend/src/components/events/EventCard/EventCard.tsx
     >
       <ContentCard
         hoverable={!editOpen}
@@ -215,11 +206,7 @@ const EventCardComponent: FC<EventCardProps> = (props) => {
 
         <Snackbar open={!!snackbar} message={snackbar} onClose={() => setSnackbar("")} />
       </ContentCard>
-<<<<<<< HEAD:frontend/src/components/EventCard.tsx
-    </CardActionArea>
-=======
     </motion.article>
->>>>>>> origin/main:frontend/src/components/events/EventCard/EventCard.tsx
   )
 }
 

@@ -66,30 +66,6 @@ export function MobileMenu({
   }, [isOpen, onClose])
 
   return createPortal(
-<<<<<<< HEAD
-    <div
-      id="mobile-drawer"
-      className={cn(
-        "mobile-drawer fixed inset-0 z-overlay flex h-screen w-screen border-none p-0 text-left outline-none",
-        isOpen ? "pointer-events-auto" : "pointer-events-none"
-      )}
-      style={{
-        pointerEvents: isOpen ? "auto" : "none",
-      }}
-      role="none"
-    >
-      <div
-        className={cn(
-          "absolute inset-0 bg-black/(--opacity-dim)",
-          !prefersReducedMotion && "transition-colors duration-fast",
-          isOpen ? "opacity-100" : "opacity-0"
-        )}
-        onClick={onClose}
-        aria-hidden="true"
-      />
-      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
-      <div
-=======
     <>
       <button
         type="button"
@@ -108,7 +84,6 @@ export function MobileMenu({
 
       <div
         id="mobile-drawer"
->>>>>>> origin/main
         role="dialog"
         aria-modal="true"
         aria-label={t("navigation:aria.mobileMenu")}
@@ -118,13 +93,7 @@ export function MobileMenu({
           "border-r border-(--glass-border) backdrop-blur-(--glass-blur)",
           isOpen ? "translate-x-0" : "-translate-x-full"
         )}
-<<<<<<< HEAD
-        onKeyDown={(e) => {
-          if (e.key === "Escape") onClose()
-          e.stopPropagation()
-        }}
-=======
->>>>>>> origin/main
+
         tabIndex={-1}
       >
         <div className="flex-1 overflow-y-auto px-4 py-8">
@@ -195,11 +164,7 @@ export function MobileMenu({
           </div>
         </div>
       </div>
-<<<<<<< HEAD
-    </div>,
-=======
     </>,
->>>>>>> origin/main
     document.body
   )
 }

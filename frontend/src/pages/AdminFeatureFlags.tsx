@@ -70,13 +70,8 @@ export default function AdminFeatureFlags() {
             transition={{ duration: 0.5 }}
             className="mb-8"
           >
-<<<<<<< HEAD
             <h1 className="text-4xl font-bold tracking-tight text-(--text-primary) sm:text-5xl">
-              {t("featureFlags.title")}
-=======
-            <h1 className="text-4xl font-bold tracking-tight text-text-primary sm:text-5xl">
               {t("featureFlags.title", "Dynamic Feature Flags")}
->>>>>>> origin/main
             </h1>
             <p className="mt-2 text-base text-(--text-secondary)">
               {t("featureFlags.subtitle")}

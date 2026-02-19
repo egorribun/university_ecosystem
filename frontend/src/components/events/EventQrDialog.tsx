@@ -15,18 +15,9 @@ export function EventQrDialog({ open, onClose, qr }: EventQrDialogProps) {
   return (
     <Dialog open={open} onClose={onClose} title="" size="sm">
       <div className="space-y-4">
-<<<<<<< HEAD
-        <div
-          className="mx-auto w-full rounded-2xl bg-surface p-6 shadow-glass"
-          style={{ maxWidth: "min(80vw, 80vh, 400px)" }}
-        >
-          <img
-            src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(
-=======
         <div className="mx-auto w-full max-w-[min(80vw,80vh,25rem)] rounded-2xl bg-surface p-6 shadow-glass">
           <SmartImage
             srcRaw={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(
->>>>>>> origin/main
               qr
             )}&size=600x600`}
             alt={t("events:card.alt.qr")}

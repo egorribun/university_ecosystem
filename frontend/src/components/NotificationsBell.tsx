@@ -131,19 +131,10 @@ export default function NotificationsBell() {
         aria-label={t("system:notificationsBell.open")}
       >
         <Bell
-<<<<<<< HEAD
-          className="transition-transform duration-slow"
-          style={{
-            width: "clamp(18px, 4.5vw, 22px)",
-            height: "clamp(18px, 4.5vw, 22px)",
-            transform: isOpen ? "rotate(-10deg)" : undefined
-          }}
-=======
           className={cn(
             "w-(--size-icon-fluid) h-(--size-icon-fluid) transition-transform duration-slow",
             isOpen && "rotate-[-10deg]"
           )}
->>>>>>> origin/main
           strokeWidth={1.8}
         />
         {unreadCount ? (

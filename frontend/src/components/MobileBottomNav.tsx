@@ -11,22 +11,7 @@ import { useTranslation } from "react-i18next"
 import { motion } from "framer-motion"
 import { springBouncy, springSoft } from "@/utils/animations"
 
-<<<<<<< HEAD
-import { getScrollRoot, markIfFromBottom, smoothToTop } from "@/utils/scrollUtils"
-=======
-function smoothToTop() {
-  window.scrollTo({ top: 0, behavior: "smooth" })
-}
-
-const NEAR_BOTTOM_THRESHOLD = 24
-
-function markIfFromBottom() {
-  const nearBottom =
-    window.scrollY + window.innerHeight >=
-    document.documentElement.scrollHeight - NEAR_BOTTOM_THRESHOLD
-  if (nearBottom) sessionStorage.setItem("__scrollTopNext", "1")
-}
->>>>>>> origin/main
+import { markIfFromBottom, smoothToTop, getScrollRoot } from "@/utils/scrollUtils"
 
 function samePath(a: string, b: string) {
   const na = a.replace(/\/+$/, "") || "/"
@@ -41,7 +26,7 @@ export default function MobileBottomNav() {
   useLayoutEffect(() => {
     if (sessionStorage.getItem("__scrollTopNext") === "1") {
       sessionStorage.removeItem("__scrollTopNext")
-      requestAnimationFrame(() => smoothToTop())
+      requestAnimationFrame(() => smoothToTop(getScrollRoot()))
     }
   }, [pathname])
 
@@ -85,7 +70,7 @@ export default function MobileBottomNav() {
               onClick={(e) => {
                 if (samePath(pathname, it.to)) {
                   e.preventDefault()
-                  smoothToTop()
+                  smoothToTop(getScrollRoot())
                 }
               }}
               className={({ isActive }) =>

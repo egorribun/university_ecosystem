@@ -159,13 +159,8 @@ export const StoryViewer = ({
       >
         <div
           className={cn(
-<<<<<<< HEAD
-            "relative z-decor flex w-(--story-card-w) max-w-(--story-card-w) flex-col items-stretch justify-center overflow-hidden text-white sm:max-w-(--layout-max-content)",
-            viewerStory.cover_url ? "bg-(--bg-page)" : "bg-brand shadow-premium-lift",
-=======
             "relative z-decor flex aspect-9/16 w-(--story-card-w) max-h-hero-max max-w-(--story-card-w) flex-col items-stretch justify-center overflow-hidden text-white sm:aspect-video sm:w-[min(96%,60rem)] sm:max-h-(--h-hero-lg) sm:max-w-(--layout-max-content)",
             viewerStory.cover_url ? "bg-page" : "bg-brand shadow-premium-lift",
->>>>>>> origin/main
             viewerStory.cover_url ? "rounded-none" : "rounded-md sm:rounded-lg"
           )}
           style={{

@@ -1,17 +1,13 @@
 const fallbackNotifications = {
-<<<<<<< HEAD
+
   en: {
-    defaultTitle: "New Notification",
+    defaultTitle: "University Ecosystem",
     defaultBody: "You have a new notification.",
   },
   ru: {
     defaultTitle: "Новое уведомление",
     defaultBody: "У вас есть новое уведомление.",
   },
-=======
-  defaultTitle: "University Ecosystem",
-  defaultBody: "You have a new notification.",
->>>>>>> origin/main
 }
 
 const getDetectedLanguage = (): "en" | "ru" => {
