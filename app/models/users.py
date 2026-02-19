@@ -60,7 +60,7 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         uselist=False,
         cascade="all, delete-orphan",
         passive_deletes=True,
-        lazy="joined",
+        lazy="select",
     )
     profile = relationship(
         "UserProfile",
@@ -76,7 +76,7 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         uselist=False,
         cascade="all, delete-orphan",
         passive_deletes=True,
-        lazy="joined",
+        lazy="select",
     )
 
     # Integrations & other relationships
@@ -86,7 +86,7 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         uselist=False,
         cascade="all, delete-orphan",
         passive_deletes=True,
-        lazy="joined",
+        lazy="select",
     )
     group = relationship(
         "Group",
@@ -111,7 +111,7 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         cascade="all, delete-orphan",
         passive_deletes=True,
         uselist=False,
-        lazy="joined",
+        lazy="select",
     )
     sessions = relationship(
         "ActiveSession",

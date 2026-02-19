@@ -45,6 +45,11 @@ USER_AUTH_LOAD_OPTIONS: tuple = (
     joinedload(User.education_path),
 )
 
+# [NEW] Minimal options for list views (Admin Dashboard, Search)
+# We only load the profile (for full_name) and potentially the group.
+# Preferences, Education Path, Spotify, and all MFA data are omitted.
+USER_LIST_LOAD_OPTIONS: tuple = (joinedload(User.profile),)
+
 
 async def ensure_mfa_relationships_loaded(
     db: AsyncSession, user: User | None
