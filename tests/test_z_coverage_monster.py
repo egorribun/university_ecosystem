@@ -104,7 +104,9 @@ async def test_monster_coverage_run():
         m_stats_repo.get_participation_stats_raw.return_value = [p_row]
 
         u_service = user_service.UserService(
-            u_repo, m_stats_repo, audit, u_notifications
+            user_repo=u_repo,
+            audit=audit,
+            notifications=u_notifications,
         )
 
         user_id = uuid.uuid4()

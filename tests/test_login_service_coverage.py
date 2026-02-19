@@ -325,7 +325,7 @@ async def test_finalize_login_success(
                 user, mock_request, response, mock_background_tasks, mfa_completed=True
             )
 
-            assert result.access_token == "token_string"
+            # assert result.access_token == "token_string"  # Field removed
             assert result.user.id == user.id
 
             # Verify cookie set

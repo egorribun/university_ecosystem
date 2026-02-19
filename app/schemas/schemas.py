@@ -769,7 +769,7 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
-class TokenWithProfile(Token):
+class TokenWithProfile(BaseModel):
     user: UserOut
     session: "SessionSigningKeyOut | None" = None
 

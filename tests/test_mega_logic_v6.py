@@ -24,8 +24,8 @@ async def test_user_service_mega():
     db.add_all = MagicMock()
     notifications = AsyncMock()
     repo = AsyncMock()
-    stats_repo = MagicMock()
-    service = UserService(repo, stats_repo, audit, notifications)
+    MagicMock()
+    service = UserService(repo, audit, notifications)
 
     admin_user = models.User(
         id=uuid.uuid4(),

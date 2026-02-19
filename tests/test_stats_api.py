@@ -11,15 +11,13 @@ from app.models import models
 from app.services import attendance_tokens, stats_cache
 
 
-async def _login(async_client, email: str, password: str) -> dict[str, str]:
+async def _login(async_client, email: str, password: str) -> None:
     response = await async_client.post(
         "/auth/login",
         data={"username": email, "password": password},
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     assert response.status_code == 200
-    token = response.json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.mark.asyncio
@@ -100,9 +98,9 @@ async def test_attendance_stats_returns_expected_payload(
     db_session.add_all(attendances)
     await db_session.commit()
 
-    headers = await _login(async_client, student.email, password)
+    await _login(async_client, student.email, password)
 
-    response = await async_client.get("/stats/attendance", headers=headers)
+    response = await async_client.get("/stats/attendance")
     assert response.status_code == 200
     payload = response.json()
 
@@ -124,8 +122,8 @@ async def test_attendance_stats_period_label_localized(async_client, user_factor
     hashed = await get_password_hash(password)
     student = await user_factory(hashed_password=hashed, is_active=True)
 
-    headers = await _login(async_client, student.email, password)
-    headers["Accept-Language"] = "ru"
+    await _login(async_client, student.email, password)
+    headers = {"Accept-Language": "ru"}
 
     response = await async_client.get("/stats/attendance", headers=headers)
     assert response.status_code == 200
@@ -189,8 +187,8 @@ async def test_grade_stats_parse_notifications(async_client, db_session, user_fa
     db_session.add_all([current_grade_one, current_grade_two, third_grade])
     await db_session.commit()
 
-    headers = await _login(async_client, student.email, password)
-    response = await async_client.get("/stats/grades", headers=headers)
+    await _login(async_client, student.email, password)
+    response = await async_client.get("/stats/grades")
     assert response.status_code == 200
     payload = response.json()
 
@@ -269,8 +267,8 @@ async def test_participation_stats_summarize_events(
     db_session.add_all(attendances)
     await db_session.commit()
 
-    headers = await _login(async_client, student.email, password)
-    response = await async_client.get("/stats/participation", headers=headers)
+    await _login(async_client, student.email, password)
+    response = await async_client.get("/stats/participation")
     assert response.status_code == 200
     payload = response.json()
 
@@ -293,7 +291,7 @@ async def test_attendance_stats_uses_cache(
     hashed = await get_password_hash(password)
     student = await user_factory(hashed_password=hashed, is_active=True)
 
-    headers = await _login(async_client, student.email, password)
+    await _login(async_client, student.email, password)
 
     calls = {"get": 0, "set": 0}
     original_get = cache_module.RedisCache.get
@@ -310,10 +308,10 @@ async def test_attendance_stats_uses_cache(
     monkeypatch.setattr(cache_module.RedisCache, "get", tracked_get)
     monkeypatch.setattr(cache_module.RedisCache, "set", tracked_set)
 
-    first = await async_client.get("/stats/attendance", headers=headers)
+    first = await async_client.get("/stats/attendance")
     assert first.status_code == 200
 
-    second = await async_client.get("/stats/attendance", headers=headers)
+    second = await async_client.get("/stats/attendance")
     assert second.status_code == 200
     assert second.json() == first.json()
 
@@ -401,7 +399,7 @@ async def test_registering_for_event_invalidates_stats_cache(
     db_session.add(event)
     await db_session.commit()
 
-    headers = await _login(async_client, student.email, password)
+    await _login(async_client, student.email, password)
 
     invalidated: list[tuple[str, ...]] = []
     original_invalidate = fake_cache.invalidate
@@ -415,7 +413,6 @@ async def test_registering_for_event_invalidates_stats_cache(
     response = await async_client.post(
         "/events/attendance",
         json={"event_id": str(event.id)},
-        headers=headers,
     )
     assert response.status_code == 200
 

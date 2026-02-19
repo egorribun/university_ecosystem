@@ -53,10 +53,10 @@ async def test_user_service_basics():
     notifications = AsyncMock()
     db = AsyncMock()
     user_repo = AsyncMock()
-    stats_repo = AsyncMock()
+    AsyncMock()
 
     # Inject Repos
-    service = UserService(user_repo, stats_repo, audit, notifications)
+    service = UserService(user_repo, audit, notifications)
 
     user = models.User(id=1, email="u@e.com")
     user.avatar_url = None

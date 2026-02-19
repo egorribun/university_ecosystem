@@ -14,8 +14,8 @@ async def test_update_user_profile_decomposed_fields():
     repo = AsyncMock()
     audit = MagicMock()
     notifications = MagicMock()
-    stats_repo = MagicMock()
-    service = UserService(repo, stats_repo, audit, notifications)
+    MagicMock()
+    service = UserService(repo, audit, notifications)
 
     user = models.User(id=1, email="test@example.com")
     repo.get.return_value = user
@@ -48,8 +48,8 @@ async def test_update_user_profile_email_change():
     repo = AsyncMock()
     audit = MagicMock()
     notifications = MagicMock()
-    stats_repo = MagicMock()
-    service = UserService(repo, stats_repo, audit, notifications)
+    MagicMock()
+    service = UserService(repo, audit, notifications)
 
     user = models.User(id=1, email="old@example.com")
     repo.get.return_value = user

@@ -30,6 +30,7 @@ from app.services.vector_service import VectorService
 
 if TYPE_CHECKING:
     from app.cqrs.queries import GetScheduleHandler, GetStatsHandler
+    from app.services.user.stats_service import StatsService
 
 
 def get_audit_service() -> AuditService:
@@ -67,10 +68,8 @@ def get_user_service(
     notifications: NotificationService = Depends(get_notification_service),
 ) -> UserService:
     repo = get_user_repository(db)
-    stats_repo = get_user_stats_repository(db)
     return UserService(
         user_repo=repo,
-        stats_repo=stats_repo,
         audit=audit,
         notifications=notifications,
     )
@@ -134,24 +133,33 @@ def get_read_schedule_handler(
     return GetScheduleHandler(db=db, cache=cache)
 
 
+def get_stats_service(
+    db: AsyncSession = Depends(get_db),
+) -> StatsService:
+    from app.services.user.stats_service import StatsService
+
+    repo = get_user_stats_repository(db)
+    return StatsService(stats_repo=repo)
+
+
 def get_stats_handler(
     db: AsyncSession = Depends(get_db),
     cache: BaseCache = Depends(get_cache),
-    user_service: UserService = Depends(get_user_service),
+    stats_service: StatsService = Depends(get_stats_service),
 ) -> GetStatsHandler:
     from app.cqrs.queries import GetStatsHandler
 
-    return GetStatsHandler(db=db, cache=cache, user_service=user_service)
+    return GetStatsHandler(db=db, cache=cache, stats_service=stats_service)
 
 
 def get_read_stats_handler(
     db: AsyncSession = Depends(get_read_db),
     cache: BaseCache = Depends(get_cache),
-    user_service: UserService = Depends(get_user_service),
+    stats_service: StatsService = Depends(get_stats_service),
 ) -> GetStatsHandler:
     from app.cqrs.queries import GetStatsHandler
 
-    return GetStatsHandler(db=db, cache=cache, user_service=user_service)
+    return GetStatsHandler(db=db, cache=cache, stats_service=stats_service)
 
 
 def get_auth_service(

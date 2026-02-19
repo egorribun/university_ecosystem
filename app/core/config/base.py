@@ -206,10 +206,13 @@ def _should_allow_development_defaults(missing: Iterable[str] | None = None) -> 
     """
     # Prefer explicit ENVIRONMENT setting if available
     env_name = (os.environ.get("ENVIRONMENT") or "").lower()
-    if env_name:
-        if env_name not in _DEVELOPMENT_ENVIRONMENTS:
-            return False
-    elif _ENV_FILE is not None:
+
+    # STRICT SECURITY: Only allow defaults if we are explicitly in a development environment.
+    # If ENVIRONMENT is unset, empty, or "production", we fail securely.
+    if env_name not in _DEVELOPMENT_ENVIRONMENTS:
+        return False
+
+    if _ENV_FILE is not None:
         # If no ENVIRONMENT set but .env exists, assume production-like intent
         return False
 

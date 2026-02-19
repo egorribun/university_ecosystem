@@ -201,19 +201,9 @@ def mock_admin_user():
 
 
 @pytest.fixture
-def mock_stats_repo():
-    """Create mock UserStatsRepository."""
-    repo = AsyncMock()
-    repo.get_attendance_stats_raw = AsyncMock()
-    repo.get_grade_notifications = AsyncMock()
-    return repo
-
-
-@pytest.fixture
-def service(mock_db, mock_repo, mock_stats_repo, mock_audit, mock_notifications):
+def service(mock_db, mock_repo, mock_audit, mock_notifications):
     s = UserService(
         user_repo=mock_repo,
-        stats_repo=mock_stats_repo,
         audit=mock_audit,
         notifications=mock_notifications,
     )
