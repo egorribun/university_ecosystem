@@ -1,5 +1,5 @@
 import uuid
-from typing import TYPE_CHECKING
+from datetime import time
 
 from sqlalchemy import (
     UUID,
@@ -14,18 +14,13 @@ from sqlalchemy import (
 from sqlalchemy import (
     Enum as SqlEnum,
 )
-
-# Removed postgresql UUID import
-from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.core.events import EventEmitterMixin
 from app.models.enums import UserRole
 from app.models.mixins import UUID7PrimaryKeyMixin
-
-if TYPE_CHECKING:
-    pass
+from app.models.spotify import SpotifyIntegration
 
 
 class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
@@ -34,7 +29,6 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
 
-    full_name = Column(String)
     role = Column(
         SqlEnum(
             UserRole,
@@ -59,24 +53,22 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     webauthn_id = Column(String(128), unique=True, index=True, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
-    avatar_url = Column(String)
-    cover_url = Column(String)
-
+    # Decomposed models
     preferences = relationship(
         "UserPreferences",
         back_populates="user",
         uselist=False,
         cascade="all, delete-orphan",
         passive_deletes=True,
-        lazy="selectin",
+        lazy="joined",
     )
-    profile_detail = relationship(
-        "UserProfileDetail",
+    profile = relationship(
+        "UserProfile",
         back_populates="user",
         uselist=False,
         cascade="all, delete-orphan",
         passive_deletes=True,
-        lazy="selectin",
+        lazy="joined",
     )
     education_path = relationship(
         "EducationPath",
@@ -84,103 +76,24 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         uselist=False,
         cascade="all, delete-orphan",
         passive_deletes=True,
-        lazy="selectin",
+        lazy="joined",
     )
+
+    # Integrations & other relationships
     spotify = relationship(
         "SpotifyIntegration",
         back_populates="user",
         uselist=False,
         cascade="all, delete-orphan",
         passive_deletes=True,
+        lazy="joined",
+    )
+    group = relationship(
+        "Group",
+        back_populates="students",
+        passive_deletes=True,
         lazy="selectin",
     )
-
-    dnd_enabled = association_proxy(
-        "preferences",
-        "dnd_enabled",
-        creator=lambda value: UserPreferences(dnd_enabled=value),
-    )
-    dnd_start = association_proxy(
-        "preferences",
-        "dnd_start",
-        creator=lambda value: UserPreferences(dnd_start=value),
-    )
-    dnd_end = association_proxy(
-        "preferences",
-        "dnd_end",
-        creator=lambda value: UserPreferences(dnd_end=value),
-    )
-    timezone = association_proxy(
-        "preferences",
-        "timezone",
-        creator=lambda value: UserPreferences(timezone=value),
-    )
-
-    # UserProfileDetail proxies
-    about = association_proxy(
-        "profile_detail",
-        "about",
-        creator=lambda value: UserProfileDetail(about=value),
-    )
-    telegram = association_proxy(
-        "profile_detail",
-        "telegram",
-        creator=lambda value: UserProfileDetail(telegram=value),
-    )
-    status = association_proxy(
-        "profile_detail",
-        "status",
-        creator=lambda value: UserProfileDetail(status=value),
-    )
-    achievements = association_proxy(
-        "profile_detail",
-        "achievements",
-        creator=lambda value: UserProfileDetail(achievements=value),
-    )
-    position = association_proxy(
-        "profile_detail",
-        "position",
-        creator=lambda value: UserProfileDetail(position=value),
-    )
-    department = association_proxy(
-        "profile_detail",
-        "department",
-        creator=lambda value: UserProfileDetail(department=value),
-    )
-
-    # EducationPath proxies
-    institute = association_proxy(
-        "education_path",
-        "institute",
-        creator=lambda value: EducationPath(institute=value),
-    )
-    course = association_proxy(
-        "education_path",
-        "course",
-        creator=lambda value: EducationPath(course=value),
-    )
-    education_level = association_proxy(
-        "education_path",
-        "education_level",
-        creator=lambda value: EducationPath(education_level=value),
-    )
-    track = association_proxy(
-        "education_path",
-        "track",
-        creator=lambda value: EducationPath(track=value),
-    )
-    program = association_proxy(
-        "education_path",
-        "program",
-        creator=lambda value: EducationPath(program=value),
-    )
-    record_book_number = association_proxy(
-        "education_path",
-        "record_book_number",
-        creator=lambda value: EducationPath(record_book_number=value),
-    )
-
-    group = relationship("Group", back_populates="students", passive_deletes=True)
     notifications = relationship(
         "Notification",
         back_populates="user",
@@ -198,6 +111,7 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         cascade="all, delete-orphan",
         passive_deletes=True,
         uselist=False,
+        lazy="joined",
     )
     sessions = relationship(
         "ActiveSession",
@@ -252,6 +166,9 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     def __init__(self, **kwargs) -> None:
         preferences_fields = {"dnd_enabled", "dnd_start", "dnd_end", "timezone"}
         profile_fields = {
+            "full_name",
+            "avatar_url",
+            "cover_url",
             "about",
             "telegram",
             "status",
@@ -286,23 +203,246 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
 
         if preferences_data:
             self.preferences = UserPreferences(**preferences_data)
+        elif not self.preferences:
+            self.preferences = UserPreferences()
+
         if profile_data:
-            self.profile_detail = UserProfileDetail(**profile_data)
+            self.profile = UserProfile(**profile_data)
+        elif not self.profile:
+            self.profile = UserProfile()
+
         if education_data:
             self.education_path = EducationPath(**education_data)
+
+        # Spotify data handling if needed, though strictly it should be via service
         if spotify_data:
-            # Note: self.spotify assignment will be handled or requires
-            # late initialization
-            # To strictly avoid the crutch, we ensure self.spotify is set elsewhere
-            # or the model is already available in the registry.
-            pass
+            # Map spotify_is_connected to is_connected
+            if "spotify_is_connected" in spotify_data:
+                spotify_data["is_connected"] = spotify_data.pop("spotify_is_connected")
+            # Map spotify_display_name to display_name
+            if "spotify_display_name" in spotify_data:
+                spotify_data["display_name"] = spotify_data.pop("spotify_display_name")
+            self.spotify = SpotifyIntegration(**spotify_data)
+        elif not self.spotify:
+            self.spotify = SpotifyIntegration()
 
     @property
     def spotify_connected(self) -> bool:
         return bool(self.spotify and self.spotify.is_connected)
 
+    @property
+    def spotify_is_connected(self) -> bool:
+        return self.spotify_connected
+
+    @spotify_is_connected.setter
+    def spotify_is_connected(self, value: bool) -> None:
+        if not self.spotify:
+            self.spotify = SpotifyIntegration()
+        self.spotify.is_connected = value
+
+    @property
+    def spotify_display_name(self) -> str | None:
+        return self.spotify.display_name if self.spotify else None
+
+    @spotify_display_name.setter
+    def spotify_display_name(self, value: str | None) -> None:
+        if not self.spotify:
+            self.spotify = SpotifyIntegration()
+        self.spotify.display_name = value
+
+    @property
+    def full_name(self) -> str | None:
+        return self.profile.full_name if self.profile else None
+
+    @full_name.setter
+    def full_name(self, value: str) -> None:
+        if not self.profile:
+            self.profile = UserProfile()
+        self.profile.full_name = value
+
+    @property
+    def avatar_url(self) -> str | None:
+        return self.profile.avatar_url if self.profile else None
+
+    @avatar_url.setter
+    def avatar_url(self, value: str | None) -> None:
+        if not self.profile:
+            self.profile = UserProfile()
+        self.profile.avatar_url = value
+
+    @property
+    def cover_url(self) -> str | None:
+        return self.profile.cover_url if self.profile else None
+
+    @cover_url.setter
+    def cover_url(self, value: str | None) -> None:
+        if not self.profile:
+            self.profile = UserProfile()
+        self.profile.cover_url = value
+
+    @property
+    def timezone(self) -> str | None:
+        return self.preferences.timezone if self.preferences else None
+
+    @timezone.setter
+    def timezone(self, value: str | None) -> None:
+        if not self.preferences:
+            self.preferences = UserPreferences()
+        self.preferences.timezone = value
+
+    @property
+    def dnd_enabled(self) -> bool:
+        return self.preferences.dnd_enabled if self.preferences else False
+
+    @dnd_enabled.setter
+    def dnd_enabled(self, value: bool) -> None:
+        if not self.preferences:
+            self.preferences = UserPreferences()
+        self.preferences.dnd_enabled = value
+
+    @property
+    def dnd_start(self) -> time | None:
+        return self.preferences.dnd_start if self.preferences else None
+
+    @dnd_start.setter
+    def dnd_start(self, value: time | None) -> None:
+        if not self.preferences:
+            self.preferences = UserPreferences()
+        self.preferences.dnd_start = value
+
+    @property
+    def dnd_end(self) -> time | None:
+        return self.preferences.dnd_end if self.preferences else None
+
+    @dnd_end.setter
+    def dnd_end(self, value: time | None) -> None:
+        if not self.preferences:
+            self.preferences = UserPreferences()
+        self.preferences.dnd_end = value
+
+    @property
+    def about(self) -> str | None:
+        return self.profile.about if self.profile else None
+
+    @about.setter
+    def about(self, value: str | None) -> None:
+        if not self.profile:
+            self.profile = UserProfile()
+        self.profile.about = value
+
+    @property
+    def telegram(self) -> str | None:
+        return self.profile.telegram if self.profile else None
+
+    @telegram.setter
+    def telegram(self, value: str | None) -> None:
+        if not self.profile:
+            self.profile = UserProfile()
+        self.profile.telegram = value
+
+    @property
+    def status(self) -> str | None:
+        return self.profile.status if self.profile else None
+
+    @status.setter
+    def status(self, value: str | None) -> None:
+        if not self.profile:
+            self.profile = UserProfile()
+        self.profile.status = value
+
+    @property
+    def achievements(self) -> str | None:
+        return self.profile.achievements if self.profile else None
+
+    @achievements.setter
+    def achievements(self, value: str | None) -> None:
+        if not self.profile:
+            self.profile = UserProfile()
+        self.profile.achievements = value
+
+    @property
+    def position(self) -> str | None:
+        return self.profile.position if self.profile else None
+
+    @position.setter
+    def position(self, value: str | None) -> None:
+        if not self.profile:
+            self.profile = UserProfile()
+        self.profile.position = value
+
+    @property
+    def department(self) -> str | None:
+        return self.profile.department if self.profile else None
+
+    @department.setter
+    def department(self, value: str | None) -> None:
+        if not self.profile:
+            self.profile = UserProfile()
+        self.profile.department = value
+
+    @property
+    def institute(self) -> str | None:
+        return self.education_path.institute if self.education_path else None
+
+    @institute.setter
+    def institute(self, value: str | None) -> None:
+        if not self.education_path:
+            self.education_path = EducationPath()
+        self.education_path.institute = value
+
+    @property
+    def course(self) -> str | None:
+        return self.education_path.course if self.education_path else None
+
+    @course.setter
+    def course(self, value: str | None) -> None:
+        if not self.education_path:
+            self.education_path = EducationPath()
+        self.education_path.course = value
+
+    @property
+    def education_level(self) -> str | None:
+        return self.education_path.education_level if self.education_path else None
+
+    @education_level.setter
+    def education_level(self, value: str | None) -> None:
+        if not self.education_path:
+            self.education_path = EducationPath()
+        self.education_path.education_level = value
+
+    @property
+    def track(self) -> str | None:
+        return self.education_path.track if self.education_path else None
+
+    @track.setter
+    def track(self, value: str | None) -> None:
+        if not self.education_path:
+            self.education_path = EducationPath()
+        self.education_path.track = value
+
+    @property
+    def program(self) -> str | None:
+        return self.education_path.program if self.education_path else None
+
+    @program.setter
+    def program(self, value: str | None) -> None:
+        if not self.education_path:
+            self.education_path = EducationPath()
+        self.education_path.program = value
+
+    @property
+    def record_book_number(self) -> str | None:
+        return self.education_path.record_book_number if self.education_path else None
+
+    @record_book_number.setter
+    def record_book_number(self, value: str | None) -> None:
+        if not self.education_path:
+            self.education_path = EducationPath()
+        self.education_path.record_book_number = value
+
     def __repr__(self) -> str:
-        return f"<User(id={self.id}, email='{self.email}', role='{self.role}')>"
+        # Email is PII — omit from repr to prevent leakage into logs and tracebacks.
+        return f"<User(id={self.id}, role='{self.role}')>"
 
 
 class UserPreferences(Base):
@@ -325,14 +465,21 @@ class UserPreferences(Base):
         return f"<UserPreferences(user_id={self.user_id}, dnd={self.dnd_enabled})>"
 
 
-class UserProfileDetail(Base):
-    __tablename__ = "user_profile_details"
+class UserProfile(Base):
+    __tablename__ = "user_profiles"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
         primary_key=True,
     )
+
+    # Fields moved from User
+    full_name = Column(String)
+    avatar_url = Column(String)
+    cover_url = Column(String)
+
+    # Fields moved from UserProfileDetail
     about = Column(String)
     telegram = Column(String)
     status = Column(String)
@@ -340,10 +487,10 @@ class UserProfileDetail(Base):
     position = Column(String)
     department = Column(String)
 
-    user = relationship("User", back_populates="profile_detail")
+    user = relationship("User", back_populates="profile")
 
     def __repr__(self) -> str:
-        return f"<UserProfileDetail(user_id={self.user_id})>"
+        return f"<UserProfile(user_id={self.user_id})>"
 
 
 class EducationPath(Base):
@@ -379,6 +526,7 @@ class InviteCode(Base, UUID7PrimaryKeyMixin):
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         index=True,
+        nullable=True,
     )
 
     def __repr__(self) -> str:

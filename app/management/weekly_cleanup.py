@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 from sqlalchemy import delete, select, text
 from sqlalchemy.engine import make_url
@@ -14,6 +15,9 @@ from app.core.config import settings
 from app.core.database import async_session, engine
 from app.models.models import PushSubscription, User
 from app.services.push_schema import ensure_push_subscription_schema
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +104,7 @@ async def run_weekly_cleanup() -> dict[str, int | None]:
 
 def main() -> None:
     stats = asyncio.run(run_weekly_cleanup())
-    print("Weekly cleanup finished:", stats)
+    logger.info(f"Weekly cleanup finished: {stats}")
 
 
 if __name__ == "__main__":

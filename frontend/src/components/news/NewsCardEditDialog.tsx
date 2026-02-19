@@ -11,7 +11,7 @@ import SmartImage from "@/components/SmartImage"
 import { newsFormSchema, type NewsFormValues } from "@/features/news/schema"
 import { cn } from "@/utils/cn"
 
-interface NewsEditData {
+export interface NewsEditData {
   title: string
   content: string
   title_en: string

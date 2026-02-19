@@ -107,7 +107,7 @@ async def test_webauthn_registration_flow(
     password = "WebAuthnPass123!"
     user = await user_factory(
         email="webauthn-flow@example.com",
-        hashed_password=get_password_hash(password),
+        hashed_password=await get_password_hash(password),
     )
 
     token = await _login_for_token(async_client, user.email, password)
@@ -174,7 +174,7 @@ async def test_webauthn_authentication_flow(
     password = "WebAuthnAuth123!"
     user = await user_factory(
         email="webauthn-auth@example.com",
-        hashed_password=get_password_hash(password),
+        hashed_password=await get_password_hash(password),
     )
     token = await _login_for_token(async_client, user.email, password)
     headers = {"Authorization": f"Bearer {token}"}
@@ -257,7 +257,7 @@ async def test_list_and_delete_credentials(
     password = "WebAuthnList123!"
     user = await user_factory(
         email="webauthn-list@example.com",
-        hashed_password=get_password_hash(password),
+        hashed_password=await get_password_hash(password),
     )
     token = await _login_for_token(async_client, user.email, password)
     headers = {"Authorization": f"Bearer {token}"}

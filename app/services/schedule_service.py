@@ -18,8 +18,6 @@ class ScheduleService:
         self.repo = repo
         self.group_repo = group_repo
         self.optimizer = optimizer
-        # Helper to access DB transaction
-        self.db = repo.db
 
     async def create_schedule(
         self, data: schemas.ScheduleCreate, locale: str = "en"
@@ -68,8 +66,8 @@ class ScheduleService:
             raise BusinessRuleViolation(translate("errors.schedule.conflict", locale))
 
         schedule = await self.repo.create(data)
-        await self.db.commit()
-        await self.db.refresh(schedule)
+        await self.repo.commit()
+        await self.repo.refresh(schedule)
 
         return schedule
 
@@ -87,7 +85,7 @@ class ScheduleService:
             raise ValueError(translate("errors.schedule.not_found"))
 
         updated = await self.repo.update(schedule_id, data)
-        await self.db.commit()
+        await self.repo.commit()
         return updated
 
     async def delete_schedule(self, schedule_id: int) -> bool:
@@ -96,7 +94,7 @@ class ScheduleService:
             return False
 
         await self.repo.delete(schedule_id)
-        await self.db.commit()
+        await self.repo.commit()
         return True
 
     # Group methods
@@ -105,6 +103,6 @@ class ScheduleService:
 
     async def create_group(self, data: schemas.GroupCreate) -> models.Group:
         group = await self.group_repo.create(data)
-        await self.db.commit()
-        await self.db.refresh(group)
+        await self.repo.commit()
+        await self.repo.refresh(group)
         return group

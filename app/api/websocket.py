@@ -11,17 +11,16 @@ This module provides WebSocket connections for:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import uuid
-from collections.abc import Iterable
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from redis.asyncio import Redis
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import metrics
 from app.core.config import settings
@@ -35,6 +34,11 @@ from app.models.models import ActiveSession, User
 from app.schemas.chat import ChatParticipant, PresenceStatus
 from app.services.audit_service import SecurityEvent, audit_service
 from app.utils.logging import redact_sensitive_mapping
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -131,10 +135,8 @@ class PresencePubSub:
     async def shutdown(self) -> None:
         if self._pubsub_task:
             self._pubsub_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._pubsub_task
-            except asyncio.CancelledError:
-                pass
         self._pubsub_task = None
 
     async def publish(self, payload: dict[str, Any]) -> None:

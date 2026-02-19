@@ -4,12 +4,13 @@ import json
 import logging
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
-from typing import Any
-
-from redis.asyncio import Redis
+from typing import TYPE_CHECKING, Any
 
 from app.core.config import settings
 from app.deps.cache import RedisCache, get_cache
+
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
 
 logger = logging.getLogger(__name__)
 

@@ -1,10 +1,11 @@
 import { memo, lazy, Suspense, type FC } from "react"
 import type { Event } from "@/types/Event"
 
-import { motion } from "framer-motion"
+
 import { cn } from "@/utils/cn"
 import { SpotlightOverlay } from "@/components/ui/Spotlight"
 import { motion as motionTokens } from "@/theme/tokens"
+import { motion } from "framer-motion"
 import { EASING } from "@/utils/motion"
 
 import { Snackbar, ContentCard, ConfirmDialog } from "@/components/ui"
@@ -78,7 +79,6 @@ const EventCardComponent: FC<EventCardProps> = (props) => {
     handleEdit,
     handleDelete,
     navigate: navigateToDetails,
-    onCardClick,
   } = useEventCardLogic(props)
 
   return (
@@ -112,7 +112,6 @@ const EventCardComponent: FC<EventCardProps> = (props) => {
           "card-glass group w-full transform-gpu will-change-transform rounded-fluid-lg hover:shadow-premium-lift",
           editOpen ? "cursor-default" : "card-interactive"
         )}
-        onClick={onCardClick}
         onMouseMove={spotlight.onMouseMove}
       >
         <SpotlightOverlay

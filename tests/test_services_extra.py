@@ -52,15 +52,21 @@ async def test_user_service_basics():
     audit = MagicMock()
     notifications = AsyncMock()
     db = AsyncMock()
-    repo = AsyncMock()
-    service = UserService(db, repo, audit, notifications)
+    user_repo = AsyncMock()
+    stats_repo = AsyncMock()
+
+    # Inject Repos
+    service = UserService(user_repo, stats_repo, audit, notifications)
+
     user = models.User(id=1, email="u@e.com")
     user.avatar_url = None
     user.cover_url = None
     request = MagicMock()
 
     # Mock repo.get to return user
-    repo.get.return_value = user
+    # Note: service.repo is user_repo
+    user_repo.get.return_value = user
+
     # Mock db.execute to return a mock result
     # We use MagicMock for the result because scalars() is a
     # synchronous call in SQLAlchemy
@@ -71,9 +77,12 @@ async def test_user_service_basics():
 
     # update_user_profile
     data = schemas.UserProfileUpdate(full_name="New Name")
-    with patch("app.services.user_service.resolve_locale", return_value="en"):
+    with (
+        patch("app.services.user_service.resolve_locale", return_value="en"),
+        patch("app.services.user_service.attach_pending_email", new_callable=AsyncMock),
+    ):
         await service.update_user_profile(user, data, request)
-        assert user.full_name == "New Name"
+        assert user.profile.full_name == "New Name"
 
     # delete_avatar
     user.avatar_url = "/path/to/img"
@@ -83,6 +92,11 @@ async def test_user_service_basics():
         ) as m_del,
         patch(
             "app.services.user_service.ensure_mfa_relationships_loaded",
+            new_callable=AsyncMock,
+        ),
+        # Patch attach_pending_email since it's called
+        patch(
+            "app.services.user_service.attach_pending_email",
             new_callable=AsyncMock,
         ),
     ):
@@ -96,29 +110,52 @@ async def test_auth_service_basics():
     from app.services.auth_service import AuthService
 
     audit = MagicMock()
-    db = AsyncMock()
-    service = AuthService(db, audit)
+    auth_repo = AsyncMock()
+    user_repo = AsyncMock()
+
+    service = AuthService(audit, auth_repo, user_repo)
     user = models.User(id=1, email="u@e.com", hashed_password="old_hash")
     request = MagicMock()
 
-    # Mock for revoke_sessions_matching
-    mock_result = MagicMock()
-    mock_result.scalars.return_value.all.return_value = []
-    db.execute.return_value = mock_result
+    # revoke_sessions_matching uses auth_repo.db.execute under the hood;
+    # stub it out so no real I/O occurs.
+    auth_repo.db.execute = AsyncMock(
+        return_value=MagicMock(
+            scalars=MagicMock(return_value=MagicMock(all=MagicMock(return_value=[])))
+        )
+    )
+
+    # Mock user_repo.get for change_password
+    user_repo.get.return_value = user
 
     # Change password
     data = schemas.UserPasswordChangeIn(
         current_password="old", new_password="newpassword123"
     )
     with (
-        patch("app.services.auth_service.verify_password") as m_verify,
-        patch("app.services.auth_service.get_password_hash", return_value="new_hash"),
+        patch(
+            "app.services.auth_service.verify_password", new_callable=AsyncMock
+        ) as m_verify,
+        patch(
+            "app.services.auth_service.get_password_hash",
+            new_callable=AsyncMock,
+            return_value="new_hash",
+        ),
         patch("app.services.auth_service.resolve_locale", return_value="en"),
+        patch(
+            "app.services.auth_service.ensure_mfa_relationships_loaded",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "app.services.auth_service._validate_password_hibp",
+            new_callable=AsyncMock,
+        ),
     ):
         m_verify.side_effect = [True, False]
         await service.change_password(user, data, request)
         assert user.hashed_password == "new_hash"
-        db.commit.assert_called()
+        # Commit now goes through auth_repo proxy, not the raw session.
+        auth_repo.commit.assert_called()
 
 
 @pytest.mark.asyncio

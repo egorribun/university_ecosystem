@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
 
 import sqlalchemy as sa
 
 from alembic import op
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence
 
 # revision identifiers, used by Alembic.
 revision: str = "202506260001"
@@ -70,7 +73,7 @@ def _populate_existing_data() -> None:
     op.bulk_insert(_USER_PUSH_TOPICS, rows)
 
 
-def upgrade() -> None:  # noqa: D401 - Alembic migration hook.
+def upgrade() -> None:
     """Create the user push topic preferences table."""
 
     bind = op.get_bind()
@@ -113,7 +116,7 @@ def upgrade() -> None:  # noqa: D401 - Alembic migration hook.
     #     _populate_existing_data()
 
 
-def downgrade() -> None:  # noqa: D401 - Alembic migration hook.
+def downgrade() -> None:
     """Drop the user push topic preferences table."""
 
     bind = op.get_bind()

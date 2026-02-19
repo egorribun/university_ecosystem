@@ -29,10 +29,7 @@ class CacheVersionManager:
     _local_state: dict[str, Any] = None
 
     def __post_init__(self):
-        if self._local_state is None:
-            # This is a bit of a hack for fixed-instance managers
-            # In production, these are defined as global constants
-            pass
+        pass
 
     @property
     def version_key(self) -> str:

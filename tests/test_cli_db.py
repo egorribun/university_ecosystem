@@ -32,7 +32,11 @@ def test_create_admin_success(mock_db_session, mock_engine):
     with (
         patch("app.cli.db.async_session", return_value=mock_db_session),
         patch("app.cli.db.engine", mock_engine),
-        patch("app.cli.db.get_password_hash", return_value="hashed_secret"),
+        patch(
+            "app.cli.db.get_password_hash",
+            new_callable=AsyncMock,
+            return_value="hashed_secret",
+        ),
     ):
         # Mock query result to return None (user not found)
         mock_result = MagicMock()
@@ -54,7 +58,11 @@ def test_create_admin_existing(mock_db_session, mock_engine):
     with (
         patch("app.cli.db.async_session", return_value=mock_db_session),
         patch("app.cli.db.engine", mock_engine),
-        patch("app.cli.db.get_password_hash", return_value="hashed_secret"),
+        patch(
+            "app.cli.db.get_password_hash",
+            new_callable=AsyncMock,
+            return_value="hashed_secret",
+        ),
     ):
         # Mock query result to return existing user
         existing_user = MagicMock()

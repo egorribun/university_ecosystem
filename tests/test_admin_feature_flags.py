@@ -20,7 +20,7 @@ def mock_feature_flags_redis():
 @pytest.mark.asyncio
 async def test_list_feature_flags_admin(root_client: AsyncClient, user_factory):
     admin = await user_factory(
-        role="admin", hashed_password=get_password_hash(TEST_PASSWORD)
+        role="admin", hashed_password=await get_password_hash(TEST_PASSWORD)
     )
     # Auth is under /api/v1
     await root_client.post(
@@ -37,7 +37,7 @@ async def test_list_feature_flags_admin(root_client: AsyncClient, user_factory):
 @pytest.mark.asyncio
 async def test_list_feature_flags_forbidden(root_client: AsyncClient, user_factory):
     user = await user_factory(
-        role="student", hashed_password=get_password_hash(TEST_PASSWORD)
+        role="student", hashed_password=await get_password_hash(TEST_PASSWORD)
     )
     await root_client.post(
         "/api/v1/auth/login", data={"username": user.email, "password": TEST_PASSWORD}
@@ -50,7 +50,7 @@ async def test_list_feature_flags_forbidden(root_client: AsyncClient, user_facto
 @pytest.mark.asyncio
 async def test_update_feature_flag_success(root_client: AsyncClient, user_factory):
     admin = await user_factory(
-        role="admin", hashed_password=get_password_hash(TEST_PASSWORD)
+        role="admin", hashed_password=await get_password_hash(TEST_PASSWORD)
     )
     await root_client.post(
         "/api/v1/auth/login", data={"username": admin.email, "password": TEST_PASSWORD}
@@ -74,7 +74,7 @@ async def test_update_feature_flag_success(root_client: AsyncClient, user_factor
 @pytest.mark.asyncio
 async def test_update_feature_flag_not_found(root_client: AsyncClient, user_factory):
     admin = await user_factory(
-        role="admin", hashed_password=get_password_hash(TEST_PASSWORD)
+        role="admin", hashed_password=await get_password_hash(TEST_PASSWORD)
     )
     await root_client.post(
         "/api/v1/auth/login", data={"username": admin.email, "password": TEST_PASSWORD}
@@ -90,7 +90,7 @@ async def test_update_feature_flag_not_found(root_client: AsyncClient, user_fact
 @pytest.mark.asyncio
 async def test_update_feature_flag_empty_input(root_client: AsyncClient, user_factory):
     admin = await user_factory(
-        role="admin", hashed_password=get_password_hash(TEST_PASSWORD)
+        role="admin", hashed_password=await get_password_hash(TEST_PASSWORD)
     )
     await root_client.post(
         "/api/v1/auth/login", data={"username": admin.email, "password": TEST_PASSWORD}

@@ -1,3 +1,4 @@
+import contextlib
 import os
 from collections.abc import AsyncIterator
 
@@ -27,19 +28,15 @@ async def prepare_database() -> AsyncIterator[None]:
     # SQLite-specific cleanup and setup
     db_path = database_url.replace("sqlite+aiosqlite:///./", "")
     if os.path.exists(db_path):
-        try:
+        with contextlib.suppress(OSError):
             os.remove(db_path)
-        except OSError:
-            pass
 
     # Clean up journal and WAL files
     for suffix in ("-journal", "-wal"):
         path = f"{db_path}{suffix}"
         if os.path.exists(path):
-            try:
+            with contextlib.suppress(OSError):
                 os.remove(path)
-            except OSError:
-                pass
 
     # Tables with composite PKs or PostgreSQL-specific features
     # We exclude them from create_all and create them separately
@@ -273,10 +270,8 @@ async def clean_database(prepare_database: None) -> AsyncIterator[None]:
                 else:
                     await conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
                     for table in reversed(Base.metadata.sorted_tables):
-                        try:
+                        with contextlib.suppress(Exception):
                             await conn.execute(table.delete())
-                        except Exception:
-                            pass
                     await conn.exec_driver_sql("PRAGMA foreign_keys=ON")
             break
         except OperationalError as exc:

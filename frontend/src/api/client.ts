@@ -127,8 +127,8 @@ const loadEtagCache = (): Map<string, string> => {
       const entries: [string, string][] = JSON.parse(stored)
       return new Map(entries)
     }
-  } catch {
-    // ignore
+  } catch (_error) {
+    import("@/app/logger").then(({ logWarning }) => logWarning("Failed to load etag cache", _error))
   }
   return new Map()
 }
@@ -147,8 +147,8 @@ const saveEtagCache = (cache: Map<string, string>) => {
     }
     const entries = Array.from(cache.entries())
     localStorage.setItem(ETAG_CACHE_KEY, JSON.stringify(entries))
-  } catch {
-    // ignore
+  } catch (_error) {
+    import("@/app/logger").then(({ logWarning }) => logWarning("Failed to save etag cache", _error))
   }
 }
 
@@ -161,8 +161,8 @@ const loadResponseCache = (): Map<string, unknown> => {
       const entries: [string, unknown][] = JSON.parse(stored)
       return new Map(entries)
     }
-  } catch {
-    // ignore
+  } catch (_error) {
+    import("@/app/logger").then(({ logWarning }) => logWarning("Failed to load response cache", _error))
   }
   return new Map()
 }
@@ -181,8 +181,8 @@ const saveResponseCache = (cache: Map<string, unknown>) => {
     }
     const entries = Array.from(cache.entries())
     localStorage.setItem(RESPONSE_CACHE_KEY, JSON.stringify(entries))
-  } catch {
-    // ignore
+  } catch (_error) {
+    import("@/app/logger").then(({ logWarning }) => logWarning("Failed to save response cache", _error))
   }
 }
 
@@ -209,8 +209,8 @@ const createEtagCache = () => {
       if (typeof window !== "undefined") {
         try {
           localStorage.removeItem(ETAG_CACHE_KEY)
-        } catch {
-          // ignore
+        } catch (_error) {
+          import("@/app/logger").then(({ logWarning }) => logWarning("Failed to remove etag cache", _error))
         }
       }
     },
@@ -246,8 +246,8 @@ const createResponseCache = () => {
       if (typeof window !== "undefined") {
         try {
           localStorage.removeItem(RESPONSE_CACHE_KEY)
-        } catch {
-          // ignore
+        } catch (_error) {
+          import("@/app/logger").then(({ logWarning }) => logWarning("Failed to remove response cache", _error))
         }
       }
     },

@@ -43,36 +43,36 @@ from app.services.notifications.scheduler import (
 from app.services.notifications.stats import aggregate_notification_delivery_stats
 
 __all__ = [
-    # Internal module re-exports for test patching
-    "dt",
-    "send_web_push",
     # Core utilities
     "_build_delivery_row",
     "_coerce_optional_text",
     "_ensure_aware",
+    # Delivery
+    "_ensure_push_subscription_schema_once",
     "_fetch_active_user_ids",
     "_normalize_translation_map",
     "_plain_text",
+    # Scheduler
+    "_scheduler_loop",
+    # Stats
+    "aggregate_notification_delivery_stats",
     "async_session",
+    # Schedule reminders
+    "build_schedule_reminder_message",
     # Cleanup
     "cleanup_stale_notifications",
-    # Delivery
-    "_ensure_push_subscription_schema_once",
     "create_notifications_for_users",
+    # Internal module re-exports for test patching
+    "dt",
+    "generate_schedule_reminders",
     "invalidate_push_subscription_schema_cache",
-    "only_active_users",
+    # Quiet hours
+    "is_user_in_quiet_hours",
     # News & Events
     "notify_about_event",
     "notify_about_news",
-    # Quiet hours
-    "is_user_in_quiet_hours",
+    "only_active_users",
     "prepare_push_payload_for_user",
-    # Schedule reminders
-    "build_schedule_reminder_message",
-    "generate_schedule_reminders",
-    # Scheduler
-    "_scheduler_loop",
+    "send_web_push",
     "start_notifications_scheduler",
-    # Stats
-    "aggregate_notification_delivery_stats",
 ]

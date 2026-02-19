@@ -1,3 +1,4 @@
+import contextlib
 import logging
 import secrets
 from datetime import UTC, datetime, timedelta
@@ -128,14 +129,12 @@ class SessionService:
             # 3. Enforce concurrent session limit
             await self._enforce_concurrent_limit(user_id, jti, now)
 
-            await self.db.commit()
+            await self.repo.commit()
         finally:
             if lock_acquired and redis_lock:
-                try:
+                with contextlib.suppress(Exception):
                     await redis_lock.release()
-                except Exception:
-                    pass
-        await self.db.refresh(session)
+        await self.repo.refresh(session)
 
         # 4. Mint JWT
         token = self._mint_jwt(user_id, jti, now, expires_at, extra_claims)

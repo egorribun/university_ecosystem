@@ -110,8 +110,8 @@ async def test_create_event(event_service, mock_repo):
 
     mock_repo.create.assert_awaited_once()
     mock_event.record_event.assert_called_once()
-    mock_repo.db.commit.assert_awaited_once()
-    mock_repo.db.refresh.assert_awaited_once_with(mock_event)
+    mock_repo.commit.assert_awaited_once()
+    mock_repo.refresh.assert_awaited_once_with(mock_event)
     assert result == mock_event
 
 
@@ -145,8 +145,8 @@ async def test_update_event(event_service, mock_repo):
     mock_repo.get.assert_awaited_once_with(event_id)
     mock_repo.update.assert_awaited_once()
     updated_event.record_event.assert_called_once()
-    mock_repo.db.commit.assert_awaited_once()
-    mock_repo.db.refresh.assert_awaited_once_with(updated_event)
+    mock_repo.commit.assert_awaited_once()
+    mock_repo.refresh.assert_awaited_once_with(updated_event)
     assert result == updated_event
 
 
@@ -202,8 +202,9 @@ async def test_delete_event(event_service, mock_repo):
 
     success = await event_service.delete_event(event_id)
     assert success is True
+    mock_repo.get.assert_awaited_once_with(event_id)
     mock_repo.delete.assert_awaited_once_with(event_id)
-    mock_repo.db.commit.assert_awaited_once()
+    mock_repo.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -211,11 +212,11 @@ async def test_attendance_registration(event_service, mock_repo):
     data = schemas.EventAttendanceCreate(event_id=uuid4())
     user_id = uuid4()
 
-    mock_result = MagicMock()
-    mock_result.scalar_one_or_none.return_value = None
-    mock_repo.db.execute.return_value = mock_result
-
+    mock_repo.get_attendance.return_value = None
     mock_repo.get.return_value = create_mock_event()
+    mock_repo.create_attendance.return_value = models.EventAttendance(
+        event_id=data.event_id, user_id=user_id, registered_at=None
+    )
 
     with (
         patch(
@@ -234,8 +235,8 @@ async def test_attendance_registration(event_service, mock_repo):
         record = await event_service.register_attendance(data, user_id)
         assert record.user_id == user_id
         assert record.event_id == data.event_id
-        mock_repo.db.add.assert_called()
-        mock_repo.db.commit.assert_awaited()
+        mock_repo.create_attendance.assert_called()
+        mock_repo.commit.assert_awaited()
 
 
 @pytest.mark.asyncio
@@ -243,21 +244,14 @@ async def test_register_attendance_race_condition(event_service, mock_repo):
     data = schemas.EventAttendanceCreate(event_id=uuid4())
     user_id = uuid4()
 
-    mock_result_none = MagicMock()
-    mock_result_none.scalar_one_or_none.return_value = None
-
     mock_attendance = MagicMock(spec=models.EventAttendance)
     mock_attendance.user_id = user_id
     mock_attendance.event_id = data.event_id
     mock_attendance.registered_at = None
-    mock_result_found = MagicMock()
-    mock_result_found.scalar_one_or_none.return_value = mock_attendance
 
-    mock_repo.db.execute.side_effect = [mock_result_none, mock_result_found]
-    mock_repo.db.commit.side_effect = [
+    mock_repo.get_attendance.side_effect = [None, mock_attendance]
+    mock_repo.commit.side_effect = [
         IntegrityError("stmt", "params", "orig"),
-        None,
-        None,
         None,
     ]
 
@@ -281,7 +275,7 @@ async def test_register_attendance_race_condition(event_service, mock_repo):
     ):
         record = await event_service.register_attendance(data, user_id)
         assert record == mock_attendance
-        assert mock_repo.db.rollback.called
+        assert mock_repo.rollback.called
 
 
 @pytest.mark.asyncio
@@ -289,10 +283,8 @@ async def test_register_attendance_full_failure(event_service, mock_repo):
     data = schemas.EventAttendanceCreate(event_id=uuid4())
     user_id = uuid4()
 
-    mock_result_none = MagicMock()
-    mock_result_none.scalar_one_or_none.return_value = None
-    mock_repo.db.execute.return_value = mock_result_none
-    mock_repo.db.commit.side_effect = IntegrityError("stmt", "params", "orig")
+    mock_repo.get_attendance.return_value = None
+    mock_repo.commit.side_effect = IntegrityError("stmt", "params", "orig")
     mock_repo.get.return_value = None  # Event not found after retry
 
     with (
@@ -317,14 +309,13 @@ async def test_unregister_attendance(event_service, mock_repo):
     user_id = uuid4()
 
     mock_record = MagicMock(spec=models.EventAttendance)
-    mock_result = MagicMock()
-    mock_result.scalar_one_or_none.return_value = mock_record
-    mock_repo.db.execute.return_value = mock_result
+    mock_repo.get_attendance.return_value = mock_record
+    mock_repo.delete_attendance.return_value = True
 
     res = await event_service.unregister_attendance(data, user_id)
     assert res == {"ok": True}
-    mock_repo.db.delete.assert_awaited_once_with(mock_record)
-    mock_repo.db.commit.assert_awaited_once()
+    mock_repo.delete_attendance.assert_awaited_once_with(data.event_id, user_id)
+    mock_repo.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -333,10 +324,7 @@ async def test_get_event_detail(event_service, mock_repo):
     user_id = uuid4()
     mock_event = create_mock_event(event_id)
 
-    # Correctly mock result from DB execute
-    mock_result = MagicMock()
-    mock_result.first.return_value = (mock_event, 5, None)
-    mock_repo.db.execute.return_value = mock_result
+    mock_repo.get_event_with_details.return_value = (mock_event, 5, None)
 
     res = await event_service.get_event_detail(event_id, user_id)
     assert res.id == event_id
@@ -346,9 +334,7 @@ async def test_get_event_detail(event_service, mock_repo):
 
 @pytest.mark.asyncio
 async def test_get_event_detail_not_found(event_service, mock_repo):
-    mock_result = MagicMock()
-    mock_result.first.return_value = None
-    mock_repo.db.execute.return_value = mock_result
+    mock_repo.get_event_with_details.return_value = None
 
     res = await event_service.get_event_detail(uuid4(), uuid4())
     assert res is None
@@ -363,9 +349,7 @@ async def test_get_my_events(event_service, mock_repo):
     mock_attendance.user_id = user_id
     mock_event.attendance = [mock_attendance]
 
-    mock_result = MagicMock()
-    mock_result.scalars.return_value.all.return_value = [mock_event]
-    mock_repo.db.execute.return_value = mock_result
+    mock_repo.list_user_attended_events.return_value = [mock_event]
 
     with patch(
         "app.services.event_service.attendance_tokens.issue_token",
@@ -383,9 +367,7 @@ async def test_get_event_detail_with_attendance(event_service, mock_repo):
     mock_event = create_mock_event(event_id)
     mock_attendance = MagicMock(spec=models.EventAttendance)
 
-    mock_result = MagicMock()
-    mock_result.first.return_value = (mock_event, 5, mock_attendance)
-    mock_repo.db.execute.return_value = mock_result
+    mock_repo.get_event_with_details.return_value = (mock_event, 5, mock_attendance)
 
     with (
         patch(
@@ -405,8 +387,7 @@ async def test_get_event_detail_with_attendance(event_service, mock_repo):
 
 @pytest.mark.asyncio
 async def test_unregister_attendance_not_found(event_service, mock_repo):
-    mock_result = MagicMock()
-    mock_result.scalar_one_or_none.return_value = None
-    mock_repo.db.execute.return_value = mock_result
+    mock_repo.get_attendance.return_value = None
+    mock_repo.delete_attendance.return_value = False
     res = await event_service.unregister_attendance(MagicMock(), uuid4())
     assert res == {"ok": False}

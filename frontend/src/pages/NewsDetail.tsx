@@ -155,8 +155,9 @@ export default function NewsDetail() {
     if (!heroRatio || !Number.isFinite(heroRatio) || heroRatio <= 0) {
       return {
         container: "h-(--h-hero-sm) min-h-80 max-h-(--layout-max-modal)",
-        image: "object-cover object-[50%_40%]",
-        backdrop: "bg-black/(--opacity-dim)",
+        image: "object-cover",
+        imageStyle: { objectPosition: "50% 40%" },
+        backdrop: "bg-(--bg-surface)/(--opacity-dim)",
       }
     }
 
@@ -166,6 +167,7 @@ export default function NewsDetail() {
       return {
         container: "min-h-(--min-h-hero-lg) max-h-(--h-hero-max-portrait) aspect-3/4",
         image: "object-contain object-center",
+        imageStyle: { objectPosition: "center" },
         backdrop: "bg-black/(--opacity-soft)",
       }
     }
@@ -173,7 +175,8 @@ export default function NewsDetail() {
     if (ratio < 1.18) {
       return {
         container: "min-h-(--min-h-hero-md) max-h-(--h-hero-max-square) aspect-5/4",
-        image: "object-cover object-[50%_38%]",
+        image: "object-cover",
+        imageStyle: { objectPosition: "50% 38%" },
         backdrop: "bg-(--bg-surface)/(--opacity-dim)",
       }
     }
@@ -181,14 +184,16 @@ export default function NewsDetail() {
     if (ratio > 2.6) {
       return {
         container: "min-h-(--min-h-hero-xs) max-h-(--h-hero-md) aspect-21/9",
-        image: "object-cover object-[50%_46%]",
+        image: "object-cover",
+        imageStyle: { objectPosition: "50% 46%" },
         backdrop: "bg-black/(--opacity-dim)",
       }
     }
 
     return {
       container: "min-h-(--min-h-hero-sm) max-h-(--h-hero-max-landscape) aspect-video",
-      image: "object-cover object-[50%_40%]",
+      image: "object-cover",
+      imageStyle: { objectPosition: "50% 40%" },
       backdrop: "bg-(--bg-surface)/(--opacity-dim)",
     }
   }, [heroRatio])
@@ -482,6 +487,7 @@ export default function NewsDetail() {
                 }
                 onLoad={handleHeroLoad}
                 className={cn("h-full w-full", heroFrame.image)}
+                style={heroFrame.imageStyle}
               />
             </div>
             {displayTitle ? null : (

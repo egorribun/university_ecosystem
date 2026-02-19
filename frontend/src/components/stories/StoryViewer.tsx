@@ -163,6 +163,11 @@ export const StoryViewer = ({
             viewerStory.cover_url ? "bg-page" : "bg-brand shadow-premium-lift",
             viewerStory.cover_url ? "rounded-none" : "rounded-md sm:rounded-lg"
           )}
+          style={{
+            maxHeight: "92vh",
+            aspectRatio: "9/16",
+            width: "min(96%, 960px)"
+          }}
           onPointerDown={handlePointerDown}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerCancel}

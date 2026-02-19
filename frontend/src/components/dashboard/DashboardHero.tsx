@@ -36,9 +36,10 @@ export function DashboardHero({
   const { greeting } = useGreeting(time)
 
   const headerGradientClass = cn(
-    "transition-[background] duration-slower",
+    "duration-slower",
     isNarrow ? "bg-(--grad-header-135)" : "bg-(--grad-header-125)"
   )
+
 
   const showHeaderMotion = !prefersReducedMotion && !isNarrow
 
@@ -49,16 +50,20 @@ export function DashboardHero({
         "px-4 pb-16 pt-10 text-text-primary sm:px-8 md:px-12 lg:px-16",
         "bg-linear-[145deg,var(--hero-grad-start),var(--hero-grad-end)]"
       )}
+      style={{
+        background: "linear-gradient(145deg, var(--hero-grad-start), var(--hero-grad-end))"
+      }}
     >
       <DashboardBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
+
 
       <div className="relative z-deep space-y-6">
         <ScrollReveal mode="pop" delay={0.1} width="100%">
           <header
             className={cn(
-              "group card-glass rounded-sm transition-all duration-slow ease-[cubic-bezier(0.34,1.56,0.64,1)]",
-              "hover:-translate-y-1 hover:scale-[1.01] hover:shadow-xl motion-reduce:hover:transform-none motion-reduce:hover:shadow-none",
-              "p-6 md:p-9 focus-within:shadow-focus focus-ring-premium",
+              "group card-glass rounded-sm transition-all duration-slow ease-back-out",
+              "hover:-translate-y-1 hover:scale-105 hover:shadow-xl motion-reduce:hover:transform-none motion-reduce:hover:shadow-none",
+              "p-6 md:p-10 focus-within:shadow-focus focus-ring-premium",
               headerGradientClass
             )}
           >

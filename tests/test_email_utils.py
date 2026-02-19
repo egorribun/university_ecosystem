@@ -37,7 +37,7 @@ def test_build_reset_email_content_default():
 def test_build_reset_email_content_no_name():
     """Test generating reset email content without a name."""
     link = "https://example.com/reset?token=123"
-    subject, plain, html = build_reset_email_content(link)
+    _subject, plain, html = build_reset_email_content(link)
 
     # Check that name placeholder isn't leaking raw (like ", ")
     # if translation doesn't handle it

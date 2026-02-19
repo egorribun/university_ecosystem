@@ -5,4 +5,4 @@ re-exports the public surface so any remaining imports continue to work while
 pointing to the new implementation.
 """
 
-from app.api.spotify import *  # noqa: F401,F403
+from app.api.spotify import *  # noqa: F403

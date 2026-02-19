@@ -7,9 +7,9 @@ from starlette.testclient import TestClient
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from app.api.websocket import ConnectionManager
-from app.auth.security import create_access_token
 from app.core.config import settings
 from app.models.chat import Chat, Message
+from tests.fixtures.auth.auth_fixtures import create_access_token
 
 
 @pytest.fixture
@@ -267,9 +267,9 @@ class TestWebSocketAuth:
         from app.api.websocket import get_user_from_token
 
         user = await user_factory(is_active=False)
-        token = await create_access_token(str(user.id))
+        token, _ = await create_access_token(str(user.id), db=db_session)
 
-        result_user, session_jti = await get_user_from_token(token)
+        result_user, _session_jti = await get_user_from_token(token)
 
         assert result_user is None
 

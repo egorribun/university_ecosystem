@@ -76,7 +76,9 @@ class Message(Base, UUID7PrimaryKeyMixin):
     read_status: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Relationships
-    chat: Mapped["Chat"] = relationship("Chat", back_populates="messages")
+    chat: Mapped["Chat"] = relationship(
+        "Chat", back_populates="messages", lazy="joined"
+    )
     sender = relationship("User", lazy="joined")
     attachments: Mapped[list["Attachment"]] = relationship(
         "Attachment",
@@ -105,4 +107,6 @@ class Attachment(Base, UUID7PrimaryKeyMixin):
     )
 
     # Relationships
-    message: Mapped["Message"] = relationship("Message", back_populates="attachments")
+    message: Mapped["Message"] = relationship(
+        "Message", back_populates="attachments", lazy="joined"
+    )

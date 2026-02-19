@@ -19,7 +19,7 @@ export const ProfileDetails = ({ user, isOpen, onToggle }: ProfileDetailsProps) 
     <SectionCard className="p-0 border-none bg-(--bg-surface)/(--opacity-subtle) rounded-3xl overflow-hidden">
       <button
         onClick={onToggle}
-        className="w-full flex items-center justify-between px-6 py-5 hover:bg-(--bg-surface)/(--opacity-dim) transition-colors"
+        className="mt-(--space-4) space-y-1 relative items-center justify-between px-6 py-5 hover:bg-(--bg-surface)/(--opacity-dim) transition-colors"
       >
         <h2 className="text-lg font-bold tracking-tight text-text-primary">
           {t("profile:titles.details")}
@@ -37,6 +37,7 @@ export const ProfileDetails = ({ user, isOpen, onToggle }: ProfileDetailsProps) 
           "transition-all duration-base overflow-hidden",
           isOpen ? "max-h-[150vh] opacity-100" : "max-h-0 opacity-0"
         )}
+        style={{ maxHeight: isOpen ? "1000px" : "0px" }}
       >
         <div className="px-3 pb-6 flex flex-col gap-1">
           <DetailRow label={t("profile:labels.institute")} value={user?.institute} />

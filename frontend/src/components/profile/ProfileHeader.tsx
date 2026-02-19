@@ -65,11 +65,12 @@ export const ProfileHeader = ({
         <div
           className={cn(
             "absolute inset-0 bg-center bg-cover",
-            !reduceMotion && "transition-transform duration-hero cubic-bezier-[0.33,1,0.68,1]"
+            !reduceMotion && "transition-transform duration-hero"
           )}
           style={{
             transform: `translateY(${coverParallax}px) scale(${coverScale})`,
             filter: COVER_IMAGE_FILTER,
+            transitionTimingFunction: !reduceMotion ? "cubic-bezier(0.33,1,0.68,1)" : undefined
           }}
         >
           <SmartImage

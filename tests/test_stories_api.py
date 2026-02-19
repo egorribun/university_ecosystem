@@ -73,7 +73,7 @@ async def test_story_admin_permissions(
     async_client: AsyncClient, user_factory, db_session
 ):
     password = "StoryAdmin123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     admin = await user_factory(role="admin", hashed_password=hashed)
     student = await user_factory(role="student", hashed_password=hashed)
 

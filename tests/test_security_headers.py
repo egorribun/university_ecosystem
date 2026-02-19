@@ -44,11 +44,11 @@ async def test_security_headers_production_mode(monkeypatch):
     app.add_middleware(middleware_cls, settings=settings)
 
     transport = httpx.ASGITransport(app=app)
-    async with LifespanManager(app):
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://testserver"
-        ) as client:
-            response = await client.get("/")
+    async with (
+        LifespanManager(app),
+        httpx.AsyncClient(transport=transport, base_url="http://testserver") as client,
+    ):
+        response = await client.get("/")
 
     headers = response.headers
     hsts = headers.get("Strict-Transport-Security", "")
@@ -157,11 +157,11 @@ async def test_security_headers_development_report_only(monkeypatch):
     app.add_middleware(middleware_cls, settings=settings)
 
     transport = httpx.ASGITransport(app=app)
-    async with LifespanManager(app):
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://testserver"
-        ) as client:
-            response = await client.get("/")
+    async with (
+        LifespanManager(app),
+        httpx.AsyncClient(transport=transport, base_url="http://testserver") as client,
+    ):
+        response = await client.get("/")
 
     headers = response.headers
     assert "Strict-Transport-Security" not in headers
@@ -248,11 +248,11 @@ async def test_security_headers_credentialless_coep(monkeypatch):
     app.add_middleware(middleware_cls, settings=settings)
 
     transport = httpx.ASGITransport(app=app)
-    async with LifespanManager(app):
-        async with httpx.AsyncClient(
-            transport=transport, base_url="http://testserver"
-        ) as client:
-            response = await client.get("/")
+    async with (
+        LifespanManager(app),
+        httpx.AsyncClient(transport=transport, base_url="http://testserver") as client,
+    ):
+        response = await client.get("/")
 
     headers = response.headers
     assert headers.get("Cross-Origin-Embedder-Policy") == "credentialless"
@@ -289,13 +289,15 @@ async def test_gzip_preserves_security_headers_and_etag(monkeypatch):
     app.add_middleware(middleware_cls, settings=settings)
 
     transport = httpx.ASGITransport(app=app)
-    async with LifespanManager(app):
-        async with httpx.AsyncClient(
+    async with (
+        LifespanManager(app),
+        httpx.AsyncClient(
             transport=transport,
             base_url="http://testserver",
             headers={"Accept-Encoding": "gzip"},
-        ) as client:
-            response = await client.get("/")
+        ) as client,
+    ):
+        response = await client.get("/")
 
     headers = response.headers
     assert headers.get("Content-Encoding") == "gzip"

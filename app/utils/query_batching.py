@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, TypeVar
 
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload, selectinload
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Sequence
+
     from sqlalchemy.ext.asyncio import AsyncSession
     from sqlalchemy.orm import InstrumentedAttribute, RelationshipProperty
     from sqlalchemy.sql import Select
@@ -186,4 +187,4 @@ async def prefetch_related(
         return {}
 
     related_items = await batch_load_ids(session, related_model, foreign_keys)
-    return {getattr(item, "id"): item for item in related_items}
+    return {item.id: item for item in related_items}

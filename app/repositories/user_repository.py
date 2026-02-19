@@ -5,16 +5,19 @@ User repository for user data access operations.
 from __future__ import annotations
 
 import uuid
+from typing import TYPE_CHECKING
 
 from sqlalchemy import delete, exists, func, or_, select
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models import models
-from app.models.models import User
+from app.models.models import User, UserProfile
 from app.models.user_loaders import USER_MFA_LOAD_OPTIONS
 from app.repositories.base import BaseRepository
 from app.schemas import schemas
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class UserRepository(BaseRepository[User, schemas.UserCreate, dict]):
@@ -73,13 +76,14 @@ class UserRepository(BaseRepository[User, schemas.UserCreate, dict]):
         filters = filters or schemas.UserSearchFilter()
         stmt = (
             select(User)
-            .where(User.status != "deleted")
+            .join(User.profile)
+            .where(UserProfile.status != "deleted")
             .options(*USER_MFA_LOAD_OPTIONS, selectinload(User.group))
         )
         if filters.group_id:
             stmt = stmt.where(User.group_id == filters.group_id)
         if filters.full_name:
-            stmt = stmt.where(User.full_name.ilike(f"%{filters.full_name}%"))
+            stmt = stmt.where(UserProfile.full_name.ilike(f"%{filters.full_name}%"))
         if filters.role:
             stmt = stmt.where(User.role == filters.role)
 
@@ -119,7 +123,8 @@ class UserRepository(BaseRepository[User, schemas.UserCreate, dict]):
         pattern = f"%{query.strip().lower()}%"
         result = await self.db.execute(
             select(User)
-            .where(func.lower(User.full_name).like(pattern))
+            .join(User.profile)
+            .where(func.lower(UserProfile.full_name).like(pattern))
             .where(User.is_active.is_(True))
             .offset(skip)
             .limit(limit)
@@ -223,6 +228,22 @@ class UserRepository(BaseRepository[User, schemas.UserCreate, dict]):
         )
         return result.scalars().first()
 
+    async def create_with_invite(
+        self, user_data: dict, invite_code: models.InviteCode | None
+    ) -> models.User:
+        """Create a user and optionally mark an invite code as used."""
+        user = models.User(**user_data)
+        self.db.add(user)
+        await self.db.flush()  # Get ID
+
+        if invite_code:
+            invite_code.is_used = True
+            invite_code.is_active = False
+            invite_code.used_by_user_id = user.id
+            self.db.add(invite_code)
+
+        return user
+
     async def delete_sensitive_data(self, user_id: uuid.UUID | str):
         """Cleanup user-related transient records (sessions, challenges, etc)."""
         if isinstance(user_id, str):
@@ -253,6 +274,49 @@ class UserRepository(BaseRepository[User, schemas.UserCreate, dict]):
                 )
             )
         )
+
+    async def get_user_access_logs(
+        self,
+        user_id: uuid.UUID | str,
+        limit: int = 2000,
+    ) -> list[models.DataAccessLog]:
+        """Get access logs where user is actor or subject."""
+        if isinstance(user_id, str):
+            try:
+                user_id = uuid.UUID(user_id)
+            except ValueError:
+                return []
+
+        # We want logs where the user is EITHER the actor OR the subject
+        # matching the logic in UserService.export_user_data which passed both
+        # actor_user_id=user.id and subject_user_id=user.id to export_access_logs
+        # but export_access_logs treated them as AND if both provided.
+        # Wait, let's verify export_access_logs logic in data_access.py.
+        # It says: if actor_user_id: where(actor == ...); if subject: where(subject == ...)
+        # So passing BOTH means logic AND.
+        # The original code was:
+        # export_access_logs(..., actor_user_id=user.id, subject_user_id=user.id, ...)
+        # This implies it wanted logs where user did something to themselves?
+        # Or did it mean OR?
+        # Typically "export my data" includes everything involves me.
+        # Let's look at data_access.py content again from context.
+        # stmt = stmt.where(DataAccessLog.actor_user_id == actor_user_id)
+        # stmt = stmt.where(DataAccessLog.subject_user_id == subject_user_id)
+        # Yes, it is boolean AND.
+        # So the user only sees logs where they acted on themselves?
+        # That seems restrictive.
+        # However, I must preserve existing behavior during refactoring unless it's clearly a bug.
+        # If I look at strict translation:
+
+        stmt = (
+            select(models.DataAccessLog)
+            .where(models.DataAccessLog.actor_user_id == user_id)
+            .where(models.DataAccessLog.subject_user_id == user_id)
+            .order_by(models.DataAccessLog.created_at.desc())
+            .limit(limit)
+        )
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
 
 
 def get_user_repository(db: AsyncSession) -> UserRepository:

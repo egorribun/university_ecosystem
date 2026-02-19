@@ -34,7 +34,7 @@ async def _login(async_client, email: str, password: str) -> dict[str, str]:
 @pytest.mark.asyncio
 async def test_events_localization(async_client, db_session, user_factory):
     password = "TestEvent123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     admin = await user_factory(role="admin")
     student = await user_factory(hashed_password=hashed, is_active=True)
 
@@ -148,7 +148,9 @@ async def test_create_event_records_enqueue_failure(
 
     password = "TeacherPass123!"
     teacher = await user_factory(
-        role="teacher", hashed_password=get_password_hash(password), is_active=True
+        role="teacher",
+        hashed_password=await get_password_hash(password),
+        is_active=True,
     )
 
     headers = await _login(async_client, teacher.email, password)
@@ -199,7 +201,7 @@ async def test_events_etag_and_not_modified(
     await events.events_cache_version.reset(fake_cache)
     assert fake_cache is not None
     password = "TestEvent456!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     admin = await user_factory(role="admin")
     student = await user_factory(hashed_password=hashed, is_active=True)
 
@@ -387,7 +389,7 @@ async def test_get_all_events_search_deterministic_order(db_session, user_factor
 @pytest.mark.asyncio
 async def test_events_pagination_semantics(async_client, db_session, user_factory):
     password = "PaginationPass123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     admin = await user_factory(role="admin")
     student = await user_factory(hashed_password=hashed, is_active=True)
 
@@ -477,10 +479,10 @@ async def test_events_cache_invalidation_on_mutations(
     admin_password = "CacheAdmin123!"
     student_password = "CacheStudent123!"
     admin = await user_factory(
-        role="admin", hashed_password=get_password_hash(admin_password)
+        role="admin", hashed_password=await get_password_hash(admin_password)
     )
     student = await user_factory(
-        hashed_password=get_password_hash(student_password), is_active=True
+        hashed_password=await get_password_hash(student_password), is_active=True
     )
 
     now = datetime.now(UTC)
@@ -604,7 +606,7 @@ async def test_events_cache_uses_version_from_redis(
     await events.events_cache_version.reset(fake_cache)
 
     password = "VersionPass123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     admin = await user_factory(role="admin")
     student = await user_factory(hashed_password=hashed, is_active=True)
 

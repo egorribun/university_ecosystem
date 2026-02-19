@@ -5,11 +5,10 @@ import fnmatch
 import hashlib
 import logging
 import time as time_module
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from functools import wraps
-from typing import Any, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
 
 try:
     import orjson
@@ -27,7 +26,7 @@ except ImportError:
             return json.loads(s)
 
         @staticmethod
-        def dumps(v: Any, default: Any = None, option: int | None = None) -> bytes:
+        def dumps(v: Any, default: Any = None, _option: int | None = None) -> bytes:
             return json.dumps(v, default=default, sort_keys=True).encode("utf-8")
 
     orjson = OrJsonCompat()  # type: ignore
@@ -37,6 +36,9 @@ from redis.exceptions import RedisError
 
 from app.core.config import settings
 from app.core.metrics import record_redis_command
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -106,14 +108,14 @@ class BaseCache:
 class NullCache(BaseCache):
     enabled = False
 
-    async def get(self, key: str) -> CacheEntry | None:  # noqa: ARG002
+    async def get(self, key: str) -> CacheEntry | None:
         return None
 
-    async def set(  # noqa: ARG002
+    async def set(
         self,
-        key: str,
+        _key: str,
         payload: Any,
-        ttl: int | None = None,
+        _ttl: int | None = None,
     ) -> CacheEntry:
         return CacheEntry(
             etag="",
@@ -121,7 +123,7 @@ class NullCache(BaseCache):
             stored_at=time_module.time(),
         )
 
-    async def invalidate(self, *keys: str) -> None:  # noqa: ARG002
+    async def invalidate(self, *_keys: str) -> None:
         return None
 
 
@@ -540,7 +542,7 @@ R = TypeVar("R")
 def cached(
     prefix: str | None = None,
     ttl: int | timedelta | None = None,
-    l1_ttl: int | timedelta | None = None,
+    _l1_ttl: int | timedelta | None = None,
     key_builder: Callable[..., str] | None = None,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """
@@ -660,7 +662,9 @@ def stale_while_revalidate(
                         finally:
                             _revalidation_lock.pop(full_key, None)
 
-                    asyncio.create_task(revalidate())
+                    task = asyncio.create_task(revalidate())
+                    _background_tasks.add(task)
+                    task.add_done_callback(_background_tasks.discard)
 
                 # Return stale data immediately
                 return entry.payload
@@ -676,6 +680,7 @@ def stale_while_revalidate(
 
 
 _cache_backend: BaseCache | None = None
+_background_tasks: set[asyncio.Task] = set()
 
 
 def _normalize_payload(payload: Any) -> tuple[Any, bytes]:
@@ -779,17 +784,17 @@ def etag_matches(etag: str, header_value: str | None) -> bool:
 
 
 __all__ = [
-    "CacheEntry",
     "BaseCache",
-    "NullCache",
+    "CacheEntry",
     "MemoryCache",
+    "NullCache",
     "RedisCache",
     "TieredCache",
     "cached",
     "create_cache_backend",
+    "etag_matches",
+    "format_etag",
     "get_cache",
     "set_cache_backend",
     "shutdown_cache",
-    "format_etag",
-    "etag_matches",
 ]

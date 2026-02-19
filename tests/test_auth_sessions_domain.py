@@ -22,7 +22,7 @@ async def test_resolve_target_user_rejects_non_admin(db_session, user_factory):
     target_user = await user_factory(role="student")
 
     with pytest.raises(HTTPException) as exc:
-        await sessions._resolve_target_user(  # noqa: SLF001
+        await sessions._resolve_target_user(
             db=db_session,
             current_user=current_user,
             requested_user_id=target_user.id,
@@ -37,7 +37,7 @@ async def test_resolve_target_user_allows_admin(db_session, user_factory):
     admin = await user_factory(role="admin")
     target_user = await user_factory(role="student")
 
-    resolved_id, resolved_user = await sessions._resolve_target_user(  # noqa: SLF001
+    resolved_id, resolved_user = await sessions._resolve_target_user(
         db=db_session,
         current_user=admin,
         requested_user_id=target_user.id,
@@ -52,15 +52,15 @@ def test_extract_jti_prefers_bearer_header(monkeypatch):
     monkeypatch.setattr(
         sessions,
         "decode_token",
-        lambda token: {"jti": "header-jti"},  # noqa: ARG005
+        lambda token: {"jti": "header-jti"},
     )
 
     request = _make_request(headers=[(b"authorization", b"Bearer token-value")])
-    assert sessions._extract_jti(request) == "header-jti"  # noqa: SLF001
+    assert sessions._extract_jti(request) == "header-jti"
 
 
 def test_extract_jti_uses_cookie_when_header_missing(monkeypatch):
-    def _decode(token: str):  # noqa: ANN001
+    def _decode(token: str):
         if token == "cookie-token":
             return {"jti": "cookie-jti"}
         return None
@@ -68,4 +68,4 @@ def test_extract_jti_uses_cookie_when_header_missing(monkeypatch):
     monkeypatch.setattr(sessions, "decode_token", _decode)
 
     request = _make_request(headers=[(b"cookie", b"access_token_v2=cookie-token")])
-    assert sessions._extract_jti(request) == "cookie-jti"  # noqa: SLF001
+    assert sessions._extract_jti(request) == "cookie-jti"

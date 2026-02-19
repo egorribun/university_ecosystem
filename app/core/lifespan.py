@@ -93,6 +93,19 @@ async def lifespan(app: FastAPI):
                         logger.error(
                             "Failed to disable semantic_search_enabled setting"
                         )
+            else:
+                # Non-PostgreSQL dialect (likely SQLite for tests)
+                # Patch out search_vector Computed columns that use to_tsvector
+                for table in Base.metadata.tables.values():
+                    for column in table.columns:
+                        if column.computed is not None:
+                            sql_text = str(column.computed.sqltext)
+                            if "to_tsvector" in sql_text:
+                                logger.info(
+                                    f"Patching out computed column {table.name}.{column.name} "
+                                    f"for dialect {conn.dialect.name}"
+                                )
+                                column.computed = None
 
         async with engine.begin() as conn:
             await conn.run_sync(

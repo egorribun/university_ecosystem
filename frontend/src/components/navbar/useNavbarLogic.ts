@@ -1,16 +1,19 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
-import { useScroll, useMotionValueEvent } from "framer-motion"
+
 import { useAuth } from "@/contexts/AuthContext"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import useFocusTrap from "@/hooks/useFocusTrap"
 import useScrollRestoration from "@/hooks/useScrollRestoration"
 import { breakpoints } from "@/theme/tokens"
-import { NAVBAR_SCROLL_THRESHOLD } from "@/constants/scroll"
+
 import { getNavigationConfig } from "@/config/navigation"
 import { parseCacheVersion } from "@/utils/cache"
-import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders" // Ensure this is correct path or ../../constants
+import { useScrollBehavior } from "@/hooks/ui/useScrollBehavior"
+import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
+
+export type NavbarLogicResult = ReturnType<typeof useNavbarLogic>
 
 export const useNavbarLogic = () => {
   const navigate = useNavigate()
@@ -20,13 +23,8 @@ export const useNavbarLogic = () => {
   const { t } = useTranslation(["navigation"])
 
   const [mobileMenuStart, setMobileMenuStart] = useState(false)
-  const [isScrolled, setIsScrolled] = useState(false)
-
-  const { scrollY } = useScroll()
-  useMotionValueEvent(scrollY, "change", (latest) => {
-    const scrolled = latest > NAVBAR_SCROLL_THRESHOLD
-    if (scrolled !== isScrolled) setIsScrolled(scrolled)
-  })
+  // Scroll behavior
+  const { isScrolled } = useScrollBehavior()
 
   // Disable "scrolled" state on mobile to avoid layout shifts or too much blur
   const isMobile = useMediaQuery(`(max-width: ${breakpoints.wide})`)

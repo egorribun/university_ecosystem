@@ -47,9 +47,7 @@ def _is_weak(value: str) -> bool:
         return False
     if normalized in BANNED_VALUES:
         return True
-    if len(normalized) < MIN_LENGTH and not _is_placeholder(normalized):
-        return True
-    return False
+    return bool(len(normalized) < MIN_LENGTH and not _is_placeholder(normalized))
 
 
 def _check_lines(path: Path) -> list[str]:

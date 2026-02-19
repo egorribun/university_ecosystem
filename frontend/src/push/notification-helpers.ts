@@ -1,12 +1,27 @@
-// Simple fallback strings for Service Worker context
-// No i18n import to keep SW bundle small
 const fallbackNotifications = {
-  defaultTitle: "University Ecosystem",
-  defaultBody: "You have a new notification.",
+
+  en: {
+    defaultTitle: "University Ecosystem",
+    defaultBody: "You have a new notification.",
+  },
+  ru: {
+    defaultTitle: "Новое уведомление",
+    defaultBody: "У вас есть новое уведомление.",
+  },
 }
 
-const translateNotification = (key: keyof typeof fallbackNotifications) =>
-  fallbackNotifications[key]
+const getDetectedLanguage = (): "en" | "ru" => {
+  if (typeof navigator !== "undefined") {
+    const lang = navigator.language.toLowerCase().split("-")[0]
+    if (lang === "ru") return "ru"
+  }
+  return "en"
+}
+
+const translateNotification = (key: "defaultTitle" | "defaultBody") => {
+  const lang = getDetectedLanguage()
+  return fallbackNotifications[lang][key]
+}
 
 export type NotificationData = {
   url?: string

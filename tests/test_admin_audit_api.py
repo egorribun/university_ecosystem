@@ -11,7 +11,7 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 async def test_list_audit_logs_as_admin(root_client, user_factory, db_session):
     # Create an admin user with properly hashed password
     password = "StrongAdminPass123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     admin = await user_factory(
         role="admin", email="admin-audit@example.com", hashed_password=hashed
     )
@@ -53,7 +53,7 @@ async def test_list_audit_logs_as_admin(root_client, user_factory, db_session):
 async def test_list_audit_logs_forbidden_for_student(root_client, user_factory):
     # Create a student user
     password = "StudentPass123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     student = await user_factory(
         role="student", email="student-audit@example.com", hashed_password=hashed
     )
@@ -74,7 +74,7 @@ async def test_list_audit_logs_forbidden_for_student(root_client, user_factory):
 
 async def test_list_audit_logs_filtering(root_client, user_factory, db_session):
     password = "FilterPass123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     admin = await user_factory(
         role="admin", email="admin-filter@example.com", hashed_password=hashed
     )
@@ -126,7 +126,7 @@ async def test_list_audit_logs_filtering(root_client, user_factory, db_session):
 
 async def test_list_audit_logs_pagination(root_client, user_factory, db_session):
     password = "PaginationPass123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     admin = await user_factory(
         role="admin", email="admin-pagination@example.com", hashed_password=hashed
     )
@@ -170,7 +170,7 @@ async def test_list_audit_logs_pagination(root_client, user_factory, db_session)
 
 async def test_list_audit_logs_actor_filtering(root_client, user_factory, db_session):
     password = "ActorPass123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     admin = await user_factory(
         role="admin", email="admin-actor@example.com", hashed_password=hashed
     )

@@ -4,14 +4,18 @@ Session repository for session data access operations.
 
 from __future__ import annotations
 
-import uuid
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import and_, delete, func, select, update
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.auth import ActiveSession
 from app.repositories.base import BaseRepository
+
+if TYPE_CHECKING:
+    import uuid
+
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class SessionRepository(BaseRepository[ActiveSession, dict, dict]):

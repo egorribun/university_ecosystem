@@ -2,12 +2,13 @@ import uuid
 from datetime import UTC, datetime
 
 import pytest
+from fastapi import HTTPException
 from httpx import AsyncClient
 
 from app.api.notifications import _decode_cursor, _encode_cursor
-from app.auth.security import create_access_token
 from app.models import models
 from app.utils import ratelimit, sanitization
+from tests.fixtures.auth.auth_fixtures import create_access_token
 
 
 def test_sanitization_html():
@@ -80,7 +81,7 @@ def test_ratelimit_memory():
     limiter = ratelimit.MemoryLimiter()
     limiter.check("test", 2, 60, message="Error")
     limiter.check("test", 2, 60, message="Error")
-    with pytest.raises(Exception):  # raise_http_error
+    with pytest.raises(HTTPException):  # raise_http_error
         limiter.check("test", 2, 60, message="Error")
     limiter.reset()
     limiter.check("test", 2, 60, message="Error")

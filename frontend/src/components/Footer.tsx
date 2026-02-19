@@ -19,9 +19,9 @@ export default function Footer() {
       className="bg-footer relative overflow-hidden border-t border-border-subtle/(--opacity-medium) min-h-(--h-skeleton-row)"
       role="contentinfo"
     >
-      <div className="relative z-surface mx-auto max-w-(--layout-max-wide) px-fluid-x py-(--space-8) md:py-(--space-10)">
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1fr_1fr] lg:gap-8">
-          <div className="flex min-w-0 flex-col gap-3">
+      <div className="relative z-surface mx-auto max-w-(--layout-max-wide) px-fluid-x py-(--space-8) md:py-10">
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-5 lg:gap-8">
+          <div className="flex min-w-0 flex-col gap-3 lg:col-span-2">
             <div className="flex items-center gap-3">
               <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-(--bg-surface-raised) border border-border-subtle">
                 <SmartImage

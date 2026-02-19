@@ -9,6 +9,9 @@ def update_user_attributes(user: models.User, data: dict) -> None:
     """Update user attributes including nested relations."""
     preferences_fields = {"dnd_enabled", "dnd_start", "dnd_end", "timezone"}
     profile_fields = {
+        "full_name",
+        "avatar_url",
+        "cover_url",
         "about",
         "telegram",
         "status",
@@ -31,9 +34,9 @@ def update_user_attributes(user: models.User, data: dict) -> None:
                 user.preferences = models.UserPreferences(user_id=user.id)
             setattr(user.preferences, field, value)
         elif field in profile_fields:
-            if not user.profile_detail:
-                user.profile_detail = models.UserProfileDetail(user_id=user.id)
-            setattr(user.profile_detail, field, value)
+            if not user.profile:
+                user.profile = models.UserProfile(user_id=user.id)
+            setattr(user.profile, field, value)
         elif field in education_fields:
             if not user.education_path:
                 user.education_path = models.EducationPath(user_id=user.id)
@@ -49,18 +52,34 @@ async def anonymize_user_data(user: models.User) -> str:
     """
     anonymized_email = f"deleted+{user.id}@deleted.example.com"
 
-    if user.avatar_url:
-        await delete_static_file(user.avatar_url)
-    if user.cover_url:
-        await delete_static_file(user.cover_url)
+    # Profile fields handling
+    if user.profile:
+        if user.profile.avatar_url:
+            await delete_static_file(user.profile.avatar_url)
+        if user.profile.cover_url:
+            await delete_static_file(user.profile.cover_url)
 
-    user.full_name = None
+        # We want to keep the profile to store "deleted" status,
+        # but clear all other PII.
+        user.profile.full_name = "Deleted User"
+        user.profile.avatar_url = None
+        user.profile.cover_url = None
+        user.profile.about = None
+        user.profile.telegram = None
+        user.profile.achievements = None
+        user.profile.position = None
+        user.profile.department = None
+        user.profile.status = "deleted"
+    else:
+        # Create a placeholder profile if it didn't exist
+        user.profile = models.UserProfile(
+            user_id=user.id, full_name="Deleted User", status="deleted"
+        )
+
     user.email = anonymized_email
-    user.avatar_url = None
-    user.cover_url = None
     user.hashed_password = ANONYMIZED_USER_CREDENTIAL
     user.is_active = False
-    user.status = "deleted"
+
     user.mfa_required = False
     user.mfa_default_method = None
     user.mfa_last_verified_at = None
@@ -68,12 +87,7 @@ async def anonymize_user_data(user: models.User) -> str:
     # Clear nested relationships
     user.preferences = None
     user.spotify = None
-    user.profile_detail = None
     user.education_path = None
-    user.about = None
-    user.telegram = None
-    user.achievements = None
-    user.record_book_number = None
 
     return anonymized_email
 

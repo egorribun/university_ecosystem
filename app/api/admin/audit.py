@@ -30,18 +30,22 @@ async def list_audit_logs(
 ):
     """List audit logs with filtering and integrity verification."""
 
-    # Aliases for joining users table
+    # Aliases for joining users and their profiles for both actor and subject
     Actor = aliased(models.User)
+    ActorProfile = aliased(models.UserProfile)
     Subject = aliased(models.User)
+    SubjectProfile = aliased(models.UserProfile)
 
     stmt = (
         select(
             DataAccessLog,
-            Actor.full_name.label("actor_name"),
-            Subject.full_name.label("subject_name"),
+            ActorProfile.full_name.label("actor_name"),
+            SubjectProfile.full_name.label("subject_name"),
         )
         .outerjoin(Actor, DataAccessLog.actor_user_id == Actor.id)
+        .outerjoin(ActorProfile, Actor.id == ActorProfile.user_id)
         .outerjoin(Subject, DataAccessLog.subject_user_id == Subject.id)
+        .outerjoin(SubjectProfile, Subject.id == SubjectProfile.user_id)
         .order_by(DataAccessLog.created_at.desc())
         .offset(offset)
         .limit(limit)

@@ -40,7 +40,7 @@ export function ProgressBar({
       <div
         className={cn(
           "h-full rounded-full bg-progress-bar",
-          animated ? "transition-[width] duration-base ease-out motion-reduce:transition-none" : "",
+          animated ? "transition-all duration-base ease-out motion-reduce:transition-none" : "",
           barClassName
         )}
         style={{ width: `${percent}%` }}

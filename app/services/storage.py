@@ -5,10 +5,11 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 from urllib.parse import urlparse
 
-from app.core.config import Settings
+if TYPE_CHECKING:
+    from app.core.config import Settings
 
 logger = logging.getLogger(__name__)
 

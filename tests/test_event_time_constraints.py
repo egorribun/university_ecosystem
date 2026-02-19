@@ -278,7 +278,7 @@ async def test_event_detail_returns_qr_code_after_registration(
 ):
     password = "QrCodePass123!"
     student = await user_factory(
-        hashed_password=get_password_hash(password), is_active=True
+        hashed_password=await get_password_hash(password), is_active=True
     )
     admin = await user_factory(role="admin")
 

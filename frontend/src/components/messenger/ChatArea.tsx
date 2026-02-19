@@ -247,7 +247,7 @@ export function ChatArea({
           <MessageInput onSend={handleSendMessage} />
         </>
       ) : (
-        <div className="bg-[--bg-surface-hover]/[--opacity-soft] flex flex-1 flex-col items-center justify-center p-8 text-center">
+        <div className="bg-(--bg-surface-hover)/(--opacity-soft) flex flex-1 flex-col items-center justify-center p-8 text-center">
           <motion.div
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -259,14 +259,15 @@ export function ChatArea({
             }}
           >
             <MessageSquare
-              className="size-16 text-msg-active opacity-[--opacity-strong]"
+              className="size-16 text-msg-active"
+              style={{ opacity: "var(--opacity-strong)" }}
               strokeWidth={1}
             />
           </motion.div>
-          <h3 className="sf-pro text-xl font-bold text-[--text-primary]">
+          <h3 className="sf-pro text-xl font-bold text-(--text-primary)">
             {t("messenger:selectChat", "Choose a conversation")}
           </h3>
-          <p className="mt-2 max-w-xs text-[--text-secondary]">
+          <p className="mt-2 max-w-xs text-(--text-secondary)">
             {t("messenger:selectChatDesc", "Connect with anyone across the university ecosystem.")}
           </p>
         </div>

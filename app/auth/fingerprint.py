@@ -13,9 +13,10 @@ import hashlib
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from fastapi import Request
+if TYPE_CHECKING:
+    from fastapi import Request
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +183,7 @@ class SuspiciousActivityDetector:
         if stored_fingerprint.matches(current_fingerprint):
             return None
 
-        is_suspicious, mismatches = stored_fingerprint.partially_matches(
+        _is_suspicious, mismatches = stored_fingerprint.partially_matches(
             current_fingerprint
         )
 

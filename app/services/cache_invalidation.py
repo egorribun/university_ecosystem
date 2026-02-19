@@ -232,24 +232,24 @@ class CacheInvalidator:
 
 
 __all__ = [
+    # Batch invalidation
+    "CacheInvalidator",
     # Tag-based invalidation
     "CacheTag",
-    "get_tags_for_key",
-    "register_key_with_tags",
-    "invalidate_by_tag",
-    # Key generators
-    "schedule_cache_key",
-    "user_cache_key",
     "event_cache_key",
     "events_list_cache_key",
-    "news_cache_key",
-    "news_list_cache_key",
+    "get_tags_for_key",
+    "invalidate_by_tag",
+    "invalidate_event_cache",
+    "invalidate_groups_cache",
+    "invalidate_news_cache",
     # Invalidation functions
     "invalidate_schedule_cache",
     "invalidate_user_cache",
-    "invalidate_event_cache",
-    "invalidate_news_cache",
-    "invalidate_groups_cache",
-    # Batch invalidation
-    "CacheInvalidator",
+    "news_cache_key",
+    "news_list_cache_key",
+    "register_key_with_tags",
+    # Key generators
+    "schedule_cache_key",
+    "user_cache_key",
 ]

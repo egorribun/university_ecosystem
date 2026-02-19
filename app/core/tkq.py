@@ -11,7 +11,7 @@ from taskiq_redis import RedisAsyncResultBackend, RedisScheduleSource, RedisStre
 
 from app.core.config import settings
 
-logger = logging.getLogger("app.tasks")
+logger = logging.getLogger(__name__)
 
 
 class TaskiqTrackingMiddleware(TaskiqMiddleware):
@@ -47,7 +47,9 @@ class TaskiqTrackingMiddleware(TaskiqMiddleware):
         try:
             await asyncio.wait_for(self._all_tasks_done.wait(), timeout=timeout)
         except TimeoutError:
-            print(f"Warning: Timed out waiting for taskiq tasks: {self.active_tasks}")
+            logger.warning(
+                f"Warning: Timed out waiting for taskiq tasks: {self.active_tasks}"
+            )
 
 
 class TaskiqObservabilityMiddleware(TaskiqMiddleware):
@@ -128,6 +130,6 @@ else:
 taskiq_fastapi.init(broker, "app.main:app")
 
 # Import task modules AFTER broker is defined to avoid circular imports
-import app.tasks.cleanups  # noqa: F401, E402
-import app.tasks.email  # noqa: F401, E402
+import app.tasks.cleanups  # noqa: E402
+import app.tasks.email  # noqa: E402
 import app.tasks.notifications  # noqa: F401, E402

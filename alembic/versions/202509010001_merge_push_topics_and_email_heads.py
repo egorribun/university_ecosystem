@@ -9,9 +9,9 @@ branch_labels = None
 depends_on = None
 
 
-def upgrade() -> None:  # noqa: D401 - Alembic migration hook.
+def upgrade() -> None:
     """Consolidate the divergent migration branches."""
 
 
-def downgrade() -> None:  # noqa: D401 - Alembic migration hook.
+def downgrade() -> None:
     """No downgrade steps for merge migration."""

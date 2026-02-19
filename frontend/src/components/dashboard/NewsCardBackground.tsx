@@ -16,7 +16,10 @@ export const NewsCardBackground = memo(function NewsCardBackground() {
           repeat: Infinity,
           ease: "easeInOut",
         }}
-        className="pointer-events-none absolute inset-0 z-hide bg-[radial-gradient(circle_at_top_right,var(--dash-card-news-radial),transparent_68%)] mix-blend-soft-light transition-opacity duration-slow"
+        className="pointer-events-none absolute inset-0 z-hide mix-blend-soft-light transition-opacity duration-slow"
+        style={{
+          background: "radial-gradient(circle at top right, var(--dash-card-news-radial), transparent 68%)"
+        }}
       />
       <motion.span
         aria-hidden="true"
@@ -32,7 +35,10 @@ export const NewsCardBackground = memo(function NewsCardBackground() {
           repeat: Infinity,
           ease: "easeInOut",
         }}
-        className="pointer-events-none absolute -bottom-20 left-1/3 z-hide h-44 w-44 rounded-full bg-[radial-gradient(circle,var(--dash-card-news-orb),transparent)] blur-3xl mix-blend-soft-light transition-opacity duration-slower"
+        className="pointer-events-none absolute -bottom-20 left-1/3 z-hide h-44 w-44 rounded-full blur-3xl mix-blend-soft-light transition-opacity duration-slower"
+        style={{
+          background: "radial-gradient(circle, var(--dash-card-news-orb), transparent)"
+        }}
       />
     </>
   )

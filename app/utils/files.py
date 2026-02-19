@@ -199,9 +199,7 @@ def _looks_like_polyglot(data: bytes, detected_type: str) -> bool:
     if detected_type == "image/svg+xml":
         if b"<script" in lowered or b"onload=" in lowered:
             return True
-    if b"<script" in lowered and b"<!doctype html" in lowered:
-        return True
-    return False
+    return bool(b"<script" in lowered and b"<!doctype html" in lowered)
 
 
 async def _quarantine_payload(

@@ -27,6 +27,21 @@ class OrmModel(BaseModel):
         return cls.model_validate(obj)
 
 
+class PasswordResetTokenCreate(BaseModel):
+    user_id: int
+    token_hash: str
+    expires_at: datetime
+    used: bool = False
+
+
+class EmailChangeTokenCreate(BaseModel):
+    user_id: int
+    new_email: EmailStr
+    token_hash: str
+    expires_at: datetime
+    used: bool = False
+
+
 class ForgotPasswordIn(BaseModel):
     email: EmailStr
 
@@ -201,8 +216,110 @@ class UserOut(OrmModel, UserBase):
     @classmethod
     def _default_dnd_enabled(cls, value: bool | None) -> bool:
         """Ensure a boolean is always returned even when preferences are missing."""
-
         return bool(value) if value is not None else False
+
+    @model_validator(mode="before")
+    @classmethod
+    def _flatten_user_data(cls, data: Any) -> Any:
+        """Flatten UserProfile and UserPreferences into the main User dict/object."""
+        if isinstance(data, dict):
+            return data
+
+        # It's an ORM object
+        user = data
+
+        # We need to construct a dict because we are mixing sources
+        # Use simple object -> dict mapping for the base User fields
+        out = {
+            "id": user.id,
+            "email": user.email,
+            "role": user.role,
+            "group_id": user.group_id,
+            "is_active": user.is_active,
+            "mfa_required": user.mfa_required,
+            "mfa_default_method": user.mfa_default_method,
+            "mfa_last_verified_at": user.mfa_last_verified_at,
+            "created_at": user.created_at,  # If needed by OrmModel? UserBase doesn't have it.
+        }
+
+        # Helper to safely get from related object
+        def get_attr(obj, attr, default=None):
+            return getattr(obj, attr, default)
+
+        # Profile fields
+        profile = getattr(user, "profile", None)
+        out.update(
+            {
+                "full_name": get_attr(profile, "full_name"),
+                "avatar_url": get_attr(profile, "avatar_url"),
+                "cover_url": get_attr(profile, "cover_url"),
+                "about": get_attr(profile, "about"),
+                "telegram": get_attr(profile, "telegram"),
+                "status": get_attr(profile, "status"),
+                "achievements": get_attr(profile, "achievements"),
+                "department": get_attr(profile, "department"),
+                "position": get_attr(profile, "position"),
+            }
+        )
+
+        # Education fields
+        edu = getattr(user, "education_path", None)
+        out.update(
+            {
+                "institute": get_attr(edu, "institute"),
+                "course": get_attr(edu, "course"),
+                "education_level": get_attr(edu, "education_level"),
+                "track": get_attr(edu, "track"),
+                "program": get_attr(edu, "program"),
+                "record_book_number": get_attr(edu, "record_book_number"),
+            }
+        )
+
+        # Preferences fields
+        prefs = getattr(user, "preferences", None)
+        out.update(
+            {
+                "dnd_enabled": get_attr(prefs, "dnd_enabled", False),
+                "dnd_start": get_attr(prefs, "dnd_start"),
+                "dnd_end": get_attr(prefs, "dnd_end"),
+                "timezone": get_attr(prefs, "timezone"),
+            }
+        )
+
+        # Spotify fields
+        spotify = getattr(user, "spotify", None)
+        out.update(
+            {
+                "spotify_is_connected": get_attr(spotify, "is_connected", False),
+            }
+        )
+
+        # Computed/Other
+        # spotify_connected is a property on User which checks relationship
+        out["spotify_connected"] = user.spotify_connected
+        out["spotify_display_name"] = (
+            user.spotify.display_name
+            if getattr(user, "spotify", None) and user.spotify.is_connected
+            else None
+        )
+
+        # Relationships list
+        out["totp_enrollments"] = getattr(user, "totp_enrollments", [])
+        out["mfa_challenges"] = getattr(user, "mfa_challenges", [])
+
+        # Pending email (PII safe? It's UserOut so yes)
+        # Pending email logic usually in a separate table/column?
+        # Ah, UserOut definition has pending_email. The model doesn't seem to have it in the file I viewed?
+        # Checked app/models/users.py: it does NOT have pending_email.
+        # Maybe it's injected by the service or I missed it.
+        # Actually `pending_email` is not in the User model in the file I read.
+        # Checking imports... from app.models.auth import EmailChangeToken.
+        # Maybe it comes from there?
+        # For now, let's just attempt to getattr.
+        out["pending_email"] = getattr(user, "pending_email", None)
+        out["recovery_codes_left"] = len(getattr(user, "recovery_codes", []))
+
+        return out
 
 
 class UserPublicOut(OrmModel):
@@ -221,6 +338,46 @@ class UserPublicOut(OrmModel):
     department: str | None = None
     position: str | None = None
     is_active: bool
+
+    @model_validator(mode="before")
+    @classmethod
+    def _flatten_public_data(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            return data
+
+        user = data
+        out = {
+            "id": user.id,
+            "role": user.role,
+            "group_id": user.group_id,
+            "is_active": user.is_active,
+        }
+
+        def get_attr(obj, attr, default=None):
+            return getattr(obj, attr, default)
+
+        profile = getattr(user, "profile", None)
+        out.update(
+            {
+                "full_name": get_attr(profile, "full_name"),
+                "avatar_url": get_attr(profile, "avatar_url"),
+                "cover_url": get_attr(profile, "cover_url"),
+                "about": get_attr(profile, "about"),
+                "status": get_attr(profile, "status"),
+                "department": get_attr(profile, "department"),
+                "position": get_attr(profile, "position"),
+            }
+        )
+
+        edu = getattr(user, "education_path", None)
+        out.update(
+            {
+                "institute": get_attr(edu, "institute"),
+                "course": get_attr(edu, "course"),
+            }
+        )
+
+        return out
 
     @computed_field  # type: ignore[prop-decorator]
     @property

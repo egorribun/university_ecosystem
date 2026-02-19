@@ -3,10 +3,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import sqlite3
+import threading
 import time
-from collections.abc import AsyncGenerator
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -22,6 +22,8 @@ from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
     from app.core.config import Settings
 from app.core.config import settings
 
@@ -54,8 +56,9 @@ class PoolHealthMetrics:
     """
     Connection pool health metrics.
 
-    Note: accessing these metrics is safe without locks in a single-threaded
-    asyncio event loop environment (standard for asyncpg/uvicorn).
+    A threading.Lock guards all counter mutations because SQLAlchemy pool
+    events can fire from synchronous contexts (e.g. ``run_sync`` calls),
+    making pure asyncio coordination insufficient.
     """
 
     total_checkouts: int = 0
@@ -64,33 +67,42 @@ class PoolHealthMetrics:
     active_connections: int = 0
     peak_active_connections: int = 0
     failed_checkouts: int = 0
+    # Lock is excluded from __init__ and __repr__ via field metadata
+    _lock: threading.Lock = field(
+        default_factory=threading.Lock, init=False, repr=False, compare=False
+    )
 
     def record_checkout(self) -> None:
-        self.total_checkouts += 1
-        self.active_connections += 1
-        if self.active_connections > self.peak_active_connections:
-            self.peak_active_connections = self.active_connections
+        with self._lock:
+            self.total_checkouts += 1
+            self.active_connections += 1
+            if self.active_connections > self.peak_active_connections:
+                self.peak_active_connections = self.active_connections
 
     def record_checkin(self) -> None:
-        self.total_checkins += 1
-        self.active_connections = max(0, self.active_connections - 1)
+        with self._lock:
+            self.total_checkins += 1
+            self.active_connections = max(0, self.active_connections - 1)
 
     def record_invalidation(self) -> None:
-        self.total_invalidations += 1
-        self.active_connections = max(0, self.active_connections - 1)
+        with self._lock:
+            self.total_invalidations += 1
+            self.active_connections = max(0, self.active_connections - 1)
 
     def record_failed_checkout(self) -> None:
-        self.failed_checkouts += 1
+        with self._lock:
+            self.failed_checkouts += 1
 
     def get_snapshot(self) -> dict[str, int]:
-        return {
-            "total_checkouts": self.total_checkouts,
-            "total_checkins": self.total_checkins,
-            "total_invalidations": self.total_invalidations,
-            "active_connections": self.active_connections,
-            "peak_active_connections": self.peak_active_connections,
-            "failed_checkouts": self.failed_checkouts,
-        }
+        with self._lock:
+            return {
+                "total_checkouts": self.total_checkouts,
+                "total_checkins": self.total_checkins,
+                "total_invalidations": self.total_invalidations,
+                "active_connections": self.active_connections,
+                "peak_active_connections": self.peak_active_connections,
+                "failed_checkouts": self.failed_checkouts,
+            }
 
 
 # Global pool metrics instance
@@ -246,7 +258,6 @@ def create_session_factory(
 ) -> tuple[AsyncEngine, async_sessionmaker[AsyncSession], AsyncEngine | None]:
     engine_kwargs = _build_engine_kwargs(current_settings)
     logger.debug("Creating engine for URL: %s", current_settings.database_url)
-    print(f"\nDEBUG: Creating engine for URL: {current_settings.database_url}")
     engine = create_async_engine(current_settings.database_url, **engine_kwargs)
 
     # Enable slow query logging
@@ -300,7 +311,7 @@ class Base(DeclarativeBase):
     pass
 
 
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
+async def get_db() -> AsyncGenerator[AsyncSession]:
     for _ in range(3):
         try:
             async with async_session() as session:
@@ -315,7 +326,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     raise RuntimeError("Database connection unavailable after retries")
 
 
-async def get_read_db() -> AsyncGenerator[AsyncSession, None]:
+async def get_read_db() -> AsyncGenerator[AsyncSession]:
     """Get a read-only session (uses replica if configured, otherwise primary)."""
     # Use the pre-allocated read_session_factory for efficiency
     async with read_session_factory() as session:

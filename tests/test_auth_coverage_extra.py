@@ -63,11 +63,12 @@ async def test_purge_expired_challenges_coverage(db_session: AsyncSession):
     assert isinstance(count, int)
 
 
-def test_get_password_hash_bypass_policy_coverage():
+@pytest.mark.asyncio
+async def test_get_password_hash_bypass_policy_coverage():
     # "short" would normally fail (min_length=8)
     pw = "short"
-    h = security.get_password_hash(pw, validate_policy=False)
-    assert security.verify_password(pw, h)
+    h = await security.get_password_hash(pw, validate_policy=False)
+    assert await security.verify_password(pw, h)
 
 
 @pytest.mark.asyncio
@@ -178,7 +179,7 @@ async def test_verify_recovery_code_invalid_coverage(
 @pytest.mark.asyncio
 async def test_trusted_device_coverage(db_session: AsyncSession, user_factory):
     user = await user_factory()
-    token, expires_at = await mfa.create_trusted_device_token(db_session, user=user)
+    token, _expires_at = await mfa.create_trusted_device_token(db_session, user=user)
     assert token is not None
 
     # Verify success

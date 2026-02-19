@@ -35,7 +35,7 @@ def test_parse_datetime():
     assert _parse_datetime(dt) == dt
 
     # Naive becomes UTC
-    naive = datetime(2023, 1, 1, 12, 0, 0)  # noqa: DTZ001
+    naive = datetime(2023, 1, 1, 12, 0, 0)
     expected = naive.replace(tzinfo=UTC)
     assert _parse_datetime(naive) == expected
 

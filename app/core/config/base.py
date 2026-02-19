@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Iterable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pydantic import ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 

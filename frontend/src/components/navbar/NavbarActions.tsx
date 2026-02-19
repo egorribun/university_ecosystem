@@ -1,62 +1,40 @@
 import { motion } from "framer-motion"
 import { Menu, X } from "lucide-react"
-import { type TFunction } from "i18next"
-import { type ScrollBehavior } from "@/hooks/useScrollRestoration"
+import { type NavbarLogicResult } from "./useNavbarLogic"
 import NotificationsBell from "@/components/NotificationsBell"
 import MessengerButton from "@/components/MessengerButton"
 import SmartImage from "@/components/SmartImage"
 import { DesktopNav } from "./DesktopNav"
 import { UserMenu } from "./UserMenu"
 import { springSoft } from "@/utils/animations"
-import { type NavigationItem } from "@/config/navigation"
-import { type User } from "@/types/User"
 
 interface NavbarActionsProps {
-  isMobile: boolean
-  mobileMenu: boolean
-  setMobileMenu: (v: boolean | ((v: boolean) => boolean)) => void
-  isAuth: boolean
-  user: User | null
-  loading: boolean
-  avatarSource: string
-  avatarFallback: string
-  avatarCacheV?: number
-  profileAlt: string
-  profileTitle: string
-  go: (to: string) => void
-  // Desktop specific
-  menuLinks: NavigationItem[]
-  isActive: (to: string) => boolean
-  isSameTarget: (to: string) => boolean
-  scrollToTop: (behavior?: ScrollBehavior) => void
-  markScrollFromBottom: () => void
-  prefersReducedMotion: boolean
-  t: TFunction
-  burgerBtnRef: React.RefObject<HTMLButtonElement | null>
+  logic: NavbarLogicResult
 }
 
-export const NavbarActions = ({
-  isMobile,
-  mobileMenu,
-  setMobileMenu,
-  isAuth,
-  user,
-  loading,
-  avatarSource,
-  avatarFallback,
-  avatarCacheV,
-  profileAlt,
-  profileTitle,
-  go,
-  menuLinks,
-  isActive,
-  isSameTarget,
-  scrollToTop,
-  markScrollFromBottom,
-  prefersReducedMotion,
-  t,
-  burgerBtnRef,
-}: NavbarActionsProps) => {
+export const NavbarActions = ({ logic }: NavbarActionsProps) => {
+  const {
+    isMobile,
+    mobileMenu,
+    setMobileMenu,
+    isAuth,
+    user,
+    loading,
+    avatarSource,
+    avatarFallback,
+    avatarCacheV,
+    profileAlt,
+    profileTitle,
+    go,
+    menuLinks,
+    isActive,
+    isSameTarget,
+    scrollToTop,
+    markScrollFromBottom,
+    prefersReducedMotion,
+    t,
+    burgerBtnRef,
+  } = logic
   if (isMobile) {
     return (
       <div className="ml-auto flex items-center gap-(--fluid-gap)">

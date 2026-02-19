@@ -12,12 +12,10 @@ import logging
 import uuid
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import insert, select
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from sqlalchemy.sql import Select
 
 from app.core import metrics
 from app.core.config import settings
@@ -38,6 +36,10 @@ from app.services.notifications.quiet_hours import prepare_push_payload_for_user
 from app.services.push_schema import ensure_push_subscription_schema
 from app.services.push_topics import normalize_topic, subscription_supports_topic
 from app.services.webpush import WebPushResult
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+    from sqlalchemy.sql import Select
 
 logger = logging.getLogger(__name__)
 

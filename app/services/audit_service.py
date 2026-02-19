@@ -13,16 +13,18 @@ import logging
 from datetime import UTC, datetime
 from enum import StrEnum
 from hashlib import sha256
-from typing import Any
-from uuid import UUID
-
-from fastapi import Request
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import TYPE_CHECKING, Any
 
 from app.core.config import settings
 from app.core.observability import get_request_id
 from app.models.logs import DataAccessLog
+from app.repositories.audit_repository import AuditRepository
+
+if TYPE_CHECKING:
+    from uuid import UUID
+
+    from fastapi import Request
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger("app.audit")
 
@@ -311,18 +313,19 @@ class SecureAuditService:
         user_agent: str | None = None,
     ) -> DataAccessLog:
         """Create a signed audit log entry."""
-        log = DataAccessLog(
-            actor_user_id=actor_user_id,
-            subject_user_id=subject_user_id,
-            resource_type=resource_type,
-            resource_id=resource_id,
-            action=action,
-            context=context,
-            ip_address=ip_address,
-            user_agent=user_agent,
+        repo = AuditRepository(db)
+        log = await repo.create(
+            {
+                "actor_user_id": actor_user_id,
+                "subject_user_id": subject_user_id,
+                "resource_type": resource_type,
+                "resource_id": resource_id,
+                "action": action,
+                "context": context,
+                "ip_address": ip_address,
+                "user_agent": user_agent,
+            }
         )
-        db.add(log)
-        await db.flush()
         log.signature = self._compute_signature(log)
         await db.flush()
         return log
@@ -350,13 +353,8 @@ class SecureAuditService:
         self, db: AsyncSession, *, limit: int = 1000
     ) -> tuple[int, int, list[int]]:
         """Verify integrity of a batch of audit logs."""
-        result = await db.execute(
-            select(DataAccessLog)
-            .where(DataAccessLog.signature.isnot(None))
-            .order_by(DataAccessLog.created_at.desc())
-            .limit(limit)
-        )
-        logs = list(result.scalars().all())
+        repo = AuditRepository(db)
+        logs = await repo.list_logs(limit=limit)
         invalid_ids = [log.id for log in logs if not self.verify_integrity(log)]
         return len(logs), len(logs) - len(invalid_ids), invalid_ids
 
@@ -374,8 +372,8 @@ def get_secure_audit_service() -> SecureAuditService:
 
 __all__ = [
     "AuditService",
+    "SecureAuditService",
     "SecurityEvent",
     "audit_service",
-    "SecureAuditService",
     "get_secure_audit_service",
 ]

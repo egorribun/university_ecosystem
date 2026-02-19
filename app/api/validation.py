@@ -97,15 +97,16 @@ def raise_validation_error(message_key: str, locale: str, **kwargs: Any) -> None
     raise_http_error(status.HTTP_400_BAD_REQUEST, message_key, locale, **kwargs)
 
 
-def raise_conflict(message_key: str, locale: str) -> None:
+def raise_conflict(message_key: str, locale: str, **kwargs: Any) -> None:
     """
     Raise 409 HTTPException for conflict situations.
 
     Args:
         message_key: Translation key
         locale: Current request locale
+        **kwargs: Additional arguments for translation
     """
-    raise_http_error(status.HTTP_409_CONFLICT, message_key, locale)
+    raise_http_error(status.HTTP_409_CONFLICT, message_key, locale, **kwargs)
 
 
 def require_admin(user: "User", locale: str) -> None:
@@ -162,7 +163,7 @@ def require_owner_or_admin(
         raise_forbidden(locale)
 
 
-def ensure_exists(resource: T | None, resource_key: str, locale: str) -> T:
+def ensure_exists[T](resource: T | None, resource_key: str, locale: str) -> T:
     """
     Ensure resource exists, return it or raise 404.
 
@@ -180,13 +181,13 @@ def ensure_exists(resource: T | None, resource_key: str, locale: str) -> T:
 
 
 __all__ = [
+    "ensure_exists",
+    "raise_conflict",
+    "raise_forbidden",
     "raise_http_error",
     "raise_not_found",
-    "raise_forbidden",
     "raise_validation_error",
-    "raise_conflict",
     "require_admin",
-    "require_teacher_or_admin",
     "require_owner_or_admin",
-    "ensure_exists",
+    "require_teacher_or_admin",
 ]

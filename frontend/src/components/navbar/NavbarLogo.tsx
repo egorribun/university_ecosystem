@@ -36,7 +36,7 @@ export const NavbarLogo = ({ t, isMobile, onLogoClick, markScrollFromBottom }: N
         <SmartImage
           srcRaw={guuLogo}
           alt={t("navigation:brandAlt")}
-          className="object-contain w-[65%] h-[65%]"
+          className="object-contain w-2/3 h-2/3"
           loading="eager"
           fetchPriority="high"
           sizes={`(min-width: ${breakpoints.wide}) 2.75rem, (min-width: ${breakpoints.mobile}) 2.25rem, 1.625rem`}

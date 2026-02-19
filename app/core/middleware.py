@@ -4,14 +4,12 @@ import logging
 from typing import TYPE_CHECKING
 
 from brotli_asgi import BrotliMiddleware
-from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api.internal import INTERNAL_ROUTE_PREFIXES
 from app.core.internal_access import InternalAccessMiddleware
 from app.core.rate_limit import RateLimitMiddleware, parse_rate_limit
-from app.core.sanitization import SanitizationMiddleware
 from app.core.security_headers import SecurityHeadersMiddleware
 
 try:
@@ -20,6 +18,8 @@ except Exception:
     ProxyHeadersMiddleware = None
 
 if TYPE_CHECKING:
+    from fastapi import FastAPI, Request
+
     from app.core.config import AppSettings
 
 _logger = logging.getLogger(__name__)
@@ -65,13 +65,6 @@ def configure_middleware(app: FastAPI, settings: AppSettings) -> None:
         )
 
     app.add_middleware(SecurityHeadersMiddleware, settings=settings)
-
-    # Input sanitization middleware for defense-in-depth
-    app.add_middleware(
-        SanitizationMiddleware,
-        enabled=True,
-        skip_paths=("/api/internal/", "/graphql"),
-    )
 
     app.add_middleware(
         InternalAccessMiddleware,

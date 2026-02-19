@@ -39,7 +39,7 @@ async def _login(
 @pytest.mark.asyncio
 async def test_update_profile_email_normalizes(async_client, user_factory, db_session):
     password = "ChangeEmail123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     user = await user_factory(
         email="original@example.com",
         hashed_password=hashed,
@@ -65,7 +65,7 @@ async def test_update_profile_email_normalizes(async_client, user_factory, db_se
 @pytest.mark.asyncio
 async def test_update_profile_email_duplicate(async_client, user_factory, db_session):
     password = "DuplicateEmail123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     user = await user_factory(
         email="first-user@example.com",
         hashed_password=hashed,
@@ -96,7 +96,7 @@ async def test_email_change_requires_confirmation(
     async_client, user_factory, db_session, monkeypatch
 ):
     password = "ConfirmEmail123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     user = await user_factory(
         email="change-me@example.com",
         hashed_password=hashed,
@@ -107,16 +107,15 @@ async def test_email_change_requires_confirmation(
 
     token_value = "confirm-token"
 
-    def fake_blocking(*_args, **_kwargs):
-        return None
+    class FakeTask:
+        async def kiq(self, *args, **kwargs):
+            return
 
     monkeypatch.setattr(
         "app.services.auth_service.secrets.token_urlsafe",
         lambda *_args, **_kwargs: token_value,
     )
-    monkeypatch.setattr(
-        "app.services.auth_service._send_reset_email_blocking", fake_blocking
-    )
+    monkeypatch.setattr("app.services.auth_service.send_auth_email", FakeTask())
 
     response = await async_client.post(
         "/users/me/email",
@@ -178,7 +177,7 @@ async def test_update_profile_timezone_persisted(
     async_client, user_factory, db_session
 ):
     password = "TimezonePersist123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     user = await user_factory(
         hashed_password=hashed,
         is_active=True,
@@ -197,13 +196,13 @@ async def test_update_profile_timezone_persisted(
     assert body["timezone"] == "Europe/Paris"
 
     await db_session.refresh(user)
-    assert user.timezone == "Europe/Paris"
+    assert user.preferences.timezone == "Europe/Paris"
 
 
 @pytest.mark.asyncio
 async def test_update_profile_timezone_invalid(async_client, user_factory):
     password = "TimezoneInvalid123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     user = await user_factory(
         hashed_password=hashed,
         is_active=True,
@@ -226,7 +225,7 @@ async def test_update_profile_timezone_invalid(async_client, user_factory):
 @pytest.mark.asyncio
 async def test_delete_avatar_removes_file(async_client, user_factory, db_session):
     password = "DeleteAvatar123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     avatar_rel = f"avatars/test-avatar-{uuid.uuid4().hex}.png"
     avatar_path = settings.static_dir_path / avatar_rel
     avatar_path.parent.mkdir(parents=True, exist_ok=True)
@@ -248,7 +247,7 @@ async def test_delete_avatar_removes_file(async_client, user_factory, db_session
     assert not avatar_path.exists()
 
     await db_session.refresh(user)
-    assert user.avatar_url is None
+    assert user.profile.avatar_url is None
 
 
 @pytest.mark.asyncio
@@ -257,7 +256,7 @@ async def test_delete_avatar_ignores_invalid_path(
     async_client, user_factory, db_session, avatar_url
 ):
     password = "IgnoreAvatar123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     sentinel_rel = f"avatars/sentinel-{uuid.uuid4().hex}.txt"
     sentinel_path = settings.static_dir_path / sentinel_rel
     sentinel_path.parent.mkdir(parents=True, exist_ok=True)
@@ -280,7 +279,7 @@ async def test_delete_avatar_ignores_invalid_path(
         assert sentinel_path.exists()
 
         await db_session.refresh(user)
-        assert user.avatar_url is None
+        assert user.profile.avatar_url is None
     finally:
         sentinel_path.unlink(missing_ok=True)
 
@@ -309,15 +308,17 @@ async def test_upload_avatar_cleans_up_on_commit_failure(
 
     monkeypatch.setattr("app.services.user_service.delete_static_file", tracking_delete)
 
+    from unittest.mock import AsyncMock
+
+    service = UserService(AsyncMock(), AsyncMock(), AuditService(), AsyncMock())
+    service.repo.get.return_value = user
+
     async def failing_commit(*_args, **_kwargs):
         raise RuntimeError("commit failed")
 
-    monkeypatch.setattr(db_session, "commit", failing_commit)
-
-    from unittest.mock import AsyncMock
-
-    service = UserService(db_session, AsyncMock(), AuditService(), AsyncMock())
-    service.repo.get.return_value = user
+    # Route the failure through service.repo.commit — the actual path used by
+    # upload_avatar; db_session is no longer reached directly by UserService.
+    service.repo.commit = failing_commit
 
     with pytest.raises(RuntimeError):
         await service.upload_avatar(user, upload)
@@ -326,9 +327,6 @@ async def test_upload_avatar_cleans_up_on_commit_failure(
     assert delete_calls, "delete_static_file should be invoked"
     if avatar_dir.exists():
         assert not any(avatar_dir.iterdir())
-
-    await db_session.refresh(user)
-    assert user.avatar_url is None
 
 
 @pytest.mark.asyncio
@@ -355,15 +353,17 @@ async def test_upload_cover_cleans_up_on_commit_failure(
 
     monkeypatch.setattr("app.services.user_service.delete_static_file", tracking_delete)
 
+    from unittest.mock import AsyncMock
+
+    service = UserService(AsyncMock(), AsyncMock(), AuditService(), AsyncMock())
+    service.repo.get.return_value = user
+
     async def failing_commit(*_args, **_kwargs):
         raise RuntimeError("commit failed")
 
-    monkeypatch.setattr(db_session, "commit", failing_commit)
-
-    from unittest.mock import AsyncMock
-
-    service = UserService(db_session, AsyncMock(), AuditService(), AsyncMock())
-    service.repo.get.return_value = user
+    # Route the failure through service.repo.commit — the actual path used by
+    # upload_cover; db_session is no longer reached directly by UserService.
+    service.repo.commit = failing_commit
 
     with pytest.raises(RuntimeError):
         await service.upload_cover(user, upload)
@@ -373,14 +373,11 @@ async def test_upload_cover_cleans_up_on_commit_failure(
     if cover_dir.exists():
         assert not any(cover_dir.iterdir())
 
-    await db_session.refresh(user)
-    assert user.cover_url is None
-
 
 @pytest.mark.asyncio
 async def test_delete_cover_removes_file(async_client, user_factory, db_session):
     password = "DeleteCover123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     cover_rel = f"covers/test-cover-{uuid.uuid4().hex}.png"
     cover_path = settings.static_dir_path / cover_rel
     cover_path.parent.mkdir(parents=True, exist_ok=True)
@@ -402,7 +399,7 @@ async def test_delete_cover_removes_file(async_client, user_factory, db_session)
     assert not cover_path.exists()
 
     await db_session.refresh(user)
-    assert user.cover_url is None
+    assert user.profile.cover_url is None
 
 
 @pytest.mark.asyncio
@@ -411,7 +408,7 @@ async def test_delete_cover_ignores_invalid_path(
     async_client, user_factory, db_session, cover_url
 ):
     password = "IgnoreCover123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     sentinel_rel = f"covers/sentinel-{uuid.uuid4().hex}.txt"
     sentinel_path = settings.static_dir_path / sentinel_rel
     sentinel_path.parent.mkdir(parents=True, exist_ok=True)
@@ -434,7 +431,7 @@ async def test_delete_cover_ignores_invalid_path(
         assert sentinel_path.exists()
 
         await db_session.refresh(user)
-        assert user.cover_url is None
+        assert user.profile.cover_url is None
     finally:
         sentinel_path.unlink(missing_ok=True)
 

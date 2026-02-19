@@ -1,5 +1,14 @@
-@import "./partials/_colors.css";
-@import "./partials/_typography.css";
-@import "./partials/_layout.css";
-@import "./partials/_effects.css";
-@import "./partials/_components.css";
+/*
+ * THEME KERNEL
+ * Aggregates all token layers into a single entry point.
+ *
+ * Architecture:
+ * 1. Primitives: Raw values (hex, px, rem)
+ * 2. Semantics: Context-aware aliases (bg-page, text-primary)
+ * 3. Components: Component-specific tokens (w-card, h-navbar)
+ */
+
+@import "./tokens/primitives.css";
+@import "./tokens/semantics.css";
+@import "./tokens/components.css";
+@import "./tokens/dashboard.css";

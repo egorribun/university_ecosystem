@@ -163,8 +163,9 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
     >
       <motion.div
         className={cn(
-          "nowplaying--spotify card-glass card-glass-interactive w-full grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 px-4 py-3.5 rounded-2xl relative overflow-hidden"
+          "nowplaying--spotify card-glass card-glass-interactive w-full grid items-center gap-x-4 gap-y-2 px-4 py-3.5 rounded-2xl relative overflow-hidden",
         )}
+        style={{ gridTemplateColumns: "auto 1fr" }}
         initial={isTest || prefersReduce || reduced ? false : { y: motionTokens.slideSm, opacity: 0.8, scale: 1 }}
         animate={{ y: 0, opacity: 1, scale: 1 }}
         whileHover={prefersReduce || reduced ? {} : { y: -1, scale: 1.002 }}
@@ -184,13 +185,24 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
               referrerPolicy="no-referrer"
               onLoad={handleImageLoad}
               onError={handleImageError}
-              className={`w-full h-full rounded-lg object-cover transition-opacity duration-base ${
+              className={cn(
+                "w-full h-full rounded-lg object-cover transition-opacity duration-base",
                 imageLoaded ? "opacity-100" : "opacity-0"
-              } ${
-                prefersReduce || reduced
-                  ? ""
-                  : "scale-[1.012] transition-transform duration-lazy cubic-bezier-[0.22,0.61,0.36,1] hover:scale-[1.02]"
-              }`}
+              )}
+              style={prefersReduce || reduced ? undefined : {
+                transform: "scale(1.012)",
+                transition: "transform var(--duration-lazy) cubic-bezier(0.22, 0.61, 0.36, 1)",
+              }}
+              onMouseEnter={(e) => {
+                if (!prefersReduce && !reduced) {
+                  e.currentTarget.style.transform = "scale(1.02)"
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!prefersReduce && !reduced) {
+                  e.currentTarget.style.transform = "scale(1.012)"
+                }
+              }}
             />
           ) : (
             <div className="w-full h-full rounded-lg bg-(--bg-surface-hover)/(--opacity-medium) flex items-center justify-center">

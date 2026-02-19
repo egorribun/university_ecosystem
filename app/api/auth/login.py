@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import secrets
 import time
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import (
     APIRouter,
@@ -17,7 +17,6 @@ from fastapi import (
 )
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
     get_audit_service,
@@ -44,9 +43,13 @@ from app.schemas.schemas import (
     UserCreate,
     WebAuthnAuthenticationOptionsOut,
 )
-from app.services.audit_service import AuditService
-from app.services.auth.login_service import LoginService
 from app.utils.ratelimit import sensitive_route_limit
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.services.audit_service import AuditService
+    from app.services.auth.login_service import LoginService
 
 logger = logging.getLogger("app.auth.login")
 

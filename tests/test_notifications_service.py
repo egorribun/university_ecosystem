@@ -487,7 +487,7 @@ async def test_event_creation_enqueues_notifications(
 ):
     admin = await user_factory(role="admin")
     password = "Adm1nPass!"
-    admin.hashed_password = get_password_hash(password)
+    admin.hashed_password = await get_password_hash(password)
     await db_session.commit()
 
     headers = await _login(async_client, admin.email, password)
@@ -543,7 +543,7 @@ async def test_news_creation_enqueues_notifications(
 ):
     admin = await user_factory(role="admin")
     password = "Adm1nPass!"
-    admin.hashed_password = get_password_hash(password)
+    admin.hashed_password = await get_password_hash(password)
     await db_session.commit()
 
     headers = await _login(async_client, admin.email, password)

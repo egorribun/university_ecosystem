@@ -3,14 +3,11 @@
 from __future__ import annotations
 
 import hashlib
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
-
-if TYPE_CHECKING:
-    pass
 
 
 def compute_etag(content: bytes | str) -> str:

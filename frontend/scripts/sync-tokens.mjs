@@ -35,6 +35,10 @@ function extractVariablesFromDir(dirPath) {
 
   return variables
 }
+// Store entry path for relative resolution context if needed,
+// strictly speaking recursion handles it if we pass absolute paths.
+// But initial call needs to be correct.
+const entryPath = THEME_CSS_PATH
 
 const themeVars = extractVariablesFromDir(PARTIALS_DIR)
 console.log(`✅ Found ${themeVars.size} CSS variables in ${PARTIALS_DIR}`)

@@ -216,7 +216,11 @@ export default function MapContent() {
             title={t("map.iframeTitle")}
             width="100%"
             height={`calc(100% + ${MAP_IFRAME_OFFSET})`}
-            className={`absolute border-none left-0 right-0 block top-[-${MAP_IFRAME_OFFSET}] bottom-[-${MAP_IFRAME_OFFSET}]`}
+            className="absolute border-none left-0 right-0 block"
+            style={{
+              top: `calc(-1 * ${MAP_IFRAME_OFFSET})`,
+              bottom: `calc(-1 * ${MAP_IFRAME_OFFSET})`
+            }}
             allowFullScreen
             loading="lazy"
             onLoad={() => {

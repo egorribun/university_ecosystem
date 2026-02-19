@@ -42,7 +42,7 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
                 whileHover={{ rotate: 90, scale: 1.1 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={onClose}
-                className="rounded-full p-2 transition-colors hover:bg-[--bg-surface-hover]"
+                className="rounded-full p-2 transition-colors hover:bg-surface-hover"
               >
                 <X className="h-5 w-5" />
               </motion.button>
@@ -51,16 +51,16 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
             <div className="p-8">
               {loading && (
                 <div className="flex flex-col items-center py-8">
-                  <div className="h-12 w-12 animate-spin rounded-full border-4 border-t-[--primary-main] border-[--primary-main]/[--opacity-dim]"></div>
-                  <p className="mt-4 text-sm font-medium text-[--text-secondary]">
+                  <div className="h-12 w-12 animate-spin rounded-full border-4 border-t-brand border-brand/(--opacity-dim)"></div>
+                  <p className="mt-4 text-sm font-medium text-(--text-secondary)">
                     {t("messenger:loadingProfile", "Loading profile...")}
                   </p>
                 </div>
               )}
 
               {error && (
-                <div className="rounded-sm bg-[--error-text]/[--opacity-subtle] p-4 text-center">
-                  <p className="text-sm font-semibold text-[--error-text]"> {error}</p>
+                <div className="rounded-sm bg-(--error-text)/(--opacity-subtle) p-4 text-center">
+                  <p className="text-sm font-semibold text-(--error-text)"> {error}</p>
                 </div>
               )}
 
@@ -79,23 +79,23 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
                       )}
                     </div>
                     <h4 className="sf-pro text-2xl font-bold tracking-tight">{user.full_name}</h4>
-                    <p className="font-medium text-[--text-secondary]">{user.email}</p>
+                    <p className="font-medium text-(--text-secondary)">{user.email}</p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 pb-2">
                     <div className="rounded-md border border-subtle bg-(--bg-surface-hover)/(--opacity-medium) p-4">
-                      <p className="mb-1 text-xs font-bold uppercase tracking-widest text-[--text-secondary]/[--opacity-strong]">
+                      <p className="mb-1 text-xs font-bold uppercase tracking-widest text-(--text-secondary)/(--opacity-strong)">
                         {t("messenger:status", "Status")}
                       </p>
                       <p className="flex items-center gap-1.5 text-sm font-bold">
                         {user.is_active ? (
                           <>
-                            <span className="h-2 w-2 rounded-full bg-[--success-text]"></span>
+                            <span className="h-2 w-2 rounded-full bg-(--success-text)"></span>
                             {t("common:active", "Active")}
                           </>
                         ) : (
                           <>
-                            <span className="h-2 w-2 rounded-full bg-[--text-tertiary]"></span>
+                            <span className="h-2 w-2 rounded-full bg-(--text-tertiary)"></span>
                             {t("common:inactive", "Inactive")}
                           </>
                         )}
@@ -108,10 +108,10 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
                         rel="noreferrer"
                         className="rounded-md border border-(--primary-main)/(--opacity-subtle) bg-(--primary-main)/(--opacity-subtle) p-4 transition-colors hover:bg-(--primary-main)/(--opacity-subtle)"
                       >
-                        <p className="mb-1 text-xs font-bold uppercase tracking-widest text-[--primary-main]">
+                        <p className="mb-1 text-xs font-bold uppercase tracking-widest text-brand">
                           {t("messenger:avatar", "Avatar")}
                         </p>
-                        <p className="text-sm font-bold text-[--primary-main]">
+                        <p className="text-sm font-bold text-brand">
                           {t("messenger:viewAvatar", "Open full size")}
                         </p>
                       </a>

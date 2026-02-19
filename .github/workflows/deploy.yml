@@ -69,6 +69,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
     outputs:
       backend_digest: ${{ steps.build_backend.outputs.digest }}
       frontend_digest: ${{ steps.build_frontend.outputs.digest }}

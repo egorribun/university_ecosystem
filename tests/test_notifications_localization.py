@@ -20,7 +20,7 @@ async def _login(async_client, email: str, password: str) -> dict[str, str]:
 @pytest.mark.asyncio
 async def test_notifications_localization(async_client, db_session, user_factory):
     password = "Notify123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     user = await user_factory(hashed_password=hashed, is_active=True)
 
     now = datetime.now(UTC)

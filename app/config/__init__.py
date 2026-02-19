@@ -16,6 +16,6 @@ from app.config.security import SecuritySettings
 
 __all__ = [
     "DatabaseSettings",
-    "SecuritySettings",
     "NotificationsSettings",
+    "SecuritySettings",
 ]

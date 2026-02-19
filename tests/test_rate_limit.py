@@ -135,7 +135,7 @@ async def test_sensitive_login_rate_limit(async_client, user_factory):
     password = "ValidPass123!"
     user = await user_factory(
         email="login-rate@example.com",
-        hashed_password=get_password_hash(password),
+        hashed_password=await get_password_hash(password),
     )
     data = {"username": user.email, "password": "wrong-password"}
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
@@ -509,9 +509,9 @@ def test_parse_rate_limit_accepts_known_units(
     value = f"{leading_ws}{count}{separator}{unit}{trailing_ws}"
     parsed = rate_limit.parse_rate_limit(value, fallback=fallback)
 
-    expected_seconds = rate_limit._TIME_UNITS.get(unit)  # noqa: SLF001
+    expected_seconds = rate_limit._TIME_UNITS.get(unit)
     if expected_seconds is None:
-        expected_seconds = rate_limit._TIME_UNITS.get(unit.rstrip("s"))  # noqa: SLF001
+        expected_seconds = rate_limit._TIME_UNITS.get(unit.rstrip("s"))
     assert parsed == (count, expected_seconds)
 
 

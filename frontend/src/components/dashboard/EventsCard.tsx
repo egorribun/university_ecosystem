@@ -94,8 +94,8 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
   return (
     <Card
       className={cn(
-        "group bg-glass backdrop-blur-3xl transition-all duration-base ease-[cubic-bezier(0.34,1.56,0.64,1)]",
-        "hover:-translate-y-1 hover:scale-[1.01] hover:shadow-glass motion-reduce:hover:transform-none motion-reduce:hover:shadow-none",
+        "group bg-glass backdrop-blur-3xl transition-all duration-base ease-back-out",
+        "hover:-translate-y-1 hover:scale-(--scale-hover-subtle) hover:shadow-glass motion-reduce:hover:transform-none motion-reduce:hover:shadow-none",
         "dash-panel-events border-glass-border",
         className
       )}
@@ -176,12 +176,12 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
             {scopedEvents.map((e) => {
               // e.d is now a dayjs object from the useMemo above
               return (
-                <li key={e.id} className="dash-list-item px-0 py-0">
+                  <li key={e.id} className="dash-list-item px-0 py-0">
                   <button
                     type="button"
                     className={cn(
                       listActionBase,
-                      "flex min-h-18 flex-col justify-center gap-2 border-0 bg-transparent px-4 py-3 hover:bg-white/(--opacity-faint) active:scale-[0.99] sm:gap-2.5"
+                      "flex min-h-18 flex-col justify-center gap-2 border-0 bg-transparent px-4 py-3 hover:bg-white/(--opacity-faint) active:scale-(--scale-active) sm:gap-3"
                     )}
                     onClick={() => navigate(`/events/${e.id}`)}
                     aria-label={t("dashboard:aria.eventItem", { title: e.title })}
@@ -229,7 +229,10 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
           repeat: Infinity,
           ease: "easeInOut",
         }}
-        className="pointer-events-none absolute inset-0 z-hide bg-[radial-gradient(circle_at_top_left,var(--dash-card-events-radial),transparent_70%)] mix-blend-soft-light transition-opacity duration-slow"
+        className="pointer-events-none absolute inset-0 z-hide mix-blend-soft-light transition-opacity duration-slow"
+        style={{
+          background: "radial-gradient(circle at top left, var(--dash-card-events-radial), transparent 70%)"
+        }}
       />
       <motion.span
         aria-hidden="true"

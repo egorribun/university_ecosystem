@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from sqlalchemy import inspect
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
 from .models import User
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 USER_MFA_RELATIONSHIP_NAMES: tuple[str, ...] = (
     "totp_enrollments",
@@ -13,8 +17,9 @@ USER_MFA_RELATIONSHIP_NAMES: tuple[str, ...] = (
     "preferences",
     "spotify",
     "email_change_tokens",
-    "profile_detail",
+    "profile",
     "education_path",
+    "recovery_codes",
 )
 
 USER_MFA_LOAD_OPTIONS: tuple = (
@@ -22,9 +27,10 @@ USER_MFA_LOAD_OPTIONS: tuple = (
     selectinload(User.mfa_challenges),
     selectinload(User.webauthn_credentials),
     selectinload(User.email_change_tokens),
+    selectinload(User.recovery_codes),
     joinedload(User.preferences),
     joinedload(User.spotify),
-    joinedload(User.profile_detail),
+    joinedload(User.profile),
     joinedload(User.education_path),
 )
 
@@ -35,7 +41,7 @@ USER_MFA_LOAD_OPTIONS: tuple = (
 USER_AUTH_LOAD_OPTIONS: tuple = (
     joinedload(User.preferences),
     joinedload(User.spotify),
-    joinedload(User.profile_detail),
+    joinedload(User.profile),
     joinedload(User.education_path),
 )
 

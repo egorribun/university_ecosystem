@@ -71,7 +71,10 @@ export default function Settings() {
 
   return (
     <PageLayout variant="full">
-      <div className="flex h-full w-full flex-col bg-page text-text-primary sm:h-160 sm:max-h-[85vh] sm:flex-row">
+      <div
+        className="flex h-full w-full flex-col bg-(--bg-page) text-(--text-primary) sm:flex-row"
+        style={{ height: "40rem", maxHeight: "85vh" }}
+      >
         <div className="px-2 md:px-4">
           <div
             data-fade
@@ -80,7 +83,10 @@ export default function Settings() {
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-subtle-bg text-brand shadow-premium transition-transform duration-fast hover:scale-105 backdrop-blur-sm">
               <SettingsIcon className="h-6 w-6" />
             </div>
-            <h1 className="text-(--fs-page-title) font-bold tracking-tight text-text-primary">
+            <h1
+              className="font-bold tracking-tight text-(--text-primary)"
+              style={{ fontSize: "var(--fs-page-title)" }}
+            >
               {t("settings:page.title")}
             </h1>
           </div>

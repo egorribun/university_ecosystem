@@ -68,7 +68,7 @@ export const ScrollReveal = ({
   duration = motionTokens.durationSlow,
   className,
   width = "100%",
-  viewportMargin = "0px 0px -100px 0px",
+  viewportMargin = "0px 0px -50px 0px",
 }: Props) => {
   const ref = useRef<HTMLDivElement>(null)
   const isInView = useInView(ref, { once: true, margin: viewportMargin })

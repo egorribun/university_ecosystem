@@ -254,13 +254,13 @@ export const ProfileEditor = ({
           <button
             onClick={onSave}
             disabled={saving}
-            className="w-full sm:w-auto py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg sm:rounded-xl bg-(--primary-main) text-white font-extrabold tracking-wide text-sm sm:text-base shadow-surface hover:shadow-surface-strong transition-all duration-base hover:-translate-y-0.5 hover:scale-[1.01] active:scale-[0.98] disabled:opacity-medium disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none border border-(--primary-main)/(--opacity-dim)"
+            className="w-full sm:w-auto py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg sm:rounded-xl bg-(--primary-main) text-white font-extrabold tracking-wide text-sm sm:text-base shadow-surface hover:shadow-surface-strong transition-all duration-base hover:-translate-y-0.5 hover:scale-(--scale-hover-subtle) active:scale-95 disabled:opacity-medium disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none border border-(--primary-main)/(--opacity-dim)"
           >
             {saving ? t("profile:form.saving") : t("profile:form.save")}
           </button>
           <button
             onClick={onCancel}
-            className="w-full sm:w-auto py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg sm:rounded-xl border-2 border-glass-border bg-transparent hover:bg-(--bg-surface)-accent text-text-primary font-extrabold tracking-wide text-sm sm:text-base transition-all duration-base hover:-translate-y-0.5 hover:scale-[1.01] active:scale-[0.98]"
+            className="w-full sm:w-auto py-(--space-3) px-(--space-8) rounded-lg sm:rounded-xl border-2 border-glass-border bg-transparent hover:bg-(--bg-surface)-accent text-text-primary font-extrabold tracking-wide text-sm sm:text-base transition-all duration-base hover:-translate-y-0.5 hover:scale-[1.01] active:scale-[0.98]"
           >
             {t("profile:form.cancel")}
           </button>

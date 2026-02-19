@@ -6,9 +6,18 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
+# Workaround for passlib/bcrypt 4.1+ incompatibility
+import bcrypt
 import pytest
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.compiler import compiles
+
+if not hasattr(bcrypt, "__about__"):
+    try:
+        bcrypt.__about__ = type("about", (object,), {"__version__": bcrypt.__version__})
+    except AttributeError:
+        # Fallback if __version__ is also missing or other issues
+        bcrypt.__about__ = type("about", (object,), {"__version__": "4.0.0"})
 
 # Core settings for tests
 os.environ["ENVIRONMENT"] = "testing"
@@ -30,6 +39,8 @@ os.environ["RATE_LIMIT_ENABLED"] = "true"
 os.environ["RATE_LIMIT_NEWS"] = "5/minute"
 os.environ["RATE_LIMIT_AUTH_REGISTER"] = "4/minute"
 os.environ["RATE_LIMIT_AUTH_PASSWORD_RESET"] = "4/minute"
+os.environ["IMGPROXY_KEY"] = ""
+os.environ["IMGPROXY_SALT"] = ""
 
 Path(os.environ.get("STATIC_DIR", "app/test-static")).mkdir(parents=True, exist_ok=True)
 

@@ -19,7 +19,7 @@ def create_admin(
         str, typer.Option(help="Admin email address.")
     ] = "admin@example.com",
     password: Annotated[
-        str,
+        str | None,
         typer.Option(
             help="Admin password.",
             prompt=True,
@@ -40,7 +40,7 @@ def create_admin(
             existing = result.scalar_one_or_none()
 
             if existing:
-                existing.hashed_password = get_password_hash(password)
+                existing.hashed_password = await get_password_hash(password)
                 await db.commit()
                 typer.echo(
                     f"Admin user already exists with ID: {existing.id}. Password reset."
@@ -49,7 +49,7 @@ def create_admin(
 
             admin = User(
                 email=email,
-                hashed_password=get_password_hash(password),
+                hashed_password=await get_password_hash(password),
                 full_name=full_name,
                 role="admin",
                 is_active=True,

@@ -128,24 +128,18 @@ const Register = () => {
   const heroPerks = [
     {
       icon: UsersRound,
-      title: t("auth:register.perkCommunity", { defaultValue: "Глобальное сообщество" }),
-      description: t("auth:register.perkCommunityDesc", {
-        defaultValue: "Наставники, кураторы и студенты объединены в одну экосистему.",
-      }),
+      title: t("auth:register.hero.perks.community.title"),
+      description: t("auth:register.hero.perks.community.description"),
     },
     {
       icon: ShieldCheck,
-      title: t("auth:register.perkSecure", { defaultValue: "Безопасные роли" }),
-      description: t("auth:register.perkSecureDesc", {
-        defaultValue: "Гибкая выдача прав, приглашения и прозрачные процессы.",
-      }),
+      title: t("auth:register.hero.perks.secure.title"),
+      description: t("auth:register.hero.perks.secure.description"),
     },
     {
       icon: Sparkles,
-      title: t("auth:register.perkExperience", { defaultValue: "Мировой уровень" }),
-      description: t("auth:register.perkExperienceDesc", {
-        defaultValue: "Вдохновляющий дизайн, созданный, чтобы мотивировать учиться.",
-      }),
+      title: t("auth:register.hero.perks.experience.title"),
+      description: t("auth:register.hero.perks.experience.description"),
     },
   ]
 
@@ -166,16 +160,13 @@ const Register = () => {
         >
           <div className="flex items-center gap-3 text-sm font-semibold uppercase tracking-widest text-text-primary/(--opacity-strong)">
             <Crown className="h-5 w-5" aria-hidden="true" />
-            {t("auth:register.heroBadge", { defaultValue: "Добро пожаловать в систему" })}
+            {t("auth:register.hero.badge")}
           </div>
           <h1 className="mt-6 text-4xl font-extrabold leading-tight text-text-primary sm:text-5xl">
             {t("auth:register.title")}
           </h1>
           <p className="mt-4 text-lg leading-relaxed text-text-secondary">
-            {t("auth:register.heroDescription", {
-              defaultValue:
-                "Создайте аккаунт, чтобы управлять своей академической траекторией, посещать события и мгновенно взаимодействовать с кампусом.",
-            })}
+            {t("auth:register.hero.description")}
           </p>
           <div className="mt-8 grid gap-5 sm:grid-cols-2">
             {heroPerks.map(({ icon: Icon, title, description }) => (

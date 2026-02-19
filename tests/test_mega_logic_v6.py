@@ -1,4 +1,5 @@
 import datetime
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -23,10 +24,23 @@ async def test_user_service_mega():
     db.add_all = MagicMock()
     notifications = AsyncMock()
     repo = AsyncMock()
-    service = UserService(db, repo, audit, notifications)
+    stats_repo = MagicMock()
+    service = UserService(repo, stats_repo, audit, notifications)
 
-    admin_user = models.User(id=1, email="admin@e.com", role="admin")
-    student_user = models.User(id=2, email="s@e.com", role="student")
+    admin_user = models.User(
+        id=uuid.uuid4(),
+        email="admin@e.com",
+        role="admin",
+        is_active=True,
+        mfa_required=False,
+    )
+    student_user = models.User(
+        id=uuid.uuid4(),
+        email="s@e.com",
+        role="student",
+        is_active=True,
+        mfa_required=False,
+    )
     request = MagicMock()
     request.client.host = "127.0.0.1"
     request.headers.get.return_value = "PyTest"
@@ -45,7 +59,8 @@ async def test_user_service_mega():
     # 3. upload_avatar/cover - rollback/error paths
     file = MagicMock(spec=UploadFile)
     repo.get.return_value = student_user
-    db.commit.side_effect = Exception("db error")
+    # Commit is routed through service.repo.commit() after refactor.
+    repo.commit.side_effect = Exception("db error")
     with (
         patch("app.services.user_service.save_upload", return_value="/url"),
         patch(
@@ -53,17 +68,17 @@ async def test_user_service_mega():
         ) as m_del,
         patch("app.services.user_service.resolve_locale", return_value="en"),
     ):
-        with pytest.raises(Exception, match="db error"):  # noqa: B017
+        with pytest.raises(Exception, match="db error"):
             await service.upload_avatar(student_user, file)
-        db.rollback.assert_called()
+        repo.rollback.assert_called()
         m_del.assert_called_with("/url")
 
         # upload_cover error
-        with pytest.raises(Exception, match="db error"):  # noqa: B017
+        with pytest.raises(Exception, match="db error"):
             await service.upload_cover(student_user, file)
 
     # 4. admin create_user branches
-    db.commit.side_effect = None
+    repo.commit.side_effect = None
     repo.check_email_exists.return_value = False
     data_user = schemas.UserCreate(
         email="n@e.com",
@@ -93,7 +108,9 @@ async def test_user_service_mega():
 
     # 5. admin_update_user - MFA reset
     data_update = schemas.UserAdminUpdate(reset_mfa=True)
-    db_user = models.User(id=3, email="u@e.com")
+    db_user = models.User(
+        id=uuid.uuid4(), email="u@e.com", is_active=True, mfa_required=False
+    )
     repo.get.return_value = db_user
     with (
         patch("app.auth.mfa.reset_user_mfa", new_callable=AsyncMock) as m_reset,
@@ -129,23 +146,35 @@ async def test_user_service_mega():
             await service.admin_delete_user(3, request, student_user)
 
     # 7. data_export - full
+    # 7. data_export - full
     repo.get.return_value = student_user
-    mock_res_sessions = MagicMock()
-    mock_res_sessions.scalars.return_value = [
-        models.ActiveSession(id=1, ip_address="1.1.1.1")
+    repo.get_user_sessions.return_value = [
+        MagicMock(
+            id=uuid.uuid4(),
+            ip_address="1.1.1.1",
+            created_at=datetime.datetime.now(datetime.UTC),
+            expires_at=None,
+            revoked_at=None,
+            user_agent="Mock",
+            last_seen_at=None,
+            mfa_completed_at=None,
+        )
     ]
-    mock_res_notifs = MagicMock()
-    mock_res_notifs.scalars.return_value = [models.Notification(id=1, title="T")]
-    mock_res_logs = MagicMock()
-    mock_res_logs.scalars.return_value.all.return_value = [
-        models.DataAccessLog(id=1, resource_type="users", action="access")
+    repo.get_user_notifications.return_value = [
+        MagicMock(
+            id=uuid.uuid4(), title="T", created_at=datetime.datetime.now(datetime.UTC)
+        )
     ]
-    db.execute.side_effect = [
-        mock_res_sessions,
-        mock_res_notifs,
-        mock_res_logs,
-        MagicMock(),
-    ]  # sessions, notifications, logs, challenges
+    repo.get_user_access_logs.return_value = [
+        MagicMock(
+            id=uuid.uuid4(),
+            resource_type="users",
+            action="access",
+            created_at=datetime.datetime.now(datetime.UTC),
+        )
+    ]
+    repo.get_user_mfa_challenges.return_value = []
+    repo.get_user_totp_enrollments.return_value = []
 
     with (
         patch(
@@ -154,7 +183,7 @@ async def test_user_service_mega():
         ),
         patch("app.services.user_service.attach_pending_email", new_callable=AsyncMock),
         patch(
-            "app.schemas.schemas.UserOut.from_orm",
+            "app.schemas.schemas.UserOut.model_validate",
             return_value=MagicMock(model_dump=lambda: {}),
         ),
     ):

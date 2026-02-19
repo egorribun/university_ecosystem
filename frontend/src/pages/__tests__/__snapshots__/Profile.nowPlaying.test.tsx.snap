@@ -9,8 +9,8 @@ exports[`NowPlayingCard > matches snapshot when paused 1`] = `
   target="_blank"
 >
   <div
-    class="nowplaying--spotify card-glass card-glass-interactive w-full grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 px-4 py-3.5 rounded-2xl relative overflow-hidden"
-    style="opacity: 1; transform: none;"
+    class="nowplaying--spotify card-glass card-glass-interactive w-full grid items-center gap-x-4 gap-y-2 px-4 py-3.5 rounded-2xl relative overflow-hidden"
+    style="grid-template-columns: auto 1fr; opacity: 1; transform: none;"
     tabindex="0"
   >
     <div
@@ -21,11 +21,12 @@ exports[`NowPlayingCard > matches snapshot when paused 1`] = `
     >
       <img
         alt="Album"
-        class="w-full h-full rounded-lg object-cover transition-opacity duration-base opacity-100 scale-[1.012] transition-transform duration-lazy cubic-bezier-[0.22,0.61,0.36,1] hover:scale-[1.02]"
+        class="w-full h-full rounded-lg object-cover transition-opacity duration-base opacity-100"
         decoding="async"
         loading="eager"
         referrerpolicy="no-referrer"
         src="https://example.com/cover.jpg"
+        style="transform: scale(1.012); transition: transform var(--duration-lazy) cubic-bezier(0.22, 0.61, 0.36, 1);"
       />
     </div>
     <div
@@ -69,7 +70,7 @@ exports[`NowPlayingCard > matches snapshot when paused 1`] = `
           style="width: 6.6ch;"
         >
           0:30
-           / 
+           /
           3:00
         </span>
       </div>
@@ -87,8 +88,8 @@ exports[`NowPlayingCard > matches snapshot when playing 1`] = `
   target="_blank"
 >
   <div
-    class="nowplaying--spotify card-glass card-glass-interactive w-full grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 px-4 py-3.5 rounded-2xl relative overflow-hidden"
-    style="opacity: 1; transform: none;"
+    class="nowplaying--spotify card-glass card-glass-interactive w-full grid items-center gap-x-4 gap-y-2 px-4 py-3.5 rounded-2xl relative overflow-hidden"
+    style="grid-template-columns: auto 1fr; opacity: 1; transform: none;"
     tabindex="0"
   >
     <div
@@ -99,11 +100,12 @@ exports[`NowPlayingCard > matches snapshot when playing 1`] = `
     >
       <img
         alt="Album"
-        class="w-full h-full rounded-lg object-cover transition-opacity duration-base opacity-100 scale-[1.012] transition-transform duration-lazy cubic-bezier-[0.22,0.61,0.36,1] hover:scale-[1.02]"
+        class="w-full h-full rounded-lg object-cover transition-opacity duration-base opacity-100"
         decoding="async"
         loading="eager"
         referrerpolicy="no-referrer"
         src="https://example.com/cover.jpg"
+        style="transform: scale(1.012); transition: transform var(--duration-lazy) cubic-bezier(0.22, 0.61, 0.36, 1);"
       />
     </div>
     <div
@@ -141,7 +143,7 @@ exports[`NowPlayingCard > matches snapshot when playing 1`] = `
           style="width: 6.6ch;"
         >
           0:30
-           / 
+           /
           3:00
         </span>
       </div>

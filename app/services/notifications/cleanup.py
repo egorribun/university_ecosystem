@@ -9,13 +9,16 @@ from __future__ import annotations
 import datetime as dt
 import logging
 from datetime import UTC
+from typing import TYPE_CHECKING
 
 from sqlalchemy import delete, or_, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import async_session as _async_session
 from app.models.models import Notification, NotificationDelivery
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 

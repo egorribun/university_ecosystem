@@ -92,7 +92,7 @@ async def test_list_sessions_includes_current_session_metadata(
     db_session,
 ):
     password = "Sessions123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     user = await user_factory(email="sessions@example.com", hashed_password=hashed)
 
     headers = await _login(
@@ -126,7 +126,7 @@ async def test_admin_can_list_sessions_for_other_user(
     password = "AdminSessions42!"
     admin = await user_factory(
         email="admin@example.com",
-        hashed_password=get_password_hash(password),
+        hashed_password=await get_password_hash(password),
         role="admin",
     )
     target = await user_factory(email="target@example.com")
@@ -163,7 +163,7 @@ async def test_non_admin_cannot_list_sessions_for_other_user(
 ):
     password = "Forbidden42!"
     actor = await user_factory(
-        email="actor@example.com", hashed_password=get_password_hash(password)
+        email="actor@example.com", hashed_password=await get_password_hash(password)
     )
     other = await user_factory(email="other@example.com")
     db_session.add(
@@ -193,7 +193,7 @@ async def test_revoke_session_removes_from_listing(
 ):
     password = "Revoke123!"
     user = await user_factory(
-        email="revoker@example.com", hashed_password=get_password_hash(password)
+        email="revoker@example.com", hashed_password=await get_password_hash(password)
     )
     other_session = ActiveSession(
         user_id=user.id,
@@ -239,7 +239,7 @@ async def test_admin_can_revoke_foreign_session(
     password = "AdminDelete7!"
     admin = await user_factory(
         email="admin-del@example.com",
-        hashed_password=get_password_hash(password),
+        hashed_password=await get_password_hash(password),
         role="admin",
     )
     target = await user_factory(email="victim@example.com")
@@ -271,7 +271,7 @@ async def test_logout_removes_session_immediately(
 ):
     password = "Logout123!"
     user = await user_factory(
-        email="logout@example.com", hashed_password=get_password_hash(password)
+        email="logout@example.com", hashed_password=await get_password_hash(password)
     )
 
     headers = await _login(async_client, email=user.email, password=password)
@@ -307,7 +307,7 @@ async def test_revoke_session_requires_step_up(
 ):
     monkeypatch.setattr(settings, "mfa_step_up_ttl_seconds", 60)
     password = "StepUpSessions123!"
-    hashed = get_password_hash(password)
+    hashed = await get_password_hash(password)
     user = await user_factory(
         email="stepup-sessions@example.com", hashed_password=hashed
     )
@@ -364,7 +364,7 @@ async def test_revoke_other_user_session_forbidden(
 ):
     password = "Nope123!"
     actor = await user_factory(
-        email="nope@example.com", hashed_password=get_password_hash(password)
+        email="nope@example.com", hashed_password=await get_password_hash(password)
     )
     other = await user_factory(email="outsider@example.com")
     session = ActiveSession(
@@ -392,7 +392,7 @@ async def test_revoke_missing_session_returns_404(
 ):
     password = "Missing404!"
     user = await user_factory(
-        email="missing@example.com", hashed_password=get_password_hash(password)
+        email="missing@example.com", hashed_password=await get_password_hash(password)
     )
     headers = await _login(async_client, email=user.email, password=password)
 

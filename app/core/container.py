@@ -7,9 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db, get_read_db
 from app.deps.cache import BaseCache, get_cache
+from app.repositories.auth_repository import get_auth_repository
 from app.repositories.event_repository import get_event_repository
 from app.repositories.news_repository import get_news_repository
 from app.repositories.user_repository import get_user_repository
+from app.repositories.user_stats_repository import get_user_stats_repository
 from app.services.audit_service import (
     AuditService,
     SecureAuditService,
@@ -65,14 +67,20 @@ def get_user_service(
     notifications: NotificationService = Depends(get_notification_service),
 ) -> UserService:
     repo = get_user_repository(db)
-    return UserService(db=db, repo=repo, audit=audit, notifications=notifications)
+    stats_repo = get_user_stats_repository(db)
+    return UserService(
+        user_repo=repo,
+        stats_repo=stats_repo,
+        audit=audit,
+        notifications=notifications,
+    )
 
 
 def get_user_profile_service(
     db: AsyncSession = Depends(get_db),
 ) -> UserProfileService:
     repo = get_user_repository(db)
-    return UserProfileService(db=db, repo=repo)
+    return UserProfileService(repo=repo)
 
 
 def get_user_admin_service(
@@ -81,7 +89,7 @@ def get_user_admin_service(
     notifications: NotificationService = Depends(get_notification_service),
 ) -> UserAdminService:
     repo = get_user_repository(db)
-    return UserAdminService(db=db, repo=repo, audit=audit, notifications=notifications)
+    return UserAdminService(repo=repo, audit=audit, notifications=notifications)
 
 
 def get_user_data_service(
@@ -89,7 +97,7 @@ def get_user_data_service(
     audit: AuditService = Depends(get_audit_service),
 ) -> UserDataService:
     repo = get_user_repository(db)
-    return UserDataService(db=db, repo=repo, audit=audit)
+    return UserDataService(repo=repo, audit=audit)
 
 
 def get_event_service(
@@ -150,4 +158,6 @@ def get_auth_service(
     db: AsyncSession = Depends(get_db),
     audit: AuditService = Depends(get_audit_service),
 ) -> AuthService:
-    return AuthService(db=db, audit=audit)
+    auth_repo = get_auth_repository(db)
+    user_repo = get_user_repository(db)
+    return AuthService(audit=audit, auth_repo=auth_repo, user_repo=user_repo)

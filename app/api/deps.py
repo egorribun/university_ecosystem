@@ -276,6 +276,7 @@ async def get_current_user(
         await db.execute(stmt)
         await db.commit()
         session.last_seen_at = now
+        await db.refresh(user)
 
     request.state.active_session = session
     return user
@@ -509,10 +510,14 @@ def get_read_schedule_service(
 def get_auth_service(
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> Any:
+    from app.repositories.auth_repository import AuthRepository
+    from app.repositories.user_repository import UserRepository
     from app.services.audit_service import audit_service
     from app.services.auth_service import AuthService
 
-    return AuthService(session, audit_service)
+    auth_repo = AuthRepository(session)
+    user_repo = UserRepository(session)
+    return AuthService(audit_service, auth_repo, user_repo)
 
 
 def get_session_service(
@@ -529,13 +534,15 @@ def get_user_service(
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> Any:
     from app.repositories.user_repository import UserRepository
+    from app.repositories.user_stats_repository import UserStatsRepository
     from app.services.audit_service import audit_service
     from app.services.notification_service import NotificationService
     from app.services.user_service import UserService
 
-    repo = UserRepository(session)
+    user_repo = UserRepository(session)
+    stats_repo = UserStatsRepository(session)
     notifications = NotificationService(session)
-    return UserService(session, repo, audit_service, notifications)
+    return UserService(user_repo, stats_repo, audit_service, notifications)
 
 
 def get_audit_service() -> Any:

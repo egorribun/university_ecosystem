@@ -22,7 +22,7 @@ async def test_chat_full_lifecycle(
     async_client, user_factory, _rate_limit_redis_client
 ):
     password = "Lifecycle123!"
-    user = await user_factory(hashed_password=get_password_hash(password))
+    user = await user_factory(hashed_password=await get_password_hash(password))
     other = await user_factory()
 
     headers = await _login(async_client, user.email, password)
@@ -71,7 +71,7 @@ async def test_chat_full_lifecycle(
 @pytest.mark.asyncio
 async def test_get_chats_list(async_client, user_factory):
     password = "Lifecycle123!"
-    user = await user_factory(hashed_password=get_password_hash(password))
+    user = await user_factory(hashed_password=await get_password_hash(password))
     other = await user_factory()
     headers = await _login(async_client, user.email, password)
 

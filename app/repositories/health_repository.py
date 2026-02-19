@@ -79,7 +79,7 @@ class HealthRepository:
         try:
             # Use parameterized table name safely
             result = await self._connection.execute(
-                text(f"SELECT COUNT(*) FROM {table_name}")  # noqa: S608
+                text(f"SELECT COUNT(*) FROM {table_name}")
             )
             row = result.fetchone()
             return int(row[0]) if row else 0

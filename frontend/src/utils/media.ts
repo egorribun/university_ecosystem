@@ -1,4 +1,4 @@
-const DUMMY_BASE = "http://dummy.com"
+const DUMMY_BASE = "http://internal.placeholder"
 
 const hasProtocol = (value: string) => /^(?:https?:)?\/\//i.test(value)
 const isBlobUrl = (value: string) => /^blob:/i.test(value)

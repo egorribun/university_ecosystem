@@ -10,8 +10,10 @@ import asyncio
 import functools
 import logging
 import random
-from collections.abc import Awaitable, Callable
-from typing import ParamSpec, TypeVar
+from typing import TYPE_CHECKING, ParamSpec, TypeVar
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -135,4 +137,4 @@ def with_retry(
     return decorator
 
 
-__all__ = ["retry_async", "with_retry", "RetryExhausted"]
+__all__ = ["RetryExhausted", "retry_async", "with_retry"]

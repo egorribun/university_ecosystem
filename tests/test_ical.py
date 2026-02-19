@@ -139,7 +139,7 @@ class TestFormatDt:
 
     def test_format_naive_datetime(self):
         # Testing naive datetime formatting (without timezone)
-        dt = datetime(2024, 1, 15, 10, 30, 0)  # noqa: DTZ001
+        dt = datetime(2024, 1, 15, 10, 30, 0)
         assert _format_dt(dt) == "20240115T103000"
 
 

@@ -1,3 +1,4 @@
+import contextlib
 import logging
 from datetime import UTC, datetime, timedelta
 
@@ -147,9 +148,7 @@ async def start_partition_management_scheduler(interval_seconds: int = 86400):
 
     async def stop():
         task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await task
-        except asyncio.CancelledError:
-            pass
 
     return stop

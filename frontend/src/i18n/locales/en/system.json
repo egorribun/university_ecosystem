@@ -3,7 +3,9 @@
     "title": "Something went wrong",
     "description": "We're already working on the issue. Try refreshing the page or come back later.",
     "reload": "Reload page",
-    "retry": "Try again"
+    "retry": "Try again",
+    "goHome": "Go Home",
+    "details": "Error details"
   },
   "notificationsBell": {
     "open": "Open notifications",

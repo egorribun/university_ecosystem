@@ -33,7 +33,7 @@ async def test_register_endpoint(async_client: AsyncClient, db_session):
 
 async def test_login_json_endpoint(async_client: AsyncClient, user_factory):
     password = "StrongPass1!"
-    user = await user_factory(hashed_password=get_password_hash(password))
+    user = await user_factory(hashed_password=await get_password_hash(password))
 
     payload = {"email": user.email, "password": password, "trust_device": False}
     response = await async_client.post("/auth/login/json", json=payload)
@@ -50,7 +50,7 @@ async def test_login_json_endpoint(async_client: AsyncClient, user_factory):
 
 async def test_login_form_endpoint(async_client: AsyncClient, user_factory):
     password = "StrongPass1!"
-    user = await user_factory(hashed_password=get_password_hash(password))
+    user = await user_factory(hashed_password=await get_password_hash(password))
 
     data = {"username": user.email, "password": password}
     response = await async_client.post("/auth/login", data=data)

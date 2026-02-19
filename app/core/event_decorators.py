@@ -134,9 +134,9 @@ def get_pending_count() -> int:
 
 
 __all__ = [
-    "subscribe",
-    "subscribe_all",
-    "register_decorated_handlers",
     "clear_pending_registrations",
     "get_pending_count",
+    "register_decorated_handlers",
+    "subscribe",
+    "subscribe_all",
 ]

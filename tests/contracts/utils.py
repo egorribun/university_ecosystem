@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.main import app
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 
 def load_current_openapi() -> dict[str, Any]:

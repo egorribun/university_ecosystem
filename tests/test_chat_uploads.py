@@ -1,5 +1,3 @@
-# ruff: noqa: E501
-
 import io
 
 import pytest
@@ -177,7 +175,7 @@ async def test_send_message_generates_public_urls(
     )
     assert stored.scalar_one().url == attachment.url
 
-    method, (relative_path, data), kwargs = backend.calls[0]
+    method, (relative_path, _data), kwargs = backend.calls[0]
     assert method == "save"
     assert relative_path.startswith("chat_uploads/")
     assert kwargs["content_type"] == "text/plain"

@@ -4,19 +4,23 @@ News repository for news data access operations.
 
 from __future__ import annotations
 
+import contextlib
 import uuid
-from collections.abc import Sequence
-from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import and_, exists, false, func, or_, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.cache import news_cache
 from app.core.config import settings
 from app.models import models
 from app.models.news import News
 from app.repositories.base import BaseRepository
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from datetime import datetime
+
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class NewsRepository(BaseRepository[News, dict, dict]):
@@ -85,10 +89,8 @@ class NewsRepository(BaseRepository[News, dict, dict]):
         )
 
         if current_user_id and isinstance(current_user_id, str):
-            try:
+            with contextlib.suppress(ValueError):
                 current_user_id = uuid.UUID(current_user_id)
-            except ValueError:
-                pass
 
         is_liked_sub = (
             exists()
@@ -107,10 +109,8 @@ class NewsRepository(BaseRepository[News, dict, dict]):
         if cursor:
             last_created_at, last_id = cursor
             if isinstance(last_id, str):
-                try:
+                with contextlib.suppress(ValueError):
                     last_id = uuid.UUID(last_id)
-                except ValueError:
-                    pass
             stmt = stmt.where(
                 or_(
                     News.created_at < last_created_at,

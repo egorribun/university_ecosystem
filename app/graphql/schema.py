@@ -4,8 +4,6 @@ This module creates the Strawberry GraphQL schema and router that can be
 included in the FastAPI application.
 """
 
-from __future__ import annotations
-
 import logging
 import uuid
 
@@ -91,4 +89,4 @@ graphql_router = GraphQLRouter(
 )
 
 
-__all__ = ["schema", "graphql_router"]
+__all__ = ["graphql_router", "schema"]

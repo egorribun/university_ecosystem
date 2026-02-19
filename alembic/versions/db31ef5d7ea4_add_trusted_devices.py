@@ -98,9 +98,9 @@ def upgrade() -> None:
             # and current is already TZ-aware
             is_target_tz = getattr(target_type, "timezone", False)
             is_current_tz = False
-            if hasattr(current_type, "timezone"):
-                is_current_tz = current_type.timezone
-            elif isinstance(current_type, postgresql.TIMESTAMP):
+            if hasattr(current_type, "timezone") or isinstance(
+                current_type, postgresql.TIMESTAMP
+            ):
                 is_current_tz = current_type.timezone
 
             if is_target_tz and is_current_tz:

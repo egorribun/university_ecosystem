@@ -6,12 +6,15 @@ push notification delivery.
 
 from __future__ import annotations
 
-import datetime as dt
 from collections.abc import Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from app.models.models import User
 from app.services.notifications.core import _current_local_time
+
+if TYPE_CHECKING:
+    import datetime as dt
+
+    from app.models.models import User
 
 
 def is_user_in_quiet_hours(
@@ -50,10 +53,7 @@ def prepare_push_payload_for_user(
         base["renotify"] = False
         base["requireInteraction"] = False
         data_payload = base.get("data")
-        if isinstance(data_payload, dict):
-            data_payload = dict(data_payload)
-        else:
-            data_payload = {}
+        data_payload = dict(data_payload) if isinstance(data_payload, dict) else {}
         data_payload["dnd_suppressed"] = True
         base["data"] = data_payload
     return base

@@ -139,8 +139,10 @@ export default function NotificationsBell() {
         />
         {unreadCount ? (
           <span className="absolute top-1.5 right-1.5 flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-error-border opacity-strong"></span>
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-(--error-text) border-2 border-(--bg-surface) dark:border-(--bg-page)"></span>
+            <span
+              className="animate-ping absolute inline-flex h-full w-full rounded-full bg-error-border opacity-strong"
+            />
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-(--error-text) border-2 border-(--bg-surface) dark:border-(--bg-page)" />
           </span>
         ) : null}
       </motion.button>
@@ -156,7 +158,7 @@ export default function NotificationsBell() {
               className={cn(
                 "fixed z-popover origin-top-right",
                 // Mobile styles: we handle translation in framer motion to avoid conflict
-                "max-sm:left-1/2 max-sm:w-[calc(100vw-2rem)]",
+                "max-sm:left-1/2",
                 // Desktop styles
                 "sm:w-96",
                 // Glass styles applied directly to motion component for immediate effect
@@ -165,6 +167,7 @@ export default function NotificationsBell() {
               style={{
                 top: coords.top,
                 right: coords.right ?? undefined,
+                width: isMobile ? "calc(100vw - 2rem)" : undefined,
               }}
               ref={dropdownRef}
             >

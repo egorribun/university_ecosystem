@@ -451,7 +451,7 @@ def test_normalize_payload_complex():
         "options": {"body": "B"},
         "_meta": {"ttl": 100, "urgency": "high"},
     }
-    payload, meta = _normalize_payload(raw)
+    _payload, meta = _normalize_payload(raw)
     assert meta["ttl"] == 100
     assert meta["urgency"] == "high"
 
@@ -461,7 +461,7 @@ def test_normalize_payload_complex():
         "renotify": True,
         "actions": [{"action": "a", "title": "t"}],
     }
-    payload2, meta2 = _normalize_payload(raw2)
+    payload2, _meta2 = _normalize_payload(raw2)
     assert payload2["options"]["vibrate"] == [100, 200]
     assert payload2["options"]["renotify"] is True
     assert len(payload2["options"]["actions"]) == 1

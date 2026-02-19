@@ -6,9 +6,7 @@ This module handles notifications for new news articles and events.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
-
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import TYPE_CHECKING, Any
 
 from app.core.localization import (
     SUPPORTED_LOCALES,
@@ -17,7 +15,6 @@ from app.core.localization import (
     resolve_locale,
     translate,
 )
-from app.models.models import Event, News
 from app.services.notification_templates import render_notification_template
 from app.services.notifications.core import (
     _ensure_aware,
@@ -25,6 +22,11 @@ from app.services.notifications.core import (
     _plain_text,
 )
 from app.services.notifications.delivery import create_notifications_for_users
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.models.models import Event, News
 
 
 async def notify_about_news(

@@ -70,11 +70,11 @@ export default function AdminFeatureFlags() {
             transition={{ duration: 0.5 }}
             className="mb-8"
           >
-            <h1 className="text-4xl font-bold tracking-tight text-text-primary sm:text-5xl">
+            <h1 className="text-4xl font-bold tracking-tight text-(--text-primary) sm:text-5xl">
               {t("featureFlags.title", "Dynamic Feature Flags")}
             </h1>
             <p className="mt-2 text-base text-(--text-secondary)">
-              Real-time control over application features and rollout strategies.
+              {t("featureFlags.subtitle")}
             </p>
           </motion.div>
 
@@ -145,19 +145,20 @@ export default function AdminFeatureFlags() {
                                 max="100"
                                 step="5"
                                 value={flag.percentage}
+                                aria-label={t("featureFlags.rollout.range", "Rollout Percentage")}
                                 onChange={(event) =>
                                   handlePercentageChange(flag.name, parseInt(event.target.value))
                                 }
                                 className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-glass-border accent-brand"
                               />
                               <div className="flex items-center justify-between text-label-xs font-bold uppercase tracking-widest text-(--text-secondary)">
-                                <span>{flag.percentage}% of users</span>
+                                <span>{t("featureFlags.rollout.percentage", { value: flag.percentage })}</span>
                                 <Percent className="h-3 w-3" />
                               </div>
                             </div>
                           ) : (
                             <span className="text-sm italic text-(--text-secondary) opacity-medium">
-                              Global toggle active
+                              {t("featureFlags.rollout.global")}
                             </span>
                           )}
                         </td>

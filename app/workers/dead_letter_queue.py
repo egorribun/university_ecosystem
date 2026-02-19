@@ -15,7 +15,7 @@ import json
 import logging
 from datetime import UTC, datetime, timedelta
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
     Column,
@@ -28,9 +28,11 @@ from sqlalchemy import (
     func,
     select,
 )
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import Base
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 

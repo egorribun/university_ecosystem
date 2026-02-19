@@ -1,6 +1,6 @@
 import importlib
 import os
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 
 import pytest
@@ -111,10 +111,8 @@ def test_settings_warn_when_env_matches_example(monkeypatch, caplog, tmp_path):
     # Write both .env and .env.example with identical content
     example_path = BACKEND_ROOT / ".env.example"
     original_example = None
-    try:
+    with suppress(FileNotFoundError):
         original_example = example_path.read_bytes()
-    except FileNotFoundError:
-        pass
 
     try:
         example_path.write_bytes(test_example_content)

@@ -1,7 +1,6 @@
 import logging
 
 from fastapi import Request
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions.domain import (
     BusinessRuleViolation,
@@ -20,11 +19,9 @@ logger = logging.getLogger(__name__)
 class UserDataService:
     def __init__(
         self,
-        db: AsyncSession,
         repo: UserRepository,
         audit: AuditService,
     ) -> None:
-        self.db = db
         self.repo = repo
         self.audit = audit
 
@@ -37,7 +34,7 @@ class UserDataService:
             raise EntityNotFound("User", user.id)
 
         # 2. Attach pending email
-        await attach_pending_email(self.db, db_user)
+        await attach_pending_email(self.repo.db, db_user)
 
         # 3. Fetch related data in parallel (or sequential for now) with limits
         # We limit specific collections to prevent OOM on massive accounts
@@ -100,7 +97,7 @@ class UserDataService:
 
         # 5. Access logs (internal caching/limit handled by export_access_logs)
         access_logs = await export_access_logs(
-            self.db,
+            self.repo.db,
             actor_user_id=user.id,
             subject_user_id=user.id,
             limit=2000,
@@ -121,7 +118,7 @@ class UserDataService:
         # 6. Auditing & Access Logging (Asynchronous side-effects)
         self.audit.log("users.data_export", request, user_id=user.id)
         await log_data_access(
-            self.db,
+            self.repo.db,
             actor_user_id=user.id,
             subject_user_id=user.id,
             resource_type="profile",
@@ -159,7 +156,7 @@ class UserDataService:
 
         self.audit.log("users.data_delete", request, user_id=user.id)
         await log_data_access(
-            self.db,
+            self.repo.db,
             actor_user_id=user.id,
             subject_user_id=user.id,
             resource_type="profile",
@@ -169,6 +166,6 @@ class UserDataService:
             commit=False,
         )
 
-        await self.db.commit()
-        await self.db.refresh(db_user)
+        await self.repo.commit()
+        await self.repo.refresh(db_user)
         return schemas.DataDeletionOut(deleted=True, anonymized_email=anonymized_email)

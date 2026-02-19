@@ -26,7 +26,7 @@ async def _login(async_client, email: str, password: str) -> dict[str, str]:
 async def test_attend_registers_event(async_client, db_session, user_factory):
     password = "AttendSuccess123!"
     student = await user_factory(
-        hashed_password=get_password_hash(password),
+        hashed_password=await get_password_hash(password),
         is_active=True,
     )
     admin = await user_factory(role="admin")
@@ -64,7 +64,7 @@ async def test_attend_missing_event_returns_not_found(
 ):
     password = "AttendMissing123!"
     student = await user_factory(
-        hashed_password=get_password_hash(password),
+        hashed_password=await get_password_hash(password),
         is_active=True,
     )
 
@@ -88,7 +88,7 @@ async def test_attend_registration_closed_returns_conflict(
 ):
     password = "AttendClosed123!"
     student = await user_factory(
-        hashed_password=get_password_hash(password),
+        hashed_password=await get_password_hash(password),
         is_active=True,
     )
     admin = await user_factory(role="admin")
@@ -125,7 +125,7 @@ async def test_attend_restores_missing_registration_timestamp(
 ):
     password = "AttendRestore123!"
     student = await user_factory(
-        hashed_password=get_password_hash(password),
+        hashed_password=await get_password_hash(password),
         is_active=True,
     )
     admin = await user_factory(role="admin")
@@ -184,7 +184,7 @@ async def _register_for_event(
 ):
     password = "TokenFlow123!"
     student = await user_factory(
-        hashed_password=get_password_hash(password),
+        hashed_password=await get_password_hash(password),
         is_active=True,
     )
     admin = await user_factory(role="admin")

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from typing import TYPE_CHECKING
 
 from fastapi import status
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence
+
+    from starlette.requests import Request
 
 
 class InternalAccessMiddleware(BaseHTTPMiddleware):

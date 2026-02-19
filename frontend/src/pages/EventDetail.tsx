@@ -291,7 +291,7 @@ export default function EventDetail() {
       <div className="flex w-full min-h-(--h-screen-offset) flex-col bg-page px-4 py-4 sm:px-6 md:px-8 lg:px-12">
         {BackButtonComponent}
         <div className="flex flex-row gap-8 items-start">
-          <div className="w-[45%] space-y-6">
+          <div className="space-y-6" style={{ width: "45%" }}>
             {imageUrl && (
               <GlassCard
                 intensity="low"

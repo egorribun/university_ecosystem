@@ -122,3 +122,51 @@ jobs:
               continue-on-error: true
               with:
                   sarif_file: "trivy-fs.sarif"
+
+    # ── Go vulnerability scanning ──────────────────────────────────────────────
+    govulncheck:
+        name: Go Vulnerability Scan
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v5
+
+            - uses: actions/setup-go@v5
+              with:
+                  go-version: "stable"
+                  cache: true
+
+            - name: Install govulncheck
+              run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+            - name: Run govulncheck on all Go modules
+              # Find every go.mod and run govulncheck in that directory.
+              # Exits non-zero if any known vulnerability is found.
+              run: |
+                  find . -name 'go.mod' -not -path '*/vendor/*' | while read modfile; do
+                    dir=$(dirname "$modfile")
+                    echo "=== govulncheck: $dir ==="
+                    (cd "$dir" && govulncheck ./...)
+                  done
+
+    # ── SBOM generation ────────────────────────────────────────────────────────
+    sbom:
+        name: Generate SBOM
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v5
+
+            - name: Install Syft
+              uses: anchore/sbom-action/download-syft@v0
+
+            - name: Generate SPDX-JSON SBOM
+              # Scans the full repository (all languages/ecosystems Syft detects).
+              # SPDX-JSON is the most interoperable format for downstream tooling.
+              run: |
+                  syft . --output spdx-json=sbom.spdx.json
+
+            - name: Upload SBOM artifact
+              uses: actions/upload-artifact@v4
+              with:
+                  name: sbom-spdx-json
+                  path: sbom.spdx.json
+                  retention-days: 90

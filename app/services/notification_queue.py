@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 import logging
-import uuid
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.core import metrics
 from app.tasks.notifications import (
     enqueue_event_notification_task,
     enqueue_news_notification_task,
 )
+
+if TYPE_CHECKING:
+    import uuid
+    from collections.abc import Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 

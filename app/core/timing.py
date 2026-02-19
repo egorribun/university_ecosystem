@@ -78,7 +78,7 @@ def create_timing_middleware() -> type[RequestTimingMiddleware]:
 
 
 __all__ = [
+    "SLOW_REQUEST_THRESHOLD_MS",
     "RequestTimingMiddleware",
     "create_timing_middleware",
-    "SLOW_REQUEST_THRESHOLD_MS",
 ]

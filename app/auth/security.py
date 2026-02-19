@@ -1,7 +1,9 @@
+import asyncio
 import hashlib
 import logging
-from dataclasses import dataclass, field
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from typing import Any
 from uuid import uuid4
 
@@ -9,15 +11,12 @@ import httpx
 import jwt
 from argon2 import PasswordHasher, Type
 from argon2.exceptions import VerifyMismatchError
-from fastapi import BackgroundTasks
 from jwt import PyJWTError as JWTError
 from passlib.context import CryptContext
-from sqlalchemy.ext.asyncio import AsyncSession
 from zxcvbn import zxcvbn
 
 from app.core.config import settings
 from app.core.localization import translate
-from app.models.models import ActiveSession
 
 LEGACY_BCRYPT_MAX_BYTES = 72
 ARGON2_MEMORY_COST_KIB = 65536
@@ -28,6 +27,10 @@ DEFAULT_SCHEME = "argon2"
 LEGACY_SCHEME = "bcrypt"
 
 _logger = logging.getLogger(__name__)
+
+# Executor for CPU-bound auth operations
+# max_workers=None defaults to num_cpus + 4, which is fine for hashing
+_auth_executor = ThreadPoolExecutor(thread_name_prefix="auth_worker")
 
 
 class SecurityError(Exception):
@@ -112,7 +115,7 @@ def _calculate_lookup_hash(input_data: str) -> str:
     )
 
 
-def _validate_password_hibp(password: str, *, locale: str | None = None) -> None:
+async def _validate_password_hibp(password: str, *, locale: str | None = None) -> None:
     # SHA-1 is required by the "Have I Been Pwned" API for their k-Anonymity model.
     # We only send the first 5 characters of the hash prefix to the API.
     # The full hash is never transmitted or stored.
@@ -122,8 +125,10 @@ def _validate_password_hibp(password: str, *, locale: str | None = None) -> None
     suffix = sha1[5:]
     url = f"{settings.password_hibp_api_url.rstrip('/')}/{prefix}"
     try:
-        with httpx.Client(timeout=settings.password_hibp_timeout_seconds) as client:
-            response = client.get(
+        async with httpx.AsyncClient(
+            timeout=settings.password_hibp_timeout_seconds
+        ) as client:
+            response = await client.get(
                 url,
                 headers={
                     "User-Agent": "UniversityEcosystem/1.0",
@@ -153,7 +158,6 @@ def _validate_password_hibp(password: str, *, locale: str | None = None) -> None
 
 
 def _validate_password_policy(password: str, *, locale: str | None = None) -> None:
-    print(f"DEBUG: Validating policy for length {len(password)}")
     length = len(password)
     min_length = settings.password_min_length
     max_length = settings.password_max_length
@@ -221,8 +225,11 @@ def _validate_password_policy(password: str, *, locale: str | None = None) -> No
                 translate("errors.auth.password_policy_strength", locale=locale)
             )
 
-    if settings.password_hibp_check_enabled:
-        _validate_password_hibp(password, locale=locale)
+    # HIBP (Have I Been Pwned) check is intentionally excluded here.
+    # It requires an async HTTP call and is handled separately by async
+    # service-layer callers (auth_service, user_service) via
+    # _validate_password_hibp().  This keeps get_password_hash() synchronous
+    # so it remains usable from CLI commands and MFA code generation.
 
 
 def _truncate_for_bcrypt(password: str) -> str:
@@ -233,22 +240,37 @@ def _truncate_for_bcrypt(password: str) -> str:
     return truncated.decode("utf-8", "ignore")
 
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
+def verify_password_sync(plain_password: str, hashed_password: str) -> bool:
+    """Synchronous verification (CPU blocking)."""
     if hashed_password.startswith("$argon2"):
         try:
             argon2_hasher.verify(hashed_password, plain_password)
             return True
         except VerifyMismatchError:
             return False
-        except Exception:
-            # Fallback to passlib for complex cases/malformed hashes
-            pass
+        except Exception as exc:
+            # Unexpected error from argon2 (e.g. malformed hash format).
+            # Log and fall through to passlib for graceful degradation.
+            _logger.warning(
+                "argon2 native verify raised unexpected error, "
+                "falling back to passlib: %s",
+                type(exc).__name__,
+            )
     return pwd_context.verify(plain_password, hashed_password)
 
 
-def verify_and_update_password(
+async def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Asynchronous verification offloaded to thread pool."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(
+        _auth_executor, verify_password_sync, plain_password, hashed_password
+    )
+
+
+def verify_and_update_password_sync(
     plain_password: str, hashed_password: str
 ) -> tuple[bool, str | None]:
+    """Synchronous verify and update (CPU blocking)."""
     # Check if we should upgrade/verify with native argon2 first
     if hashed_password.startswith("$argon2"):
         try:
@@ -259,8 +281,14 @@ def verify_and_update_password(
             return True, None
         except VerifyMismatchError:
             return False, None
-        except Exception:
-            pass
+        except Exception as exc:
+            # Unexpected error from argon2 (e.g. malformed hash format).
+            # Log and fall through to passlib for graceful degradation.
+            _logger.warning(
+                "argon2 native verify_and_update raised unexpected error, "
+                "falling back to passlib: %s",
+                type(exc).__name__,
+            )
 
     try:
         verified, new_hash = pwd_context.verify_and_update(
@@ -271,79 +299,77 @@ def verify_and_update_password(
     return verified, new_hash
 
 
-def get_password_hash(
+async def verify_and_update_password(
+    plain_password: str, hashed_password: str
+) -> tuple[bool, str | None]:
+    """Asynchronous verify and update offloaded to thread pool."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(
+        _auth_executor,
+        verify_and_update_password_sync,
+        plain_password,
+        hashed_password,
+    )
+
+
+def get_password_hash_sync(
     password: str, *, locale: str | None = None, validate_policy: bool = True
 ) -> str:
+    """Hash a password using Argon2id (Synchronous/Blocking).
+
+    Runs synchronous policy checks (length, character classes, zxcvbn).
+    """
     if validate_policy:
         _validate_password_policy(password, locale=locale)
     return argon2_hasher.hash(password)
 
 
-@dataclass(slots=True)
-class AccessTokenConfig:
-    """Configuration for access token creation."""
+async def get_password_hash(
+    password: str, *, locale: str | None = None, validate_policy: bool = True
+) -> str:
+    """Hash a password using Argon2id (Asynchronous/Non-blocking)."""
+    loop = asyncio.get_running_loop()
+    func = partial(
+        get_password_hash_sync,
+        password,
+        locale=locale,
+        validate_policy=validate_policy,
+    )
+    return await loop.run_in_executor(_auth_executor, func)
 
-    expires_delta: int | None = None
-    extra: dict[str, Any] = field(default_factory=dict)
-    session_metadata: dict[str, Any] = field(default_factory=dict)
 
+def _mint_pure_jwt(
+    subject: str | Any,
+    *,
+    expires_minutes: int | None = None,
+    extra_claims: dict[str, Any] | None = None,
+) -> str:
+    """Mint a raw JWT without registering a session in Redis/DB.
 
-async def create_access_token(
-    sub: str | Any,
-    db: AsyncSession | None = None,
-    config: AccessTokenConfig | None = None,
-    bg_tasks: BackgroundTasks | None = None,
-) -> str | tuple[str, ActiveSession]:
+    INTERNAL USE ONLY — not for request handlers.
+    For authenticated sessions use SessionService.create_access_token,
+    which registers the token in ActiveSession and supports revocation.
+    Acceptable uses: MFA step-up tokens, internal service-to-service calls,
+    test fixtures that need a bare JWT without a full DB session.
     """
-    Create an access token.
-
-    DEPRECATED: Use SessionService.create_access_token for full session management.
-    This function remains for backward compatibility and delegates to SessionService
-    if a database session is provided.
-    """
-    if db is not None:
-        from app.repositories.active_session_repository import ActiveSessionRepository
-        from app.services.session_service import SessionService
-
-        repo = ActiveSessionRepository(db)
-        service = SessionService(db, repo)
-
-        metadata = config.session_metadata if config else {}
-        extra = config.extra if config else {}
-
-        return await service.create_access_token(
-            sub=sub,
-            expires_delta_minutes=config.expires_delta if config else None,
-            metadata=metadata,
-            bg_tasks=bg_tasks,
-            extra_claims=extra,
-        )
-
-    # Pure JWT minting (no DB/Redis registration)
-    config = config or AccessTokenConfig()
-    minutes = config.expires_delta or settings.access_token_expire_minutes
+    minutes = expires_minutes or settings.access_token_expire_minutes
     now = datetime.now(UTC)
-    expires_at = now + timedelta(minutes=minutes)
-    jti = str(uuid4())
-    payload = {
-        "sub": str(sub),
+    payload: dict[str, Any] = {
+        "sub": str(subject),
         "iat": now,
         "nbf": now,
-        "exp": expires_at,
-        "jti": jti,
+        "exp": now + timedelta(minutes=minutes),
+        "jti": str(uuid4()),
+        **(extra_claims or {}),
     }
-    if config.extra:
-        payload.update(config.extra)
-
     kid = settings.jwt_signing_active_kid
     secret = settings.jwt_signing_active_secret
-    token = jwt.encode(
+    return jwt.encode(
         payload,
         secret,
         algorithm=settings.algorithm,
         headers={"kid": kid},
     )
-    return token
 
 
 def decode_token(token: str) -> dict | None:
