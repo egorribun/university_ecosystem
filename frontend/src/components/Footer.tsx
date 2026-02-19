@@ -7,7 +7,7 @@ import { Button } from "@/components/ui"
 
 export default function Footer() {
   const { t } = useTranslation(["navigation"])
-  const year = new Date().getFullYear()
+  const currentYear = new Date().getFullYear()
   const location = useLocation()
   const isAuthPage = ["/login", "/register", "/forgot-password", "/messenger"].some((p) =>
     location.pathname.startsWith(p)
@@ -16,11 +16,8 @@ export default function Footer() {
 
   return (
     <footer
-      className="bg-footer relative overflow-hidden border-t border-border-subtle/(--opacity-medium)"
+      className="bg-footer relative overflow-hidden border-t border-border-subtle/(--opacity-medium) min-h-(--h-skeleton-row)"
       role="contentinfo"
-      style={{
-        minHeight: "var(--h-skeleton-row)",
-      }}
     >
       <div className="relative z-surface mx-auto max-w-(--layout-max-wide) px-fluid-x py-(--space-8) md:py-10">
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-5 lg:gap-8">
@@ -50,9 +47,9 @@ export default function Footer() {
               <Button
                 as="a"
                 variant="glass"
-                size="sm"
+                size="icon"
                 aria-label={t("navigation:footer.contactTelegram")}
-                className="h-10! w-10! p-0! rounded-sm"
+                className="rounded-sm"
                 href="https://t.me/GUUmsk"
                 target="_blank"
                 rel="noopener noreferrer"
@@ -62,9 +59,9 @@ export default function Footer() {
               <Button
                 as="a"
                 variant="glass"
-                size="sm"
+                size="icon"
                 aria-label={t("navigation:footer.contactEmail")}
-                className="h-10! w-10! p-0! rounded-sm"
+                className="rounded-sm"
                 href="https://mail.google.com/mail/?view=cm&fs=1&to=inf@guu.ru"
                 target="_blank"
                 rel="noopener noreferrer"
@@ -110,7 +107,7 @@ export default function Footer() {
 
         <div className="mt-12 flex flex-wrap items-center justify-between gap-3 border-t border-border-subtle/(--opacity-medium) pt-8">
           <p className="text-sm font-medium text-white opacity-medium">
-            {t("navigation:footer.copyright", { year })}
+            {t("navigation:footer.copyright", { year: currentYear })}
           </p>
           <p className="text-xs text-white opacity-dim">{t("navigation:footer.careNote")}</p>
         </div>

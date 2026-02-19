@@ -72,6 +72,7 @@ export const breakpoints = {
 export const zIndexTokens = {
   base: "var(--z-base)",
   content: "var(--z-content)",
+  debug: "var(--z-debug)",
   decor: "var(--z-decor)",
   deep: "var(--z-deep)",
   dropdown: "var(--z-dropdown)",
@@ -116,6 +117,7 @@ export const dimensions = {
   cardMd: "var(--w-card-md)",
   cardSm: "var(--w-card-sm)",
   heroLg: "var(--h-hero-lg)",
+  heroMax: "var(--h-hero-max)",
   heroMaxLandscape: "var(--h-hero-max-landscape)",
   heroMaxPortrait: "var(--h-hero-max-portrait)",
   heroMaxSquare: "var(--h-hero-max-square)",
@@ -127,12 +129,14 @@ export const dimensions = {
 export const opacity = {
   dim: "var(--opacity-dim)",
   faint: "var(--opacity-faint)",
+  glass: "var(--opacity-glass)",
   heavy: "var(--opacity-heavy)",
   hover: "var(--opacity-hover)",
   medium: "var(--opacity-medium)",
   soft: "var(--opacity-soft)",
   strong: "var(--opacity-strong)",
   subtle: "var(--opacity-subtle)",
+  trace: "var(--opacity-trace)",
 } as const
 
 export const scale = {
@@ -141,9 +145,43 @@ export const scale = {
 } as const
 
 export const motion = {
-  staggerDelay: 0.06,
+  delayBase: 0.15,
+  delayLong: 0.2,
+  delayNone: 0,
+  delayShort: 0.1,
+  durationAura: 14,
+  durationBase: 0.3,
+  durationDefault: 0.35,
   durationFast: 0.2,
+  durationHero: 1.2,
+  durationInstant: 0.1,
+  durationLazy: 0.9,
   durationMedium: 0.45,
+  durationPulse: 1.8,
+  durationPulseSlow: 2,
+  durationRapid: 0.15,
+  durationShimmer: 1.6,
+  durationSlow: 0.5,
+  durationSlower: 0.7,
+  durationTyping: 1.4,
   navTransition: 1.2,
+  scaleIn: "0.95",
+  scaleOut: "1.05",
+  slideLg: "3.125rem",
+  slideMd: "1.25rem",
+  slideSm: "0.625rem",
+  staggerDelay: 0.06,
+  staggerFast: 0.04,
+  staggerSlow: 0.1,
+} as const
+
+export const icon = {
+  fluid: "var(--size-icon-fluid)",
+  sm: "var(--size-icon-sm)",
+} as const
+
+export const letterSpacing = {
+  hero: "var(--tracking-hero)",
+  "widest-xl": "var(--tracking-widest-xl)",
 } as const
 

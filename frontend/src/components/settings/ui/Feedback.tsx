@@ -103,7 +103,7 @@ export function Avatar({
           alt={alt}
           className="h-full w-full object-cover"
           responsiveWidths={[64, 96, 128, 196]}
-          sizes="(max-width: 640px) 96px, 144px"
+          sizes="(max-width: 40rem) 6rem, 9rem"
           {...imgProps}
         />
       </div>
@@ -136,8 +136,8 @@ export function Skeleton({
         className
       )}
       style={{
-        width: typeof width === "number" ? `${width}px` : width,
-        height: typeof height === "number" ? `${height}px` : height,
+        width: typeof width === "number" ? `${width * 0.0625}rem` : width,
+        height: typeof height === "number" ? `${height * 0.0625}rem` : height,
         ...style,
       }}
     />

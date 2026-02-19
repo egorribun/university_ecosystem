@@ -1,4 +1,5 @@
 import type { Variants, Transition } from "framer-motion"
+import { motion as motionTokens } from "@/theme/tokens"
 
 // Kinetic & Organic Easing
 export const easePremium = [0.22, 1, 0.36, 1] as const
@@ -33,13 +34,13 @@ export const fadeVariants: Variants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
-    transition: { duration: 0.8, ease: easePremium },
+    transition: { duration: motionTokens.durationSlower, ease: easePremium },
   },
-  exit: { opacity: 0, transition: { duration: 0.4 } },
+  exit: { opacity: 0, transition: { duration: motionTokens.durationMedium } },
 }
 
 export const slideUpVariants: Variants = {
-  hidden: { opacity: 0, y: 30 },
+  hidden: { opacity: 0, y: 30 }, // Fixed offset for specific entrance
   visible: {
     opacity: 1,
     y: 0,
@@ -51,7 +52,7 @@ export const slideUpVariants: Variants = {
   exit: {
     opacity: 0,
     y: -20,
-    transition: { duration: 0.3, ease: "easeOut" },
+    transition: { duration: motionTokens.durationBase, ease: "easeOut" },
   },
 }
 
@@ -66,7 +67,7 @@ export const scaleInVariants: Variants = {
   exit: {
     opacity: 0,
     scale: 0.98,
-    transition: { duration: 0.25 },
+    transition: { duration: motionTokens.durationMedium },
   },
 }
 
@@ -119,7 +120,7 @@ export const revealVariants = (direction: "up" | "down" | "left" | "right" = "up
       y: 0,
       filter: "blur(var(--blur-none))",
       transition: {
-        duration: 1.2,
+        duration: motionTokens.navTransition,
         ease: easePremium,
       },
     },

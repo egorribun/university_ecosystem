@@ -23,7 +23,7 @@ export function EmptyState({ icon, title, description, action, className }: Empt
         </div>
       )}
       <div className="space-y-2">
-        <h3 className="text-lg font-semibold text-(--text-primary)">{title}</h3>
+        <h3 className="text-lg font-semibold text-text-primary">{title}</h3>
         {description && <p className="text-sm text-(--text-secondary)">{description}</p>}
       </div>
       {action && <div className="mt-2">{action}</div>}

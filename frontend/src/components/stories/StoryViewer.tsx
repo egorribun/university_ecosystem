@@ -159,8 +159,13 @@ export const StoryViewer = ({
       >
         <div
           className={cn(
+<<<<<<< HEAD
             "relative z-decor flex w-(--story-card-w) max-w-(--story-card-w) flex-col items-stretch justify-center overflow-hidden text-white sm:max-w-(--layout-max-content)",
             viewerStory.cover_url ? "bg-(--bg-page)" : "bg-brand shadow-premium-lift",
+=======
+            "relative z-decor flex aspect-9/16 w-(--story-card-w) max-h-hero-max max-w-(--story-card-w) flex-col items-stretch justify-center overflow-hidden text-white sm:aspect-video sm:w-[min(96%,60rem)] sm:max-h-(--h-hero-lg) sm:max-w-(--layout-max-content)",
+            viewerStory.cover_url ? "bg-page" : "bg-brand shadow-premium-lift",
+>>>>>>> origin/main
             viewerStory.cover_url ? "rounded-none" : "rounded-md sm:rounded-lg"
           )}
           style={{
@@ -177,13 +182,7 @@ export const StoryViewer = ({
             <SmartImage
               srcRaw={viewerStory.cover_url}
               alt={viewerStory.title}
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "contain",
-                objectPosition: "center",
-                backgroundColor: "var(--bg-page)",
-              }}
+              className="h-full w-full bg-page object-contain object-center"
             />
           ) : (
             <div className="flex w-full items-center justify-between px-fluid-x">

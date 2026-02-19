@@ -1,10 +1,15 @@
-import { FC, useState, useRef, useEffect, useMemo, type ReactNode } from "react"
+import { FC, useState, useEffect, type ReactNode } from "react"
 import { Camera as PhotoCamera } from "lucide-react"
 import { useTranslation } from "react-i18next"
+import { useForm, Controller } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
 import api from "@/api/client"
-import { Button } from "../ui"
-import Dialog from "../Dialog"
-import SmartImage from "../SmartImage"
+import { logError } from "@/app/logger"
+import { Button } from "@/components/ui"
+import Dialog from "@/components/Dialog"
+import SmartImage from "@/components/SmartImage"
+import { newsFormSchema, type NewsFormValues } from "@/features/news/schema"
+import { cn } from "@/utils/cn"
 
 export interface NewsEditData {
   title: string
@@ -23,17 +28,19 @@ interface NewsCardEditDialogProps {
 }
 
 const inputClass =
-  "w-full rounded-xl border border-glass-border bg-input-mix px-4 py-2.5 text-input text-(--text-primary) shadow-inner-premium transition focus:border-(--primary-main) focus-ring-premium placeholder:text-(--text-secondary)"
-const textareaClass = `${inputClass} min-h-(--space-32) resize-y leading-relaxed`
+  "w-full rounded-xl border border-glass-border bg-input-mix px-4 py-2.5 text-input text-text-primary shadow-inner-premium transition focus:border-(--primary-main) focus-ring-premium placeholder:text-(--text-secondary)"
+const textareaClass = cn(inputClass, "min-h-(--space-32) resize-y leading-relaxed")
+const errorClass = "text-error-text text-xs mt-1 font-medium"
 
 type FieldProps = {
   label: string
   htmlFor: string
   children: ReactNode
+  error?: string
   required?: boolean
 }
 
-function Field({ label, htmlFor, children, required = false }: FieldProps) {
+function Field({ label, htmlFor, children, error, required = false }: FieldProps) {
   return (
     <div className="space-y-2">
       <label htmlFor={htmlFor} className="text-sm font-semibold tracking-wide text-field-label">
@@ -41,6 +48,7 @@ function Field({ label, htmlFor, children, required = false }: FieldProps) {
         {required ? <span className="ml-1 text-(--error-text)">*</span> : null}
       </label>
       {children}
+      {error ? <p className={errorClass}>{error}</p> : null}
     </div>
   )
 }
@@ -53,50 +61,64 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
   onSuccess,
 }) => {
   const { t } = useTranslation(["news", "common"])
-  const [editData, setEditData] = useState<NewsEditData>(initialData)
-  const [loading, setLoading] = useState(false)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [imageLoading, setImageLoading] = useState(false)
-  const [newImage, setNewImage] = useState<File | null>(null)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const imageInputRef = useRef<HTMLInputElement>(null)
-  const editTitleRef = useRef<HTMLInputElement>(null)
 
+  const {
+    register,
+    handleSubmit,
+    control,
+    reset,
+    watch,
+    formState: { errors, isSubmitting, isValid },
+  } = useForm<NewsFormValues>({
+    resolver: zodResolver(newsFormSchema),
+    mode: "onChange",
+    defaultValues: {
+      title: initialData.title,
+      content: initialData.content,
+      title_en: initialData.title_en,
+      content_en: initialData.content_en,
+      image: null,
+    },
+  })
+
+  // Watch image for preview
+  const imageFile = watch("image")
+
+  // Reset form when dialog opens with new data
   useEffect(() => {
     if (open) {
-      setEditData(initialData)
+      reset({
+        title: initialData.title,
+        content: initialData.content,
+        title_en: initialData.title_en || "",
+        content_en: initialData.content_en || "",
+        image: null,
+      })
+      setImagePreview(null)
     }
-  }, [open, initialData])
+  }, [open, initialData, reset])
 
+  // Handle image preview
   useEffect(() => {
-    if (!newImage) {
-      setPreviewUrl(null)
-      return
+    if (imageFile instanceof File) {
+      const url = URL.createObjectURL(imageFile)
+      setImagePreview(url)
+      return () => URL.revokeObjectURL(url)
     }
-    const url = URL.createObjectURL(newImage)
-    setPreviewUrl(url)
-    return () => URL.revokeObjectURL(url)
-  }, [newImage])
+  }, [imageFile])
 
-  const editImageUrl = useMemo(
-    () => previewUrl || editData.image_url || "",
-    [editData.image_url, previewUrl]
-  )
-
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) setNewImage(file)
-  }
-
-  const handleEdit = async () => {
-    setLoading(true)
+  const onSubmit = async (data: NewsFormValues) => {
     try {
-      let imgUrl = editData.image_url
-      if (newImage) {
+      let imgUrl = initialData.image_url
+
+      if (data.image instanceof File) {
         setImageLoading(true)
         try {
-          const data = new FormData()
-          data.append("file", newImage)
-          const res = await api.post<{ url: string }>(`/news/upload_image`, data, {
+          const formData = new FormData()
+          formData.append("file", data.image)
+          const res = await api.post<{ url: string }>(`/news/upload_image`, formData, {
             headers: { "Content-Type": "multipart/form-data" },
           })
           imgUrl = res.data.url
@@ -104,19 +126,25 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
           setImageLoading(false)
         }
       }
+
       const payload = {
-        ...editData,
+        title: data.title,
+        content: data.content,
+        title_en: data.title_en || undefined,
+        content_en: data.content_en || undefined,
         image_url: imgUrl,
       }
+
       await api.patch(`/news/${id}`, payload)
       onSuccess?.()
       onClose()
     } catch (e) {
-      console.error(e)
-    } finally {
-      setLoading(false)
+      logError(e)
     }
   }
+
+  // Determine which image to show: preview > existing > none
+  const displayImage = imagePreview || initialData.image_url
 
   return (
     <Dialog
@@ -133,104 +161,122 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
           <Button
             variant="outline"
             onClick={onClose}
-            disabled={loading || imageLoading}
+            disabled={isSubmitting || imageLoading}
             className="w-full sm:w-auto"
           >
             {t("common:buttons.cancel")}
           </Button>
           <Button
-            onClick={() => void handleEdit()}
-            disabled={loading || imageLoading}
-            loading={loading}
+            form={`news-edit-form-${id}`}
+            type="submit"
+            disabled={!isValid || isSubmitting || imageLoading}
+            loading={isSubmitting || imageLoading}
             className="w-full sm:w-auto"
           >
             {t("common:buttons.save")}
           </Button>
         </>
       }
-      initialFocus={() => editTitleRef.current ?? undefined}
     >
       <form
+        id={`news-edit-form-${id}`}
         className="space-y-4"
-        onSubmit={(event) => {
-          event.preventDefault()
-          void handleEdit()
-        }}
+        onSubmit={handleSubmit(onSubmit)}
       >
-        <Field label={t("news:form.title") ?? ""} htmlFor={`news-edit-title-${id}`} required>
+        <Field
+          label={t("news:form.title") ?? ""}
+          htmlFor={`news-edit-title-${id}`}
+          required
+          error={errors.title?.message}
+        >
           <input
             id={`news-edit-title-${id}`}
-            ref={editTitleRef}
             type="text"
-            value={editData.title}
-            onChange={(e) => setEditData({ ...editData, title: e.target.value })}
-            className={inputClass}
+            className={cn(inputClass, errors.title && "border-error-text/50")}
+            {...register("title")}
           />
         </Field>
 
-        <Field label={t("news:form.text") ?? ""} htmlFor={`news-edit-content-${id}`} required>
+        <Field
+          label={t("news:form.text") ?? ""}
+          htmlFor={`news-edit-content-${id}`}
+          required
+          error={errors.content?.message}
+        >
           <textarea
             id={`news-edit-content-${id}`}
-            value={editData.content}
-            onChange={(e) => setEditData({ ...editData, content: e.target.value })}
-            className={textareaClass}
+            className={cn(textareaClass, errors.content && "border-error-text/50")}
             rows={4}
+            {...register("content")}
           />
         </Field>
 
         <Field
           label={t("news:form.title_en", { defaultValue: "Title (English)" }) ?? ""}
           htmlFor={`news-edit-title-en-${id}`}
+          error={errors.title_en?.message}
         >
           <input
             id={`news-edit-title-en-${id}`}
             type="text"
-            value={editData.title_en}
-            onChange={(e) => setEditData({ ...editData, title_en: e.target.value })}
-            className={inputClass}
+            className={cn(inputClass, errors.title_en && "border-error-text/50")}
+            {...register("title_en")}
           />
         </Field>
 
         <Field
           label={t("news:form.content_en", { defaultValue: "News text (English)" }) ?? ""}
           htmlFor={`news-edit-content-en-${id}`}
+          error={errors.content_en?.message}
         >
           <textarea
             id={`news-edit-content-en-${id}`}
-            value={editData.content_en}
-            onChange={(e) => setEditData({ ...editData, content_en: e.target.value })}
-            className={textareaClass}
+            className={cn(textareaClass, errors.content_en && "border-error-text/50")}
             rows={4}
+            {...register("content_en")}
           />
         </Field>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <Button
-            as="label"
-            variant="outline"
-            size="sm"
-            leadingIcon={<PhotoCamera size={20} />}
-            className="w-full sm:w-auto"
-            disabled={imageLoading}
-          >
-            {imageLoading ? t("common:statuses.uploading") : t("news:form.changePhoto")}
-            <input
-              type="file"
-              accept="image/*"
-              hidden
-              ref={imageInputRef}
-              onChange={handleImageChange}
-            />
-          </Button>
+          <Controller
+            control={control}
+            name="image"
+            render={({ field: { value: _value, onChange, ...field } }) => (
+              <Button
+                as="label"
+                variant="outline"
+                size="sm"
+                leadingIcon={<PhotoCamera size={20} />}
+                className={cn("w-full sm:w-auto", errors.image && "border-error-text/50 text-error-text")}
+                disabled={imageLoading || isSubmitting}
+              >
+                {imageLoading ? t("common:statuses.uploading") : t("news:form.changePhoto")}
+                <input
+                  {...field}
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  value=""
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) onChange(file)
+                  }}
+                />
+              </Button>
+            )}
+          />
 
-          {editImageUrl ? (
+          {displayImage ? (
             <SmartImage
-              srcRaw={editImageUrl}
+              srcRaw={displayImage}
               alt={t("news:alt.preview")}
               className="h-20 w-full max-w-44 rounded-lg border border-white/(--opacity-subtle) object-cover shadow-surface"
             />
           ) : null}
         </div>
+        {errors.image?.message ? (
+          <p className={errorClass}>{errors.image.message}</p>
+        ) : null}
       </form>
     </Dialog>
   )

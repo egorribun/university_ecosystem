@@ -1,28 +1,32 @@
-import { useState, useRef, useCallback, type ReactNode } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { isAxiosError } from "axios"
 import { Camera as PhotoCamera } from "lucide-react"
+import { useForm, Controller } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
 import { Dialog, DialogActions, DialogContent, DialogTitle, Alert } from "@/components/settings"
 import { Button } from "@/components/ui"
 import SmartImage from "@/components/SmartImage"
 import { createNews, uploadNewsImage } from "@/api/news"
 import { resetEtagCache } from "@/api/client"
 import { cn } from "@/utils/cn"
-import { type NewsFormState, initialNewsState } from "../types"
+import { newsFormSchema, type NewsFormValues } from "@/features/news/schema"
 
 const inputClass =
-  "w-full rounded-md border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-4 py-2.5 text-input text-(--text-primary) shadow-sm focus:border-brand focus:outline-none transition placeholder:text-(--text-secondary)/(--opacity-medium)"
+  "w-full rounded-md border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-4 py-2.5 text-input text-text-primary shadow-sm focus:border-brand focus:outline-none transition placeholder:text-(--text-secondary)/(--opacity-medium)"
 const textareaClass = cn(inputClass, "min-h-36 resize-y leading-relaxed")
+const errorClass = "text-error-text text-xs mt-1 font-medium"
 
 type FieldProps = {
-  label: ReactNode
+  label: React.ReactNode
   htmlFor: string
-  children: ReactNode
+  children: React.ReactNode
+  error?: string
   required?: boolean
 }
 
-function Field({ label, htmlFor, children, required = false }: FieldProps) {
+function Field({ label, htmlFor, children, error, required = false }: FieldProps) {
   return (
     <div className="space-y-2">
       <label
@@ -33,6 +37,7 @@ function Field({ label, htmlFor, children, required = false }: FieldProps) {
         {required ? <span className="ml-1 text-error-text text-sm font-bold">*</span> : null}
       </label>
       {children}
+      {error ? <p className={errorClass}>{error}</p> : null}
     </div>
   )
 }
@@ -47,27 +52,49 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
   const { t } = useTranslation(["news", "common"])
   const queryClient = useQueryClient()
 
-  const [newsData, setNewsData] = useState<NewsFormState>(initialNewsState)
-  const [adding, setAdding] = useState(false)
-  const [addError, setAddError] = useState<string | null>(null)
-
-  const [imageFile, setImageFile] = useState<File | null>(null)
-  const [imagePreview, setImagePreview] = useState<string | null>(null)
-
-  const imageInputRef = useRef<HTMLInputElement | null>(null)
-  const titleInputRef = useRef<HTMLInputElement | null>(null)
-
-  const handleImageChange = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0]
-      if (file) {
-        setImageFile(file)
-        if (imagePreview) URL.revokeObjectURL(imagePreview)
-        setImagePreview(URL.createObjectURL(file))
-      }
+  // Form setup
+  const {
+    register,
+    handleSubmit,
+    control,
+    reset,
+    watch,
+    formState: { errors, isSubmitting, isValid },
+  } = useForm<NewsFormValues>({
+    resolver: zodResolver(newsFormSchema),
+    mode: "onChange",
+    defaultValues: {
+      title: "",
+      content: "",
+      title_en: "",
+      content_en: "",
+      image: null,
     },
-    [imagePreview]
-  )
+  })
+
+  // Watch image for preview
+  const imageFile = watch("image")
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+
+  // Handle image preview
+  useEffect(() => {
+    if (imageFile instanceof File) {
+      const url = URL.createObjectURL(imageFile)
+      setImagePreview(url)
+      return () => URL.revokeObjectURL(url)
+    } else {
+      setImagePreview(null)
+    }
+  }, [imageFile])
+
+  // Reset form when dialog closes/opens
+  useEffect(() => {
+    if (open) {
+      reset()
+      setSubmitError(null)
+    }
+  }, [open, reset])
 
   const resolveCreateError = useCallback(
     (error: unknown) => {
@@ -95,89 +122,74 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
     [t]
   )
 
-  const handleClose = useCallback(() => {
-    onClose()
-    // Reset state after transition or immediately if preferred.
-    // Doing it here ensures next open is clean.
-    setNewsData(initialNewsState)
-    setAddError(null)
-    setImageFile(null)
-    if (imagePreview) {
-      URL.revokeObjectURL(imagePreview)
-      setImagePreview(null)
-    }
-    if (imageInputRef.current) imageInputRef.current.value = ""
-  }, [onClose, imagePreview])
-
-  const handleAddNews = useCallback(async () => {
-    if (adding) return
-    setAdding(true)
-    setAddError(null)
+  const onSubmit = async (data: NewsFormValues) => {
+    setSubmitError(null)
     try {
       let image_url = ""
-      if (imageFile) {
-        const uploadedUrl = await uploadNewsImage(imageFile)
+      if (data.image) {
+        const uploadedUrl = await uploadNewsImage(data.image)
         image_url = uploadedUrl || ""
       }
 
-      const payload = {
-        title: newsData.title,
-        content: newsData.content,
+      await createNews({
+        title: data.title,
+        content: data.content,
         image_url,
-        ...(newsData.title_en.trim() ? { title_en: newsData.title_en } : {}),
-        ...(newsData.content_en.trim() ? { content_en: newsData.content_en } : {}),
-      } satisfies Parameters<typeof createNews>[0]
-
-      await createNews(payload)
+        title_en: data.title_en || undefined,
+        content_en: data.content_en || undefined,
+      })
 
       resetEtagCache()
       void queryClient.invalidateQueries({ queryKey: ["news", "list"] })
 
       if (onSuccess) onSuccess()
-      handleClose()
+      onClose()
     } catch (error) {
-      setAddError(resolveCreateError(error))
-    } finally {
-      setAdding(false)
+      setSubmitError(resolveCreateError(error))
     }
-  }, [adding, imageFile, newsData, queryClient, resolveCreateError, onSuccess, handleClose])
+  }
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="lg" fullWidth>
+    <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
       <DialogTitle>{t("news:dialogs.create.title")}</DialogTitle>
       <DialogContent className="space-y-6 pt-4">
         <form
+          id="news-form"
           className="grid grid-cols-1 md:grid-cols-2 gap-6"
-          onSubmit={(event) => {
-            event.preventDefault()
-            void handleAddNews()
-          }}
+          onSubmit={handleSubmit(onSubmit)}
         >
           <div className="space-y-4">
-            {addError ? <Alert severity="error">{addError}</Alert> : null}
+            {submitError ? <Alert severity="error">{submitError}</Alert> : null}
 
-            <Field label={t("news:form.title") ?? ""} htmlFor="news-title" required>
+            <Field
+              label={t("news:form.title") ?? ""}
+              htmlFor="news-title"
+              required
+              error={errors.title?.message}
+            >
               <input
                 id="news-title"
-                ref={titleInputRef}
                 type="text"
-                value={newsData.title}
-                onChange={(event) => setNewsData({ ...newsData, title: event.target.value })}
+                disabled={isSubmitting}
+                className={cn(inputClass, errors.title && "border-error-text/50")}
                 maxLength={100}
-                disabled={adding}
-                className={inputClass}
+                {...register("title")}
               />
             </Field>
 
-            <Field label={t("news:form.content") ?? ""} htmlFor="news-content" required>
+            <Field
+              label={t("news:form.content") ?? ""}
+              htmlFor="news-content"
+              required
+              error={errors.content?.message}
+            >
               <textarea
                 id="news-content"
-                value={newsData.content}
-                onChange={(event) => setNewsData({ ...newsData, content: event.target.value })}
+                disabled={isSubmitting}
+                className={cn(textareaClass, errors.content && "border-error-text/50")}
                 maxLength={3000}
-                disabled={adding}
-                className={textareaClass}
                 rows={6}
+                {...register("content")}
               />
             </Field>
           </div>
@@ -186,30 +198,30 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
             <Field
               label={t("news:form.title_en", { defaultValue: "Title (English)" }) ?? ""}
               htmlFor="news-title-en"
+              error={errors.title_en?.message}
             >
               <input
                 id="news-title-en"
                 type="text"
-                value={newsData.title_en}
-                onChange={(event) => setNewsData({ ...newsData, title_en: event.target.value })}
+                disabled={isSubmitting}
+                className={cn(inputClass, errors.title_en && "border-error-text/50")}
                 maxLength={100}
-                disabled={adding}
-                className={inputClass}
+                {...register("title_en")}
               />
             </Field>
 
             <Field
               label={t("news:form.content_en", { defaultValue: "News text (English)" }) ?? ""}
               htmlFor="news-content-en"
+              error={errors.content_en?.message}
             >
               <textarea
                 id="news-content-en"
-                value={newsData.content_en}
-                onChange={(event) => setNewsData({ ...newsData, content_en: event.target.value })}
+                disabled={isSubmitting}
+                className={cn(textareaClass, errors.content_en && "border-error-text/50")}
                 maxLength={3000}
-                disabled={adding}
-                className={textareaClass}
                 rows={6}
+                {...register("content_en")}
               />
             </Field>
 
@@ -218,25 +230,40 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
                 {t("news:form.image", { defaultValue: "Cover Image" })}
               </label>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <Button
-                  as="label"
-                  variant="outline"
-                  size="sm"
-                  className="w-full sm:w-auto bg-(--bg-surface)/(--opacity-dim) border-glass-border"
-                  disabled={adding}
-                >
-                  <div className="flex items-center gap-2">
-                    <PhotoCamera className="h-4 w-4" />
-                    {imageFile ? t("common:buttons.changePhoto") : t("common:buttons.uploadPhoto")}
-                  </div>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    hidden
-                    ref={imageInputRef}
-                    onChange={handleImageChange}
-                  />
-                </Button>
+                <Controller
+                  control={control}
+                  name="image"
+                  render={({ field: { value: _value, onChange, ...field } }) => (
+                    <Button
+                      as="label"
+                      variant="outline"
+                      size="sm"
+                      className={cn(
+                        "w-full sm:w-auto bg-(--bg-surface)/(--opacity-dim) border-glass-border",
+                        errors.image && "border-error-text/50 text-error-text"
+                      )}
+                      disabled={isSubmitting}
+                    >
+                      <div className="flex items-center gap-2">
+                        <PhotoCamera className="h-4 w-4" />
+                        {imageFile
+                          ? t("common:buttons.changePhoto")
+                          : t("common:buttons.uploadPhoto")}
+                      </div>
+                      <input
+                        {...field}
+                        type="file"
+                        accept="image/*"
+                        hidden
+                        value="" // Important for file inputs to allow re-selecting same file
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) onChange(file)
+                        }}
+                      />
+                    </Button>
+                  )}
+                />
 
                 {imagePreview ? (
                   <div className="overflow-hidden rounded-md border border-glass-border shadow-sm">
@@ -248,6 +275,9 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
                   </div>
                 ) : null}
               </div>
+              {errors.image?.message ? (
+                <p className={errorClass}>{errors.image.message}</p>
+              ) : null}
             </div>
           </div>
         </form>
@@ -255,24 +285,23 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
       <DialogActions className="flex-col-reverse gap-3 sm:flex-row p-6">
         <Button
           variant="ghost"
-          onClick={handleClose}
-          disabled={adding}
+          onClick={onClose}
+          disabled={isSubmitting}
           className="w-full sm:w-auto"
         >
           {t("common:buttons.cancel")}
         </Button>
         <Button
-          id="news-publish-btn"
+          form="news-form"
+          type="submit"
           variant="solid"
-          onClick={() => {
-            void handleAddNews()
-          }}
-          disabled={!newsData.title.trim() || !newsData.content.trim() || adding}
+          disabled={!isValid || isSubmitting}
           className="w-full sm:w-auto min-w-(--min-w-btn)"
         >
-          {adding ? t("common:statuses.publishing") : t("news:actions.publish")}
+          {isSubmitting ? t("common:statuses.publishing") : t("news:actions.publish")}
         </Button>
       </DialogActions>
     </Dialog>
   )
 }
+

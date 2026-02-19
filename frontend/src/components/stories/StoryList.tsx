@@ -7,6 +7,8 @@ import type { StoryItem } from "@/types/Story"
 
 const SKELETON_COUNT = 8
 const STORY_CIRCLE_DIAMETER = "var(--size-story-md)"
+const FADE_DELAY_MS = 120
+const BORDER_WIDTH = 2
 
 interface StoryListProps {
   stories: StoryItem[]
@@ -34,7 +36,7 @@ export const StoryList = ({
   return (
     <div
       data-fade
-      style={{ "--fade-delay": "120ms" } as CSSProperties}
+      style={{ "--fade-delay": `${FADE_DELAY_MS}ms` } as CSSProperties}
       className="flex flex-col gap-(--space-2)"
       aria-busy={loading}
       onPointerEnter={onPrefetch}
@@ -85,7 +87,7 @@ export const StoryList = ({
                   as="button"
                   type="button"
                   size="md"
-                  borderWidth={2}
+                  borderWidth={BORDER_WIDTH}
                   onClick={() => onOpenStory(story, index)}
                   onFocus={onPrefetch}
                   onMouseEnter={onPrefetch}
@@ -97,6 +99,7 @@ export const StoryList = ({
                     boxShadow: "0 0 0 var(--space-1) color-mix(in_srgb, var(--brand-main) var(--opacity-medium), transparent)"
                   } : undefined}
                 >
+<<<<<<< HEAD
                   <div
                     className="relative z-base overflow-hidden rounded-md bg-(--bg-surface-raised) shadow-premium"
                     style={{
@@ -105,11 +108,14 @@ export const StoryList = ({
                       ["--story-card-w-md" as string]: "var(--story-card-w-md, 120px)"
                     }}
                   >
+=======
+                  <div className="relative z-base aspect-[9/16] w-[--story-card-w] overflow-hidden rounded-md bg-(--bg-surface-raised) shadow-premium md:w-[--story-card-w-md]">
+>>>>>>> origin/main
                     {story.cover_url ? (
                       <SmartImage
                         srcRaw={story.cover_url}
                         alt={story.title}
-                        style={{ width: "100%", height: "100%", borderRadius: "inherit" }}
+                        className="h-full w-full rounded-[inherit]"
                       />
                     ) : (
                       <div

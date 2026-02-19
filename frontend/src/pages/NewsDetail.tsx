@@ -33,12 +33,13 @@ import { useAuth } from "@/contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
+import { TIMEOUTS } from "@/config/timeouts"
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
 
 const iconButtonClass =
-  "inline-flex h-10 w-10 items-center justify-center rounded-full border border-(--glass-border) bg-(--bg-surface)/(--opacity-hover) text-(--text-secondary) shadow-sm transition hover:bg-(--bg-surface) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--brand-main)"
+  "inline-flex h-10 w-10 items-center justify-center rounded-full border border-(--glass-border) bg-(--bg-surface)/(--opacity-hover) text-(--text-secondary) shadow-sm transition hover:bg-(--bg-surface) hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--brand-main)"
 
 type FieldProps = {
   label: ReactNode
@@ -213,7 +214,7 @@ export default function NewsDetail() {
 
   useEffect(() => {
     if (!snackbar) return
-    const timeout = window.setTimeout(() => setSnackbar(""), 2400)
+    const timeout = window.setTimeout(() => setSnackbar(""), TIMEOUTS.TOAST_SHORT)
     return () => window.clearTimeout(timeout)
   }, [snackbar])
 
@@ -378,7 +379,7 @@ export default function NewsDetail() {
 
         <article className="flex w-full flex-col items-start gap-8">
           <header className="flex w-full flex-col gap-4 text-left">
-            <h1 className="max-w-5xl text-fluid-h1 font-extrabold tracking-tight text-(--text-primary)">
+            <h1 className="max-w-5xl text-fluid-h1 font-extrabold tracking-tight text-text-primary">
               {displayTitle}
             </h1>
 
@@ -390,14 +391,14 @@ export default function NewsDetail() {
                   <span className="inline-flex items-center gap-2 rounded-full border border-(--glass-border) bg-(--bg-surface)/(--opacity-subtle) px-3 py-1 text-xs font-semibold uppercase tracking-widest text-(--text-secondary)">
                     <span>{t("news:meta.published")}</span>
                     <span aria-hidden>•</span>
-                    <time dateTime={createdAtIso} className="text-(--text-primary)">
+                    <time dateTime={createdAtIso} className="text-text-primary">
                       {createdAtLabel}
                     </time>
                   </span>
                 ) : null}
 
                 {readingTimeMinutes !== null && (
-                  <span className="inline-flex items-center gap-2 rounded-pill border border-(--glass-border)/(--opacity-dim) bg-(--bg-surface)/(--opacity-subtle) px-3 py-1 text-xs font-medium tracking-wide text-(--text-primary)">
+                  <span className="inline-flex items-center gap-2 rounded-pill border border-(--glass-border)/(--opacity-dim) bg-(--bg-surface)/(--opacity-subtle) px-3 py-1 text-xs font-medium tracking-wide text-text-primary">
                     {t("news:meta.readingTime", { count: readingTimeMinutes ?? undefined })}
                   </span>
                 )}
@@ -551,9 +552,7 @@ export default function NewsDetail() {
                   >
                     <Icon className="h-5 w-5" />
                   </span>
-                  <span className="text-sm font-semibold text-(--text-primary)">
-                    {option.label}
-                  </span>
+                  <span className="text-sm font-semibold text-text-primary">{option.label}</span>
                 </a>
               )
             })}

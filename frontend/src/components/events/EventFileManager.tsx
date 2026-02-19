@@ -143,7 +143,7 @@ export function EventFileManager({
 
       {optimisticFiles.length > 0 ? (
         <div>
-          <h3 className="mb-2 text-(--fs-base) font-semibold text-(--text-primary)">
+          <h3 className="mb-2 text-(--fs-base) font-semibold text-text-primary">
             {t("events:detail.sections.files.title")}
           </h3>
           <div className="space-y-2">

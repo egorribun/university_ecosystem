@@ -139,7 +139,7 @@ export function sanitizeUrl(url: string): string | null {
     // Return a normalized, sanitized URL string. For relative URLs we strip the dummy base.
     const sanitized = parsed.toString()
     if (base === DUMMY_BASE) {
-      return sanitized.replace(DUMMY_BASE, "")
+      return sanitized.replace(base, "")
     }
     return sanitized
   } catch {

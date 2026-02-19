@@ -18,7 +18,7 @@ export function SectionCard({
     <Component
       className={cn(
         "relative flex flex-col gap-3 overflow-hidden rounded-2xl px-6 py-6",
-        "border-glass-border bg-glass-bg shadow-glass backdrop-blur-glass text-(--text-primary)",
+        "border-glass-border bg-glass-bg shadow-glass backdrop-blur-glass text-text-primary",
         "transition-all duration-slow",
         "transition-all duration-slow",
         "before:pointer-events-none before:absolute before:inset-0 before-rounded-inherit before:opacity-soft",
@@ -56,7 +56,7 @@ export function SectionTitle({
           : "text-base"
   return (
     <Component
-      className={cn("font-bold tracking-tight text-(--text-primary)", sizeClasses, className)}
+      className={cn("font-bold tracking-tight text-text-primary", sizeClasses, className)}
       {...props}
     >
       {children}
@@ -97,9 +97,9 @@ export function SessionItem({
     <div
       className={cn(
         "group relative flex items-stretch justify-between gap-4 rounded-xl px-4 py-3",
-        "border-glass-border bg-glass-bg text-(--text-primary)",
+        "border-glass-border bg-glass-bg text-text-primary",
         "transition-all duration-slow ease-out backdrop-blur-glass",
-        "hover:-translate-y-px hover:border-(--brand-main)/(--opacity-soft) hover:bg-glass-tint1 hover:shadow-glass",
+        "hover:-translate-y-[0.125rem] hover:border-(--brand-main)/(--opacity-soft) hover:bg-glass-tint1 hover:shadow-glass",
         "max-sm:flex-col max-sm:items-start",
         className
       )}
@@ -145,7 +145,7 @@ export function AccordionSection({
       >
         <div className="flex items-center justify-between gap-3">
           <div className="flex flex-col gap-1 min-w-0">
-            <h3 className="text-sm font-bold text-(--text-primary)">{title}</h3>
+            <h3 className="text-sm font-bold text-text-primary">{title}</h3>
             {subtitle && <p className="text-xs text-(--text-secondary)">{subtitle}</p>}
           </div>
           <motion.svg
@@ -162,7 +162,11 @@ export function AccordionSection({
       <div
         className={cn(
           "overflow-hidden transition-all duration-slow",
+<<<<<<< HEAD
           expanded ? "opacity-100" : "opacity-0"
+=======
+          expanded ? "max-h-[125rem] opacity-100" : "max-h-0 opacity-0"
+>>>>>>> origin/main
         )}
         style={{ maxHeight: expanded ? "2000px" : "0px" }}
       >
@@ -256,7 +260,7 @@ export function Tab({
       className={cn(
         "relative flex h-10 items-center justify-center rounded-xl px-5 text-sm font-black transition-all duration-slow",
         selected
-          ? "text-(--text-primary)"
+          ? "text-text-primary"
           : "text-(--text-secondary) opacity-strong hover:opacity-100 hover:bg-(--bg-surface-hover)/(--opacity-dim)"
       )}
     >

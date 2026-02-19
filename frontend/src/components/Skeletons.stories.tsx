@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite"
-import { EventCardSkeleton } from "./EventCardSkeleton"
+import { EventCardSkeleton } from "@/components/events/EventCard/EventCardSkeleton"
 import NewsCardSkeleton from "./NewsCardSkeleton"
 import { ProfileCardSkeleton } from "./ProfileCardSkeleton"
 import { ScheduleCardSkeleton } from "./ScheduleCardSkeleton"
@@ -82,7 +82,7 @@ export const EventCardGrid: StoryObj = {
 
 export const NewsCardList: StoryObj = {
   render: () => (
-    <div className="flex flex-col gap-4" style={{ maxWidth: 600 }}>
+    <div className="flex flex-col gap-4 max-w-xl">
       <NewsCardSkeleton />
       <NewsCardSkeleton />
     </div>

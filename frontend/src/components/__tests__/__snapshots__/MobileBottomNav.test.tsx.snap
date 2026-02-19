@@ -10,7 +10,7 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
   <a
     aria-current="page"
     aria-label="Home"
-    class="group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-(--text-primary) transition-all outline-none select-none active text-brand font-bold scale-110"
+    class="group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-text-primary transition-all outline-none select-none active text-brand font-bold scale-110"
     data-discover="true"
     href="/dashboard"
   >
@@ -76,7 +76,7 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
   </a>
   <a
     aria-label="News"
-    class="group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-(--text-primary) transition-all outline-none select-none opacity-strong hover:opacity-100"
+    class="group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-text-primary transition-all outline-none select-none opacity-strong hover:opacity-100"
     data-discover="true"
     href="/news"
   >
@@ -127,7 +127,7 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
   </a>
   <a
     aria-label="Events"
-    class="group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-(--text-primary) transition-all outline-none select-none opacity-strong hover:opacity-100"
+    class="group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-text-primary transition-all outline-none select-none opacity-strong hover:opacity-100"
     data-discover="true"
     href="/events"
   >
@@ -178,7 +178,7 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
   </a>
   <a
     aria-label="Schedule"
-    class="group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-(--text-primary) transition-all outline-none select-none opacity-strong hover:opacity-100"
+    class="group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-text-primary transition-all outline-none select-none opacity-strong hover:opacity-100"
     data-discover="true"
     href="/schedule"
   >
@@ -247,7 +247,7 @@ exports[`MobileBottomNav > renders links for main sections 1`] = `
   </a>
   <a
     aria-label="Profile"
-    class="group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-(--text-primary) transition-all outline-none select-none opacity-strong hover:opacity-100"
+    class="group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-text-primary transition-all outline-none select-none opacity-strong hover:opacity-100"
     data-discover="true"
     href="/profile"
   >
@@ -302,7 +302,7 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
     <a
       aria-current="page"
       aria-label="Home"
-      class="group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-(--text-primary) transition-all outline-none select-none active text-brand font-bold scale-110"
+      class="group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-text-primary transition-all outline-none select-none active text-brand font-bold scale-110"
       data-discover="true"
       href="/dashboard"
     >
@@ -368,7 +368,7 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
     </a>
     <a
       aria-label="News"
-      class="group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-(--text-primary) transition-all outline-none select-none opacity-strong hover:opacity-100"
+      class="group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-text-primary transition-all outline-none select-none opacity-strong hover:opacity-100"
       data-discover="true"
       href="/news"
     >
@@ -419,7 +419,7 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
     </a>
     <a
       aria-label="Events"
-      class="group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-(--text-primary) transition-all outline-none select-none opacity-strong hover:opacity-100"
+      class="group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-text-primary transition-all outline-none select-none opacity-strong hover:opacity-100"
       data-discover="true"
       href="/events"
     >
@@ -470,7 +470,7 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
     </a>
     <a
       aria-label="Schedule"
-      class="group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-(--text-primary) transition-all outline-none select-none opacity-strong hover:opacity-100"
+      class="group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-text-primary transition-all outline-none select-none opacity-strong hover:opacity-100"
       data-discover="true"
       href="/schedule"
     >
@@ -539,7 +539,7 @@ exports[`MobileBottomNav > renders links for main sections 2`] = `
     </a>
     <a
       aria-label="Profile"
-      class="group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-(--text-primary) transition-all outline-none select-none opacity-strong hover:opacity-100"
+      class="group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-text-primary transition-all outline-none select-none opacity-strong hover:opacity-100"
       data-discover="true"
       href="/profile"
     >

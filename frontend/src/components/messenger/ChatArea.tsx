@@ -2,6 +2,7 @@ import SmartImage from "@/components/SmartImage"
 import { ChatWindow, MessageInput } from "@/components/messenger"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 import { useMessengerController } from "@/hooks/features/useMessengerController"
+import { motion as motionTokens } from "@/theme/tokens"
 import { AnimatePresence, motion } from "framer-motion"
 import {
   ChevronLeft,
@@ -70,7 +71,7 @@ export function ChatArea({
       initial={isMobile ? { x: 300, opacity: 0 } : undefined}
       animate={{ x: 0, opacity: 1 }}
       exit={isMobile ? { x: 300, opacity: 0 } : undefined}
-      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+      transition={{ duration: motionTokens.durationMedium, ease: [0.22, 1, 0.36, 1] }}
       className="relative z-base flex h-full flex-1 flex-col overflow-hidden bg-msg-chat"
     >
       {selectedChatId && activeChat ? (
@@ -82,14 +83,14 @@ export function ChatArea({
                 initial={{ y: -20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 exit={{ y: -20, opacity: 0 }}
-                className="z-deep flex h-(--navbar-h-base) shrink-0 items-center justify-between px-(--space-4)"
+                className="z-deep flex h-(--navbar-h-base) shrink-0 items-center justify-between px-(--spacing-4)"
               >
                 <div className="flex items-center gap-3">
                   {isMobile && (
                     <motion.button
                       whileTap={{ scale: 0.9 }}
                       onClick={() => navigate("/messenger")}
-                      className="-ml-1 rounded-full p-15 transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium)"
+                      className="-ml-1 rounded-full p-1.5 transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium)"
                     >
                       <ChevronLeft className="h-5 w-5" strokeWidth={2.5} />
                     </motion.button>
@@ -110,7 +111,7 @@ export function ChatArea({
                         className="size-11 rounded-full border-2 border-(--glass-border-subtle) object-cover"
                       />
                       {presenceMap[getOtherParticipant(activeChat)?.id ?? ""]?.active && (
-                        <span className="msg-online-indicator absolute bottom-0 right-0 size-35"></span>
+                        <span className="msg-online-indicator absolute bottom-0 right-0 size-3" />
                       )}
                     </div>
                     <div>
@@ -150,7 +151,7 @@ export function ChatArea({
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={() => setShowSearchInChat(true)}
-                    className="rounded-full p-25 transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium)"
+                    className="rounded-full p-2.5 transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium)"
                   >
                     <Search className="h-5 w-5 text-text-secondary" strokeWidth={2} />
                   </motion.button>
@@ -160,7 +161,7 @@ export function ChatArea({
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
                       onClick={() => setShowChatMenu(!showChatMenu)}
-                      className={`rounded-full p-25 transition-colors ${showChatMenu ? "bg-(--bg-surface-hover)" : "hover:bg-(--bg-surface-hover)/(--opacity-medium)"}`}
+                      className={`rounded-full p-2.5 transition-colors ${showChatMenu ? "bg-(--bg-surface-hover)" : "hover:bg-(--bg-surface-hover)/(--opacity-medium)"}`}
                     >
                       <MoreVertical className="h-5 w-5 text-text-secondary" strokeWidth={2} />
                     </motion.button>
@@ -214,7 +215,7 @@ export function ChatArea({
                 initial={{ y: -20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 exit={{ y: -20, opacity: 0 }}
-                className="header-glass z-deep flex h-(--navbar-h-base) shrink-0 items-center border-b border-glass-border bg-surface/(--opacity-medium) px-(--space-4) backdrop-blur-xl"
+                className="header-glass z-deep flex h-(--navbar-h-base) shrink-0 items-center border-b border-glass-border bg-surface/(--opacity-medium) px-(--spacing-4) backdrop-blur-xl"
               >
                 <motion.button
                   whileTap={{ scale: 0.9 }}

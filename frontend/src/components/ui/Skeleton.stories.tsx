@@ -16,7 +16,7 @@ const meta: Meta<typeof Skeleton> = {
     },
     rounded: {
       control: "select",
-      options: [true, false, "50%", "9999px"],
+      options: [true, false, "50%", "9999rem"],
       description: "Border radius (true for default, string for custom)",
     },
     ariaLabel: {
@@ -63,7 +63,7 @@ export const Button: Story = {
   args: {
     width: 120,
     height: 40,
-    rounded: "9999px",
+    rounded: "9999rem",
     ariaLabel: "Loading button",
   },
 }
@@ -78,7 +78,7 @@ export const Card: Story = {
 
 export const MultipleLines: Story = {
   render: () => (
-    <div className="flex flex-col gap-2" style={{ width: 300 }}>
+    <div className="flex flex-col gap-2 w-72">
       <Skeleton width="100%" height={16} ariaLabel="Loading line 1" />
       <Skeleton width="90%" height={16} ariaLabel="Loading line 2" />
       <Skeleton width="75%" height={16} ariaLabel="Loading line 3" />

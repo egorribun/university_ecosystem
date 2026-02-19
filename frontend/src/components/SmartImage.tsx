@@ -37,7 +37,7 @@ export default function SmartImage({
   style,
   onError,
   onLoad,
-  sizes = "(max-width: 720px) 82vw, 460px",
+  sizes = "(max-width: 45rem) 82vw, 28.75rem",
   ...rest
 }: SmartImageProps) {
   const isBlobUrl = srcRaw?.startsWith("blob:")

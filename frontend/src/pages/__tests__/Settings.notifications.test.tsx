@@ -1,15 +1,15 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { act, renderHook, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ChangeEvent, ReactElement, ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { usePushPreferences } from "@/hooks/usePushPreferences"
+import type { User } from "@/types/User"
 import i18n from "../../i18n/config"
 
 const tNotifications = (key: string, options?: Record<string, unknown>) =>
   i18n.t(`notifications:${key}`, options)
 
-const AUTH_USER_ID = 123
+const AUTH_USER_ID = "123"
 
 const hoistedMocks = vi.hoisted(() => ({
   deleteSubscriptionMock: vi.fn(),
@@ -31,7 +31,7 @@ const hoistedMocks = vi.hoisted(() => ({
   isPushSupportedMock: ReturnType<typeof vi.fn>
 }
 
-const authState: { user: any } = { user: { id: AUTH_USER_ID } }
+const authState: { user: User | null } = { user: { id: AUTH_USER_ID } as unknown as User }
 
 vi.mock("@/api/notifications", async () => {
   const actual = await vi.importActual<typeof import("@/api/notifications")>("@/api/notifications")
@@ -131,7 +131,7 @@ beforeEach(() => {
     writable: true,
   })
 
-  authState.user = { id: AUTH_USER_ID }
+  authState.user = { id: AUTH_USER_ID } as unknown as User
 
   const pushManager = {
     getSubscription: vi.fn(),
@@ -182,8 +182,8 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks()
-  delete (navigator as any).serviceWorker
-  delete (window as any).PushManager
+  delete (navigator as unknown as Record<string, unknown>).serviceWorker
+  delete (window as unknown as Record<string, unknown>).PushManager
   queryClient.clear()
 })
 

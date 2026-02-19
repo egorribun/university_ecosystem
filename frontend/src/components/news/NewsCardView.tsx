@@ -1,4 +1,5 @@
 import { ContentCard, Snackbar, ConfirmDialog } from "@/components/ui"
+<<<<<<< HEAD
 import { SpotlightOverlay, useSpotlight } from "@/components/ui/Spotlight"
 import { motion as motionTokens } from "@/theme/tokens"
 import { cn } from "@/utils/cn"
@@ -9,6 +10,15 @@ import { useTranslation } from "react-i18next"
 import NewsCardContent from "./NewsCardContent"
 import NewsCardHero from "./NewsCardHero"
 import type { NewsEditData } from "./NewsCardEditDialog"
+=======
+import { SpotlightOverlay } from "@/components/ui/Spotlight"
+import { motion as motionTokens } from "@/theme/tokens"
+import { cn } from "@/utils/cn"
+import { motion, MotionValue } from "framer-motion"
+import { FC, Suspense, lazy } from "react"
+import NewsCardContent from "./NewsCardContent"
+import NewsCardHero from "./NewsCardHero"
+>>>>>>> origin/main
 
 const NewsCardActions = lazy(() =>
   import("./NewsCardActions").then((m) => ({ default: m.NewsCardActions }))
@@ -17,6 +27,7 @@ const NewsCardEditDialog = lazy(() =>
   import("./NewsCardEditDialog").then((m) => ({ default: m.NewsCardEditDialog }))
 )
 
+<<<<<<< HEAD
 export type NewsCardViewProps = {
   id: string
   title: string
@@ -46,11 +57,67 @@ export type NewsCardViewProps = {
   loading: boolean
   error: string
   onErrorClose: () => void
+=======
+export interface NewsCardViewProps {
+  id: string
+  title: string
+  created_at: string
+  image_url?: string
+  previewText: string
+
+  // Interaction State
+  isLiked: boolean
+  likesCount: number
+  commentsCount: number
+
+  // Container State
+  isAdmin: boolean
+  loading: boolean
+  error: string
+  hoveringDisabled: boolean
+
+  // Dialog State
+  editOpen: boolean
+  confirmDeleteOpen: boolean
+  editData: {
+    title: string
+    content: string
+    title_en: string
+    content_en: string
+    image_url: string
+  }
+
+  // Spotlight
+  spotlight: {
+    mouseX: MotionValue<number>
+    mouseY: MotionValue<number>
+    onMouseMove: (e: React.MouseEvent<HTMLDivElement>) => void
+  }
+
+  // Handlers
+  onToggleLike: () => void
+  onEditOpen: () => void
+  onEditClose: () => void
+  onDeleteOpen: () => void
+  onDeleteClose: () => void
+  onDeleteConfirm: () => void
+  onEditSuccess: () => void
+  onErrorClose: () => void
+
+  // Translations
+  t: {
+    deleteTitle: string
+    deleteDesc: string
+    confirm: string
+    cancel: string
+  }
+>>>>>>> origin/main
 }
 
 export const NewsCardView: FC<NewsCardViewProps> = ({
   id,
   title,
+<<<<<<< HEAD
   contentRaw,
   created_at,
   image_url,
@@ -89,6 +156,32 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
 
   const hoveringDisabled = editOpen
 
+=======
+  created_at,
+  image_url,
+  previewText,
+  isLiked,
+  likesCount,
+  commentsCount,
+  isAdmin,
+  loading,
+  error,
+  hoveringDisabled,
+  editOpen,
+  confirmDeleteOpen,
+  editData,
+  spotlight,
+  onToggleLike,
+  onEditOpen,
+  onEditClose,
+  onDeleteOpen,
+  onDeleteClose,
+  onDeleteConfirm,
+  onEditSuccess,
+  onErrorClose,
+  t
+}) => {
+>>>>>>> origin/main
   return (
     <motion.article
       layout
@@ -97,7 +190,11 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
       onMouseMove={spotlight.onMouseMove}
       transition={{ duration: motionTokens.durationMedium, ease: [0.22, 1, 0.36, 1] }}
       whileHover={!hoveringDisabled ? { y: -4 } : undefined}
+<<<<<<< HEAD
       className={cn("h-full outline-none", "cursor-default")}
+=======
+      className={cn("h-full outline-none", hoveringDisabled ? "cursor-default" : "cursor-pointer")}
+>>>>>>> origin/main
     >
       <ContentCard
         hoverable={!hoveringDisabled}
@@ -113,8 +210,13 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
             <Suspense fallback={null}>
               <NewsCardActions
                 id={id}
+<<<<<<< HEAD
                 onEdit={onOpenEdit}
                 onDelete={onOpenDelete}
+=======
+                onEdit={onEditOpen}
+                onDelete={onDeleteOpen}
+>>>>>>> origin/main
                 isDisabled={loading}
               />
             </Suspense>
@@ -132,7 +234,11 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
           <NewsCardContent
             id={id}
             title={title}
+<<<<<<< HEAD
             preview={sanitizedPreview}
+=======
+            preview={previewText}
+>>>>>>> origin/main
             isLiked={isLiked}
             likesCount={likesCount}
             commentsCount={commentsCount}
@@ -145,7 +251,11 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
           <NewsCardEditDialog
             id={id}
             open={editOpen}
+<<<<<<< HEAD
             onClose={onCloseEdit}
+=======
+            onClose={onEditClose}
+>>>>>>> origin/main
             initialData={editData}
             onSuccess={onEditSuccess}
           />
@@ -153,6 +263,7 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
 
         <ConfirmDialog
           open={confirmDeleteOpen}
+<<<<<<< HEAD
           title={t("news:dialogs.delete.title")}
           message={t("news:dialogs.delete.description")}
           confirmText={t("common:buttons.delete")}
@@ -160,6 +271,15 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
           variant="danger"
           onConfirm={() => void onConfirmDelete()}
           onCancel={onCloseDelete}
+=======
+          title={t.deleteTitle}
+          message={t.deleteDesc}
+          confirmText={t.confirm}
+          cancelText={t.cancel}
+          variant="danger"
+          onConfirm={onDeleteConfirm}
+          onCancel={onDeleteClose}
+>>>>>>> origin/main
           isLoading={loading}
         />
         <Snackbar open={!!error} message={error} onClose={onErrorClose} />

@@ -17,7 +17,9 @@ interface SnackbarProps {
   duration?: number
 }
 
-function Snackbar({ open, message, onClose, duration = 2200 }: SnackbarProps) {
+const DEFAULT_DURATION = 2200
+
+function Snackbar({ open, message, onClose, duration = DEFAULT_DURATION }: SnackbarProps) {
   useEffect(() => {
     if (!open || !message) return
     const timer = setTimeout(() => {
@@ -30,7 +32,7 @@ function Snackbar({ open, message, onClose, duration = 2200 }: SnackbarProps) {
 
   return (
     <div className="fixed bottom-24 left-1/2 z-toast -translate-x-1/2 animate-in slide-in-from-bottom-4 fade-in">
-      <div className="flex items-center gap-2 rounded-xl border border-glass-border-subtle bg-glass-elevated px-5 py-3 text-sm font-black uppercase tracking-widest text-(--text-primary) shadow-premium backdrop-blur-2xl [-webkit-backdrop-filter:blur(24px)]">
+      <div className="flex items-center gap-2 rounded-xl border border-glass-border-subtle bg-glass-elevated px-5 py-3 text-sm font-black uppercase tracking-widest text-text-primary shadow-premium backdrop-blur-xl">
         {message}
       </div>
     </div>

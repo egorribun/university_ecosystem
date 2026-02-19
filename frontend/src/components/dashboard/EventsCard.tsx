@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties, type KeyboardEvent } from "react"
+import { useMemo, useState, useCallback, type CSSProperties, type KeyboardEvent } from "react"
 import { motion } from "framer-motion"
 import { Link, useNavigate } from "react-router-dom"
 import { useTranslation } from "react-i18next"
@@ -43,11 +43,14 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
     })
   }
 
-  const prepareOnKey = (event: KeyboardEvent, callback: () => void) => {
-    if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
-      callback()
-    }
-  }
+  const prepareOnKey = useCallback(
+    (event: KeyboardEvent, callback: () => void) => {
+      if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
+        callback()
+      }
+    },
+    []
+  )
 
   const todayEvents = useMemo(() => {
     const now = dayjs()
@@ -103,7 +106,7 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
     >
       <div className="relative z-base space-y-5">
         <div className="relative z-base flex items-center justify-between gap-3">
-          <h2 className="text-fluid-h2 font-extrabold text-(--text-primary)">
+          <h2 className="text-fluid-h2 font-extrabold text-text-primary">
             {t("dashboard:events.heading")}
           </h2>
           <Button
@@ -125,7 +128,7 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
           <Button
             size="sm"
             variant={eventsScope === "today" ? "solid" : "outline"}
-            className="whitespace-nowrap transition-transform duration-base hover:-translate-y-px"
+            className="whitespace-nowrap transition-transform duration-base hover:-translate-y-0.5"
             onClick={() => setEventsScope("today")}
             aria-pressed={eventsScope === "today"}
           >
@@ -134,7 +137,7 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
           <Button
             size="sm"
             variant={eventsScope === "week" ? "solid" : "outline"}
-            className="whitespace-nowrap transition-transform duration-base hover:-translate-y-px"
+            className="whitespace-nowrap transition-transform duration-base hover:-translate-y-0.5"
             onClick={() => setEventsScope("week")}
             aria-pressed={eventsScope === "week"}
           >
@@ -184,7 +187,7 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
                     aria-label={t("dashboard:aria.eventItem", { title: e.title })}
                   >
                     <span className="flex w-full items-start justify-between gap-3">
-                      <span className="text-base font-semibold leading-tight text-(--text-primary) line-clamp-2">
+                      <span className="text-base font-semibold leading-tight text-text-primary line-clamp-2">
                         {e.title}
                       </span>
                       <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-glass-border bg-(--bg-surface)/(--opacity-dim) text-brand transition-all duration-base group-hover:bg-brand/(--opacity-subtle)">

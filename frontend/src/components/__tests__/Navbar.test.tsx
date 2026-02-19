@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { MemoryRouter, useLocation } from "react-router-dom"
 import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
@@ -66,7 +66,12 @@ vi.mock("@/components/MessengerButton", () => ({
 
 vi.mock("framer-motion", () => {
   const motionComponent = (Tag: string) => {
-    const Component = ({ children, className, onClick, ...props }: any) => {
+    const Component = ({
+      children,
+      className,
+      onClick,
+      ...props
+    }: React.ComponentProps<"div"> & { [key: string]: unknown }) => {
       const filteredProps = { ...props }
       const motionProps = [
         "initial",
@@ -84,17 +89,18 @@ vi.mock("framer-motion", () => {
         "layoutId",
       ]
       motionProps.forEach((prop) => delete filteredProps[prop])
+      const Element = Tag as React.ElementType
       return (
-        <Tag className={className} onClick={onClick} {...filteredProps}>
+        <Element className={className} onClick={onClick} {...filteredProps}>
           {children}
-        </Tag>
+        </Element>
       )
     }
     Component.displayName = `Motion(${Tag})`
-    return Component
+    return Component as unknown as React.ComponentType<unknown>
   }
   return {
-    AnimatePresence: ({ children }: any) => <>{children}</>,
+    AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
     motion: {
       nav: motionComponent("nav"),
       div: motionComponent("div"),
@@ -171,7 +177,7 @@ describe("Navbar", () => {
     const burger = await screen.findByRole("button", { name: "Open menu" })
     await user.click(burger)
 
-    await screen.findByRole("button", { name: "Close menu" })
+    await screen.findByTestId("mobile-menu-backdrop")
     // Focus should move to the drawer content
     const drawer = screen.getByRole("dialog")
     await waitFor(() => expect(drawer).toContainElement(document.activeElement as HTMLElement))
@@ -190,7 +196,8 @@ describe("Navbar", () => {
     await waitFor(() => expect(burger).toHaveFocus())
     expect(document.body.classList.contains("blurred")).toBe(false)
     expect(document.body.style.overflow).toBe("")
-    expect(drawer).toHaveStyle({ pointerEvents: "none" })
+    const backdrop = screen.getByTestId("mobile-menu-backdrop")
+    expect(backdrop).toHaveClass("pointer-events-none")
     expect(drawer).toHaveClass("-translate-x-full")
   })
 
@@ -208,7 +215,8 @@ describe("Navbar", () => {
 
     await waitFor(() => expect(burger).toHaveAttribute("aria-expanded", "false"))
     const drawer = screen.getByRole("dialog")
-    expect(drawer).toHaveStyle({ pointerEvents: "none" })
+    const backdrop = screen.getByTestId("mobile-menu-backdrop")
+    expect(backdrop).toHaveClass("pointer-events-none")
     expect(drawer).toHaveClass("-translate-x-full")
     expect(document.body.style.overflow).toBe("")
     expect(screen.getByTestId("location-display")).toHaveTextContent("/news")

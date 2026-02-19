@@ -1,13 +1,17 @@
 import * as Sentry from "@sentry/react"
 import { initTelemetry } from "./telemetry"
+import { logInfo } from "./logger"
 
 let initialized = false
+
+const MIN_SAMPLE_RATE = 0
+const MAX_SAMPLE_RATE = 1
 
 function parseSampleRate(value: string | undefined): number | undefined {
   if (!value) return undefined
   const parsed = Number.parseFloat(value)
   if (Number.isNaN(parsed)) return undefined
-  if (parsed < 0 || parsed > 1) return undefined
+  if (parsed < MIN_SAMPLE_RATE || parsed > MAX_SAMPLE_RATE) return undefined
   return parsed
 }
 
@@ -21,7 +25,7 @@ export function initObservability(env: ImportMetaEnv = import.meta.env): boolean
 
   if (env.DEV) {
     if (typeof console !== "undefined") {
-      console.info("Sentry disabled in development mode; skipping initialization")
+      logInfo("Sentry disabled in development mode; skipping initialization")
     }
     return false
   }

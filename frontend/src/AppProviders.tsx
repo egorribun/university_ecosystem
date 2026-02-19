@@ -1,7 +1,7 @@
 import type { ReactNode } from "react"
 import { BrowserRouter as Router } from "react-router-dom"
 
-import ErrorBoundary from "./app/ErrorBoundary"
+import ErrorBoundary from "@/components/ErrorBoundary"
 import { LiveRegionProvider } from "./components/LiveRegionProvider"
 import { AppShellProvider } from "./contexts/AppShellContext"
 import { AuthProvider } from "./contexts/AuthContext"

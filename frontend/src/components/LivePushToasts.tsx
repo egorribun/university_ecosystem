@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next"
 import { sanitizeHttpUrl } from "@/utils/sanitize"
 import { CheckCircle2, Info, AlertTriangle, XCircle, X, ExternalLink } from "lucide-react"
 import { cn } from "@/utils/cn"
+import { TIMEOUTS } from "@/config/timeouts"
 
 type SnackbarSeverity = "success" | "info" | "warning" | "error"
 
@@ -206,7 +207,7 @@ export default function LivePushToasts() {
 
   useEffect(() => {
     if (open && current) {
-      const timer = setTimeout(handleClose, 6000)
+      const timer = setTimeout(handleClose, TIMEOUTS.TOAST_LONG)
       return () => clearTimeout(timer)
     }
   }, [open, current, handleClose])
@@ -225,7 +226,7 @@ export default function LivePushToasts() {
   const severityClasses = {
     success:
       "bg-success-bg/(--opacity-subtle) border-success-border/(--opacity-dim) text-success-text",
-    info: "bg-info-bg/(--opacity-subtle) border-info-border/(--opacity-dim) text-info-text",
+    info: "bg-brand/(--opacity-subtle) border-brand/(--opacity-dim) text-brand",
     warning:
       "bg-warning-bg/(--opacity-subtle) border-warning-border/(--opacity-dim) text-warning-text",
     error: "bg-error-bg/(--opacity-subtle) border-error-border/(--opacity-dim) text-error-text",

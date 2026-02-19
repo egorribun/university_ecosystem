@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import type { Message, MessagesListResponse } from "../api/chat"
+import type { Message, MessagesListResponse } from "@/api/chat"
 import { readAccessToken } from "./auth/tokenStorage"
 import { logDebug, logError } from "@/app/logger"
 

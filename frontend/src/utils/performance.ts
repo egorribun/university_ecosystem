@@ -1,3 +1,5 @@
+import { logDebug } from "@/app/logger"
+
 /**
  * Performance timing utilities for measuring and reporting
  * key user experience metrics.
@@ -17,7 +19,7 @@ export async function measureAsync<T>(
   } finally {
     const duration = performance.now() - start
     if (import.meta.env.DEV) {
-      console.debug(`[Perf] ${name}: ${duration.toFixed(2)}ms`)
+      logDebug(`[Perf] ${name}: ${duration.toFixed(2)}ms`)
     }
     onComplete?.(duration)
   }
@@ -95,7 +97,7 @@ export function reportMetric(name: string, value: number, tags?: Record<string, 
 
   // Log in development
   if (import.meta.env.DEV) {
-    console.debug(`[Metric] ${name}=${value.toFixed(2)}`, tags ?? "")
+    logDebug(`[Metric] ${name}=${value.toFixed(2)}`, tags ?? "")
   }
 }
 
@@ -124,6 +126,8 @@ export function timed(name?: string) {
   }
 }
 
+const DEFAULT_METRICS_INTERVAL = 30000
+
 /**
  * Simple in-memory metrics aggregator for batch reporting.
  */
@@ -131,7 +135,7 @@ class MetricsBuffer {
   private buffer: Array<{ name: string; value: number; timestamp: number }> = []
   private flushInterval: ReturnType<typeof setInterval> | null = null
 
-  start(intervalMs = 30000): void {
+  start(intervalMs = DEFAULT_METRICS_INTERVAL): void {
     if (this.flushInterval) return
     this.flushInterval = setInterval(() => this.flush(), intervalMs)
   }

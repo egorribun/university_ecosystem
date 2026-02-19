@@ -21,7 +21,7 @@ const menuPanelClass =
   "absolute right-0 top-12 z-dropdown min-w-(--min-w-field) overflow-hidden rounded-lg border border-glass-border-subtle bg-input-mix/(--opacity-heavy) shadow-surface-strong backdrop-blur-xl"
 
 const menuItemClass =
-  "flex w-full items-center gap-2 px-4 py-2.5 text-left text-body-sm font-medium text-(--text-primary) transition hover:bg-glass/(--opacity-hover) focus-visible:outline-none focus-visible:bg-glass"
+  "flex w-full items-center gap-2 px-4 py-2.5 text-left text-body-sm font-medium text-text-primary transition hover:bg-glass/(--opacity-hover) focus-visible:outline-none focus-visible:bg-glass"
 
 export const NewsCardActions: FC<NewsCardActionsProps> = ({ onEdit, onDelete, isDisabled, id }) => {
   const { t } = useTranslation(["news", "common"])

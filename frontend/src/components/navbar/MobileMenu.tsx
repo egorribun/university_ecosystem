@@ -54,7 +54,19 @@ export function MobileMenu({
     }
   }, [isOpen, prefersReducedMotion, setOverlayState])
 
+  // Handle Escape key globally
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isOpen && !e.defaultPrevented) {
+        onClose()
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [isOpen, onClose])
+
   return createPortal(
+<<<<<<< HEAD
     <div
       id="mobile-drawer"
       className={cn(
@@ -77,6 +89,26 @@ export function MobileMenu({
       />
       {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
       <div
+=======
+    <>
+      <button
+        type="button"
+        className={cn(
+          "mobile-drawer-backdrop fixed inset-0 z-overlay h-full w-full border-none p-0 cursor-default outline-none",
+          isOpen
+            ? "pointer-events-auto bg-black/(--opacity-dim)"
+            : "pointer-events-none bg-transparent",
+          !prefersReducedMotion && "transition-colors duration-fast"
+        )}
+        onClick={onClose}
+        aria-label={t("navigation:aria.closeMenu")}
+        data-testid="mobile-menu-backdrop"
+        tabIndex={-1}
+      />
+
+      <div
+        id="mobile-drawer"
+>>>>>>> origin/main
         role="dialog"
         aria-modal="true"
         aria-label={t("navigation:aria.mobileMenu")}
@@ -86,10 +118,13 @@ export function MobileMenu({
           "border-r border-(--glass-border) backdrop-blur-(--glass-blur)",
           isOpen ? "translate-x-0" : "-translate-x-full"
         )}
+<<<<<<< HEAD
         onKeyDown={(e) => {
           if (e.key === "Escape") onClose()
           e.stopPropagation()
         }}
+=======
+>>>>>>> origin/main
         tabIndex={-1}
       >
         <div className="flex-1 overflow-y-auto px-4 py-8">
@@ -160,7 +195,11 @@ export function MobileMenu({
           </div>
         </div>
       </div>
+<<<<<<< HEAD
     </div>,
+=======
+    </>,
+>>>>>>> origin/main
     document.body
   )
 }

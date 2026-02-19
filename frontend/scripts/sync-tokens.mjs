@@ -7,45 +7,32 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 // Paths
-const THEME_CSS_PATH = path.resolve(__dirname, "../src/styles/theme.css")
+const PARTIALS_DIR = path.resolve(__dirname, "../src/styles/partials")
 const TOKENS_TS_PATH = path.resolve(__dirname, "../src/theme/tokens.ts")
 
 console.log("🔄 Starting Token Synchronization...")
 
 // 1. Parse CSS content to extract variables
-function extractCssVariables(filePath, visited = new Set()) {
-  const absolutePath = path.isAbsolute(filePath) ? filePath : path.resolve(path.dirname(entryPath), filePath)
-
-  // Prevent cycles
-  if (visited.has(absolutePath)) return new Map()
-  visited.add(absolutePath)
-
-  if (!fs.existsSync(absolutePath)) {
-    console.warn(`⚠️  File not found: ${absolutePath}`)
-    return new Map()
+function extractVariablesFromDir(dirPath) {
+  if (!fs.existsSync(dirPath)) {
+    console.error(`❌ Directory not found: ${dirPath}`)
+    process.exit(1)
   }
 
-  const content = fs.readFileSync(absolutePath, "utf-8")
-  const dir = path.dirname(absolutePath)
+  const files = fs.readdirSync(dirPath).filter((file) => file.endsWith(".css"))
   const variables = new Map()
-
-  // 1. Handle Imports
-  const importRegex = /@import\s+["']([^"']+)["'];/g
-  let importMatch
-  while ((importMatch = importRegex.exec(content)) !== null) {
-    const importPath = importMatch[1]
-    const resolvedImport = path.resolve(dir, importPath)
-    const importedVars = extractCssVariables(resolvedImport, visited)
-    importedVars.forEach((v, k) => variables.set(k, v))
-  }
-
-  // 2. Extract Variables
   const variableRegex = /--([a-zA-Z0-9-]+):\s*([^;]+);/g
-  let match
-  while ((match = variableRegex.exec(content)) !== null) {
-    const [_, name, value] = match
-    variables.set(name, value.trim())
-  }
+
+  files.forEach((file) => {
+    const filePath = path.join(dirPath, file)
+    const content = fs.readFileSync(filePath, "utf-8")
+    let match
+    while ((match = variableRegex.exec(content)) !== null) {
+      const [_, name, value] = match
+      variables.set(name, value.trim())
+    }
+  })
+
   return variables
 }
 // Store entry path for relative resolution context if needed,
@@ -53,8 +40,8 @@ function extractCssVariables(filePath, visited = new Set()) {
 // But initial call needs to be correct.
 const entryPath = THEME_CSS_PATH
 
-const themeVars = extractCssVariables(THEME_CSS_PATH)
-console.log(`✅ Found ${themeVars.size} CSS variables in theme.css`)
+const themeVars = extractVariablesFromDir(PARTIALS_DIR)
+console.log(`✅ Found ${themeVars.size} CSS variables in ${PARTIALS_DIR}`)
 
 // 2. Define Groups and their prefixes/logic
 // This mapping defines which CSS variables go into which TS export object
@@ -191,13 +178,41 @@ const GROUPS = [
   },
   {
     name: "motion",
-    // Motion vars are not fully in CSS yet, mostly hardcoded in tokens.ts.
-    // We will preserve the static block for now or look for specific vars if they exist.
-    isManual: true,
-    staticContent: `  staggerDelay: 0.06,
-  durationFast: 0.2,
-  durationMedium: 0.45,
-  navTransition: 1.2,`,
+    pattern: /^motion-/,
+    transformKey: (k) => {
+      // Map css vars to legacy token names
+      const suffix = k.replace("motion-", "")
+      // Special mappings to match existing tokens.ts
+      if (suffix === "stagger-medium") return "staggerDelay"
+      if (suffix === "duration-fast") return "durationFast"
+      if (suffix === "duration-medium") return "durationMedium"
+      if (suffix === "nav-transition") return "navTransition"
+
+      // Convert kebab-case to camelCase for others
+      return suffix.replace(/-./g, (x) => x[1].toUpperCase())
+    },
+    valueTransform: (k, value) => {
+      // If the value is a time string (e.g. 0.2s), parse it to a number
+      if (typeof value === "string" && value.endsWith("s")) {
+        const num = parseFloat(value)
+        if (!isNaN(num)) return num
+      }
+      return value
+    },
+    // We want raw values, not var(--...) wrappers for these numbers
+    raw: true,
+  },
+  {
+    name: "icon",
+    pattern: /^size-icon-/,
+    transformKey: (k) => k.replace("size-icon-", ""),
+    valueTransform: (k) => `var(--${k})`,
+  },
+  {
+    name: "letterSpacing",
+    pattern: /^tracking-/,
+    transformKey: (k) => k.replace("tracking-", ""),
+    valueTransform: (k) => `var(--${k})`,
   },
 ]
 
@@ -230,23 +245,25 @@ GROUPS.forEach((group) => {
     return
   }
 
-  if (group.name === "motion") {
-    output += `export const motion = {
-${group.staticContent}
-} as const\n\n`
-    return
-  }
+
 
   output += `export const ${group.name} = {\n`
 
   const entries = []
 
   // Find matching vars
-  for (const [key, _] of themeVars.entries()) {
+  for (const [key, rawValue] of themeVars.entries()) {
     if (group.pattern.test(key)) {
       const jsKey = group.transformKey(key)
       if (jsKey) {
-        const jsValue = group.valueTransform(key)
+        let jsValue
+        if (group.raw) {
+          // Pass the raw value from map (e.g. "0.2s") to transform
+          jsValue = group.valueTransform(key, rawValue)
+        } else {
+          jsValue = group.valueTransform(key)
+        }
+
         // Check if key already exists to prevent duplicates
         if (!entries.some((e) => e.key === jsKey)) {
           entries.push({ key: jsKey, value: jsValue })
@@ -285,7 +302,13 @@ ${group.staticContent}
   entries.forEach(({ key, value }) => {
     // Quote keys if they start with number or invalid chars
     const safeKey = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key) ? key : `"${key}"`
-    output += `  ${safeKey}: "${value}",\n`
+
+    // If value is a string, quote it. If number, don't.
+    if (typeof value === "string") {
+      output += `  ${safeKey}: "${value}",\n`
+    } else {
+      output += `  ${safeKey}: ${value},\n`
+    }
   })
 
   output += `} as const\n\n`

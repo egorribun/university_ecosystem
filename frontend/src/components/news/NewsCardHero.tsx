@@ -46,7 +46,7 @@ const NewsCardHero = ({ image_url, title, created_at }: NewsCardHeroProps) => {
           <SmartImage
             srcRaw={cardImageUrl}
             alt={title ? t("news:alt.hero", { title }) : t("news:alt.heroFallback")}
-            sizes="(min-width: 1200px) 640px, (min-width: 900px) 520px, 100vw"
+            sizes="(min-width: 75rem) 40rem, (min-width: 56.25rem) 32.5rem, 100vw"
             className="absolute inset-0 h-full w-full object-cover transition duration-slower ease-out"
             onLoad={handleCardImageReady}
             onError={handleCardImageReady}

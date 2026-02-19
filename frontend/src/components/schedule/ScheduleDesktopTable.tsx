@@ -121,10 +121,14 @@ export function ScheduleDesktopTable({
     const gap = minutesDiff(prev.end_time, curr.start_time)
     if (gap <= 0) return null
     return (
+<<<<<<< HEAD
       <div
         className="pointer-events-none absolute left-1/2 z-deep -translate-x-1/2"
         style={{ top: "calc(var(--space-4) * -1)" }}
       >
+=======
+      <div className="pointer-events-none absolute left-1/(--opacity-trace) top-[calc(var(--space-4)*-1)] z-deep -translate-x-1/(--opacity-trace)">
+>>>>>>> origin/main
         <Badge
           size="xs"
           className="chip-break font-medium bg-warning-bg/(--opacity-dim) border border-warning-border/(--opacity-soft) text-warning-text shadow-sm"
@@ -147,7 +151,7 @@ export function ScheduleDesktopTable({
       <table className="w-full border-collapse">
         <thead className="sticky top-0 z-sticky shadow-sm">
           <tr>
-            <th className="sticky left-0 z-navbar w-(--w-index-col) border-r border-glass-border bg-surface-raised px-4 py-4 text-center font-extrabold text-primary shadow-md backdrop-blur-md">
+            <th className="sticky left-0 z-navbar w-(--w-sidebar-collapsed) border-r border-glass-border bg-surface-raised px-4 py-4 text-center font-extrabold text-primary shadow-md backdrop-blur-md">
               №
             </th>
             {weekdayBackend.map((day, idx) => {
@@ -213,7 +217,7 @@ export function ScheduleDesktopTable({
                     return (
                       <td
                         key={`empty-${rowIdx}-${colIdx}`}
-                        className={cn("p-3", colIsToday ? "bg-card-hover" : "")}
+                        className={cn("p-3", colIsToday ? "bg-(--bg-surface-hover)" : "")}
                       >
                         <div className="min-h-(--h-skeleton-row) w-full animate-pulse rounded-sm bg-surface-hover/(--opacity-subtle)" />
                       </td>

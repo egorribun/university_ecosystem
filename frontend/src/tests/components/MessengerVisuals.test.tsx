@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { render, screen } from "@testing-library/react"
 import { describe, it, expect, vi } from "vitest"
 import { ContactList, ChatWindow } from "../../components/messenger"
@@ -13,7 +13,9 @@ vi.mock("react-i18next", () => ({
 
 // Mock SmartImage
 vi.mock("@/components/SmartImage", () => ({
-  default: ({ alt, className }: any) => <img alt={alt} className={className} />,
+  default: ({ alt, className }: { alt?: string; className?: string }) => (
+    <img alt={alt} className={className} />
+  ),
 }))
 
 const queryClient = new QueryClient()

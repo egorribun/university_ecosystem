@@ -1,4 +1,4 @@
-import { useMemo, type KeyboardEvent, type CSSProperties } from "react"
+import { useMemo, useCallback, type KeyboardEvent, type CSSProperties } from "react"
 import { motion } from "framer-motion"
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
@@ -107,21 +107,21 @@ export function ScheduleCard({
 
   const warmSchedulePage = () => import("../../pages/Schedule").catch(() => {})
 
-  const prepareOnKey = (event: KeyboardEvent, callback: () => void) => {
-    if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
-      callback()
-    }
-  }
+  const prepareOnKey = useCallback(
+    (event: KeyboardEvent, callback: () => void) => {
+      if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
+        callback()
+      }
+    },
+    []
+  )
 
   const listActionBase =
-    "group relative isolate w-full overflow-hidden rounded-sm border border-transparent bg-(--bg-surface)/(--opacity-subtle) px-4 py-3 text-left transition-all duration-base ease-out hover:bg-(--bg-surface)/(--opacity-dim) hover:border-glass-border hover:-translate-y-0.5 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/(--opacity-medium)"
+    "group relative isolate w-full overflow-hidden rounded-sm border border-transparent bg-(--bg-surface)/(--opacity-subtle) px-4 py-3 text-left transition-all duration-base ease-out hover:bg-(--bg-surface)/(--opacity-dim) hover:border-glass-border hover:-translate-y-1 hover:shadow-premium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/(--opacity-medium)"
 
   return (
     <Card
-      className={cn(
-        "card-glass card-glass-interactive dash-panel-schedule",
-        className
-      )}
+      className={cn("card-glass card-glass-interactive dash-panel-schedule", className)}
       padding="lg"
       aria-busy={loadingSched}
       style={style}
@@ -156,7 +156,7 @@ export function ScheduleCard({
                   label={`${fmtTime(currentLesson.start_time)}–${fmtTime(currentLesson.end_time)}`}
                 />
               </div>
-              <span className="text-base font-semibold leading-tight text-(--text-primary) line-clamp-1">
+              <span className="text-base font-semibold leading-tight text-text-primary line-clamp-1">
                 {currentLesson.subject}
               </span>
             </div>
@@ -177,7 +177,7 @@ export function ScheduleCard({
               label={t("dashboard:next")}
             />
             <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-              <span className="text-base font-semibold leading-tight text-(--text-primary) truncate">
+              <span className="text-base font-semibold leading-tight text-text-primary truncate">
                 {nextLesson.subject}
               </span>
               <Badge
@@ -219,7 +219,7 @@ export function ScheduleCard({
                   )}
                 >
                   <div className="flex w-full items-start justify-between gap-3">
-                    <span className="text-base font-semibold leading-tight text-(--text-primary) line-clamp-2">
+                    <span className="text-base font-semibold leading-tight text-text-primary line-clamp-2">
                       {l.subject}
                     </span>
                     <Badge

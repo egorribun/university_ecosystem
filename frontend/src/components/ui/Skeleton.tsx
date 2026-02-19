@@ -39,12 +39,7 @@ export function Skeleton({
   style,
   ...rest
 }: SkeletonProps) {
-  // If rounded is boolean/standard variant, use cva.
-  // If it's a custom string (rare legacy case), use customRounding or inline style.
-  // The original component accepted `boolean | string` for rounded.
-  // To verify: if `rounded` is a string like "20px", it won't match keys in cva, so it falls back to null class.
-  // We can handle the "string as CSS value" case via style prop or custom logic.
-
+  // Handle standard variants and custom CSS values for rounding
   let variantRounding: VariantProps<typeof skeletonVariants>["rounded"] = true
   let styleBorderRadius: string | undefined = undefined
 

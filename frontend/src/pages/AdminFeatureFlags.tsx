@@ -2,10 +2,10 @@ import { useCallback, useEffect, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { Info, Percent } from "lucide-react"
-import api from "../api/client"
-import Layout from "../components/Layout"
+import api from "@/api/client"
+import Layout from "@/components/Layout"
 import { SwitchControl, Chip } from "@/components/settings"
-import { FeatureFlag, FlagStatus } from "../types/Admin"
+import { FeatureFlag, FlagStatus } from "@/types/Admin"
 
 export default function AdminFeatureFlags() {
   const [flags, setFlags] = useState<FeatureFlag[]>([])
@@ -70,8 +70,13 @@ export default function AdminFeatureFlags() {
             transition={{ duration: 0.5 }}
             className="mb-8"
           >
+<<<<<<< HEAD
             <h1 className="text-4xl font-bold tracking-tight text-(--text-primary) sm:text-5xl">
               {t("featureFlags.title")}
+=======
+            <h1 className="text-4xl font-bold tracking-tight text-text-primary sm:text-5xl">
+              {t("featureFlags.title", "Dynamic Feature Flags")}
+>>>>>>> origin/main
             </h1>
             <p className="mt-2 text-base text-(--text-secondary)">
               {t("featureFlags.subtitle")}
@@ -109,7 +114,7 @@ export default function AdminFeatureFlags() {
                       >
                         <td className="px-6 py-5">
                           <div className="flex flex-col gap-1">
-                            <span className="text-base font-bold text-(--text-primary)">
+                            <span className="text-base font-bold text-text-primary">
                               {flag.name}
                             </span>
                             <span className="text-xs text-(--text-secondary) max-w-xs opacity-strong">

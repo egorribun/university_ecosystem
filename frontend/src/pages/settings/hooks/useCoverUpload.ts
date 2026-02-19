@@ -2,12 +2,12 @@ import { useState, useCallback, useRef, useMemo } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 
-import api from "../../../api/client"
-import { useAuth } from "../../../contexts/AuthContext"
-import { currentUserQueryKey, fetchCurrentUser } from "../../../hooks/auth/useProfileSync"
-import { resolveMediaUrl, addVersionParam } from "../../../utils/media"
-import type { User } from "../../../types/User"
-import type { SetSnackbar } from "../types"
+import api from "@/api/client"
+import { useAuth } from "@/contexts/AuthContext"
+import { currentUserQueryKey, fetchCurrentUser } from "@/hooks/auth/useProfileSync"
+import { resolveMediaUrl, addVersionParam } from "@/utils/media"
+import type { User } from "@/types/User"
+import type { SetSnackbar } from "@/pages/settings/types"
 
 const MAX_FILE_SIZE_MB = 12
 

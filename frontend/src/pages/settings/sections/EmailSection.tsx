@@ -8,9 +8,9 @@ import {
   SectionTitle,
   SectionSubtitle,
   AccordionSection,
-} from "../../../components/settings"
+} from "@/components/settings"
 
-import type { SettingsSectionProps } from "../types"
+import type { SettingsSectionProps } from "@/pages/settings/types"
 
 interface EmailSectionProps extends SettingsSectionProps {
   emailValue: string

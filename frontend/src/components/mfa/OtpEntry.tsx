@@ -120,7 +120,7 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
   return (
     <div className="w-full">
       <div className="flex flex-col gap-6 items-stretch">
-        <h3 className="text-lg font-black tracking-tight text-center text-(--text-primary)">
+        <h3 className="text-lg font-black tracking-tight text-center text-text-primary">
           {t("mfa.otp.methods.totp")}
         </h3>
 
@@ -158,7 +158,7 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
               onBlur={() => setFocusedIndex(null)}
               className={cn(
                 "w-11 h-14 sm:w-14 sm:h-18 text-center text-2xl font-black rounded-2xl",
-                "bg-(--bg-surface-raised)/(--opacity-medium) text-(--text-primary) border-2 transition-all duration-base",
+                "bg-(--bg-surface-raised)/(--opacity-medium) text-text-primary border-2 transition-all duration-base",
                 "focus:outline-none backdrop-blur-md shadow-sm",
                 derivedError
                   ? "border-(--error-border)/(--opacity-medium) focus:border-(--error-border) focus:ring-4 focus:ring-(--error-border)/(--opacity-subtle)"

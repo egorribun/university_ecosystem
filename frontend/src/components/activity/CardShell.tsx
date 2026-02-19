@@ -33,7 +33,7 @@ export default function CardShell({
       animate={{ y: 0, opacity: 1 }}
       transition={{ type: "spring", stiffness: 260, damping: 32, mass: 1 }}
       className={cn(
-        "relative flex h-full flex-col overflow-hidden rounded-2xl border border-glass-border-subtle backdrop-blur-xl [-webkit-backdrop-filter:blur(12px)]",
+        "relative flex h-full flex-col overflow-hidden rounded-2xl border border-glass-border-subtle backdrop-blur-md",
         TONE_CLASSES[tone],
         "shadow-premium",
         "transition-all duration-fast",

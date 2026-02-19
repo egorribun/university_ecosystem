@@ -3,10 +3,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import dayjs from "dayjs"
 import isoWeek from "dayjs/plugin/isoWeek"
-import api from "../api/client"
+import api from "@/api/client"
 
 dayjs.extend(isoWeek)
-import { useAuth } from "../contexts/AuthContext"
+import { useAuth } from "@/contexts/AuthContext"
 import {
   type Lesson,
   type ScheduleGroup,
@@ -29,7 +29,11 @@ import {
   parseMinutes,
   getTodayIdx,
   getTimeStr,
-} from "../components/schedule/scheduleUtils"
+} from "@/components/schedule/scheduleUtils"
+
+const QUERY_STALE_TIME_MS = 60_000
+const QUERY_GC_TIME_MS = 5 * 60_000
+const TICKER_INTERVAL_MS = 30_000
 
 export function useScheduleData() {
   const { user } = useAuth()
@@ -40,8 +44,9 @@ export function useScheduleData() {
   const [nowTick, setNowTick] = useState(dayjs())
 
   // Update time ticker
+  // Update time ticker
   useEffect(() => {
-    const id = setInterval(() => setNowTick(dayjs()), 30000)
+    const id = setInterval(() => setNowTick(dayjs()), TICKER_INTERVAL_MS)
     return () => clearInterval(id)
   }, [])
 
@@ -266,8 +271,8 @@ export function useScheduleData() {
       return Array.isArray(res.data) ? res.data : []
     },
     enabled: Boolean(user),
-    staleTime: 60_000,
-    gcTime: 5 * 60_000,
+    staleTime: QUERY_STALE_TIME_MS,
+    gcTime: QUERY_GC_TIME_MS,
     networkMode: "online",
     retry: 1,
     ...(groupsStorageSnapshot && {
@@ -336,8 +341,8 @@ export function useScheduleData() {
       if (previous !== undefined) return previous
       return scheduleStorageSnapshot?.value
     },
-    staleTime: 60_000,
-    gcTime: 5 * 60_000,
+    staleTime: QUERY_STALE_TIME_MS,
+    gcTime: QUERY_GC_TIME_MS,
     networkMode: "online",
     retry: 1,
     ...(scheduleStorageSnapshot && {

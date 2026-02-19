@@ -1,8 +1,9 @@
 import { ContactList } from "@/components/messenger"
+import { TextField } from "@/components/ui"
 import { useMessengerController } from "@/hooks/features/useMessengerController"
 import { motion } from "framer-motion"
 import { Search, SquarePen } from "lucide-react"
-import { Dispatch, SetStateAction } from "react"
+import { Dispatch, SetStateAction, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
 
@@ -13,6 +14,8 @@ interface MessengerSidebarProps {
   setIsNewChatModalOpen: Dispatch<SetStateAction<boolean>>
 }
 
+const MOBILE_MENU_WIDTH = 300
+
 export function MessengerSidebar({
   isMobile,
   contacts,
@@ -21,13 +24,14 @@ export function MessengerSidebar({
 }: MessengerSidebarProps) {
   const { t } = useTranslation(["messenger", "common"])
   const navigate = useNavigate()
+  const [searchQuery, setSearchQuery] = useState("")
 
   return (
     <motion.div
       key="sidebar"
-      initial={isMobile ? { x: -300, opacity: 0 } : undefined}
+      initial={isMobile ? { x: -MOBILE_MENU_WIDTH, opacity: 0 } : undefined}
       animate={{ x: 0, opacity: 1 }}
-      exit={isMobile ? { x: -300, opacity: 0 } : undefined}
+      exit={isMobile ? { x: -MOBILE_MENU_WIDTH, opacity: 0 } : undefined}
       transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
       className="panel-glass relative z-deep flex h-full w-full flex-col md:w-(--layout-max-sidebar) lg:w-(--layout-max-sidebar)"
     >
@@ -48,6 +52,7 @@ export function MessengerSidebar({
       </div>
 
       <div className="bg-(--bg-surface-raised) p-4">
+<<<<<<< HEAD
         <div className="group relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-tertiary transition-colors group-focus-within:text-primary-main" />
           <input
@@ -58,6 +63,17 @@ export function MessengerSidebar({
             className="w-full rounded-md border-none bg-black/(--opacity-medium) py-25 pl-10 pr-4 text-(--fs-body) shadow-sm outline-none transition-all focus:ring-2 focus:ring-(--brand-main)/(--opacity-medium) dark:bg-white/(--opacity-medium)"
           />
         </div>
+=======
+        <TextField
+          id="messenger-sidebar-search"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          inputClassName="border-none bg-black/(--opacity-medium) py-2.5 shadow-sm outline-none transition-all focus:ring-2 focus:ring-(--brand-main)/(--opacity-medium) dark:bg-white/(--opacity-medium)"
+          leadingIcon={<Search className="h-4 w-4" />}
+          placeholder={t("messenger:search", "Search")}
+          className="w-full"
+        />
+>>>>>>> origin/main
       </div>
 
       <ContactList

@@ -1,6 +1,7 @@
 import * as React from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ChevronDown } from "lucide-react"
+import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
 
 interface SelectOption {
@@ -33,18 +34,20 @@ interface SelectProps {
  *  - Escape → close
  *  - Type-ahead → focus matching option
  */
-const Select = ({
-  value,
-  onValueChange,
-  options,
-  placeholder = "Выберите...",
-  className,
-  disabled,
-  error,
-  id: externalId,
-  "aria-label": ariaLabel,
-  "aria-labelledby": ariaLabelledBy,
-}: SelectProps) => {
+  const Select = ({
+    value,
+    onValueChange,
+    options,
+    placeholder,
+    className,
+    disabled,
+    error,
+    id: externalId,
+    "aria-label": ariaLabel,
+    "aria-labelledby": ariaLabelledBy,
+  }: SelectProps) => {
+  const { t } = useTranslation("common")
+  const defaultPlaceholder = placeholder ?? t("select.placeholder")
   const generatedId = React.useId()
   const baseId = externalId ?? generatedId
 
@@ -231,7 +234,7 @@ const Select = ({
           !selectedOption && "text-text-tertiary"
         )}
       >
-        <span className="truncate">{selectedOption ? selectedOption.label : placeholder}</span>
+        <span className="truncate">{selectedOption ? selectedOption.label : defaultPlaceholder}</span>
         <ChevronDown
           className={cn(
             "h-4 w-4 shrink-0 text-text-secondary transition-transform duration-base",

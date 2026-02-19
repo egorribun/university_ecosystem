@@ -1,5 +1,5 @@
 import client from "./client"
-import type { User } from "../types/User"
+import type { User } from "@/types/User"
 
 export interface Attachment {
   id: string

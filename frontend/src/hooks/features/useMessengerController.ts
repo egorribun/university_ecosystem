@@ -4,18 +4,18 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
-import { useAuth } from "../../contexts/AuthContext"
-import { useMessenger } from "../../contexts/MessengerContext"
+import { useAuth } from "@/contexts/AuthContext"
+import { useMessenger } from "@/contexts/MessengerContext"
 import {
   chatApi,
   type Chat,
   type ChatMaintenanceResult,
   type ChatsListResponse,
   type MessagesListResponse,
-} from "../../api/chat"
-import client from "../../api/client"
-import type { User } from "../../types/User"
-import type { Message as UiMessage } from "../../components/messenger"
+} from "@/api/chat"
+import client from "@/api/client"
+import type { User } from "@/types/User"
+import type { Message as UiMessage } from "@/components/messenger"
 
 dayjs.extend(utc)
 

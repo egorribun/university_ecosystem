@@ -5,6 +5,17 @@
   "ariaDatePublished": "Опубликовано: {{date}}",
   "ariaCurrentTime": "Текущее время",
   "ariaCurrentLessonProgress": "Прогресс текущего занятия",
+  "errorBoundary": {
+    "title": "Что-то пошло не так",
+    "description": "Произошла непредвиденная ошибка. Мы уже работаем над её исправлением.",
+    "details": "Подробности ошибки",
+    "retry": "Попробовать снова",
+    "reload": "Перезагрузить страницу",
+    "goHome": "На главную"
+  },
+  "select": {
+    "placeholder": "Выберите..."
+  },
   "buttons": {
     "save": "Сохранить",
     "cancel": "Отмена",
@@ -23,7 +34,20 @@
   },
   "statuses": {
     "loading": "Загрузка…",
-    "uploading": "Загрузка файла…",
-    "publishing": "Публикация…"
+    "uploading": "Выгрузка…",
+    "publishing": "Публикация…",
+    "error": "Что-то пошло не так",
+    "tryAgain": "Попробовать снова",
+    "live": "В ЭФИРЕ"
+  },
+  "errors": {
+    "generic": "Произошла ошибка"
+  },
+  "pagination": {
+    "rowsPerPage": "Строк на странице",
+    "firstPage": "В начало",
+    "prevPage": "Назад",
+    "nextPage": "Вперед",
+    "lastPage": "В конец"
   }
 }

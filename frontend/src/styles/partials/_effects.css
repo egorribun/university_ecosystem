@@ -1,0 +1,150 @@
+@layer base {
+    :root {
+        /* Shadow Scale — Single Source of Truth */
+        --raw-shadow-sm:
+            0 0.0625rem 0.1875rem color-mix(in srgb, black var(--opacity-subtle), transparent),
+            0 0.0625rem 0.125rem color-mix(in srgb, black var(--opacity-faint), transparent);
+        --raw-shadow-md:
+            0 0.25rem 0.75rem color-mix(in srgb, black var(--opacity-subtle), transparent),
+            0 0.125rem 0.25rem color-mix(in srgb, black var(--opacity-faint), transparent);
+        /* Missing token fix */
+        --raw-shadow-surface: var(--raw-shadow-sm);
+        --raw-shadow-premium:
+            0 1.25rem 3.125rem color-mix(in srgb, black var(--opacity-subtle), transparent),
+            0 0.5rem 1rem color-mix(in srgb, black var(--opacity-faint), transparent);
+        --raw-shadow-premium-lift: 0 1.25rem 2.5rem -0.75rem color-mix(in srgb, var(--primary-main) var(--opacity-dim), transparent);
+        --raw-shadow-glass: 0 2.1875rem 5rem color-mix(in srgb, black var(--opacity-dim), transparent);
+        --raw-shadow-glass-strong: 0 2.8125rem 5.625rem color-mix(in srgb, black var(--opacity-medium), transparent);
+        --raw-shadow-up: 0 -0.25rem 0.75rem color-mix(in srgb, black var(--opacity-faint), transparent);
+        --raw-shadow-inner-premium: inset 0 0.0625rem 0 color-mix(in srgb, white var(--opacity-subtle), transparent);
+        --shadow-glow-blue: 0 0 1.25rem color-mix(in srgb, var(--color-blue-500) var(--opacity-soft), transparent);
+        --shadow-glow-green: 0 0 1rem color-mix(in srgb, var(--color-green-500) var(--opacity-soft), transparent);
+        --raw-shadow-focus: 0 0 0 0.125rem var(--bg-page), 0 0 0 0.25rem var(--primary-main);
+
+        /* Semantic Glows & Shadows */
+        --shadow-glow-primary: 0 0 0.75rem color-mix(in srgb, var(--primary-main) var(--opacity-dim), transparent);
+        --shadow-glow-error: 0 0 0.75rem color-mix(in srgb, var(--error-text) var(--opacity-dim), transparent);
+        --shadow-glow-warning: 0 0 0.75rem color-mix(in srgb, var(--warning-text) var(--opacity-dim), transparent);
+        --shadow-glow-success: 0 0 0.75rem color-mix(in srgb, var(--success-text) var(--opacity-dim), transparent);
+        --shadow-glow-success: 0 0 0.75rem color-mix(in srgb, var(--success-text) var(--opacity-dim), transparent);
+
+        /* Glass System Extensions */
+        --glass-alpha-low: 0.1;
+        --glass-alpha-med: 0.15;
+        --glass-alpha-high: 0.2;
+        --glass-blur: 0.75rem;
+        --glass-bg-low: color-mix(in srgb, white var(--glass-alpha-low), transparent);
+        --glass-bg-high: color-mix(in srgb, white var(--glass-alpha-high), transparent);
+        --glass-bg-low-dark: color-mix(in srgb, var(--bg-surface) 60%, transparent);
+
+        /* Semantic Blurs */
+        --blur-none: 0rem;
+        --blur-xs: 0.25rem;
+        --blur-sm: 0.5rem;
+        --blur-md: 0.75rem;
+        --blur-lg: 1rem;
+
+        /* Animation & Transitions */
+        --ease-premium: cubic-bezier(0.16, 1, 0.3, 1);
+        --transition-premium: 500ms var(--ease-premium);
+        --transition-fast: 200ms var(--ease-premium);
+        --scale-hover: 1.02;
+
+        /* Motion System */
+        --motion-slide-sm: 0.625rem;
+        --motion-slide-md: 1.25rem;
+        --motion-slide-lg: 3.125rem;
+        --motion-scale-in: 0.95;
+        --motion-scale-out: 1.05;
+
+        /* Durations */
+        --motion-duration-instant: 0.1s;
+        /* 100ms */
+        --motion-duration-rapid: 0.15s;
+        /* 150ms */
+        --motion-duration-fast: 0.2s;
+        /* 200ms */
+        --motion-duration-base: 0.3s;
+        /* 300ms */
+        --motion-duration-default: 0.35s;
+        /* 350ms */
+        --motion-duration-medium: 0.45s;
+        /* 450ms */
+        --motion-duration-slow: 0.5s;
+        /* 500ms */
+        --motion-duration-slower: 0.7s;
+        /* 700ms */
+        --motion-duration-lazy: 0.9s;
+        /* 900ms */
+        --motion-duration-hero: 1.2s;
+        /* Animation Loops & Pulses */
+        --motion-duration-shimmer: 1.6s;
+        --motion-duration-aura: 14s;
+        --motion-duration-pulse: 1.8s;
+        --motion-duration-pulse-slow: 2s;
+        --motion-duration-typing: 1.4s;
+        /* 1200ms */
+
+        /* Delays */
+        --motion-delay-none: 0s;
+        --motion-delay-short: 0.1s;
+        /* 100ms */
+        --motion-delay-base: 0.15s;
+        /* 150ms */
+        --motion-delay-long: 0.2s;
+        /* 200ms */
+
+        /* Stagger Delays */
+        --motion-stagger-fast: 0.04s;
+        --motion-stagger-medium: 0.06s;
+        --motion-stagger-slow: 0.1s;
+
+        /* Special Transitions */
+        --motion-nav-transition: 1.2s;
+
+        --opacity-trace: 0.02;
+        --opacity-faint: 0.05;
+        --opacity-subtle: 0.1;
+        --opacity-glass: 0.16;
+        --opacity-dim: 0.2;
+        --opacity-soft: 0.3;
+        --opacity-medium: 0.5;
+        --opacity-strong: 0.7;
+        --opacity-hover: 0.8;
+        --opacity-heavy: 0.9;
+    }
+
+    .dark {
+        /* Auth & Spotlight Glows */
+        --glow-spotlight-primary: color-mix(in srgb,
+                var(--primary-main) var(--opacity-soft),
+                transparent);
+        --glow-spotlight-secondary: color-mix(in srgb,
+                var(--primary-main) var(--opacity-dim),
+                transparent);
+        --glow-blur-md: 6.875rem;
+        --glow-blur-lg: 7.5rem;
+        --glow-blur-xl: 11.25rem;
+        --glow-blur-2xl: 12.5rem;
+        --glow-blur-3xl: 13.125rem;
+        --glow-blur-mega: 13.75rem;
+        --glow-blur-massive: blur(var(--glow-blur-lg));
+
+        /* Overlay & Backdrop */
+        --overlay-bg: color-mix(in srgb, black var(--opacity-hover), transparent);
+        --overlay-blur: 1rem;
+
+        --msg-online-pulse: color-mix(in srgb,
+                var(--color-emerald-400) var(--opacity-soft),
+                transparent);
+
+        /* Glass Tints (Dark Mode) */
+        --glass-bg: color-mix(in srgb, var(--color-slate-900) var(--opacity-subtle), transparent);
+        --glass-border: color-mix(in srgb, var(--color-white) var(--opacity-subtle), transparent);
+        --shadow-glass: 0 0.5rem 2rem 0 color-mix(in srgb, var(--color-black) var(--opacity-soft), transparent);
+        --shadow-glass-strong: 0 0.75rem 3rem 0 color-mix(in srgb, var(--color-black) var(--opacity-medium), transparent);
+        --glass-tint1: color-mix(in srgb, var(--color-sky-400) var(--opacity-faint), transparent);
+        --glass-tint2: color-mix(in srgb, var(--color-indigo-400) var(--opacity-faint), transparent);
+        --glass-tint3: color-mix(in srgb, var(--color-black) var(--opacity-soft), transparent);
+    }
+}

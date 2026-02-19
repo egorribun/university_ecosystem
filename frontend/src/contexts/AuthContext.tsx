@@ -5,11 +5,10 @@ import { useProfileSync, fetchCurrentUser, currentUserQueryKey } from "@/hooks/a
 import { useAuthApi } from "@/hooks/auth/useAuthApi"
 import type { AuthContextType } from "@/types/Auth"
 import { ChallengeLockedError } from "@/types/Auth"
+import { logWarning } from "@/app/logger"
 
 const noopSetUser = () => {
-  if (import.meta.env.DEV) {
-    console.warn("AuthContext setUser called outside provider")
-  }
+  logWarning("AuthContext setUser called outside provider")
 }
 
 export const AuthContext = createContext<AuthContextType>({

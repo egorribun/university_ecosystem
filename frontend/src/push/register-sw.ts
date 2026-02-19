@@ -1,5 +1,5 @@
-import { PWA_REFRESH_EVENT, type ServiceWorkerUpdateEventDetail } from "../app/pwaEvents"
-import { createTrustedScriptURL } from "../utils/trustedTypes"
+import { PWA_REFRESH_EVENT, type ServiceWorkerUpdateEventDetail } from "@/app/pwaEvents"
+import { createTrustedScriptURL } from "@/utils/trustedTypes"
 import { logError } from "@/app/logger"
 import {
   SERVICE_WORKER_MESSAGE_TYPES,

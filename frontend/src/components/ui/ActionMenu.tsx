@@ -155,7 +155,7 @@ export const ActionMenu = ({
         aria-haspopup="menu"
         aria-expanded={isOpen}
         className={cn(
-          "flex h-8 w-8 items-center justify-center rounded-full text-(--text-secondary) transition-fast hover:bg-(--bg-surface-hover) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus",
+          "flex h-8 w-8 items-center justify-center rounded-full text-(--text-secondary) transition-fast hover:bg-(--bg-surface-hover) hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border-focus",
           triggerClassName
         )}
       >
@@ -188,7 +188,7 @@ export const ActionMenu = ({
                 "hover:bg-(--bg-surface-hover) focus-visible:bg-(--bg-surface-hover) focus-visible:outline-none",
                 item.variant === "danger"
                   ? "text-error-text hover:bg-error-bg"
-                  : "text-(--text-primary)",
+                  : "text-text-primary",
                 item.disabled && "cursor-not-allowed opacity-medium"
               )}
             >

@@ -1,29 +1,43 @@
-import { useActionState, useEffect, useMemo, useRef, useState } from "react"
-import axios from "../api/client"
+import { useState, useEffect } from "react"
+import axios from "@/api/client"
 import { Link } from "react-router-dom"
 import { useTranslation, Trans } from "react-i18next"
 import { Button, TextField, SectionCard, Chip } from "@/components/settings"
 import { motion, AnimatePresence } from "framer-motion"
 import { ChevronLeft, Send as SendIcon, CheckCircle2 } from "lucide-react"
-import { suggestEmailDomain } from "@/utils/authUtils"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
 
-const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+import { suggestEmailDomain } from "@/utils/authUtils"
+import { resetPasswordSchema, type ResetPasswordValues } from "@/features/auth/schemas"
 
 const FORGOT_URL = "/password/forgot"
-
-type ForgotState = {
-  status: "idle" | "success" | "error"
-  email?: string
-  error?: string
-}
+const RESEND_COOLDOWN_SEC = 30
 
 export default function ForgotPassword() {
   const { t } = useTranslation(["auth"])
-  const [email, setEmail] = useState("")
   const [emailSuggestion, setEmailSuggestion] = useState<string | null>(null)
   const [cooldown, setCooldown] = useState(0)
-  const emailInputRef = useRef<HTMLInputElement | null>(null)
-  const emailValid = useMemo(() => email.length === 0 || emailRe.test(email), [email])
+  const [isSuccess, setIsSuccess] = useState(false)
+
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    trigger,
+    formState: { errors, isSubmitting },
+    reset,
+  } = useForm<ResetPasswordValues>({
+    resolver: zodResolver(resetPasswordSchema),
+    defaultValues: {
+      email: "",
+    },
+    mode: "onBlur",
+  })
+
+  // Watch email for suggestions and UI logic
+  const email = watch("email")
 
   useEffect(() => {
     if (!cooldown) return
@@ -31,67 +45,52 @@ export default function ForgotPassword() {
     return () => clearInterval(id)
   }, [cooldown])
 
-  const onBlurEmail = () => {
-    const s = suggestEmailDomain(email)
-    setEmailSuggestion(s && s !== email ? s : null)
+  const onBlurEmail = async () => {
+    await trigger("email")
+    if (email) {
+      const s = suggestEmailDomain(email)
+      setEmailSuggestion(s && s !== email ? s : null)
+    }
   }
 
   const applySuggestion = () => {
     if (emailSuggestion) {
-      setEmail(emailSuggestion)
+      setValue("email", emailSuggestion, { shouldValidate: true })
       setEmailSuggestion(null)
     }
   }
 
-  const [forgotState, forgotAction, forgotPending] = useActionState(
-    async (_prev: ForgotState, input: FormData) => {
-      if (input.get("__reset__") === "1") {
-        return { status: "idle" as const }
-      }
+  const onSubmit = async (data: ResetPasswordValues) => {
+    if (cooldown > 0) return
 
-      const value = String(input.get("email") ?? "").trim()
-      if (!emailRe.test(value)) {
-        return { status: "error" as const, error: t("auth:messages.invalidEmail") }
-      }
+    try {
+      await axios.post(FORGOT_URL, { email: data.email })
+      // Even if API fails (security reasons), we often show success or generic message.
+      // But here we'll assume success for the UX flow if no error thrown.
+      // If the backend throws for non-existent email, we might want to catch that.
+      // The original code caught all errors and ignored them ("Ignore errors, message is same for security").
 
-      setEmail(value)
-
-      try {
-        await axios.post(FORGOT_URL, { email: value })
-      } catch {
-        // Ignore errors, message is same for security
-      }
-
-      setCooldown(30)
-      return { status: "success" as const, email: value }
-    },
-    { status: "idle" as const }
-  )
-
-  const forgotStatus = forgotState.status
-  const forgotErrorMessage = forgotStatus === "error" ? (forgotState.error ?? "") : ""
-  const canSubmit = emailRe.test(email) && !forgotPending && cooldown === 0
-
-  useEffect(() => {
-    if (!forgotPending && forgotStatus === "error") {
-      emailInputRef.current?.focus()
+      setCooldown(RESEND_COOLDOWN_SEC)
+      setIsSuccess(true)
+    } catch {
+      // Ignore errors for security, pretend it worked
+      setCooldown(RESEND_COOLDOWN_SEC)
+      setIsSuccess(true)
     }
-  }, [forgotPending, forgotStatus])
+  }
 
   const resetRequest = () => {
-    const marker = new FormData()
-    marker.append("__reset__", "1")
-    forgotAction(marker)
+    setIsSuccess(false)
+    reset()
     setCooldown(0)
-    setEmail("")
     setEmailSuggestion(null)
-    emailInputRef.current?.focus()
   }
 
   return (
-    <div className="min-h-screen bg-(--bg-page) text-(--text-primary) flex items-center justify-center p-6 relative overflow-hidden">
+    <div className="min-h-screen bg-page text-text-primary flex items-center justify-center p-6 relative overflow-hidden">
       {/* Background decorative elements */}
       <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-dim">
+<<<<<<< HEAD
         <div
           className="absolute bg-(--glow-spotlight-primary) rounded-full blur-(--glow-blur-massive)"
           style={{ top: "-10%", left: "-5%", width: "40%", height: "40%" }}
@@ -100,6 +99,10 @@ export default function ForgotPassword() {
           className="absolute bg-(--glow-spotlight-secondary) rounded-full blur-(--glow-blur-massive)"
           style={{ bottom: "-10%", right: "-5%", width: "40%", height: "40%" }}
         />
+=======
+        <div className="absolute top-[-10%] left-[-5%] w-2/5 h-2/5 bg-(--glow-spotlight-primary) rounded-full blur-(--glow-blur-massive)" />
+        <div className="absolute bottom-[-10%] right-[-5%] w-2/5 h-2/5 bg-(--glow-spotlight-secondary) rounded-full blur-(--glow-blur-massive)" />
+>>>>>>> origin/main
       </div>
 
       <motion.div
@@ -110,18 +113,18 @@ export default function ForgotPassword() {
         <SectionCard className="p-8 sm:p-10 border-glass-border shadow-glass backdrop-blur-2xl rounded-4xl">
           <div className="space-y-8">
             <div className="text-center space-y-2">
-              <h1 className="text-3xl font-black tracking-tight text-(--text-primary) sm:text-4xl">
+              <h1 className="text-3xl font-black tracking-tight text-text-primary sm:text-4xl">
                 {t("auth:forgot.title")}
               </h1>
               <p className="text-sm text-(--text-secondary) font-medium">
-                {forgotStatus === "success"
+                {isSuccess
                   ? t("auth:forgot.successSent")
                   : t("auth:forgot.subtitle")}
               </p>
             </div>
 
             <AnimatePresence mode="wait">
-              {forgotStatus === "success" ? (
+              {isSuccess ? (
                 <motion.div
                   key="success"
                   initial={{ opacity: 0, scale: 0.95 }}
@@ -140,7 +143,7 @@ export default function ForgotPassword() {
                         i18nKey="forgot.success"
                         values={{ email }}
                         components={{
-                          strong: <span className="font-extrabold text-(--text-primary)" />,
+                          strong: <span className="font-extrabold text-text-primary" />,
                         }}
                       />
                     </p>
@@ -164,7 +167,7 @@ export default function ForgotPassword() {
                       variant="ghost"
                       onClick={resetRequest}
                       disabled={cooldown > 0}
-                      className="w-full text-(--text-secondary) hover:text-(--text-primary)"
+                      className="w-full text-(--text-secondary) hover:text-text-primary"
                     >
                       {t("auth:forgot.enterAnother")}
                       {cooldown > 0 ? ` (${cooldown}s)` : ""}
@@ -178,24 +181,20 @@ export default function ForgotPassword() {
                   animate={{ opacity: 1 }}
                   className="space-y-6"
                 >
-                  <form action={forgotAction} autoComplete="off" className="space-y-6">
+                  <form onSubmit={handleSubmit(onSubmit)} autoComplete="off" className="space-y-6">
                     <div className="space-y-3">
                       <TextField
                         id="forgot-email-input"
                         label={t("auth:fields.email")}
-                        name="email"
-                        type="email"
+                        {...register("email")}
                         value={email}
-                        onChange={(e) => setEmail(e.target.value)}
+                        type="email"
                         onBlur={onBlurEmail}
                         fullWidth
                         autoComplete="email"
-                        error={!emailValid && email.length > 0}
-                        helperText={
-                          !emailValid && email.length > 0 ? t("auth:messages.invalidFormat") : ""
-                        }
-                        ref={emailInputRef}
-                        disabled={forgotPending || cooldown > 0}
+                        error={!!errors.email}
+                        helperText={errors.email?.message ? t(errors.email.message) : ""}
+                        disabled={isSubmitting || cooldown > 0}
                         className="rounded-lg h-14"
                       />
 
@@ -213,12 +212,12 @@ export default function ForgotPassword() {
                       )}
                     </div>
 
-                    {forgotErrorMessage && (
+                    {errors.root?.message && (
                       <div
                         className="min-h-6 text-center text-sm font-semibold text-error-text animate-bounce"
                         aria-live="assertive"
                       >
-                        {forgotErrorMessage}
+                        {errors.root.message}
                       </div>
                     )}
 
@@ -228,8 +227,8 @@ export default function ForgotPassword() {
                         type="submit"
                         variant="solid"
                         className="w-full h-14 rounded-lg text-base font-black shadow-premium hover:shadow-glass hover:-translate-y-0.5 active:translate-y-0"
-                        disabled={!canSubmit}
-                        loading={forgotPending}
+                        disabled={isSubmitting || cooldown > 0}
+                        loading={isSubmitting}
                         startIcon={<SendIcon className="h-5 w-5" />}
                       >
                         {t("auth:forgot.sendLink")}

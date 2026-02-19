@@ -1,4 +1,4 @@
-import { type CSSProperties, type KeyboardEvent } from "react"
+import { type CSSProperties, type KeyboardEvent, useCallback } from "react"
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 
@@ -35,18 +35,27 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
     void prefetchDashboardNews(queryClient, language)
   }
 
-  const prepareOnKey = (event: KeyboardEvent, callback: () => void) => {
-    if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
-      callback()
-    }
-  }
+  const prepareOnKey = useCallback(
+    (event: KeyboardEvent, callback: () => void) => {
+      if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
+        callback()
+      }
+    },
+    []
+  )
 
   return (
     <Card
       className={cn(
+<<<<<<< HEAD
         "group bg-glass backdrop-blur-3xl transition-all duration-base ease-back-out",
         "hover:-translate-y-1 hover:scale-105 hover:shadow-glass motion-reduce:hover:transform-none motion-reduce:hover:shadow-none",
         "dash-panel-news border-glass-border",
+=======
+        "group backdrop-blur-3xl transition-all duration-base ease-[cubic-bezier(0.34,1.56,0.64,1)]",
+        "hover:-translate-y-1 hover:scale-[1.01] hover:shadow-glass motion-reduce:hover:transform-none motion-reduce:hover:shadow-none",
+        "dash-panel-news",
+>>>>>>> origin/main
         className
       )}
       padding="lg"
@@ -56,7 +65,7 @@ export function NewsCard({ locale, className, style, ...props }: NewsCardProps) 
     >
       <div className="relative z-deep space-y-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-fluid-h2 font-extrabold text-(--text-primary)">
+          <h2 className="text-fluid-h2 font-extrabold text-text-primary">
             {t("dashboard:news.heading")}
           </h2>
           <Button

@@ -1,0 +1,230 @@
+@layer base {
+    :root {
+        /*
+     * BASE COLORS
+     * Foundational palette used by semantic tokens
+     */
+        --color-white: #ffffff;
+        --color-black: #000000;
+
+        /* Slate Palette (Standard Reference) */
+        --color-slate-50: #f8fafc;
+        --color-slate-100: #f1f5f9;
+        --color-slate-200: #e2e8f0;
+        --color-slate-300: #cbd5e1;
+        --color-slate-400: #94a3b8;
+        --color-slate-500: #64748b;
+        --color-slate-600: #475569;
+        --color-slate-700: #334155;
+        --color-slate-800: #1e293b;
+        --color-slate-900: #0f172a;
+        --color-slate-950: #020617;
+
+        /* Sky Palette (Dashboard) */
+        --color-sky-50: #f0f9ff;
+        --color-sky-100: #e0f2fe;
+        --color-sky-200: #bae6fd;
+        --color-sky-300: #7dd3fc;
+        --color-sky-400: #38bdf8;
+        --color-sky-500: #0ea5e9;
+        --color-sky-600: #0284c7;
+        --color-sky-700: #0369a1;
+        --color-sky-800: #075985;
+        --color-sky-900: #0c4a6e;
+        --color-sky-950: #082f49;
+
+        /* Indigo Palette (Dashboard) */
+        --color-indigo-50: #eef2ff;
+        --color-indigo-100: #e0e7ff;
+        --color-indigo-200: #c7d2fe;
+        --color-indigo-300: #a5b4fc;
+        --color-indigo-400: #818cf8;
+        --color-indigo-500: #6366f1;
+        --color-indigo-600: #4f46e5;
+        --color-indigo-700: #4338ca;
+        --color-indigo-800: #3730a3;
+        --color-indigo-900: #312e81;
+        --color-indigo-950: #1e1b4b;
+
+        /* Purple Palette (Dashboard Accents) */
+        --color-purple-400: #c084fc;
+
+        /* Semantic Primary Palette (Blue) */
+        --color-blue-50: #eff6ff;
+        --color-blue-400: #60a5fa;
+        --color-blue-500: #3b82f6;
+        --color-blue-600: #2563eb;
+        --color-blue-700: #1d4ed8;
+
+        /* Functional Palette */
+        --color-emerald-400: #34d399;
+        --color-emerald-500: #10b981;
+        --color-green-100: #dcfce7;
+        --color-green-500: #22c55e;
+        --color-green-800: #166534;
+        --color-amber-100: #fef3c7;
+        --color-amber-400: #fbbf24;
+        --color-amber-500: #f59e0b;
+        --color-amber-700: #b45309;
+        --color-red-400: #f87171;
+        --color-red-600: #dc2626;
+
+        /* Semantic Color Mixtures */
+        --text-session-revoked: color-mix(in srgb, var(--text-primary) 64%, white 36%);
+        --text-session-meta: color-mix(in srgb, var(--text-primary) 78%, var(--text-secondary) 22%);
+        --text-field-label: color-mix(in srgb, var(--text-secondary) 85%, white 15%);
+        --cover-fade-light: color-mix(in srgb, var(--bg-page) 85%, transparent);
+        --cover-fade-dark: color-mix(in srgb, var(--bg-page) 92%, transparent);
+        --event-media-tint-from: color-mix(in srgb, var(--primary-main) 20%, var(--bg-surface) 80%);
+        --event-media-tint-to: color-mix(in srgb, var(--primary-main) 10%, var(--bg-surface) 90%);
+        --event-media-border: color-mix(in srgb, var(--primary-main) 12%, transparent 88%);
+        --event-media-pulse: color-mix(in srgb, var(--primary-main) 15%, var(--bg-surface) 85%);
+        --event-divider: color-mix(in srgb, var(--primary-main) 20%, transparent 80%);
+
+        /* Core Layout Gradients (Standardized) */
+        --grad-nav-light:
+            radial-gradient(120% 180% at -10% -20%,
+                color-mix(in srgb, var(--color-blue-400) var(--opacity-medium)),
+                transparent 58%),
+            linear-gradient(112deg,
+                var(--bg-surface) 0%,
+                color-mix(in srgb, var(--bg-surface) 96%, var(--color-black) 4%) 100%);
+        --grad-nav-dark:
+            radial-gradient(120% 180% at -10% -20%,
+                color-mix(in srgb, var(--color-sky-400) var(--opacity-dim)),
+                transparent 58%),
+            linear-gradient(112deg, #0a1524 0%, #0b2b47 100%);
+
+        /* Semantic Transparency (Alpha Mixes) */
+        --glass-border-subtle: color-mix(in srgb, var(--border-subtle) 40%, transparent);
+        --glass-bg-elevated: color-mix(in srgb, var(--bg-surface) 90%, transparent);
+        --text-muted-subtle: color-mix(in srgb, var(--text-secondary) 60%, transparent);
+        --text-label: color-mix(in srgb, var(--text-secondary) 55%, transparent);
+        --text-caption: color-mix(in srgb, var(--text-secondary) 65%, transparent);
+        --primary-subtle-bg: color-mix(in srgb, var(--primary-main) 10%, transparent);
+
+        /* Gradients */
+        --grad-news-hero: linear-gradient(180deg,
+                transparent 30%,
+                color-mix(in srgb, var(--color-slate-900) var(--opacity-strong), transparent) 95%);
+        --grad-overlay: linear-gradient(180deg,
+                transparent 0%,
+                color-mix(in srgb, var(--color-slate-900) var(--opacity-hover), transparent) 100%);
+
+        --msg-online-pulse: color-mix(in srgb, var(--success-text) var(--opacity-soft), transparent);
+
+        /* Brand Specifics */
+        --color-spotify: #1db954;
+        --color-spotify-hover: #1ed760;
+    }
+
+    /*
+   * LIGHT THEME (Default)
+   */
+    :root {
+        /* Backgrounds */
+        --bg-page: var(--color-slate-50);
+        --bg-surface: var(--color-white);
+        --bg-surface-hover: var(--color-slate-100);
+        --bg-surface-raised: var(--color-white);
+        --bg-surface-tint: color-mix(in srgb, var(--primary-main) var(--opacity-faint), transparent);
+        --bg-panel: color-mix(in srgb, white var(--opacity-strong), transparent);
+
+        /* Text */
+        --text-primary: var(--color-slate-900);
+        --text-secondary: var(--color-slate-500);
+        --text-tertiary: var(--color-slate-400);
+        --text-inverse: var(--color-white);
+
+        /* Borders */
+        --border-subtle: var(--color-slate-200);
+        --border-strong: var(--color-slate-300);
+        --border-focus: var(--color-blue-500);
+
+        /* Composite Surfaces (Premium Mixes) */
+        --bg-surface-mix: color-mix(in srgb, var(--bg-surface) 96%, var(--color-slate-900) 4%);
+        --bg-input-mix: color-mix(in srgb, var(--bg-surface) 94%, white 6%);
+
+        /* Brand / Primary */
+        --primary-main: var(--color-blue-600);
+        --primary-main-rgb: 37, 99, 235;
+        --primary-hover: var(--color-blue-700);
+        --primary-hover-rgb: 29, 78, 216;
+        --primary-subtle: var(--color-blue-50);
+        --primary-text: var(--color-blue-600);
+
+        /* Status: Success */
+        --success-bg: var(--color-green-100);
+        --success-text: var(--color-green-800);
+
+        /* Status: Warning */
+        --warning-bg: var(--color-amber-100);
+        --warning-text: var(--color-amber-700);
+
+        /* Status: Error */
+        --error-bg: color-mix(in srgb, var(--error-text) var(--opacity-subtle), transparent);
+        --error-text: var(--color-red-600);
+        --error-text-rgb: 153, 27, 27;
+
+        /* Brand Gradients */
+        --gradient-brand: linear-gradient(135deg, var(--primary-main), var(--primary-hover));
+    }
+
+    /*
+   * DARK THEME
+   */
+    .dark {
+        /* Backgrounds */
+        --bg-page: var(--color-slate-950);
+        --bg-surface: var(--color-slate-800);
+        --bg-surface-hover: var(--color-slate-700);
+        --bg-surface-raised: var(--color-slate-800);
+        --bg-panel: color-mix(in srgb, #1e293b var(--opacity-strong), transparent);
+
+        /* Text */
+        --text-primary: var(--color-slate-50);
+        --text-secondary: var(--color-slate-400);
+        --text-tertiary: var(--color-slate-500);
+        --text-inverse: var(--color-slate-950);
+
+        /* Borders */
+        --border-subtle: var(--color-slate-700);
+        --border-strong: var(--color-slate-600);
+        --border-focus: var(--color-sky-400);
+
+        /* Composite Surfaces (Premium Mixes) */
+        --bg-surface-mix: color-mix(in srgb, var(--bg-surface) 92%, white 8%);
+        --bg-input-mix: color-mix(in srgb, var(--bg-surface) 94%, white 6%);
+
+        /* Brand / Primary */
+        --primary-main: var(--color-sky-400);
+        --primary-main-rgb: 56, 189, 248;
+        --primary-hover: var(--color-sky-300);
+        --primary-hover-rgb: 125, 211, 252;
+        --primary-subtle: color-mix(in srgb, var(--color-sky-400) var(--opacity-subtle), transparent);
+        --primary-text: var(--color-sky-400);
+
+        /* Status: Success */
+        --success-bg: color-mix(in srgb, var(--color-emerald-500) var(--opacity-dim), transparent);
+        --success-text: var(--color-emerald-400);
+
+        /* Status: Warning */
+        --warning-bg: color-mix(in srgb, #f59e0b var(--opacity-dim), transparent);
+        --warning-text: var(--color-amber-400);
+
+        --error-text: var(--color-red-400);
+        --error-text-rgb: 248, 113, 113;
+
+        /* Semantic Transparency (Alpha Mixes) */
+        --glass-border-subtle: color-mix(in srgb, var(--border-subtle) 30%, transparent);
+        --glass-bg-elevated: color-mix(in srgb, var(--bg-surface) 92%, transparent);
+        --text-muted-subtle: color-mix(in srgb, var(--text-secondary) 70%, transparent);
+        --text-label: color-mix(in srgb, var(--text-secondary) 60%, transparent);
+        --text-caption: color-mix(in srgb, var(--text-secondary) 72%, transparent);
+        --primary-subtle-bg: color-mix(in srgb, var(--primary-main) 12%, transparent);
+
+        /* Standardized Mixes for High Contrast */
+        --text-primary-muted: color-mix(in srgb, var(--text-primary) 84%, var(--text-secondary) 16%);
+        --text-primary-ghost: color-mix(in srgb, var(--text-primary) 70%, transparent);
+    }
+}

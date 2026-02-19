@@ -11,6 +11,7 @@ import { setTraceContext } from "@/app/logger"
 export const API_UNAUTHORIZED_EVENT = "auth:unauthorized"
 export const SKIP_UNAUTHORIZED_HEADER = "X-Client-Skip-Unauthorized"
 const TRACE_HEADER = (import.meta.env.VITE_TRACE_HEADER || "x-trace-id") as string
+const API_TIMEOUT_MS = 8000
 
 const devBase = "/api/v1"
 const prodBase = `${import.meta.env.VITE_BACKEND_ORIGIN || ""}/api/v1`
@@ -68,7 +69,7 @@ type ApiInstance = Omit<AxiosInstance, "get" | "delete" | "post" | "patch" | "pu
 const api: ApiInstance = axios.create({
   baseURL: import.meta.env.DEV ? devBase : prodBase,
   withCredentials: true,
-  timeout: 8000,
+  timeout: API_TIMEOUT_MS,
   xsrfCookieName: "XSRF-TOKEN",
   xsrfHeaderName: "X-XSRF-TOKEN",
   headers: {

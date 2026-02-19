@@ -9,7 +9,7 @@ dayjs.extend(isoWeek)
 dayjs.locale("ru")
 
 import App from "./App"
-import ErrorBoundary from "./app/ErrorBoundary"
+import ErrorBoundary from "@/components/ErrorBoundary"
 import { initGlobalErrorHandlers } from "./app/globalErrorHandlers"
 import { logError } from "./app/logger"
 import { initObservability } from "./app/observability"

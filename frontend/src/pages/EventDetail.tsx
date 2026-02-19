@@ -6,15 +6,15 @@ import {
   ArrowLeft as ArrowBackIcon,
   X as XIcon,
 } from "lucide-react"
-import { useAuth } from "../contexts/AuthContext"
-import Layout from "../components/Layout"
+import { useAuth } from "@/contexts/AuthContext"
+import Layout from "@/components/Layout"
 import SmartImage from "@/components/SmartImage"
 import type { Event } from "@/types/Event"
 import { useTranslation } from "react-i18next"
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc"
 import timezone from "dayjs/plugin/timezone"
-import { Button, Badge } from "@/components/ui"
+import { Button, Badge, GlassCard } from "@/components/ui"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
 import { cn } from "@/utils/cn"
@@ -50,6 +50,8 @@ const isCanceledRequestError = (err: unknown): boolean => {
   )
 }
 
+const SNACKBAR_AUTO_HIDE_DURATION = 2500
+
 function Snackbar({
   open,
   message,
@@ -63,7 +65,7 @@ function Snackbar({
     if (!open || !message) return
     const timer = setTimeout(() => {
       onClose()
-    }, 2500)
+    }, SNACKBAR_AUTO_HIDE_DURATION)
     return () => clearTimeout(timer)
   }, [open, message, onClose])
 
@@ -73,7 +75,7 @@ function Snackbar({
     <div className="fixed bottom-6 left-1/2 z-overlay -translate-x-1/2 animate-in slide-in-from-bottom-4 fade-in">
       <div className="flex items-center gap-3 rounded-2xl border border-glass-border bg-surface/(--opacity-heavy) px-5 py-3.5 text-sm font-semibold text-text-primary shadow-premium backdrop-blur-md">
         <span>{message}</span>
-        <button onClick={onClose} className="rounded-full p-1 hover:bg-white/20">
+        <button onClick={onClose} className="rounded-full p-1 hover:bg-white/(--opacity-dim)">
           <XIcon size={16} />
         </button>
       </div>
@@ -160,7 +162,11 @@ export default function EventDetail() {
   if (loading) {
     return (
       <Layout>
+<<<<<<< HEAD
         <div className="flex w-full items-center justify-center" style={{ height: "60vh" }}>
+=======
+        <div className="flex min-h-(--h-hero-md) w-full items-center justify-center">
+>>>>>>> origin/main
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand border-t-transparent" />
         </div>
       </Layout>
@@ -206,10 +212,10 @@ export default function EventDetail() {
   if (isMobile) {
     return (
       <Layout>
-        <div className="w-full min-h-(--h-screen-offset) bg-(--bg-page) px-4 py-4 sm:px-6 md:px-8 lg:px-12">
+        <div className="w-full min-h-(--h-screen-offset) bg-page px-4 py-4 sm:px-6 md:px-8 lg:px-12">
           {BackButtonComponent}
           <div className="space-y-6">
-            <h1 className="text-fluid-h2 font-extrabold text-(--text-primary) sm:text-fluid-h1">
+            <h1 className="text-fluid-h2 font-extrabold text-text-primary sm:text-fluid-h1">
               {event.title}
             </h1>
             <div className="flex flex-wrap items-center gap-2">
@@ -226,33 +232,41 @@ export default function EventDetail() {
                 {t("events:card.participants", { count: event.participant_count || 0 })}
               </Badge>
             </div>
+<<<<<<< HEAD
             <p
               className="font-semibold text-(--text-primary)"
               style={{ fontSize: "var(--fs-base)" }}
             >
               {event.description}
             </p>
+=======
+            <p className="text-(--fs-base) font-semibold text-text-primary">{event.description}</p>
+>>>>>>> origin/main
             <div className="space-y-2">
-              <p className="text-base font-semibold text-(--text-primary)">
+              <p className="text-base font-semibold text-text-primary">
                 {t("events:detail.fields.location")}: <strong>{event.location}</strong>
               </p>
-              <p className="text-base text-(--text-primary)">
+              <p className="text-base text-text-primary">
                 {t("events:detail.fields.date")}:{" "}
                 <strong>
                   {formatDateSafe(event.starts_at)} — {formatDateSafe(event.ends_at)}
                 </strong>
               </p>
               {event.speaker && (
+<<<<<<< HEAD
               <p
                   className="text-(--text-primary)"
                   style={{ fontSize: "var(--fs-base)" }}
                 >
+=======
+                <p className="text-(--fs-base) text-text-primary">
+>>>>>>> origin/main
                   {t("events:detail.fields.speaker")}: <strong>{event.speaker}</strong>
                 </p>
               )}
             </div>
             {imageUrl && (
-              <div className="relative w-full overflow-hidden rounded-md border border-glass-border bg-black/(--opacity-faint) shadow-premium aspect-video">
+              <GlassCard intensity="low" radius="md" className="relative w-full aspect-video">
                 <SmartImage
                   srcRaw={imageUrl}
                   alt={t("events:alt.image")}
@@ -260,7 +274,7 @@ export default function EventDetail() {
                   className="absolute inset-0 block h-full w-full object-cover"
                   style={{ objectPosition: heroPos }}
                 />
-              </div>
+              </GlassCard>
             )}
             <div>
               <EventAboutEditor
@@ -294,14 +308,21 @@ export default function EventDetail() {
 
   return (
     <Layout>
-      <div className="flex w-full min-h-(--h-screen-offset) flex-col bg-(--bg-page) px-4 py-4 sm:px-6 md:px-8 lg:px-12">
+      <div className="flex w-full min-h-(--h-screen-offset) flex-col bg-page px-4 py-4 sm:px-6 md:px-8 lg:px-12">
         {BackButtonComponent}
         <div className="flex flex-row gap-8 items-start">
           <div className="space-y-6" style={{ width: "45%" }}>
             {imageUrl && (
+<<<<<<< HEAD
               <div
                 className="relative w-full overflow-hidden rounded-4xl border border-glass-border bg-black/(--opacity-faint) shadow-premium"
                 style={{ aspectRatio: "21/9" }}
+=======
+              <GlassCard
+                intensity="low"
+                radius="3xl"
+                className="relative w-full aspect-21/9 rounded-4xl"
+>>>>>>> origin/main
               >
                 <SmartImage
                   srcRaw={imageUrl}
@@ -310,7 +331,7 @@ export default function EventDetail() {
                   className="absolute inset-0 block h-full w-full object-cover"
                   style={{ objectPosition: heroPos }}
                 />
-              </div>
+              </GlassCard>
             )}
             <div className="h-px bg-(--glass-border)" />
             <div>
@@ -328,9 +349,7 @@ export default function EventDetail() {
           </div>
 
           <div className="flex-1 min-w-0 space-y-4">
-            <h1 className="text-4xl font-extrabold text-(--text-primary) sm:text-5xl">
-              {event.title}
-            </h1>
+            <h1 className="text-4xl font-extrabold text-text-primary sm:text-5xl">{event.title}</h1>
             <div className="flex flex-wrap items-center gap-3">
               {event.event_type && (
                 <Badge size="md" className="bg-(--primary-main) text-white">
@@ -346,24 +365,28 @@ export default function EventDetail() {
               </Badge>
             </div>
             <div className="h-px bg-(--glass-border)" />
+<<<<<<< HEAD
             <p
               className="whitespace-pre-line font-semibold leading-relaxed text-(--text-primary)"
               style={{ fontSize: "var(--fs-lg)" }}
             >
+=======
+            <p className="whitespace-pre-line text-(--fs-lg) font-semibold leading-relaxed text-text-primary">
+>>>>>>> origin/main
               {event.description}
             </p>
             <div className="h-px bg-(--glass-border)" />
-            <p className="text-base font-semibold text-(--text-primary)">
+            <p className="text-base font-semibold text-text-primary">
               {t("events:detail.fields.location")}: <strong>{event.location}</strong>
             </p>
-            <p className="text-base text-(--text-primary)">
+            <p className="text-base text-text-primary">
               {t("events:detail.fields.date")}:{" "}
               <strong>
                 {formatDateSafe(event.starts_at)} — {formatDateSafe(event.ends_at)}
               </strong>
             </p>
             {event.speaker && (
-              <p className="text-base text-(--text-primary)">
+              <p className="text-base text-text-primary">
                 {t("events:detail.fields.speaker")}: <strong>{event.speaker}</strong>
               </p>
             )}

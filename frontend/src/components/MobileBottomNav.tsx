@@ -11,7 +11,22 @@ import { useTranslation } from "react-i18next"
 import { motion } from "framer-motion"
 import { springBouncy, springSoft } from "@/utils/animations"
 
+<<<<<<< HEAD
 import { getScrollRoot, markIfFromBottom, smoothToTop } from "@/utils/scrollUtils"
+=======
+function smoothToTop() {
+  window.scrollTo({ top: 0, behavior: "smooth" })
+}
+
+const NEAR_BOTTOM_THRESHOLD = 24
+
+function markIfFromBottom() {
+  const nearBottom =
+    window.scrollY + window.innerHeight >=
+    document.documentElement.scrollHeight - NEAR_BOTTOM_THRESHOLD
+  if (nearBottom) sessionStorage.setItem("__scrollTopNext", "1")
+}
+>>>>>>> origin/main
 
 function samePath(a: string, b: string) {
   const na = a.replace(/\/+$/, "") || "/"
@@ -26,8 +41,7 @@ export default function MobileBottomNav() {
   useLayoutEffect(() => {
     if (sessionStorage.getItem("__scrollTopNext") === "1") {
       sessionStorage.removeItem("__scrollTopNext")
-      const el = getScrollRoot()
-      requestAnimationFrame(() => requestAnimationFrame(() => smoothToTop(el)))
+      requestAnimationFrame(() => smoothToTop())
     }
   }, [pathname])
 
@@ -71,12 +85,11 @@ export default function MobileBottomNav() {
               onClick={(e) => {
                 if (samePath(pathname, it.to)) {
                   e.preventDefault()
-                  const el = getScrollRoot()
-                  requestAnimationFrame(() => smoothToTop(el))
+                  smoothToTop()
                 }
               }}
               className={({ isActive }) =>
-                "group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-(--text-primary) transition-all outline-none select-none " +
+                "group relative flex flex-1 flex-col items-center justify-center gap-(--space-2) py-(--space-1) text-text-primary transition-all outline-none select-none " +
                 (isActive
                   ? "active text-brand font-bold scale-110"
                   : "opacity-strong hover:opacity-100")

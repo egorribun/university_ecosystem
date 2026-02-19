@@ -4,10 +4,10 @@ import { useTranslation } from "react-i18next"
 import { isAxiosError } from "axios"
 import dayjs from "dayjs"
 
-import api from "../../../api/client"
-import { useAuth } from "../../../contexts/AuthContext"
-import type { ActiveSession } from "../../../types/Session"
-import type { SetSnackbar } from "../types"
+import api from "@/api/client"
+import { useAuth } from "@/contexts/AuthContext"
+import type { ActiveSession } from "@/types/Session"
+import type { SetSnackbar } from "@/pages/settings/types"
 
 export interface UseSessionManagementOptions {
   setSnackbar: SetSnackbar

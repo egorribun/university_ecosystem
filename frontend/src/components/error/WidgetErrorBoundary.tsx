@@ -15,6 +15,7 @@
 
 import { Component, type ErrorInfo, type ReactNode } from "react"
 import * as Sentry from "@sentry/react"
+import { logWarning } from "@/app/logger"
 
 interface WidgetErrorBoundaryProps {
   children: ReactNode
@@ -36,7 +37,7 @@ interface WidgetErrorBoundaryState {
 function WidgetPlaceholder() {
   return (
     <div className="flex h-full min-h-15 items-center justify-center rounded-lg bg-(--glass-bg)/(--opacity-medium)">
-      <span className="text-xs text-(--text-primary)/(--opacity-medium)">—</span>
+      <span className="text-xs text-text-primary/(--opacity-medium)">—</span>
     </div>
   )
 }
@@ -78,7 +79,7 @@ export class WidgetErrorBoundary extends Component<
     onError?.(error)
 
     if (import.meta.env.DEV) {
-      console.warn("[WidgetErrorBoundary]", { error, widget: widgetName })
+      logWarning("[WidgetErrorBoundary]", { error, widget: widgetName })
     }
   }
 

@@ -1,6 +1,29 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { expect, test, type Page } from "@playwright/test"
 import { useMockApi } from "./utils/mockApi"
+
+const E2E_TIMEOUTS = {
+  toast: 15000,
+  mockPush: 1000,
+  animation: 500,
+}
+
+interface MockPushAction {
+  action: string
+  title: string
+  icon?: string
+  url?: string
+}
+
+interface MockPushPayload {
+  title?: string
+  body?: string
+  url?: string
+  icon?: string
+  tag?: string
+  timestamp?: number
+  actions?: { action?: unknown; title?: unknown; icon?: unknown; url?: unknown }[]
+  data?: Record<string, unknown>
+}
 
 async function setupMockServiceWorker(page: Page) {
   await page.addInitScript(() => {
@@ -83,16 +106,9 @@ async function setupMockServiceWorker(page: Page) {
       }
     }
 
-    type MockAction = {
-      action: string
-      title: string
-      icon?: string
-      url?: string
-    }
-
-    const normalizeActions = (raw: unknown): MockAction[] => {
+    const normalizeActions = (raw: unknown): MockPushAction[] => {
       if (!Array.isArray(raw)) return []
-      const result: MockAction[] = []
+      const result: MockPushAction[] = []
       for (const entry of raw) {
         if (!entry || typeof entry !== "object") continue
         const actionValue = (entry as { action?: unknown }).action
@@ -100,7 +116,7 @@ async function setupMockServiceWorker(page: Page) {
         const key = typeof actionValue === "string" ? actionValue.trim() : ""
         const title = typeof titleValue === "string" ? titleValue.trim() : ""
         if (!key || !title) continue
-        const item: MockAction = { action: key, title }
+        const item: MockPushAction = { action: key, title }
         const iconValue = (entry as { icon?: unknown }).icon
         if (typeof iconValue === "string") {
           item.icon = iconValue
@@ -128,7 +144,7 @@ async function setupMockServiceWorker(page: Page) {
           data: Record<string, unknown>
           timestamp?: number
         }
-        actions: MockAction[]
+        actions: MockPushAction[]
       }
     } = {
       lastToast: null,
@@ -137,16 +153,16 @@ async function setupMockServiceWorker(page: Page) {
     ;(
       window as unknown as { __getShowNotificationCalls: () => unknown[] }
     ).__getShowNotificationCalls = () => [...showNotificationCalls]
-    window.__mockPush = async (payload: any) => {
-      console.log("[test] __mockPush called with:", JSON.stringify(payload))
-      const actions = normalizeActions(payload?.actions)
-      const data: Record<string, unknown> =
-        payload && payload.data && typeof payload.data === "object"
-          ? { ...(payload.data as Record<string, unknown>) }
-          : {}
 
-      const rawUrl =
-        typeof payload?.url === "string" ? payload.url : (data.url as string | undefined)
+    window.__mockPush = async (payload: unknown) => {
+      // Cast payload safely
+      const p = payload as MockPushPayload | null
+
+      const actions = normalizeActions(p?.actions)
+      const data: Record<string, unknown> =
+        p && p.data && typeof p.data === "object" ? { ...(p.data as Record<string, unknown>) } : {}
+
+      const rawUrl = typeof p?.url === "string" ? p.url : (data.url as string | undefined)
       const resolvedUrl = rawUrl && rawUrl.trim() ? rawUrl.trim() : "/"
       data.url = resolvedUrl
 
@@ -161,22 +177,17 @@ async function setupMockServiceWorker(page: Page) {
       }
 
       const toast = {
-        title:
-          typeof payload?.title === "string" && payload.title.trim()
-            ? payload.title
-            : "Экосистема ГУУ",
-        body: typeof payload?.body === "string" ? payload.body : undefined,
+        title: typeof p?.title === "string" && p.title.trim() ? p.title : "Экосистема ГУУ",
+        body: typeof p?.body === "string" ? p.body : undefined,
         url: resolvedUrl,
-        icon: typeof payload?.icon === "string" && payload.icon.trim() ? payload.icon : defaultIcon,
-        tag: typeof payload?.tag === "string" ? payload.tag : undefined,
+        icon: typeof p?.icon === "string" && p.icon.trim() ? p.icon : defaultIcon,
+        tag: typeof p?.tag === "string" ? p.tag : undefined,
         data,
-        timestamp: typeof payload?.timestamp === "number" ? payload.timestamp : Date.now(),
+        timestamp: typeof p?.timestamp === "number" ? p.timestamp : Date.now(),
       }
 
       state.lastToast = { toast, actions }
 
-      // In test environment, we might not always be 'visible' to the browser engine perfectly?
-      // But let's relax this check for the test OR log it.
       if (data.type === "in-app") {
         try {
           dispatchMessage({ type: "PUSH_NOTIFICATION", toast })
@@ -199,7 +210,13 @@ async function setupMockServiceWorker(page: Page) {
       }
 
       if (actions.length) {
-        options.actions = actions.map(({ action, title, icon }) => ({ action, title, icon }))
+        options.actions = actions.map(({ action, title }) => ({ action, title })) // removed icon from map since it wasn't used in original logic or added it back?
+        // Let's keep it robust
+        options.actions = actions.map((a) => ({
+          action: a.action,
+          title: a.title,
+          icon: a.icon,
+        }))
       }
 
       void registration.showNotification(toast.title ?? "Экосистема ГУУ", options)
@@ -284,7 +301,7 @@ test.describe("Push notifications", () => {
     ])
     await expect(
       page.getByRole("heading", { name: /Новости университета|University news|News/i }).first()
-    ).toBeVisible({ timeout: 15000 })
+    ).toBeVisible({ timeout: E2E_TIMEOUTS.toast })
 
     await Promise.all([
       page.waitForURL(/\/schedule$/),
@@ -307,7 +324,7 @@ test.describe("Push notifications", () => {
     )
     expect(initialCalls).toBe(0)
 
-    await page.waitForTimeout(1000)
+    await page.waitForTimeout(E2E_TIMEOUTS.mockPush)
     await page.evaluate(
       ({ payload }) => {
         window.__mockPush?.(payload)
@@ -338,7 +355,7 @@ test.describe("Push notifications", () => {
       .getByRole("button", { name: /Open|Открыть/i })
       .click()
 
-    await page.waitForTimeout(500)
+    await page.waitForTimeout(E2E_TIMEOUTS.animation)
     await page.waitForURL(/\/news$/)
     const heading = page.getByRole("heading", { level: 1 })
     // Use unicode for robustness against mojibake

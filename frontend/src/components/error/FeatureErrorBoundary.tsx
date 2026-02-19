@@ -19,6 +19,8 @@
 import { Component, type ErrorInfo, type ReactNode } from "react"
 import { AlertTriangle } from "lucide-react"
 import * as Sentry from "@sentry/react"
+import { useTranslation } from "react-i18next"
+import { logError } from "@/app/logger"
 
 interface FeatureErrorBoundaryProps {
   children: ReactNode
@@ -45,6 +47,8 @@ function FeatureErrorFallback({
   onRetry: () => void
   featureName?: string
 }) {
+  const { t } = useTranslation(["common"])
+
   return (
     <div
       role="alert"
@@ -54,13 +58,13 @@ function FeatureErrorFallback({
         <AlertTriangle className="h-5 w-5 text-warning-text" />
       </div>
       <div>
-        <h3 className="text-sm font-bold text-(--text-primary)">
+        <h3 className="text-sm font-bold text-text-primary">
           {featureName ? `${featureName} unavailable` : "Feature unavailable"}
         </h3>
-        <p className="text-xs text-(--text-primary)/(--opacity-medium)">Something went wrong</p>
+        <p className="text-xs text-text-primary/(--opacity-medium)">{t("common:statuses.error")}</p>
       </div>
       <button type="button" onClick={onRetry} className="hover:underline">
-        <span className="text-xs font-black text-(--accent)">Try again</span>
+        <span className="text-xs font-black text-(--accent)">{t("common:statuses.tryAgain")}</span>
       </button>
     </div>
   )
@@ -108,7 +112,7 @@ export class FeatureErrorBoundary extends Component<
     onError?.(error, errorInfo)
 
     if (import.meta.env.DEV) {
-      console.error("[FeatureErrorBoundary]", { error, errorInfo, feature: featureName })
+      logError("[FeatureErrorBoundary]", { error, errorInfo, feature: featureName })
     }
   }
 

@@ -49,7 +49,7 @@ export const EventMedia: React.FC<EventMediaProps> = ({
           <SmartImage
             srcRaw={imageUrl}
             alt={alt || t("events:alt.image")}
-            sizes="(min-width: 1200px) 400px, (min-width: 900px) 350px, 100vw"
+            sizes="(min-width: 75rem) 25rem, (min-width: 56.25rem) 21.875rem, 100vw"
             className="block h-full w-full object-cover object-center"
             draggable={false}
             onLoad={onReady}
@@ -73,7 +73,7 @@ export const EventMedia: React.FC<EventMediaProps> = ({
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-strong" />
               <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
             </span>
-            <span className="text-xs font-bold text-white">LIVE</span>
+            <span className="text-xs font-bold text-white">{t("common:statuses.live")}</span>
           </div>
         )}
 

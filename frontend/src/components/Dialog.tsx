@@ -117,8 +117,13 @@ export function Dialog({
           "relative z-surface w-full max-w-(--dialog-max-w)",
           sizeClassMap[size],
           fullScreenOnMobile
+<<<<<<< HEAD
             ? "h-dvh max-h-dvh overflow-y-auto rounded-none bg-(--bg-surface) pb-6 pt-5 text-(--text-primary) shadow-surface-strong ring-1 ring-white/(--opacity-subtle) sm:h-auto sm:rounded-2xl sm:px-6 sm:pb-7"
             : "overflow-y-auto rounded-2xl bg-(--bg-surface)/(--opacity-heavy) pb-6 pt-5 text-(--text-primary) shadow-surface-strong ring-1 ring-white/(--opacity-subtle) backdrop-blur-xl sm:px-6 sm:pb-7",
+=======
+            ? "h-dvh max-h-dvh overflow-y-auto rounded-none bg-(--bg-surface) pb-(--space-6) pt-(--space-5) text-text-primary shadow-surface-strong ring-1 ring-white/(--opacity-subtle) sm:h-auto sm:max-h-(--h-hero-max) sm:rounded-2xl sm:px-(--space-6) sm:pb-(--space-7) space-y-5"
+            : "max-h-hero-max overflow-y-auto rounded-2xl bg-(--bg-surface)/(--opacity-heavy) pb-(--space-6) pt-(--space-5) text-text-primary shadow-surface-strong ring-1 ring-white/(--opacity-subtle) backdrop-blur-xl sm:px-(--space-6) sm:pb-(--space-7)",
+>>>>>>> origin/main
           "focus:outline-none",
           className
         )}
@@ -126,10 +131,7 @@ export function Dialog({
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1">
             {title ? (
-              <h2
-                id={dialogTitleId}
-                className="text-detail-title font-semibold text-(--text-primary)"
-              >
+              <h2 id={dialogTitleId} className="text-detail-title font-semibold text-text-primary">
                 {title}
               </h2>
             ) : null}

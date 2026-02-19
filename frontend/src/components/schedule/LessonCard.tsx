@@ -7,7 +7,7 @@ import {
   User as TeacherIcon,
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
-import { Badge, Tooltip } from "@/components/ui"
+import { Badge, Tooltip, GlassCard } from "@/components/ui"
 import { cn } from "@/utils/cn"
 import { type Lesson, getTimeStr, getEndTimeStr } from "./scheduleUtils"
 
@@ -36,7 +36,7 @@ export const LessonCard = memo(function LessonCard({
   const { t } = useTranslation(["schedule"])
 
   return (
-    <div
+    <GlassCard
       id={`lesson-card-${lesson.id}`}
       onClick={onOpen}
       onKeyDown={(e) => {
@@ -47,8 +47,10 @@ export const LessonCard = memo(function LessonCard({
       }}
       role="button"
       tabIndex={0}
+      intensity="elevated"
+      radius="2xl"
       className={cn(
-        "group relative flex h-full min-h-32 flex-col overflow-hidden rounded-2xl border border-glass-border-subtle bg-glass-elevated p-3 shadow-premium transition-all duration-base sm:min-h-(--h-card-lesson-min)",
+        "group flex h-full min-h-32 flex-col p-3 transition-all duration-base sm:min-h-(--h-card-lesson-min)",
         hasBreakBefore ? "mt-6" : "",
         "hover:-translate-y-1 hover:shadow-glass hover:border-brand-subtle",
         "dark:shadow-premium dark:hover:shadow-glass-strong",
@@ -60,13 +62,9 @@ export const LessonCard = memo(function LessonCard({
         <div className="flex items-center justify-between gap-2">
           <Badge
             size="xs"
-            className="chip-type font-semibold shadow-sm"
+            className="chip-type h-6 px-2.5 font-semibold text-white shadow-sm"
             style={{
               background: getLessonTypeColor(lesson.lesson_type),
-              color: "white",
-              height: "24px",
-              paddingLeft: "10px",
-              paddingRight: "10px",
             }}
           >
             {getLessonTypeLabel(lesson.lesson_type)}
@@ -80,7 +78,7 @@ export const LessonCard = memo(function LessonCard({
             {`${getTimeStr(lesson)}–${getEndTimeStr(lesson)}`}
           </Badge>
         </div>
-        <h3 className="text-base font-extrabold text-(--text-primary) line-clamp-2 leading-tight tracking-tight">
+        <h3 className="text-base font-extrabold text-text-primary line-clamp-2 leading-tight tracking-tight">
           {lesson.subject}
         </h3>
         <div className="flex flex-wrap gap-2">
@@ -121,7 +119,7 @@ export const LessonCard = memo(function LessonCard({
           <DeleteIcon size={16} />
         </button>
       )}
-    </div>
+    </GlassCard>
   )
 })
 

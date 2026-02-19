@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useMemo, useState, useEffect } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { useChatWebSocket } from "../hooks/useChatWebSocket"
+import { useChatWebSocket } from "@/hooks/useChatWebSocket"
 import { useAuth } from "./AuthContext"
-import { chatApi, type PresenceStatus, type ChatsListResponse } from "../api/chat"
+import { chatApi, type PresenceStatus, type ChatsListResponse } from "@/api/chat"
 
 interface MessengerContextType {
   unreadCount: number

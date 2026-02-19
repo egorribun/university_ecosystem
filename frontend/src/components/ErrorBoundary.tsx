@@ -1,6 +1,11 @@
 import { Component, type ErrorInfo, type ReactNode } from "react"
 import * as Sentry from "@sentry/react"
+<<<<<<< HEAD
 import { withTranslation, type WithTranslation } from "react-i18next"
+=======
+import i18n from "i18next"
+import { logError } from "@/app/logger"
+>>>>>>> origin/main
 
 interface ErrorBoundaryProps extends WithTranslation {
   children: ReactNode
@@ -49,7 +54,7 @@ class ErrorBoundaryInner extends Component<ErrorBoundaryProps, ErrorBoundaryStat
 
     // Log to console in development
     if (import.meta.env.DEV) {
-      console.error("ErrorBoundary caught an error:", error, errorInfo)
+    logError("ErrorBoundary caught an error:", { error, errorInfo })
     }
   }
 
@@ -78,7 +83,7 @@ class ErrorBoundaryInner extends Component<ErrorBoundaryProps, ErrorBoundaryStat
       }
 
       return (
-        <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-(--bg-page) px-fluid-x">
+        <div className="relative flex min-h-(--min-h-hero-sm) items-center justify-center overflow-hidden bg-page px-fluid-x">
           {/* Ambient radial glow */}
           <div
             className="pointer-events-none absolute inset-0"
@@ -86,16 +91,28 @@ class ErrorBoundaryInner extends Component<ErrorBoundaryProps, ErrorBoundaryStat
           />
 
           <div className="relative z-deep w-full max-w-(--layout-max-modal) rounded-2xl border border-border-subtle bg-(--bg-surface) p-10 text-center shadow-premium backdrop-blur-md">
+<<<<<<< HEAD
             <h1 className="mb-4 text-3xl font-black tracking-tight text-(--text-primary)">
               {t("system:errorBoundary.title")}
             </h1>
             <p className="mb-8 text-base leading-relaxed text-(--text-secondary)">
               {t("system:errorBoundary.description")}
+=======
+            <h1 className="mb-4 text-3xl font-black tracking-tight text-text-primary">
+              {i18n.t("common:errorBoundary.title")}
+            </h1>
+            <p className="mb-8 text-base leading-relaxed text-(--text-secondary)">
+              {i18n.t("common:errorBoundary.description")}
+>>>>>>> origin/main
             </p>
             {import.meta.env.DEV && this.state.error && (
               <details className="mb-8 rounded-lg border border-border-subtle bg-(--bg-surface-hover) p-4 text-left">
                 <summary className="cursor-pointer text-sm font-semibold text-(--text-tertiary)">
+<<<<<<< HEAD
                   {t("system:errorBoundary.details")}
+=======
+                  {i18n.t("common:errorBoundary.details")}
+>>>>>>> origin/main
                 </summary>
                 <pre
                   className="mt-4 overflow-x-auto whitespace-pre-wrap wrap-break-word rounded-md border border-error-text p-3 text-xs text-error-text"
@@ -117,23 +134,35 @@ class ErrorBoundaryInner extends Component<ErrorBoundaryProps, ErrorBoundaryStat
               <button
                 type="button"
                 onClick={this.handleRetry}
-                className="rounded-xl bg-(--primary-main) px-6 py-3.5 text-base font-extrabold text-(--text-inverse) shadow-glass transition-all duration-slow hover:-translate-y-0.5 hover:bg-(--primary-hover) hover:shadow-premium-lift active:scale-95"
+                className="rounded-xl bg-(--primary-main) px-(--space-6) py-(--space-35) text-base font-extrabold text-(--text-inverse) shadow-glass transition-all duration-slow hover:-translate-y-0.5 hover:bg-(--primary-hover) hover:shadow-premium-lift active:scale-95"
               >
+<<<<<<< HEAD
                 {t("system:errorBoundary.retry")}
+=======
+                {i18n.t("common:errorBoundary.retry")}
+>>>>>>> origin/main
               </button>
               <button
                 type="button"
                 onClick={this.handleReload}
-                className="rounded-xl border border-border-subtle bg-(--bg-surface-hover) px-6 py-3.5 text-base font-extrabold text-(--text-primary) transition-all duration-slow hover:-translate-y-0.5 hover:bg-(--bg-surface-raised) active:scale-95"
+                className="rounded-xl border border-border-subtle bg-(--bg-surface-hover) px-(--space-6) py-(--space-35) text-base font-extrabold text-text-primary transition-all duration-slow hover:-translate-y-0.5 hover:bg-(--bg-surface-raised) active:scale-95"
               >
+<<<<<<< HEAD
                 {t("system:errorBoundary.reload")}
+=======
+                {i18n.t("common:errorBoundary.reload")}
+>>>>>>> origin/main
               </button>
               <button
                 type="button"
                 onClick={this.handleGoHome}
-                className="rounded-xl border border-border-subtle bg-(--bg-surface-hover) px-6 py-3.5 text-base font-extrabold text-(--text-primary) transition-all duration-slow hover:-translate-y-0.5 hover:bg-(--bg-surface-raised) active:scale-95"
+                className="rounded-xl border border-border-subtle bg-(--bg-surface-hover) px-(--space-6) py-(--space-35) text-base font-extrabold text-text-primary transition-all duration-slow hover:-translate-y-0.5 hover:bg-(--bg-surface-raised) active:scale-95"
               >
+<<<<<<< HEAD
                 {t("system:errorBoundary.goHome")}
+=======
+                {i18n.t("common:errorBoundary.goHome")}
+>>>>>>> origin/main
               </button>
             </div>
           </div>

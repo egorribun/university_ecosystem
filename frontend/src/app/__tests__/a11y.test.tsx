@@ -1,9 +1,9 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { PropsWithChildren } from "react"
 import { describe, it, beforeEach, afterEach, vi } from "vitest"
+import type { AxiosResponse, InternalAxiosRequestConfig } from "axios"
 
 import Navbar from "@/components/navbar"
 import Dashboard from "@/pages/Dashboard"
@@ -188,17 +188,25 @@ describe("Accessibility checks", () => {
       },
     ]
 
+    const mockResponse = <T,>(data: T): AxiosResponse<T> => ({
+      data,
+      status: 200,
+      statusText: "OK",
+      headers: {},
+      config: {} as InternalAxiosRequestConfig,
+    })
+
     const getSpy = vi.spyOn(api, "get").mockImplementation(async (url: string) => {
       if (url === "/stories") {
-        return { data: stories, status: 200, headers: {} } as any
+        return mockResponse(stories)
       }
-      return { data: [], status: 200, headers: {} } as any
+      return mockResponse([])
     })
-    const typedGetSpy = vi.spyOn(apiClient, "get").mockImplementation(async (path: any) => {
+    const typedGetSpy = vi.spyOn(apiClient, "get").mockImplementation(async (path: string) => {
       if (path === "/news") {
-        return { data: [], status: 200, headers: {} } as any
+        return mockResponse([])
       }
-      return { data: [], status: 200, headers: {} } as any
+      return mockResponse([])
     })
 
     const { Wrapper } = createWrapper("/dashboard")

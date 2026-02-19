@@ -23,7 +23,7 @@ const buttonVariants = cva(
           "disabled:bg-(--border-subtle) disabled:text-(--text-tertiary)"
         ),
         outline: cn(
-          "border border-border-subtle text-(--text-primary) shadow-surface bg-transparent",
+          "border border-border-subtle text-text-primary shadow-surface bg-transparent",
           "hover:border-brand hover:text-brand hover:bg-brand-subtle hover:shadow-surface-strong",
           "active:scale-95",
           "motion-reduce:hover:translate-y-0 motion-reduce:active:translate-y-0",
@@ -31,12 +31,12 @@ const buttonVariants = cva(
         ),
         ghost: cn(
           "bg-transparent text-(--text-secondary)",
-          "hover:bg-(--bg-surface-hover) hover:text-(--text-primary)",
+          "hover:bg-(--bg-surface-hover) hover:text-text-primary",
           "active:bg-(--bg-surface-hover)",
           "motion-reduce:transition-none"
         ),
         glass: cn(
-          "bg-glass backdrop-blur-glass text-(--text-primary) border border-glass-border shadow-glass",
+          "bg-glass backdrop-blur-glass text-text-primary border border-glass-border shadow-glass",
           "hover:bg-glass-tint1 hover:scale-hover",
           "active:scale-95 transition-all duration-base"
         ),
@@ -50,6 +50,7 @@ const buttonVariants = cva(
         sm: "min-h-10 px-3 py-2 text-(--fs-sm)",
         md: "min-h-12 px-5 py-2.5 text-(--fs-base)",
         lg: "min-h-14 px-7 py-3 text-(--fs-lg)",
+        icon: "h-10 w-10 min-h-0 p-0 rounded-lg",
       },
       fullWidth: {
         true: "w-full",

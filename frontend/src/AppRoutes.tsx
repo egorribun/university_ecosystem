@@ -9,7 +9,7 @@ import InstallPrompt from "./components/InstallPrompt"
 import LivePushToasts from "./components/LivePushToasts"
 import OfflineIndicator from "./components/OfflineIndicator"
 import MotionPresence from "./components/MotionPresence"
-import { AdminRoute, PrivateRoute } from "./components/RouteGuards"
+import { AdminRoute, PrivateRoute, PublicRoute } from "./components/RouteGuards"
 import { useAuth, currentUserQueryKey } from "./contexts/AuthContext"
 import { usePushSync } from "./hooks/usePushSync"
 import { nowPlayingQueryKey } from "./hooks/useNowPlaying"
@@ -105,12 +105,16 @@ export function AppRoutes() {
     ]
     const sharedLoaders = [routeModules.Messenger]
 
+    const PREFETCH_TIMEOUT_MS = 800
+
     if (isAuth) {
-      prefetchRouteModules([...privateLoaders, ...sharedLoaders], { timeoutMs: 800 })
+      prefetchRouteModules([...privateLoaders, ...sharedLoaders], {
+        timeoutMs: PREFETCH_TIMEOUT_MS,
+      })
       return
     }
 
-    prefetchRouteModules([...publicLoaders, ...sharedLoaders], { timeoutMs: 800 })
+    prefetchRouteModules([...publicLoaders, ...sharedLoaders], { timeoutMs: PREFETCH_TIMEOUT_MS })
   }, [isAuth])
 
   const { isCompactPage, isMessenger } = useRouteType()
@@ -144,11 +148,11 @@ export function AppRoutes() {
 
   const routes = (
     <Routes location={location} key={location.pathname}>
-      <Route path="/login" element={wrap(<Login />)} />
-      <Route path="/register" element={wrap(<Register />)} />
-      <Route path="/forgot-password" element={wrap(<ForgotPassword />)} />
-      <Route path="/reset-password" element={wrap(<ResetPassword />)} />
-      <Route path="/reset-password/:token" element={wrap(<ResetPassword />)} />
+      <Route path="/login" element={<PublicRoute>{wrap(<Login />)}</PublicRoute>} />
+      <Route path="/register" element={<PublicRoute>{wrap(<Register />)}</PublicRoute>} />
+      <Route path="/forgot-password" element={<PublicRoute>{wrap(<ForgotPassword />)}</PublicRoute>} />
+      <Route path="/reset-password" element={<PublicRoute>{wrap(<ResetPassword />)}</PublicRoute>} />
+      <Route path="/reset-password/:token" element={<PublicRoute>{wrap(<ResetPassword />)}</PublicRoute>} />
       <Route path="/dashboard" element={<PrivateRoute>{wrap(<Dashboard />)}</PrivateRoute>} />
       <Route path="/news" element={<PrivateRoute>{wrap(<News />)}</PrivateRoute>} />
       <Route path="/news/:id" element={<PrivateRoute>{wrap(<NewsDetail />)}</PrivateRoute>} />

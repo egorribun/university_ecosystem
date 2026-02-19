@@ -19,7 +19,6 @@ import type { StoryItem } from "@/types/Story"
 import { createStory, deleteStory, updateStory, uploadStoryCover } from "@/api/stories"
 import apiClient from "@/api/client"
 import { useLocaleFormatters } from "@/i18n/formatters"
-import { sanitizeUrl } from "@/utils/media"
 import { cn } from "@/utils/cn"
 import {
   Alert,
@@ -29,14 +28,19 @@ import {
   SectionCard,
   Divider,
 } from "@/components/settings"
-import { Badge, Card } from "@/components/ui"
+import { Badge, Card, ConfirmDialog } from "@/components/ui"
 
 dayjs.extend(utc)
+
+dayjs.extend(utc)
+
+const DATE_FORMAT_INPUT = "YYYY-MM-DDTHH:mm"
+const REFRESH_INTERVAL_MS = 60000
 
 function formatInputDate(value: string | dayjs.Dayjs) {
   const parsed = typeof value === "string" ? dayjs(value) : value
   if (!parsed.isValid()) return ""
-  return parsed.local().second(0).millisecond(0).format("YYYY-MM-DDTHH:mm")
+  return parsed.local().second(0).millisecond(0).format(DATE_FORMAT_INPUT)
 }
 
 function toIso(date: string) {
@@ -50,10 +54,14 @@ function formatTimeLeft(expiresAt: string, now: dayjs.Dayjs, t: TFunction<"stori
   if (!expires.isValid()) return t("stories:list.timeLeft.unknown")
   const diffSeconds = Math.floor(expires.diff(now, "second"))
   if (diffSeconds <= 0) return t("stories:list.timeLeft.expired")
+  if (diffSeconds <= 0) return t("stories:list.timeLeft.expired")
   const minutes = Math.floor(diffSeconds / 60)
-  const days = Math.floor(minutes / (60 * 24))
-  const hours = Math.floor((minutes - days * 24 * 60) / 60)
-  const mins = minutes - days * 24 * 60 - hours * 60
+  const hoursInDay = 24
+  const minutesInHour = 60
+
+  const days = Math.floor(minutes / (minutesInHour * hoursInDay))
+  const hours = Math.floor((minutes - days * hoursInDay * minutesInHour) / minutesInHour)
+  const mins = minutes - days * hoursInDay * minutesInHour - hours * minutesInHour
   const parts: string[] = []
   if (days) parts.push(t("stories:list.timeLeft.days", { count: days }))
   if (hours) parts.push(t("stories:list.timeLeft.hours", { count: hours }))
@@ -111,6 +119,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
   const [updatingCover, setUpdatingCover] = useState(false)
   const [unpublishing, setUnpublishing] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -206,13 +215,13 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
     }
   }
 
-  const handleDelete = async () => {
-    if (!window.confirm(t("stories:list.confirmDelete"))) return
+  const executeDelete = async () => {
     setActionError(null)
     setDeleting(true)
     try {
       await deleteStory(story.id)
       onRefresh()
+      setShowDeleteConfirm(false)
     } catch (error: unknown) {
       setActionError(getErrorMessage(error, t("stories:errors.deleteFailed")))
     } finally {
@@ -220,10 +229,12 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
     }
   }
 
+  const handleDelete = () => setShowDeleteConfirm(true)
+
   return (
     <Card className="overflow-hidden border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass backdrop-blur-md">
       <div className="px-6 py-5 border-b border-glass-border/(--opacity-soft)">
-        <h3 className="text-lg font-extrabold text-(--text-primary)">{story.title}</h3>
+        <h3 className="text-lg font-extrabold text-text-primary">{story.title}</h3>
         <p className="text-sm text-(--text-secondary) mt-0.5">{story.short_text}</p>
       </div>
       <div className="p-6">
@@ -234,7 +245,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
                 <p className="text-xs font-bold uppercase tracking-wider text-brand opacity-strong">
                   {t("stories:list.details.published", { date: "" }).split(":")[0]}
                 </p>
-                <p className="text-sm font-medium text-(--text-primary)">
+                <p className="text-sm font-medium text-text-primary">
                   {formatDate(new Date(story.published_at))}
                 </p>
               </div>
@@ -242,7 +253,7 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
                 <p className="text-xs font-bold uppercase tracking-wider text-brand opacity-strong">
                   {t("stories:list.details.expires", { date: "" }).split(":")[0]}
                 </p>
-                <p className="text-sm font-medium text-(--text-primary)">
+                <p className="text-sm font-medium text-text-primary">
                   {formatDate(new Date(story.expires_at))}
                 </p>
               </div>
@@ -260,13 +271,17 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
             </div>
 
             <div className="w-full md:w-56 flex flex-col items-center gap-4">
+<<<<<<< HEAD
               <div
                 className="relative w-full rounded-md overflow-hidden bg-(--bg-surface)/(--opacity-dim) border border-glass-border shadow-inner group"
                 style={{ aspectRatio: "9/16" }}
               >
+=======
+              <div className="relative w-full aspect-[9/16] rounded-md overflow-hidden bg-(--bg-surface)/(--opacity-dim) border border-glass-border shadow-inner group">
+>>>>>>> origin/main
                 {coverPreview ? (
-                  <img
-                    src={sanitizeUrl(coverPreview) ?? ""}
+                  <SmartImage
+                    srcRaw={coverPreview || ""}
                     alt={t("stories:list.coverAlt", { title: story.title })}
                     className="w-full h-full object-cover"
                   />
@@ -384,6 +399,17 @@ function StoryAdminItem({ story, now, formatDate, onRefresh }: StoryAdminItemPro
           )}
         </div>
       </div>
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        title={t("stories:list.confirmDelete")}
+        message={t("stories:list.confirmDeleteDescription", { defaultValue: "Are you sure you want to delete this story? This action cannot be undone." })}
+        confirmText={t("common:buttons.delete")}
+        cancelText={t("common:buttons.cancel")}
+        variant="danger"
+        onConfirm={() => void executeDelete()}
+        onCancel={() => setShowDeleteConfirm(false)}
+        isLoading={deleting}
+      />
     </Card>
   )
 }
@@ -406,7 +432,7 @@ export default function StoriesAdmin() {
   const [listError, setListError] = useState<string | null>(null)
 
   useEffect(() => {
-    const id = window.setInterval(() => setNow(dayjs()), 60000)
+    const id = window.setInterval(() => setNow(dayjs()), REFRESH_INTERVAL_MS)
     return () => window.clearInterval(id)
   }, [])
 
@@ -527,14 +553,14 @@ export default function StoriesAdmin() {
             <div className="flex h-12 w-12 items-center justify-center rounded-md bg-brand/(--opacity-subtle) text-brand">
               <RestartAltIcon className="h-7 w-7" />
             </div>
-            <h1 className="text-3xl font-extrabold tracking-tight text-(--text-primary)">
+            <h1 className="text-3xl font-extrabold tracking-tight text-text-primary">
               {t("stories:pageTitle")}
             </h1>
           </div>
 
           <SectionCard className="mb-12">
             <div className="px-6 py-5 border-b border-glass-border/(--opacity-soft)">
-              <h2 className="text-lg font-bold text-(--text-primary)">{t("stories:form.title")}</h2>
+              <h2 className="text-lg font-bold text-text-primary">{t("stories:form.title")}</h2>
               <p className="text-sm text-(--text-secondary) mt-0.5">{t("stories:form.subtitle")}</p>
             </div>
             <div className="p-6">
@@ -666,7 +692,7 @@ export default function StoriesAdmin() {
 
           <div className="space-y-6">
             <div className="flex items-center justify-between px-2">
-              <h2 className="text-2xl font-extrabold text-(--text-primary) flex items-center gap-3">
+              <h2 className="text-2xl font-extrabold text-text-primary flex items-center gap-3">
                 {t("stories:list.title")}
                 <span className="px-2 py-0.5 rounded-full bg-brand/(--opacity-subtle) border border-brand/(--opacity-dim) text-xs font-bold tabular-nums text-brand">
                   {stories.length}

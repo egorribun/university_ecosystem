@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next"
 import { formatLocalDateTime } from "@/utils/date"
 
 interface EventInfoProps {
+  titleId?: string
   title: string
   speaker?: string
   startsAt: string
@@ -14,6 +15,7 @@ interface EventInfoProps {
 }
 
 export const EventInfo: React.FC<EventInfoProps> = ({
+  titleId,
   title,
   speaker,
   startsAt,
@@ -25,7 +27,10 @@ export const EventInfo: React.FC<EventInfoProps> = ({
 
   return (
     <>
-      <h3 className="mb-2 text-xl font-extrabold leading-tight text-(--text-primary) sm:text-2xl">
+      <h3
+        id={titleId}
+        className="mb-2 text-xl font-extrabold leading-tight text-text-primary sm:text-2xl"
+      >
         {title}
       </h3>
 
@@ -42,9 +47,11 @@ export const EventInfo: React.FC<EventInfoProps> = ({
             className="text-brand transition-transform group-hover/date:scale-110"
           />
         </Tooltip>
-        <span className="text-base text-(--text-secondary)">
-          {formatLocalDateTime(startsAt)} — {formatLocalDateTime(endsAt)}
-        </span>
+        <div className="text-base text-(--text-secondary)">
+          <time dateTime={startsAt}>{formatLocalDateTime(startsAt)}</time>
+          <span> — </span>
+          <time dateTime={endsAt}>{formatLocalDateTime(endsAt)}</time>
+        </div>
       </div>
 
       <div className="mb-2 flex items-center gap-2 group/loc">
@@ -59,7 +66,7 @@ export const EventInfo: React.FC<EventInfoProps> = ({
 
       <div className="my-3 h-px bg-linear-to-r from-transparent via-event-divider to-transparent" />
 
-      <p className="mb-4 line-clamp-3 text-base text-(--text-primary) grow-0">{description}</p>
+      <p className="mb-4 line-clamp-3 text-base text-text-primary grow-0">{description}</p>
     </>
   )
 }

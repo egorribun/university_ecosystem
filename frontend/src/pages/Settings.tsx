@@ -4,8 +4,8 @@ import { useTranslation } from "react-i18next"
 import { Settings as SettingsIcon } from "lucide-react"
 
 import { PageLayout } from "@/components/PageLayout"
-import { Tabs, Tab, Snackbar } from "../components/settings"
-import { StepUpDialog } from "../components/mfa/StepUpDialog"
+import { Tabs, Tab, Snackbar } from "@/components/settings"
+import { StepUpDialog } from "@/components/mfa/StepUpDialog"
 
 import { SettingsGeneral } from "./settings/SettingsGeneral"
 import { SettingsProfile } from "./settings/SettingsProfile"
@@ -71,10 +71,14 @@ export default function Settings() {
 
   return (
     <PageLayout variant="full">
+<<<<<<< HEAD
       <div
         className="flex h-full w-full flex-col bg-(--bg-page) text-(--text-primary) sm:flex-row"
         style={{ height: "40rem", maxHeight: "85vh" }}
       >
+=======
+      <div className="flex h-full w-full flex-col bg-page text-text-primary sm:h-160 sm:max-h-[85vh] sm:flex-row">
+>>>>>>> origin/main
         <div className="px-2 md:px-4">
           <div
             data-fade
@@ -83,10 +87,14 @@ export default function Settings() {
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-subtle-bg text-brand shadow-premium transition-transform duration-fast hover:scale-105 backdrop-blur-sm">
               <SettingsIcon className="h-6 w-6" />
             </div>
+<<<<<<< HEAD
             <h1
               className="font-bold tracking-tight text-(--text-primary)"
               style={{ fontSize: "var(--fs-page-title)" }}
             >
+=======
+            <h1 className="text-(--fs-page-title) font-bold tracking-tight text-text-primary">
+>>>>>>> origin/main
               {t("settings:page.title")}
             </h1>
           </div>

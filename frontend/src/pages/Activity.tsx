@@ -1,30 +1,19 @@
-import Layout from "../components/Layout"
-import PageFadeIn from "../components/PageFadeIn"
-import { useEffect, useState, useCallback, type CSSProperties } from "react"
-import { motion, AnimatePresence, useMotionValue, animate, useReducedMotion } from "framer-motion"
-import {
-  Activity as TimelineIcon,
-  CalendarCheck as EventAvailableIcon,
-  GraduationCap as SchoolIcon,
-  Award as EmojiEventsIcon,
-} from "lucide-react"
-import { Button, ProgressBar } from "@/components/ui"
-import Dialog from "@/components/Dialog"
+import { PageLayout } from "@/components/PageLayout"
+import { type CSSProperties } from "react"
+import { motion, useReducedMotion } from "framer-motion"
+import { Activity as TimelineIcon } from "lucide-react"
 import { cn } from "@/utils/cn"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
 import FadeSection from "@/components/FadeSection"
 import useActivityData from "@/hooks/useActivityData"
 import { EASE_OUT_EXPO } from "@/components/activity/activityTypes"
-import type {
-  AttendanceStats,
-  GradeStats,
-  ParticipationStats,
-} from "@/components/activity/activityTypes"
-import { toNumber } from "@/components/activity/activityParsers"
-import AnimatedRing, { useAnimatedNumber } from "@/components/activity/AnimatedRing"
-import TrendChip from "@/components/activity/TrendChip"
-import CardShell from "@/components/activity/CardShell"
+
+import { AttendanceCard } from "@/components/activity/AttendanceCard"
+import { GradesCard } from "@/components/activity/GradesCard"
+import { ParticipationCard } from "@/components/activity/ParticipationCard"
+import { RecentActivityGrid } from "@/components/activity/RecentActivityGrid"
+import { ActivityDetailDialog } from "@/components/activity/ActivityDetailDialog"
 
 const fadeDelayStyle = (value: string): CSSProperties =>
   ({ "--fade-delay": value }) as CSSProperties
@@ -37,101 +26,103 @@ export default function Activity() {
     attendance,
     grades,
     participation,
-    loading,
     hasInitiallyLoaded,
     detail,
     setDetail,
     detailSection,
     periodOptions,
     separator,
-    noDataText,
     attendanceLessonFallback,
     formatDate,
     attendanceStatusLabel,
     labelByPeriod,
   } = useActivityData()
 
-  const reduce = useReducedMotion()
+  const reduce = useReducedMotion() ?? false
   const isSm = useMediaQuery(`(max-width: ${breakpoints.small})`)
   const isMd = useMediaQuery(`(max-width: ${breakpoints.mobile})`)
   const isXl = useMediaQuery(`(min-width: ${breakpoints.desktop})`)
   const ringSize = isSm ? 68 : isMd ? 84 : isXl ? 104 : 96
 
-  const attendanceItemKey = useCallback(
-    (item: AttendanceStats["recent"][number], index: number) =>
-      `${item?.date ?? index}-${item?.course ?? index}-${item?.status ?? ""}`,
-    []
-  )
-  const gradeItemKey = useCallback(
-    (item: GradeStats["recent"][number], index: number) =>
-      `${item?.date ?? index}-${item?.course ?? index}-${item?.score ?? ""}-${item?.max ?? ""}`,
-    []
-  )
-  const participationItemKey = useCallback(
-    (item: ParticipationStats["recent"][number], index: number) =>
-      `${item?.date ?? index}-${item?.title ?? index}-${item?.role ?? ""}`,
-    []
-  )
-  const pickKeyCandidate = useCallback((value: unknown): string | number | undefined => {
-    return typeof value === "number" || typeof value === "string" ? value : undefined
-  }, [])
-
+  // Removed explicit will-change styles in favor of CSS classes or framework defaults
+  // to avoid persistent GPU layers. Animation variants trigger composition layers automatically.
   const headerVariants = {
     hidden: { opacity: 0, y: reduce ? 0 : 10 },
-    show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: EASE_OUT_EXPO } },
+    show: {
+      opacity: 1,
+      y: 0,
+      transition: { duration: 0.35, ease: EASE_OUT_EXPO },
+    },
   }
   const gridVariants = {
-    show: { transition: { staggerChildren: reduce ? 0 : 0.06, delayChildren: 0.05 } },
+    show: {
+      transition: { staggerChildren: reduce ? 0 : 0.06, delayChildren: 0.05 },
+    },
   }
-  const listItemVariants = {
-    hidden: { opacity: 0, y: reduce ? 0 : 8 },
-    show: { opacity: 1, y: 0, transition: { duration: 0.28 } },
-  }
-
-  const attendancePctAnimated = useAnimatedNumber(
-    Math.max(0, Math.min(100, attendance?.percent ?? 0)),
-    0.9,
-    0
-  )
-  const gradeAverage = toNumber(grades?.average)
-  const gradeAnimatedValue = grades?.scale === "100" ? Math.round(gradeAverage) : gradeAverage
-  const gradesAnimated = useAnimatedNumber(
-    gradeAnimatedValue,
-    0.9,
-    grades?.scale === "gpa" ? 2 : grades?.scale === "5" ? 1 : 0
-  )
-  const partEventsAnimated = useAnimatedNumber(Math.round(participation?.events ?? 0), 0.9, 0)
-
-  const progressAttendanceMv = useMotionValue(0)
-  const [progressAttendance, setProgressAttendance] = useState(0)
-  useEffect(() => {
-    const target = Math.max(0, Math.min(100, attendance?.percent ?? 0))
-    const controls = animate(progressAttendanceMv, target, {
-      duration: reduce ? 0 : 0.9,
-      ease: EASE_OUT_EXPO,
-    })
-    const unsubscribe = progressAttendanceMv.on("change", (value: number) =>
-      setProgressAttendance(value)
-    )
-    return () => {
-      controls.stop()
-      unsubscribe()
-    }
-  }, [attendance?.percent, reduce, progressAttendanceMv])
 
   return (
-    <Layout>
-      <PageFadeIn>
-        <div className="w-screen min-h-screen bg-(--bg-page) text-(--text-primary) py-8 sm:py-10">
+    <PageLayout
+      seo={{
+        title: t("activity:title"),
+        description: t("activity:pageDescription", "Your academic activity dashboard."),
+      }}
+    >
+      <motion.div initial="hidden" animate="show" variants={headerVariants} className="pb-16">
+        <header>
+          <FadeSection delay="80ms" className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-subtle-bg text-brand shadow-glass transition-transform duration-fast hover:scale-105 backdrop-blur-sm">
+              <TimelineIcon className="text-3xl" />
+            </div>
+            <h1 className="text-page-title font-bold tracking-tight text-text-primary">
+              {t("activity:title")}
+            </h1>
+          </FadeSection>
+        </header>
+        <section aria-label={t("activity:title")}>
           <motion.div
+            data-fade
+            initial={{ opacity: 0, y: reduce ? 0 : 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: reduce ? 0 : 0.35 }}
+            style={{
+              ...fadeDelayStyle("140ms"),
+            }}
+            className="mb-6 inline-flex items-center gap-1 rounded-full border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-1 shadow-premium backdrop-blur-xl [-webkit-backdrop-filter:blur(var(--blur-md))] dark:border-glass-border dark:bg-page/(--opacity-medium) dark:shadow-premium"
+          >
+            {periodOptions.map((option) => (
+              <button
+                key={option.value}
+                onClick={() => setPeriod(option.value)}
+                className={cn(
+                  "relative rounded-full border-0 px-4 py-1.5 text-sm font-bold transition-colors duration-rapid",
+                  period === option.value
+                    ? "text-white"
+                    : "bg-transparent text-text-primary hover:bg-brand-subtle-bg hover:text-brand"
+                )}
+              >
+                {period === option.value && (
+                  <motion.span
+                    layoutId="activity-period-indicator"
+                    className="absolute inset-0 rounded-full bg-brand shadow-glass"
+                    transition={{
+                      type: "spring",
+                      stiffness: 400,
+                      damping: 30,
+                    }}
+                  />
+                )}
+                <span className="relative z-base">{option.label}</span>
+              </button>
+            ))}
+          </motion.div>
+
+          <motion.div
+            variants={gridVariants}
             initial="hidden"
             animate="show"
-            variants={headerVariants}
-            className="px-2 pb-16 sm:px-4"
-            style={
-              reduce ? undefined : { willChange: "transform, opacity", transform: "translateZ(0)" }
-            }
+            className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-2 md:mb-6 md:grid-cols-3 md:gap-6"
           >
+<<<<<<< HEAD
             <header>
               <FadeSection delay="80ms" className="mb-8 flex flex-wrap items-center gap-4 sm:gap-5">
                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-subtle-bg text-brand shadow-glass transition-transform duration-fast hover:scale-105 backdrop-blur-sm">
@@ -499,138 +490,61 @@ export default function Activity() {
                 </CardShell>
               </motion.div>
             </section>
+=======
+            <AttendanceCard
+              attendance={attendance}
+              hasInitiallyLoaded={hasInitiallyLoaded}
+              reduceMotion={reduce}
+              onClick={() => setDetail("attendance")}
+              ringSize={ringSize}
+            />
+            <GradesCard
+              grades={grades}
+              hasInitiallyLoaded={hasInitiallyLoaded}
+              reduceMotion={reduce}
+              onClick={() => setDetail("grades")}
+            />
+            <ParticipationCard
+              participation={participation}
+              hasInitiallyLoaded={hasInitiallyLoaded}
+              reduceMotion={reduce}
+              onClick={() => setDetail("participation")}
+              separator={separator}
+            />
+>>>>>>> origin/main
           </motion.div>
-          <Dialog
-            open={detail !== ""}
-            onClose={() => setDetail("")}
-            title={detailSection ? t(`activity:sections.${detailSection}.dialogTitle`) : ""}
-            size="md"
-          >
-            {detail === "attendance" && (
-              <div className="space-y-4">
-                <p className="text-base text-(--text-primary)">
-                  {t("activity:sections.attendance.dialogTotal", {
-                    present: attendance?.present ?? 0,
-                    total: attendance?.total ?? 0,
-                    period: attendance?.periodLabel || labelByPeriod(period),
-                  })}
-                </p>
-                <ProgressBar
-                  value={Math.max(0, Math.min(100, attendance?.percent ?? 0))}
-                  className="h-2.5 rounded-lg"
-                  barClassName="bg-(--success-text) rounded-lg"
-                />
-                <div className="space-y-2">
-                  {(attendance?.recent ?? []).map((r, i) => (
-                    <div key={attendanceItemKey(r, i)} className="space-y-0.5">
-                      <p className="text-sm font-semibold text-(--text-primary)">
-                        {`${r.course || attendanceLessonFallback} — ${attendanceStatusLabel(r.status)}`}
-                      </p>
-                      <p className="text-xs text-(--text-caption)">{formatDate(r.date)}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {detail === "grades" && (
-              <div className="space-y-4">
-                <p className="text-base font-semibold text-(--text-primary)">
-                  {grades?.scale === "gpa"
-                    ? `GPA ${(grades?.average ?? 0).toFixed(2)}`
-                    : grades?.scale === "100"
-                      ? `${Math.round(grades?.average ?? 0)}/100`
-                      : `${(grades?.average ?? 0).toFixed(1)}/5`}
-                </p>
-                <div className="space-y-2">
-                  {(grades?.recent ?? []).map((r, i) => (
-                    <div key={gradeItemKey(r, i)} className="space-y-0.5">
-                      <p className="text-sm font-semibold text-(--text-primary)">
-                        {`${r.course} — ${r.score}${r.max ? "/" + r.max : ""}`}
-                      </p>
-                      <p className="text-xs text-(--text-caption)">{formatDate(r.date)}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {detail === "participation" && (
-              <div className="space-y-4">
-                <p className="text-base text-(--text-primary)">
-                  {[
-                    t("activity:sections.participation.eventsCount", {
-                      value: String(participation?.events ?? 0),
-                      count: participation?.events ?? 0,
-                    }),
-                    participation?.hours != null
-                      ? t("activity:sections.participation.summaryHours", {
-                          count: participation.hours ?? 0,
-                        })
-                      : null,
-                    participation?.groups != null
-                      ? t("activity:sections.participation.summaryGroups", {
-                          count: participation.groups ?? 0,
-                        })
-                      : null,
-                  ]
-                    .filter(Boolean)
-                    .join(separator)}
-                </p>
-                <div className="space-y-2">
-                  {(participation?.recent ?? []).map((r, i) => (
-                    <div key={participationItemKey(r, i)} className="space-y-0.5">
-                      <p className="text-sm font-semibold text-(--text-primary)">{r.title}</p>
-                      <p className="text-xs text-(--text-caption)">
-                        {[formatDate(r.date), r.role].filter(Boolean).join(separator)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {detail === "attendance_recent" && (
-              <div className="space-y-2">
-                {(attendance?.recent ?? []).map((r, i) => (
-                  <div key={attendanceItemKey(r, i)} className="space-y-0.5">
-                    <p className="text-sm font-semibold text-(--text-primary)">
-                      {`${r.course || attendanceLessonFallback} — ${attendanceStatusLabel(r.status)}`}
-                    </p>
-                    <p className="text-xs text-(--text-caption)">{formatDate(r.date)}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-            {detail === "grades_recent" && (
-              <div className="space-y-2">
-                {(grades?.recent ?? []).map((r, i) => (
-                  <div key={gradeItemKey(r, i)} className="space-y-0.5">
-                    <p className="text-sm font-semibold text-(--text-primary)">
-                      {`${r.course} — ${r.score}${r.max ? "/" + r.max : ""}`}
-                    </p>
-                    <p className="text-xs text-(--text-caption)">{formatDate(r.date)}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-            {detail === "participation_recent" && (
-              <div className="space-y-2">
-                {(participation?.recent ?? []).map((r, i) => (
-                  <div key={participationItemKey(r, i)} className="space-y-0.5">
-                    <p className="text-sm font-semibold text-(--text-primary)">{r.title}</p>
-                    <p className="text-xs text-(--text-caption)">
-                      {[formatDate(r.date), r.role].filter(Boolean).join(separator)}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div className="mt-6 flex justify-end">
-              <Button variant="outline" onClick={() => setDetail("")}>
-                {t("activity:dialog.close")}
-              </Button>
-            </div>
-          </Dialog>
-        </div>
-      </PageFadeIn>
-    </Layout>
+
+          <div className="my-4 border-t border-glass-border-subtle md:my-6" />
+
+          <motion.div variants={gridVariants} initial="hidden" animate="show">
+            <RecentActivityGrid
+              attendance={attendance}
+              grades={grades}
+              participation={participation}
+              hasInitiallyLoaded={hasInitiallyLoaded}
+              reduceMotion={reduce}
+              onDetailClick={setDetail}
+              separator={separator}
+              attendanceLessonFallback={attendanceLessonFallback}
+              attendanceStatusLabel={attendanceStatusLabel}
+              formatDate={formatDate}
+            />
+          </motion.div>
+        </section>
+      </motion.div>
+      <ActivityDetailDialog
+        detail={detail}
+        onClose={() => setDetail("")}
+        detailSection={detailSection}
+        attendance={attendance}
+        grades={grades}
+        participation={participation}
+        labelByPeriod={labelByPeriod}
+        period={period}
+        attendanceStatusLabel={attendanceStatusLabel}
+        formatDate={formatDate}
+        separator={separator}
+      />
+    </PageLayout>
   )
 }

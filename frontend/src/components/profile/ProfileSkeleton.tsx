@@ -10,12 +10,12 @@ export const ProfileSkeleton = () => {
           <Card className="overflow-hidden">
             <div className="h-64 relative">
               <Skeleton width="100%" height="100%" />
-              <div className="absolute -bottom-16 left-1/2 -translate-x-1/2">
+              <div className="absolute -bottom-16 left-1/(--opacity-trace) -translate-x-1/(--opacity-trace)">
                 <Skeleton
                   width={160}
                   height={160}
                   rounded="50%"
-                  className="border-4 border-white"
+                  className="border-4 border-(--bg-surface)"
                 />
               </div>
             </div>
@@ -27,12 +27,12 @@ export const ProfileSkeleton = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="space-y-4">
                   {Array.from({ length: 4 }).map((_, i) => (
-                    <Skeleton key={i} width="100%" height={48} rounded="12px" />
+                    <Skeleton key={i} width="100%" height="3rem" rounded="md" />
                   ))}
                 </div>
                 <div className="space-y-4">
-                  <Skeleton width="100%" height={120} rounded="16px" />
-                  <Skeleton width="100%" height={200} rounded="16px" />
+                  <Skeleton width="100%" height="7.5rem" rounded="lg" />
+                  <Skeleton width="100%" height="12.5rem" rounded="lg" />
                 </div>
               </div>
             </div>

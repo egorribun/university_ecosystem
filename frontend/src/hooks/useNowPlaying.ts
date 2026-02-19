@@ -14,6 +14,11 @@ const STORAGE_KEY = "spotify:now-playing:last"
 const RATE_LIMIT_FALLBACK_MS = 5_000
 const RATE_LIMIT_BUFFER_MS = 250
 
+/** Polling intervals for NowPlaying status */
+const POLLING_IDLE_MS = 3_000
+const POLLING_PAUSED_MS = 2_000
+const POLLING_ACTIVE_MS = 500
+
 let rateLimitedUntil = 0
 
 const clearRateLimit = () => {
@@ -132,10 +137,10 @@ export const fetchNowPlaying = async () => {
 }
 
 const computeInterval = (data: NowPlaying | null) => {
-  if (!data) return 3_000
-  if (!data.is_playing) return 2_000
-  // Lightning-fast polling - check every 500ms for maximum responsiveness
-  return 500
+  if (!data) return POLLING_IDLE_MS
+  if (!data.is_playing) return POLLING_PAUSED_MS
+  // Lightning-fast polling - check frequently for maximum responsiveness
+  return POLLING_ACTIVE_MS
 }
 
 export const useNowPlaying = (enabled: boolean) => {

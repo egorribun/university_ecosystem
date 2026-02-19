@@ -1,6 +1,6 @@
 import React from "react"
 import { useTranslation } from "react-i18next"
-import { useAuth } from "../../contexts/AuthContext"
+import { useAuth } from "@/contexts/AuthContext"
 
 import { EmailSection, PasswordSection, SessionsSection } from "./sections"
 
@@ -19,10 +19,10 @@ import {
   AccordionSection,
   Button,
   Alert,
-} from "../../components/settings"
+} from "@/components/settings"
 
-import { TotpQrDisplay } from "../../components/mfa/TotpQrDisplay"
-import { OtpEntry } from "../../components/mfa/OtpEntry"
+import { TotpQrDisplay } from "@/components/mfa/TotpQrDisplay"
+import { OtpEntry } from "@/components/mfa/OtpEntry"
 import { Smartphone, Fingerprint, Trash2 } from "lucide-react"
 
 import type { SetSnackbar } from "./types"
@@ -214,7 +214,7 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor, isActive }: Setti
               {totpDraft ? (
                 <div className="flex flex-col gap-4 p-4 rounded-xs border border-(--border-subtle) bg-(--bg-surface-active)">
                   <div className="flex flex-col gap-1">
-                    <h4 className="text-sm font-bold text-(--text-primary)">
+                    <h4 className="text-sm font-bold text-text-primary">
                       {t("settings:security.totp.pendingTitle")}
                     </h4>
                     <p className="text-xs text-(--text-secondary)">

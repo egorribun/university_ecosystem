@@ -1,25 +1,31 @@
 import { Suspense, lazy } from "react"
-import Layout from "../components/Layout"
-import PageFadeIn from "../components/PageFadeIn"
+import Layout from "@/components/Layout"
+import PageFadeIn from "@/components/PageFadeIn"
 import { Skeleton } from "@/components/ui"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
 
 const MapContent = lazy(() => import("./MapContent"))
 
+const ICON_SIZES = { mobile: 26, desktop: 34 }
+
 function MapSkeleton() {
   const isMobile = useMediaQuery(`(max-width: ${breakpoints.content})`)
-  const iconSize = isMobile ? 26 : 34
+  const iconSize = isMobile ? ICON_SIZES.mobile : ICON_SIZES.desktop
 
   return (
-    <div className="w-full max-w-(--layout-max-modal) z-modal text-(--text-primary) rounded-none shadow-2xl overflow-hidden relative">
-      <div className="map-page bg-(--bg-canvas-light) dark:bg-(--bg-canvas-dark) relative h-full w-full">
+    <div className="w-full max-w-(--layout-max-modal) z-modal text-text-primary rounded-none shadow-2xl overflow-hidden relative">
+      <div className="map-page bg-page relative h-full w-full">
         <div className="glass glass--panel glass--sheen map-head flex items-center justify-between px-6 py-4 absolute top-0 left-0 right-0 z-navbar">
           <div className="flex items-center gap-3">
+<<<<<<< HEAD
             <Skeleton
               className="rounded-full"
               style={{ height: iconSize, width: iconSize }}
             />
+=======
+            <Skeleton className="rounded-full" style={{ width: iconSize, height: iconSize }} />
+>>>>>>> origin/main
             <Skeleton className={isMobile ? "h-8 w-40" : "h-10 w-60"} />
           </div>
           <div className="flex items-center gap-2">
@@ -34,7 +40,7 @@ function MapSkeleton() {
           <Skeleton className="h-16 w-16 rounded-full" />
         </div>
 
-        <div className="map-controls-shield absolute inset-0 pointer-events-none" />
+        <div className="absolute inset-0 pointer-events-none" />
 
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-navbar pointer-events-none flex flex-col gap-3 pb-(--safe-area-bottom)">
           <div className="flex items-center gap-2 pointer-events-auto">

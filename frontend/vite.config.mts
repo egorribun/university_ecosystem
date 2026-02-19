@@ -245,6 +245,9 @@ export default defineConfig(({ mode }) => {
       exclude: ["qrcode"],
     },
     modulepreload: { polyfill: false },
+    esbuild: {
+      pure: mode === "production" ? ["console.log", "console.debug"] : [],
+    },
     build: {
       minify: true,
       sourcemap: true,

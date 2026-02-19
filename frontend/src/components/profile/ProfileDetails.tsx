@@ -21,7 +21,7 @@ export const ProfileDetails = ({ user, isOpen, onToggle }: ProfileDetailsProps) 
         onClick={onToggle}
         className="w-full flex items-center justify-between px-6 py-5 hover:bg-(--bg-surface)/(--opacity-dim) transition-colors"
       >
-        <h2 className="text-lg font-bold tracking-tight text-(--text-primary)">
+        <h2 className="text-lg font-bold tracking-tight text-text-primary">
           {t("profile:titles.details")}
         </h2>
         <ExpandMoreIcon
@@ -35,7 +35,11 @@ export const ProfileDetails = ({ user, isOpen, onToggle }: ProfileDetailsProps) 
       <div
         className={cn(
           "transition-all duration-base overflow-hidden",
+<<<<<<< HEAD
           isOpen ? "opacity-100" : "opacity-0"
+=======
+          isOpen ? "max-h-[150vh] opacity-100" : "max-h-0 opacity-0"
+>>>>>>> origin/main
         )}
         style={{ maxHeight: isOpen ? "1000px" : "0px" }}
       >

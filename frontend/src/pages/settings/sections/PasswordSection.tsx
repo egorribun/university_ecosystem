@@ -1,8 +1,8 @@
 import { useTranslation } from "react-i18next"
 
-import { Button, TextField, CircularProgress, AccordionSection } from "../../../components/settings"
+import { Button, TextField, CircularProgress, AccordionSection } from "@/components/settings"
 
-import type { SettingsSectionProps } from "../types"
+import type { SettingsSectionProps } from "@/pages/settings/types"
 
 interface PasswordSectionProps extends SettingsSectionProps {
   currentPasswordValue: string

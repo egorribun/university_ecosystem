@@ -3,11 +3,11 @@ import { useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { isAxiosError } from "axios"
 
-import api from "../../../api/client"
-import { useAuth } from "../../../contexts/AuthContext"
-import { currentUserQueryKey, fetchCurrentUser } from "../../../hooks/auth/useProfileSync"
-import type { User } from "../../../types/User"
-import type { SetSnackbar } from "../types"
+import api from "@/api/client"
+import { useAuth } from "@/contexts/AuthContext"
+import { currentUserQueryKey, fetchCurrentUser } from "@/hooks/auth/useProfileSync"
+import type { User } from "@/types/User"
+import type { SetSnackbar } from "@/pages/settings/types"
 
 export interface UseEmailChangeOptions {
   setSnackbar: SetSnackbar

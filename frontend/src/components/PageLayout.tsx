@@ -1,6 +1,7 @@
 import { ReactNode } from "react"
 import Layout from "./Layout"
 import PageFadeIn from "./PageFadeIn"
+import { SEO, SEOProps } from "./SEO"
 import { cn } from "@/utils/cn"
 
 type PageLayoutVariant = "default" | "wide" | "narrow" | "full"
@@ -9,6 +10,7 @@ interface PageLayoutProps {
   children: ReactNode
   className?: string
   variant?: PageLayoutVariant
+  seo?: SEOProps
 }
 
 const variants: Record<PageLayoutVariant, string> = {
@@ -18,11 +20,12 @@ const variants: Record<PageLayoutVariant, string> = {
   full: "p-0",
 }
 
-export const PageLayout = ({ children, className, variant = "default" }: PageLayoutProps) => {
+export const PageLayout = ({ children, className, variant = "default", seo }: PageLayoutProps) => {
   return (
     <Layout>
+      {seo && <SEO {...seo} />}
       <PageFadeIn>
-        <div className={cn("w-full py-6 md:py-8", variants[variant], className)}>{children}</div>
+        <div className={cn("w-full py-(--fluid-py)", variants[variant], className)}>{children}</div>
       </PageFadeIn>
     </Layout>
   )

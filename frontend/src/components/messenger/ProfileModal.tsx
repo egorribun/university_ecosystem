@@ -32,7 +32,7 @@ export function ProfileModal({ user, loading, error, onClose }: ProfileModalProp
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.9, opacity: 0, y: 20 }}
-            className="z-modal w-full max-w-lg overflow-hidden rounded-2xl border border-white/(--opacity-subtle) bg-(--bg-surface) shadow-2xl dark:bg-(--bg-page)"
+            className="z-modal w-full max-w-lg overflow-hidden rounded-2xl border border-white/(--opacity-subtle) bg-(--bg-surface) shadow-2xl dark:bg-page"
           >
             <div className="flex items-center justify-between border-b border-msg-border p-6 pb-4">
               <h3 className="sf-pro text-xl font-bold tracking-tight">

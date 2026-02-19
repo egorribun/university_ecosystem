@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -35,7 +35,12 @@ vi.mock("react-i18next", () => ({
 // Mock framer-motion to avoid animation issues in tests
 vi.mock("framer-motion", () => {
   const motionComponent = (Tag: string) => {
-    const Component = ({ children, className, onClick, ...props }: any) => {
+    const Component = ({
+      children,
+      className,
+      onClick,
+      ...props
+    }: React.ComponentProps<"div"> & { [key: string]: unknown }) => {
       // Filter out framer-motion specific props
       const filteredProps = { ...props }
       const motionProps = [
@@ -55,18 +60,19 @@ vi.mock("framer-motion", () => {
       ]
       motionProps.forEach((prop) => delete filteredProps[prop])
 
+      const Element = Tag as React.ElementType
       return (
-        <Tag className={className} onClick={onClick} {...filteredProps}>
+        <Element className={className} onClick={onClick} {...filteredProps}>
           {children}
-        </Tag>
+        </Element>
       )
     }
     Component.displayName = `Motion(${Tag})`
-    return Component
+    return Component as unknown as React.ComponentType<unknown>
   }
 
   return {
-    AnimatePresence: ({ children }: any) => <>{children}</>,
+    AnimatePresence: ({ children }: { children: React.ReactNode }) => <>{children}</>,
     motion: {
       div: motionComponent("div"),
       button: motionComponent("button"),

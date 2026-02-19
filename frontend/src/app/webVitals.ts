@@ -1,5 +1,6 @@
 import type { Metric } from "web-vitals"
 import { onCLS, onFCP, onFID, onINP, onLCP, onTTFB } from "web-vitals"
+import { logDebug } from "@/app/logger"
 
 type MetricRating = Metric["rating"]
 
@@ -18,10 +19,12 @@ type ExtendedEnv = ImportMetaEnv & {
 let initialized = false
 let reporterRef: WebVitalReporter | undefined
 
+const TRUE_VALUES = new Set(["true", "1", "yes"])
+
 function isEnabled(value: string | undefined): boolean {
   if (!value) return false
   const normalized = value.trim().toLowerCase()
-  return normalized === "true" || normalized === "1" || normalized === "yes"
+  return TRUE_VALUES.has(normalized)
 }
 
 function hasLabel(metric: WebVitalMetric): metric is WebVitalMetric & { label: string } {
@@ -83,7 +86,7 @@ function createReporter(env: ExtendedEnv): WebVitalReporter | undefined {
 
   if (typeof console !== "undefined") {
     return (metric) => {
-      console.debug(`[web-vitals] ${metric.name}`, {
+      logDebug(`[web-vitals] ${metric.name}`, {
         value: metric.value,
         delta: metric.delta,
         rating: metric.rating,
