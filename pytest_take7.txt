@@ -1,9 +1,0 @@
-............................................                             [100%]
-============================== warnings summary ===============================
-tests/test_auth_endpoints_coverage.py::test_register_endpoint
-tests/test_auth_endpoints_coverage.py::test_login_json_endpoint
-  C:\Python313\Lib\site-packages\starlette\_exception_handler.py:59: DeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
-    response = await handler(conn, exc)
-
--- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-44 passed, 2 warnings in 6.14s

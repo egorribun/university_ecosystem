@@ -1,9 +1,0 @@
-app\management\weekly_cleanup.py:80: error: "Coroutine[Any, Any, AsyncConnection]" has no attribute "execute"  [attr-defined]
-app\management\weekly_cleanup.py:80: note: Maybe you forgot to use "await"?
-app\management\weekly_cleanup.py:102: error: Incompatible return value type (got "dict[str, int]", expected "dict[str, int | None]")  [return-value]
-app\management\weekly_cleanup.py:102: note: "dict" is invariant -- see https://mypy.readthedocs.io/en/stable/common_issues.html#variance
-app\management\weekly_cleanup.py:102: note: Consider using "Mapping" instead, which is covariant in the value type
-app\management\weekly_cleanup.py:102: note: Perhaps you need a type annotation for "stats"? Suggestion: "dict[str, int | None]"
-app\scripts\backfill_uuids.py:93: error: "type[User]" has no attribute "uuid_id"  [attr-defined]
-app\scripts\backfill_uuids.py:102: error: "type[Base]" has no attribute "uuid_id"  [attr-defined]
-Found 4 errors in 2 files (checked 3 source files)
