@@ -1,0 +1,271 @@
+FFF.......FF................................                             [100%]
+================================== FAILURES ===================================
+___________________________ test_register_endpoint ____________________________
+
+async_client = <httpx.AsyncClient object at 0x0000020C664827B0>
+db_session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x0000020C6653C690>
+
+    async def test_register_endpoint(async_client: AsyncClient, db_session):
+        # Success
+        payload = {
+            "email": "newuser@example.com",
+            "password": "StrongPassword123!",
+            "full_name": "New User",
+            "referral_code": None,
+        }
+        response = await async_client.post("/auth/register", json=payload)
+        assert response.status_code == 200
+        assert response.json()["status"] == "ok"
+    
+        # Verify in DB
+        from sqlalchemy import select
+    
+        stmt = select(models.User).where(models.User.email == "newuser@example.com")
+        user = (await db_session.execute(stmt)).scalar_one()
+>       assert user.full_name == "New User"
+E       AssertionError: assert None == 'New User'
+E        +  where None = <User(id=019c7cc7-25eb-71d0-adbf-f5f4c9c6b88c, role='UserRole.STUDENT')>.full_name
+
+tests\test_auth_endpoints_coverage.py:27: AssertionError
+---------------------------- Captured stderr setup ----------------------------
+{"timestamp": "2026-02-20T23:39:12.029Z", "level": "INFO", "logger": "app.core.feature_flags", "message": "Feature flag service initialized (4 flags)", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-20T23:39:12.032Z", "level": "INFO", "logger": "app.core.events", "message": "Domain event persistence listeners registered.", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-20T23:39:12.033Z", "level": "INFO", "logger": "app.services.event_handlers", "message": "Domain event handlers configured", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-20T23:39:12.033Z", "level": "INFO", "logger": "app.core.lifespan", "message": "Patching out computed column events.search_vector for dialect sqlite", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-20T23:39:12.044Z", "level": "INFO", "logger": "app.services.cache_warmup", "message": "Cache warmup disabled, skipping", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-20T23:39:12.045Z", "level": "INFO", "logger": "app.workers.outbox", "message": "OutboxWorker started", "service_name": "university-ecosystem", "environment": "testing"}
+----------------------------- Captured log setup ------------------------------
+INFO     app.core.feature_flags:feature_flags.py:150 Feature flag service initialized (4 flags)
+INFO     app.core.events:events.py:265 Domain event persistence listeners registered.
+INFO     app.services.event_handlers:event_handlers.py:167 Domain event handlers configured
+INFO     app.core.lifespan:lifespan.py:104 Patching out computed column events.search_vector for dialect sqlite
+INFO     app.services.cache_warmup:cache_warmup.py:241 Cache warmup disabled, skipping
+INFO     app.workers.outbox:outbox.py:32 OutboxWorker started
+---------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-02-20T23:39:12.129Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/auth/register \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+------------------------------ Captured log call ------------------------------
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/api/v1/auth/register "HTTP/1.1 200 OK"
+__________________________ test_login_json_endpoint ___________________________
+
+async_client = <httpx.AsyncClient object at 0x0000020C6653E5D0>
+user_factory = <function user_factory.<locals>._factory at 0x0000020C667F1120>
+
+    async def test_login_json_endpoint(async_client: AsyncClient, user_factory):
+        password = "StrongPass1!"
+        user = await user_factory(hashed_password=await get_password_hash(password))
+    
+        payload = {"email": user.email, "password": password, "trust_device": False}
+        response = await async_client.post("/auth/login/json", json=payload)
+        assert response.status_code == 200
+        data = response.json()
+>       assert "access_token" in data
+E       AssertionError: assert 'access_token' in {'session': {'signing_key': 'Dff8TVmTmiYnCMUBNp6Fwi1uTvasX3RaFH6qu8G0x0w'}, 'user': {'about': None, 'achievements': None, 'avatar_url': None, 'avatar_url_optimized': None, ...}}
+
+tests\test_auth_endpoints_coverage.py:42: AssertionError
+---------------------------- Captured stderr setup ----------------------------
+{"timestamp": "2026-02-20T23:39:13.094Z", "level": "INFO", "logger": "app.core.events", "message": "Domain event persistence listeners registered.", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-20T23:39:13.094Z", "level": "INFO", "logger": "app.services.event_handlers", "message": "Domain event handlers configured", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-20T23:39:13.105Z", "level": "INFO", "logger": "app.services.cache_warmup", "message": "Cache warmup disabled, skipping", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-20T23:39:13.105Z", "level": "INFO", "logger": "app.workers.outbox", "message": "OutboxWorker started", "service_name": "university-ecosystem", "environment": "testing"}
+----------------------------- Captured log setup ------------------------------
+INFO     app.core.events:events.py:265 Domain event persistence listeners registered.
+INFO     app.services.event_handlers:event_handlers.py:167 Domain event handlers configured
+INFO     app.services.cache_warmup:cache_warmup.py:241 Cache warmup disabled, skipping
+INFO     app.workers.outbox:outbox.py:32 OutboxWorker started
+---------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-02-20T23:39:13.213Z", "level": "WARNING", "logger": "app.services.session_service", "message": "Redis lock acquisition failed", "trace_id": "f980301dc89444f68267485919e2a389", "request_id": "f980301dc89444f68267485919e2a389", "service_name": "university-ecosystem", "environment": "testing", "user_id": "019c7cc7-29f6-7a30-8721-b78888dc4806", "lock_type": "session_creation", "exc_info": "Traceback (most recent call last):\n  File \"C:\\Users\\egorribun\\Documents\\university_ecosystem\\app\\services\\session_service.py\", line 95, in create_access_token\n    lock_acquired = await redis_lock.acquire(blocking_timeout=2)\n                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nTypeError: object MagicMock can't be used in 'await' expression"}
+{"timestamp": "2026-02-20T23:39:13.224Z", "level": "INFO", "logger": "app.auth", "message": "{\"event\": \"auth.login.success\", \"user_id\": \"019c7cc7-29f6-7a30-8721-b78888dc4806\", \"request_id\": \"f980301dc89444f68267485919e2a389\", \"ip\": \"127.0.0.1\", \"path\": \"/api/v1/auth/login/json\", \"method\": \"POST\", \"reason\": \"authenticated\"}", "trace_id": "f980301dc89444f68267485919e2a389", "request_id": "f980301dc89444f68267485919e2a389", "service_name": "university-ecosystem", "environment": "testing", "event": "auth.login.success", "user_id": "019c7cc7-29f6-7a30-8721-b78888dc4806", "ip": "127.0.0.1", "path": "/api/v1/auth/login/json", "method": "POST", "reason": "authenticated"}
+{"timestamp": "2026-02-20T23:39:13.235Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/auth/login/json \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+------------------------------ Captured log call ------------------------------
+WARNING  app.services.session_service:session_service.py:97 Redis lock acquisition failed
+Traceback (most recent call last):
+  File "C:\Users\egorribun\Documents\university_ecosystem\app\services\session_service.py", line 95, in create_access_token
+    lock_acquired = await redis_lock.acquire(blocking_timeout=2)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: object MagicMock can't be used in 'await' expression
+INFO     app.auth:audit_service.py:171 {"event": "auth.login.success", "user_id": "019c7cc7-29f6-7a30-8721-b78888dc4806", "request_id": "f980301dc89444f68267485919e2a389", "ip": "127.0.0.1", "path": "/api/v1/auth/login/json", "method": "POST", "reason": "authenticated"}
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/api/v1/auth/login/json "HTTP/1.1 200 OK"
+__________________________ test_login_form_endpoint ___________________________
+
+async_client = <httpx.AsyncClient object at 0x0000020C667056D0>
+user_factory = <function user_factory.<locals>._factory at 0x0000020C667F0680>
+
+    async def test_login_form_endpoint(async_client: AsyncClient, user_factory):
+        password = "StrongPass1!"
+        user = await user_factory(hashed_password=await get_password_hash(password))
+    
+        data = {"username": user.email, "password": password}
+        response = await async_client.post("/auth/login", data=data)
+        assert response.status_code == 200
+>       assert "access_token" in response.json()
+E       AssertionError: assert 'access_token' in {'session': {'signing_key': 'E4w2S7C4ziIVS0SOnsREhyCyEUTX6A5NC2KyqBWx0jo'}, 'user': {'about': None, 'achievements': None, 'avatar_url': None, 'avatar_url_optimized': None, ...}}
+E        +  where {'session': {'signing_key': 'E4w2S7C4ziIVS0SOnsREhyCyEUTX6A5NC2KyqBWx0jo'}, 'user': {'about': None, 'achievements': None, 'avatar_url': None, 'avatar_url_optimized': None, ...}} = json()
+E        +    where json = <Response [200 OK]>.json
+
+tests\test_auth_endpoints_coverage.py:58: AssertionError
+---------------------------- Captured stderr setup ----------------------------
+{"timestamp": "2026-02-20T23:39:14.135Z", "level": "INFO", "logger": "app.core.events", "message": "Domain event persistence listeners registered.", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-20T23:39:14.135Z", "level": "INFO", "logger": "app.services.event_handlers", "message": "Domain event handlers configured", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-20T23:39:14.146Z", "level": "INFO", "logger": "app.services.cache_warmup", "message": "Cache warmup disabled, skipping", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-20T23:39:14.146Z", "level": "INFO", "logger": "app.workers.outbox", "message": "OutboxWorker started", "service_name": "university-ecosystem", "environment": "testing"}
+----------------------------- Captured log setup ------------------------------
+INFO     app.core.events:events.py:265 Domain event persistence listeners registered.
+INFO     app.services.event_handlers:event_handlers.py:167 Domain event handlers configured
+INFO     app.services.cache_warmup:cache_warmup.py:241 Cache warmup disabled, skipping
+INFO     app.workers.outbox:outbox.py:32 OutboxWorker started
+---------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-02-20T23:39:14.244Z", "level": "WARNING", "logger": "app.services.session_service", "message": "Redis lock acquisition failed", "trace_id": "19ddaf1408fe45e988a288ff7e3a7ada", "request_id": "19ddaf1408fe45e988a288ff7e3a7ada", "service_name": "university-ecosystem", "environment": "testing", "user_id": "019c7cc7-2e07-724d-a375-ca9b33aafa12", "lock_type": "session_creation", "exc_info": "Traceback (most recent call last):\n  File \"C:\\Users\\egorribun\\Documents\\university_ecosystem\\app\\services\\session_service.py\", line 95, in create_access_token\n    lock_acquired = await redis_lock.acquire(blocking_timeout=2)\n                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nTypeError: object MagicMock can't be used in 'await' expression"}
+{"timestamp": "2026-02-20T23:39:14.252Z", "level": "INFO", "logger": "app.auth", "message": "{\"event\": \"auth.login.success\", \"user_id\": \"019c7cc7-2e07-724d-a375-ca9b33aafa12\", \"request_id\": \"19ddaf1408fe45e988a288ff7e3a7ada\", \"ip\": \"127.0.0.1\", \"path\": \"/api/v1/auth/login\", \"method\": \"POST\", \"reason\": \"authenticated\"}", "trace_id": "19ddaf1408fe45e988a288ff7e3a7ada", "request_id": "19ddaf1408fe45e988a288ff7e3a7ada", "service_name": "university-ecosystem", "environment": "testing", "event": "auth.login.success", "user_id": "019c7cc7-2e07-724d-a375-ca9b33aafa12", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+{"timestamp": "2026-02-20T23:39:14.257Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/auth/login \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+------------------------------ Captured log call ------------------------------
+WARNING  app.services.session_service:session_service.py:97 Redis lock acquisition failed
+Traceback (most recent call last):
+  File "C:\Users\egorribun\Documents\university_ecosystem\app\services\session_service.py", line 95, in create_access_token
+    lock_acquired = await redis_lock.acquire(blocking_timeout=2)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: object MagicMock can't be used in 'await' expression
+INFO     app.auth:audit_service.py:171 {"event": "auth.login.success", "user_id": "019c7cc7-2e07-724d-a375-ca9b33aafa12", "request_id": "19ddaf1408fe45e988a288ff7e3a7ada", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/api/v1/auth/login "HTTP/1.1 200 OK"
+__________________________ test_warm_stats_for_user ___________________________
+
+    @pytest.mark.asyncio
+    async def test_warm_stats_for_user():
+        mock_cache = AsyncMock()
+        mock_cache.enabled = True
+        mock_cache.get.return_value = None
+        mock_db = AsyncMock()
+    
+        with (
+            patch(
+                "app.services.cache_warmup.stats_cache.get_cached_stats", return_value=None
+            ),
+            patch("app.services.user_service.UserService") as MockUserService,
+            patch("app.repositories.user_repository.UserRepository"),
+            patch("app.services.notification_service.NotificationService"),
+        ):
+            mock_service = MockUserService.return_value
+            mock_service.get_attendance_stats = AsyncMock()
+            mock_service.get_grade_stats = AsyncMock()
+            mock_service.get_participation_stats = AsyncMock()
+    
+            user_id = uuid.uuid4()
+>           await cache_warmup._warm_stats_for_user(mock_cache, mock_db, user_id, "7d")
+
+tests\test_cache_warmup.py:137: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+app\services\cache_warmup.py:137: in _warm_stats_for_user
+    await asyncio.gather(*tasks)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <app.services.user.analytics_service.UserAnalyticsService object at 0x0000020C66A30440>
+
+    async def get_grade_stats(
+        self,
+        *,
+        user_id: uuid.UUID | str,
+        period_days: int,
+        period_key: str | None = None,
+        cache: BaseCache | None = None,
+        skip_cache: bool = False,
+    ) -> dict[str, Any]:
+        cache_period_key = stats_cache.resolve_period_key(period_key, period_days)
+        cached = await stats_cache.get_cached_stats(
+            cache=cache,
+            kind="grades",
+            user_id=user_id,
+            period_key=cache_period_key,
+            skip_cache=skip_cache,
+        )
+        if cached is not None:
+            from typing import cast
+    
+            return cast(dict[str, Any], cached.payload)
+    
+        now = datetime.now(UTC)
+        window_start = now - timedelta(days=period_days)
+    
+        average = 0.0
+        trend = 0.0
+    
+        res = await self.db.execute(
+            select(models.Notification)
+            .where(
+                models.Notification.user_id == user_id,
+                models.Notification.type == "grade",
+                models.Notification.created_at >= window_start,
+            )
+            .order_by(models.Notification.created_at.desc())
+            .limit(20)
+        )
+        recent_notifications = res.scalars()
+    
+        recent: list[dict[str, Any]] = []
+        total_grades = 0
+        sum_scores = 0.0
+>       for notif in recent_notifications:
+                     ^^^^^^^^^^^^^^^^^^^^
+E       TypeError: 'coroutine' object is not iterable
+
+app\services\user\analytics_service.py:200: TypeError
+_______________________________ test_warm_news ________________________________
+
+    @pytest.mark.asyncio
+    async def test_warm_news():
+        mock_cache = AsyncMock()
+        mock_cache.enabled = True
+        mock_cache.get.return_value = None
+        mock_db = AsyncMock()
+    
+        with (
+            patch(
+                "app.api.news._get_news_list_version",
+                AsyncMock(return_value="v1"),
+            ),
+            patch("app.core.container.get_vector_service"),
+            patch("app.repositories.news_repository.NewsRepository"),
+            patch("app.services.news_service.NewsService") as MockNewsService,
+        ):
+            mock_service = MockNewsService.return_value
+            # results: list of (news_obj, l_count, c_count, liked)
+            mock_news = MagicMock()
+            mock_service.list_news = AsyncMock(
+>               return_value=schemas.PaginatedNews(
+                    items=[mock_news], has_more=False, next_cursor=None
+                )
+            )
+E           pydantic_core._pydantic_core.ValidationError: 6 validation errors for PaginatedNews
+E           items.0.title
+E             Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.title' id='2252284831328'>, input_type=MagicMock]
+E               For further information visit https://errors.pydantic.dev/2.12/v/string_type
+E           items.0.content
+E             Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.content' id='2252284831664'>, input_type=MagicMock]
+E               For further information visit https://errors.pydantic.dev/2.12/v/string_type
+E           items.0.title_en
+E             Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.tit..._en' id='2252284832000'>, input_type=MagicMock]
+E               For further information visit https://errors.pydantic.dev/2.12/v/string_type
+E           items.0.content_en
+E             Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.con..._en' id='2252284832336'>, input_type=MagicMock]
+E               For further information visit https://errors.pydantic.dev/2.12/v/string_type
+E           items.0.image_url
+E             Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.ima...url' id='2252284832672'>, input_type=MagicMock]
+E               For further information visit https://errors.pydantic.dev/2.12/v/string_type
+E           items.0.id
+E             UUID input should be a string, bytes or UUID object [type=uuid_type, input_value=<MagicMock name='mock.id' id='2252284833008'>, input_type=MagicMock]
+E               For further information visit https://errors.pydantic.dev/2.12/v/uuid_type
+
+tests\test_cache_warmup.py:164: ValidationError
+============================== warnings summary ===============================
+tests/test_api_deps.py::test_get_current_user_invalid_token
+  C:\Python313\Lib\unittest\mock.py:799: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    def __setattr__(self, name, value):
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_auth_endpoints_coverage.py::test_register_endpoint - Assert...
+FAILED tests/test_auth_endpoints_coverage.py::test_login_json_endpoint - Asse...
+FAILED tests/test_auth_endpoints_coverage.py::test_login_form_endpoint - Asse...
+FAILED tests/test_cache_warmup.py::test_warm_stats_for_user - TypeError: 'cor...
+FAILED tests/test_cache_warmup.py::test_warm_news - pydantic_core._pydantic_c...
+5 failed, 39 passed, 1 warning in 6.00s

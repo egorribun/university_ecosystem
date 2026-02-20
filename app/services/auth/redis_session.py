@@ -60,7 +60,7 @@ class RedisSessionService:
         try:
             client = await _get_shared_client(self.redis_url)
             # Use HSET (Redis 4.0+)
-            await client.hset(key, mapping=data)
+            await client.hset(key, mapping=data)  # type: ignore[misc]
             await client.expire(key, self.ttl_seconds)
         except (RedisError, OSError) as e:
             logger.warning(f"Failed to cache session {jti} in Redis: {e}")
@@ -73,7 +73,7 @@ class RedisSessionService:
         key = f"{self.KEY_PREFIX}{jti}"
         try:
             client = await _get_shared_client(self.redis_url)
-            raw = await client.hgetall(key)
+            raw = await client.hgetall(key)  # type: ignore[misc]
             if not raw:
                 return None
 
@@ -109,7 +109,7 @@ class RedisSessionService:
         try:
             client = await _get_shared_client(self.redis_url)
             # Fire and forget update
-            await client.hset(key, "last_seen_at", now_str)
+            await client.hset(key, "last_seen_at", now_str)  # type: ignore[misc]
             # Refresh TTL
             await client.expire(key, self.ttl_seconds)
         except (RedisError, OSError):

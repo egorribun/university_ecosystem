@@ -14,6 +14,7 @@ import { useMemo } from "react"
 import { apiClient, type TypedRequestOptions } from "@/api/client"
 import type { Event } from "@/types/Event"
 import type { PaginatedResponse } from "@/types/Pagination"
+import { StorageItem } from "@/utils/storage"
 
 export const EVENTS_PAGE_SIZE = 12
 
@@ -204,6 +205,32 @@ export const useEventsListQuery = (
     [queryClient, normalized, queryKey]
   )
 
+  // Read from localStorage as fallback for offline mode
+  const placeholderData = useMemo(() => {
+    if (typeof window === "undefined") return undefined
+    try {
+      const activity = normalized.is_active === null ? "all" : normalized.is_active ? "active" : "archive"
+      const storage = new StorageItem<Event[]>(`events:list:${normalized.language}:${activity}`)
+      const items = storage.get()
+      if (!Array.isArray(items) || items.length === 0) return undefined
+      return {
+        pages: [
+          {
+            items,
+            total: items.length,
+            limit: normalized.limit,
+            cursor: null,
+            next_cursor: null,
+            has_more: false,
+          },
+        ],
+        pageParams: [null],
+      }
+    } catch {
+      return undefined
+    }
+  }, [normalized.language, normalized.is_active, normalized.limit])
+
   const query = useInfiniteQuery<
     PaginatedResponse<Event>,
     Error,
@@ -216,6 +243,7 @@ export const useEventsListQuery = (
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage: PaginatedResponse<Event>) => lastPage?.next_cursor ?? null,
     queryFn,
+    placeholderData,
     ...rest,
   })
 
@@ -289,9 +317,21 @@ export const useMyEventsQuery = (
   const { enabled = true, ...rest } = options ?? {}
   const effectiveEnabled = enabled && normalized.userId != null
 
+  const placeholderData = useMemo(() => {
+    if (typeof window === "undefined") return undefined
+    try {
+      const storage = new StorageItem<Event[]>(`events:my:${normalized.language}:${normalized.userId}`)
+      const items = storage.get()
+      return Array.isArray(items) ? items : undefined
+    } catch {
+      return undefined
+    }
+  }, [normalized.language, normalized.userId])
+
   const query = useQuery<Event[], Error, Event[], MyEventsQueryKey>({
     queryKey,
     enabled: effectiveEnabled,
+    placeholderData,
     queryFn: async ({ signal }) => {
       const etagKey = createMyEventsEtagKey(normalized)
       const config: TypedRequestOptions<"/api/v1/events/my", "get"> = {

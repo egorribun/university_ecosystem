@@ -8,6 +8,7 @@ from app.core.exceptions.domain import (
     PermissionDenied,
 )
 from app.core.localization import resolve_locale, translate
+from app.core.observability import get_trace_id
 
 
 async def domain_exception_handler(request: Request, exc: Exception) -> JSONResponse:
@@ -51,6 +52,7 @@ async def domain_exception_handler(request: Request, exc: Exception) -> JSONResp
             "status": status_code,
             "detail": detail,
             "instance": str(request.url),
+            "trace_id": get_trace_id(),
         },
     )
 
@@ -62,7 +64,7 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
     titles = {
         status.HTTP_400_BAD_REQUEST: "Bad Request",
         status.HTTP_401_UNAUTHORIZED: "Unauthorized",
-        status.HTTP_403_FORBIDDEN: "Forbidden",
+        status.HTTP_403_FORBIDDEN: "Permission Denied",
         status.HTTP_404_NOT_FOUND: "Resource Not Found",
         status.HTTP_405_METHOD_NOT_ALLOWED: "Method Not Allowed",
         status.HTTP_409_CONFLICT: "Conflict",
@@ -81,6 +83,7 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
             "status": exc.status_code,
             "detail": exc.detail,
             "instance": str(request.url),
+            "trace_id": get_trace_id(),
         },
         headers=exc.headers,
     )

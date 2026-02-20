@@ -37,8 +37,10 @@ async def proxy_image(
         else:
             target_width = w
 
+    from typing import Literal
+
     # Determine optimal format based on Accept header
-    format_pref = "original"
+    format_pref: Literal["avif", "webp", "original"] = "original"
     if accept:
         # Priority: AVIF > WebP > Original
         if "image/avif" in accept:

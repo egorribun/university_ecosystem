@@ -43,3 +43,9 @@ class BusinessRuleViolation(DomainException):
     """Raised when a business rule is violated."""
 
     pass
+
+
+class PolicyViolation(DomainException):
+    """Raised when a security or access policy is violated."""
+
+    pass

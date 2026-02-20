@@ -47,10 +47,10 @@ try:
     )
 except Exception:  # pragma: no cover - optional dependency guard
     CONTENT_TYPE_LATEST = "text/plain; version=0.0.4; charset=utf-8"
-    CollectorRegistry = None  # type: ignore[assignment]
-    Counter = None  # type: ignore[assignment]
-    Gauge = None  # type: ignore[assignment]
-    Histogram = None  # type: ignore[assignment]
+    CollectorRegistry = None  # type: ignore[assignment,misc]
+    Counter = None  # type: ignore[assignment,misc]
+    Gauge = None  # type: ignore[assignment,misc]
+    Histogram = None  # type: ignore[assignment,misc]
     REGISTRY = None  # type: ignore[assignment]
 
     def generate_latest(_: object) -> bytes:  # type: ignore[misc]
@@ -64,15 +64,15 @@ try:
 
     try:
         from sentry_sdk.integrations.opentelemetry import (
-            SentrySpanProcessor,  # type: ignore
+            SentrySpanProcessor,
         )
     except Exception:
-        SentrySpanProcessor = None  # type: ignore[assignment]
+        SentrySpanProcessor = None  # type: ignore[assignment,misc]
 except Exception:
-    sentry_init = None  # type: ignore[assignment]
-    FastApiIntegration = None  # type: ignore[assignment]
-    LoggingIntegration = None  # type: ignore[assignment]
-    SentrySpanProcessor = None  # type: ignore[assignment]
+    sentry_init = None  # type: ignore[assignment,misc]
+    FastApiIntegration = None  # type: ignore[assignment,misc]
+    LoggingIntegration = None  # type: ignore[assignment,misc]
+    SentrySpanProcessor = None  # type: ignore[assignment,misc]
 
 
 from app.core.config import settings
@@ -291,7 +291,7 @@ def _configure_sentry(tracer_provider: TracerProvider | None) -> None:
     )
 
     if tracer_provider is not None and SentrySpanProcessor is not None:
-        tracer_provider.add_span_processor(SentrySpanProcessor())  # type: ignore[arg-type]
+        tracer_provider.add_span_processor(SentrySpanProcessor())
 
 
 def _build_otel_resource_attributes() -> dict[str, str]:
@@ -407,7 +407,7 @@ def configure_observability(app: FastAPI, *, engine: AsyncEngine) -> None:
     if not getattr(app.state, "observability_configured", False):
         _configure_logging()
         app.add_middleware(
-            CorrelationIdMiddleware,
+            CorrelationIdMiddleware,  # type: ignore[arg-type]
             header_name=settings.request_id_header,
             trace_header_name=settings.trace_header,
         )
@@ -592,9 +592,9 @@ class PeriodicTaskRun:
         return self._deleted_total
 
 
-def _coerce_deleted_value(value: object) -> int:
+def _coerce_deleted_value(value: Any) -> int:
     try:
-        number = int(value)  # type: ignore[arg-type]
+        number = int(value)
     except (TypeError, ValueError):
         return 0
     return number if number > 0 else 0
@@ -1000,7 +1000,9 @@ def reinitialize_notification_queue_metrics(
             with suppress(KeyError):
                 _notification_queue_metrics.registry.unregister(collector)
 
-    target_registry = registry or (CollectorRegistry() if CollectorRegistry else None)
+    target_registry = registry or (
+        CollectorRegistry() if CollectorRegistry is not None else None
+    )
     metrics = create_notification_queue_metrics(registry=target_registry)
     _notification_queue_metrics = metrics
     return metrics

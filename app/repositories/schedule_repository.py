@@ -20,7 +20,9 @@ class GroupRepository(
         cache_key = "schedule:groups"
         cached = await schedule_cache.get(cache_key)
         if cached is not None:
-            return cached
+            from typing import cast
+
+            return cast(list[models.Group], cached)
 
         stmt = select(self.model).order_by(self.model.name)
         result = await self.db.execute(stmt)
@@ -41,7 +43,9 @@ class ScheduleRepository(
         cache_key = f"schedule:group:{group_id}"
         cached = await schedule_cache.get(cache_key)
         if cached is not None:
-            return cached
+            from typing import cast
+
+            return cast(list[models.Schedule], cached)
 
         stmt = (
             select(self.model)

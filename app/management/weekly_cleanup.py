@@ -77,7 +77,7 @@ async def _reindex_database() -> None:
         return
     quoted_db_name = database_name.replace('"', '""')
     async with engine.connect() as conn:
-        await conn.execution_options(isolation_level="AUTOCOMMIT").execute(
+        await conn.execution_options(isolation_level="AUTOCOMMIT").execute(  # type: ignore[attr-defined]
             text(f'REINDEX DATABASE "{quoted_db_name}"')
         )
     logger.info("weekly_cleanup.reindex_completed", extra={"database": database_name})
@@ -93,7 +93,7 @@ async def run_weekly_cleanup() -> dict[str, int | None]:
         removed_orphaned = await _delete_orphaned_subscriptions(session)
         removed_stale = await _delete_stale_subscriptions(session)
     await _reindex_database()
-    stats = {
+    stats: dict[str, int | None] = {
         "subscriptions_removed": removed_orphaned + removed_stale,
         "subscriptions_orphaned": removed_orphaned,
         "subscriptions_stale": removed_stale,

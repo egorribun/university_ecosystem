@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import app.services.event_service as event_service
-import app.services.user_service as user_service
 from app.core.localization import normalize_locale, translate
 from app.models import models
 from app.utils.files import detect_mime_type, normalize_filename_prefix, save_attachment
@@ -69,50 +68,38 @@ async def test_monster_coverage_run():
             starts_at=datetime.datetime.now(datetime.UTC),
             title="T",
         )
-        from app.repositories.user_repository import UserRepository
-        from app.services.notification_service import NotificationService
+        res_attr = MagicMock()
+        res_attr.all.return_value = [row]
+        mock_db.execute.return_value = res_attr
+        from app.services.user.analytics_service import UserAnalyticsService
 
-        u_repo = UserRepository(mock_db)
-        u_notifications = NotificationService(mock_db)
-        audit = MagicMock()
-        m_stats_repo = AsyncMock()
+        u_service = UserAnalyticsService(mock_db)
 
-        # Configure stats mocks
-        m_stats_repo.get_attendance_stats_raw.return_value = [row]
+        user_id = uuid.uuid4()
+        await u_service.get_attendance_stats(user_id=1, period_days=30)
 
         notif = models.Notification(
-            body=json.dumps(
-                {
-                    "score": 5,
-                    "course": "C",
-                    "max": 5,
-                    "date": datetime.datetime.now(datetime.UTC).isoformat(),
-                }
-            ),
+            body=json.dumps({"score": 5, "course": "C"}),
             title="T",
             created_at=datetime.datetime.now(datetime.UTC),
         )
-        m_stats_repo.get_grade_notifications.return_value = [notif]
+        res_grad = MagicMock()
+        res_grad.scalars.return_value.all.return_value = [notif]
+        mock_db.execute.return_value = res_grad
+        await u_service.get_grade_stats(user_id=1, period_days=30)
 
-        p_row = MagicMock(
-            id=uuid.uuid4(),
-            title="T",
-            event_type="lecture",
-            starts_at=datetime.datetime.now(datetime.UTC),
-            ends_at=datetime.datetime.now(datetime.UTC),
+        p_row = (
+            1,
+            datetime.datetime.now(datetime.UTC),
+            datetime.datetime.now(datetime.UTC),
+            datetime.datetime.now(datetime.UTC),
+            "T",
+            "lecture",
         )
-        m_stats_repo.get_participation_stats_raw.return_value = [p_row]
-
-        u_service = user_service.UserService(
-            user_repo=u_repo,
-            audit=audit,
-            notifications=u_notifications,
-        )
-
-        user_id = uuid.uuid4()
-        await u_service.get_attendance_stats(user_id=user_id, period_days=30)
-        await u_service.get_grade_stats(user_id=user_id, period_days=30)
-        await u_service.get_participation_stats(user_id=user_id, period_days=30)
+        res_part = MagicMock()
+        res_part.all.return_value = [p_row]
+        mock_db.execute.return_value = res_part
+        await u_service.get_participation_stats(user_id=1, period_days=30)
 
     # 5. FILES
     assert normalize_filename_prefix("A B!") == "a-b"

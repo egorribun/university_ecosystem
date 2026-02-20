@@ -8,7 +8,7 @@ import time as time_module
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from functools import wraps
-from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar, cast
 
 try:
     import orjson
@@ -38,7 +38,7 @@ from app.core.config import settings
 from app.core.metrics import record_redis_command
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -397,7 +397,7 @@ class RedisClusterCache(BaseCache):
     async def close(self) -> None:
         if self._client is None:
             return
-        client, self._client = self._client, None
+        client, self._client = self._client, None  # type: ignore[unreachable]
         try:
             if hasattr(client, "aclose"):
                 await client.aclose()
@@ -544,7 +544,7 @@ def cached(
     ttl: int | timedelta | None = None,
     _l1_ttl: int | timedelta | None = None,
     key_builder: Callable[..., str] | None = None,
-) -> Callable[[Callable[P, R]], Callable[P, R]]:
+) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
     """
     Decorator to cache function results in the global cache backend.
 
@@ -555,7 +555,7 @@ def cached(
         key_builder: Optional custom function to build the cache key.
     """
 
-    def decorator(func: Callable[P, R]) -> Callable[P, R]:
+    def decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
         _prefix = prefix or func.__name__
 
         @wraps(func)
@@ -578,7 +578,7 @@ def cached(
             # Try get from cache
             entry = await cache.get(full_key)
             if entry is not None:
-                return entry.payload
+                return cast(R, entry.payload)
 
             # Compute and store
             result = await func(*args, **kwargs)
@@ -595,7 +595,7 @@ def cached(
             await cache.set(full_key, result, ttl=seconds)
             return result
 
-        return wrapper  # type: ignore[return-value]
+        return wrapper
 
     return decorator
 
@@ -605,7 +605,7 @@ def stale_while_revalidate(
     ttl: int | timedelta | None = None,
     stale_ttl: int | timedelta | None = None,
     key_builder: Callable[..., str] | None = None,
-) -> Callable[[Callable[P, R]], Callable[P, R]]:
+) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
     """
     Decorator implementing stale-while-revalidate pattern.
 
@@ -627,7 +627,7 @@ def stale_while_revalidate(
         else (stale_ttl or fresh_seconds * 2)
     )
 
-    def decorator(func: Callable[P, R]) -> Callable[P, R]:
+    def decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
         _prefix = prefix or func.__name__
         _revalidation_lock: dict[str, bool] = {}
 
@@ -662,25 +662,26 @@ def stale_while_revalidate(
                         finally:
                             _revalidation_lock.pop(full_key, None)
 
+                    # Prevent garbage collection of fire-and-forget task
                     task = asyncio.create_task(revalidate())
                     _background_tasks.add(task)
                     task.add_done_callback(_background_tasks.discard)
 
                 # Return stale data immediately
-                return entry.payload
+                return cast(R, entry.payload)
 
             # Cache miss - compute and store
             result = await func(*args, **kwargs)
             await cache.set(full_key, result, ttl=total_seconds)
             return result
 
-        return wrapper  # type: ignore[return-value]
+        return wrapper
 
     return decorator
 
 
 _cache_backend: BaseCache | None = None
-_background_tasks: set[asyncio.Task] = set()
+_background_tasks: set[asyncio.Task[Any]] = set()
 
 
 def _normalize_payload(payload: Any) -> tuple[Any, bytes]:

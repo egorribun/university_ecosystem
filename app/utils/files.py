@@ -84,7 +84,7 @@ _PREFERRED_EXTENSIONS: Final[dict[str, str]] = {
 }
 
 try:  # pragma: no cover - exercised indirectly via detect_mime_type
-    import magic  # type: ignore[import]
+    import magic
 except ImportError:  # pragma: no cover - handled at runtime
     magic = None  # type: ignore[assignment]
 
@@ -144,7 +144,7 @@ def detect_mime_type(data: bytes) -> str | None:
         detector = None
         if magic is not None:  # pragma: no branch - trivial branch
             try:
-                detector = magic.Magic(mime=True)  # type: ignore[attr-defined]
+                detector = magic.Magic(mime=True)
             except Exception:  # pragma: no cover - depends on runtime env
                 logger.warning(
                     "Failed to initialize libmagic MIME detector", exc_info=True
@@ -152,11 +152,11 @@ def detect_mime_type(data: bytes) -> str | None:
                 detector = None
         _magic_mime_detector = detector
     else:
-        detector = _magic_mime_detector  # type: ignore[assignment]
+        detector = _magic_mime_detector
 
     if detector is not None:
         try:
-            result = detector.from_buffer(data)  # type: ignore[call-arg]
+            result = detector.from_buffer(data)
         except AttributeError:  # pragma: no cover - fallback path
             try:
                 result = (

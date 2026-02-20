@@ -160,15 +160,15 @@ class DeadLetterQueue:
 
     async def mark_job_retrying(self, job: DeadLetterJob) -> None:
         """Mark a job as currently being retried."""
-        job.status = JobStatus.RETRYING.value
-        job.retry_count += 1
-        job.updated_at = datetime.now(UTC)
+        job.status = JobStatus.RETRYING.value  # type: ignore[assignment]
+        job.retry_count = int(getattr(job, "retry_count", 0)) + 1  # type: ignore[assignment]
+        job.updated_at = datetime.now(UTC)  # type: ignore[assignment]
         await self.session.commit()
 
     async def mark_job_completed(self, job: DeadLetterJob) -> None:
         """Mark a job as successfully completed after retry."""
-        job.status = JobStatus.COMPLETED.value
-        job.updated_at = datetime.now(UTC)
+        job.status = JobStatus.COMPLETED.value  # type: ignore[assignment]
+        job.updated_at = datetime.now(UTC)  # type: ignore[assignment]
         await self.session.commit()
 
         logger.info(
@@ -184,32 +184,35 @@ class DeadLetterQueue:
         error_message: str,
     ) -> None:
         """Mark a job as failed after a retry attempt."""
-        job.error_message = error_message
-        job.updated_at = datetime.now(UTC)
+        job.error_message = error_message  # type: ignore[assignment]
+        job.updated_at = datetime.now(UTC)  # type: ignore[assignment]
 
-        if job.retry_count >= job.max_retries:
-            job.status = JobStatus.FAILED.value
-            job.next_retry_at = None
+        retry_count = int(getattr(job, "retry_count", 0))
+        max_retries = int(getattr(job, "max_retries", 3))
+
+        if retry_count >= max_retries:
+            job.status = JobStatus.FAILED.value  # type: ignore[assignment]
+            job.next_retry_at = None  # type: ignore[assignment]
             logger.error(
                 "DLQ job permanently failed: type=%s, hash=%s, retries=%d, error=%s",
                 job.job_type,
                 job.job_hash[:8],
-                job.retry_count,
+                retry_count,
                 error_message[:200],
             )
         else:
-            job.status = JobStatus.PENDING.value
+            job.status = JobStatus.PENDING.value  # type: ignore[assignment]
             backoff = min(
-                self.BASE_BACKOFF_SECONDS * (2**job.retry_count),
+                self.BASE_BACKOFF_SECONDS * (2**retry_count),
                 self.MAX_BACKOFF_SECONDS,
             )
-            job.next_retry_at = datetime.now(UTC) + timedelta(seconds=backoff)
+            job.next_retry_at = datetime.now(UTC) + timedelta(seconds=backoff)  # type: ignore[assignment]
             logger.warning(
                 "DLQ job failed, will retry: type=%s, hash=%s, retry=%d/%d, next=%s",
                 job.job_type,
                 job.job_hash[:8],
-                job.retry_count,
-                job.max_retries,
+                retry_count,
+                max_retries,
                 job.next_retry_at.isoformat(),
             )
 
@@ -232,7 +235,7 @@ class DeadLetterQueue:
         }
 
         for row in result:
-            stats[row.status] = row.count
+            stats[str(getattr(row, "status", ""))] = int(getattr(row, "count", 0) or 0)
 
         return stats
 
@@ -248,7 +251,7 @@ class DeadLetterQueue:
         )
 
         await self.session.commit()
-        deleted = result.rowcount or 0
+        deleted = getattr(result, "rowcount", 0) or 0
 
         if deleted > 0:
             logger.info("Cleaned up %d completed DLQ jobs", deleted)

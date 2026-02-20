@@ -1,0 +1,6 @@
+app\cqrs\queries.py:76: error: Unused "type: ignore" comment  [unused-ignore]
+app\api\websocket.py:416: error: Unused "type: ignore" comment  [unused-ignore]
+app\api\websocket.py:418: error: Statement is unreachable  [unreachable]
+app\api\health.py:132: note: By default the bodies of untyped functions are not checked, consider using --check-untyped-defs  [annotation-unchecked]
+app\api\health.py:133: note: By default the bodies of untyped functions are not checked, consider using --check-untyped-defs  [annotation-unchecked]
+Found 3 errors in 2 files (checked 14 source files)

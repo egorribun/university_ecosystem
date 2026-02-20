@@ -51,6 +51,8 @@ class ScheduleOptimizerService:
     def _get_channel(self) -> Channel:
         """Lazily create gRPC channel on first use."""
         if self._channel is None:
+            if not self.grpc_addr:
+                raise ValueError("gRPC address is not set")
             host, port = self.grpc_addr.split(":")
             self._channel = Channel(host, int(port))
         return self._channel

@@ -1,6 +1,8 @@
-MFA_METHOD_TOTP = "totp"
-MFA_METHOD_WEBAUTHN = "webauthn"
-MFA_METHOD_RECOVERY_CODE = "recovery_code"
+from typing import Final
+
+MFA_METHOD_TOTP: Final = "totp"
+MFA_METHOD_WEBAUTHN: Final = "webauthn"
+MFA_METHOD_RECOVERY_CODE: Final = "recovery_code"
 
 CHALLENGE_TYPE_TOTP_ENROLL = "totp-enroll"
 CHALLENGE_TYPE_TOTP_VERIFY = "totp-verify"

@@ -45,15 +45,15 @@ class AuthRepository(
 
         # Invalidate excess tokens
         for stale in active_tokens[max_active:]:
-            stale.used = True
+            stale.used = True  # type: ignore[assignment]
 
         # Recycle existing token slot if at limit
         if len(active_tokens) >= max_active:
             target = active_tokens[max_active - 1]
-            target.token_hash = token_hash
-            target.expires_at = expires_at
-            target.used = False
-            target.created_at = datetime.now(UTC)
+            target.token_hash = token_hash  # type: ignore[assignment]
+            target.expires_at = expires_at  # type: ignore[assignment]
+            target.used = False  # type: ignore[assignment]
+            target.created_at = datetime.now(UTC)  # type: ignore[assignment]
             return target
 
         # Create new token
@@ -287,6 +287,7 @@ class AuthRepository(
 
     async def clear_failed_attempts(self, email: str) -> int:
         """Clear all failed login attempts for an email."""
+
         from sqlalchemy import delete
 
         result = await self.db.execute(
@@ -294,7 +295,7 @@ class AuthRepository(
                 models.FailedLoginAttempt.email == email
             )
         )
-        return int(result.rowcount or 0)
+        return int(getattr(result, "rowcount", 0) or 0)
 
 
 def get_auth_repository(db: AsyncSession) -> AuthRepository:

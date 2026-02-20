@@ -1,3 +1,4 @@
+import uuid
 from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
@@ -19,7 +20,7 @@ class UserStatsRepository(ReadOnlyRepository[models.User]):
 
     async def get_attendance_stats_raw(
         self,
-        user_id: int,
+        user_id: uuid.UUID | str,
         window_start: datetime,
         previous_start: datetime,
         now: datetime,
@@ -147,7 +148,7 @@ class UserStatsRepository(ReadOnlyRepository[models.User]):
 
     async def get_grade_notifications(
         self,
-        user_id: int,
+        user_id: uuid.UUID | str,
         start_date: datetime,
         end_date: datetime,
     ) -> Sequence[models.Notification]:
@@ -167,7 +168,7 @@ class UserStatsRepository(ReadOnlyRepository[models.User]):
 
     async def get_participation_stats_raw(
         self,
-        user_id: int,
+        user_id: uuid.UUID | str,
         window_start: datetime,
         now: datetime,
     ) -> Sequence[Any]:

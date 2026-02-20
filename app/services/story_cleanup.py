@@ -46,10 +46,11 @@ async def cleanup_expired_stories(
         async with async_session() as session:
             return await cleanup_expired_stories(db=session, now=now)
 
+    assert db is not None
     stmt = delete(Story).where(Story.expires_at <= now)
     result = await db.execute(stmt.execution_options(synchronize_session=False))
     await db.commit()
-    deleted = int(result.rowcount or 0)
+    deleted = int(getattr(result, "rowcount", 0) or 0)
     if deleted:
         logger.info("Removed %s expired stories", deleted)
     return deleted

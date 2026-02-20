@@ -1,0 +1,11 @@
+app\models\user_loaders.py:64: error: Statement is unreachable  [unreachable]
+app\services\file_scanner.py:57: error: Unused "type: ignore" comment  [unused-ignore]
+app\services\file_scanner.py:202: error: Statement is unreachable  [unreachable]
+app\services\file_scanner.py:217: error: Argument 3 to "raise_http_error" has incompatible type "str | None"; expected "str"  [arg-type]
+app\services\file_scanner.py:251: error: Argument 3 to "raise_http_error" has incompatible type "str | None"; expected "str"  [arg-type]
+app\services\file_scanner.py:269: error: Argument 3 to "raise_http_error" has incompatible type "str | None"; expected "str"  [arg-type]
+app\services\file_scanner.py:276: error: Argument 3 to "raise_http_error" has incompatible type "str | None"; expected "str"  [arg-type]
+app\services\file_scanner.py:289: error: Argument 2 to "raise_validation_error" has incompatible type "str | None"; expected "str"  [arg-type]
+app\services\file_scanner.py:331: error: Argument 1 to "_scan_with_clamd_stream" has incompatible type "_UploadStream"; expected "IO[bytes]"  [arg-type]
+app\repositories\event_repository.py:238: error: Unused "type: ignore" comment  [unused-ignore]
+Found 10 errors in 3 files (checked 12 source files)

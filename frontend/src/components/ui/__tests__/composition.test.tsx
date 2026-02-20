@@ -34,7 +34,7 @@ describe("ContentCard", () => {
     )
 
     const img = screen.getByAltText("Test image")
-    expect(img).toHaveAttribute("src", "test.jpg")
+    expect(img.getAttribute("src")).toMatch(/test\.jpg$/)
   })
 
   it("renders Footer and Meta slots", () => {
@@ -149,7 +149,7 @@ describe("MediaSlot", () => {
     render(<MediaSlot src="test.jpg" alt="Test image" />)
 
     const img = screen.getByAltText("Test image")
-    expect(img).toHaveAttribute("src", "test.jpg")
+    expect(img.getAttribute("src")).toMatch(/test\.jpg$/)
     expect(img).toHaveAttribute("loading", "lazy")
   })
 

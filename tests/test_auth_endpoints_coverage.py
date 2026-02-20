@@ -38,8 +38,9 @@ async def test_login_json_endpoint(async_client: AsyncClient, user_factory):
     payload = {"email": user.email, "password": password, "trust_device": False}
     response = await async_client.post("/auth/login/json", json=payload)
     assert response.status_code == 200
+    assert "access_token_v2" in response.cookies
     data = response.json()
-    assert "access_token" in data
+    assert "access_token_v2" not in data
     assert data["user"]["email"] == user.email
 
     # Wrong password
@@ -55,4 +56,5 @@ async def test_login_form_endpoint(async_client: AsyncClient, user_factory):
     data = {"username": user.email, "password": password}
     response = await async_client.post("/auth/login", data=data)
     assert response.status_code == 200
-    assert "access_token" in response.json()
+    assert "access_token_v2" in response.cookies
+    assert "access_token_v2" not in response.json()

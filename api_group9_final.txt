@@ -1,0 +1,12 @@
+app\models\stories.py:81: error: Right operand of "and" is never evaluated  [unreachable]
+app\models\stories.py:89: error: Right operand of "and" is never evaluated  [unreachable]
+app\repositories\auth_repository.py:291: error: Name "result" is not defined  [name-defined]
+app\core\metrics.py:729: error: Right operand of "and" is never evaluated  [unreachable]
+app\core\metrics.py:799: error: Right operand of "and" is never evaluated  [unreachable]
+app\auth\mfa.py:455: error: Right operand of "or" is never evaluated  [unreachable]
+app\auth\mfa.py:459: error: Statement is unreachable  [unreachable]
+app\auth\mfa.py:717: error: Unused "type: ignore" comment  [unused-ignore]
+app\auth\mfa.py:718: error: Statement is unreachable  [unreachable]
+app\auth\mfa.py:844: error: Unused "type: ignore" comment  [unused-ignore]
+app\auth\mfa.py:845: error: Statement is unreachable  [unreachable]
+Found 11 errors in 4 files (checked 18 source files)

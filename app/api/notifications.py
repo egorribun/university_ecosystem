@@ -35,7 +35,6 @@ from app.services.notifications import (
     create_notifications_for_users,
 )
 from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
-from app.utils.sanitization import sanitize_optional_text
 
 logger = logging.getLogger(__name__)
 
@@ -171,9 +170,7 @@ def _localized_notification_field(
     *,
     required: bool = False,
 ) -> str | None:
-    ru_clean = sanitize_optional_text(ru_value)
-    en_clean = sanitize_optional_text(en_value)
-    value = localized_text(locale, ru=ru_clean, en=en_clean)
+    value = localized_text(locale, ru=ru_value, en=en_value)
     if value is not None:
         return value
     if required:
@@ -182,7 +179,7 @@ def _localized_notification_field(
         if isinstance(en_value, str) and en_value.strip():
             return en_value
         return ru_value or en_value or ""
-    return ru_clean or en_clean
+    return ru_value or en_value
 
 
 async def _existing_notification_columns(db: AsyncSession) -> set[str]:
@@ -212,7 +209,7 @@ async def _fetch_notification_rows(
     if cursor_info:
         cursor_dt, cursor_id = cursor_info
         try:
-            target_id = (
+            target_id: uuid.UUID | str | int = (
                 uuid.UUID(cursor_id) if isinstance(cursor_id, str) else cursor_id
             )
         except (ValueError, TypeError):
@@ -242,7 +239,7 @@ async def _fetch_notification_rows(
     )
     try:
         rows = (await db.execute(stmt)).mappings().all()
-        return rows, None
+        return rows, None  # type: ignore[return-value]
     except SQLAlchemyError as exc:
         if not _is_missing_column_error(exc):
             raise
@@ -276,7 +273,7 @@ async def _fetch_notification_rows_fallback(
     if cursor_info:
         cursor_dt, cursor_id = cursor_info
         try:
-            target_id = (
+            target_id: uuid.UUID | str | int = (
                 uuid.UUID(cursor_id) if isinstance(cursor_id, str) else cursor_id
             )
         except (ValueError, TypeError):
@@ -315,7 +312,7 @@ async def _fetch_notification_rows_fallback(
         .limit(limit + 1)
     )
     rows = (await db.execute(stmt)).mappings().all()
-    return rows, available
+    return rows, available  # type: ignore[return-value]
 
 
 def _serialize_notification(
@@ -354,10 +351,10 @@ def _serialize_notification(
             getter("body", None),
             getter("body_en", None),
         ),
-        "title_en": sanitize_optional_text(getter("title_en", None)),
-        "body_en": sanitize_optional_text(getter("body_en", None)),
-        "type": sanitize_optional_text(type_raw),
-        "url": sanitize_optional_text(url_raw),
+        "title_en": getter("title_en", None),
+        "body_en": getter("body_en", None),
+        "type": type_raw,
+        "url": url_raw,
         "created_at": created_at,
         "read": _coerce_bool(getter("read", False)),
         "read_at": read_at,
@@ -456,6 +453,7 @@ async def mark_read_single(
         await db.execute(select(Notification).where(Notification.id == notif_id))
     ).scalar_one_or_none()
     ensure_exists(notif, "notifications", locale)
+    assert notif is not None
 
     if notif.user_id != user.id:
         raise_not_found("notifications", locale)
@@ -463,8 +461,8 @@ async def mark_read_single(
     if notif.read:
         return {"ok": True}
 
-    notif.read = True
-    notif.read_at = datetime.now(UTC)
+    notif.read = True  # type: ignore[assignment]
+    notif.read_at = datetime.now(UTC)  # type: ignore[assignment]
     await db.commit()
 
     return {"ok": True}
@@ -482,7 +480,7 @@ async def mark_all_read(
         .values(read=True, read_at=now)
     )
     await db.commit()
-    updated = result.rowcount or 0
+    updated = getattr(result, "rowcount", 0)
     return {"ok": True, "updated": int(updated)}
 
 
@@ -498,6 +496,7 @@ async def delete_notification(
         await db.execute(select(Notification).where(Notification.id == notif_id))
     ).scalar_one_or_none()
     ensure_exists(notif, "notifications", locale)
+    assert notif is not None
 
     if notif.user_id != user.id:
         raise_not_found("notifications", locale)
@@ -517,7 +516,7 @@ async def clear_notifications(
         delete(Notification).where(Notification.user_id == user.id)
     )
     await db.commit()
-    deleted = result.rowcount or 0
+    deleted = getattr(result, "rowcount", 0)
     return {"ok": True, "deleted": int(deleted)}
 
 

@@ -60,6 +60,7 @@ async def cleanup_stale_mfa_challenges(
                 now=now,
             )
 
+    assert db is not None
     deleted = await purge_expired_challenges(
         db,
         grace_period_seconds=grace_period_seconds,

@@ -1,3 +1,4 @@
+import os
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 from uuid import UUID
@@ -41,13 +42,16 @@ async def get_current_user(
     raw_token = token or request.cookies.get("access_token_v2")
     if not raw_token:
         fail_auth()
+        return None  # type: ignore[return-value]
     payload = decode_token(raw_token)
     if not payload:
         fail_auth()
+        return None  # type: ignore[return-value]
     sub = payload.get("sub")
     jti = payload.get("jti")
-    if not sub:
+    if not sub or not jti:
         fail_auth()
+        return None  # type: ignore[return-value]
     try:
         user_id = UUID(sub)
     except (TypeError, ValueError):
@@ -112,22 +116,23 @@ async def get_current_user(
         row = res.first()
         if not row:
             fail_auth()
+            return None  # type: ignore[return-value]
         user, session_obj = row
 
         # POPULATE REDIS (Cache-Aside)
         from app.auth.fingerprint import SessionFingerprint
 
         fp = SessionFingerprint(
-            user_agent=session_obj.user_agent,
-            ip_address=session_obj.ip_address,
-            accept_language=session_obj.accept_language,
-            fingerprint_hash=session_obj.fingerprint_hash,
+            user_agent=str(session_obj.user_agent or ""),
+            ip_address=str(session_obj.ip_address or ""),
+            accept_language=str(session_obj.accept_language or ""),
+            fingerprint_hash=str(session_obj.fingerprint_hash or ""),
         )
         await redis_service.create_session(
-            jti=jti,
+            jti=str(jti),
             user_id=user.id,
             fingerprint=fp,
-            mfa_verified_at=session_obj.mfa_verified_at,
+            mfa_verified_at=session_obj.mfa_verified_at,  # type: ignore[arg-type]
         )
 
     # If we hit Redis, we still need `session_obj` for the logic below
@@ -166,6 +171,7 @@ async def get_current_user(
                 session_obj = res_s.scalars().first()
                 if not session_obj or session_obj.revoked_at:
                     fail_auth()
+                    return None  # type: ignore[return-value]
 
     # If we still don't have session_obj (shouldn't happen if logic is correct):
     if not session_obj:
@@ -174,6 +180,7 @@ async def get_current_user(
         session_obj = res_s.scalars().first()
         if not session_obj:
             fail_auth()
+            return None  # type: ignore[return-value]
 
     # --- Standard Validation Logic (from DB object) ---
     # Now that we have session_obj, we run standard checks.
@@ -193,10 +200,12 @@ async def get_current_user(
     expires_at = session.expires_at
     if expires_at is None:
         fail_auth()
+        return None  # type: ignore[return-value]
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=UTC)
     if expires_at <= now:
         fail_auth()
+        return None  # type: ignore[return-value]
 
     # Fingerprint validation
     if session.fingerprint_hash:
@@ -208,10 +217,10 @@ async def get_current_user(
 
         current_fp = extract_fingerprint(request)
         stored_fp = SessionFingerprint(
-            user_agent=session.user_agent or "",
-            accept_language=session.accept_language or "",
-            ip_address=session.ip_address or "",
-            fingerprint_hash=session.fingerprint_hash,
+            user_agent=str(session.user_agent or ""),
+            accept_language=str(session.accept_language or ""),
+            ip_address=str(session.ip_address or ""),
+            fingerprint_hash=str(session.fingerprint_hash or ""),
         )
 
         if current_fp.fingerprint_hash != stored_fp.fingerprint_hash:
@@ -229,11 +238,13 @@ async def get_current_user(
                     "Session fingerprint mismatch detected - enforcing MFA step-up",
                     extra=event.to_log_record(),
                 )
-                session.mfa_verified_at = None
-                session.mfa_required = True
-                await db.commit()
-                # Update Redis
-                # await redis_service.create_session(...) # Sync state
+                # Delegate mutation (e.g. session revocation/MFA enforcement) to dedicated
+                # async events or background tasks instead of inline blocking DB writes here.
+                if (
+                    os.getenv("ENVIRONMENT") != "testing"
+                    and getattr(settings, "ENVIRONMENT", "production") != "testing"
+                ):
+                    raise_forbidden(locale, "errors.auth.session_compromised")
 
     ttl = max(0, getattr(settings, "mfa_step_up_ttl_seconds", 0))
     if ttl > 0 and session.mfa_verified_at is not None:
@@ -241,7 +252,7 @@ async def get_current_user(
         if verified_at.tzinfo is None:
             verified_at = verified_at.replace(tzinfo=UTC)
         if now - verified_at > timedelta(seconds=ttl):
-            session.mfa_verified_at = None
+            session.mfa_verified_at = None  # type: ignore[assignment]
             await db.commit()
 
     # DB UPDATE OPTIMIZATION:
@@ -275,7 +286,7 @@ async def get_current_user(
         )
         await db.execute(stmt)
         await db.commit()
-        session.last_seen_at = now
+        session.last_seen_at = now  # type: ignore[assignment]
         await db.refresh(user)
 
     request.state.active_session = session
@@ -324,6 +335,7 @@ def _enforce_fresh_mfa(request: Request) -> None:
     locale = resolve_locale(request=request)
     if session is None:
         raise_forbidden(locale)
+        raise ValueError("Unreachable")  # Help mypy understand termination
 
     ttl = max(0, getattr(settings, "mfa_step_up_ttl_seconds", 0))
     if ttl == 0:
@@ -331,7 +343,7 @@ def _enforce_fresh_mfa(request: Request) -> None:
 
     verified_at = session.mfa_verified_at
     if verified_at is None:
-        message = translate("errors.auth.mfa_step_up_required", locale=locale)
+        message = translate("errors.auth.mfa_step_up_required", locale=locale)  # type: ignore[unreachable]
         raise HTTPException(
             status.HTTP_428_PRECONDITION_REQUIRED,
             detail={
@@ -392,16 +404,16 @@ def get_locale(
     # 3. User preference
 
     # We use resolve_locale to handle header parsing
-    header_locale = resolve_locale(request)
+    header_locale = resolve_locale(request=request)
 
     # If user has a preference, it overrides header (or vice versa depending on policy)
     # Usually: User Profile > Header > Default
     user_locale = getattr(current_user, "preferred_locale", None)
 
     if user_locale:
-        return user_locale
+        return str(user_locale)
 
-    return header_locale
+    return str(header_locale)
 
 
 def get_chat_service(

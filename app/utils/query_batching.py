@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import logging
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload, selectinload
+
+from app.core.database import Base
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -15,16 +16,14 @@ if TYPE_CHECKING:
     from sqlalchemy.orm import InstrumentedAttribute, RelationshipProperty
     from sqlalchemy.sql import Select
 
-logger = logging.getLogger(__name__)
-
-T = TypeVar("T")
+T = TypeVar("T", bound=Base)
 
 
-async def batch_load_ids[T](
+async def batch_load_ids(
     session: AsyncSession,
     model: type[T],
     ids: Sequence[int | str],
-    id_column: InstrumentedAttribute | None = None,
+    id_column: InstrumentedAttribute[Any] | None = None,
     batch_size: int = 100,
 ) -> list[T]:
     """
@@ -60,9 +59,9 @@ async def batch_load_ids[T](
 
 
 def eager_load_options(
-    *relationships: RelationshipProperty | InstrumentedAttribute,
+    *relationships: RelationshipProperty[Any] | InstrumentedAttribute[Any] | str,
     strategy: str = "selectin",
-) -> list:
+) -> list[Any]:
     """
     Create eager loading options for relationships.
 
@@ -76,13 +75,13 @@ def eager_load_options(
     Returns:
         List of loader options to pass to select().options()
     """
-    loader_fn = selectinload if strategy == "selectin" else joinedload
+    loader_fn: Any = selectinload if strategy == "selectin" else joinedload
     return [loader_fn(rel) for rel in relationships]
 
 
-def apply_eager_loading[T](
+def apply_eager_loading(
     stmt: Select[tuple[T]],
-    *relationships: RelationshipProperty | InstrumentedAttribute,
+    *relationships: RelationshipProperty[Any] | InstrumentedAttribute[Any] | str,
     strategy: str = "selectin",
 ) -> Select[tuple[T]]:
     """
@@ -100,7 +99,7 @@ def apply_eager_loading[T](
     return stmt.options(*options)
 
 
-class QueryBatcher:
+class QueryBatcher(Generic[T]):
     """
     Batch multiple single-item queries into a single batch query.
 
@@ -119,7 +118,7 @@ class QueryBatcher:
         self,
         session: AsyncSession,
         model: type[T],
-        id_column: InstrumentedAttribute | None = None,
+        id_column: InstrumentedAttribute[Any] | None = None,
     ) -> None:
         self._session = session
         self._model = model
@@ -159,7 +158,7 @@ class QueryBatcher:
 async def prefetch_related(
     session: AsyncSession,
     items: Sequence[T],
-    relationship: InstrumentedAttribute,
+    relationship: InstrumentedAttribute[Any],
     foreign_key_getter: Callable[[T], int | str | None],
 ) -> dict[int | str, object]:
     """

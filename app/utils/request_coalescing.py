@@ -6,7 +6,7 @@ import asyncio
 import hashlib
 import logging
 from functools import wraps
-from typing import TYPE_CHECKING, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar, cast
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -17,7 +17,7 @@ P = ParamSpec("P")
 R = TypeVar("R")
 
 # In-flight request tracking
-_in_flight_requests: dict[str, asyncio.Future] = {}
+_in_flight_requests: dict[str, asyncio.Future[Any]] = {}
 _request_locks: dict[str, asyncio.Lock] = {}
 
 
@@ -27,7 +27,7 @@ def _build_request_key(prefix: str, *args, **kwargs) -> str:
     key_parts.extend(str(arg) for arg in args)
     key_parts.extend(f"{k}={v}" for k, v in sorted(kwargs.items()))
     key_string = ":".join(key_parts)
-    return hashlib.md5(key_string.encode(), usedforsecurity=False).hexdigest()
+    return hashlib.sha256(key_string.encode()).hexdigest()
 
 
 def coalesce_requests(
@@ -66,7 +66,7 @@ def coalesce_requests(
             # Check if request is already in flight
             if request_key in _in_flight_requests:
                 logger.debug("Coalescing request: %s", request_key)
-                return await _in_flight_requests[request_key]
+                return cast(R, await _in_flight_requests[request_key])
 
             # Get or create lock for this key pattern
             if request_key not in _request_locks:
@@ -77,10 +77,10 @@ def coalesce_requests(
             async with lock:
                 # Double-check after acquiring lock
                 if request_key in _in_flight_requests:
-                    return await _in_flight_requests[request_key]
+                    return cast(R, await _in_flight_requests[request_key])
 
                 # Create future for this request
-                future: asyncio.Future[R] = asyncio.get_event_loop().create_future()
+                future: asyncio.Future[Any] = asyncio.get_event_loop().create_future()
                 _in_flight_requests[request_key] = future
 
                 try:
@@ -110,7 +110,7 @@ class RequestCoalescer:
     """
 
     def __init__(self, ttl_seconds: float = 0.5) -> None:
-        self._in_flight: dict[str, asyncio.Future] = {}
+        self._in_flight: dict[str, asyncio.Future[Any]] = {}
         self._locks: dict[str, asyncio.Lock] = {}
         self._ttl = ttl_seconds
 
@@ -130,16 +130,16 @@ class RequestCoalescer:
             Result from func (shared if coalesced)
         """
         if key in self._in_flight:
-            return await self._in_flight[key]
+            return cast(R, await self._in_flight[key])
 
         if key not in self._locks:
             self._locks[key] = asyncio.Lock()
 
         async with self._locks[key]:
             if key in self._in_flight:
-                return await self._in_flight[key]
+                return cast(R, await self._in_flight[key])
 
-            future: asyncio.Future[R] = asyncio.get_event_loop().create_future()
+            future: asyncio.Future[Any] = asyncio.get_event_loop().create_future()
             self._in_flight[key] = future
 
             try:

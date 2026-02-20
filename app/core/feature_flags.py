@@ -123,7 +123,7 @@ class FeatureFlagService:
         if self._redis:
             # 1. Load from Redis
             try:
-                stored_flags = await self._redis.hgetall(FEATURE_FLAGS_KEY)
+                stored_flags = await self._redis.hgetall(FEATURE_FLAGS_KEY)  # type: ignore[misc]
                 for name, data_str in stored_flags.items():
                     try:
                         data = json.loads(data_str)
@@ -186,7 +186,7 @@ class FeatureFlagService:
             return
 
         try:
-            data_str = await self._redis.hget(FEATURE_FLAGS_KEY, name)
+            data_str = await self._redis.hget(FEATURE_FLAGS_KEY, name)  # type: ignore[misc]
             if data_str:
                 data = json.loads(data_str)
                 flag = FeatureFlag.from_dict(data)
@@ -261,7 +261,7 @@ class FeatureFlagService:
         # update L2 (Redis)
         if self._redis:
             try:
-                await self._redis.hset(
+                await self._redis.hset(  # type: ignore[misc]
                     FEATURE_FLAGS_KEY, name, json.dumps(flag.to_dict())
                 )
                 # Broadcast update

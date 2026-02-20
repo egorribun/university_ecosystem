@@ -200,10 +200,10 @@ class Query:
         return [
             ScheduleEntryType(
                 id=strawberry.ID(str(e.id)),
-                day_of_week=e.weekday,
+                day_of_week=e.weekday,  # type: ignore[arg-type]
                 time_start=str(e.start_time),
                 time_end=str(e.end_time),
-                subject=e.subject,
+                subject=e.subject,  # type: ignore[arg-type]
                 teacher=getattr(e, "teacher", None),
                 room=getattr(e, "room", None),
                 type=getattr(e, "lesson_type", None),

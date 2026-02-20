@@ -103,6 +103,10 @@ export function useChatWebSocket({
       clearTimeout(reconnectTimeoutRef.current)
       reconnectTimeoutRef.current = null
     }
+    setTypingUsers((currentMap) => {
+      currentMap.forEach((user) => clearTimeout(user.timeout))
+      return new Map()
+    })
   }, [])
 
   const connect = useCallback(() => {

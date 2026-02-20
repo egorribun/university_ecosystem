@@ -20,13 +20,13 @@ def test_readonly_repository_is_abstract():
 
 
 def test_repository_pattern_generics():
-    """Test repository uses proper generic types (PEP 695 inline syntax)."""
-    # With PEP 695, type params are accessible via __type_params__
-    base_params = BaseRepository.__type_params__
-    readonly_params = ReadOnlyRepository.__type_params__
+    """Test repository uses proper generic types."""
+    # With traditional Generic, type params are accessible via __parameters__
+    base_params = BaseRepository.__parameters__
+    readonly_params = ReadOnlyRepository.__parameters__
 
-    assert len(base_params) == 3  # ModelT, CreateSchemaT, UpdateSchemaT
-    assert len(readonly_params) == 1  # ModelT
+    assert len(base_params) == 3  # T, CreateT, UpdateT
+    assert len(readonly_params) == 1  # T
 
 
 def test_user_repository_import():

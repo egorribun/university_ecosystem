@@ -8,7 +8,7 @@ import time
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import event, text
 from sqlalchemy.exc import DBAPIError
@@ -286,7 +286,7 @@ engine, async_session, read_replica_engine = create_session_factory()
 
 # Specialized sessionmaker for read operations to avoid allocation overhead in
 # get_read_db
-read_session_factory: async_sessionmaker[AsyncSession] | None = None
+read_session_factory: async_sessionmaker[AsyncSession]
 if read_replica_engine:
     read_session_factory = async_sessionmaker(
         read_replica_engine,
@@ -308,7 +308,7 @@ def get_read_engine() -> AsyncEngine:
 
 
 class Base(DeclarativeBase):
-    pass
+    id: Any
 
 
 async def get_db() -> AsyncGenerator[AsyncSession]:

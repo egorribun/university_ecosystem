@@ -42,14 +42,14 @@ async def _cleanup_sessions(db: AsyncSession, retention_days: int) -> int:
         )
     )
     result = await db.execute(stmt.execution_options(synchronize_session=False))
-    return int(result.rowcount or 0)
+    return int(result.rowcount or 0)  # type: ignore[attr-defined]
 
 
 async def _cleanup_mfa_challenges(db: AsyncSession, retention_days: int) -> int:
     cutoff = _cutoff(retention_days)
     stmt = delete(MfaChallenge).where(MfaChallenge.expires_at < cutoff)
     result = await db.execute(stmt.execution_options(synchronize_session=False))
-    return int(result.rowcount or 0)
+    return int(result.rowcount or 0)  # type: ignore[attr-defined]
 
 
 async def _cleanup_mfa_enrollments(db: AsyncSession, retention_days: int) -> int:
@@ -61,14 +61,14 @@ async def _cleanup_mfa_enrollments(db: AsyncSession, retention_days: int) -> int
         )
     )
     result = await db.execute(stmt.execution_options(synchronize_session=False))
-    return int(result.rowcount or 0)
+    return int(result.rowcount or 0)  # type: ignore[attr-defined]
 
 
 async def _cleanup_failed_logins(db: AsyncSession, retention_days: int) -> int:
     cutoff = _cutoff(retention_days)
     stmt = delete(FailedLoginAttempt).where(FailedLoginAttempt.attempted_at < cutoff)
     result = await db.execute(stmt.execution_options(synchronize_session=False))
-    return int(result.rowcount or 0)
+    return int(result.rowcount or 0)  # type: ignore[attr-defined]
 
 
 @dataclass(slots=True)
@@ -92,6 +92,7 @@ async def cleanup_privacy_artifacts(
             return await cleanup_privacy_artifacts(db=session, config=config)
 
     counts: dict[str, int] = {}
+    assert db is not None
     async with _METRICS.track_execution() as run:
         counts["sessions"] = await _cleanup_sessions(db, config.session_retention_days)
         counts["mfa_challenges"] = await _cleanup_mfa_challenges(

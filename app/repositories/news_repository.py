@@ -35,7 +35,9 @@ class NewsRepository(BaseRepository[News, dict, dict]):
         cache_key = f"news:published:{skip}:{limit}"
         cached = await news_cache.get(cache_key)
         if cached is not None:
-            return cached
+            from typing import cast
+
+            return cast(list[News], cached)
 
         result = await self.db.execute(
             select(News).order_by(News.created_at.desc()).offset(skip).limit(limit)
@@ -151,11 +153,13 @@ class NewsRepository(BaseRepository[News, dict, dict]):
 
         stmt = stmt.limit(limit)
         result = await self.db.execute(stmt)
-        return result.all()
+        return [tuple(row) for row in result.all()]
 
     async def get_with_interactions(
         self, news_id: uuid.UUID, current_user_id: uuid.UUID | None = None
     ):
+        import asyncio
+
         likes_stmt = select(func.count(models.NewsLike.id)).where(
             models.NewsLike.news_id == news_id
         )
@@ -170,8 +174,12 @@ class NewsRepository(BaseRepository[News, dict, dict]):
             else select(func.false())
         )
 
-        likes_count = (await self.db.execute(likes_stmt)).scalar() or 0
-        is_liked = (await self.db.execute(is_liked_stmt)).scalar() or False
+        likes_result, is_liked_result = await asyncio.gather(
+            self.db.execute(likes_stmt), self.db.execute(is_liked_stmt)
+        )
+
+        likes_count = likes_result.scalar() or 0
+        is_liked = is_liked_result.scalar() or False
 
         return likes_count, is_liked
 
@@ -206,7 +214,7 @@ class NewsRepository(BaseRepository[News, dict, dict]):
         self, comment: models.NewsComment, content: str
     ) -> models.NewsComment:
         """Update a comment."""
-        comment.content = content
+        comment.content = content  # type: ignore[assignment]
         self.db.add(comment)
         await self.db.flush()
         await self.db.refresh(comment, ["user"])
@@ -249,7 +257,7 @@ class NewsRepository(BaseRepository[News, dict, dict]):
                 models.NewsComment.user_id,
                 models.User.full_name,
                 models.NewsComment.created_at,
-            )
+            )  # type: ignore[call-overload]
             .join(models.User, models.NewsComment.user_id == models.User.id)
             .where(models.NewsComment.news_id == news_id)
             .order_by(models.NewsComment.created_at.asc())

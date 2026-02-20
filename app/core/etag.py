@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from fastapi import Request, Response
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 
@@ -14,7 +15,7 @@ def compute_etag(content: bytes | str) -> str:
     """Compute ETag from response content."""
     if isinstance(content, str):
         content = content.encode("utf-8")
-    return hashlib.md5(content, usedforsecurity=False).hexdigest()
+    return hashlib.sha256(content).hexdigest()
 
 
 def format_etag(etag: str) -> str:
@@ -70,7 +71,9 @@ class ETagMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.skip_paths = skip_paths
 
-    async def dispatch(self, request: Request, call_next) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         # Only apply to GET requests
         if request.method != "GET":
             return await call_next(request)
@@ -91,8 +94,16 @@ class ETagMiddleware(BaseHTTPMiddleware):
 
         # Read response body
         body = b""
-        async for chunk in response.body_iterator:
-            body += chunk
+        if hasattr(response, "body"):
+            body = response.body
+        elif isinstance(response, StreamingResponse):
+            async for chunk in response.body_iterator:
+                if isinstance(chunk, str):
+                    body += chunk.encode()
+                else:
+                    body += chunk
+        else:
+            return response
 
         # Compute ETag
         etag = compute_etag(body)

@@ -90,34 +90,34 @@ async def _probe_storage() -> tuple[str, float]:
         return status, latency_seconds
 
     start = time.perf_counter()
-    status: str | None = None
+    _status: str | None = None
     try:
         backend = _get_storage_backend()
         if settings.health_storage_probe_enabled:
-            status = await _write_delete_storage_probe(backend)
-        if status is None:
+            _status = await _write_delete_storage_probe(backend)
+        if _status is None:
             lightweight_status = await _lightweight_storage_probe(backend)
             if lightweight_status is not None:
-                status = lightweight_status
+                _status = lightweight_status
             else:
-                status = "disabled"
-        elif status == "error":
+                _status = "disabled"
+        elif _status == "error":
             lightweight_status = await _lightweight_storage_probe(backend)
             if lightweight_status is not None:
-                status = lightweight_status
+                _status = lightweight_status
     except Exception:
-        status = "error"
+        _status = "error"
     elapsed = time.perf_counter() - start
     latency_seconds = max(elapsed, 0.0)
     _storage_probe_cache.update(
         {
             "expires_at": now
             + max(settings.health_storage_probe_min_interval_seconds, 0.0),
-            "status": status,
+            "status": _status,
             "latency": latency_seconds,
         }
     )
-    return status, latency_seconds
+    return _status or "unknown", latency_seconds
 
 
 @router.get("/healthz")

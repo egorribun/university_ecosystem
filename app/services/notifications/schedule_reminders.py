@@ -270,7 +270,7 @@ async def generate_schedule_reminders(
 
     dup_since = now - dt.timedelta(minutes=30)
     all_user_ids = {uid for users in group_users.values() for uid in users}
-    existing_by_dedupe: dict[str, set[int]] = defaultdict(set)
+    existing_by_dedupe: dict[str, set[uuid.UUID]] = defaultdict(set)
     if dedupe_keys and all_user_ids:
         existing_stmt = (
             select(Notification.user_id, Notification.dedupe_key)

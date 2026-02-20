@@ -1,4 +1,5 @@
 import logging
+import uuid
 
 from fastapi import Request, UploadFile
 
@@ -52,6 +53,7 @@ class UserProfileService:
 
     async def delete_avatar(self, user: models.User) -> models.User:
         db_user = await self.repo.get(user.id)
+        assert db_user is not None
         if db_user.avatar_url:
             await delete_static_file(db_user.avatar_url)
         db_user.avatar_url = None
@@ -62,6 +64,7 @@ class UserProfileService:
 
     async def delete_cover(self, user: models.User) -> models.User:
         db_user = await self.repo.get(user.id)
+        assert db_user is not None
         if db_user.cover_url:
             await delete_static_file(db_user.cover_url)
         db_user.cover_url = None
@@ -88,7 +91,7 @@ class UserProfileService:
 
     async def _upload_image(
         self,
-        user_id: int,
+        user_id: uuid.UUID | str,
         file: UploadFile,
         folder: str,
         suffix: str,

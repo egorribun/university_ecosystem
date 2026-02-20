@@ -1,0 +1,4 @@
+app\models\stories.py:81: error: Right operand of "and" is never evaluated  [unreachable]
+app\models\stories.py:89: error: Right operand of "and" is never evaluated  [unreachable]
+app\core\metrics.py:940: error: Unused "type: ignore" comment  [unused-ignore]
+Found 3 errors in 2 files (checked 19 source files)

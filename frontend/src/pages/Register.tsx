@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next"
 import { Eye, EyeOff, Sparkles, UsersRound, ShieldCheck, Crown } from "lucide-react"
 import { motion } from "framer-motion"
 import { useForm, Controller, type SubmitHandler } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
+import { valibotResolver } from "@hookform/resolvers/valibot"
 
 import ParticleAuthBackground from "@/components/ui/ParticleAuthBackground"
 import api from "@/api/client"
@@ -35,7 +35,7 @@ const Register = () => {
     trigger,
     formState: { errors, isSubmitting },
   } = useForm<RegisterValues>({
-    resolver: zodResolver(registerSchema),
+    resolver: valibotResolver(registerSchema),
     defaultValues: {
       full_name: "",
       email: "",

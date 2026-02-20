@@ -286,7 +286,8 @@ async def attend(
         raise_forbidden(locale, "errors.events.registration_forbidden")
     event = await db.get(models.Event, data.event_id)
     ensure_exists(event, "events", locale)
-    event_ends_at = _to_utc(event.ends_at)
+    assert event is not None
+    event_ends_at = _to_utc(event.ends_at)  # type: ignore[arg-type]
     if not event.is_active or event_ends_at <= datetime.now(UTC):
         raise_conflict("errors.events.registration_closed", locale)
     try:
@@ -341,6 +342,7 @@ async def upload_event_file(
     locale = resolve_locale(request=request, user=user)
     event = await db.get(models.Event, id)
     ensure_exists(event, "events", locale)
+    assert event is not None
     require_owner_or_admin(user, locale, owner_id=event.created_by, allow_teacher=True)
     url = await save_attachment(file, "event_files", f"event_{id}", locale=locale)
     ef = models.EventFile(event_id=id, file_url=url)
@@ -349,12 +351,12 @@ async def upload_event_file(
         await db.commit()
     except Exception:
         await db.rollback()
-        await delete_static_file(url)
+        await delete_static_file(str(url))
         raise
     try:
         await db.refresh(ef)
     except Exception:
-        await delete_static_file(url)
+        await delete_static_file(str(url))
         raise
     return ef
 
@@ -399,6 +401,7 @@ async def update_event(
     locale = resolve_locale(request=request, user=user)
     q = await db.get(models.Event, event_id)
     ensure_exists(q, "events", locale)
+    assert q is not None
 
     # ReBAC: Migrated from require_owner_or_admin
     if not await checker.check_permission(
@@ -415,7 +418,7 @@ async def update_event(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if old_image_url and q.image_url != old_image_url:
-        await delete_static_file(old_image_url)
+        await delete_static_file(str(old_image_url))
     files = (
         (
             await db.execute(
@@ -436,7 +439,7 @@ async def update_event(
     return events.serialize_event(
         q,
         locale,
-        participant_count=participant_count,
+        participant_count=participant_count,  # type: ignore[arg-type]
         files=files,
     )
 
@@ -477,6 +480,7 @@ async def delete_event(
 
     q = await events.repo.get(event_id)
     ensure_exists(q, "events", locale)
+    assert q is not None
     require_owner_or_admin(user, locale, owner_id=q.created_by, allow_teacher=True)
 
     await events.delete_event(event_id)
@@ -525,11 +529,11 @@ async def delete_event_file(
     # Event is checked implicitly by permissions, but we might want to ensure it
     # still exists?
     # Assuming standard behavior, we just check permission.
-    require_owner_or_admin(user, locale, owner_id=event.created_by, allow_teacher=True)
+    require_owner_or_admin(user, locale, owner_id=event.created_by, allow_teacher=True)  # type: ignore[union-attr]
     file_url = ef.file_url
     await db.delete(ef)
     await db.commit()
-    await delete_static_file(file_url)
+    await delete_static_file(str(file_url))
     return {"ok": True}
 
 

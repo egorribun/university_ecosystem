@@ -10,7 +10,7 @@ from typing import Any
 
 from redis.exceptions import RedisError
 
-from app.deps.cache import RedisCache, get_cache
+from app.deps.cache import BaseCache, RedisCache, get_cache
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ class CacheVersionManager:
     # We use a shared dictionary for local state to avoid issues
     # with @dataclass(frozen=True)
     # and to maintain state across instances if needed (though usually held globally)
-    _local_state: dict[str, Any] = None
+    _local_state: dict[str, Any] | None = None
 
     def __post_init__(self):
         pass
@@ -35,7 +35,7 @@ class CacheVersionManager:
     def version_key(self) -> str:
         return f"{self.prefix}:version"
 
-    async def get_version(self, cache: RedisCache | None = None) -> str:
+    async def get_version(self, cache: BaseCache | None = None) -> str:
         """Retrieve current version from cache or local fallback."""
         if cache is None:
             cache = get_cache()
@@ -59,7 +59,7 @@ class CacheVersionManager:
                 logger.debug("Cache version read failed, returning zero")
         return "0"
 
-    async def increment(self, cache: RedisCache | None = None) -> None:
+    async def increment(self, cache: BaseCache | None = None) -> None:
         """Atomically increment version."""
         if cache is None:
             cache = get_cache()
@@ -79,7 +79,7 @@ class CacheVersionManager:
             except (RedisError, OSError):
                 logger.warning("Failed to increment cache version")
 
-    async def reset(self, cache: RedisCache | None = None) -> None:
+    async def reset(self, cache: BaseCache | None = None) -> None:
         """Reset version to zero."""
         if cache is None:
             cache = get_cache()

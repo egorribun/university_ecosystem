@@ -41,7 +41,9 @@ class NatsMessage:
 
     def json(self) -> dict[str, Any]:
         """Decode message data as JSON."""
-        return orjson.loads(self.data)
+        from typing import cast
+
+        return cast("dict[str, Any]", orjson.loads(self.data))
 
 
 class NatsService:
@@ -185,7 +187,7 @@ class NatsService:
             )
             await handler(wrapped)
 
-        sub = await self._client.subscribe(subject, queue=queue, cb=_wrapper)
+        sub = await self._client.subscribe(subject, queue=queue or "", cb=_wrapper)
         self._subscriptions.append(sub)
         logger.info("Subscribed to %s (queue=%s)", subject, queue)
 

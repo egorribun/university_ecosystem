@@ -41,7 +41,7 @@ except ImportError:
         def loads(obj):
             return json.loads(obj)
 
-    orjson = OrJsonMock()
+    orjson: Any = OrJsonMock()  # type: ignore[no-redef]
     ORJSON_OPTIONS = 0
 
 

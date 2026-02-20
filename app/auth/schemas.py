@@ -4,11 +4,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, EmailStr
 
-from app.auth.constants import (
-    MFA_METHOD_RECOVERY_CODE,
-    MFA_METHOD_TOTP,
-    MFA_METHOD_WEBAUTHN,
-)
 from app.schemas.schemas import MfaTotpEnrollmentOut
 
 
@@ -29,7 +24,7 @@ class LoginPasskeyVerifyIn(BaseModel):
 
 
 class MfaMethodChallengeOut(BaseModel):
-    method: Literal[MFA_METHOD_TOTP, MFA_METHOD_WEBAUTHN]
+    method: Literal["totp", "webauthn"]
     challenge_token: str
     challenge_expires_at: datetime
     options: dict[str, Any] | None = None
@@ -45,7 +40,7 @@ class PendingMfaResponse(BaseModel):
     status: Literal["mfa_required"] = "mfa_required"
     user_id: UUID
     session_id: UUID | None = None
-    default_method: Literal[MFA_METHOD_TOTP, MFA_METHOD_WEBAUTHN] | None = None
+    default_method: Literal["totp", "webauthn"] | None = None
     methods: list[MfaMethodChallengeOut]
 
 
@@ -66,7 +61,7 @@ class TotpEnrollmentConfirmIn(BaseModel):
 
 
 class MfaVerifyIn(BaseModel):
-    method: Literal[MFA_METHOD_TOTP, MFA_METHOD_WEBAUTHN, MFA_METHOD_RECOVERY_CODE]
+    method: Literal["totp", "webauthn", "recovery_code"]
     challenge_token: str
     code: str | None = None
     webauthn_response: dict[str, Any] | None = None

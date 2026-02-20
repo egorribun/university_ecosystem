@@ -22,7 +22,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(
         self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:  # type: ignore[override]
+    ) -> Response:
         nonce: str | None = None
         if self._settings.should_inject_csp_nonce:
             # Generate a fresh nonce only when strict headers are active.

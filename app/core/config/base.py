@@ -47,7 +47,7 @@ def _resolve_env_file(base_dir: Path) -> Path | None:
 _ENV_FILE = _resolve_env_file(_PROJECT_ROOT)
 
 
-def _coerce_str_list(values: Iterable[str] | str | None) -> list[str]:
+def _coerce_str_list(values: Iterable[str | int] | str | None) -> list[str]:
     if not values:
         return []
     if isinstance(values, str):
@@ -174,7 +174,7 @@ class BaseAppSettings(BaseSettings):
                     f"{details}. Provide real secrets via environment variables or an"
                     " application .env file (not .env.example)."
                 )
-                error.missing_required = tuple(missing_required)
+                error.missing_required = tuple(missing_required)  # type: ignore[attr-defined]
                 raise error from None
             raise
 

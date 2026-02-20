@@ -57,6 +57,7 @@ async def cleanup_stale_password_reset_tokens(
                 db=session, now=now, retention_minutes=retention
             )
 
+    assert db is not None
     stmt = delete(PasswordResetToken).where(
         or_(
             PasswordResetToken.expires_at <= now,
@@ -68,7 +69,7 @@ async def cleanup_stale_password_reset_tokens(
     )
     result = await db.execute(stmt)
     await db.commit()
-    deleted = int(result.rowcount or 0)
+    deleted = int(getattr(result, "rowcount", 0) or 0)
     if deleted:
         logger.info("Removed %s stale password reset tokens", deleted)
     return deleted

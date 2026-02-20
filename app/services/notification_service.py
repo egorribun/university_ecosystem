@@ -61,5 +61,5 @@ class NotificationService:
             title=title,
             body=body,
             type="security",
-            user_ids=user_ids,
+            user_ids=[uuid.UUID(str(uid)) for uid in user_ids],
         )

@@ -1,5 +1,6 @@
 import json
 import logging
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -34,7 +35,7 @@ class StatsService:
     async def get_attendance_stats(
         self,
         *,
-        user_id: int,
+        user_id: uuid.UUID | str,
         period_days: int,
         period_key: str | None = None,
         cache: BaseCache | None = None,
@@ -45,7 +46,10 @@ class StatsService:
         previous_start = window_start - timedelta(days=period_days)
 
         rows = await self.stats_repo.get_attendance_stats_raw(
-            user_id, window_start, previous_start, now
+            user_id,
+            window_start,
+            previous_start,
+            now,
         )
 
         if rows:
@@ -120,7 +124,7 @@ class StatsService:
     async def get_grade_stats(
         self,
         *,
-        user_id: int,
+        user_id: uuid.UUID | str,
         period_days: int,
         period_key: str | None = None,
         cache: BaseCache | None = None,
@@ -131,27 +135,31 @@ class StatsService:
         previous_start = window_start - timedelta(days=period_days)
 
         current_rows = await self.stats_repo.get_grade_notifications(
-            user_id, window_start, now
+            user_id,
+            window_start,
+            now,
         )
         current_entries = []
         for notification in current_rows:
             entry = self._parse_grade_payload(
-                notification.body,
-                fallback_title=notification.title or "",
-                fallback_date=notification.created_at,
+                str(notification.body) if notification.body else None,
+                fallback_title=str(notification.title) if notification.title else "",
+                fallback_date=notification.created_at,  # type: ignore[arg-type]
             )
             if entry:
                 current_entries.append(entry)
 
         previous_rows = await self.stats_repo.get_grade_notifications(
-            user_id, previous_start, window_start
+            user_id,
+            previous_start,
+            window_start,
         )
         previous_entries = []
         for notification in previous_rows:
             entry = self._parse_grade_payload(
-                notification.body,
-                fallback_title=notification.title or "",
-                fallback_date=notification.created_at,
+                str(notification.body) if notification.body else None,
+                fallback_title=str(notification.title) if notification.title else "",
+                fallback_date=notification.created_at,  # type: ignore[arg-type]
             )
             if entry:
                 previous_entries.append(entry)
@@ -159,7 +167,9 @@ class StatsService:
         def _average(items: list[dict[str, Any]]) -> float:
             if not items:
                 return 0.0
-            return sum(item["score"] for item in items) / len(items)
+            from typing import cast
+
+            return sum(cast(float, item["score"]) for item in items) / len(items)
 
         average = _average(current_entries)
         previous_average = _average(previous_entries)
@@ -187,7 +197,7 @@ class StatsService:
     async def get_participation_stats(
         self,
         *,
-        user_id: int,
+        user_id: uuid.UUID | str,
         period_days: int,
         period_key: str | None = None,
         cache: BaseCache | None = None,
@@ -197,13 +207,15 @@ class StatsService:
         start_date = now - timedelta(days=period_days)
 
         rows = await self.stats_repo.get_participation_stats_raw(
-            user_id=user_id, window_start=start_date, now=now
+            user_id=user_id,
+            window_start=start_date,
+            now=now,
         )
 
         events_count = len(rows)
         total_hours = 0.0
         unique_groups = set()
-        recent_items = []
+        recent_items: list[dict[str, Any]] = []
 
         for row in rows:
             duration = (row.ends_at - row.starts_at).total_seconds() / 3600

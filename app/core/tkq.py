@@ -34,7 +34,7 @@ class TaskiqTrackingMiddleware(TaskiqMiddleware):
             self._all_tasks_done.set()
 
     def on_error(
-        self, message: TaskiqMessage, result: Any, exception: Exception
+        self, message: TaskiqMessage, result: Any, exception: BaseException
     ) -> None:
         self.active_tasks.discard(message.task_id)
         if not self.active_tasks:
@@ -81,7 +81,7 @@ class TaskiqObservabilityMiddleware(TaskiqMiddleware):
         self,
         message: TaskiqMessage,
         result: Any,
-        exception: Exception,
+        exception: BaseException,
     ) -> None:
         start_time = message.labels.get("_start_time")
         duration = 0.0
@@ -105,12 +105,12 @@ observability_middleware = TaskiqObservabilityMiddleware()
 if settings.environment.lower() in ("test", "testing"):
     from taskiq import InMemoryBroker
 
-    broker = InMemoryBroker()
+    broker: Any = InMemoryBroker()
     broker.add_middlewares(tracking_middleware, observability_middleware)
     schedule_source = None
     scheduler = TaskiqScheduler(broker, sources=[])
 else:
-    result_backend = RedisAsyncResultBackend(
+    result_backend: Any = RedisAsyncResultBackend(
         redis_url=settings.taskiq_broker_url,
     )
 

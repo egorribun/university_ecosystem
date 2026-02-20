@@ -34,7 +34,9 @@ def _now() -> datetime:
 
 
 async def delete_sessions_matching(
-    *, db: AsyncSession, whereclause: ClauseElement[bool]
+    *,
+    db: AsyncSession,
+    whereclause: ClauseElement[bool],  # type: ignore[type-arg]
 ) -> int:
     """Delete sessions (and their MFA challenges) matching *whereclause*."""
 
@@ -42,7 +44,7 @@ async def delete_sessions_matching(
     dialect = bind.dialect
 
     if dialect.name == "sqlite":
-        subquery = select(ActiveSession.id).where(whereclause)
+        subquery = select(ActiveSession.id).where(whereclause)  # type: ignore[arg-type]
         challenge_delete_stmt = delete(MfaChallenge).where(
             MfaChallenge.session_id.in_(subquery)
         )
@@ -50,18 +52,18 @@ async def delete_sessions_matching(
         challenge_delete_stmt = (
             delete(MfaChallenge)
             .where(MfaChallenge.session_id == ActiveSession.id)
-            .where(whereclause)
+            .where(whereclause)  # type: ignore[arg-type]
             .execution_options(synchronize_session=False)
         )
     await db.execute(challenge_delete_stmt)
 
-    delete_stmt = delete(ActiveSession).where(whereclause)
+    delete_stmt = delete(ActiveSession).where(whereclause)  # type: ignore[arg-type]
     supports_returning = bool(getattr(dialect, "delete_returning", False))
     supports_rowcount_returning = bool(
         getattr(dialect, "supports_sane_rowcount_returning", False)
     )
     if supports_returning:
-        delete_stmt = delete_stmt.returning(ActiveSession.id)
+        delete_stmt = delete_stmt.returning(ActiveSession.id)  # type: ignore[assignment]
         delete_result = await db.execute(delete_stmt)
         rowcount: int | None = None
         if supports_rowcount_returning:
@@ -74,19 +76,19 @@ async def delete_sessions_matching(
             deleted = len(delete_result.fetchall())
     else:
         delete_result = await db.execute(delete_stmt)
-        deleted = int(delete_result.rowcount or 0)
+        deleted = int(delete_result.rowcount or 0)  # type: ignore[attr-defined]
     return deleted
 
 
 async def revoke_sessions_matching(
     *,
     db: AsyncSession,
-    whereclause: ClauseElement[bool],
+    whereclause: ClauseElement[bool],  # type: ignore[type-arg]
     rotate_signing_key: bool = True,
 ) -> int:
     """Mark matching sessions as revoked without deleting their rows."""
 
-    exec_result = await db.execute(select(ActiveSession).where(whereclause))
+    exec_result = await db.execute(select(ActiveSession).where(whereclause))  # type: ignore[arg-type]
     sessions = exec_result.scalars().all()
     if not sessions:
         return 0
@@ -97,7 +99,7 @@ async def revoke_sessions_matching(
 
     for session in sessions:
         if session.revoked_at is None:
-            revoked += 1
+            revoked += 1  # type: ignore[unreachable]
             session.revoked_at = now
             # Best effort revocation in backend
             with suppress(Exception):
@@ -106,7 +108,7 @@ async def revoke_sessions_matching(
             revoked += 1
 
         if rotate_signing_key:
-            session.signing_key = secrets.token_urlsafe(32)
+            session.signing_key = secrets.token_urlsafe(32)  # type: ignore[assignment]
 
     return revoked
 
@@ -127,6 +129,7 @@ async def cleanup_expired_sessions(
         ActiveSession.expires_at <= now, ActiveSession.revoked_at <= now
     )
 
+    assert db is not None
     deleted = await delete_sessions_matching(db=db, whereclause=expiry_condition)
     await db.commit()
     if deleted:

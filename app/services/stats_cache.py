@@ -33,7 +33,7 @@ def resolve_period_key(period_key: str | None, period_days: int | None) -> str:
     return "default"
 
 
-def _make_cache_key(kind: str, user_id: uuid.UUID | int, period_key: str) -> str:
+def _make_cache_key(kind: str, user_id: uuid.UUID | int | str, period_key: str) -> str:
     normalized_kind = kind.strip().lower()
     normalized_period = _normalize_period_key(period_key)
     return f"{_STATS_CACHE_PREFIX}:{normalized_kind}:{user_id!s}:{normalized_period}"
@@ -43,7 +43,7 @@ async def get_cached_stats(
     *,
     cache: BaseCache | None,
     kind: str,
-    user_id: uuid.UUID | int,
+    user_id: uuid.UUID | int | str,
     period_key: str,
     skip_cache: bool = False,
 ) -> CacheEntry | None:
@@ -64,7 +64,7 @@ async def set_cached_stats(
     *,
     cache: BaseCache | None,
     kind: str,
-    user_id: uuid.UUID | int,
+    user_id: uuid.UUID | int | str,
     period_key: str,
     payload: dict[str, object],
     skip_cache: bool = False,
@@ -136,8 +136,11 @@ def cache_stats(kind: str, ttl: int | None = None) -> Any:
             arguments = bound_args.arguments
 
             user_id = arguments.get("user_id")
-            if hasattr(user_id, "id"):
+            if user_id and hasattr(user_id, "id"):
                 user_id = user_id.id
+
+            if user_id is None:
+                return await func(self, *args, **kwargs)
 
             period_key = arguments.get("period_key")
             period_days = arguments.get("period_days")

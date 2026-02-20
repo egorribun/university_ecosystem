@@ -81,7 +81,7 @@ class StoryRepository(BaseRepository[Story, dict, dict]):
         story = await self.get(story_id)
         if story is None:
             return False
-        story.is_active = False
+        story.is_active = False  # type: ignore[assignment]
         await self.db.flush()
         return True
 

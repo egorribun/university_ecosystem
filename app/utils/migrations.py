@@ -5,10 +5,9 @@ from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import text
-
 from alembic.config import Config
 from alembic.script import ScriptDirectory
+from sqlalchemy import text
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncConnection
@@ -41,7 +40,9 @@ async def migrations_are_current(
     """
     now = time.monotonic()
     if _migration_cache["expires_at"] > now:
-        return _migration_cache["result"]
+        from typing import cast
+
+        return cast(tuple[bool, set[str], set[str]], _migration_cache["result"])
 
     script = get_alembic_script()
     expected_heads = set(script.get_heads())

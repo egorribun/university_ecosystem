@@ -101,7 +101,7 @@ def _enforce_profile_cache_integrity(request: Request) -> None:
 
     payload_json = json.dumps(payload, separators=(",", ":"))
     digest = hmac.new(
-        session.signing_key.encode("utf-8"),
+        str(getattr(session, "signing_key", "")).encode("utf-8"),
         payload_json.encode("utf-8"),
         hashlib.sha256,
     ).digest()
@@ -306,6 +306,7 @@ async def get_users(
     filters: schemas.UserSearchFilter = Depends(),
     current_user: models.User = Depends(get_current_user),
     service: UserAdminService = Depends(get_user_admin_service),
+    db: AsyncSession = Depends(get_read_db),
 ):
     """
     Search for users.
@@ -328,7 +329,7 @@ async def get_users(
         }
         for item in users
     ]
-    await batch_log_data_access(service.db, entries=log_entries, request=request)
+    await batch_log_data_access(db, entries=log_entries, request=request)
 
     if current_user.role != "admin":
         # Force strict serialization to public schema for non-admins
@@ -369,7 +370,7 @@ async def update_user_admin(
     user: models.User = Depends(get_current_user),
     service: UserAdminService = Depends(get_user_admin_service),
 ):
-    return await service.admin_update_user(user_id, data, request, user)
+    return await service.admin_update_user(user_id, data, request, user)  # type: ignore[arg-type]
 
 
 @users_router.delete("/{user_id}", response_model=dict)
@@ -379,7 +380,7 @@ async def delete_user_admin(
     user: models.User = Depends(get_current_user),
     service: UserAdminService = Depends(get_user_admin_service),
 ):
-    return await service.admin_delete_user(user_id, request, user)
+    return await service.admin_delete_user(user_id, request, user)  # type: ignore[arg-type]
 
 
 @groups_router.get("", response_model=list[schemas.GroupOut])

@@ -13,6 +13,8 @@ Features:
 from __future__ import annotations
 
 import logging
+import typing
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from typing import TYPE_CHECKING, Any
@@ -83,14 +85,14 @@ class AnalyticsService:
         loop = asyncio.get_event_loop()
         stats = await loop.run_in_executor(
             _executor,
-            partial(self._compute_news_stats, rows, result.keys()),
+            partial(self._compute_news_stats, rows, list(result.keys())),
         )
         return stats
 
     def _compute_news_stats(
         self,
-        rows: list,
-        columns: list[str],
+        rows: typing.Sequence[Any],
+        columns: typing.Sequence[str],
     ) -> dict[str, Any]:
         """Compute news statistics using Polars (runs in thread pool)."""
         df = pl.DataFrame(
@@ -169,14 +171,14 @@ class AnalyticsService:
         loop = asyncio.get_event_loop()
         stats = await loop.run_in_executor(
             _executor,
-            partial(self._compute_events_stats, rows, result.keys()),
+            partial(self._compute_events_stats, rows, list(result.keys())),
         )
         return stats
 
     def _compute_events_stats(
         self,
-        rows: list,
-        columns: list[str],
+        rows: typing.Sequence[Any],
+        columns: typing.Sequence[str],
     ) -> dict[str, Any]:
         """Compute event statistics using Polars."""
         df = pl.DataFrame(
@@ -213,7 +215,7 @@ class AnalyticsService:
     async def get_user_activity(
         self,
         session: AsyncSession,
-        user_id: int,
+        user_id: uuid.UUID | str,
     ) -> dict[str, Any]:
         """Get user activity summary.
 

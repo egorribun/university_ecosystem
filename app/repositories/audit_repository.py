@@ -38,7 +38,7 @@ class AuditRepository(BaseRepository[DataAccessLog, dict, dict]):
         """Delete logs older than cutoff."""
         stmt = delete(DataAccessLog).where(DataAccessLog.created_at < cutoff)
         result = await self.db.execute(stmt)
-        return int(result.rowcount or 0)
+        return int(getattr(result, "rowcount", 0) or 0)
 
     async def list_logs(
         self,

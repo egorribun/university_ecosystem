@@ -256,7 +256,7 @@ def verify_password_sync(plain_password: str, hashed_password: str) -> bool:
                 "falling back to passlib: %s",
                 type(exc).__name__,
             )
-    return pwd_context.verify(plain_password, hashed_password)
+    return bool(pwd_context.verify(plain_password, hashed_password))
 
 
 async def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -397,7 +397,10 @@ def decode_token(token: str) -> dict | None:
 
     for secret in candidates:
         try:
-            return jwt.decode(token, secret, algorithms=[settings.algorithm])
+            payload = jwt.decode(token, secret, algorithms=[settings.algorithm])
+            if isinstance(payload, dict):
+                return payload
+            return dict(payload)
         except JWTError:
             continue
     return None

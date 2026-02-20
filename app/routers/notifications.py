@@ -48,7 +48,7 @@ class NotificationAction(BaseModel):
 
     @field_validator("action", "title", mode="before")
     @classmethod
-    def _strip(cls, value: str) -> str:
+    def _strip(cls, value: Any) -> str:
         if value is None:
             return ""
         return str(value).strip()
@@ -79,7 +79,7 @@ class PushSubscriptionKeys(BaseModel):
 
     @field_validator("p256dh", "auth", mode="before")
     @classmethod
-    def _ensure_not_blank(cls, value: str) -> str:
+    def _ensure_not_blank(cls, value: Any) -> str:
         if value is None:
             return ""
         return str(value).strip()
@@ -95,7 +95,7 @@ class PushSubscriptionIn(BaseModel):
 
     @field_validator("endpoint", mode="before")
     @classmethod
-    def _normalize_endpoint(cls, value: str) -> str:
+    def _normalize_endpoint(cls, value: Any) -> str:
         if value is None:
             return ""
         return str(value).strip()
@@ -134,7 +134,7 @@ class PushSubscriptionOut(BaseModel):
 
 def _serialize_subscription(subscription: PushSubscription) -> PushSubscriptionOut:
     topics = normalize_topics(subscription.topics or [])
-    created_at = subscription.created_at
+    created_at = getattr(subscription, "created_at", None)
     if created_at is None:
         created_at = subscription.last_seen_at or datetime.now(UTC)
     data = {
@@ -158,7 +158,7 @@ class PushSubscriptionTopicsUpdate(BaseModel):
 
     @field_validator("endpoint", mode="before")
     @classmethod
-    def _normalize_endpoint(cls, value: str) -> str:
+    def _normalize_endpoint(cls, value: Any) -> str:
         if value is None:
             return ""
         return str(value).strip()
@@ -176,7 +176,7 @@ class PushSubscriptionDelete(BaseModel):
 
     @field_validator("endpoint", mode="before")
     @classmethod
-    def _normalize_endpoint(cls, value: str) -> str:
+    def _normalize_endpoint(cls, value: Any) -> str:
         if value is None:
             return ""
         return str(value).strip()
@@ -301,7 +301,7 @@ async def _refresh_user_topic_preferences(
                 if record is None:
                     db.add(UserPushTopic(user_id=user_id, topics=topics_copy))
                 else:
-                    record.topics = topics_copy
+                    record.topics = topics_copy  # type: ignore[assignment]
             elif record is not None:
                 await db.delete(record)
             await db.flush()
@@ -314,7 +314,7 @@ async def _refresh_user_topic_preferences(
         ).scalar_one_or_none()
         if record:
             if normalized:
-                record.topics = list(normalized)
+                record.topics = list(normalized)  # type: ignore[assignment]
             else:
                 await db.delete(record)
             await db.flush()
@@ -458,17 +458,17 @@ async def subscribe(
             if existing:
                 # Transfer ownership or update existing subscription
                 payload_topics = payload.topics
-                normalized_topics = resolve_topics(payload_topics, existing.topics)
+                normalized_topics = resolve_topics(payload_topics, existing.topics)  # type: ignore[arg-type]
                 topics_copy = list(normalized_topics)
 
-                existing.p256dh = p256dh
-                existing.auth = auth
+                existing.p256dh = p256dh  # type: ignore[assignment]
+                existing.auth = auth  # type: ignore[assignment]
                 existing.user_id = user.id
-                existing.user_agent = user_agent or None
-                existing.last_seen_at = now
-                if existing.created_at is None:
-                    existing.created_at = now
-                existing.topics = topics_copy
+                existing.user_agent = user_agent or None  # type: ignore[assignment]
+                existing.last_seen_at = now  # type: ignore[assignment]
+                if getattr(existing, "created_at", None) is None:
+                    existing.created_at = now  # type: ignore[assignment]
+                existing.topics = topics_copy  # type: ignore[assignment]
                 subscription = existing
             else:
                 # Try to create a new one
@@ -525,13 +525,13 @@ async def subscribe(
             ).scalar_one_or_none()
 
             if existing:
-                normalized_topics = resolve_topics(payload.topics, existing.topics)
-                existing.p256dh = p256dh
-                existing.auth = auth
+                normalized_topics = resolve_topics(payload.topics, existing.topics)  # type: ignore[arg-type]
+                existing.p256dh = p256dh  # type: ignore[assignment]
+                existing.auth = auth  # type: ignore[assignment]
                 existing.user_id = user.id
-                existing.user_agent = user_agent or None
-                existing.last_seen_at = now
-                existing.topics = list(normalized_topics)
+                existing.user_agent = user_agent or None  # type: ignore[assignment]
+                existing.last_seen_at = now  # type: ignore[assignment]
+                existing.topics = list(normalized_topics)  # type: ignore[assignment]
                 await db.flush()
                 await _refresh_user_topic_preferences(db, user_id=user.id)
                 await db.commit()
@@ -618,8 +618,8 @@ async def update_subscription_topics(
         user_id=user.id,
         topics=payload.topics,
     )
-    subscription.topics = list(normalized_topics)
-    subscription.last_seen_at = datetime.now(UTC)
+    subscription.topics = list(normalized_topics)  # type: ignore[assignment]
+    subscription.last_seen_at = datetime.now(UTC)  # type: ignore[assignment]
     await db.commit()
     await db.refresh(subscription)
     return _serialize_subscription(subscription)

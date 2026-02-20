@@ -93,7 +93,8 @@ def cleanup() -> None:
             # Use the class method instead of deprecated instance method
             from sqlalchemy.orm import Session
 
-            Session.close_all_sessions()
+            # close_all_sessions is removed in SQLAlchemy 2.0
+            Session.close_all_sessions()  # type: ignore[attr-defined]
         except Exception:  # pragma: no cover - defensive logging
             logger.exception("Failed to close webpush session factory")
 
@@ -166,7 +167,7 @@ def _log_event(event: str, *, level: int = logging.INFO, **fields: Any) -> None:
 
 
 def _current_local_time(user: Any | None = None) -> time:
-    tz = UTC
+    tz: Any = UTC
     if user is not None:
         raw = getattr(user, "timezone", None)
         if isinstance(raw, str):
@@ -195,8 +196,8 @@ def _is_user_in_quiet_hours(user: Any | None, *, now_time: time | None = None) -
     if start == end:
         return True
     if start < end:
-        return start <= now_time < end
-    return now_time >= start or now_time < end
+        return bool(start <= now_time < end)
+    return bool(now_time >= start or now_time < end)
 
 
 def _sanitize_vibrate(raw: Any) -> list[int]:
@@ -545,9 +546,9 @@ def build_payload(
         options["requireInteraction"] = bool(source.get("requireInteraction"))
     if "silent" in source:
         options["silent"] = bool(source.get("silent"))
-    if "timestamp" in source:
-        with contextlib.suppress(TypeError, ValueError):
-            options["timestamp"] = int(source.get("timestamp"))
+        if "timestamp" in source and source.get("timestamp") is not None:
+            with contextlib.suppress(TypeError, ValueError):
+                options["timestamp"] = int(source.get("timestamp"))  # type: ignore[arg-type]
     meta: dict[str, Any] = {}
     for key in _META_KEYS:
         value = source.get(key)
@@ -612,8 +613,8 @@ def send_web_push(sub: PushSubscription, data: dict) -> WebPushResult:
             )
             return WebPushResult(
                 subscription_id=sub.id,
-                endpoint=sub.endpoint,
-                user_id=user_id,
+                endpoint=str(sub.endpoint),
+                user_id=uuid.UUID(str(user_id)) if user_id else None,  # type: ignore[arg-type]
                 status="gone",
                 status_code=status_code,
                 error=message or None,
@@ -627,8 +628,8 @@ def send_web_push(sub: PushSubscription, data: dict) -> WebPushResult:
         )
         return WebPushResult(
             subscription_id=sub.id,
-            endpoint=sub.endpoint,
-            user_id=user_id,
+            endpoint=str(sub.endpoint),
+            user_id=uuid.UUID(str(user_id)) if user_id else None,  # type: ignore[arg-type]
             status="error",
             status_code=status_code,
             error=message or None,
@@ -643,12 +644,12 @@ def send_web_push(sub: PushSubscription, data: dict) -> WebPushResult:
         )
         logger.exception(
             "webpush.send",
-            extra={"user_id": user_id, "endpoint": _mask_endpoint(sub.endpoint)},
+            extra={"user_id": user_id, "endpoint": _mask_endpoint(str(sub.endpoint))},
         )
         return WebPushResult(
             subscription_id=sub.id,
-            endpoint=sub.endpoint,
-            user_id=user_id,
+            endpoint=str(sub.endpoint),
+            user_id=uuid.UUID(str(user_id)) if user_id else None,  # type: ignore[arg-type]
             status="error",
             error=str(exc),
         )
@@ -656,8 +657,8 @@ def send_web_push(sub: PushSubscription, data: dict) -> WebPushResult:
     _log_event("send", user_id=user_id, endpoint=sub.endpoint, status="sent")
     return WebPushResult(
         subscription_id=sub.id,
-        endpoint=sub.endpoint,
-        user_id=user_id,
+        endpoint=str(sub.endpoint),
+        user_id=uuid.UUID(str(user_id)) if user_id else None,  # type: ignore[arg-type]
         status="sent",
     )
 

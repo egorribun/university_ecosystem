@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from brotli_asgi import BrotliMiddleware
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,13 +14,13 @@ from app.core.security_headers import SecurityHeadersMiddleware
 
 try:
     from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
-except Exception:
-    ProxyHeadersMiddleware = None
+except ImportError:  # pragma: no cover
+    ProxyHeadersMiddleware: Any = None  # type: ignore[no-redef]
 
 if TYPE_CHECKING:
     from fastapi import FastAPI, Request
 
-    from app.core.config import AppSettings
+    from app.core.config import Settings
 
 _logger = logging.getLogger(__name__)
 
@@ -51,7 +51,7 @@ async def _http_response_hardening(request: Request, call_next):
     return response
 
 
-def configure_middleware(app: FastAPI, settings: AppSettings) -> None:
+def configure_middleware(app: FastAPI, settings: Settings) -> None:
     """Configure all application middlewares."""
 
     _RESPONSE_COMPRESSION_MINIMUM_SIZE = 512
@@ -107,7 +107,7 @@ def configure_middleware(app: FastAPI, settings: AppSettings) -> None:
                 storage_backend="memory",
             )
 
-    if ProxyHeadersMiddleware:
+    if ProxyHeadersMiddleware is not None:
         trusted_hosts = settings.trusted_hosts_list
         if trusted_hosts:
             app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=trusted_hosts)

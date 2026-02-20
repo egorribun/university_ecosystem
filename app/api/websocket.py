@@ -404,7 +404,7 @@ async def get_user_from_token(token: str) -> tuple[User | None, str | None]:
 
             expires_at = active_session.expires_at
             if expires_at is None:
-                return None, None
+                return None, None  # type: ignore[unreachable]
 
             if expires_at.tzinfo is None:
                 expires_at = expires_at.replace(tzinfo=UTC)
@@ -414,8 +414,7 @@ async def get_user_from_token(token: str) -> tuple[User | None, str | None]:
 
             if active_session.revoked_at is not None:
                 return None, None
-
-            return user, session_jti
+            return user, session_jti  # type: ignore[unreachable]
     except Exception as e:
         logger.warning(f"Token validation failed: {e}")
         return None, None
@@ -481,7 +480,7 @@ async def _update_last_seen(session_jti: str | None) -> datetime:
         )
         active_session = result.scalars().first()
         if active_session:
-            active_session.last_seen_at = now
+            active_session.last_seen_at = now  # type: ignore[assignment]
             await session.commit()
 
     return now
@@ -617,8 +616,8 @@ async def websocket_chat(websocket: WebSocket):
             bool(header_token),
             bool(protocol_token),
         )
-        token = header_token or protocol_token
-        user, session_jti = await get_user_from_token(token)
+        token_str = str(header_token or protocol_token)
+        user, session_jti = await get_user_from_token(token_str)
         if user:
             logger.info(f"Token auth successful: user_id={user.id}")
         else:
@@ -690,13 +689,36 @@ async def websocket_chat(websocket: WebSocket):
             elif msg_type == "typing":
                 chat_id = data.get("chat_id")
                 if chat_id:
+                    # Validate user is participant to prevent IDOR
+                    try:
+                        chat_uuid = (
+                            uuid.UUID(chat_id) if isinstance(chat_id, str) else chat_id
+                        )
+                        participants = await manager._get_chat_participants_cached(
+                            chat_uuid
+                        )
+                        if user.id not in participants:
+                            logger.warning(
+                                f"Access denied: User {user.id} tried to send typing "
+                                f"indicator to chat {chat_id} without being a participant"
+                            )
+                            await websocket.send_json(
+                                {"type": "error", "message": "Access denied"}
+                            )
+                            continue
+                    except ValueError:
+                        await websocket.send_json(
+                            {"type": "error", "message": "Invalid chat_id format"}
+                        )
+                        continue
+
                     # Broadcast typing indicator to other participants
                     await manager.broadcast_to_chat(
-                        chat_id,
+                        chat_uuid,
                         {
                             "type": "typing",
-                            "chat_id": chat_id,
-                            "user_id": user.id,
+                            "chat_id": str(chat_uuid),
+                            "user_id": str(user.id),
                             "user_name": user.full_name or user.email,
                         },
                         exclude_user_id=user.id,

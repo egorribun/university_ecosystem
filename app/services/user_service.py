@@ -1,4 +1,5 @@
 import logging
+import uuid
 
 from fastapi import Request, UploadFile
 
@@ -38,7 +39,7 @@ class UserService:
         self.audit = audit
         self.notifications = notifications
 
-    async def get_user_by_id(self, user_id: int) -> models.User | None:
+    async def get_user_by_id(self, user_id: uuid.UUID | str) -> models.User | None:
         return await self.repo.get(user_id)
 
     async def get_user_by_email(self, email: str) -> models.User | None:
@@ -124,7 +125,7 @@ class UserService:
     @auditable(SecurityEvent.ADMIN_USER_MODIFY, user_id_param="user_id")
     async def admin_update_user(
         self,
-        user_id: int,
+        user_id: uuid.UUID | str,
         data: schemas.UserAdminUpdate,
         request: Request,
         current_user: models.User,
@@ -176,7 +177,7 @@ class UserService:
     @auditable(SecurityEvent.ADMIN_USER_DELETE, user_id_param="user_id")
     async def admin_delete_user(
         self,
-        user_id: int,
+        user_id: uuid.UUID | str,
         request: Request,
         current_user: models.User,
     ) -> dict:
@@ -203,6 +204,7 @@ class UserService:
         user: models.User,
     ) -> models.User:
         db_user = await self.repo.get(user.id)
+        assert db_user is not None
         if db_user.profile and db_user.profile.avatar_url:
             await delete_static_file(db_user.profile.avatar_url)
         if db_user.profile:
@@ -217,6 +219,7 @@ class UserService:
         user: models.User,
     ) -> models.User:
         db_user = await self.repo.get(user.id)
+        assert db_user is not None
         if db_user.profile and db_user.profile.cover_url:
             await delete_static_file(db_user.profile.cover_url)
         if db_user.profile:
@@ -367,12 +370,15 @@ class UserService:
         requested_role = UserRole(raw_role) if raw_role else UserRole.STUDENT
         normalized_email = user_in.email.strip().lower()
 
+        if await self.repo.check_email_exists(normalized_email):
+            raise EntityAlreadyExists("User", normalized_email)
+
         code = None
         if hasattr(user_in, "invite_code") and requested_role in (
             UserRole.TEACHER,
             UserRole.ADMIN,
         ):
-            code_obj = await self.repo.get_invite_code(user_in.invite_code)
+            code_obj = await self.repo.get_invite_code(str(user_in.invite_code))
             if not code_obj:
                 raise BusinessRuleViolation("errors.users.invalid_invite")
 
@@ -433,9 +439,6 @@ class UserService:
         elif data.role in ["teacher"]:
             raise BusinessRuleViolation("errors.users.invite_code_required")
 
-        if await self.repo.check_email_exists(data.email):
-            raise EntityAlreadyExists("User", data.email)
-
         password = data.password
         if settings.password_hibp_check_enabled:
             await _validate_password_hibp(password)
@@ -446,7 +449,17 @@ class UserService:
         )
         user_data["hashed_password"] = hashed
 
-        user = await self.repo.create(user_data)
+        from sqlalchemy.exc import IntegrityError
+
+        try:
+            # Use repo.create
+            user = await self.repo.create(user_data)
+        except IntegrityError as exc:
+            await self.repo.rollback()
+            error_str = str(exc.orig).lower() if exc.orig else str(exc).lower()
+            if "email" in error_str or "users_email_key" in error_str:
+                raise EntityAlreadyExists("User", data.email)
+            raise BusinessRuleViolation("errors.users.create_failed")
 
         await ensure_mfa_relationships_loaded(self.repo.db, user)
         await attach_pending_email(self.repo.db, user)

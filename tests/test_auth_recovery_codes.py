@@ -41,11 +41,6 @@ async def unit_user_mfa(db_session: AsyncSession) -> User:
     return user
 
 
-# TODO: These tests are currently failing in the agent environment due to potential
-# asyncio loop scoping issues with the db_session fixture.
-# They should be enabled and verified in a proper CI environment.
-
-
 async def test_generate_recovery_codes_unit(
     db_session: AsyncSession, unit_user_mfa: User
 ):

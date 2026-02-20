@@ -6,7 +6,7 @@ Each helper raises HTTPException with appropriate status codes and localized mes
 """
 
 import uuid
-from typing import TYPE_CHECKING, Any, TypeVar, overload
+from typing import TYPE_CHECKING, Any, NoReturn, TypeVar, overload
 
 from fastapi import HTTPException, status
 
@@ -24,7 +24,7 @@ def raise_http_error(
     locale: str,
     headers: dict[str, str] | None = None,
     **kwargs: Any,
-) -> None:
+) -> NoReturn:
     """
     Raise an HTTPException with a localized message.
 
@@ -45,7 +45,7 @@ def raise_not_found(
     *,
     resource_id: uuid.UUID | int | str | None = None,
     exact_key: str | None = None,
-) -> None:
+) -> NoReturn:
     """
     Raise 404 HTTPException with localized not_found message.
 
@@ -59,7 +59,7 @@ def raise_not_found(
     raise_http_error(status.HTTP_404_NOT_FOUND, key, locale)
 
 
-def raise_forbidden(locale: str, message_key: str = "errors.forbidden") -> None:
+def raise_forbidden(locale: str, message_key: str = "errors.forbidden") -> NoReturn:
     """
     Raise 403 HTTPException with localized forbidden message.
 
@@ -74,7 +74,7 @@ def raise_unauthorized(
     locale: str,
     message_key: str = "errors.unauthorized",
     headers: dict[str, str] | None = None,
-) -> None:
+) -> NoReturn:
     """
     Raise 401 HTTPException with localized unauthorized message.
 
@@ -86,7 +86,7 @@ def raise_unauthorized(
     raise_http_error(status.HTTP_401_UNAUTHORIZED, message_key, locale, headers=headers)
 
 
-def raise_validation_error(message_key: str, locale: str, **kwargs: Any) -> None:
+def raise_validation_error(message_key: str, locale: str, **kwargs: Any) -> NoReturn:
     """
     Raise 400 HTTPException with localized validation error message.
 
@@ -97,7 +97,7 @@ def raise_validation_error(message_key: str, locale: str, **kwargs: Any) -> None
     raise_http_error(status.HTTP_400_BAD_REQUEST, message_key, locale, **kwargs)
 
 
-def raise_conflict(message_key: str, locale: str, **kwargs: Any) -> None:
+def raise_conflict(message_key: str, locale: str, **kwargs: Any) -> NoReturn:
     """
     Raise 409 HTTPException for conflict situations.
 
@@ -130,7 +130,7 @@ def require_owner_or_admin(
     user: "User",
     locale: str,
     *,
-    owner_id: uuid.UUID | int,
+    owner_id: uuid.UUID | int | str,
 ) -> None: ...
 
 
@@ -139,7 +139,7 @@ def require_owner_or_admin(
     user: "User",
     locale: str,
     *,
-    owner_id: uuid.UUID | int,
+    owner_id: uuid.UUID | int | str,
     allow_teacher: bool,
 ) -> None: ...
 
@@ -148,7 +148,7 @@ def require_owner_or_admin(
     user: "User",
     locale: str,
     *,
-    owner_id: uuid.UUID | int,
+    owner_id: uuid.UUID | int | str,
     allow_teacher: bool = False,
 ) -> None:
     """
@@ -163,7 +163,7 @@ def require_owner_or_admin(
         raise_forbidden(locale)
 
 
-def ensure_exists[T](resource: T | None, resource_key: str, locale: str) -> T:
+def ensure_exists(resource: T | None, resource_key: str, locale: str) -> T:
     """
     Ensure resource exists, return it or raise 404.
 

@@ -3127,6 +3127,20 @@ wheels = [
 ]
 
 [[package]]
+name = "pyroscope-io"
+version = "1.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cffi" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4b/33/1f9d4033fb055ee1ce8ac3aef9187dac6540b4c35a098f27ef0a795590cf/pyroscope_io-1.0.1-py2.py3-none-macosx_11_0_arm64.whl", hash = "sha256:e1618223769e5afa3459e98cc3a815f37ffb40b7324c597b78e0bb917ff0893e", size = 3103074, upload-time = "2026-02-12T12:26:12.506Z" },
+    { url = "https://files.pythonhosted.org/packages/ad/3a/8a9726b1163447367f9584d6d77d910003e7d5219b828021127334a497d2/pyroscope_io-1.0.1-py2.py3-none-macosx_11_0_x86_64.whl", hash = "sha256:9f39014116670aa24dacbb5faf3b4b7b0e08bd7940cf4a509878c5a12eeb6f94", size = 3342683, upload-time = "2026-02-12T12:26:14.327Z" },
+    { url = "https://files.pythonhosted.org/packages/14/06/747183436738e77afdbe834bb4769d64912d4af8fa2b00ff055f2da562df/pyroscope_io-1.0.1-py2.py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:661d1bd754fc360b3772cb6a9a2b0b54c022c223e48d7cb93794c1e671b09c1c", size = 3202986, upload-time = "2026-02-12T12:26:16.406Z" },
+    { url = "https://files.pythonhosted.org/packages/c5/30/a1dcc77f0f5d2c9594c8076268af767cd34807ae7b14a43d4b1a8386dfc6/pyroscope_io-1.0.1-py2.py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:8c11941fda319e8b42bd31b4498b571172902c9a9f38b6a336ed6a3d56394e72", size = 3448022, upload-time = "2026-02-12T12:26:18.59Z" },
+]
+
+[[package]]
 name = "pytest"
 version = "9.0.2"
 source = { registry = "https://pypi.org/simple" }
@@ -3733,6 +3747,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "pyjwt" },
     { name = "pyotp" },
+    { name = "pyroscope-io", marker = "sys_platform != 'win32'" },
     { name = "python-dotenv" },
     { name = "python-magic" },
     { name = "python-multipart" },
@@ -3822,6 +3837,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2" },
     { name = "pyjwt", specifier = ">=2.10.1" },
     { name = "pyotp", specifier = ">=2.9" },
+    { name = "pyroscope-io", marker = "sys_platform != 'win32'", specifier = ">=0.8.0" },
     { name = "python-dotenv", specifier = ">=1.0" },
     { name = "python-magic", specifier = ">=0.4.27" },
     { name = "python-multipart", specifier = ">=0.0.22" },

@@ -76,7 +76,7 @@ async def cleanup_stale_notifications(
             NotificationDelivery.id.in_(delivery_ids)
         )
         deliveries_result = await db.execute(deliveries_stmt)
-        deliveries_deleted += int(deliveries_result.rowcount or 0)
+        deliveries_deleted += int(deliveries_result.rowcount or 0)  # type: ignore[attr-defined]
         await db.commit()
 
     # Commit to close the transaction created by the final select above.
@@ -104,7 +104,7 @@ async def cleanup_stale_notifications(
             Notification.id.in_(notification_ids)
         )
         notifications_result = await db.execute(notifications_stmt)
-        notifications_deleted += int(notifications_result.rowcount or 0)
+        notifications_deleted += int(notifications_result.rowcount or 0)  # type: ignore[attr-defined]
         await db.commit()
 
     # Commit to close the transaction created by the final select above.

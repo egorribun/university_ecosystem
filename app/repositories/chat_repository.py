@@ -112,14 +112,14 @@ class ChatRepository:
         rows = result.all()
 
         has_more = len(rows) > limit
-        rows = rows[:limit]
+        chat_items = [tuple(row) for row in rows[:limit]]
 
         next_cursor = None
-        if has_more and rows:
-            last_chat = rows[-1][0]
+        if has_more and chat_items:
+            last_chat = chat_items[-1][0]
             next_cursor = encode_datetime_cursor(last_chat.updated_at, last_chat.id)
 
-        return rows, has_more, next_cursor
+        return chat_items, has_more, next_cursor
 
     async def get_last_messages(
         self, message_ids: list[uuid.UUID]

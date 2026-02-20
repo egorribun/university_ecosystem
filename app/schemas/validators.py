@@ -15,6 +15,7 @@ from app.utils.sanitization import (
     sanitize_email,
     sanitize_filename,
     sanitize_html,
+    sanitize_optional_text,
     sanitize_rich_text,
     sanitize_url,
     strip_control_chars,
@@ -71,6 +72,11 @@ def _sanitize_url_validator(value: Any) -> str | None:
     return sanitize_url(value)
 
 
+def _sanitize_optional_text_validator(value: Any) -> str | None:
+    """Sanitize optional text input."""
+    return sanitize_optional_text(value)
+
+
 def _truncate_256(value: str) -> str:
     """Truncate string to 256 characters."""
     return truncate(value, 256)
@@ -107,6 +113,11 @@ CleanStr = Annotated[str, AfterValidator(_strip_control_chars_validator)]
 # URL - validated and sanitized
 SafeUrl = Annotated[str | None, AfterValidator(_sanitize_url_validator)]
 
+# Optional sanitized text (trims whitespace, None if empty)
+SanitizedInput = Annotated[
+    str | None, AfterValidator(_sanitize_optional_text_validator)
+]
+
 # Short text fields with length limits
 ShortSanitizedStr = Annotated[
     str,
@@ -141,6 +152,7 @@ __all__ = [
     "SafeRichText",
     "SafeUrl",
     "SanitizedEmail",
+    "SanitizedInput",
     "SanitizedStr",
     "ShortSanitizedStr",
 ]

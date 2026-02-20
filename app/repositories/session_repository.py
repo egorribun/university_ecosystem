@@ -79,7 +79,7 @@ class SessionRepository(BaseRepository[ActiveSession, dict, dict]):
             .values(revoked_at=now)
         )
         await self.db.flush()
-        return (result.rowcount or 0) > 0
+        return (int(getattr(result, "rowcount", 0) or 0)) > 0
 
     async def revoke_by_jti(self, jti: str) -> bool:
         """Revoke a session by JTI."""
@@ -95,7 +95,7 @@ class SessionRepository(BaseRepository[ActiveSession, dict, dict]):
             .values(revoked_at=now)
         )
         await self.db.flush()
-        return (result.rowcount or 0) > 0
+        return (int(getattr(result, "rowcount", 0) or 0)) > 0
 
     async def revoke_all_except(
         self, user_id: uuid.UUID | str | int, current_session_id: uuid.UUID | str | int
@@ -114,7 +114,7 @@ class SessionRepository(BaseRepository[ActiveSession, dict, dict]):
             .values(revoked_at=now)
         )
         await self.db.flush()
-        return result.rowcount or 0
+        return int(getattr(result, "rowcount", 0) or 0)
 
     async def revoke_all_for_user(self, user_id: uuid.UUID | str | int) -> int:
         """Revoke all sessions for a user. Returns count of revoked."""
@@ -130,7 +130,7 @@ class SessionRepository(BaseRepository[ActiveSession, dict, dict]):
             .values(revoked_at=now)
         )
         await self.db.flush()
-        return result.rowcount or 0
+        return int(getattr(result, "rowcount", 0) or 0)
 
     async def cleanup_expired(self, max_age_days: int = 30) -> int:
         """Delete sessions older than max_age_days. Returns count deleted."""
@@ -144,7 +144,7 @@ class SessionRepository(BaseRepository[ActiveSession, dict, dict]):
             delete(ActiveSession).where(ActiveSession.created_at < cutoff)
         )
         await self.db.flush()
-        return result.rowcount or 0
+        return int(getattr(result, "rowcount", 0) or 0)
 
     async def touch(self, session_id: uuid.UUID | str | int) -> None:
         """Update last_seen_at timestamp for a session."""

@@ -1,52 +1,54 @@
-import { z } from "zod"
+import * as v from "valibot"
 
-export const loginSchema = z.object({
-  email: z.string().min(1, "Email is required").email("Invalid email address"),
-  password: z.string().min(1, "Password is required"),
-  trustDevice: z.boolean().optional(),
+export const loginSchema = v.object({
+  email: v.pipe(v.string(), v.minLength(1, "auth:messages.emailRequired"), v.email("auth:messages.invalidEmail")),
+  password: v.pipe(v.string(), v.minLength(1, "Password is required")),
+  trustDevice: v.optional(v.boolean()),
 })
 
-export type LoginValues = z.infer<typeof loginSchema>
+export type LoginValues = v.InferInput<typeof loginSchema>
 
-export const registerSchema = z
-  .object({
-    full_name: z.string().min(2, "Name must be at least 2 characters"),
-    email: z.string().email("Invalid email address"),
-    role: z.enum(["student", "teacher", "admin"]),
-    invite_code: z.string().optional(),
-    password: z.string().min(8, "Password must be at least 8 characters"),
-    confirmPassword: z.string().min(1, "Please confirm your password"),
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords do not match",
-    path: ["confirmPassword"],
-  })
-  .superRefine((data, ctx) => {
-    if (["teacher", "admin"].includes(data.role) && !data.invite_code) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Invite code is required for this role",
-        path: ["invite_code"],
-      })
-    }
-  })
+export const registerSchema = v.pipe(
+  v.object({
+    full_name: v.pipe(v.string(), v.minLength(2, "Name must be at least 2 characters")),
+    email: v.pipe(v.string(), v.email("Invalid email address")),
+    role: v.picklist(["student", "teacher", "admin"]),
+    invite_code: v.optional(v.string()),
+    password: v.pipe(v.string(), v.minLength(8, "Password must be at least 8 characters")),
+    confirmPassword: v.pipe(v.string(), v.minLength(1, "Please confirm your password")),
+  }),
+  v.forward(
+    v.check((data) => data.password === data.confirmPassword, "Passwords do not match"),
+    ["confirmPassword"]
+  ),
+  v.forward(
+    v.check((data) => {
+      if (["teacher", "admin"].includes(data.role) && !data.invite_code) {
+        return false
+      }
+      return true
+    }, "Invite code is required for this role"),
+    ["invite_code"]
+  )
+)
 
-export type RegisterValues = z.infer<typeof registerSchema>
+export type RegisterValues = v.InferInput<typeof registerSchema>
 
-export const resetPasswordSchema = z.object({
-  email: z.string().email("Invalid email address"),
+export const resetPasswordSchema = v.object({
+  email: v.pipe(v.string(), v.email("auth:messages.invalidEmail")),
 })
 
-export type ResetPasswordValues = z.infer<typeof resetPasswordSchema>
+export type ResetPasswordValues = v.InferInput<typeof resetPasswordSchema>
 
-export const newPasswordSchema = z
-  .object({
-    password: z.string().min(8, "Password must be at least 8 characters"),
-    confirmPassword: z.string().min(1, "Please confirm your password"),
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords do not match",
-    path: ["confirmPassword"],
-  })
+export const newPasswordSchema = v.pipe(
+  v.object({
+    password: v.pipe(v.string(), v.minLength(8, "Password must be at least 8 characters")),
+    confirmPassword: v.pipe(v.string(), v.minLength(1, "Please confirm your password")),
+  }),
+  v.forward(
+    v.check((data) => data.password === data.confirmPassword, "Passwords do not match"),
+    ["confirmPassword"]
+  )
+)
 
-export type NewPasswordValues = z.infer<typeof newPasswordSchema>
+export type NewPasswordValues = v.InferInput<typeof newPasswordSchema>

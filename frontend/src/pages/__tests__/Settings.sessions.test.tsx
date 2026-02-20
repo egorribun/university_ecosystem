@@ -41,24 +41,10 @@ const baseUser: User = {
   avatar_url_optimized: null,
   cover_url: null,
   cover_url_optimized: null,
-  about: null,
-  record_book_number: null,
-  status: null,
-  institute: null,
-  course: null,
-  education_level: null,
-  track: null,
-  program: null,
-  telegram: null,
-  achievements: null,
-  department: null,
-  position: null,
-  spotify_connected: false,
-  spotify_display_name: null,
-  spotify_is_connected: false,
-  dnd_enabled: false,
-  dnd_start: null,
-  dnd_end: null,
+    profile_detail: undefined,
+    education_path: undefined,
+    preferences: { dnd_enabled: false, timezone: null, dnd_start: null, dnd_end: null },
+    spotify_connected: false,
   is_active: true,
   mfa_required: false,
   mfa_default_method: null,
@@ -144,3 +130,4 @@ describe("Settings sessions panel", () => {
     expect(testSessions[1].revoked_at).not.toBeNull()
   })
 })
+

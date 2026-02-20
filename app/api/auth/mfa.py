@@ -175,10 +175,10 @@ async def delete_pending_totp_enrollment(
     enrollment = await db.get(MfaTotpEnrollment, enrollment_id)
     if not enrollment or enrollment.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Enrollment not found")
-    if enrollment.confirmed_at is not None or enrollment.revoked_at is not None:
+    if enrollment.confirmed_at is not None or enrollment.revoked_at is not None:  # type: ignore[unreachable]
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Enrollment is not pending")
 
-    await db.delete(enrollment)
+    await db.delete(enrollment)  # type: ignore[unreachable]
     await db.commit()
 
     audit.log(
@@ -284,12 +284,20 @@ async def confirm_webauthn_registration(
     from app.services.webauthn import WebAuthnService
 
     service = WebAuthnService(db)
-    await service.verify_registration(
-        user,
-        challenge.payload["options"]["challenge"],
-        payload.response,
-        label=payload.label,
-    )
+
+    try:
+        payload_dict: dict = challenge.payload  # type: ignore[assignment]
+        await service.verify_registration(
+            user,
+            str(payload_dict.get("options", {}).get("challenge", "")),
+            payload.response,
+            label=payload.label,
+        )
+    except Exception as e:
+        logger.warning(
+            f"Passkey registration verification failed for user {user.id}: {e}"
+        )
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Passkey verification failed")
 
     await mfa.refresh_user_mfa_preferences(db, user=user)
     session: ActiveSession | None = getattr(request.state, "active_session", None)

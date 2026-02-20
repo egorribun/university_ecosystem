@@ -2,7 +2,7 @@ import { FC, useState, useEffect, type ReactNode } from "react"
 import { Camera as PhotoCamera } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { useForm, Controller } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
+import { valibotResolver } from "@hookform/resolvers/valibot"
 import api from "@/api/client"
 import { logError } from "@/app/logger"
 import { Button } from "@/components/ui"
@@ -72,7 +72,7 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
     watch,
     formState: { errors, isSubmitting, isValid },
   } = useForm<NewsFormValues>({
-    resolver: zodResolver(newsFormSchema),
+    resolver: valibotResolver(newsFormSchema),
     mode: "onChange",
     defaultValues: {
       title: initialData.title,

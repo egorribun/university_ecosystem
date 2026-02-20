@@ -97,21 +97,23 @@ class LoginService:
 
         # 2. Timing attack mitigation: always perform password verification
         target_hash = user.hashed_password if user else settings.auth_dummy_hash
-        verified, new_hash = await verify_and_update_password(password, target_hash)
+        verified, new_hash = await verify_and_update_password(
+            password, str(target_hash)
+        )
 
         if not user:
-            return await self._handle_invalid_user(
+            return await self._handle_invalid_user(  # type: ignore[no-any-return]
                 normalized_email, request, base_locale, bg_tasks
             )
 
         if not verified:
-            return await self._handle_invalid_password(
+            return await self._handle_invalid_password(  # type: ignore[no-any-return]
                 user, normalized_email, request, locale, bg_tasks
             )
 
         # 3. Valid credentials, check MFA
         if new_hash:
-            user.hashed_password = new_hash
+            user.hashed_password = new_hash  # type: ignore[assignment]
             # self.db.add(user) handled by SQLAlchemy identity map usually,
             # but we explicitly add via repo if needed.
             # actually user is already attached to session from userService.
@@ -142,7 +144,7 @@ class LoginService:
         client_ip, user_agent = self._extract_client_info(request)
         fingerprint = extract_fingerprint(request)
 
-        metadata = {
+        metadata: dict[str, Any] = {
             "ip_address": client_ip,
             "user_agent": user_agent,
             "accept_language": fingerprint.accept_language,
@@ -153,7 +155,7 @@ class LoginService:
             now_val = datetime.now(UTC)
             metadata["mfa_completed_at"] = now_val
             metadata["mfa_verified_at"] = now_val
-            user.mfa_last_verified_at = now_val
+            user.mfa_last_verified_at = now_val  # type: ignore[assignment]
 
         token, session = await self.session_service.create_access_token(
             sub=user.id,
@@ -184,10 +186,10 @@ class LoginService:
         # Fire and forget Redis write
         # (or await if critical, here await is fine as it's fast)
         await redis_service.create_session(
-            jti=session.jti,
+            jti=str(session.jti),
             user_id=user.id,
             fingerprint=fp,
-            mfa_verified_at=session.mfa_verified_at,
+            mfa_verified_at=session.mfa_verified_at,  # type: ignore[arg-type]
         )
 
         self.audit.log(
@@ -207,11 +209,13 @@ class LoginService:
         session: ActiveSession | None,
     ) -> schemas.TokenWithProfile:
         # Optimization: use optimized loader
-        user = await ensure_mfa_relationships_loaded(self.repo.db, user)
+        user = await ensure_mfa_relationships_loaded(self.repo.db, user)  # type: ignore[assignment]
 
         from app.services.auth_service import attach_pending_email
 
-        user = await attach_pending_email(self.repo.db, user)
+        temp_user = await attach_pending_email(self.repo.db, user)
+        assert temp_user is not None
+        user = temp_user
 
         from app.schemas.schemas import SessionSigningKeyOut, UserOut
 
@@ -472,7 +476,7 @@ class LoginService:
             token,
             httponly=True,
             secure=settings.cookie_secure,
-            samesite=settings.cookie_samesite,
+            samesite=settings.cookie_samesite,  # type: ignore[arg-type]
             max_age=max_age,
             expires=expires,
             path="/",
@@ -485,7 +489,7 @@ class LoginService:
             path="/",
             httponly=True,
             secure=settings.cookie_secure,
-            samesite=settings.cookie_samesite,
+            samesite=settings.cookie_samesite,  # type: ignore[arg-type]
         )
 
     async def record_login_history_bg(

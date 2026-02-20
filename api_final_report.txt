@@ -1,0 +1,2 @@
+app\core\metrics.py:940: error: Unused "type: ignore" comment  [unused-ignore]
+Found 1 error in 1 file (checked 19 source files)

@@ -1,3 +1,5 @@
+import uuid
+
 from app.core.constants import ANONYMIZED_USER_CREDENTIAL
 from app.core.exceptions.domain import EntityAlreadyExists
 from app.models import models
@@ -27,9 +29,13 @@ def update_user_attributes(user: models.User, data: dict) -> None:
         "program",
         "record_book_number",
     }
-
     for field, value in data.items():
-        if field in preferences_fields:
+        if field == "preferences" and isinstance(value, dict):
+            if not user.preferences:
+                user.preferences = models.UserPreferences(user_id=user.id)
+            for k, v in value.items():
+                setattr(user.preferences, k, v)
+        elif field in preferences_fields:
             if not user.preferences:
                 user.preferences = models.UserPreferences(user_id=user.id)
             setattr(user.preferences, field, value)
@@ -37,10 +43,16 @@ def update_user_attributes(user: models.User, data: dict) -> None:
             if not user.profile:
                 user.profile = models.UserProfile(user_id=user.id)
             setattr(user.profile, field, value)
+        elif field == "profile" and isinstance(value, dict):
+            if not user.profile:
+                user.profile = models.UserProfile(user_id=user.id)
+            for k, v in value.items():
+                setattr(user.profile, k, v)
         elif field in education_fields:
             if not user.education_path:
                 user.education_path = models.EducationPath(user_id=user.id)
-            setattr(user.education_path, field, value)
+            for k, v in value.items():
+                setattr(user.education_path, k, v)
         else:
             setattr(user, field, value)
 
@@ -76,16 +88,34 @@ async def anonymize_user_data(user: models.User) -> str:
             user_id=user.id, full_name="Deleted User", status="deleted"
         )
 
-    user.email = anonymized_email
-    user.hashed_password = ANONYMIZED_USER_CREDENTIAL
-    user.is_active = False
-
-    user.mfa_required = False
-    user.mfa_default_method = None
-    user.mfa_last_verified_at = None
+    user.email = anonymized_email  # type: ignore[assignment]
+    user.hashed_password = ANONYMIZED_USER_CREDENTIAL  # type: ignore[assignment]
+    user.is_active = False  # type: ignore[assignment]
+    user.mfa_required = False  # type: ignore[assignment]
+    user.mfa_default_method = None  # type: ignore[assignment]
+    user.mfa_last_verified_at = None  # type: ignore[assignment]
 
     # Clear nested relationships
-    user.preferences = None
+    if user.profile:
+        user.profile.status = "deleted"
+        user.profile.about = None
+        user.profile.telegram = None
+        user.profile.achievements = None
+        user.profile.position = None
+        user.profile.department = None
+
+    if user.education_path:
+        user.education_path.institute = None
+        user.education_path.course = None
+        user.education_path.education_level = None
+        user.education_path.track = None
+        user.education_path.program = None
+        user.education_path.record_book_number = None
+
+    if user.preferences:
+        user.preferences.dnd_enabled = False
+        user.preferences.timezone = None
+
     user.spotify = None
     user.education_path = None
 
@@ -93,7 +123,7 @@ async def anonymize_user_data(user: models.User) -> str:
 
 
 async def validate_user_email(
-    repo: UserRepository, email: str, exclude_user_id: int | None = None
+    repo: UserRepository, email: str, exclude_user_id: uuid.UUID | str | None = None
 ) -> str:
     """Validate email and check for uniqueness."""
     validated_email = str(email).strip().lower()

@@ -1,20 +1,31 @@
-import { ZodError, type ZodType } from "zod"
+import { safeParse, type GenericSchema, type BaseIssue, flatten, type InferOutput } from "valibot"
 
 export class ApiResponseValidationError extends Error {
+  public readonly issues: BaseIssue<unknown>[]
   override readonly name = "ApiResponseValidationError"
 
   constructor(
-    public readonly details: ZodError,
+    issues: BaseIssue<unknown>[],
     context?: string
   ) {
-    super(context ? `Invalid API response for ${context}` : "Invalid API response")
+    // Generate a readable error message from issues
+    // flatten expects a non-empty array tuple, which we can assert here
+    // because Validation Error is only thrown when there ARE issues.
+    const flat = flatten(issues as [BaseIssue<unknown>, ...BaseIssue<unknown>[]])
+    const summary = Object.values(flat.nested || {}).flat().join(", ") || flat.root?.join(", ") || "Validation failed"
+    super(context ? `Invalid API response for ${context}: ${summary}` : `Invalid API response: ${summary}`)
+    this.issues = issues
   }
 }
 
-export const ensureValidResponse = <T>(schema: ZodType<T>, data: unknown, context?: string): T => {
-  const result = schema.safeParse(data)
+export const ensureValidResponse = <T extends GenericSchema<unknown, unknown>>(
+  schema: T,
+  data: unknown,
+  context?: string
+): InferOutput<T> => {
+  const result = safeParse(schema, data)
   if (!result.success) {
-    throw new ApiResponseValidationError(result.error, context)
+    throw new ApiResponseValidationError(result.issues, context)
   }
-  return result.data
+  return result.output as InferOutput<T>
 }

@@ -11,7 +11,6 @@ from app.repositories.auth_repository import get_auth_repository
 from app.repositories.event_repository import get_event_repository
 from app.repositories.news_repository import get_news_repository
 from app.repositories.user_repository import get_user_repository
-from app.repositories.user_stats_repository import get_user_stats_repository
 from app.services.audit_service import (
     AuditService,
     SecureAuditService,
@@ -30,7 +29,7 @@ from app.services.vector_service import VectorService
 
 if TYPE_CHECKING:
     from app.cqrs.queries import GetScheduleHandler, GetStatsHandler
-    from app.services.user.stats_service import StatsService
+    from app.services.user.analytics_service import UserAnalyticsService
 
 
 def get_audit_service() -> AuditService:
@@ -133,33 +132,32 @@ def get_read_schedule_handler(
     return GetScheduleHandler(db=db, cache=cache)
 
 
-def get_stats_service(
+def get_user_analytics_service(
     db: AsyncSession = Depends(get_db),
-) -> StatsService:
-    from app.services.user.stats_service import StatsService
+) -> UserAnalyticsService:
+    from app.services.user.analytics_service import UserAnalyticsService
 
-    repo = get_user_stats_repository(db)
-    return StatsService(stats_repo=repo)
+    return UserAnalyticsService(db=db)
 
 
 def get_stats_handler(
     db: AsyncSession = Depends(get_db),
     cache: BaseCache = Depends(get_cache),
-    stats_service: StatsService = Depends(get_stats_service),
+    analytics_service: UserAnalyticsService = Depends(get_user_analytics_service),
 ) -> GetStatsHandler:
     from app.cqrs.queries import GetStatsHandler
 
-    return GetStatsHandler(db=db, cache=cache, stats_service=stats_service)
+    return GetStatsHandler(db=db, cache=cache, analytics_service=analytics_service)
 
 
 def get_read_stats_handler(
     db: AsyncSession = Depends(get_read_db),
     cache: BaseCache = Depends(get_cache),
-    stats_service: StatsService = Depends(get_stats_service),
+    analytics_service: UserAnalyticsService = Depends(get_user_analytics_service),
 ) -> GetStatsHandler:
     from app.cqrs.queries import GetStatsHandler
 
-    return GetStatsHandler(db=db, cache=cache, stats_service=stats_service)
+    return GetStatsHandler(db=db, cache=cache, analytics_service=analytics_service)
 
 
 def get_auth_service(
