@@ -9,6 +9,7 @@ import type { User } from "@/types/User"
 import type { PendingMfaState, SetUserArg, UserState } from "@/types/Auth"
 import { clearAccessToken } from "./tokenStorage"
 import { logError, logWarning } from "@/app/logger"
+import { extractApiError } from "@/utils/error"
 
 const PROFILE_CACHE_BASE_KEY = "ecosystem.profile.cache"
 const PROFILE_CACHE_SCHEMA_VERSION = 7
@@ -34,24 +35,16 @@ type CachedUserSnapshot = Pick<
   | "group_id"
   | "avatar_url"
   | "cover_url"
-  | "about"
-  | "record_book_number"
-  | "status"
-  | "institute"
-  | "course"
-  | "education_level"
-  | "track"
-  | "program"
-  | "telegram"
-  | "achievements"
-  | "department"
-  | "position"
+  | "is_active"
   | "spotify_connected"
-  | "dnd_enabled"
 > &
   Partial<
     Pick<User, "mfa_required" | "mfa_default_method" | "mfa_last_verified_at" | "totp_enrollments">
-  >
+  > & {
+    profile_detail?: User["profile_detail"]
+    education_path?: User["education_path"]
+    preferences?: User["preferences"]
+  }
 
 type CachedProfileEnvelope = {
   version: number
@@ -104,24 +97,10 @@ const createOptimisticUser = (snapshot: CachedUserSnapshot): User => ({
   group_id: snapshot.group_id,
   avatar_url: snapshot.avatar_url,
   cover_url: snapshot.cover_url,
-  about: snapshot.about,
-  record_book_number: snapshot.record_book_number,
-  status: snapshot.status,
-  institute: snapshot.institute,
-  course: snapshot.course,
-  education_level: snapshot.education_level,
-  track: snapshot.track,
-  program: snapshot.program,
-  telegram: snapshot.telegram,
-  achievements: snapshot.achievements,
-  department: snapshot.department,
-  position: snapshot.position,
   spotify_connected: snapshot.spotify_connected,
-  spotify_display_name: null,
-  spotify_is_connected: null,
-  dnd_enabled: snapshot.dnd_enabled,
-  dnd_start: null,
-  dnd_end: null,
+  profile_detail: snapshot.profile_detail,
+  education_path: snapshot.education_path,
+  preferences: snapshot.preferences,
   is_active: false,
   mfa_required: Boolean(snapshot.mfa_required),
   mfa_default_method: snapshot.mfa_default_method ?? null,
@@ -136,6 +115,7 @@ const createOptimisticUser = (snapshot: CachedUserSnapshot): User => ({
 const clearProfileCacheStorage = () => {
   if (typeof localStorage === "undefined") return
   try {
+    console.warn("CLEARING PROFILE CACHE STORAGE")
     localStorage.removeItem(PROFILE_CACHE_STORAGE_KEY)
     localStorage.removeItem(PROFILE_CACHE_VERSION_KEY)
   } catch {
@@ -261,21 +241,16 @@ const decryptData = async (
   }
 }
 
-// HMAC Signature using Web Crypto
+// HMAC Signature using noble hashes (consistent with sync version and works in JSDOM)
 const signPayload = async (payload: CacheSignaturePayload, signingKey: string): Promise<string> => {
-  const subtle = getCrypto()
-  if (!subtle) return ""
   try {
     const enc = new TextEncoder()
-    const keyMaterial = await subtle.importKey(
-      "raw",
+    const signatureBytes = hmac(
+      sha256,
       enc.encode(signingKey),
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["sign"]
+      enc.encode(JSON.stringify(payload))
     )
-    const signature = await subtle.sign("HMAC", keyMaterial, enc.encode(JSON.stringify(payload)))
-    return btoa(String.fromCharCode(...new Uint8Array(signature)))
+    return btoa(String.fromCharCode(...signatureBytes))
   } catch {
     return ""
   }
@@ -359,20 +334,11 @@ const persistUserToCacheAsync = async (value: User | null, signingKey: string | 
         group_id: value.group_id,
         avatar_url: value.avatar_url,
         cover_url: value.cover_url,
-        about: value.about,
-        record_book_number: value.record_book_number,
-        status: value.status,
-        institute: value.institute,
-        course: value.course,
-        education_level: value.education_level,
-        track: value.track,
-        program: value.program,
-        telegram: value.telegram,
-        achievements: value.achievements,
-        department: value.department,
-        position: value.position,
         spotify_connected: value.spotify_connected,
-        dnd_enabled: value.dnd_enabled,
+        profile_detail: value.profile_detail,
+        education_path: value.education_path,
+        preferences: value.preferences,
+        is_active: value.is_active,
         mfa_required: value.mfa_required,
         mfa_default_method: value.mfa_default_method,
         mfa_last_verified_at: value.mfa_last_verified_at,
@@ -516,24 +482,10 @@ export const useProfileSync = (
         group_id: null,
         avatar_url: null,
         cover_url: null,
-        about: null,
-        record_book_number: null,
-        status: null,
-        institute: null,
-        course: null,
-        education_level: null,
-        track: null,
-        program: null,
-        telegram: null,
-        achievements: null,
-        department: null,
-        position: null,
         spotify_connected: false,
-        spotify_display_name: null,
-        spotify_is_connected: null,
-        dnd_enabled: false,
-        dnd_start: null,
-        dnd_end: null,
+        profile_detail: undefined,
+        education_path: undefined,
+        preferences: undefined,
         is_active: false,
         mfa_required: false,
         mfa_default_method: null,
@@ -817,7 +769,13 @@ export const useProfileSync = (
           handleUnauthorized()
           return
         }
-        logError("Failed to fetch current user", { error })
+        const apiError = extractApiError(error)
+        logError("Failed to fetch current user", {
+          message: apiError.message,
+          status: apiError.status,
+          details: apiError.details,
+          traceId: apiError.traceId
+        })
       } finally {
         if (!controller.signal.aborted && activeRequestRef.current === controller) {
           activeRequestRef.current = null

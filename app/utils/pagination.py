@@ -5,9 +5,11 @@ from __future__ import annotations
 import base64
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Generic, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
+
+T = TypeVar("T")
 
 if TYPE_CHECKING:
     from sqlalchemy import Select
@@ -30,7 +32,7 @@ class CursorParams(BaseModel):
 
 
 @dataclass
-class CursorPage[T]:
+class CursorPage(Generic[T]):
     """A page of results with cursor-based pagination."""
 
     items: list[T]
@@ -93,7 +95,7 @@ def decode_datetime_cursor(cursor: str | None) -> tuple[datetime, str] | None:
         return None
 
 
-async def paginate_cursor[T](
+async def paginate_cursor(
     session: AsyncSession,
     stmt: Select,
     cursor_column,
@@ -162,9 +164,9 @@ async def paginate_cursor[T](
     next_cursor: str | None = None
     if has_more and items:
         last_item = items[-1]
-        cursor_value = getattr(last_item, cursor_column.key, None)
-        if cursor_value is not None:
-            next_cursor = encode_cursor(cursor_value)
+        last_cursor_value = getattr(last_item, cursor_column.key, None)
+        if last_cursor_value is not None:
+            next_cursor = encode_cursor(last_cursor_value)
 
     return CursorPage(
         items=items,
@@ -174,7 +176,7 @@ async def paginate_cursor[T](
     )
 
 
-class PaginatedResponse[T](BaseModel):
+class PaginatedResponse(BaseModel, Generic[T]):
     """Standard paginated response schema."""
 
     items: list[T]

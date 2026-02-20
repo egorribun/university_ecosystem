@@ -99,12 +99,12 @@ from app.models.users import (
 )
 
 # Late-binding association proxies to avoid cyclic imports in individual model files
-User.spotify_is_connected = association_proxy(
+User.spotify_is_connected = association_proxy(  # type: ignore[method-assign,assignment]
     "spotify",
     "is_connected",
     creator=lambda value: SpotifyIntegration(is_connected=value),
 )
-User.spotify_display_name = association_proxy(
+User.spotify_display_name = association_proxy(  # type: ignore[method-assign,assignment]
     "spotify",
     "display_name",
     creator=lambda value: SpotifyIntegration(display_name=value),

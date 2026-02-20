@@ -42,14 +42,15 @@ async def aggregate_notification_delivery_stats(
     result = await db.execute(stmt)
     stats: list[dict[str, Any]] = []
     for row in result:
+        m = row._mapping
         stats.append(
             {
-                "channel": row.channel,
-                "status": row.status,
-                "count": int(row.count or 0),
-                "delivered": int(row.delivered or 0),
-                "first_attempt_at": row.first_attempt_at,
-                "last_attempt_at": row.last_attempt_at,
+                "channel": m["channel"],
+                "status": m["status"],
+                "count": int(m["count"] or 0),
+                "delivered": int(m["delivered"] or 0),
+                "first_attempt_at": m["first_attempt_at"],
+                "last_attempt_at": m["last_attempt_at"],
             }
         )
     return stats

@@ -39,7 +39,7 @@ async def download_schedule_ics(
     locale = resolve_locale(request=request)
     group_obj = await db.get(models.Group, group)
     if not group_obj:
-        raise_not_found("Group", group, locale)
+        raise_not_found("Group", locale=locale)
 
     lessons: Sequence[models.Schedule] = await schedule_service.get_schedule(group)
     ics_body = generate_schedule_ics(group_obj, lessons, locale=locale)

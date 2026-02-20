@@ -54,6 +54,7 @@ dependencies = [
     "pydantic-settings>=2",
     "pyjwt>=2.10.1",
     "pyotp>=2.9",
+    "pyroscope-io>=0.8.0 ; sys_platform != 'win32'",
     "python-dotenv>=1.0",
     "python-magic>=0.4.27",
     "python-multipart>=0.0.22",

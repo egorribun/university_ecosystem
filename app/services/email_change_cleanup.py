@@ -57,6 +57,7 @@ async def cleanup_stale_email_change_tokens(
                 db=session, now=now, retention_minutes=retention
             )
 
+    assert db is not None
     removed = await db.execute(
         delete(EmailChangeToken).where(EmailChangeToken.created_at <= cutoff)
     )
@@ -71,8 +72,8 @@ async def cleanup_stale_email_change_tokens(
     )
     await db.commit()
 
-    updated_count = int(marked.rowcount or 0)
-    removed_count = int(removed.rowcount or 0)
+    updated_count = int(getattr(marked, "rowcount", 0) or 0)
+    removed_count = int(getattr(removed, "rowcount", 0) or 0)
     total = updated_count + removed_count
     if total:
         logger.info(

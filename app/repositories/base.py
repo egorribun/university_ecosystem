@@ -2,15 +2,19 @@ import abc
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Generic, TypeVar
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import Base
 
+T = TypeVar("T", bound=Base)
+CreateT = TypeVar("CreateT")
+UpdateT = TypeVar("UpdateT")
 
-class ReadOnlyRepository[T: Base](abc.ABC):
+
+class ReadOnlyRepository(Generic[T], abc.ABC):
     def __init__(self, db: AsyncSession):
         self.db = db
 
@@ -92,12 +96,12 @@ class ReadOnlyRepository[T: Base](abc.ABC):
         return id_val
 
 
-class BaseRepository[T: Base, CreateT, UpdateT](ReadOnlyRepository[T]):
+class BaseRepository(ReadOnlyRepository[T], Generic[T, CreateT, UpdateT]):
     async def create(self, obj_in: CreateT | dict[str, Any]) -> T:
         if hasattr(obj_in, "model_dump"):
             obj_data = obj_in.model_dump()
         else:
-            obj_data = obj_in  # type: ignore
+            obj_data = obj_in
 
         db_obj = self.model(**obj_data)
         self.db.add(db_obj)
@@ -113,7 +117,7 @@ class BaseRepository[T: Base, CreateT, UpdateT](ReadOnlyRepository[T]):
         if hasattr(obj_in, "model_dump"):
             update_data = obj_in.model_dump(exclude_unset=True)
         else:
-            update_data = obj_in  # type: ignore
+            update_data = obj_in
 
         for field, value in update_data.items():
             setattr(db_obj, field, value)
@@ -127,7 +131,7 @@ class BaseRepository[T: Base, CreateT, UpdateT](ReadOnlyRepository[T]):
         target_id = self._cast_id(id)
         stmt = delete(self.model).where(self.model.id == target_id)
         result = await self.db.execute(stmt)
-        return (result.rowcount or 0) > 0
+        return (result.rowcount or 0) > 0  # type: ignore[attr-defined]
 
     def _ensure_utc(self, value: datetime) -> datetime:
         if value.tzinfo is None:

@@ -32,8 +32,8 @@ def is_user_in_quiet_hours(
     if start == end:
         return True
     if start < end:
-        return start <= now_time < end
-    return now_time >= start or now_time < end
+        return bool(start <= now_time < end)
+    return bool(now_time >= start or now_time < end)
 
 
 def prepare_push_payload_for_user(

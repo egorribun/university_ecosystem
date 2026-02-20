@@ -38,7 +38,9 @@ class VectorService:
             )
             response.raise_for_status()
             data = response.json()
-            return data["data"][0]["embedding"]
+            from typing import cast
+
+            return cast("list[float]", data["data"][0]["embedding"])
         except Exception:
             logger.exception("Failed to fetch embedding")
             return [0.0] * settings.embedding_dimensions

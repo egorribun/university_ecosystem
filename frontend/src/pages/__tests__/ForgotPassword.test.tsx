@@ -32,7 +32,7 @@ describe("ForgotPassword page", () => {
     await user.type(emailInput, "invalid")
     await user.tab()
 
-    expect(screen.getByText(tAuth("messages.invalidFormat"))).toBeInTheDocument()
+    expect(screen.getByText(tAuth("messages.invalidEmail"))).toBeInTheDocument()
     expect(screen.getByRole("button", { name: tAuth("forgot.sendLink") })).toBeDisabled()
   })
 

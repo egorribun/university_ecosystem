@@ -6,7 +6,6 @@ from app.models import models
 from app.repositories.story_repository import StoryRepository
 from app.schemas import schemas
 from app.utils.files import delete_static_file
-from app.utils.sanitization import sanitize_optional_text
 
 
 class StoryService:
@@ -48,11 +47,7 @@ class StoryService:
     async def create_story(
         self, data: schemas.StoryCreate, created_by: uuid.UUID
     ) -> models.Story:
-        payload = data.model_dump()
-        payload["title_en"] = sanitize_optional_text(payload.get("title_en"))
-        payload["short_text_en"] = sanitize_optional_text(payload.get("short_text_en"))
-        payload["cover_url"] = sanitize_optional_text(payload.get("cover_url"))
-        payload["cta_url"] = sanitize_optional_text(payload.get("cta_url"))
+        payload = data.model_dump(exclude_unset=True)
 
         if payload.get("published_at"):
             payload["published_at"] = self.repo._ensure_utc(payload["published_at"])
@@ -76,19 +71,11 @@ class StoryService:
         if not story:
             raise ValueError("story_not_found")
 
+        assert story is not None
+
         old_cover = story.cover_url
 
         updates = data.model_dump(exclude_unset=True)
-        if "title_en" in updates:
-            updates["title_en"] = sanitize_optional_text(updates.get("title_en"))
-        if "short_text_en" in updates:
-            updates["short_text_en"] = sanitize_optional_text(
-                updates.get("short_text_en")
-            )
-        if "cover_url" in updates:
-            updates["cover_url"] = sanitize_optional_text(updates.get("cover_url"))
-        if "cta_url" in updates:
-            updates["cta_url"] = sanitize_optional_text(updates.get("cta_url"))
 
         if updates.get("published_at"):
             updates["published_at"] = self.repo._ensure_utc(updates["published_at"])
@@ -96,11 +83,12 @@ class StoryService:
             updates["expires_at"] = self.repo._ensure_utc(updates["expires_at"])
 
         updated_story = await self.repo.update(story.id, updates)
+        assert updated_story is not None
 
         # Cleanup old cover if changed
         if old_cover and updated_story.cover_url != old_cover:
             try:
-                await delete_static_file(old_cover)
+                await delete_static_file(str(old_cover))
             except Exception:
                 # Log but don't fail, similar to API logic
                 pass
@@ -119,5 +107,5 @@ class StoryService:
 
         if cover_url:
             with contextlib.suppress(Exception):
-                await delete_static_file(cover_url)
+                await delete_static_file(str(cover_url))
         return True

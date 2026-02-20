@@ -108,8 +108,13 @@ return {1, remaining, 0}
 
 
 def _create_redis_pool(url: str) -> Redis:
-    return Redis.from_url(
-        url, encoding="utf-8", decode_responses=False, health_check_interval=30
+    from typing import cast
+
+    return cast(
+        Redis,
+        Redis.from_url(
+            url, encoding="utf-8", decode_responses=False, health_check_interval=30
+        ),
     )
 
 
@@ -549,13 +554,19 @@ async def _redis_rate_limit(
     redis_key = f"rate-limit:{key}"
 
     try:
+        from collections.abc import Awaitable
+        from typing import Any, cast
+
         # returns [allowed (0/1), remaining, retry_after_ms]
-        result = await client.eval(
-            _RATE_LIMIT_SCRIPT,
-            1,
-            redis_key,
-            limit,
-            window_ms,
+        result = await cast(
+            Awaitable[Any],
+            client.eval(
+                _RATE_LIMIT_SCRIPT,
+                1,
+                redis_key,
+                limit,
+                window_ms,
+            ),
         )
     except RedisError as exc:
         if "unknown command" not in str(exc).lower():
@@ -653,7 +664,7 @@ async def _periodic_memory_cleanup() -> None:
         try:
             await asyncio.sleep(MEMORY_CLEANUP_INTERVAL_SECONDS)
             if not _cleanup_running:
-                break
+                break  # type: ignore[unreachable]
 
             await cleanup_all_memory_stores()
 

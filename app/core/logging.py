@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
@@ -60,13 +60,14 @@ def configure_logging(
         ),
     ]
 
+    processors: list[Any]
     if json_output:
         # Production: JSON output with orjson
         processors = [
             *shared_processors,
             structlog.processors.JSONRenderer(serializer=_orjson_serializer),
         ]
-        factory = structlog.BytesLoggerFactory()
+        factory: Any = structlog.BytesLoggerFactory()
     else:
         # Development: colored console output
         processors = [
@@ -104,7 +105,9 @@ def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
     Returns:
         Configured structlog logger
     """
-    return structlog.get_logger(name)
+    from typing import cast
+
+    return cast(structlog.stdlib.BoundLogger, structlog.get_logger(name))
 
 
 def bind_context(**kwargs) -> None:

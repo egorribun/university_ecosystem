@@ -23,6 +23,7 @@ from app.api.websocket import (
     notify_new_message,
 )
 from app.core.config import settings
+from app.core.exceptions import BusinessRuleViolation
 from app.models.chat import Attachment, Chat, Message
 from app.models.models import User
 from app.repositories.chat_repository import ChatRepository
@@ -40,6 +41,7 @@ from app.utils.files import delete_static_file, save_attachment
 
 class ChatService:
     def __init__(self, session: AsyncSession):
+        self.session = session
         self.repository = ChatRepository(session)
 
     async def _cleanup_orphaned_files(self, urls: list[str]) -> None:
@@ -70,7 +72,7 @@ class ChatService:
             return_meta=True,
         )
         if not isinstance(meta, dict):
-            raise_http_error(500, "errors.chat.attachment_failed", locale)
+            raise_http_error(500, "errors.chat.attachment_failed", str(locale or "en"))
 
         detected_type = str(meta.get("detected_type") or meta.get("content_type") or "")
         file_type = "file"
@@ -83,7 +85,7 @@ class ChatService:
             "url": str(meta.get("url") or ""),
             "file_type": file_type,
             "filename": str(meta.get("filename") or upload.filename or "attachment"),
-            "size": int(meta.get("size") or 0),
+            "size": int(str(meta.get("size") or 0)),
         }
 
     async def get_chats(
@@ -152,19 +154,19 @@ class ChatService:
         # Enrich with presence
         enriched_chats = []
         for chat_resp in pre_responses:
-            last_msg = chat_resp.last_message
-            if isinstance(last_msg, Message):
+            l_msg = chat_resp.last_message
+            if l_msg is not None:
                 # Convert Message model to MessageResponse to include sender_presence
-                last_msg = MessageResponse(
-                    id=last_msg.id,
-                    chat_id=last_msg.chat_id,
-                    sender_id=last_msg.sender_id,
-                    content=last_msg.content,
-                    created_at=last_msg.created_at,
-                    read_status=last_msg.read_status,
-                    sender=last_msg.sender,
-                    attachments=last_msg.attachments,
-                    sender_presence=presence_map.get(last_msg.sender_id),
+                l_msg = MessageResponse(
+                    id=l_msg.id,
+                    chat_id=l_msg.chat_id,
+                    sender_id=l_msg.sender_id,
+                    content=l_msg.content,
+                    created_at=l_msg.created_at,
+                    read_status=l_msg.read_status,
+                    sender=l_msg.sender,
+                    attachments=l_msg.attachments,
+                    sender_presence=presence_map.get(l_msg.sender_id),
                 )
 
             participant_status = {}
@@ -176,7 +178,7 @@ class ChatService:
             enriched_chats.append(
                 ChatResponse(
                     **chat_resp.model_dump(exclude={"last_message", "presence"}),
-                    last_message=last_msg,
+                    last_message=l_msg,
                     presence=participant_status,
                 )
             )
@@ -211,24 +213,38 @@ class ChatService:
 
         participant = await self.repository.get_user(participant_id)
         ensure_exists(participant, "users", locale)
+        assert participant is not None
 
-        existing_chat = await self.repository.find_existing_dm(user.id, participant_id)
-        if existing_chat:
-            # We don't have presence/unread count readily available for existing chat
-            # return here in the original code, but we should probably try to be
-            # consistent?
-            # Original code just returned basic ChatResponse. We'll stick to that for
-            # now.
-            return ChatResponse(
-                id=existing_chat.id,
-                participants=existing_chat.participants,
-                created_at=existing_chat.created_at,
-                updated_at=existing_chat.updated_at,
+        from app.core.rate_limit import _get_shared_client
+
+        redis_client = await _get_shared_client(settings.rate_limit_storage_uri)
+
+        if not user.id or not participant_id:
+            raise BusinessRuleViolation("errors.chat.invalid_participants")
+
+        min_id, max_id = sorted([user.id.int, participant_id.int])
+        lock_name = f"chat_init:{min_id}:{max_id}"
+
+        async with redis_client.lock(lock_name, timeout=5):
+            existing_chat = await self.repository.find_existing_dm(
+                user.id, participant_id
             )
+            if existing_chat:
+                # We don't have presence/unread count readily available for existing chat
+                # return here in the original code, but we should probably try to be
+                # consistent?
+                # Original code just returned basic ChatResponse. We'll stick to that for
+                # now.
+                return ChatResponse(
+                    id=existing_chat.id,
+                    participants=existing_chat.participants,
+                    created_at=existing_chat.created_at,
+                    updated_at=existing_chat.updated_at,
+                )
 
-        new_chat = await self.repository.create_chat([user, participant])
-        await self.repository.commit()
-        await self.repository.refresh(new_chat)
+            new_chat = await self.repository.create_chat([user, participant])
+            await self.session.commit()
+            await self.session.refresh(new_chat)
 
         # Invalidate caches for participants and the new chat
         participant_ids = [p.id for p in new_chat.participants]
@@ -269,6 +285,7 @@ class ChatService:
         """
         chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
+        assert chat is not None
 
         if user.id not in {p.id for p in chat.participants}:
             raise_forbidden(locale, "errors.chat.not_participant")
@@ -324,6 +341,7 @@ class ChatService:
         """
         chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
+        assert chat is not None
 
         if user.id not in {p.id for p in chat.participants}:
             raise_forbidden(locale, "errors.chat.not_participant")
@@ -383,6 +401,7 @@ class ChatService:
         """
         chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
+        assert chat is not None
 
         if user.id not in {p.id for p in chat.participants}:
             raise_forbidden(locale, "errors.chat.not_participant")
@@ -408,13 +427,13 @@ class ChatService:
         try:
             for upload in uploads:
                 meta = await self._process_chat_upload(upload, chat_id, locale=locale)
-                saved_urls.append(meta["url"])
+                saved_urls.append(str(meta["url"]))
                 attachment = Attachment(
                     message_id=message.id,
-                    url=meta["url"],
-                    file_type=meta["file_type"],
-                    filename=meta["filename"],
-                    size=meta["size"],
+                    url=str(meta["url"]),
+                    file_type=str(meta["file_type"]),
+                    filename=str(meta["filename"]),
+                    size=int(str(meta["size"])),
                 )
                 self.repository.add(attachment)
 
@@ -478,6 +497,7 @@ class ChatService:
         """
         chat = await self.repository.get_by_id(chat_id)
         ensure_exists(chat, "chat", locale)
+        assert chat is not None
 
         if user.id not in {p.id for p in chat.participants}:
             raise_forbidden(locale, "errors.chat.not_participant")
@@ -502,6 +522,7 @@ class ChatService:
         # Load messages to collect attachments
         chat = await self.repository.get_by_id(chat_id, load_messages=True)
         ensure_exists(chat, "chat", locale)
+        assert chat is not None
 
         if user.id not in {p.id for p in chat.participants}:
             raise_forbidden(locale, "errors.chat.not_participant")
@@ -547,6 +568,7 @@ class ChatService:
         """
         chat = await self.repository.get_by_id(chat_id, load_messages=True)
         ensure_exists(chat, "chat", locale)
+        assert chat is not None
 
         if user.id not in {p.id for p in chat.participants}:
             raise_forbidden(locale, "errors.chat.not_participant")

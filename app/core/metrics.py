@@ -7,7 +7,7 @@ import importlib.util
 import logging
 import time
 from ipaddress import ip_address, ip_network
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 import psutil
 from fastapi import FastAPI, Request
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 try:  # pragma: no cover - optional dependency guard
-    from prometheus_client import (  # type: ignore
+    from prometheus_client import (
         CONTENT_TYPE_LATEST,
         REGISTRY,
         Counter,
@@ -32,10 +32,10 @@ try:  # pragma: no cover - optional dependency guard
     )
 except Exception:  # pragma: no cover - optional dependency guard
     CONTENT_TYPE_LATEST = "text/plain; version=0.0.4; charset=utf-8"
-    Counter = None  # type: ignore[assignment]
-    Gauge = None  # type: ignore[assignment]
-    Histogram = None  # type: ignore[assignment]
-    REGISTRY = None  # type: ignore[assignment]
+    Counter: Any = None  # type: ignore[no-redef]
+    Gauge: Any = None  # type: ignore[no-redef]
+    Histogram: Any = None  # type: ignore[no-redef]
+    REGISTRY: Any = None  # type: ignore[no-redef]
 
     def generate_latest(_: object | None = None) -> bytes:  # type: ignore[misc]
         raise RuntimeError("prometheus-client is required to expose metrics")
@@ -528,9 +528,9 @@ logger = logging.getLogger(__name__)
 
 
 class PrometheusRequestMetricsMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+    async def dispatch(self, request: Request, call_next: Any) -> Response:
         if _REQUEST_COUNT is None or _REQUEST_DURATION is None:
-            return await call_next(request)
+            return cast(Response, await call_next(request))  # type: ignore[unreachable]
 
         start = time.perf_counter()
         status_code = "500"
@@ -538,7 +538,7 @@ class PrometheusRequestMetricsMiddleware(BaseHTTPMiddleware):
         path_template = _resolve_path_template(request)
         method = request.method.upper()
         try:
-            response = await call_next(request)
+            response = cast(Response, await call_next(request))
             status_code = str(response.status_code)
             return response
         except Exception:
@@ -726,14 +726,19 @@ def record_db_operation(
 
 
 async def _record_cache_metrics() -> None:
-    if _CACHE_ENTRIES is None and _CACHE_MEMORY_BYTES is None and _REDIS_HEALTH is None:
+    checks = [
+        _CACHE_ENTRIES is None,
+        _CACHE_MEMORY_BYTES is None,
+        _REDIS_HEALTH is None,
+    ]
+    if all(checks):
         return
     from app.deps.cache import RedisCache, get_cache
 
     backend = get_cache()
     if isinstance(backend, RedisCache):
         try:
-            client = await backend._get_client()
+            client: Any = await backend._get_client()
             start = time.perf_counter()
             pong = await client.ping()
             latency = max(time.perf_counter() - start, 0.0)
@@ -796,7 +801,8 @@ def _record_pool_metrics() -> None:
 
 
 async def _record_db_metrics() -> None:
-    if _DB_HEALTH is None and _DB_OPERATION_DURATION is None:
+    db_checks = [_DB_HEALTH is None, _DB_OPERATION_DURATION is None]
+    if all(db_checks):
         return
 
     # Record pool metrics first
@@ -825,7 +831,7 @@ def _load_gputil():
     loader = spec.loader
     if loader is None:
         return None
-    loader.exec_module(module)  # type: ignore[arg-type]
+    loader.exec_module(module)
     return module
 
 
@@ -866,9 +872,9 @@ async def metrics_endpoint(request: Request) -> Response:
         return PlainTextResponse("Metrics misconfigured", status_code=503)
 
     if not _is_authorized(request):
-        response = PlainTextResponse("Unauthorized", status_code=401)
-        response.headers["WWW-Authenticate"] = 'Basic realm="Metrics"'
-        return response
+        auth_response = PlainTextResponse("Unauthorized", status_code=401)
+        auth_response.headers["WWW-Authenticate"] = 'Basic realm="Metrics"'
+        return auth_response
 
     if not _is_allowed(request):
         return PlainTextResponse("Forbidden", status_code=403)
@@ -889,7 +895,7 @@ def _ensure_notification_queue_metrics_registry() -> None:
     """Ensure notification queue metrics are registered on the default registry."""
 
     if REGISTRY is None:
-        return
+        return  # type: ignore[unreachable]
 
     try:
         from app.core import observability
@@ -897,14 +903,16 @@ def _ensure_notification_queue_metrics_registry() -> None:
         return
 
     try:
-        metrics = observability.get_notification_queue_metrics()
+        metrics: Any = observability.get_notification_queue_metrics()
     except RuntimeError:  # pragma: no cover - optional dependency guard
         return
 
     if metrics.registry is REGISTRY:
         return
 
-    fresh = observability.reinitialize_notification_queue_metrics(registry=REGISTRY)
+    fresh: Any = observability.reinitialize_notification_queue_metrics(
+        registry=REGISTRY
+    )
 
     try:
         from app.services import notification_queue

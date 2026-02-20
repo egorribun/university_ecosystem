@@ -189,7 +189,7 @@ async def _ensure_access_token(
     token = user.spotify.access_token or None
     exp = _ensure_utc(user.spotify.token_expires_at)
     if token and exp and exp > now:
-        return token
+        return str(token)
     refresh_token = user.spotify.refresh_token or None
     if not refresh_token:
         if not token and not user.spotify.is_connected:
@@ -198,7 +198,7 @@ async def _ensure_access_token(
             return None
         _disconnect_user(user, clear_refresh=True)
         await db.commit()
-        raise_unauthorized(locale, "errors.spotify.reconnect_required")
+        raise_unauthorized(locale or "en", "errors.spotify.reconnect_required")
     try:
         async with _spotify_circuit_breaker:
             async with httpx.AsyncClient(timeout=15) as client:
@@ -224,13 +224,13 @@ async def _ensure_access_token(
     if r.status_code != 200:
         _disconnect_user(user, clear_refresh=True)
         await db.commit()
-        raise_unauthorized(locale, "errors.spotify.reconnect_required")
+        raise_unauthorized(locale or "en", "errors.spotify.reconnect_required")
     data = r.json()
     access_token = data.get("access_token")
     if not access_token:
         _disconnect_user(user, clear_refresh=True)
         await db.commit()
-        raise_unauthorized(locale, "errors.spotify.reconnect_required")
+        raise_unauthorized(locale or "en", "errors.spotify.reconnect_required")
     await _save_tokens(
         db,
         user,
@@ -239,7 +239,7 @@ async def _ensure_access_token(
         data.get("scope"),
         data.get("expires_in"),
     )
-    return user.spotify.access_token
+    return str(user.spotify.access_token) if user.spotify.access_token else None
 
 
 @router.get("/auth-url", response_model=SpotifyAuthURL)
@@ -269,7 +269,9 @@ async def spotify_callback(
     if not payload.get("sub"):
         raise_validation_error("errors.spotify.invalid_state", locale)
     user = await db.get(User, uuid.UUID(payload["sub"]))
-    ensure_exists(user, "spotify.user_not_found", locale)
+    if not user:
+        ensure_exists(user, "spotify.user_not_found", locale)
+        raise ValueError("Unreachable")
     locale = resolve_locale(request=request, user=user)
     try:
         async with _spotify_circuit_breaker:
@@ -329,7 +331,7 @@ async def now_playing(
 ):
     locale = resolve_locale(request=request, user=user)
 
-    def _as_response(data: SpotifyNowPlayingOut):
+    def _as_response(data: SpotifyNowPlayingOut) -> SpotifyNowPlayingOut | Response:
         if data.track_id or data.track_name or data.artists:
             return data
         return Response(status_code=204)
@@ -344,6 +346,7 @@ async def now_playing(
                     )
         except CircuitBreakerOpenError:
             return None
+        return None
 
     token = await _ensure_access_token(db, user, locale=locale)
     if not token:
@@ -373,7 +376,7 @@ async def now_playing(
         if r.status_code == 401:
             _disconnect_user(user, clear_refresh=True)
             await db.commit()
-            raise_unauthorized(locale, "errors.spotify.reconnect_required")
+            raise_unauthorized(locale or "en", "errors.spotify.reconnect_required")
     if r.status_code == 204:
         user.spotify.is_playing = False
         user.spotify.last_checked_at = _now_utc()
@@ -382,7 +385,7 @@ async def now_playing(
     if r.status_code == 401:
         _disconnect_user(user, clear_refresh=True)
         await db.commit()
-        raise_unauthorized(locale, "errors.spotify.reconnect_required")
+        raise_unauthorized(locale or "en", "errors.spotify.reconnect_required")
     if r.status_code == 429:
         retry_after_header = r.headers.get("Retry-After")
         try:

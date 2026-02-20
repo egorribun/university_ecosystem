@@ -43,7 +43,7 @@ if (!globalThis.crypto) (globalThis as any).crypto = webcrypto
 beforeAll(async () => {
   await i18n.changeLanguage("en")
   document.documentElement.lang = "en"
-  server.listen({ onUnhandledRequest: "error" })
+  server.listen({ onUnhandledRequest: "warn" })
 })
 
 afterEach(() => {

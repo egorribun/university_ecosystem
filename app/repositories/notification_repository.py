@@ -83,7 +83,7 @@ class NotificationRepository(BaseRepository[Notification, dict, dict]):
             .values(read=True, read_at=now)
         )
         await self.db.flush()
-        return result.rowcount or 0
+        return int(getattr(result, "rowcount", 0) or 0)
 
     async def mark_all_as_read(self, user_id: uuid.UUID | str | int) -> int:
         """Mark all notifications as read for a user."""
@@ -99,7 +99,7 @@ class NotificationRepository(BaseRepository[Notification, dict, dict]):
             .values(read=True, read_at=now)
         )
         await self.db.flush()
-        return result.rowcount or 0
+        return int(getattr(result, "rowcount", 0) or 0)
 
     async def get_by_dedupe_key(
         self, user_id: uuid.UUID | str | int, dedupe_key: str

@@ -83,7 +83,7 @@ class AuthService:
             reset_link = f"{base}/reset-password?token={token}"
             locale = resolve_locale(request=request, user=user)
             await send_auth_email.kiq(
-                user.email,
+                str(user.email),
                 reset_link,
                 user.profile.full_name if user.profile else "",
                 locale,
@@ -160,7 +160,7 @@ class AuthService:
         try:
             # HIBP check must be done before hashing (async, network call)
             await _validate_password_hibp(new_password, locale=locale)
-            user.hashed_password = await get_password_hash(new_password, locale=locale)
+            user.hashed_password = await get_password_hash(new_password, locale=locale)  # type: ignore[assignment]
         except ValueError as exc:
             raise_validation_error("errors.common.bad_request", locale, reason=str(exc))
 
@@ -188,7 +188,7 @@ class AuthService:
         bg: BackgroundTasks,
     ) -> models.User:
         locale = resolve_locale(request=request, user=user)
-        if not await verify_password(payload.password, user.hashed_password):
+        if not await verify_password(payload.password, str(user.hashed_password)):
             raise_validation_error("errors.users.invalid_password", locale)
 
         normalized_email = str(payload.email).strip().lower()
@@ -279,7 +279,7 @@ class AuthService:
 
         # Race condition check: is email taken by someone else now?
         if await self.user_repo.check_email_exists(
-            record.new_email, exclude_user_id=user.id
+            str(record.new_email), exclude_user_id=user.id
         ):
             # Mark as used to prevent further attempts? Or just fail?
             # Logic says conflict.
@@ -301,6 +301,7 @@ class AuthService:
             )
 
         db_user = await self.user_repo.get(user.id)
+        assert db_user is not None
         db_user.email = record.new_email
 
         # Mark this token as used
@@ -333,11 +334,13 @@ class AuthService:
         user: models.User,
         payload: schemas.UserPasswordChangeIn,
         request: Request,
-    ) -> tuple[bool, list[models.ActiveSession]]:
+    ) -> tuple[bool, int]:
         locale = resolve_locale(request=request, user=user)
-        if not await verify_password(payload.current_password, user.hashed_password):
+        if not await verify_password(
+            payload.current_password, str(user.hashed_password)
+        ):
             raise_validation_error("errors.users.invalid_password", locale)
-        if await verify_password(payload.new_password, user.hashed_password):
+        if await verify_password(payload.new_password, str(user.hashed_password)):
             raise_validation_error("errors.users.password_same", locale)
         try:
             # HIBP check must be done before hashing (async, network call)
@@ -349,7 +352,8 @@ class AuthService:
             raise_validation_error("errors.common.bad_request", locale, reason=str(exc))
 
         db_user = await self.user_repo.get(user.id)
-        db_user.hashed_password = hashed_password
+        assert db_user is not None
+        db_user.hashed_password = hashed_password  # type: ignore[assignment]
 
         active_session: models.ActiveSession | None = getattr(
             request.state, "active_session", None
@@ -370,7 +374,7 @@ class AuthService:
         await ensure_mfa_relationships_loaded(self.auth_repo.db, db_user)
 
         # Update current user object
-        user.hashed_password = hashed_password
+        user.hashed_password = hashed_password  # type: ignore[assignment]
 
         self.audit.log(
             "users.password.changed",
@@ -390,7 +394,7 @@ class AuthService:
         if user is None:
             return None
         pending = await self.auth_repo.get_active_email_change_request(user.id)
-        user.pending_email = pending.new_email if pending else None
+        user.pending_email = pending.new_email if pending else None  # type: ignore[attr-defined]
         return user
 
 
@@ -425,7 +429,7 @@ async def attach_pending_email(
         # Fall back to repo call
         repo = AuthRepository(db)
         pending = await repo.get_active_email_change_request(user.id)
-        user.pending_email = pending.new_email if pending else None
+        user.pending_email = pending.new_email if pending else None  # type: ignore[attr-defined]
         return user
 
     return attach_pending_email_sync(user)
@@ -450,5 +454,5 @@ def attach_pending_email_sync(
         > now
     ]
     tokens.sort(key=lambda x: x.created_at, reverse=True)
-    user.pending_email = tokens[0].new_email if tokens else None
+    user.pending_email = tokens[0].new_email if tokens else None  # type: ignore[attr-defined]
     return user

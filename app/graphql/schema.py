@@ -6,6 +6,7 @@ included in the FastAPI application.
 
 import logging
 import uuid
+from collections.abc import AsyncGenerator
 
 import strawberry
 from fastapi import Request
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 async def get_context(
     request: Request,
-) -> GraphQLContext:
+) -> AsyncGenerator[GraphQLContext]:
     """Create GraphQL context for each request.
 
     This function is called by Strawberry for each GraphQL request.

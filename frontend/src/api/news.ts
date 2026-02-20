@@ -1,4 +1,4 @@
-import { z } from "zod"
+import * as v from "valibot"
 
 import type { components } from "@/api/generated/schema"
 import { apiClient } from "./client"
@@ -19,28 +19,28 @@ type FetchNewsItemOptions = {
 export type CreateNewsPayload = components["schemas"]["NewsCreate"]
 export type UpdateNewsPayload = components["schemas"]["NewsUpdate"] | null
 
-const newsUploadResponseSchema = z.object({ url: z.string().trim().min(1) })
+const newsUploadResponseSchema = v.object({ url: v.pipe(v.string(), v.trim(), v.minLength(1)) })
 
-const applyParsedData = <T>(response: { data: unknown }, schema: z.ZodType<T>, context: string) => {
+const applyParsedData = <T extends v.GenericSchema<unknown, unknown>>(response: { data: unknown }, schema: T, context: string) => {
   const parsed = ensureValidResponse(schema, response.data, context)
-  ;(response as { data: T }).data = parsed
+  ;(response as { data: v.InferOutput<T> }).data = parsed
 }
 
-const newsItemSchema = z.object({
-  id: z.string().uuid(),
-  title: z.string(),
-  content: z.string(),
-  created_at: z.string(),
-  title_en: z.string().nullable().optional(),
-  content_en: z.string().nullable().optional(),
-  image_url: z.string().nullable().optional(),
-  image_url_optimized: z.string().nullable(),
-  likes_count: z.number().default(0),
-  comments_count: z.number().default(0),
-  is_liked: z.boolean().default(false),
+const newsItemSchema = v.object({
+  id: v.pipe(v.string(), v.uuid()),
+  title: v.string(),
+  content: v.string(),
+  created_at: v.string(), // datetime as string
+  title_en: v.optional(v.nullable(v.string())),
+  content_en: v.optional(v.nullable(v.string())),
+  image_url: v.optional(v.nullable(v.string())),
+  image_url_optimized: v.nullable(v.string()), // computed_field is usually present but can be null
+  likes_count: v.optional(v.number(), 0),
+  comments_count: v.optional(v.number(), 0),
+  is_liked: v.optional(v.boolean(), false),
 })
 
-const newsListSchema = z.array(newsItemSchema)
+const newsListSchema = v.array(newsItemSchema)
 
 export const parseNewsList = (data: unknown) =>
   ensureValidResponse(newsListSchema, data, "GET /api/v1/news")

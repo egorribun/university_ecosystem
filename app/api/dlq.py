@@ -190,11 +190,12 @@ async def retry_dlq_job(
 
     if not job:
         raise_not_found("Job", "en", resource_id=job_id)
+        raise ValueError("Unreachable")
 
     # Reset for retry
-    job.status = JobStatus.PENDING.value
-    job.next_retry_at = datetime.now(UTC)
-    job.updated_at = datetime.now(UTC)
+    job.status = JobStatus.PENDING.value  # type: ignore[assignment]
+    job.next_retry_at = datetime.now(UTC)  # type: ignore[assignment]
+    job.updated_at = datetime.now(UTC)  # type: ignore[assignment]
 
     await db.commit()
 

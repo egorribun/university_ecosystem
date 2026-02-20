@@ -3442,29 +3442,10 @@ export interface components {
     }
     /** UserCreate */
     UserCreate: {
-      /** About */
-      about?: string | null
-      /** Achievements */
-      achievements?: string | null
       /** Avatar Url */
       avatar_url?: string | null
-      /** Course */
-      course?: string | null
       /** Cover Url */
       cover_url?: string | null
-      /** Department */
-      department?: string | null
-      /**
-       * Dnd Enabled
-       * @default false
-       */
-      dnd_enabled: boolean
-      /** Dnd End */
-      dnd_end?: string | null
-      /** Dnd Start */
-      dnd_start?: string | null
-      /** Education Level */
-      education_level?: string | null
       /**
        * Email
        * Format: email
@@ -3474,18 +3455,10 @@ export interface components {
       full_name?: string | null
       /** Group Id */
       group_id?: string | null
-      /** Institute */
-      institute?: string | null
       /** Invite Code */
       invite_code?: string | null
       /** Password */
       password: string
-      /** Position */
-      position?: string | null
-      /** Program */
-      program?: string | null
-      /** Record Book Number */
-      record_book_number?: string | null
       /** @default student */
       role: components["schemas"]["UserRole"]
       /**
@@ -3495,12 +3468,19 @@ export interface components {
       spotify_connected: boolean
       /** Spotify Display Name */
       spotify_display_name?: string | null
-      /** Status */
-      status?: string | null
-      /** Telegram */
-      telegram?: string | null
-      /** Timezone */
-      timezone?: string | null
+    }
+    /** UserEducationBase */
+    UserEducationBase: {
+      /** Course */
+      course?: string | null
+      /** Education Level */
+      education_level?: string | null
+      /** Institute */
+      institute?: string | null
+      /** Program */
+      program?: string | null
+      /** Record Book Number */
+      record_book_number?: string | null
       /** Track */
       track?: string | null
     }
@@ -3521,33 +3501,15 @@ export interface components {
     }
     /** UserOut */
     UserOut: {
-      /** About */
-      about?: string | null
-      /** Achievements */
-      achievements?: string | null
       /** Avatar Url */
       avatar_url?: string | null
       /** Avatar Url Optimized */
       readonly avatar_url_optimized: string | null
-      /** Course */
-      course?: string | null
       /** Cover Url */
       cover_url?: string | null
       /** Cover Url Optimized */
       readonly cover_url_optimized: string | null
-      /** Department */
-      department?: string | null
-      /**
-       * Dnd Enabled
-       * @default false
-       */
-      dnd_enabled: boolean
-      /** Dnd End */
-      dnd_end?: string | null
-      /** Dnd Start */
-      dnd_start?: string | null
-      /** Education Level */
-      education_level?: string | null
+      education_path?: components["schemas"]["UserEducationBase"] | null
       /**
        * Email
        * Format: email
@@ -3562,8 +3524,6 @@ export interface components {
        * Format: uuid
        */
       id: string
-      /** Institute */
-      institute?: string | null
       /** Is Active */
       is_active: boolean
       /** Mfa Challenges */
@@ -3579,12 +3539,8 @@ export interface components {
       mfa_required: boolean
       /** Pending Email */
       pending_email?: string | null
-      /** Position */
-      position?: string | null
-      /** Program */
-      program?: string | null
-      /** Record Book Number */
-      record_book_number?: string | null
+      preferences?: components["schemas"]["UserPreferencesBase"] | null
+      profile_detail?: components["schemas"]["UserProfileBase"] | null
       /**
        * Recovery Codes Left
        * @default 0
@@ -3601,16 +3557,8 @@ export interface components {
       spotify_display_name?: string | null
       /** Spotify Is Connected */
       spotify_is_connected?: boolean | null
-      /** Status */
-      status?: string | null
-      /** Telegram */
-      telegram?: string | null
-      /** Timezone */
-      timezone?: string | null
       /** Totp Enrollments */
       totp_enrollments?: components["schemas"]["MfaTotpEnrollmentOut"][]
-      /** Track */
-      track?: string | null
     }
     /** UserPasswordChangeIn */
     UserPasswordChangeIn: {
@@ -3619,62 +3567,57 @@ export interface components {
       /** New Password */
       new_password: string
     }
-    /** UserProfileUpdate */
-    UserProfileUpdate: {
-      /** About */
-      about?: string | null
-      /** Achievements */
-      achievements?: string | null
-      /** Course */
-      course?: string | null
-      /** Department */
-      department?: string | null
-      /** Dnd Enabled */
-      dnd_enabled?: boolean | null
+    /** UserPreferencesBase */
+    UserPreferencesBase: {
+      /**
+       * Dnd Enabled
+       * @default false
+       */
+      dnd_enabled: boolean
       /** Dnd End */
       dnd_end?: string | null
       /** Dnd Start */
       dnd_start?: string | null
-      /** Education Level */
-      education_level?: string | null
-      /** Email */
-      email?: string | null
-      /** Full Name */
-      full_name?: string | null
-      /** Institute */
-      institute?: string | null
+      /** Timezone */
+      timezone?: string | null
+    }
+    /** UserProfileBase */
+    UserProfileBase: {
+      /** About */
+      about?: string | null
+      /** Achievements */
+      achievements?: string | null
+      /** Department */
+      department?: string | null
       /** Position */
       position?: string | null
-      /** Program */
-      program?: string | null
-      /** Record Book Number */
-      record_book_number?: string | null
       /** Status */
       status?: string | null
       /** Telegram */
       telegram?: string | null
-      /** Timezone */
-      timezone?: string | null
-      /** Track */
-      track?: string | null
+    }
+    /** UserProfileUpdate */
+    UserProfileUpdate: {
+      education_path?: components["schemas"]["UserEducationBase"] | null
+      /** Email */
+      email?: string | null
+      /** Full Name */
+      full_name?: string | null
+      preferences?: components["schemas"]["UserPreferencesBase"] | null
+      profile_detail?: components["schemas"]["UserProfileBase"] | null
     }
     /**
      * UserPublicOut
      * @description Publicly visible user profile information (PII-safe).
      */
     UserPublicOut: {
-      /** About */
-      about?: string | null
       /** Avatar Url */
       avatar_url?: string | null
       /** Avatar Url Optimized */
       readonly avatar_url_optimized: string | null
-      /** Course */
-      course?: string | null
       /** Cover Url */
       cover_url?: string | null
-      /** Department */
-      department?: string | null
+      education_path?: components["schemas"]["UserEducationBase"] | null
       /** Full Name */
       full_name?: string | null
       /** Group Id */
@@ -3684,16 +3627,11 @@ export interface components {
        * Format: uuid
        */
       id: string
-      /** Institute */
-      institute?: string | null
       /** Is Active */
       is_active: boolean
-      /** Position */
-      position?: string | null
+      profile_detail?: components["schemas"]["UserProfileBase"] | null
       /** @default student */
       role: components["schemas"]["UserRole"]
-      /** Status */
-      status?: string | null
     }
     /**
      * UserRole

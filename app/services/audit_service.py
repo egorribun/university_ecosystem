@@ -114,7 +114,7 @@ class AuditService:
         }
         sensitive_suffixes = ("_token", "_secret", "_key", "_pwd", "_password")
 
-        redacted = {}
+        redacted: dict[str, Any] = {}
         for key, value in data.items():
             key_lower = key.lower()
             should_redact = key_lower in sensitive_keys or any(
@@ -340,10 +340,10 @@ class SecureAuditService:
             str(log.id or ""),
             str(log.actor_user_id or ""),
             str(log.subject_user_id or ""),
-            log.resource_type or "",
-            log.resource_id or "",
-            log.action or "",
-            log.ip_address or "",
+            str(log.resource_type or ""),
+            str(log.resource_id or ""),
+            str(log.action or ""),
+            str(log.ip_address or ""),
             (
                 log.created_at.isoformat()
                 if log.created_at
@@ -360,7 +360,7 @@ class SecureAuditService:
             return None
         for signing_key in self._signing_keys:
             expected = self._compute_signature(log, key=signing_key)
-            if hmac.compare_digest(log.signature, expected):
+            if hmac.compare_digest(str(getattr(log, "signature", "")), expected):
                 return signing_key
         return None
 
@@ -391,7 +391,7 @@ class SecureAuditService:
                 "user_agent": user_agent,
             }
         )
-        log.signature = self._compute_signature(log)
+        log.signature = self._compute_signature(log)  # type: ignore[assignment]
         await db.flush()
         return log
 
@@ -411,7 +411,7 @@ class SecureAuditService:
         primary_signature = self._compute_signature(log, key=self._primary_key)
         if log.signature == primary_signature:
             return False
-        log.signature = primary_signature
+        log.signature = primary_signature  # type: ignore[assignment]
         return True
 
     async def verify_batch(

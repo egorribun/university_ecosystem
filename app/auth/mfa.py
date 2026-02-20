@@ -7,7 +7,7 @@ import hashlib
 import json
 import logging
 import secrets
-from collections.abc import Mapping, MutableMapping
+from collections.abc import MutableMapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -162,7 +162,7 @@ async def user_has_active_factor(db: AsyncSession, user: User) -> bool:
             MfaTotpEnrollment.revoked_at.is_(None),
         )
         res = await db.execute(stmt)
-        if res.scalar() > 0:
+        if (res.scalar() or 0) > 0:
             return True
 
     # Check WebAuthn
@@ -175,7 +175,7 @@ async def user_has_active_factor(db: AsyncSession, user: User) -> bool:
             WebAuthnCredential.user_id == user.id
         )
         res = await db.execute(stmt)
-        if res.scalar() > 0:
+        if (res.scalar() or 0) > 0:
             return True
 
     return False
@@ -259,7 +259,7 @@ async def _enforce_challenge_rate_limit(
             raise_http_error(
                 status.HTTP_429_TOO_MANY_REQUESTS,
                 "errors.rate_limit.generic",
-                locale,
+                locale or "en",
             )
     else:
         ratelimit_utils.limiter.check(key, limit, window, message=message)
@@ -307,8 +307,9 @@ def _extract_attempt_limit(
     challenge: MfaChallenge | None, fallback: int | None = None
 ) -> int | None:
     limit = fallback
-    if challenge and isinstance(challenge.payload, Mapping):
-        raw_limit = challenge.payload.get("attempt_limit")
+    payload = getattr(challenge, "payload", None)
+    if challenge and payload and hasattr(payload, "get"):
+        raw_limit = payload.get("attempt_limit")
         if isinstance(raw_limit, int):
             limit = raw_limit
     if limit is None:
@@ -344,7 +345,7 @@ async def _lock_challenge(
     locale: str | None,
     status_code: int = status.HTTP_429_TOO_MANY_REQUESTS,
 ) -> None:
-    challenge.consumed_at = _utcnow()
+    challenge.consumed_at = _utcnow()  # type: ignore[assignment]
     await db.commit()
     audit_logger.warning(
         json.dumps(
@@ -361,7 +362,7 @@ async def _lock_challenge(
     raise_http_error(
         status_code,
         "errors.auth.mfa_challenge_locked",
-        locale,
+        locale or "en",
     )
 
 
@@ -400,7 +401,7 @@ async def _register_failed_attempt(
     if challenge is None:
         return
     current = int(getattr(challenge, "attempt_count", 0) or 0)
-    challenge.attempt_count = current + 1
+    challenge.attempt_count = current + 1  # type: ignore[assignment]
     await db.commit()  # Ensure persistence even on exception
     # Re-acquire challenge after commit (to bind to new transaction)
     stmt = select(MfaChallenge).where(MfaChallenge.id == challenge.id)
@@ -443,6 +444,7 @@ async def get_challenge(
         raise_http_error(
             status.HTTP_400_BAD_REQUEST, "errors.mfa.invalid_challenge", locale
         )
+        raise ValueError("Invalid challenge")
     now = _utcnow()
     expires_at = challenge.expires_at
     if expires_at is not None and expires_at.tzinfo is None:
@@ -450,11 +452,11 @@ async def get_challenge(
     consumed_at = challenge.consumed_at
     if consumed_at is not None and consumed_at.tzinfo is None:
         consumed_at = consumed_at.replace(tzinfo=UTC)
-    if consumed_at is not None or (expires_at is not None and expires_at <= now):
+    if consumed_at is not None or (expires_at is not None and expires_at <= now):  # type: ignore[unreachable]
         raise_http_error(
             status.HTTP_400_BAD_REQUEST, "errors.mfa.invalid_challenge", locale
         )
-    if consume:
+    if consume:  # type: ignore[unreachable]
         challenge.consumed_at = now
         await db.flush()
     return challenge
@@ -523,6 +525,11 @@ async def consume_challenge(
             )
 
         user = await db.get(User, challenge.user_id)
+        if not user:
+            raise_http_error(
+                status.HTTP_400_BAD_REQUEST, "errors.mfa.invalid_challenge", locale
+            )
+            raise ValueError("Unreachable")
         # Verify TOTP code
         enrollments_stmt = select(MfaTotpEnrollment).where(
             MfaTotpEnrollment.user_id == user.id,
@@ -536,8 +543,8 @@ async def consume_challenge(
         for enrollment in enrollments:
             if not enrollment.secret:
                 continue
-            totp = pyotp.TOTP(enrollment.secret)
-            if totp.verify(provided_code, valid_window=1):
+            totp = pyotp.TOTP(str(enrollment.secret))
+            if totp.verify(str(provided_code), valid_window=1):
                 valid = True
                 break
 
@@ -560,7 +567,12 @@ async def consume_challenge(
                 status.HTTP_400_BAD_REQUEST, "errors.mfa.code_required", locale
             )
         user = await db.get(User, challenge.user_id)
-        if not await verify_recovery_code(db, user=user, code=provided_code):
+        if not user:
+            raise_http_error(
+                status.HTTP_400_BAD_REQUEST, "errors.mfa.invalid_challenge", locale
+            )
+            raise ValueError("Unreachable")
+        if not await verify_recovery_code(db, user=user, code=str(provided_code)):
             await _register_failed_attempt(
                 db,
                 challenge,
@@ -582,10 +594,16 @@ async def consume_challenge(
 
         service = WebAuthnService(db)
         user = await db.get(User, challenge.user_id)
+        if not user:
+            raise_http_error(
+                status.HTTP_400_BAD_REQUEST, "errors.mfa.invalid_challenge", locale
+            )
+            raise ValueError("Unreachable")
         try:
+            payload: dict = challenge.payload  # type: ignore[assignment]
             await service.verify_authentication(
                 user,
-                challenge.payload["options"]["challenge"],
+                str(payload.get("options", {}).get("challenge", "")),
                 provided_webauthn_response,
             )
         except Exception:
@@ -601,7 +619,7 @@ async def consume_challenge(
             )
 
     # If we reached here, verification was successful.
-    challenge.consumed_at = _utcnow()
+    challenge.consumed_at = _utcnow()  # type: ignore[assignment]
     await db.commit()
 
     return challenge, mfa_session
@@ -629,7 +647,7 @@ async def purge_expired_challenges(
     )
     result = await db.execute(delete_stmt)
     await db.flush()
-    return int(result.rowcount or 0)
+    return int(getattr(result, "rowcount", 0))
 
 
 async def start_totp_enrollment(
@@ -653,11 +671,13 @@ async def start_totp_enrollment(
         if not reuse_existing:
             raise_validation_error("errors.mfa.totp_enrollment_pending", "en")
         if label and label != pending.label:
-            pending.label = label
+            pending.label = label  # type: ignore[assignment]
             await db.flush()
         account_name = label or pending.label or user.email
-        otpauth_url = build_totp_uri(pending.secret, account_name=account_name)
-        return pending, pending.secret, otpauth_url
+        otpauth_url = build_totp_uri(
+            str(pending.secret), account_name=str(account_name)
+        )
+        return pending, str(pending.secret), otpauth_url
 
     count_stmt = (
         select(func.count())
@@ -684,7 +704,7 @@ async def start_totp_enrollment(
     db.add(enrollment)
     await db.flush()
     account_name = label or user.email
-    otpauth_url = build_totp_uri(secret, account_name=account_name)
+    otpauth_url = build_totp_uri(secret, account_name=str(account_name))
     return enrollment, secret, otpauth_url
 
 
@@ -695,17 +715,19 @@ async def complete_totp_enrollment(
     code: str,
 ) -> MfaTotpEnrollment:
     if enrollment.secret is None:
-        logger.warning(
+        logger.warning(  # type: ignore[unreachable]
             "Cannot complete TOTP enrollment %s: decryption failed",
             enrollment.id,
         )
         raise_validation_error("errors.mfa.invalid_code", "en")
-    if not verify_totp(enrollment.secret, code):
+        raise ValueError("Invalid code")
+    if not verify_totp(str(enrollment.secret), code):
         raise_validation_error("errors.mfa.invalid_code", "en")
+        raise ValueError("Invalid code")
     now = _utcnow()
-    enrollment.confirmed_at = now
-    enrollment.revoked_at = None
-    enrollment.is_active = True
+    enrollment.confirmed_at = now  # type: ignore[assignment]
+    enrollment.revoked_at = None  # type: ignore[assignment]
+    enrollment.is_active = True  # type: ignore[assignment]
     await db.flush()
     return enrollment
 
@@ -724,8 +746,8 @@ async def disable_totp(
     now = _utcnow()
     for record in result.scalars():
         if record.is_active:
-            record.is_active = False
-            record.revoked_at = now
+            record.is_active = False  # type: ignore[assignment]
+            record.revoked_at = now  # type: ignore[assignment]
             count += 1
 
     if count > 0:
@@ -787,7 +809,8 @@ async def verify_totp_for_user(
         legacy_result = await db.execute(legacy_stmt)
         enrollments = list(legacy_result.scalars())
     if not enrollments:
-        raise_validation_error("errors.mfa.no_enrollment", locale)
+        raise_validation_error("errors.mfa.no_enrollment", locale or "en")
+        raise ValueError("No enrollment")
     loaded_challenge = challenge
     if challenge_token and loaded_challenge is None:
         loaded_challenge = await get_challenge(
@@ -800,11 +823,14 @@ async def verify_totp_for_user(
         )
     if loaded_challenge is not None:
         if loaded_challenge.challenge_type != CHALLENGE_TYPE_TOTP_VERIFY:
-            raise_validation_error("errors.mfa.invalid_challenge", locale)
+            raise_validation_error("errors.mfa.invalid_challenge", locale or "en")
+            raise ValueError("Invalid challenge")
         if loaded_challenge.user_id != user.id:
-            raise_validation_error("errors.mfa.invalid_challenge", locale)
+            raise_validation_error("errors.mfa.invalid_challenge", locale or "en")
+            raise ValueError("Invalid challenge")
         if session_id is not None and loaded_challenge.session_id != session_id:
-            raise_validation_error("errors.mfa.invalid_challenge", locale)
+            raise_validation_error("errors.mfa.invalid_challenge", locale or "en")
+            raise ValueError("Invalid challenge")
     limit = _extract_attempt_limit(loaded_challenge, settings.mfa_totp_attempt_limit)
     await _ensure_challenge_not_locked(
         db,
@@ -816,21 +842,21 @@ async def verify_totp_for_user(
 
     for enrollment in enrollments:
         if enrollment.secret is None:
-            logger.warning(
+            logger.warning(  # type: ignore[unreachable]
                 "Skipping TOTP enrollment %s for user %s: decryption failed",
                 enrollment.id,
                 user.id,
             )
             continue
-        if verify_totp(enrollment.secret, code):
+        if verify_totp(str(enrollment.secret), code):
             if loaded_challenge is not None:
                 await consume_challenge(
                     db,
-                    challenge_token=loaded_challenge.token,
+                    challenge_token=str(loaded_challenge.token),
                     challenge_type=CHALLENGE_TYPE_TOTP_VERIFY,
                     provided_code=code,
                     provided_method=MFA_METHOD_TOTP,
-                    locale=locale,
+                    locale=locale or "en",
                 )
             return enrollment, loaded_challenge
     await _register_failed_attempt(
@@ -840,7 +866,8 @@ async def verify_totp_for_user(
         limit=limit,
         locale=locale,
     )
-    raise_validation_error("errors.mfa.invalid_code", locale)
+    raise_validation_error("errors.mfa.invalid_code", locale or "en")
+    raise ValueError("Invalid code")
 
 
 async def refresh_user_mfa_preferences(
@@ -877,14 +904,14 @@ async def refresh_user_mfa_preferences(
 
     changed = False
     if user.mfa_default_method != new_default:
-        user.mfa_default_method = new_default
+        user.mfa_default_method = new_default  # type: ignore[assignment]
         changed = True
 
     if new_default is not None and not user.mfa_required:
-        user.mfa_required = True
+        user.mfa_required = True  # type: ignore[assignment]
         changed = True
     elif new_default is None and user.mfa_required:
-        user.mfa_required = False
+        user.mfa_required = False  # type: ignore[assignment]
         changed = True
 
     if changed:
@@ -911,19 +938,19 @@ async def reset_user_mfa(db: AsyncSession, *, user: User) -> MfaResetStats:
         delete(RecoveryCode).where(RecoveryCode.user_id == user.id)
     )
 
-    stats.totp_deleted = int(totp_result.rowcount or 0)
-    stats.webauthn_deleted = int(webauthn_result.rowcount or 0)
-    stats.recovery_codes_deleted = int(recovery_result.rowcount or 0)
-    stats.challenges_revoked = int(challenge_result.rowcount or 0)
+    stats.totp_deleted = int(getattr(totp_result, "rowcount", 0))
+    stats.webauthn_deleted = int(getattr(webauthn_result, "rowcount", 0))
+    stats.recovery_codes_deleted = int(getattr(recovery_result, "rowcount", 0))
+    stats.challenges_revoked = int(getattr(challenge_result, "rowcount", 0))
 
     if user.mfa_required:
-        user.mfa_required = False
+        user.mfa_required = False  # type: ignore[assignment]
         stats.fields_cleared = True
     if user.mfa_default_method:
-        user.mfa_default_method = None
+        user.mfa_default_method = None  # type: ignore[assignment]
         stats.fields_cleared = True
     if user.mfa_last_verified_at is not None:
-        user.mfa_last_verified_at = None
+        user.mfa_last_verified_at = None  # type: ignore[assignment]
         stats.fields_cleared = True
 
     await db.flush()
@@ -945,12 +972,12 @@ async def record_mfa_success(
     method: str,
 ) -> None:
     now = _utcnow()
-    user.mfa_last_verified_at = now
+    user.mfa_last_verified_at = now  # type: ignore[assignment]
     if session is not None:
-        session.mfa_completed_at = now
-        session.mfa_required = False
-        session.mfa_method = method[:64]
-        session.mfa_verified_at = now
+        session.mfa_completed_at = now  # type: ignore[assignment]
+        session.mfa_required = False  # type: ignore[assignment]
+        session.mfa_method = method[:64]  # type: ignore[assignment]
+        session.mfa_verified_at = now  # type: ignore[assignment]
     await db.flush()
 
 
@@ -1018,7 +1045,7 @@ async def verify_trusted_device_token(
         return False
 
     # Update usage stats
-    device.last_used_at = now
+    device.last_used_at = now  # type: ignore[assignment]
     await db.flush()
     return True
 
@@ -1072,9 +1099,9 @@ async def verify_recovery_code(db: AsyncSession, *, user: User, code: str) -> bo
     normalized_code = code.strip().upper()
 
     for record in available_codes:
-        if await verify_password(normalized_code, record.code_hash):
-            record.is_used = True
-            record.used_at = _utcnow()
+        if await verify_password(normalized_code, str(record.code_hash)):
+            record.is_used = True  # type: ignore[assignment]
+            record.used_at = _utcnow()  # type: ignore[assignment]
             await db.flush()
             return True
 

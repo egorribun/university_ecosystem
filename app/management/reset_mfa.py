@@ -9,6 +9,7 @@ import logging
 from typing import Any
 
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import mfa
 from app.core.database import async_session
@@ -43,7 +44,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 
 def _audit_cli(
-    event: str, *, user_id: int, reason: str, extra: dict[str, Any] | None = None
+    event: str, *, user_id: Any, reason: str, extra: dict[str, Any] | None = None
 ) -> None:
     payload: dict[str, Any] = {
         "event": event,
@@ -57,7 +58,7 @@ def _audit_cli(
 
 
 async def _load_user(
-    session, *, user_id: int | None, email: str | None
+    session: AsyncSession, *, user_id: Any | None, email: str | None
 ) -> models.User | None:
     if user_id is not None:
         return await session.get(models.User, user_id)
@@ -72,7 +73,7 @@ async def _load_user(
 
 async def _reset_user_mfa(
     *,
-    user_id: int | None,
+    user_id: Any | None,
     email: str | None,
     notify: bool,
 ) -> tuple[models.User, mfa.MfaResetStats]:

@@ -61,7 +61,7 @@ class ActiveSession(Base, UUID7PrimaryKeyMixin, UserFK):
 class MfaTotpEnrollment(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "mfa_totp_enrollments"
 
-    secret = Column(EncryptedString(), nullable=False)
+    secret: Mapped[str] = mapped_column(EncryptedString(), nullable=False)
     label = Column(String(255))
     is_active = Column(Boolean, nullable=False, default=False, index=True)
     confirmed_at = Column(DateTime(timezone=True), nullable=True, index=True)
@@ -150,8 +150,9 @@ class EmailChangeToken(Base, UUID7PrimaryKeyMixin, UserFK):
 
     @property
     def is_active(self) -> bool:
-        return not self.used and (
-            self.expires_at is None or self.expires_at > datetime.now(UTC)
+        return bool(
+            not self.used
+            and (self.expires_at is None or self.expires_at > datetime.now(UTC))
         )
 
 

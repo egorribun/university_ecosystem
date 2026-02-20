@@ -16,8 +16,8 @@ class SpotifyIntegration(Base):
         primary_key=True,
     )
     spotify_user_id = Column(String, unique=True, index=True)
-    access_token = Column(EncryptedString())
-    refresh_token = Column(EncryptedString())
+    access_token: Mapped[str | None] = mapped_column(EncryptedString(), nullable=True)
+    refresh_token: Mapped[str | None] = mapped_column(EncryptedString(), nullable=True)
     token_expires_at = Column(DateTime(timezone=True), index=True)
     scope = Column(String)
     display_name = Column(String)

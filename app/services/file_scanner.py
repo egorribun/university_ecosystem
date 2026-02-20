@@ -54,7 +54,7 @@ def _create_clamd_client():
     """Return a configured clamd client instance."""
 
     try:  # Import lazily so environments without clamd stay functional.
-        import clamd  # type: ignore[import]
+        import clamd
     except ImportError as exc:  # pragma: no cover - depends on optional dependency
         raise FileScannerUnavailableError("python-clamd is not installed") from exc
 
@@ -176,6 +176,15 @@ class _UploadStream:
             )
         return data
 
+    def seek(self, offset: int, whence: int = 0) -> int:
+        return self._wrapped.seek(offset, whence)
+
+    def tell(self) -> int:
+        return self._wrapped.tell()
+
+    def close(self) -> None:
+        self._wrapped.close()
+
 
 async def scan_for_malware(
     payload: bytes | UploadFile,
@@ -199,7 +208,7 @@ async def scan_for_malware(
         if size_bytes == 0:
             return
     else:  # pragma: no cover - defensive guard for unexpected inputs
-        return
+        return  # type: ignore[unreachable]
 
     if not getattr(settings, "event_file_scanner_enabled", False):
         return
@@ -214,7 +223,7 @@ async def scan_for_malware(
         raise_http_error(
             status.HTTP_413_CONTENT_TOO_LARGE,
             "errors.files.too_large",
-            locale,
+            locale or "en",
         )
 
     # Check circuit breaker first for fail-fast behavior
@@ -248,7 +257,7 @@ async def scan_for_malware(
             raise_http_error(
                 status.HTTP_503_SERVICE_UNAVAILABLE,
                 "errors.files.scanner_unavailable",
-                locale,
+                locale or "en",
             )
         # Allow upload without scanning when configured
         return
@@ -266,14 +275,14 @@ async def scan_for_malware(
         raise_http_error(
             status.HTTP_413_CONTENT_TOO_LARGE,
             "errors.files.too_large",
-            locale,
+            locale or "en",
         )
     except FileScannerUnavailableError as exc:
         logger.error("File scanner unavailable: %s", exc)
         raise_http_error(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             "errors.files.scanner_unavailable",
-            locale,
+            locale or "en",
         )
 
     _log_scan_result(result, backend)
@@ -286,7 +295,7 @@ async def scan_for_malware(
                 logger.warning("Failed to quarantine infected payload", exc_info=True)
         raise_validation_error(
             "errors.files.infected",
-            locale,
+            locale or "en",
         )
 
 
@@ -328,7 +337,7 @@ async def _scan_upload_with_clamd(
 
     def _runner() -> tuple[str | None, int]:
         stream = _UploadStream(upload.file, limit=size_limit)
-        signature = _scan_with_clamd_stream(stream)
+        signature = _scan_with_clamd_stream(stream)  # type: ignore[arg-type]
         return signature, stream.bytes_scanned
 
     return await _run_scan(_runner)

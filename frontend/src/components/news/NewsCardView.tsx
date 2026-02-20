@@ -107,6 +107,7 @@ export const NewsCardView: FC<NewsCardViewProps> = ({
       className={cn("h-full outline-none", hoveringDisabled ? "cursor-default" : "cursor-pointer")}
     >
       <ContentCard
+        data-testid="news-card"
         hoverable={!hoveringDisabled}
         className={cn(
           "card-news group h-full",

@@ -78,35 +78,35 @@ export default function Profile() {
   const [edit, setEdit] = useState(false)
   const [fullName, setFullName] = useState(user?.full_name || "")
   const [email, setEmail] = useState(user?.email || "")
-  const [about, setAbout] = useState(user?.about || "")
-  const [recordBookNumber, setRecordBookNumber] = useState(user?.record_book_number || "")
-  const [status, setStatus] = useState(user?.status || "")
-  const [institute, setInstitute] = useState(user?.institute || "")
-  const [course, setCourse] = useState(user?.course || "")
-  const [educationLevel, setEducationLevel] = useState(user?.education_level || "")
-  const [track, setTrack] = useState(user?.track || "")
-  const [program, setProgram] = useState(user?.program || "")
-  const [telegram, setTelegram] = useState(user?.telegram || "")
-  const [achievements, setAchievements] = useState(user?.achievements || "")
-  const [department, setDepartment] = useState(user?.department || "")
-  const [position, setPosition] = useState(user?.position || "")
+  const [about, setAbout] = useState(user?.profile_detail?.about || "")
+  const [recordBookNumber, setRecordBookNumber] = useState(user?.education_path?.record_book_number || "")
+  const [status, setStatus] = useState(user?.profile_detail?.status || "")
+  const [institute, setInstitute] = useState(user?.education_path?.institute || "")
+  const [course, setCourse] = useState(user?.education_path?.course || "")
+  const [educationLevel, setEducationLevel] = useState(user?.education_path?.education_level || "")
+  const [track, setTrack] = useState(user?.education_path?.track || "")
+  const [program, setProgram] = useState(user?.education_path?.program || "")
+  const [telegram, setTelegram] = useState(user?.profile_detail?.telegram || "")
+  const [achievements, setAchievements] = useState(user?.profile_detail?.achievements || "")
+  const [department, setDepartment] = useState(user?.profile_detail?.department || "")
+  const [position, setPosition] = useState(user?.profile_detail?.position || "")
   const [saving, setSaving] = useState(false)
 
   const initEditFields = useCallback(() => {
     setFullName(user?.full_name || "")
     setEmail(user?.email || "")
-    setAbout(user?.about || "")
-    setRecordBookNumber(user?.record_book_number || "")
-    setStatus(user?.status || "")
-    setInstitute(user?.institute || "")
-    setCourse(user?.course || "")
-    setEducationLevel(user?.education_level || "")
-    setTrack(user?.track || "")
-    setProgram(user?.program || "")
-    setTelegram(user?.telegram || "")
-    setAchievements(user?.achievements || "")
-    setDepartment(user?.department || "")
-    setPosition(user?.position || "")
+    setAbout(user?.profile_detail?.about || "")
+    setRecordBookNumber(user?.education_path?.record_book_number || "")
+    setStatus(user?.profile_detail?.status || "")
+    setInstitute(user?.education_path?.institute || "")
+    setCourse(user?.education_path?.course || "")
+    setEducationLevel(user?.education_path?.education_level || "")
+    setTrack(user?.education_path?.track || "")
+    setProgram(user?.education_path?.program || "")
+    setTelegram(user?.profile_detail?.telegram || "")
+    setAchievements(user?.profile_detail?.achievements || "")
+    setDepartment(user?.profile_detail?.department || "")
+    setPosition(user?.profile_detail?.position || "")
   }, [user])
 
   useEffect(() => {
@@ -127,7 +127,7 @@ export default function Profile() {
   const { size: statusSize, offset: statusOffset } = calculateStatusIndicator(avatarPx)
 
   const vCardData = user ? buildVCardString(user) : ""
-  const achievementsList = parseAchievements(user?.achievements)
+  const achievementsList = parseAchievements(user?.profile_detail?.achievements)
 
   const handleSave = async () => {
     setSaving(true)
@@ -135,18 +135,22 @@ export default function Profile() {
       const response = await api.put<User>("/users/me", {
         full_name: fullName,
         email,
-        about,
-        record_book_number: recordBookNumber,
-        status,
-        institute,
-        course,
-        education_level: educationLevel,
-        track,
-        program,
-        telegram,
-        achievements,
-        department,
-        position,
+        profile_detail: {
+          about,
+          status,
+          telegram,
+          achievements,
+          department,
+          position,
+        },
+        education_path: {
+          record_book_number: recordBookNumber,
+          institute,
+          course,
+          education_level: educationLevel,
+          track,
+          program,
+        }
       })
       setUser(response.data)
       setEdit(false)

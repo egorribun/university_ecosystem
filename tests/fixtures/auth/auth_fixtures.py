@@ -27,7 +27,11 @@ async def user_factory(
         if not user.spotify:
             user.spotify = models.SpotifyIntegration()
         await db_session.commit()
-        await db_session.refresh(user)
+        from app.models.user_loaders import USER_AUTH_LOAD_OPTIONS
+
+        user = await db_session.get(
+            models.User, user.id, options=USER_AUTH_LOAD_OPTIONS, populate_existing=True
+        )
         await ensure_mfa_relationships_loaded(db_session, user)
         return user
 

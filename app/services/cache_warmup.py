@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+import uuid
 from typing import TYPE_CHECKING
 
 from fastapi.encoders import jsonable_encoder
@@ -87,7 +88,7 @@ def _period_days_from_key(period_key: str) -> int | None:
 async def _warm_stats_for_user(
     cache: BaseCache,
     db: AsyncSession,
-    user_id: int,
+    user_id: uuid.UUID | str,
     period_key: str,
     *,
     skip_cache: bool = False,
@@ -106,14 +107,9 @@ async def _warm_stats_for_user(
         return
 
     days = _period_days_from_key(resolved_period) or 30
-    from app.repositories.user_repository import UserRepository
-    from app.services.audit_service import audit_service
-    from app.services.notification_service import NotificationService
-    from app.services.user_service import UserService
+    from app.services.user.analytics_service import UserAnalyticsService
 
-    repo = UserRepository(db)
-    notifications = NotificationService(db)
-    service = UserService(repo, audit_service, notifications)
+    service = UserAnalyticsService(db)
 
     tasks = [
         service.get_attendance_stats(
@@ -145,10 +141,10 @@ async def _warm_stats(cache: BaseCache, db: AsyncSession) -> None:
     if not settings.cache_warmup_stats_user_ids:
         return
     tasks = []
-    for user_id in settings.cache_warmup_stats_user_ids:
+    for u_id in settings.cache_warmup_stats_user_ids:
         for period_key in settings.cache_warmup_period_keys:
             tasks.append(
-                _warm_stats_for_user(cache, db, user_id, period_key, skip_cache=False)
+                _warm_stats_for_user(cache, db, str(u_id), period_key, skip_cache=False)
             )
     await asyncio.gather(*tasks)
 
@@ -179,22 +175,12 @@ async def _warm_news(cache: BaseCache, db: AsyncSession) -> None:
         if cached and _is_entry_fresh(cached):
             continue
 
-        results = await service.list_news(limit=21, cursor=None)
+        items = await service.list_news(limit=20, cursor=None, locale=locale)
+        items_list = items.items
+        has_more = len(items_list) >= 20
 
-        rows = []
-        for news_obj, l_count, c_count, liked in results:
-            news_obj.likes_count = l_count or 0
-            news_obj.comments_count = c_count or 0
-            news_obj.is_liked = bool(liked)
-            rows.append(news_obj)
-
-        has_more = len(rows) > 20
-        if has_more:
-            rows = rows[:20]
-
-        items = [service.serialize_news(item, locale) for item in rows]
         payload = {
-            "items": items,
+            "items": items_list,
             "has_more": has_more,
             "next_cursor": None,  # Simplification for warmup
         }
@@ -233,7 +219,7 @@ async def _warm_events(cache: BaseCache, db: AsyncSession) -> None:
     # Since this is a background task, manual construction is safer/easier.
     # VectorService needs settings.
 
-    vector_service = VectorService()
+    vector_service = VectorService(db)
     repo = EventRepository(db)
     service = EventService(repo, vector_service)
 

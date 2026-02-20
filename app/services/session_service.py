@@ -29,7 +29,7 @@ async def register_session_bg(
     try:
         session_backend = await get_session_backend()
         await session_backend.register_session(
-            user_id=str(user_id),
+            user_id=str(user_id),  # type: ignore[arg-type]
             jti=jti,
             expires_at=expires_at,
             metadata={
@@ -168,7 +168,7 @@ class SessionService:
                 setattr(session, key, str(val)[:length])
 
         # Boolean and Datetime flags
-        session.mfa_required = bool(metadata.get("mfa_required", False))
+        session.mfa_required = bool(metadata.get("mfa_required", False))  # type: ignore[assignment]
         if val := metadata.get("mfa_completed_at"):
             session.mfa_completed_at = val
         if val := metadata.get("mfa_verified_at"):
@@ -191,9 +191,9 @@ class SessionService:
 
             backend = await get_session_backend()
             for s in old_sessions:
-                s.revoked_at = now
+                s.revoked_at = now  # type: ignore[assignment]
                 try:
-                    await backend.revoke_session(s.jti)
+                    await backend.revoke_session(str(s.jti))
                 except Exception:
                     logger.warning(
                         "Failed to revoke session from Redis during cleanup",
@@ -236,6 +236,6 @@ class SessionService:
         # For better SRP, this could be moved here too.
         args = (user_id, jti, expires_at, session.ip_address, session.user_agent)
         if bg_tasks:
-            bg_tasks.add_task(register_session_bg, *args)
+            bg_tasks.add_task(register_session_bg, *args)  # type: ignore[arg-type]
         else:
-            await register_session_bg(*args)
+            await register_session_bg(*args)  # type: ignore[arg-type]

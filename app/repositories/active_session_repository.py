@@ -44,7 +44,7 @@ class ActiveSessionRepository(ReadOnlyRepository[ActiveSession]):
     ) -> Sequence[ActiveSession]:
         stmt = (
             select(ActiveSession)
-            .options(load_only(ActiveSession.id, ActiveSession.jti))
+            .options(load_only(ActiveSession.id, ActiveSession.jti))  # type: ignore[arg-type]
             .where(ActiveSession.user_id == user_id)
             .where(ActiveSession.revoked_at.is_(None))
             .where(ActiveSession.expires_at > now)
@@ -59,11 +59,11 @@ class ActiveSessionRepository(ReadOnlyRepository[ActiveSession]):
     async def revoke_by_id(self, session_id: uuid.UUID, now: datetime) -> bool:
         session = await self.db.get(ActiveSession, session_id)
         if session:
-            session.revoked_at = now
+            session.revoked_at = now  # type: ignore[assignment]
             return True
         return False
 
-    async def delete_matching(self, whereclause: ClauseElement[bool]) -> int:
-        stmt = delete(ActiveSession).where(whereclause)
+    async def delete_matching(self, whereclause: ClauseElement) -> int:
+        stmt = delete(ActiveSession).where(whereclause)  # type: ignore[arg-type]
         result = await self.db.execute(stmt)
-        return int(result.rowcount or 0)
+        return int(getattr(result, "rowcount", 0) or 0)

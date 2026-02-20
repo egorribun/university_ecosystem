@@ -22,11 +22,11 @@ def configure_uvloop() -> bool:
     Returns True if uvloop was successfully configured, False otherwise.
     Works silently on Windows where uvloop is not supported.
     """
-    if sys.platform == "win32":
+    if sys.platform.startswith("win"):
         logger.debug("uvloop not available on Windows, using default asyncio loop")
         return False
 
-    try:
+    try:  # type: ignore[unreachable]
         import asyncio
 
         import uvloop

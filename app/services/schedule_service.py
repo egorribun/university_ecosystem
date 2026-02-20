@@ -63,7 +63,9 @@ class ScheduleService:
             # Let's check imports in user_service. It uses BusinessRuleViolation.
             from app.core.exceptions.domain import BusinessRuleViolation
 
-            raise BusinessRuleViolation(translate("errors.schedule.conflict", locale))
+            raise BusinessRuleViolation(
+                translate("errors.schedule.conflict", locale=locale)
+            )
 
         schedule = await self.repo.create(data)
         await self.repo.commit()
@@ -72,7 +74,7 @@ class ScheduleService:
         return schedule
 
     async def get_schedule(self, group_id: int) -> list[models.Schedule]:
-        return await self.repo.get_by_group(group_id)
+        return await self.repo.get_by_group(group_id)  # type: ignore[arg-type]
 
     async def get_by_id(self, schedule_id: int) -> models.Schedule | None:
         return await self.repo.get(schedule_id)
@@ -85,6 +87,7 @@ class ScheduleService:
             raise ValueError(translate("errors.schedule.not_found"))
 
         updated = await self.repo.update(schedule_id, data)
+        assert updated is not None
         await self.repo.commit()
         return updated
 

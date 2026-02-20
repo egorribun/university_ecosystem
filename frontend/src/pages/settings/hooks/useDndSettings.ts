@@ -54,9 +54,9 @@ export function useDndSettings(setSnackbar: SetSnackbar): UseDndSettingsReturn {
   const [dndSaving, setDndSaving] = useState(false)
 
   const syncDndFromUser = useCallback((value: User | null) => {
-    const enabled = Boolean(value?.dnd_enabled)
-    const start = toInputTime(value?.dnd_start)
-    const end = toInputTime(value?.dnd_end)
+    const enabled = Boolean(value?.preferences?.dnd_enabled)
+    const start = toInputTime(value?.preferences?.dnd_start)
+    const end = toInputTime(value?.preferences?.dnd_end)
 
     setDndEnabled((previous) => (previous === enabled ? previous : enabled))
     setDndStart((previous) => {
@@ -75,9 +75,9 @@ export function useDndSettings(setSnackbar: SetSnackbar): UseDndSettingsReturn {
 
       const normalizedStart = nextStart ? nextStart.trim() : null
       const normalizedEnd = nextEnd ? nextEnd.trim() : null
-      const previousEnabled = Boolean(user?.dnd_enabled)
-      const previousStart = toInputTime(user?.dnd_start)
-      const previousEnd = toInputTime(user?.dnd_end)
+      const previousEnabled = Boolean(user?.preferences?.dnd_enabled)
+      const previousStart = toInputTime(user?.preferences?.dnd_start)
+      const previousEnd = toInputTime(user?.preferences?.dnd_end)
 
       // Skip if no changes
       if (
@@ -100,13 +100,13 @@ export function useDndSettings(setSnackbar: SetSnackbar): UseDndSettingsReturn {
 
       setDndSaving(true)
       try {
-        const payload: Record<string, unknown> = { dnd_enabled: nextEnabled }
+        const payload: Record<string, unknown> = { preferences: { dnd_enabled: nextEnabled } as Record<string, unknown> }
         if (nextEnabled) {
-          payload.dnd_start = toServerTime(normalizedStart)
-          payload.dnd_end = toServerTime(normalizedEnd)
+          ;(payload.preferences as Record<string, unknown>).dnd_start = toServerTime(normalizedStart)
+          ;(payload.preferences as Record<string, unknown>).dnd_end = toServerTime(normalizedEnd)
         } else {
-          payload.dnd_start = null
-          payload.dnd_end = null
+          ;(payload.preferences as Record<string, unknown>).dnd_start = null
+          ;(payload.preferences as Record<string, unknown>).dnd_end = null
         }
 
         const response = await api.put<User>("/users/me", payload)

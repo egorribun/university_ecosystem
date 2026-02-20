@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import cached_property
+from typing import Any
 from urllib.parse import urlparse
 
 from app.core.config.base import _coerce_str_list
@@ -42,13 +43,13 @@ class CorsSettingsMixin:
     def frontend_origins_list(self) -> list[str]:
         raw: list[str] = []
 
-        def _extend(values: object) -> None:
+        def _extend(values: Any) -> None:
             if not values:
                 return
             if isinstance(values, str):
                 raw.extend([v.strip() for v in values.split(",") if v.strip()])
             else:
-                raw.extend([str(v).strip() for v in values if str(v).strip()])  # type: ignore[union-attr]
+                raw.extend([str(v).strip() for v in values if str(v).strip()])
 
         _extend(self.frontend_origins)
         _extend(self.frontend_origin)

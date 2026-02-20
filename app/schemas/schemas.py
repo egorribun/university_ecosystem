@@ -16,6 +16,7 @@ from pydantic_core import PydanticCustomError
 
 from app.core.localization import translate
 from app.models.enums import UserRole
+from app.schemas.validators import SanitizedInput
 from app.utils.img import get_optimized_image_url
 
 
@@ -65,31 +66,99 @@ class UserPasswordChangeIn(BaseModel):
     new_password: str = Field(min_length=8, max_length=200)
 
 
-class UserBase(BaseModel):
+class UserProfileBase(BaseModel):
+    about: str | None = None
+    telegram: str | None = None
+    status: str | None = None
+    achievements: str | None = None
+    department: str | None = None
+    position: str | None = None
+
+
+class UserPreferencesBase(OrmModel):
+    dnd_enabled: bool = False
+    dnd_start: time | None = None
+    dnd_end: time | None = None
+    timezone: str | None = None
+
+    @field_validator("dnd_enabled", mode="before")
+    @classmethod
+    def _default_dnd_enabled(cls, value: bool | None) -> bool:
+        """Ensure a boolean is always returned even when preferences are missing."""
+        return bool(value) if value is not None else False
+
+    @model_validator(mode="before")
+    def _validate_dnd(cls, data: Any) -> Any:
+        raw = data.data if hasattr(data, "data") and hasattr(data, "context") else data
+        payload = raw if isinstance(raw, dict) else {}
+        enabled = payload.get("dnd_enabled")
+        start = payload.get("dnd_start")
+        end = payload.get("dnd_end")
+        if enabled and (start is None or end is None):
+            raise ValueError(translate("validation.dnd.times_required"))
+        return raw
+
+    @field_validator("timezone")
+    @classmethod
+    def _validate_timezone(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        try:
+            ZoneInfo(text)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise PydanticCustomError(
+                "timezone.invalid",
+                translate("validation.timezone.invalid"),
+            ) from exc
+        return text
+
+
+class UserEducationBase(BaseModel):
+    institute: str | None = None
+    course: str | None = None
+    education_level: str | None = None
+    track: str | None = None
+    program: str | None = None
+    record_book_number: str | None = None
+
+
+class UserProfilePublicFlattened(BaseModel):
+    about: str | None = None
+    telegram: str | None = None
+    status: str | None = None
+    department: str | None = None
+    position: str | None = None
+    course: str | None = None
+    institute: str | None = None
+
+
+class UserProfileFullFlattened(UserProfilePublicFlattened):
+    achievements: str | None = None
+    education_level: str | None = None
+    track: str | None = None
+    program: str | None = None
+    record_book_number: str | None = None
+    timezone: str | None = None
+    dnd_enabled: bool | None = None
+    dnd_start: time | None = Field(default=None, title="Dnd Start")
+    dnd_end: time | None = Field(default=None, title="Dnd End")
+
+
+class UserBase(UserProfileFullFlattened):
     email: EmailStr
     full_name: str | None = None
     role: UserRole = UserRole.STUDENT
     group_id: uuid.UUID | None = None
     avatar_url: str | None = None
     cover_url: str | None = None
-    about: str | None = None
-    record_book_number: str | None = None
-    status: str | None = None
-    institute: str | None = None
-    course: str | None = None
-    education_level: str | None = None
-    track: str | None = None
-    program: str | None = None
-    telegram: str | None = None
-    achievements: str | None = None
-    department: str | None = None
-    position: str | None = None
     spotify_connected: bool = False
     spotify_display_name: str | None = None
-    dnd_enabled: bool = False
-    dnd_start: time | None = None
-    dnd_end: time | None = None
-    timezone: str | None = None
+
+    # Overrides for Identity schemas where these have strict types/defaults
+    dnd_enabled: bool = Field(default=False, title="Dnd Enabled")
 
 
 class UserSearchFilter(BaseModel):
@@ -202,6 +271,11 @@ class UserOut(OrmModel, UserBase):
     mfa_challenges: list[MfaChallengeOut] = Field(default_factory=list)
     recovery_codes_left: int = 0
 
+    # Nested related models
+    profile_detail: UserProfileBase | None = None
+    preferences: UserPreferencesBase | None = None
+    education_path: UserEducationBase | None = None
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def avatar_url_optimized(self) -> str | None:
@@ -239,7 +313,7 @@ class UserOut(OrmModel, UserBase):
             "mfa_required": user.mfa_required,
             "mfa_default_method": user.mfa_default_method,
             "mfa_last_verified_at": user.mfa_last_verified_at,
-            "created_at": user.created_at,  # If needed by OrmModel? UserBase doesn't have it.
+            "created_at": getattr(user, "created_at", None),
         }
 
         # Helper to safely get from related object
@@ -296,7 +370,7 @@ class UserOut(OrmModel, UserBase):
 
         # Computed/Other
         # spotify_connected is a property on User which checks relationship
-        out["spotify_connected"] = user.spotify_connected
+        out["spotify_connected"] = getattr(user, "spotify_connected", False)
         out["spotify_display_name"] = (
             user.spotify.display_name
             if getattr(user, "spotify", None) and user.spotify.is_connected
@@ -307,22 +381,14 @@ class UserOut(OrmModel, UserBase):
         out["totp_enrollments"] = getattr(user, "totp_enrollments", [])
         out["mfa_challenges"] = getattr(user, "mfa_challenges", [])
 
-        # Pending email (PII safe? It's UserOut so yes)
-        # Pending email logic usually in a separate table/column?
-        # Ah, UserOut definition has pending_email. The model doesn't seem to have it in the file I viewed?
-        # Checked app/models/users.py: it does NOT have pending_email.
-        # Maybe it's injected by the service or I missed it.
-        # Actually `pending_email` is not in the User model in the file I read.
-        # Checking imports... from app.models.auth import EmailChangeToken.
-        # Maybe it comes from there?
-        # For now, let's just attempt to getattr.
+        # Pending email
         out["pending_email"] = getattr(user, "pending_email", None)
         out["recovery_codes_left"] = len(getattr(user, "recovery_codes", []))
 
         return out
 
 
-class UserPublicOut(OrmModel):
+class UserPublicOut(OrmModel, UserProfilePublicFlattened):
     """Publicly visible user profile information (PII-safe)."""
 
     id: uuid.UUID
@@ -331,12 +397,8 @@ class UserPublicOut(OrmModel):
     group_id: uuid.UUID | None = None
     avatar_url: str | None = None
     cover_url: str | None = None
-    about: str | None = None
-    status: str | None = None
-    institute: str | None = None
-    course: str | None = None
-    department: str | None = None
-    position: str | None = None
+    profile_detail: UserProfileBase | None = None
+    education_path: UserEducationBase | None = None
     is_active: bool
 
     @model_validator(mode="before")
@@ -425,56 +487,12 @@ class DataDeletionOut(BaseModel):
     anonymized_email: EmailStr
 
 
-class UserProfileUpdate(BaseModel):
+class UserProfileUpdate(UserProfileBase, UserPreferencesBase, UserEducationBase):
     full_name: str | None = None
     email: EmailStr | None = None
-    about: str | None = None
-    record_book_number: str | None = None
-    status: str | None = None
-    institute: str | None = None
-    course: str | None = None
-    education_level: str | None = None
-    track: str | None = None
-    program: str | None = None
-    telegram: str | None = None
-    achievements: str | None = None
-    department: str | None = None
-    position: str | None = None
-    dnd_enabled: bool | None = None
-    dnd_start: time | None = None
-    dnd_end: time | None = None
-    timezone: str | None = None
-
-    @field_validator("timezone")
-    @classmethod
-    def _validate_timezone(cls, value: Any) -> str | None:
-        if value is None:
-            return None
-        text = str(value).strip()
-        if not text:
-            return None
-        try:
-            ZoneInfo(text)
-        except (ZoneInfoNotFoundError, ValueError) as exc:
-            raise PydanticCustomError(
-                "timezone.invalid",
-                translate("validation.timezone.invalid"),
-            ) from exc
-        return text
-
-    @model_validator(mode="before")
-    def _validate_dnd(cls, data: Any) -> Any:
-        raw = data.data if hasattr(data, "data") and hasattr(data, "context") else data
-
-        payload = raw if isinstance(raw, dict) else {}
-
-        enabled = payload.get("dnd_enabled")
-        start = payload.get("dnd_start")
-        end = payload.get("dnd_end")
-        if enabled and (start is None or end is None):
-            raise ValueError(translate("validation.dnd.times_required"))
-
-        return raw
+    profile_detail: UserProfileBase | None = None
+    preferences: UserPreferencesBase | None = None
+    education_path: UserEducationBase | None = None
 
 
 class GroupCreate(BaseModel):
@@ -532,16 +550,16 @@ class ScheduleOut(OrmModel, ScheduleBase):
 class NewsCreate(BaseModel):
     title: str
     content: str
-    title_en: str | None = None
-    content_en: str | None = None
+    title_en: SanitizedInput = None
+    content_en: SanitizedInput = None
     image_url: str | None = None
 
 
 class NewsUpdate(BaseModel):
     title: str | None = None
     content: str | None = None
-    title_en: str | None = None
-    content_en: str | None = None
+    title_en: SanitizedInput = None
+    content_en: SanitizedInput = None
     image_url: str | None = None
 
 
@@ -568,28 +586,17 @@ class PaginatedNews(BaseModel):
 
 class StoryCreate(BaseModel):
     title: str
-    title_en: str | None = None
+    title_en: SanitizedInput = None
     short_text: str
-    short_text_en: str | None = None
-    cover_url: str | None = None
-    cta_url: str | None = None
+    short_text_en: SanitizedInput = None
+    cover_url: SanitizedInput = None
+    cta_url: SanitizedInput = None
     published_at: datetime | None = None
     expires_at: datetime | None = None
     is_active: bool = True
 
-    @field_validator("title_en", "short_text_en", "cover_url", "cta_url", mode="before")
-    @classmethod
-    def _strip_optional(cls, value: Any) -> str | None:
-        if value is None:
-            return None
-        if isinstance(value, str):
-            text = value.strip()
-            return text or None
-        text = str(value).strip()
-        return text or None
-
     @model_validator(mode="after")
-    def _validate_expiration(self):  # type: ignore[override]
+    def _validate_expiration(self):
         published = self.published_at
         expires = self.expires_at
         if expires is not None and published is not None and expires <= published:
@@ -599,28 +606,17 @@ class StoryCreate(BaseModel):
 
 class StoryUpdate(BaseModel):
     title: str | None = None
-    title_en: str | None = None
+    title_en: SanitizedInput = None
     short_text: str | None = None
-    short_text_en: str | None = None
-    cover_url: str | None = None
-    cta_url: str | None = None
+    short_text_en: SanitizedInput = None
+    cover_url: SanitizedInput = None
+    cta_url: SanitizedInput = None
     published_at: datetime | None = None
     expires_at: datetime | None = None
     is_active: bool | None = None
 
-    @field_validator("title_en", "short_text_en", "cover_url", "cta_url", mode="before")
-    @classmethod
-    def _strip_optional(cls, value: Any) -> str | None:
-        if value is None:
-            return None
-        if isinstance(value, str):
-            text = value.strip()
-            return text or None
-        text = str(value).strip()
-        return text or None
-
     @model_validator(mode="after")
-    def _validate_expiration(self):  # type: ignore[override]
+    def _validate_expiration(self):
         provided = self.model_fields_set
         if "published_at" in provided and "expires_at" in provided:
             if self.published_at is not None and self.expires_at is not None:
@@ -661,21 +657,21 @@ class EventFileOut(OrmModel):
 class EventCreate(BaseModel):
     title: str
     description: str | None = None
-    title_en: str | None = None
-    description_en: str | None = None
+    title_en: SanitizedInput = None
+    description_en: SanitizedInput = None
     location: str | None = None
-    location_en: str | None = None
+    location_en: SanitizedInput = None
     event_type: str | None = None
-    event_type_en: str | None = None
+    event_type_en: SanitizedInput = None
     starts_at: datetime
     ends_at: datetime
     speaker: str | None = None
     image_url: str | None = None
     about: str | None = None
-    about_en: str | None = None
+    about_en: SanitizedInput = None
 
     @model_validator(mode="after")
-    def _validate_time_order(self):  # type: ignore[override]
+    def _validate_time_order(self):
         if self.ends_at <= self.starts_at:
             raise ValueError(translate("validation.events.end_after_start"))
         return self
@@ -684,22 +680,22 @@ class EventCreate(BaseModel):
 class EventUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
-    title_en: str | None = None
-    description_en: str | None = None
+    title_en: SanitizedInput = None
+    description_en: SanitizedInput = None
     location: str | None = None
-    location_en: str | None = None
+    location_en: SanitizedInput = None
     event_type: str | None = None
-    event_type_en: str | None = None
+    event_type_en: SanitizedInput = None
     starts_at: datetime | None = None
     ends_at: datetime | None = None
     is_active: bool | None = None
     speaker: str | None = None
     image_url: str | None = None
     about: str | None = None
-    about_en: str | None = None
+    about_en: SanitizedInput = None
 
     @model_validator(mode="after")
-    def _validate_time_updates(self):  # type: ignore[override]
+    def _validate_time_updates(self):
         provided = self.model_fields_set
         starts_set = "starts_at" in provided
         ends_set = "ends_at" in provided
@@ -817,20 +813,20 @@ class NotificationCreate(BaseModel):
     user_id: uuid.UUID
     title: str
     body: str | None = None
-    title_en: str | None = None
-    body_en: str | None = None
-    type: str | None = None
-    url: str | None = None
+    title_en: SanitizedInput = None
+    body_en: SanitizedInput = None
+    type: SanitizedInput = None
+    url: SanitizedInput = None
 
 
 class NotificationOut(OrmModel):
     id: uuid.UUID
     title: str
     body: str | None = None
-    title_en: str | None = None
-    body_en: str | None = None
-    type: str | None = None
-    url: str | None = None
+    title_en: SanitizedInput = None
+    body_en: SanitizedInput = None
+    type: SanitizedInput = None
+    url: SanitizedInput = None
     created_at: datetime
     read: bool
     read_at: datetime | None = None

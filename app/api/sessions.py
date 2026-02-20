@@ -59,6 +59,8 @@ async def _resolve_target_user(
         return current_user.id, current_user
     require_admin(current_user, locale)
     target = await db.get(User, requested_user_id)
+    if target is None:
+        raise ValueError("Unreachable")
     ensure_exists(target, "users", locale)
     return target.id, target
 
@@ -97,18 +99,20 @@ async def list_sessions(
 async def revoke_session(
     session_id: uuid.UUID,
     request: Request,
-    _: Annotated[None, Depends(require_fresh_mfa)],
+    mfa_check: Annotated[None, Depends(require_fresh_mfa)],
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> schemas.ActiveSessionOut:
     locale = resolve_locale(request=request, user=current_user)
     session = await db.get(ActiveSession, session_id)
+    if session is None:
+        raise ValueError("Unreachable")
     ensure_exists(session, "sessions", locale)
     require_owner_or_admin(current_user, locale, owner_id=session.user_id)
     now = datetime.now(UTC)
     revoked_at = session.revoked_at or now
-    session.revoked_at = revoked_at
-    session.signing_key = secrets.token_urlsafe(32)
+    session.revoked_at = revoked_at  # type: ignore[assignment]
+    session.signing_key = secrets.token_urlsafe(32)  # type: ignore[assignment]
     current_jti = _extract_jti(request)
     payload = schemas.ActiveSessionOut.model_validate(session).model_copy(
         update={"is_current": session.jti == current_jti, "revoked_at": revoked_at}
@@ -121,7 +125,7 @@ async def revoke_session(
 @router.post("/revoke-others", response_model=schemas.SessionBulkRevokeOut)
 async def revoke_other_sessions(
     request: Request,
-    _: Annotated[None, Depends(require_fresh_mfa)],
+    mfa_check: Annotated[None, Depends(require_fresh_mfa)],
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
     user_id: uuid.UUID | None = None,

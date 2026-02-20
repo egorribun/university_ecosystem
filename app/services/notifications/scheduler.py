@@ -53,7 +53,7 @@ async def _scheduler_loop(
     original_session = worker_module.async_session
     try:
         worker_module.asyncio.sleep = asyncio.sleep
-        worker_module.async_session = async_session  # type: ignore[attr-defined]
+        worker_module.async_session = async_session
         try:
             await scheduler.run_forever()
         except asyncio.CancelledError:

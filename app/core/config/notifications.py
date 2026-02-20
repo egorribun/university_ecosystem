@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from functools import cached_property
+from typing import Any
 
 from pydantic import Field, ValidationInfo, field_validator
 
@@ -106,7 +107,7 @@ class NotificationSettings(BaseAppSettings):
 
     @field_validator("notifications_allowed_push_topics", mode="before")
     @classmethod
-    def _validate_notifications_allowed_push_topics(cls, value: any) -> list[str]:
+    def _validate_notifications_allowed_push_topics(cls, value: Any) -> list[str]:
         normalized: list[str] = []
         seen: set[str] = set()
         for item in _coerce_str_list(value):

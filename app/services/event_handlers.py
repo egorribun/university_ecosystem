@@ -125,7 +125,7 @@ async def generate_event_embedding(event: EventCreated) -> None:
             f"{db_event.title} {db_event.description or ''} {db_event.location or ''}"
         )
         embedding = await vector_service.get_embedding(text_to_embed)
-        db_event.embedding = embedding
+        db_event.embedding = embedding  # type: ignore[assignment]
         await db.commit()
 
 
@@ -139,7 +139,7 @@ async def generate_news_embedding(event: NewsCreated) -> None:
 
         text_to_embed = f"{db_news.title} {db_news.content}"
         embedding = await vector_service.get_embedding(text_to_embed)
-        db_news.embedding = embedding
+        db_news.embedding = embedding  # type: ignore[assignment]
         await db.commit()
 
 
@@ -153,16 +153,16 @@ def configure_event_handlers() -> None:
     event_bus.subscribe_all(log_all_events)
 
     # Register specific handlers
-    event_bus.subscribe("user.created", handle_user_created)
-    event_bus.subscribe("auth.login", handle_user_logged_in)
-    event_bus.subscribe("auth.mfa_enabled", handle_mfa_enabled)
-    event_bus.subscribe("event.created", handle_event_created)
-    event_bus.subscribe("event.created", generate_event_embedding)
-    event_bus.subscribe("event.updated", generate_event_embedding)
-    event_bus.subscribe("news.created", generate_news_embedding)
-    event_bus.subscribe("news.updated", generate_news_embedding)
-    event_bus.subscribe("event.registration", handle_event_registration)
-    event_bus.subscribe("notification.sent", handle_notification_sent)
+    event_bus.subscribe("user.created", handle_user_created)  # type: ignore[arg-type]
+    event_bus.subscribe("auth.login", handle_user_logged_in)  # type: ignore[arg-type]
+    event_bus.subscribe("auth.mfa_enabled", handle_mfa_enabled)  # type: ignore[arg-type]
+    event_bus.subscribe("event.created", handle_event_created)  # type: ignore[arg-type]
+    event_bus.subscribe("event.created", generate_event_embedding)  # type: ignore[arg-type]
+    event_bus.subscribe("event.updated", generate_event_embedding)  # type: ignore[arg-type]
+    event_bus.subscribe("news.created", generate_news_embedding)  # type: ignore[arg-type]
+    event_bus.subscribe("news.updated", generate_news_embedding)  # type: ignore[arg-type]
+    event_bus.subscribe("event.registration", handle_event_registration)  # type: ignore[arg-type]
+    event_bus.subscribe("notification.sent", handle_notification_sent)  # type: ignore[arg-type]
 
     logger.info("Domain event handlers configured")
 

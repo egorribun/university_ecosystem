@@ -61,7 +61,7 @@ async def ensure_mfa_relationships_loaded(
 
     state = inspect(user)
     if state is None:
-        return user
+        return user  # type: ignore[unreachable]
 
     to_refresh = [
         name for name in USER_MFA_RELATIONSHIP_NAMES if name in state.unloaded

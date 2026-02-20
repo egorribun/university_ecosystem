@@ -67,7 +67,13 @@ class GetScheduleHandler(QueryHandler[GetScheduleQuery, QueryResult]):
         from app.repositories.schedule_repository import ScheduleRepository
 
         repo = ScheduleRepository(self.db)
-        rows = await repo.get_by_group(query.group_id)
+        from uuid import UUID
+
+        rows = await repo.get_by_group(
+            UUID(str(query.group_id))
+            if isinstance(query.group_id, int)
+            else query.group_id
+        )
 
         models_out = [schemas.ScheduleOut.model_validate(item) for item in rows]
         payload = jsonable_encoder(models_out)
@@ -97,10 +103,12 @@ class GetStatsQuery(Query):
 
 
 class GetStatsHandler(QueryHandler[GetStatsQuery, QueryResult]):
-    def __init__(self, db: AsyncSession, cache: BaseCache, stats_service: Any) -> None:
+    def __init__(
+        self, db: AsyncSession, cache: BaseCache, analytics_service: Any
+    ) -> None:
         self.db = db
         self.cache = cache
-        self.stats_service = stats_service
+        self.analytics_service = analytics_service
 
     async def handle(self, query: GetStatsQuery) -> QueryResult:
         from app.services import stats_cache
@@ -125,18 +133,18 @@ class GetStatsHandler(QueryHandler[GetStatsQuery, QueryResult]):
                 payload = self._enrich_stats(cached.payload, query)
                 return QueryResult(payload=payload, etag=format_etag(cached.etag))
 
-        # 2. Compute stats via StatsService
+        # 2. Compute stats via AnalyticsService
         compute_map = {
-            "attendance": self.stats_service.get_attendance_stats,
-            "grades": self.stats_service.get_grade_stats,
-            "participation": self.stats_service.get_participation_stats,
+            "attendance": self.analytics_service.get_attendance_stats,
+            "grades": self.analytics_service.get_grade_stats,
+            "participation": self.analytics_service.get_participation_stats,
         }
 
         compute_fn = compute_map.get(query.kind)
         if not compute_fn:
             raise ValueError(f"Unknown stats kind: {query.kind}")
 
-        # They all share the same signature
+        # They all share the same signature now thanks to AnalyticsService unification
         stats = await compute_fn(
             user_id=query.user_id,
             period_days=query.period_days,

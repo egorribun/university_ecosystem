@@ -49,9 +49,9 @@ async def logout(
         session = result.scalars().first()
         if session:
             now = datetime.now(UTC)
-            session.revoked_at = session.revoked_at or now
+            session.revoked_at = session.revoked_at or now  # type: ignore[assignment]
             # Rotate signing key to invalidate any tokens derived from this session
-            session.signing_key = secrets.token_urlsafe(32)
+            session.signing_key = secrets.token_urlsafe(32)  # type: ignore[assignment]
             await db.commit()
 
             from app.core.container import get_audit_service

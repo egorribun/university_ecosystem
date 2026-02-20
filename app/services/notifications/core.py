@@ -35,7 +35,7 @@ async_session = _async_session
 
 def _current_local_time(user: User | None = None) -> dt.time:
     """Get the current local time for a user based on their timezone."""
-    tz = UTC
+    tz: dt.tzinfo = UTC
     if user is not None:
         raw = getattr(user, "timezone", None)
         if isinstance(raw, str):

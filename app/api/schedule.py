@@ -69,7 +69,7 @@ async def add_schedule(
 
     cache = get_cache()
     await cache.invalidate(_schedule_cache_key(result.group_id))
-    return result
+    return result  # type: ignore[return-value]
 
 
 @router.get("/{group_id}", response_model=list[schemas.ScheduleOut])
@@ -86,13 +86,15 @@ async def get_schedule(
     _set_schedule_cache_headers(response)
 
     query = GetScheduleQuery(
-        group_id=group_id, locale=locale, if_none_match=if_none_match
+        group_id=group_id,  # type: ignore[arg-type]
+        locale=locale,
+        if_none_match=if_none_match,
     )
     result = await handler.handle(query)
 
     if result.not_modified:
         cached_response = Response(status_code=status.HTTP_304_NOT_MODIFIED)
-        cached_response.headers["ETag"] = result.etag
+        cached_response.headers["ETag"] = result.etag  # type: ignore[assignment]
         _get_vary_helper()(cached_response, "Accept-Language")
         _set_schedule_cache_headers(cached_response)
         return cached_response
@@ -100,7 +102,7 @@ async def get_schedule(
     if result.etag:
         response.headers["ETag"] = result.etag
 
-    return result.payload
+    return result.payload  # type: ignore[no-any-return]
 
 
 @router.patch("/{schedule_id}", response_model=schemas.ScheduleOut)
@@ -115,12 +117,13 @@ async def update_schedule(
     require_teacher_or_admin(user, locale)
 
     # We need previous group ID for cache invalidation
-    sched = await service.get_by_id(schedule_id)
+    sched = await service.get_by_id(schedule_id)  # type: ignore[arg-type]
     ensure_exists(sched, "schedule", locale)
+    assert sched is not None
     previous_group = sched.group_id
 
     try:
-        updated = await service.update_schedule(schedule_id, data)
+        updated = await service.update_schedule(schedule_id, data)  # type: ignore[arg-type]
     except ValueError:
         ensure_exists(None, "schedule", locale)  # Will raise 404
 
@@ -129,7 +132,7 @@ async def update_schedule(
         _schedule_cache_key(previous_group),
         _schedule_cache_key(updated.group_id),
     )
-    return updated
+    return updated  # type: ignore[return-value]
 
 
 @router.delete("/{schedule_id}", response_model=dict)
@@ -142,11 +145,12 @@ async def delete_schedule(
     locale = resolve_locale(request=request, user=user)
     require_teacher_or_admin(user, locale)
 
-    sched = await service.get_by_id(schedule_id)
+    sched = await service.get_by_id(schedule_id)  # type: ignore[arg-type]
     ensure_exists(sched, "schedule", locale)
+    assert sched is not None
     group_id = sched.group_id
 
-    deleted = await service.delete_schedule(schedule_id)
+    deleted = await service.delete_schedule(schedule_id)  # type: ignore[arg-type]
     if not deleted:
         ensure_exists(None, "schedule", locale)
 

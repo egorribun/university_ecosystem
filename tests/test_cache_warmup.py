@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.deps.cache import CacheEntry
+from app.schemas import schemas
 from app.services import cache_warmup
 
 
@@ -123,11 +124,13 @@ async def test_warm_stats_for_user():
         patch(
             "app.services.cache_warmup.stats_cache.get_cached_stats", return_value=None
         ),
-        patch("app.services.user_service.UserService") as MockUserService,
+        patch(
+            "app.services.user.analytics_service.UserAnalyticsService"
+        ) as MockAnalyticsService,
         patch("app.repositories.user_repository.UserRepository"),
         patch("app.services.notification_service.NotificationService"),
     ):
-        mock_service = MockUserService.return_value
+        mock_service = MockAnalyticsService.return_value
         mock_service.get_attendance_stats = AsyncMock()
         mock_service.get_grade_stats = AsyncMock()
         mock_service.get_participation_stats = AsyncMock()
@@ -159,7 +162,23 @@ async def test_warm_news():
         mock_service = MockNewsService.return_value
         # results: list of (news_obj, l_count, c_count, liked)
         mock_news = MagicMock()
-        mock_service.list_news = AsyncMock(return_value=[(mock_news, 1, 1, False)])
+        mock_news.id = uuid.uuid4()
+        mock_news.title = "Test News"
+        mock_news.content = "Test Content"
+        mock_news.title_en = "Test News EN"
+        mock_news.content_en = "Test Content EN"
+        mock_news.image_url = "http://example.com/image.jpg"
+        mock_news.category = "general"
+        mock_news.created_at = time.time()
+        mock_news.published_at = time.time()
+        mock_news.author_id = uuid.uuid4()
+        mock_news.is_published = True
+        mock_news.tags = []
+        mock_service.list_news = AsyncMock(
+            return_value=schemas.PaginatedNews(
+                items=[mock_news], has_more=False, next_cursor=None
+            )
+        )
         mock_service.serialize_news = MagicMock(return_value={})
 
         await cache_warmup._warm_news(mock_cache, mock_db)

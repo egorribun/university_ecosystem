@@ -70,19 +70,22 @@ class HealthRepository:
                 {"table_name": table_name},
             )
             row = result.fetchone()
-            if row and row[0] >= 0:
+            if row is not None and row[0] >= 0:
                 return int(row[0])
         except Exception:
             pass
 
         # Fallback to actual count
         try:
+            from sqlalchemy.sql import quoted_name
+
             # Use parameterized table name safely
+            safe_table_name = quoted_name(table_name, quote=True)
             result = await self._connection.execute(
-                text(f"SELECT COUNT(*) FROM {table_name}")
+                text(f"SELECT COUNT(*) FROM {safe_table_name}")
             )
             row = result.fetchone()
-            return int(row[0]) if row else 0
+            return int(row[0]) if row is not None else 0
         except Exception:
             return None
 
@@ -108,7 +111,7 @@ class HealthRepository:
                 )
             )
             row = result.fetchone()
-            if row:
+            if row is not None:
                 return {
                     "active_connections": row[0],
                     "commits": row[1],

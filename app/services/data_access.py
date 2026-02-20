@@ -39,8 +39,8 @@ async def log_data_access(
     from app.utils.audit import calculate_log_signature
 
     signature = calculate_log_signature(
-        actor_user_id=actor_user_id,
-        subject_user_id=subject_user_id,
+        actor_user_id=actor_user_id,  # type: ignore[arg-type]
+        subject_user_id=subject_user_id,  # type: ignore[arg-type]
         resource_type=resource_type,
         resource_id=resource_id,
         action=action,
@@ -99,9 +99,9 @@ async def batch_log_data_access(
         signature = calculate_log_signature(
             actor_user_id=actor_user_id,
             subject_user_id=subject_user_id,
-            resource_type=resource_type,
-            resource_id=resource_id,
-            action=action,
+            resource_type=str(resource_type) if resource_type else "",
+            resource_id=str(resource_id) if resource_id else None,
+            action=str(action) if action else "",
             context=context,
             ip_address=ip_address,
             user_agent=user_agent,
@@ -140,6 +140,7 @@ async def cleanup_access_logs(
         async with async_session() as session:
             return await cleanup_access_logs(db=session, retention_days=retention)
     cutoff = datetime.now(UTC) - timedelta(days=retention_days)
+    assert db is not None
     repo = AuditRepository(db)
     count = await repo.prune_logs(cutoff)
     return count

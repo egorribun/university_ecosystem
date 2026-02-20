@@ -26,7 +26,7 @@ def subscribe(event_type: str) -> Callable[[EventHandler], EventHandler]: ...
 
 
 @overload
-def subscribe[EventT: "DomainEvent"](
+def subscribe(
     event_type: type[EventT],
 ) -> Callable[[EventHandler], EventHandler]: ...
 
@@ -101,7 +101,7 @@ def register_decorated_handlers(bus: EventBus) -> int:
             # Create a temporary instance to get event_type
             # This works because event_type is a property
             try:
-                type_str = event_type().event_type  # type: ignore[call-arg]
+                type_str = event_type().event_type
             except TypeError:
                 # If instantiation requires args, use class name
                 type_str = f"{event_type.__module__}.{event_type.__name__}"

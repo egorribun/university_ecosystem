@@ -108,8 +108,9 @@ class SearchService:
             generate_actions(),
             raise_on_error=False,
         )
-        logger.info("Bulk indexed %d documents, %d failed", success, len(failed))
-        return success, len(failed)
+        failed_count = len(failed) if isinstance(failed, list) else failed
+        logger.info("Bulk indexed %d documents, %d failed", success, failed_count)
+        return success, failed_count
 
     async def search(
         self,
@@ -218,7 +219,12 @@ class SearchService:
             index: Index name
             document_id: Document ID to delete
         """
-        await self.client.delete(index=index, id=document_id, ignore=[404])
+        import elasticsearch
+
+        try:
+            await self.client.delete(index=index, id=document_id)
+        except elasticsearch.NotFoundError:
+            pass
         logger.debug("Deleted document %s from %s", document_id, index)
 
 

@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react"
 import type { TrustedHTML } from "trusted-types/lib"
-import { sanitizeHTML } from "@/utils/trustedTypes"
+import { sanitizeHTML, getDOMPurifySync } from "@/utils/trustedTypes"
 
 interface SafeHtmlProps {
   html: string
@@ -12,13 +12,26 @@ interface SafeHtmlProps {
  * A "World-Class" component for rendering sanitized HTML with lazy-loaded DOMPurify.
  */
 export default function SafeHtml({ html, className, fallback }: SafeHtmlProps) {
-  const [sanitized, setSanitized] = useState<string | TrustedHTML | null>(null)
+  const [sanitized, setSanitized] = useState<string | TrustedHTML | null>(() => {
+    // Attempt synchronous check first
+    const instance = getDOMPurifySync()
+    if (instance) {
+       return instance.sanitize(html, { RETURN_TRUSTED_TYPE: false })
+    }
+    return null
+  })
 
   useEffect(() => {
     let active = true
 
     async function run() {
-      // sanitizeHTML will handle the dynamic import internally (to be refactored)
+      const instance = getDOMPurifySync()
+      if (instance) {
+        const syncResult = instance.sanitize(html, { RETURN_TRUSTED_TYPE: false })
+        if (active) setSanitized(syncResult)
+        return
+      }
+
       const result = await sanitizeHTML(html)
       if (active) setSanitized(result)
     }

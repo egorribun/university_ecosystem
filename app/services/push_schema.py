@@ -3,9 +3,9 @@ from __future__ import annotations
 import asyncio
 import logging
 from threading import Lock
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
-from sqlalchemy import Column, inspect
+from sqlalchemy import Table, inspect
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
 from app.models.models import PushSubscription
@@ -23,7 +23,9 @@ logger = logging.getLogger(__name__)
 
 
 def _create_schema(bind) -> None:
-    PushSubscription.__table__.create(bind=bind, checkfirst=True)
+    PushSubscription.metadata.create_all(
+        bind=bind, tables=[cast(Table, PushSubscription.__table__)]
+    )
 
 
 def _ensure_columns(bind) -> None:
@@ -38,7 +40,7 @@ def _ensure_columns(bind) -> None:
     preparer = bind.dialect.identifier_preparer
 
     def _add_column(
-        column: Column, *, default_sql: str | None = None, not_null: bool = False
+        column: Any, *, default_sql: str | None = None, not_null: bool = False
     ) -> None:
         column_name = preparer.quote(column.name)
         type_sql = column.type.compile(bind.dialect)
@@ -81,7 +83,7 @@ async def ensure_push_subscription_schema(db: AsyncSession) -> None:
         return
     async with _async_lock:
         if _async_ready:
-            return
+            return  # type: ignore[unreachable]
 
         try:
 
@@ -106,7 +108,7 @@ def ensure_push_subscription_schema_sync(engine: Engine | None) -> None:
         return
     with _sync_lock:
         if _sync_ready:
-            return
+            return  # type: ignore[unreachable]
         try:
             with engine.connect() as connection:
                 _ensure_columns(connection)

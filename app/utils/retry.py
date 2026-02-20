@@ -10,7 +10,7 @@ import asyncio
 import functools
 import logging
 import random
-from typing import TYPE_CHECKING, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
@@ -31,8 +31,8 @@ class RetryExhausted(Exception):
 
 
 async def retry_async(
-    fn: Callable[P, Awaitable[T]],
-    *args: P.args,
+    fn: Callable[..., Awaitable[T]],
+    *args: Any,
     max_attempts: int = 3,
     base_delay: float = 1.0,
     max_delay: float = 60.0,
@@ -40,7 +40,7 @@ async def retry_async(
     jitter: bool = True,
     retryable_exceptions: tuple[type[Exception], ...] = (Exception,),
     on_retry: Callable[[int, Exception], None] | None = None,
-    **kwargs: P.kwargs,
+    **kwargs: Any,
 ) -> T:
     """
     Execute an async function with exponential backoff retry.
@@ -129,7 +129,7 @@ def with_retry(
                 base_delay=base_delay,
                 max_delay=max_delay,
                 retryable_exceptions=retryable_exceptions,
-                **kwargs,
+                **kwargs,  # type: ignore[arg-type]
             )
 
         return wrapper

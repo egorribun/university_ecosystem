@@ -1,4 +1,4 @@
-import { z } from "zod"
+import * as v from "valibot"
 
 import api, { apiClient } from "@/api/client"
 import type { components } from "@/api/generated/schema"
@@ -10,47 +10,47 @@ import type {
 } from "@/types/notifications"
 import { ensureValidResponse } from "./validation"
 
-const notificationSchema = z.object({
-  id: z.string().uuid(),
-  title: z.string(),
-  body: z.string().nullable().optional(),
-  title_en: z.string().nullable().optional(),
-  body_en: z.string().nullable().optional(),
-  type: z.string().nullable().optional(),
-  url: z.string().nullable().optional(),
-  created_at: z.string(),
-  read: z.boolean(),
-  read_at: z.string().nullable().optional(),
+const notificationSchema = v.object({
+  id: v.pipe(v.string(), v.uuid()),
+  title: v.string(),
+  body: v.optional(v.nullable(v.string())),
+  title_en: v.optional(v.nullable(v.string())),
+  body_en: v.optional(v.nullable(v.string())),
+  type: v.optional(v.nullable(v.string())),
+  url: v.optional(v.nullable(v.string())),
+  created_at: v.string(),
+  read: v.boolean(),
+  read_at: v.optional(v.nullable(v.string())),
 })
 
-const notificationsListSchema = z.object({
-  items: z.array(notificationSchema),
-  unread_count: z.number(),
-  has_more: z.boolean(),
-  next_cursor: z.string().nullable().optional(),
+const notificationsListSchema = v.object({
+  items: v.array(notificationSchema),
+  unread_count: v.number(),
+  has_more: v.boolean(),
+  next_cursor: v.optional(v.nullable(v.string())),
 })
 
-const deadLetterJobSchema = z.object({
-  id: z.string(), // Redis/worker job IDs might still be numbers
-  kind: z.string(),
-  record_id: z.string(), // This might need verification, is it referencing a DB ID?
-  locale: z.string().nullable().optional(),
-  enqueued_at: z.string(),
-  claimed_at: z.string().nullable().optional(),
-  attempts: z.number().int(),
-  last_error: z.string().nullable().optional(),
-  next_retry_at: z.string().nullable().optional(),
+const deadLetterJobSchema = v.object({
+  id: v.string(), // Redis/worker job IDs might still be numbers
+  kind: v.string(),
+  record_id: v.string(), // This might need verification, is it referencing a DB ID?
+  locale: v.optional(v.nullable(v.string())),
+  enqueued_at: v.string(),
+  claimed_at: v.optional(v.nullable(v.string())),
+  attempts: v.pipe(v.number(), v.integer()),
+  last_error: v.optional(v.nullable(v.string())),
+  next_retry_at: v.optional(v.nullable(v.string())),
 })
 
-const deadLetterListSchema = z.object({
-  items: z.array(deadLetterJobSchema),
-  total: z.number().int(),
+const deadLetterListSchema = v.object({
+  items: v.array(deadLetterJobSchema),
+  total: v.pipe(v.number(), v.integer()),
 })
 
-export type NotificationEntry = z.infer<typeof notificationSchema>
-export type NotificationsListResult = z.infer<typeof notificationsListSchema>
-export type DeadLetterJob = z.infer<typeof deadLetterJobSchema>
-export type DeadLetterListResult = z.infer<typeof deadLetterListSchema>
+export type NotificationEntry = v.InferOutput<typeof notificationSchema>
+export type NotificationsListResult = v.InferOutput<typeof notificationsListSchema>
+export type DeadLetterJob = v.InferOutput<typeof deadLetterJobSchema>
+export type DeadLetterListResult = v.InferOutput<typeof deadLetterListSchema>
 
 export const fetchNotificationsList = async (params?: {
   cursor?: string | null
@@ -129,17 +129,17 @@ export async function sendTest(): Promise<SendTestNotificationResponse> {
 
 export async function getVapidPublicKey(): Promise<string | null> {
   const { data } = await apiClient.get("/api/v1/push/vapid-public-key")
-  const schema = z.object({ publicKey: z.string().nullable().optional() })
+  const schema = v.object({ publicKey: v.optional(v.nullable(v.string())) })
   const parsed = ensureValidResponse(schema, data, "GET /api/v1/push/vapid-public-key")
   const normalized = parsed.publicKey?.trim()
   return normalized && normalized.length > 0 ? normalized : null
 }
 
-const pushTopicsSchema = z.object({
-  allowed: z.array(z.string().trim().min(1)),
-  topics: z.array(z.string().trim()).default([]),
-  has_preferences: z.boolean().optional(),
-  updated_at: z.string().datetime().nullable().optional(),
+const pushTopicsSchema = v.object({
+  allowed: v.array(v.pipe(v.string(), v.trim(), v.minLength(1))),
+  topics: v.optional(v.array(v.pipe(v.string(), v.trim())), []),
+  has_preferences: v.optional(v.boolean()),
+  updated_at: v.optional(v.nullable(v.string())),
 })
 
 export async function fetchPushTopics(): Promise<PushTopicsResponse> {
@@ -147,18 +147,18 @@ export async function fetchPushTopics(): Promise<PushTopicsResponse> {
   const parsed = ensureValidResponse(pushTopicsSchema, data, "GET /api/v1/push/topics")
   return {
     allowed: parsed.allowed,
-    topics: parsed.topics ?? [],
+    topics: parsed.topics,
     has_preferences: parsed.has_preferences ?? false,
     updated_at: parsed.updated_at ?? null,
   }
 }
 
-const adminTopicsSchema = z.object({
-  user_id: z.string().uuid(),
-  email: z.string().trim().min(1),
-  topics: z.array(z.string().trim()),
-  allowed_topics: z.array(z.string().trim().min(1)),
-  updated_at: z.string().datetime().nullable().optional(),
+const adminTopicsSchema = v.object({
+  user_id: v.pipe(v.string(), v.uuid()),
+  email: v.pipe(v.string(), v.trim(), v.minLength(1)),
+  topics: v.array(v.pipe(v.string(), v.trim())),
+  allowed_topics: v.array(v.pipe(v.string(), v.trim(), v.minLength(1))),
+  updated_at: v.optional(v.nullable(v.string())),
 })
 
 export async function fetchAdminUserTopics(userId: string): Promise<AdminUserTopicsResponse> {

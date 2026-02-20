@@ -242,8 +242,8 @@ class UserRepository(BaseRepository[User, schemas.UserCreate, dict]):
         await self.db.flush()  # Get ID
 
         if invite_code:
-            invite_code.is_used = True
-            invite_code.is_active = False
+            invite_code.is_used = True  # type: ignore[assignment]
+            invite_code.is_active = False  # type: ignore[assignment]
             invite_code.used_by_user_id = user.id
             self.db.add(invite_code)
 

@@ -200,7 +200,7 @@ async def upsert_user_topics(
     if existing is None:
         db.add(UserPushTopic(user_id=user_id, topics=list(normalized)))
     else:
-        existing.topics = list(normalized)
+        existing.topics = list(normalized)  # type: ignore[assignment]
     return list(normalized)
 
 
@@ -232,5 +232,5 @@ async def synchronize_user_topics(
     )
     normalized_copy = list(normalized)
     for subscription in subscriptions:
-        subscription.topics = list(normalized_copy)
+        subscription.topics = list(normalized_copy)  # type: ignore[assignment]
     return normalized_copy

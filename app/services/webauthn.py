@@ -48,11 +48,12 @@ class WebAuthnService:
     async def get_registration_options(self, user: User) -> dict[str, Any]:
         """Generate options for a new WebAuthn credential registration."""
         if not user.webauthn_id:
-            user.webauthn_id = (
+            new_id = (
                 base64.urlsafe_b64encode(generate_user_handle())
                 .decode("utf-8")
                 .rstrip("=")
             )
+            user.webauthn_id = new_id  # type: ignore[assignment]
             await self.db.flush()
 
         user_id_bytes = base64.urlsafe_b64decode(user.webauthn_id + "==")
@@ -71,9 +72,9 @@ class WebAuthnService:
             rp_id=self._get_rp_id(),
             rp_name=self._get_rp_name(),
             user_id=user_id_bytes,
-            user_name=user.email,
-            user_display_name=user.full_name or user.email,
-            exclude_credentials=exclude_credentials,
+            user_name=str(user.email),
+            user_display_name=str(user.full_name or user.email),
+            exclude_credentials=exclude_credentials,  # type: ignore[arg-type]
             authenticator_selection=AuthenticatorSelectionCriteria(
                 resident_key=ResidentKeyRequirement.PREFERRED,
                 user_verification=UserVerificationRequirement.PREFERRED,
@@ -161,7 +162,9 @@ class WebAuthnService:
     ) -> WebAuthnCredential:
         """Verify the authentication response."""
         credential_id = response.get("id")
-        db_credential = await self.repo.get_webauthn_credential(user.id, credential_id)
+        db_credential = await self.repo.get_webauthn_credential(
+            user.id, str(credential_id)
+        )
         if not db_credential:
             raise ValueError("Credential not found")
 
@@ -173,16 +176,16 @@ class WebAuthnService:
             credential_public_key=base64.urlsafe_b64decode(
                 db_credential.public_key + "=="
             ),
-            credential_current_sign_count=db_credential.sign_count,
+            credential_current_sign_count=int(str(db_credential.sign_count)),
             require_user_verification=False,
         )
 
-        db_credential.sign_count = verification.new_sign_count
-        db_credential.last_used_at = datetime.now(UTC)
+        db_credential.sign_count = verification.new_sign_count  # type: ignore[assignment]
+        db_credential.last_used_at = datetime.now(UTC)  # type: ignore[assignment]
         await self.db.flush()
 
         return db_credential
 
 
 def json_to_dict(json_str: str) -> dict[str, Any]:
-    return json.loads(json_str)
+    return json.loads(json_str)  # type: ignore[no-any-return]

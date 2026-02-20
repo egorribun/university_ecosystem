@@ -6,7 +6,10 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    Float,
     ForeignKey,
+    Index,
+    Integer,
     String,
     Time,
     func,
@@ -25,11 +28,12 @@ from app.models.spotify import SpotifyIntegration
 
 class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     __tablename__ = "users"
-
-    email = Column(String, unique=True, index=True, nullable=False)
+    email = Column(String, unique=True, nullable=False)
     hashed_password = Column(String, nullable=False)
 
-    role = Column(
+    __table_args__ = (Index("ix_users_email_lower", func.lower(email), unique=True),)
+
+    role: Mapped[UserRole] = mapped_column(
         SqlEnum(
             UserRole,
             native_enum=True,
@@ -53,14 +57,13 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     webauthn_id = Column(String(128), unique=True, index=True, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
-    # Decomposed models
     preferences = relationship(
         "UserPreferences",
         back_populates="user",
         uselist=False,
         cascade="all, delete-orphan",
         passive_deletes=True,
-        lazy="select",
+        lazy="selectin",
     )
     profile = relationship(
         "UserProfile",
@@ -68,7 +71,7 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         uselist=False,
         cascade="all, delete-orphan",
         passive_deletes=True,
-        lazy="joined",
+        lazy="selectin",
     )
     education_path = relationship(
         "EducationPath",
@@ -76,7 +79,7 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         uselist=False,
         cascade="all, delete-orphan",
         passive_deletes=True,
-        lazy="select",
+        lazy="selectin",
     )
 
     # Integrations & other relationships
@@ -86,13 +89,16 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         uselist=False,
         cascade="all, delete-orphan",
         passive_deletes=True,
-        lazy="select",
+        lazy="noload",
     )
-    group = relationship(
-        "Group",
-        back_populates="students",
+
+    group = relationship("Group", back_populates="students", passive_deletes=True)
+    stats = relationship(
+        "UserStats",
+        uselist=False,
+        back_populates="user",
+        cascade="all, delete-orphan",
         passive_deletes=True,
-        lazy="selectin",
     )
     notifications = relationship(
         "Notification",
@@ -164,67 +170,57 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     )
 
     def __init__(self, **kwargs) -> None:
-        preferences_fields = {"dnd_enabled", "dnd_start", "dnd_end", "timezone"}
-        profile_fields = {
+        preferences_data = kwargs.pop("preferences", None)
+        profile_data = kwargs.pop("profile", None) or kwargs.pop("profile_detail", None)
+        education_data = kwargs.pop("education_path", None)
+
+        super().__init__(**kwargs)
+
+        # Legacy field shim support
+        for field in ["dnd_enabled", "dnd_start", "dnd_end", "timezone"]:
+            if field in kwargs:
+                setattr(self, field, kwargs[field])
+
+        for field in [
             "full_name",
-            "avatar_url",
-            "cover_url",
             "about",
             "telegram",
             "status",
             "achievements",
             "position",
             "department",
-        }
-        education_fields = {
+        ]:
+            if field in kwargs:
+                setattr(self, field, kwargs[field])
+
+        for field in [
             "institute",
             "course",
             "education_level",
             "track",
             "program",
             "record_book_number",
-        }
-        spotify_fields = {"spotify_is_connected", "spotify_display_name"}
+        ]:
+            if field in kwargs:
+                setattr(self, field, kwargs[field])
 
-        preferences_data = {
-            key: kwargs.pop(key) for key in list(kwargs) if key in preferences_fields
-        }
-        profile_data = {
-            key: kwargs.pop(key) for key in list(kwargs) if key in profile_fields
-        }
-        education_data = {
-            key: kwargs.pop(key) for key in list(kwargs) if key in education_fields
-        }
-        spotify_data = {
-            key: kwargs.pop(key) for key in list(kwargs) if key in spotify_fields
-        }
+        if preferences_data is not None:
+            if isinstance(preferences_data, dict):
+                self.preferences = UserPreferences(**preferences_data)
+            else:
+                self.preferences = preferences_data
 
-        super().__init__(**kwargs)
+        if profile_data is not None:
+            if isinstance(profile_data, dict):
+                self.profile = UserProfile(**profile_data)
+            else:
+                self.profile = profile_data
 
-        if preferences_data:
-            self.preferences = UserPreferences(**preferences_data)
-        elif not self.preferences:
-            self.preferences = UserPreferences()
-
-        if profile_data:
-            self.profile = UserProfile(**profile_data)
-        elif not self.profile:
-            self.profile = UserProfile()
-
-        if education_data:
-            self.education_path = EducationPath(**education_data)
-
-        # Spotify data handling if needed, though strictly it should be via service
-        if spotify_data:
-            # Map spotify_is_connected to is_connected
-            if "spotify_is_connected" in spotify_data:
-                spotify_data["is_connected"] = spotify_data.pop("spotify_is_connected")
-            # Map spotify_display_name to display_name
-            if "spotify_display_name" in spotify_data:
-                spotify_data["display_name"] = spotify_data.pop("spotify_display_name")
-            self.spotify = SpotifyIntegration(**spotify_data)
-        elif not self.spotify:
-            self.spotify = SpotifyIntegration()
+        if education_data is not None:
+            if isinstance(education_data, dict):
+                self.education_path = EducationPath(**education_data)
+            else:
+                self.education_path = education_data
 
     @property
     def spotify_connected(self) -> bool:
@@ -531,3 +527,44 @@ class InviteCode(Base, UUID7PrimaryKeyMixin):
 
     def __repr__(self) -> str:
         return f"<InviteCode(id={self.id}, code='{self.code}', used={self.is_used})>"
+
+
+class UserStats(Base):
+    """
+    Pre-aggregated metrics to offload heavy OLAP queries from the OLTP critical path.
+    Updated asynchronously via event consumers or cron jobs.
+    """
+
+    __tablename__ = "user_stats"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+
+    # Attendance metrics
+    attendance_percent = Column(Float, default=0.0)
+    attendance_present = Column(Integer, default=0)
+    attendance_total = Column(Integer, default=0)
+    attendance_trend = Column(Float, default=0.0)
+
+    # Grade metrics
+    grades_average = Column(Float, default=0.0)
+    grades_trend = Column(Float, default=0.0)
+
+    # Participation metrics
+    participation_events = Column(Integer, default=0)
+    participation_hours = Column(Float, default=0.0)
+    participation_groups = Column(Integer, default=0)
+    participation_trend = Column(Integer, default=0)
+
+    # General metadata
+    last_computed_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    user = relationship("User", back_populates="stats")
+
+    def __repr__(self) -> str:
+        return f"<UserStats(user_id={self.user_id})>"

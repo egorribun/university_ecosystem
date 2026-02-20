@@ -1,4 +1,5 @@
 import logging
+import uuid
 
 from fastapi import Request
 
@@ -60,7 +61,7 @@ class UserAdminService:
         if current_user.role != "admin":
             raise PermissionDenied()
 
-        db_user = await self.repo.get(user_id)
+        db_user = await self.repo.get(user_id)  # type: ignore[arg-type]
         if not db_user:
             raise EntityNotFound("User", user_id)
 
@@ -71,7 +72,9 @@ class UserAdminService:
             from app.services.user.logic import validate_user_email
 
             payload["email"] = await validate_user_email(
-                self.repo, payload["email"], exclude_user_id=user_id
+                self.repo,
+                payload["email"],
+                exclude_user_id=user_id,  # type: ignore[arg-type]
             )
 
         # Update fields
@@ -123,7 +126,7 @@ class UserAdminService:
         if current_user.role != "admin":
             raise PermissionDenied()
 
-        db_user = await self.repo.get(user_id)
+        db_user = await self.repo.get(user_id)  # type: ignore[arg-type]
         if db_user is None:
             raise EntityNotFound("User", user_id)
 
@@ -135,7 +138,10 @@ class UserAdminService:
         await execute_user_anonymization(self.repo, db_user)
 
         self.audit.log(
-            "users.admin_delete", request, user_id=user_id, reason="admin_delete"
+            "users.admin_delete",
+            request,
+            user_id=uuid.UUID(str(user_id)) if user_id else None,
+            reason="admin_delete",
         )
 
         await self.repo.commit()

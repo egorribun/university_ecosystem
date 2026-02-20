@@ -7,7 +7,7 @@ from __future__ import annotations
 import contextlib
 import uuid
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import aliased, selectinload
@@ -93,7 +93,7 @@ class EventRepository(BaseRepository[Event, dict, dict]):
     async def search_events(
         self,
         *,
-        user_id: uuid.UUID | int | None = None,
+        user_id: uuid.UUID | int | str | None = None,
         search_query: str = "",
         event_type: str | None = None,
         location: str | None = None,
@@ -105,7 +105,7 @@ class EventRepository(BaseRepository[Event, dict, dict]):
         now = datetime.now(UTC)
 
         # Build conditions
-        conditions = []
+        conditions: list[Any] = []
         rank_expr = None
 
         if search_query:
@@ -199,7 +199,7 @@ class EventRepository(BaseRepository[Event, dict, dict]):
 
         stmt = stmt.limit(limit)
         result = await self.db.execute(stmt)
-        return result.all()
+        return [tuple(row) for row in result.all()]
 
     async def get_event_with_details(
         self, event_id: uuid.UUID | int | str, user_id: uuid.UUID | int | str | None
@@ -234,7 +234,8 @@ class EventRepository(BaseRepository[Event, dict, dict]):
         )
 
         result = await self.db.execute(stmt)
-        return result.first()
+        first = result.first()
+        return tuple(first) if first else None
 
     async def get_attendance(
         self, event_id: uuid.UUID | int | str, user_id: uuid.UUID | int | str

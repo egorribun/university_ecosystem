@@ -16,7 +16,6 @@ from app.schemas import schemas
 from app.services import attendance_tokens, stats_cache
 from app.services.vector_service import VectorService
 from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
-from app.utils.sanitization import sanitize_optional_text
 
 logger = logging.getLogger(__name__)
 
@@ -71,24 +70,20 @@ class EventService:
                 getattr(record, "description", None),
                 getattr(record, "description_en", None),
             ),
-            "title_en": sanitize_optional_text(getattr(record, "title_en", None)),
-            "description_en": sanitize_optional_text(
-                getattr(record, "description_en", None)
-            ),
+            "title_en": getattr(record, "title_en", None),
+            "description_en": getattr(record, "description_en", None),
             "location": _localized_event_field(
                 normalized_locale,
                 getattr(record, "location", None),
                 getattr(record, "location_en", None),
             ),
-            "location_en": sanitize_optional_text(getattr(record, "location_en", None)),
+            "location_en": getattr(record, "location_en", None),
             "event_type": _localized_event_field(
                 normalized_locale,
                 getattr(record, "event_type", None),
                 getattr(record, "event_type_en", None),
             ),
-            "event_type_en": sanitize_optional_text(
-                getattr(record, "event_type_en", None)
-            ),
+            "event_type_en": getattr(record, "event_type_en", None),
             "starts_at": record.starts_at,
             "ends_at": record.ends_at,
             "created_by": record.created_by,
@@ -101,7 +96,7 @@ class EventService:
                 getattr(record, "about", None),
                 getattr(record, "about_en", None),
             ),
-            "about_en": sanitize_optional_text(getattr(record, "about_en", None)),
+            "about_en": getattr(record, "about_en", None),
             "files": prepared_files,
             "participant_count": participant_count,
             "is_registered": is_registered,
@@ -180,7 +175,8 @@ class EventService:
         if has_more and items_to_process:
             last_event, *_ = items_to_process[-1]
             next_cursor = encode_datetime_cursor(
-                last_event.starts_at, str(last_event.id)
+                last_event.starts_at,  # type: ignore[arg-type]
+                str(last_event.id),
             )
 
         return schemas.PaginatedEvents(
@@ -203,7 +199,9 @@ class EventService:
         obj_data = data.model_dump()
         obj_data["created_by"] = user_id
         event = await self.repo.create(obj_data)
-        event.record_event(EventCreated(event_id_entity=event.id, title=event.title))
+        event.record_event(
+            EventCreated(event_id_entity=event.id, title=str(event.title))
+        )
         await self.repo.commit()
         await self.repo.refresh(event)
         return event
@@ -229,10 +227,11 @@ class EventService:
                 raise ValueError(translate("validation.events.end_after_start"))
 
         updated_event = await self.repo.update(event.id, updates)
+        assert updated_event is not None
         if text_changed:
             updated_event.record_event(
                 EventUpdated(
-                    event_id_entity=updated_event.id, title=updated_event.title
+                    event_id_entity=updated_event.id, title=str(updated_event.title)
                 )
             )
 
@@ -258,7 +257,7 @@ class EventService:
 
         if image_url:
             with contextlib.suppress(Exception):
-                await delete_static_file(image_url)
+                await delete_static_file(str(image_url))
 
         for url in file_urls:
             with contextlib.suppress(Exception):
@@ -277,7 +276,7 @@ class EventService:
         if exist:
             updated = False
             if exist.registered_at is None:
-                exist.registered_at = datetime.now(UTC)
+                exist.registered_at = datetime.now(UTC)  # type: ignore[unreachable]
                 updated = True
             if attendance_tokens.ensure_secret_material(exist):
                 updated = True
@@ -286,7 +285,7 @@ class EventService:
                 await self.repo.refresh(exist)
 
             # Helper logic to set token attribute for response
-            exist.qr_token = attendance_tokens.issue_token(exist)
+            exist.qr_token = attendance_tokens.issue_token(exist)  # type: ignore[attr-defined]
             await stats_cache.invalidate_user_stats_cache(
                 user_ids=user_id,
                 kinds=cache_kinds,
@@ -316,7 +315,7 @@ class EventService:
             # Existing found after race
             updated = False
             if exist.registered_at is None:
-                exist.registered_at = datetime.now(UTC)
+                exist.registered_at = datetime.now(UTC)  # type: ignore[unreachable]
                 updated = True
             if attendance_tokens.ensure_secret_material(exist):
                 updated = True
@@ -324,7 +323,7 @@ class EventService:
                 await self.repo.commit()
                 await self.repo.refresh(exist)
 
-            exist.qr_token = attendance_tokens.issue_token(exist)
+            exist.qr_token = attendance_tokens.issue_token(exist)  # type: ignore[attr-defined]
             await stats_cache.invalidate_user_stats_cache(
                 user_ids=user_id,
                 kinds=cache_kinds,
@@ -332,7 +331,7 @@ class EventService:
             return exist
 
         await self.repo.refresh(record)
-        record.qr_token = attendance_tokens.issue_token(record)
+        record.qr_token = attendance_tokens.issue_token(record)  # type: ignore[attr-defined]
         await stats_cache.invalidate_user_stats_cache(
             user_ids=user_id,
             kinds=cache_kinds,
