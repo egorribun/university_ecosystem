@@ -72,7 +72,10 @@ async def login_passkey_start(
     if user_service is None:
         # Fallback if dependency injection fails/is overriden in test
         from sqlalchemy import func
-        res = await db.execute(select(User).where(func.lower(User.email) == normalized_email))
+
+        res = await db.execute(
+            select(User).where(func.lower(User.email) == normalized_email)
+        )
         user = res.scalars().first()
     else:
         user = await user_service.get_user_by_email(normalized_email)

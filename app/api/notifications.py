@@ -36,7 +36,6 @@ from app.services.notifications import (
 )
 from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
 
-
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])

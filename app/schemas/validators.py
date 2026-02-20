@@ -15,11 +15,11 @@ from app.utils.sanitization import (
     sanitize_email,
     sanitize_filename,
     sanitize_html,
+    sanitize_optional_text,
     sanitize_rich_text,
     sanitize_url,
     strip_control_chars,
     truncate,
-    sanitize_optional_text,
 )
 
 
@@ -114,7 +114,9 @@ CleanStr = Annotated[str, AfterValidator(_strip_control_chars_validator)]
 SafeUrl = Annotated[str | None, AfterValidator(_sanitize_url_validator)]
 
 # Optional sanitized text (trims whitespace, None if empty)
-SanitizedInput = Annotated[str | None, AfterValidator(_sanitize_optional_text_validator)]
+SanitizedInput = Annotated[
+    str | None, AfterValidator(_sanitize_optional_text_validator)
+]
 
 # Short text fields with length limits
 ShortSanitizedStr = Annotated[

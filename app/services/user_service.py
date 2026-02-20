@@ -1,5 +1,4 @@
 import logging
-from typing import Any
 
 from fastapi import Request, UploadFile
 from sqlalchemy import select
@@ -14,7 +13,6 @@ from app.core.exceptions.domain import (
     PermissionDenied,
 )
 from app.core.localization import resolve_locale, translate
-from app.deps.cache import BaseCache
 from app.models import models
 from app.models.user_loaders import (
     ensure_mfa_relationships_loaded,
@@ -497,6 +495,7 @@ class UserService:
         user_data["hashed_password"] = hashed
 
         from sqlalchemy.exc import IntegrityError
+
         try:
             # Use repo.create
             user = await self.repo.create(user_data)
@@ -559,4 +558,3 @@ class UserService:
             await delete_static_file(file_url)
             raise
         return db_user
-

@@ -276,8 +276,10 @@ async def test_participation_stats_summarize_events(
     payload = response.json()
 
     assert payload["events"] == 2
-    assert payload["hours"] == pytest.approx(0.0, rel=1e-3) # Expected zero due to lack of UserStats
-    assert payload["groups"] == 0 # Expected zero due to lack of UserStats
+    assert payload["hours"] == pytest.approx(
+        0.0, rel=1e-3
+    )  # Expected zero due to lack of UserStats
+    assert payload["groups"] == 0  # Expected zero due to lack of UserStats
     assert payload["trend"] == 0
     assert len(payload["recent"]) == 2
     assert {item["title"] for item in payload["recent"]} == {

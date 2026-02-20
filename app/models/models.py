@@ -97,6 +97,7 @@ from app.models.users import (
 from app.models.users import (
     UserProfileDetail as UserProfileDetail,
 )
+
 UserProfile = UserProfileDetail
 
 # Late-binding association proxies to avoid cyclic imports in individual model files

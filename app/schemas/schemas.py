@@ -16,8 +16,8 @@ from pydantic_core import PydanticCustomError
 
 from app.core.localization import translate
 from app.models.enums import UserRole
-from app.utils.img import get_optimized_image_url
 from app.schemas.validators import SanitizedInput
+from app.utils.img import get_optimized_image_url
 
 
 class OrmModel(BaseModel):
@@ -108,6 +108,7 @@ class UserEducationBase(BaseModel):
     track: str | None = None
     program: str | None = None
     record_book_number: str | None = None
+
 
 class UserProfilePublicFlattened(BaseModel):
     about: str | None = None

@@ -690,8 +690,12 @@ async def websocket_chat(websocket: WebSocket):
                 if chat_id:
                     # Validate user is participant to prevent IDOR
                     try:
-                        chat_uuid = uuid.UUID(chat_id) if isinstance(chat_id, str) else chat_id
-                        participants = await manager._get_chat_participants_cached(chat_uuid)
+                        chat_uuid = (
+                            uuid.UUID(chat_id) if isinstance(chat_id, str) else chat_id
+                        )
+                        participants = await manager._get_chat_participants_cached(
+                            chat_uuid
+                        )
                         if user.id not in participants:
                             logger.warning(
                                 f"Access denied: User {user.id} tried to send typing "

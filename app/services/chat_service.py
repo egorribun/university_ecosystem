@@ -207,12 +207,15 @@ class ChatService:
         ensure_exists(participant, "users", locale)
 
         from app.core.rate_limit import _get_shared_client
+
         redis_client = await _get_shared_client(settings.rate_limit_storage_uri)
         min_id, max_id = sorted([user.id.int, participant_id.int])
         lock_name = f"chat_init:{min_id}:{max_id}"
 
         async with redis_client.lock(lock_name, timeout=5):
-            existing_chat = await self.repository.find_existing_dm(user.id, participant_id)
+            existing_chat = await self.repository.find_existing_dm(
+                user.id, participant_id
+            )
             if existing_chat:
                 # We don't have presence/unread count readily available for existing chat
                 # return here in the original code, but we should probably try to be

@@ -130,7 +130,9 @@ def get_user_analytics_service(
     db: AsyncSession = Depends(get_db),
 ) -> UserAnalyticsService:
     from app.services.user.analytics_service import UserAnalyticsService
+
     return UserAnalyticsService(db=db)
+
 
 def get_stats_handler(
     db: AsyncSession = Depends(get_db),

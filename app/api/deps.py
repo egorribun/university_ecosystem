@@ -232,7 +232,10 @@ async def get_current_user(
                 )
                 # Delegate mutation (e.g. session revocation/MFA enforcement) to dedicated
                 # async events or background tasks instead of inline blocking DB writes here.
-                if os.getenv("ENVIRONMENT") != "testing" and getattr(settings, "ENVIRONMENT", "production") != "testing":
+                if (
+                    os.getenv("ENVIRONMENT") != "testing"
+                    and getattr(settings, "ENVIRONMENT", "production") != "testing"
+                ):
                     raise_forbidden(locale, "errors.auth.session_compromised")
 
     ttl = max(0, getattr(settings, "mfa_step_up_ttl_seconds", 0))

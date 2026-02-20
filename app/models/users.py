@@ -6,19 +6,18 @@ from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
+    Float,
     ForeignKey,
+    Index,
+    Integer,
     String,
     Time,
-    Integer,
-    Float,
     func,
 )
 from sqlalchemy import (
     Enum as SqlEnum,
 )
-from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import Index
 
 from app.core.database import Base
 from app.core.events import EventEmitterMixin
@@ -34,9 +33,7 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     email = Column(String, unique=True, nullable=False)
     hashed_password = Column(String, nullable=False)
 
-    __table_args__ = (
-        Index("ix_users_email_lower", func.lower(email), unique=True),
-    )
+    __table_args__ = (Index("ix_users_email_lower", func.lower(email), unique=True),)
 
     full_name = Column(String)
     role = Column(
@@ -100,7 +97,13 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     )
 
     group = relationship("Group", back_populates="students", passive_deletes=True)
-    stats = relationship("UserStats", uselist=False, back_populates="user", cascade="all, delete-orphan", passive_deletes=True)
+    stats = relationship(
+        "UserStats",
+        uselist=False,
+        back_populates="user",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
     notifications = relationship(
         "Notification",
         back_populates="user",
@@ -180,7 +183,14 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         for field in ["dnd_enabled", "dnd_start", "dnd_end", "timezone"]:
             if field in kwargs:
                 setattr(self, field, kwargs[field])
-        for field in ["about", "telegram", "status", "achievements", "position", "department"]:
+        for field in [
+            "about",
+            "telegram",
+            "status",
+            "achievements",
+            "position",
+            "department",
+        ]:
             if field in kwargs:
                 setattr(self, field, kwargs[field])
         for field in [
@@ -466,6 +476,7 @@ class UserStats(Base):
     Pre-aggregated metrics to offload heavy OLAP queries from the OLTP critical path.
     Updated asynchronously via event consumers or cron jobs.
     """
+
     __tablename__ = "user_stats"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -491,7 +502,9 @@ class UserStats(Base):
     participation_trend = Column(Integer, default=0)
 
     # General metadata
-    last_computed_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    last_computed_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
     user = relationship("User", back_populates="stats")
 

@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import app.services.event_service as event_service
-import app.services.user_service as user_service
 from app.core.localization import normalize_locale, translate
 from app.models import models
 from app.utils.files import detect_mime_type, normalize_filename_prefix, save_attachment

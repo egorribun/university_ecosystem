@@ -3,9 +3,8 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import and_, case, func, literal, select, true
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import aliased
 
 from app.deps.cache import BaseCache
 from app.models import models
@@ -98,21 +97,21 @@ class UserAnalyticsService:
 
         # 2. Fast OLTP query for recent 5 records only
         recent_attendance_base = (
-             select(
-                 models.EventAttendance.registered_at.label("registered_at"),
-                 models.Event.starts_at.label("starts_at"),
-                 models.Event.title.label("title"),
-             )
-             .join(models.Event, models.Event.id == models.EventAttendance.event_id)
-             .where(
-                 models.EventAttendance.user_id == user_id,
-                 models.Event.is_active.is_(True),
-                 models.Event.starts_at >= window_start,
-                 models.Event.starts_at < now,
-             )
-             .order_by(models.EventAttendance.registered_at.desc())
-             .limit(5)
-         )
+            select(
+                models.EventAttendance.registered_at.label("registered_at"),
+                models.Event.starts_at.label("starts_at"),
+                models.Event.title.label("title"),
+            )
+            .join(models.Event, models.Event.id == models.EventAttendance.event_id)
+            .where(
+                models.EventAttendance.user_id == user_id,
+                models.Event.is_active.is_(True),
+                models.Event.starts_at >= window_start,
+                models.Event.starts_at < now,
+            )
+            .order_by(models.EventAttendance.registered_at.desc())
+            .limit(5)
+        )
         rows = await self.db.execute(recent_attendance_base)
 
         recent: list[dict[str, Any]] = []
@@ -200,7 +199,7 @@ class UserAnalyticsService:
             recent.append(parsed)
             total_grades += 1
             if parsed.get("score"):
-                    sum_scores += parsed["score"]
+                sum_scores += parsed["score"]
 
         recent = sorted(recent, key=lambda x: str(x.get("date")), reverse=True)[:5]
 

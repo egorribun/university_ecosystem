@@ -157,6 +157,7 @@ class NewsRepository(BaseRepository[News, dict, dict]):
         self, news_id: uuid.UUID, current_user_id: uuid.UUID | None = None
     ):
         import asyncio
+
         likes_stmt = select(func.count(models.NewsLike.id)).where(
             models.NewsLike.news_id == news_id
         )
@@ -172,8 +173,7 @@ class NewsRepository(BaseRepository[News, dict, dict]):
         )
 
         likes_result, is_liked_result = await asyncio.gather(
-            self.db.execute(likes_stmt),
-            self.db.execute(is_liked_stmt)
+            self.db.execute(likes_stmt), self.db.execute(is_liked_stmt)
         )
 
         likes_count = likes_result.scalar() or 0

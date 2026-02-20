@@ -53,13 +53,18 @@ scan_for_malware = _scan_for_malware
 if os.getenv("ENABLE_PROFILING", "false").lower() == "true":
     try:
         import pyroscope
+
         pyroscope.configure(
             application_name="university-backend",
-            server_address=os.getenv("PYROSCOPE_SERVER_ADDRESS", "http://pyroscope:4040"),
+            server_address=os.getenv(
+                "PYROSCOPE_SERVER_ADDRESS", "http://pyroscope:4040"
+            ),
         )
         logging.info("Pyroscope continuous profiling enabled.")
     except ImportError:
-        logging.warning("Pyroscope is enabled via ENABLE_PROFILING but the 'pyroscope-io' package is not installed.")
+        logging.warning(
+            "Pyroscope is enabled via ENABLE_PROFILING but the 'pyroscope-io' package is not installed."
+        )
     except Exception as e:
         logging.error(f"Failed to initialize Pyroscope: {e}")
 

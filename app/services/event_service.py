@@ -17,7 +17,6 @@ from app.schemas import schemas
 from app.services import attendance_tokens, stats_cache
 from app.services.vector_service import VectorService
 from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
-from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
 
 logger = logging.getLogger(__name__)
 

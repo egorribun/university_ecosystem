@@ -97,7 +97,9 @@ class GetStatsQuery(Query):
 
 
 class GetStatsHandler(QueryHandler[GetStatsQuery, QueryResult]):
-    def __init__(self, db: AsyncSession, cache: BaseCache, analytics_service: Any) -> None:
+    def __init__(
+        self, db: AsyncSession, cache: BaseCache, analytics_service: Any
+    ) -> None:
         self.db = db
         self.cache = cache
         self.analytics_service = analytics_service

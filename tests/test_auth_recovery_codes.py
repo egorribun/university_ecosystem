@@ -41,7 +41,6 @@ async def unit_user_mfa(db_session: AsyncSession) -> User:
     return user
 
 
-
 async def test_generate_recovery_codes_unit(
     db_session: AsyncSession, unit_user_mfa: User
 ):
