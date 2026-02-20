@@ -1,4 +1,4 @@
-import { z } from "zod"
+import * as v from "valibot"
 
 import type { components } from "@/api/generated/schema"
 import { apiClient } from "./client"
@@ -6,7 +6,7 @@ import { ensureValidResponse } from "./validation"
 
 export type CreateEventPayload = components["schemas"]["EventCreate"]
 
-const uploadResponseSchema = z.object({ url: z.string().trim().min(1) })
+const uploadResponseSchema = v.object({ url: v.pipe(v.string(), v.trim(), v.minLength(1)) })
 
 export const createEvent = (payload: CreateEventPayload) =>
   apiClient.post("/api/v1/events", payload)

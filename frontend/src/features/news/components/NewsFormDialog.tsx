@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next"
 import { isAxiosError } from "axios"
 import { Camera as PhotoCamera } from "lucide-react"
 import { useForm, Controller } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
+import { valibotResolver } from "@hookform/resolvers/valibot"
 import { Dialog, DialogActions, DialogContent, DialogTitle, Alert } from "@/components/settings"
 import { Button } from "@/components/ui"
 import SmartImage from "@/components/SmartImage"
@@ -61,7 +61,7 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
     watch,
     formState: { errors, isSubmitting, isValid },
   } = useForm<NewsFormValues>({
-    resolver: zodResolver(newsFormSchema),
+    resolver: valibotResolver(newsFormSchema),
     mode: "onChange",
     defaultValues: {
       title: "",

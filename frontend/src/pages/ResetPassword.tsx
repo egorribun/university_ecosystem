@@ -13,7 +13,7 @@ import {
   AlertTriangle,
 } from "lucide-react"
 import { useForm } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
+import { valibotResolver } from "@hookform/resolvers/valibot"
 
 import { Button, TextField, SectionCard, Alert } from "@/components/settings"
 import { ProgressBar } from "@/components/ui"
@@ -67,7 +67,7 @@ export default function ResetPassword() {
     setError,
     formState: { errors, isSubmitting },
   } = useForm<NewPasswordValues>({
-    resolver: zodResolver(newPasswordSchema),
+    resolver: valibotResolver(newPasswordSchema),
     defaultValues: {
       password: "",
       confirmPassword: "",

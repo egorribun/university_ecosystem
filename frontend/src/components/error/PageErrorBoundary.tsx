@@ -20,6 +20,7 @@ import { useTranslation } from "react-i18next"
 import { useLocation, useNavigate } from "react-router-dom"
 import * as Sentry from "@sentry/react"
 import { logError } from "@/app/logger"
+import { extractApiError } from "@/utils/error"
 
 interface PageErrorBoundaryProps {
   children: ReactNode
@@ -72,9 +73,34 @@ function PageErrorFallback({
             <summary className="cursor-pointer text-sm text-text-primary/(--opacity-medium)">
               Error details
             </summary>
-            <pre className="mt-2 overflow-auto rounded bg-(--glass-bg) p-2 text-xs">
-              {error.message}
-            </pre>
+            <div className="mt-2 overflow-auto rounded bg-(--glass-bg) p-3 text-left text-xs font-mono">
+              {(() => {
+                const apiError = extractApiError(error)
+                return (
+                  <div className="space-y-1">
+                    <div className="font-bold text-error-text">
+                      {apiError.status > 0 ? `Status: ${apiError.status}` : "Non-API Error"}
+                    </div>
+                    <div>{apiError.message}</div>
+                    {apiError.traceId && (
+                      <div className="opacity-70 text-[10px]">Trace ID: {apiError.traceId}</div>
+                    )}
+                    {apiError.details && apiError.details.length > 0 && (
+                      <ul className="mt-2 list-inside list-disc opacity-80">
+                        {apiError.details.map((d, i) => (
+                          <li key={i}>
+                            {d.field ? <span className="underline">{d.field}</span> : "Error"}: {d.message}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )
+              })()}
+              <pre className="mt-3 border-t border-border-subtle pt-2 opacity-50">
+                {error.stack || error.message}
+              </pre>
+            </div>
           </details>
         )}
       </div>

@@ -1,12 +1,9 @@
-import json
 import logging
-from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import Request, UploadFile
-from sqlalchemy import and_, case, func, literal, select, true
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import aliased
 
 from app.api.utils import save_upload
 from app.auth.security import get_password_hash
@@ -24,7 +21,6 @@ from app.models.user_loaders import (
 )
 from app.repositories.user_repository import UserRepository
 from app.schemas import schemas
-from app.services import stats_cache
 from app.services.audit_service import AuditService
 from app.services.auth_service import attach_pending_email
 from app.services.data_access import export_access_logs, log_data_access
@@ -366,6 +362,9 @@ class UserService:
         requested_role = UserRole(raw_role) if raw_role else UserRole.STUDENT
         normalized_email = user_in.email.strip().lower()
 
+        if await self.repo.check_email_exists(normalized_email):
+            raise EntityAlreadyExists("User", normalized_email)
+
         code = None
         if hasattr(user_in, "invite_code") and requested_role in (
             UserRole.TEACHER,
@@ -386,9 +385,6 @@ class UserService:
             ):
                 raise BusinessRuleViolation("errors.users.invalid_invite")
             code = code_obj
-
-        if await self.repo.check_email_exists(normalized_email):
-            raise EntityAlreadyExists("User", normalized_email)
 
         hashed_password = get_password_hash(user_in.password)
 
@@ -444,19 +440,29 @@ class UserService:
         # Solution: Use `self.db` directly here for transactionality?
         # Or use `repo.db`.
 
+        from sqlalchemy.exc import IntegrityError
+
         # Let's do manuals:
         db_user = models.User(**user_data)
         self.db.add(db_user)
+
+        if code:
+            code.is_used = True
+            code.is_active = False
+            self.db.add(code)
+
         try:
             await self.db.flush()  # to get ID
             if code:
-                code.is_used = True
-                code.is_active = False
                 code.used_by_user_id = db_user.id
-                self.db.add(code)
-
             await self.db.commit()
             await self.db.refresh(db_user)
+        except IntegrityError as exc:
+            await self.db.rollback()
+            error_str = str(exc.orig).lower() if exc.orig else str(exc).lower()
+            if "email" in error_str or "users_email_key" in error_str:
+                raise EntityAlreadyExists("User", normalized_email)
+            raise BusinessRuleViolation("errors.users.create_failed")
         except Exception:
             await self.db.rollback()
             raise BusinessRuleViolation("errors.users.create_failed")
@@ -482,9 +488,6 @@ class UserService:
             # Logic from before
             raise BusinessRuleViolation("errors.users.invite_code_required")
 
-        if await self.repo.check_email_exists(data.email):
-            raise EntityAlreadyExists("User", data.email)
-
         password = data.password
         hashed = get_password_hash(password)
 
@@ -493,8 +496,16 @@ class UserService:
         )
         user_data["hashed_password"] = hashed
 
-        # Use repo.create
-        user = await self.repo.create(user_data)
+        from sqlalchemy.exc import IntegrityError
+        try:
+            # Use repo.create
+            user = await self.repo.create(user_data)
+        except IntegrityError as exc:
+            await self.db.rollback()
+            error_str = str(exc.orig).lower() if exc.orig else str(exc).lower()
+            if "email" in error_str or "users_email_key" in error_str:
+                raise EntityAlreadyExists("User", data.email)
+            raise BusinessRuleViolation("errors.users.create_failed")
 
         self.audit.log("users.create", request, user_id=user.id, reason="admin_create")
         await ensure_mfa_relationships_loaded(self.db, user)
@@ -549,438 +560,3 @@ class UserService:
             raise
         return db_user
 
-    def _dt_to_iso(self, value: datetime | None) -> str:
-        if value is None:
-            return ""
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=UTC)
-        return value.astimezone(UTC).isoformat()
-
-    async def get_attendance_stats(
-        self,
-        *,
-        user_id: int,
-        period_days: int,
-        period_key: str | None = None,
-        cache: BaseCache | None = None,
-        skip_cache: bool = False,
-    ) -> dict[str, Any]:
-        cache_period_key = stats_cache.resolve_period_key(period_key, period_days)
-        cached = await stats_cache.get_cached_stats(
-            cache=cache,
-            kind="attendance",
-            user_id=user_id,
-            period_key=cache_period_key,
-            skip_cache=skip_cache,
-        )
-        if cached is not None:
-            return cached.payload
-
-        now = datetime.now(UTC)
-        window_start = now - timedelta(days=period_days)
-        previous_start = window_start - timedelta(days=period_days)
-
-        attendance_alias = aliased(models.EventAttendance)
-        filtered_events = (
-            select(
-                models.Event.id.label("event_id"),
-                case(
-                    (models.Event.starts_at >= window_start, literal("current")),
-                    else_=literal("previous"),
-                ).label("period"),
-            )
-            .where(
-                models.Event.is_active.is_(True),
-                models.Event.starts_at >= previous_start,
-                models.Event.starts_at < now,
-            )
-            .cte("filtered_events")
-        )
-
-        attendance_join = filtered_events.outerjoin(
-            attendance_alias,
-            and_(
-                attendance_alias.event_id == filtered_events.c.event_id,
-                attendance_alias.user_id == user_id,
-            ),
-        )
-
-        stats_subquery = (
-            select(
-                func.coalesce(
-                    func.sum(case((filtered_events.c.period == "current", 1), else_=0)),
-                    0,
-                ).label("current_total"),
-                func.coalesce(
-                    func.sum(
-                        case((filtered_events.c.period == "previous", 1), else_=0)
-                    ),
-                    0,
-                ).label("previous_total"),
-                func.coalesce(
-                    func.sum(
-                        case(
-                            (
-                                and_(
-                                    filtered_events.c.period == "current",
-                                    attendance_alias.id.isnot(None),
-                                ),
-                                1,
-                            ),
-                            else_=0,
-                        )
-                    ),
-                    0,
-                ).label("current_attended"),
-                func.coalesce(
-                    func.sum(
-                        case(
-                            (
-                                and_(
-                                    filtered_events.c.period == "previous",
-                                    attendance_alias.id.isnot(None),
-                                ),
-                                1,
-                            ),
-                            else_=0,
-                        )
-                    ),
-                    0,
-                ).label("previous_attended"),
-            ).select_from(attendance_join)
-        ).subquery()
-
-        recent_attendance_base = (
-            select(
-                models.EventAttendance.registered_at.label("registered_at"),
-                models.Event.starts_at.label("starts_at"),
-                models.Event.title.label("title"),
-                func.row_number()
-                .over(order_by=models.EventAttendance.registered_at.desc())
-                .label("rn"),
-            )
-            .join(models.Event, models.Event.id == models.EventAttendance.event_id)
-            .where(
-                models.EventAttendance.user_id == user_id,
-                models.Event.is_active.is_(True),
-                models.Event.starts_at >= window_start,
-                models.Event.starts_at < now,
-            )
-        ).subquery()
-
-        top_recent = (
-            select(
-                recent_attendance_base.c.registered_at,
-                recent_attendance_base.c.starts_at,
-                recent_attendance_base.c.title,
-                recent_attendance_base.c.rn,
-            ).where(recent_attendance_base.c.rn <= 5)
-        ).subquery()
-
-        stats_rows = await self.db.execute(
-            select(
-                stats_subquery.c.current_total,
-                stats_subquery.c.previous_total,
-                stats_subquery.c.current_attended,
-                stats_subquery.c.previous_attended,
-                top_recent.c.registered_at,
-                top_recent.c.starts_at,
-                top_recent.c.title,
-                top_recent.c.rn,
-            )
-            .select_from(stats_subquery.outerjoin(top_recent, true()))
-            .order_by(top_recent.c.rn)
-        )
-
-        rows = stats_rows.all()
-
-        if rows:
-            first_row = rows[0]
-            total_events = int(first_row.current_total or 0)
-            attended_events = int(first_row.current_attended or 0)
-            previous_events = int(first_row.previous_total or 0)
-            previous_attended = int(first_row.previous_attended or 0)
-        else:
-            total_events = attended_events = previous_events = previous_attended = 0
-
-        percent = (attended_events / total_events * 100) if total_events else 0.0
-        previous_percent = (
-            previous_attended / previous_events * 100 if previous_events else 0.0
-        )
-
-        recent: list[dict[str, Any]] = []
-        for row in rows:
-            if getattr(row, "rn", None) is None:
-                continue
-            date_source = row.starts_at or row.registered_at
-            recent.append(
-                {
-                    "date": self._dt_to_iso(date_source),
-                    "status": "present",
-                    "course": row.title or None,
-                }
-            )
-
-        result = {
-            "percent": round(percent, 2),
-            "present": attended_events,
-            "total": total_events,
-            "trend": round(percent - previous_percent, 2),
-            "period_key": cache_period_key,
-            "recent": recent,
-        }
-        await stats_cache.set_cached_stats(
-            cache=cache,
-            kind="attendance",
-            user_id=user_id,
-            period_key=cache_period_key,
-            payload=result,
-            skip_cache=skip_cache,
-        )
-        return result
-
-    def _parse_grade_payload(
-        self, body: str | None, *, fallback_title: str, fallback_date: datetime | None
-    ) -> dict[str, Any] | None:
-        if not body:
-            return None
-        try:
-            payload = json.loads(body)
-        except (TypeError, ValueError):
-            return None
-        if not isinstance(payload, dict):
-            return None
-        score = payload.get("score")
-        try:
-            score_value = float(score)
-        except (TypeError, ValueError):
-            return None
-        max_score = payload.get("max")
-        max_value = None
-        if max_score is not None:
-            try:
-                max_value = float(max_score)
-            except (TypeError, ValueError):
-                max_value = None
-        course = payload.get("course")
-        if not isinstance(course, str) or not course.strip():
-            course = fallback_title
-        date_raw = payload.get("date")
-        if isinstance(date_raw, str):
-            try:
-                parsed = datetime.fromisoformat(date_raw)
-            except ValueError:
-                parsed = None
-        else:
-            parsed = None
-        date_value = parsed or fallback_date
-        return {
-            "course": course,
-            "score": score_value,
-            "max": max_value,
-            "date": self._dt_to_iso(date_value),
-        }
-
-    async def get_grade_stats(
-        self,
-        *,
-        user_id: int,
-        period_days: int,
-        period_key: str | None = None,
-        cache: BaseCache | None = None,
-        skip_cache: bool = False,
-    ) -> dict[str, Any]:
-        cache_period_key = stats_cache.resolve_period_key(period_key, period_days)
-        cached = await stats_cache.get_cached_stats(
-            cache=cache,
-            kind="grades",
-            user_id=user_id,
-            period_key=cache_period_key,
-            skip_cache=skip_cache,
-        )
-        if cached is not None:
-            return cached.payload
-
-        now = datetime.now(UTC)
-        window_start = now - timedelta(days=period_days)
-        previous_start = window_start - timedelta(days=period_days)
-
-        current_rows = await self.db.execute(
-            select(models.Notification)
-            .where(
-                models.Notification.user_id == user_id,
-                models.Notification.type == "grade",
-                models.Notification.created_at >= window_start,
-                models.Notification.created_at < now,
-            )
-            .order_by(models.Notification.created_at.desc())
-        )
-        current_entries = []
-        for notification in current_rows.scalars():
-            entry = self._parse_grade_payload(
-                notification.body,
-                fallback_title=notification.title or "",
-                fallback_date=notification.created_at,
-            )
-            if entry:
-                current_entries.append(entry)
-
-        previous_rows = await self.db.execute(
-            select(models.Notification).where(
-                models.Notification.user_id == user_id,
-                models.Notification.type == "grade",
-                models.Notification.created_at >= previous_start,
-                models.Notification.created_at < window_start,
-            )
-        )
-        previous_entries = []
-        for notification in previous_rows.scalars():
-            entry = self._parse_grade_payload(
-                notification.body,
-                fallback_title=notification.title or "",
-                fallback_date=notification.created_at,
-            )
-            if entry:
-                previous_entries.append(entry)
-
-        def _average(items: list[dict[str, Any]]) -> float:
-            if not items:
-                return 0.0
-            return sum(item["score"] for item in items) / len(items)
-
-        average = _average(current_entries)
-        previous_average = _average(previous_entries)
-
-        max_values = [item["max"] for item in current_entries if item.get("max")]
-        scale = "5"
-        if any(value and value > 5 for value in max_values):
-            scale = "100"
-
-        recent = current_entries[:5]
-
-        result = {
-            "average": round(average, 2) if current_entries else 0.0,
-            "scale": scale,
-            "trend": round(average - previous_average, 2),
-            "recent": recent,
-            "period_key": cache_period_key,
-        }
-        await stats_cache.set_cached_stats(
-            cache=cache,
-            kind="grades",
-            user_id=user_id,
-            period_key=cache_period_key,
-            payload=result,
-            skip_cache=skip_cache,
-        )
-        return result
-
-    async def get_participation_stats(
-        self,
-        *,
-        user_id: int,
-        period_days: int,
-        period_key: str | None = None,
-        cache: BaseCache | None = None,
-        skip_cache: bool = False,
-    ) -> dict[str, Any]:
-        cache_period_key = stats_cache.resolve_period_key(period_key, period_days)
-        cached = await stats_cache.get_cached_stats(
-            cache=cache,
-            kind="participation",
-            user_id=user_id,
-            period_key=cache_period_key,
-            skip_cache=skip_cache,
-        )
-        if cached is not None:
-            return cached.payload
-
-        now = datetime.now(UTC)
-        window_start = now - timedelta(days=period_days)
-        previous_start = window_start - timedelta(days=period_days)
-
-        # Helper inner function for reuse
-        def _ensure_utc_local(value: datetime) -> datetime:
-            if value.tzinfo is None:
-                return value.replace(tzinfo=UTC)
-            return value.astimezone(UTC)
-
-        def _attendance_query(start: datetime, end: datetime):
-            return (
-                select(
-                    models.EventAttendance.event_id,
-                    models.EventAttendance.registered_at,
-                    models.Event.starts_at,
-                    models.Event.ends_at,
-                    models.Event.title,
-                    models.Event.event_type,
-                )
-                .join(models.Event, models.Event.id == models.EventAttendance.event_id)
-                .where(
-                    models.EventAttendance.user_id == user_id,
-                    models.Event.starts_at >= start,
-                    models.Event.starts_at < end,
-                    models.Event.is_active.is_(True),
-                )
-            )
-
-        current_rows = await self.db.execute(
-            _attendance_query(window_start, now).order_by(models.Event.starts_at.desc())
-        )
-        current_entries = current_rows.all()
-        previous_rows = await self.db.execute(
-            _attendance_query(previous_start, window_start)
-        )
-        previous_entries = previous_rows.all()
-
-        unique_events = {}
-        total_hours = 0.0
-        event_types = set()
-        recent = []
-        for (
-            event_id,
-            registered_at,
-            starts_at,
-            ends_at,
-            title,
-            event_type,
-        ) in current_entries:
-            if event_id not in unique_events:
-                unique_events[event_id] = (starts_at, ends_at)
-                if starts_at and ends_at:
-                    start_dt = _ensure_utc_local(starts_at)
-                    end_dt = _ensure_utc_local(ends_at)
-                    if end_dt > start_dt:
-                        total_hours += (end_dt - start_dt).total_seconds() / 3600
-            if event_type:
-                event_types.add(event_type)
-            recent.append(
-                {
-                    "title": title or "",
-                    "date": self._dt_to_iso(starts_at or registered_at),
-                    "role": event_type or None,
-                }
-            )
-
-        recent.sort(key=lambda item: item["date"], reverse=True)
-        recent = recent[:5]
-
-        previous_event_ids = {row[0] for row in previous_entries}
-
-        result = {
-            "events": len(unique_events),
-            "hours": round(total_hours, 2) if total_hours else 0.0,
-            "groups": len(event_types),
-            "trend": len(unique_events) - len(previous_event_ids),
-            "recent": recent,
-            "period_key": cache_period_key,
-        }
-        await stats_cache.set_cached_stats(
-            cache=cache,
-            kind="participation",
-            user_id=user_id,
-            period_key=cache_period_key,
-            payload=result,
-            skip_cache=skip_cache,
-        )
-        return result

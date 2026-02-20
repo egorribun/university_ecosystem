@@ -1,6 +1,14 @@
-import { afterEach, beforeAll } from "vitest"
+import { afterEach, beforeAll, vi } from "vitest"
 import { cleanup } from "@testing-library/react"
 import "@testing-library/jest-dom/vitest"
+
+vi.mock("@/utils/cryptoWorker", () => ({
+  cryptoWorker: {
+    pbkdf2: vi.fn().mockResolvedValue("mocked_pbkdf2_hash"),
+    scrypt: vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3])),
+    hmacSha256: vi.fn().mockResolvedValue("mocked_hmac_base64"),
+  },
+}))
 
 afterEach(() => {
   cleanup()

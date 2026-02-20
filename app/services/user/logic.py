@@ -7,37 +7,22 @@ from app.utils.files import delete_static_file
 
 def update_user_attributes(user: models.User, data: dict) -> None:
     """Update user attributes including nested relations."""
-    preferences_fields = {"dnd_enabled", "dnd_start", "dnd_end", "timezone"}
-    profile_fields = {
-        "about",
-        "telegram",
-        "status",
-        "achievements",
-        "position",
-        "department",
-    }
-    education_fields = {
-        "institute",
-        "course",
-        "education_level",
-        "track",
-        "program",
-        "record_book_number",
-    }
-
     for field, value in data.items():
-        if field in preferences_fields:
+        if field == "preferences" and isinstance(value, dict):
             if not user.preferences:
                 user.preferences = models.UserPreferences(user_id=user.id)
-            setattr(user.preferences, field, value)
-        elif field in profile_fields:
+            for k, v in value.items():
+                setattr(user.preferences, k, v)
+        elif field == "profile_detail" and isinstance(value, dict):
             if not user.profile_detail:
                 user.profile_detail = models.UserProfileDetail(user_id=user.id)
-            setattr(user.profile_detail, field, value)
-        elif field in education_fields:
+            for k, v in value.items():
+                setattr(user.profile_detail, k, v)
+        elif field == "education_path" and isinstance(value, dict):
             if not user.education_path:
                 user.education_path = models.EducationPath(user_id=user.id)
-            setattr(user.education_path, field, value)
+            for k, v in value.items():
+                setattr(user.education_path, k, v)
         else:
             setattr(user, field, value)
 
@@ -60,20 +45,32 @@ async def anonymize_user_data(user: models.User) -> str:
     user.cover_url = None
     user.hashed_password = ANONYMIZED_USER_CREDENTIAL
     user.is_active = False
-    user.status = "deleted"
     user.mfa_required = False
     user.mfa_default_method = None
     user.mfa_last_verified_at = None
 
-    # Clear nested relationships
-    user.preferences = None
+    # Clear nested relationships or stub them out
+    if user.profile_detail:
+        user.profile_detail.status = "deleted"
+        user.profile_detail.about = None
+        user.profile_detail.telegram = None
+        user.profile_detail.achievements = None
+        user.profile_detail.position = None
+        user.profile_detail.department = None
+
+    if user.education_path:
+        user.education_path.institute = None
+        user.education_path.course = None
+        user.education_path.education_level = None
+        user.education_path.track = None
+        user.education_path.program = None
+        user.education_path.record_book_number = None
+
+    if user.preferences:
+        user.preferences.dnd_enabled = False
+        user.preferences.timezone = None
+
     user.spotify = None
-    user.profile_detail = None
-    user.education_path = None
-    user.about = None
-    user.telegram = None
-    user.achievements = None
-    user.record_book_number = None
 
     return anonymized_email
 

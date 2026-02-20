@@ -64,6 +64,13 @@ def mock_global_redis(monkeypatch_session):
     # Create a shared fake client for the session
     fake_client = fakeredis.aioredis.FakeRedis(decode_responses=True)
 
+    # Mock lock for fakeredis (which doesn't support evalsha/redlock by default)
+    from unittest.mock import MagicMock, AsyncMock
+    mock_lock = MagicMock()
+    mock_lock.__aenter__ = AsyncMock(return_value=mock_lock)
+    mock_lock.__aexit__ = AsyncMock(return_value=None)
+    fake_client.lock = MagicMock(return_value=mock_lock)
+
     # Monkeypatch the Redis constructor to return our fake client
     monkeypatch_session.setattr(
         AsyncRedis, "from_url", lambda *args, **kwargs: fake_client

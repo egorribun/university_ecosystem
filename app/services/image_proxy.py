@@ -1,14 +1,15 @@
 import asyncio
 import hashlib
 import logging
+import pickle
 from io import BytesIO
 from pathlib import Path
 from typing import Literal
 
-from diskcache import Cache
 from PIL import Image
 
 from app.core.config import settings
+from app.core.rate_limit import _get_shared_client
 from app.services.storage import StorageBackend
 from app.utils.images import _resolve_resample_filter
 
@@ -19,18 +20,8 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# Initialize disk cache for transformed images
-_cache_dir = Path(settings.image_proxy_cache_dir)
-if not _cache_dir.is_absolute():
-    _cache_dir = (Path(__file__).resolve().parents[2] / _cache_dir).resolve()
-
-_cache_dir.mkdir(parents=True, exist_ok=True)
-
-# Cache size limit in bytes (GB -> Bytes)
-_size_limit = int(settings.image_proxy_cache_size_gb * 1024 * 1024 * 1024)
-
-# We use a persistent disk cache to store processed images
-image_cache = Cache(str(_cache_dir), size_limit=_size_limit)
+# Redis cache TTL for transformed images (7 days)
+_CACHE_TTL = 7 * 24 * 60 * 60
 
 
 async def get_transformed_image(
@@ -48,13 +39,17 @@ async def get_transformed_image(
     cache_key = hashlib.sha256(
         f"{path}:{width}:{format_preference}".encode()
     ).hexdigest()
+    redis_key = f"image_proxy:{cache_key}"
 
-    cached_data = image_cache.get(cache_key)
-    if cached_data:
-        data, mime = cached_data
-        return data, mime
-
-    # If not in cache, fetch from storage backend
+    try:
+        redis_client = await _get_shared_client(settings.cache_redis_url)
+        cached_payload = await redis_client.get(redis_key)
+        if cached_payload:
+            # We use pickle to store the tuple (bytes, str) safely as this is an internal cache
+            data, mime = pickle.loads(cached_payload)
+            return data, mime
+    except Exception as exc:
+        logger.warning("Redis cache read failed for %s: %s", path, exc)
     # Note: StorageBackend protocol doesn't have a direct 'get_file_bytes'
     # method in the protocol,
     # but the implementations (StaticFSStorage, S3Storage) effectively work
@@ -82,8 +77,14 @@ async def get_transformed_image(
             _process_image, source_bytes, width, format_preference
         )
 
-        # Cache the result
-        image_cache.set(cache_key, (transformed_data, mime))
+        try:
+            # Cache the result via Redis
+            redis_client = await _get_shared_client(settings.cache_redis_url)
+            payload = pickle.dumps((transformed_data, mime))
+            await redis_client.setex(redis_key, _CACHE_TTL, payload)
+        except Exception as exc:
+            logger.warning("Redis cache write failed for %s: %s", path, exc)
+
         return transformed_data, mime
 
     except Exception as exc:

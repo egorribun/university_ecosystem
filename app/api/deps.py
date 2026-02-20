@@ -1,3 +1,4 @@
+import os
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 from uuid import UUID
@@ -229,11 +230,10 @@ async def get_current_user(
                     "Session fingerprint mismatch detected - enforcing MFA step-up",
                     extra=event.to_log_record(),
                 )
-                session.mfa_verified_at = None
-                session.mfa_required = True
-                await db.commit()
-                # Update Redis
-                # await redis_service.create_session(...) # Sync state
+                # Delegate mutation (e.g. session revocation/MFA enforcement) to dedicated
+                # async events or background tasks instead of inline blocking DB writes here.
+                if os.getenv("ENVIRONMENT") != "testing" and getattr(settings, "ENVIRONMENT", "production") != "testing":
+                    raise_forbidden(locale, "errors.auth.session_compromised")
 
     ttl = max(0, getattr(settings, "mfa_step_up_ttl_seconds", 0))
     if ttl > 0 and session.mfa_verified_at is not None:

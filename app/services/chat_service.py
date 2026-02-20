@@ -206,23 +206,29 @@ class ChatService:
         participant = await self.session.get(User, participant_id)
         ensure_exists(participant, "users", locale)
 
-        existing_chat = await self.repository.find_existing_dm(user.id, participant_id)
-        if existing_chat:
-            # We don't have presence/unread count readily available for existing chat
-            # return here in the original code, but we should probably try to be
-            # consistent?
-            # Original code just returned basic ChatResponse. We'll stick to that for
-            # now.
-            return ChatResponse(
-                id=existing_chat.id,
-                participants=existing_chat.participants,
-                created_at=existing_chat.created_at,
-                updated_at=existing_chat.updated_at,
-            )
+        from app.core.rate_limit import _get_shared_client
+        redis_client = await _get_shared_client(settings.rate_limit_storage_uri)
+        min_id, max_id = sorted([user.id.int, participant_id.int])
+        lock_name = f"chat_init:{min_id}:{max_id}"
 
-        new_chat = await self.repository.create_chat([user, participant])
-        await self.session.commit()
-        await self.session.refresh(new_chat)
+        async with redis_client.lock(lock_name, timeout=5):
+            existing_chat = await self.repository.find_existing_dm(user.id, participant_id)
+            if existing_chat:
+                # We don't have presence/unread count readily available for existing chat
+                # return here in the original code, but we should probably try to be
+                # consistent?
+                # Original code just returned basic ChatResponse. We'll stick to that for
+                # now.
+                return ChatResponse(
+                    id=existing_chat.id,
+                    participants=existing_chat.participants,
+                    created_at=existing_chat.created_at,
+                    updated_at=existing_chat.updated_at,
+                )
+
+            new_chat = await self.repository.create_chat([user, participant])
+            await self.session.commit()
+            await self.session.refresh(new_chat)
 
         # Invalidate caches for participants and the new chat
         participant_ids = [p.id for p in new_chat.participants]

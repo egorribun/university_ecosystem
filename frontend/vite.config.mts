@@ -3,6 +3,8 @@ import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { defineConfig, loadEnv, PluginOption } from "vite"
 import react from "@vitejs/plugin-react"
+import wasm from "vite-plugin-wasm"
+import topLevelAwait from "vite-plugin-top-level-await"
 import { VitePWA } from "vite-plugin-pwa"
 import { visualizer } from "rollup-plugin-visualizer"
 import { MASKABLE_ICON_BASE64 } from "./pwa-maskable-icons"
@@ -134,8 +136,14 @@ export default defineConfig(({ mode }) => {
       }
 
   const plugins: PluginOption[] = [
+    wasm(),
+    topLevelAwait(),
     withGeneratedManifests(),
-    react(),
+    react({
+      babel: {
+        plugins: [["babel-plugin-react-compiler"]],
+      },
+    }),
     VitePWA({
       registerType: "autoUpdate",
       injectRegister: "script",

@@ -660,7 +660,10 @@ def stale_while_revalidate(
                         finally:
                             _revalidation_lock.pop(full_key, None)
 
-                    asyncio.create_task(revalidate())
+                    # Prevent garbage collection of fire-and-forget task
+                    task = asyncio.create_task(revalidate())
+                    _background_tasks.add(task)
+                    task.add_done_callback(_background_tasks.discard)
 
                 # Return stale data immediately
                 return entry.payload
@@ -676,6 +679,7 @@ def stale_while_revalidate(
 
 
 _cache_backend: BaseCache | None = None
+_background_tasks: set[asyncio.Task[Any]] = set()
 
 
 def _normalize_payload(payload: Any) -> tuple[Any, bytes]:

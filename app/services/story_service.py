@@ -5,7 +5,6 @@ from app.models import models
 from app.repositories.story_repository import StoryRepository
 from app.schemas import schemas
 from app.utils.files import delete_static_file
-from app.utils.sanitization import sanitize_optional_text
 
 
 class StoryService:
@@ -47,11 +46,7 @@ class StoryService:
     async def create_story(
         self, data: schemas.StoryCreate, created_by: uuid.UUID
     ) -> models.Story:
-        payload = data.model_dump()
-        payload["title_en"] = sanitize_optional_text(payload.get("title_en"))
-        payload["short_text_en"] = sanitize_optional_text(payload.get("short_text_en"))
-        payload["cover_url"] = sanitize_optional_text(payload.get("cover_url"))
-        payload["cta_url"] = sanitize_optional_text(payload.get("cta_url"))
+        payload = data.model_dump(exclude_unset=True)
 
         if payload.get("published_at"):
             payload["published_at"] = self.repo._ensure_utc(payload["published_at"])
@@ -78,16 +73,6 @@ class StoryService:
         old_cover = story.cover_url
 
         updates = data.model_dump(exclude_unset=True)
-        if "title_en" in updates:
-            updates["title_en"] = sanitize_optional_text(updates.get("title_en"))
-        if "short_text_en" in updates:
-            updates["short_text_en"] = sanitize_optional_text(
-                updates.get("short_text_en")
-            )
-        if "cover_url" in updates:
-            updates["cover_url"] = sanitize_optional_text(updates.get("cover_url"))
-        if "cta_url" in updates:
-            updates["cta_url"] = sanitize_optional_text(updates.get("cta_url"))
 
         if updates.get("published_at"):
             updates["published_at"] = self.repo._ensure_utc(updates["published_at"])

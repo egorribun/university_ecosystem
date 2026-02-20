@@ -17,7 +17,7 @@ def compute_etag(content: bytes | str) -> str:
     """Compute ETag from response content."""
     if isinstance(content, str):
         content = content.encode("utf-8")
-    return hashlib.md5(content, usedforsecurity=False).hexdigest()
+    return hashlib.sha256(content).hexdigest()
 
 
 def format_etag(etag: str) -> str:

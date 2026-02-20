@@ -65,14 +65,17 @@ async def login_passkey_start(
     request: Request,
     db: AsyncSession = Depends(get_db),
     audit: AuditService = Depends(get_audit_service),
+    user_service: Annotated[Any, Depends(get_user_service)] = None,
 ):
     normalized_email = payload.email.strip().lower()
-    from sqlalchemy import func
 
-    res = await db.execute(
-        select(User).where(func.lower(User.email) == normalized_email)
-    )
-    user = res.scalars().first()
+    if user_service is None:
+        # Fallback if dependency injection fails/is overriden in test
+        from sqlalchemy import func
+        res = await db.execute(select(User).where(func.lower(User.email) == normalized_email))
+        user = res.scalars().first()
+    else:
+        user = await user_service.get_user_by_email(normalized_email)
 
     from app.services.webauthn import WebAuthnService
 
@@ -166,7 +169,11 @@ async def login_passkey_verify(
     )
 
 
-@router.post("/login", response_model=TokenWithProfile | PendingMfaResponse)
+@router.post(
+    "/login",
+    response_model=TokenWithProfile | PendingMfaResponse,
+    dependencies=[Depends(sensitive_route_limit())],
+)
 async def login(
     response: Response,
     request: Request,
@@ -185,7 +192,11 @@ async def login(
     )
 
 
-@router.post("/login/json", response_model=TokenWithProfile | PendingMfaResponse)
+@router.post(
+    "/login/json",
+    response_model=TokenWithProfile | PendingMfaResponse,
+    dependencies=[Depends(sensitive_route_limit())],
+)
 async def login_json(
     payload: LoginIn,
     response: Response,

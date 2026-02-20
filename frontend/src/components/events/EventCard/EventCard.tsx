@@ -96,6 +96,7 @@ const EventCardComponent: FC<EventCardProps> = (props) => {
         transition: { duration: motionTokens.durationFast, ease: EASING.premium },
       }}
       className="w-full outline-none"
+      data-testid="event-card"
       tabIndex={editOpen ? -1 : 0}
       aria-labelledby={`event-title-${id}`}
       aria-describedby={`event-location-${id}`}

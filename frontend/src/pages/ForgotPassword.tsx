@@ -6,7 +6,7 @@ import { Button, TextField, SectionCard, Chip } from "@/components/settings"
 import { motion, AnimatePresence } from "framer-motion"
 import { ChevronLeft, Send as SendIcon, CheckCircle2 } from "lucide-react"
 import { useForm } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
+import { valibotResolver } from "@hookform/resolvers/valibot"
 
 import { suggestEmailDomain } from "@/utils/authUtils"
 import { resetPasswordSchema, type ResetPasswordValues } from "@/features/auth/schemas"
@@ -26,14 +26,14 @@ export default function ForgotPassword() {
     setValue,
     watch,
     trigger,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting, isValid },
     reset,
   } = useForm<ResetPasswordValues>({
-    resolver: zodResolver(resetPasswordSchema),
+    resolver: valibotResolver(resetPasswordSchema),
     defaultValues: {
       email: "",
     },
-    mode: "onBlur",
+    mode: "onChange",
   })
 
   // Watch email for suggestions and UI logic
@@ -216,7 +216,7 @@ export default function ForgotPassword() {
                         type="submit"
                         variant="solid"
                         className="w-full h-14 rounded-lg text-base font-black shadow-premium hover:shadow-glass hover:-translate-y-0.5 active:translate-y-0"
-                        disabled={isSubmitting || cooldown > 0}
+                        disabled={isSubmitting || cooldown > 0 || !isValid}
                         loading={isSubmitting}
                         startIcon={<SendIcon className="h-5 w-5" />}
                       >

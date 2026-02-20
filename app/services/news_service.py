@@ -129,13 +129,10 @@ class NewsService:
             raise ValueError("news_not_found")
 
         updates = data.model_dump(exclude_unset=True)
-        # Sanitization should be in Service
-        from app.utils.sanitization import sanitize_optional_text
-
         if "title_en" in updates:
-            updates["title_en"] = sanitize_optional_text(updates.get("title_en"))
+            updates["title_en"] = updates.get("title_en")
         if "content_en" in updates:
-            updates["content_en"] = sanitize_optional_text(updates.get("content_en"))
+            updates["content_en"] = updates.get("content_en")
 
         old_image_url = news.image_url
 

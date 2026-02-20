@@ -35,7 +35,7 @@ from app.services.notifications import (
     create_notifications_for_users,
 )
 from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
-from app.utils.sanitization import sanitize_optional_text
+
 
 logger = logging.getLogger(__name__)
 
@@ -171,9 +171,7 @@ def _localized_notification_field(
     *,
     required: bool = False,
 ) -> str | None:
-    ru_clean = sanitize_optional_text(ru_value)
-    en_clean = sanitize_optional_text(en_value)
-    value = localized_text(locale, ru=ru_clean, en=en_clean)
+    value = localized_text(locale, ru=ru_value, en=en_value)
     if value is not None:
         return value
     if required:
@@ -182,7 +180,7 @@ def _localized_notification_field(
         if isinstance(en_value, str) and en_value.strip():
             return en_value
         return ru_value or en_value or ""
-    return ru_clean or en_clean
+    return ru_value or en_value
 
 
 async def _existing_notification_columns(db: AsyncSession) -> set[str]:
@@ -354,10 +352,10 @@ def _serialize_notification(
             getter("body", None),
             getter("body_en", None),
         ),
-        "title_en": sanitize_optional_text(getter("title_en", None)),
-        "body_en": sanitize_optional_text(getter("body_en", None)),
-        "type": sanitize_optional_text(type_raw),
-        "url": sanitize_optional_text(url_raw),
+        "title_en": getter("title_en", None),
+        "body_en": getter("body_en", None),
+        "type": type_raw,
+        "url": url_raw,
         "created_at": created_at,
         "read": _coerce_bool(getter("read", False)),
         "read_at": read_at,

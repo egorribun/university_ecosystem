@@ -6,6 +6,7 @@ from app.core.uvloop_setup import configure_uvloop
 configure_uvloop()
 
 import logging
+import os
 
 # import pyroscope
 from fastapi import FastAPI, HTTPException
@@ -48,12 +49,19 @@ from app.services.file_scanner import (
 # Re-exports for test compatibility and internal use
 scan_for_malware = _scan_for_malware
 
-# # Initialize Pyroscope
-# if os.getenv("ENABLE_PROFILING", "false").lower() == "true":
-#     pyroscope.configure(
-#         application_name="university-backend",
-#         server_address="http://pyroscope:4040",
-#     )
+# Initialize Pyroscope
+if os.getenv("ENABLE_PROFILING", "false").lower() == "true":
+    try:
+        import pyroscope
+        pyroscope.configure(
+            application_name="university-backend",
+            server_address=os.getenv("PYROSCOPE_SERVER_ADDRESS", "http://pyroscope:4040"),
+        )
+        logging.info("Pyroscope continuous profiling enabled.")
+    except ImportError:
+        logging.warning("Pyroscope is enabled via ENABLE_PROFILING but the 'pyroscope-io' package is not installed.")
+    except Exception as e:
+        logging.error(f"Failed to initialize Pyroscope: {e}")
 
 app = FastAPI(
     title="University Ecosystem API",

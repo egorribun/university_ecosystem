@@ -126,24 +126,30 @@ def get_read_schedule_handler(
     return GetScheduleHandler(db=db, cache=cache)
 
 
+def get_user_analytics_service(
+    db: AsyncSession = Depends(get_db),
+) -> UserAnalyticsService:
+    from app.services.user.analytics_service import UserAnalyticsService
+    return UserAnalyticsService(db=db)
+
 def get_stats_handler(
     db: AsyncSession = Depends(get_db),
     cache: BaseCache = Depends(get_cache),
-    user_service: UserService = Depends(get_user_service),
+    analytics_service: UserAnalyticsService = Depends(get_user_analytics_service),
 ) -> GetStatsHandler:
     from app.cqrs.queries import GetStatsHandler
 
-    return GetStatsHandler(db=db, cache=cache, user_service=user_service)
+    return GetStatsHandler(db=db, cache=cache, analytics_service=analytics_service)
 
 
 def get_read_stats_handler(
     db: AsyncSession = Depends(get_read_db),
     cache: BaseCache = Depends(get_cache),
-    user_service: UserService = Depends(get_user_service),
+    analytics_service: UserAnalyticsService = Depends(get_user_analytics_service),
 ) -> GetStatsHandler:
     from app.cqrs.queries import GetStatsHandler
 
-    return GetStatsHandler(db=db, cache=cache, user_service=user_service)
+    return GetStatsHandler(db=db, cache=cache, analytics_service=analytics_service)
 
 
 def get_auth_service(

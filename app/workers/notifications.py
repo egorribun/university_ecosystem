@@ -207,32 +207,19 @@ async def run_worker() -> None:
         scheduler.window_minutes,
     )
 
-    scheduler_task = asyncio.create_task(scheduler.run_forever())
-    stop_event = asyncio.Event()
-    signal_task = asyncio.create_task(_wait_for_signals(stop_event))
+    async with asyncio.TaskGroup() as tg:
+        scheduler_task = tg.create_task(scheduler.run_forever())
+        tg.create_task(_wait_for_signals(stop_event))
 
-    try:
-        done, pending = await asyncio.wait(
-            {scheduler_task, signal_task}, return_when=asyncio.FIRST_COMPLETED
-        )
+        # Wait for the stop signal
+        await stop_event.wait()
 
-        if scheduler_task in done:
-            with suppress(asyncio.CancelledError):
-                await scheduler_task
-            stop_event.set()
-        else:
-            scheduler_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await scheduler_task
+        # Cancel scheduler when signal is received
+        scheduler_task.cancel()
 
-        for task in pending:
-            task.cancel()
-            with suppress(asyncio.CancelledError):
-                await task
-    finally:
-        if monitor_stop is not None:
-            await monitor_stop()
-        webpush.cleanup()
+    if monitor_stop is not None:
+        await monitor_stop()
+    webpush.cleanup()
 
     logger.info("Notifications worker stopped")
 

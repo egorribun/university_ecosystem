@@ -7,6 +7,7 @@ from app.core.exceptions.domain import DomainException as DomainException
 from app.core.exceptions.handlers import (
     domain_exception_handler as domain_exception_handler,
 )
+from app.core.observability import get_trace_id
 
 
 class AppException(Exception):
@@ -54,7 +55,7 @@ class InvalidOperationException(AppException):
 async def app_exception_handler(request: Request, exc: Exception):
     if not isinstance(exc, AppException):
         return JSONResponse(
-            status_code=500, content={"detail": "Internal Server Error"}
+            status_code=500, content={"detail": "Internal Server Error", "trace_id": get_trace_id()}
         )
     return JSONResponse(
         status_code=exc.status_code,
@@ -62,5 +63,6 @@ async def app_exception_handler(request: Request, exc: Exception):
             "detail": exc.message,
             "code": exc.code,
             "payload": exc.payload,
+            "trace_id": get_trace_id(),
         },
     )

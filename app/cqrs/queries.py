@@ -97,10 +97,10 @@ class GetStatsQuery(Query):
 
 
 class GetStatsHandler(QueryHandler[GetStatsQuery, QueryResult]):
-    def __init__(self, db: AsyncSession, cache: BaseCache, user_service: Any) -> None:
+    def __init__(self, db: AsyncSession, cache: BaseCache, analytics_service: Any) -> None:
         self.db = db
         self.cache = cache
-        self.user_service = user_service
+        self.analytics_service = analytics_service
 
     async def handle(self, query: GetStatsQuery) -> QueryResult:
         from app.services import stats_cache
@@ -125,18 +125,18 @@ class GetStatsHandler(QueryHandler[GetStatsQuery, QueryResult]):
                 payload = self._enrich_stats(cached.payload, query)
                 return QueryResult(payload=payload, etag=format_etag(cached.etag))
 
-        # 2. Compute stats via UserService
+        # 2. Compute stats via AnalyticsService
         compute_map = {
-            "attendance": self.user_service.get_attendance_stats,
-            "grades": self.user_service.get_grade_stats,
-            "participation": self.user_service.get_participation_stats,
+            "attendance": self.analytics_service.get_attendance_stats,
+            "grades": self.analytics_service.get_grade_stats,
+            "participation": self.analytics_service.get_participation_stats,
         }
 
         compute_fn = compute_map.get(query.kind)
         if not compute_fn:
             raise ValueError(f"Unknown stats kind: {query.kind}")
 
-        # They all share the same signature now thanks to UserService unification
+        # They all share the same signature now thanks to AnalyticsService unification
         stats = await compute_fn(
             user_id=query.user_id,
             period_days=query.period_days,

@@ -16,6 +16,10 @@ async function getDOMPurify() {
   return dompurifyInstance
 }
 
+export function getDOMPurifySync() {
+  return dompurifyInstance
+}
+
 const DEFAULT_SANITIZE_CONFIG = Object.freeze({
   RETURN_TRUSTED_TYPE: false,
 })

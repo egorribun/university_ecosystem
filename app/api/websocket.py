@@ -688,13 +688,32 @@ async def websocket_chat(websocket: WebSocket):
             elif msg_type == "typing":
                 chat_id = data.get("chat_id")
                 if chat_id:
+                    # Validate user is participant to prevent IDOR
+                    try:
+                        chat_uuid = uuid.UUID(chat_id) if isinstance(chat_id, str) else chat_id
+                        participants = await manager._get_chat_participants_cached(chat_uuid)
+                        if user.id not in participants:
+                            logger.warning(
+                                f"Access denied: User {user.id} tried to send typing "
+                                f"indicator to chat {chat_id} without being a participant"
+                            )
+                            await websocket.send_json(
+                                {"type": "error", "message": "Access denied"}
+                            )
+                            continue
+                    except ValueError:
+                        await websocket.send_json(
+                            {"type": "error", "message": "Invalid chat_id format"}
+                        )
+                        continue
+
                     # Broadcast typing indicator to other participants
                     await manager.broadcast_to_chat(
-                        chat_id,
+                        chat_uuid,
                         {
                             "type": "typing",
-                            "chat_id": chat_id,
-                            "user_id": user.id,
+                            "chat_id": str(chat_uuid),
+                            "user_id": str(user.id),
                             "user_name": user.full_name or user.email,
                         },
                         exclude_user_id=user.id,

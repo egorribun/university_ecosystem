@@ -17,7 +17,7 @@ from app.schemas import schemas
 from app.services import attendance_tokens, stats_cache
 from app.services.vector_service import VectorService
 from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
-from app.utils.sanitization import sanitize_optional_text
+from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
 
 logger = logging.getLogger(__name__)
 
@@ -72,24 +72,20 @@ class EventService:
                 getattr(record, "description", None),
                 getattr(record, "description_en", None),
             ),
-            "title_en": sanitize_optional_text(getattr(record, "title_en", None)),
-            "description_en": sanitize_optional_text(
-                getattr(record, "description_en", None)
-            ),
+            "title_en": getattr(record, "title_en", None),
+            "description_en": getattr(record, "description_en", None),
             "location": _localized_event_field(
                 normalized_locale,
                 getattr(record, "location", None),
                 getattr(record, "location_en", None),
             ),
-            "location_en": sanitize_optional_text(getattr(record, "location_en", None)),
+            "location_en": getattr(record, "location_en", None),
             "event_type": _localized_event_field(
                 normalized_locale,
                 getattr(record, "event_type", None),
                 getattr(record, "event_type_en", None),
             ),
-            "event_type_en": sanitize_optional_text(
-                getattr(record, "event_type_en", None)
-            ),
+            "event_type_en": getattr(record, "event_type_en", None),
             "starts_at": record.starts_at,
             "ends_at": record.ends_at,
             "created_by": record.created_by,
@@ -102,7 +98,7 @@ class EventService:
                 getattr(record, "about", None),
                 getattr(record, "about_en", None),
             ),
-            "about_en": sanitize_optional_text(getattr(record, "about_en", None)),
+            "about_en": getattr(record, "about_en", None),
             "files": prepared_files,
             "participant_count": participant_count,
             "is_registered": is_registered,

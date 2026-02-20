@@ -72,17 +72,12 @@ async def test_monster_coverage_run():
         res_attr = MagicMock()
         res_attr.all.return_value = [row]
         mock_db.execute.return_value = res_attr
-        from app.repositories.user_repository import UserRepository
-        from app.services.notification_service import NotificationService
+        from app.services.user.analytics_service import UserAnalyticsService
 
-        u_repo = UserRepository(mock_db)
-        u_notifications = NotificationService(mock_db)
-        u_service = user_service.UserService(
-            mock_db, u_repo, MagicMock(), u_notifications
-        )
+        u_service = UserAnalyticsService(mock_db)
 
         user_id = uuid.uuid4()
-        await u_service.get_attendance_stats(user_id=user_id, period_days=30)
+        await u_service.get_attendance_stats(user_id=1, period_days=30)
 
         notif = models.Notification(
             body=json.dumps({"score": 5, "course": "C"}),
@@ -92,7 +87,7 @@ async def test_monster_coverage_run():
         res_grad = MagicMock()
         res_grad.scalars.return_value.all.return_value = [notif]
         mock_db.execute.return_value = res_grad
-        await u_service.get_grade_stats(user_id=user_id, period_days=30)
+        await u_service.get_grade_stats(user_id=1, period_days=30)
 
         p_row = (
             1,
@@ -105,7 +100,7 @@ async def test_monster_coverage_run():
         res_part = MagicMock()
         res_part.all.return_value = [p_row]
         mock_db.execute.return_value = res_part
-        await u_service.get_participation_stats(user_id=user_id, period_days=30)
+        await u_service.get_participation_stats(user_id=1, period_days=30)
 
     # 5. FILES
     assert normalize_filename_prefix("A B!") == "a-b"

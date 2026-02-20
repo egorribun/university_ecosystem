@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { isAxiosError } from "axios"
 import { useForm } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
+import { valibotResolver } from "@hookform/resolvers/valibot"
 
 import { ChallengeLockedError, useAuth } from "@/contexts/AuthContext"
 import type { PendingMfaState } from "@/types/Auth"
@@ -37,7 +37,7 @@ export function useLoginForm() {
 
   // React Hook Form Setup
   const form = useForm<LoginValues>({
-    resolver: zodResolver(loginSchema),
+    resolver: valibotResolver(loginSchema),
     defaultValues: {
       email: savedEmail,
       password: "",

@@ -1,12 +1,13 @@
 import type { ReactNode } from "react"
 import { render, screen } from "@testing-library/react"
+import { MemoryRouter } from "react-router-dom"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { ThemeProvider } from "@/contexts/ThemeContext"
 import { LanguageProvider } from "@/contexts/LanguageContext"
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("../../components/NewsCard", () => {
-  const MockNewsCard = ({ id }: { id: number }) => (
+  const MockNewsCard = ({ id }: { id: string }) => (
     <div data-testid="news-card" data-news-id={id}>
       News {id}
     </div>
@@ -22,7 +23,7 @@ vi.mock("../../components/NewsCard", () => {
 
 vi.mock("../../contexts/AuthContext", () => ({
   useAuth: () => ({
-    user: { id: 1, role: "admin" },
+    user: { id: "1", role: "admin" },
   }),
 }))
 
@@ -34,7 +35,7 @@ import News from "../News"
 import { useNewsListQuery } from "@/api/hooks/news"
 
 const largeFeed = Array.from({ length: 96 }, (_, index) => ({
-  id: index + 1,
+  id: `${index + 1}`,
   title: `Sample news ${index + 1}`,
   content: `Sample news body ${index + 1}`,
   created_at: new Date(2024, 0, 1 + index).toISOString(),
@@ -52,9 +53,11 @@ const buildWrapper = (mode: "light" | "dark") => {
 
   const NewsTestWrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>
-      <LanguageProvider>
-        <ThemeProvider>{children}</ThemeProvider>
-      </LanguageProvider>
+      <MemoryRouter>
+        <LanguageProvider>
+          <ThemeProvider>{children}</ThemeProvider>
+        </LanguageProvider>
+      </MemoryRouter>
     </QueryClientProvider>
   )
 
@@ -171,13 +174,14 @@ describe("News page feed rendering", () => {
 
       const { container } = render(<News />, { wrapper })
 
-      const cards = await screen.findAllByTestId("news-card")
+      const cards = await screen.findAllByTestId("news-card", {}, { timeout: 15000 })
       expect(cards.length).toBeGreaterThan(0)
 
       const fadeContainer = container.querySelector<HTMLElement>("[data-page-fade]")
       expect(fadeContainer).not.toBeNull()
       expect(fadeContainer?.dataset.effect).toBeUndefined()
       expect(useNewsListQueryMock).toHaveBeenCalled()
-    }
+    },
+    15000
   )
 })

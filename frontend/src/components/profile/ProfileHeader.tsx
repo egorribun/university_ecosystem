@@ -121,7 +121,7 @@ export const ProfileHeader = ({
               {user?.full_name}
             </h1>
             <p className="text-sm sm:text-base text-white/(--opacity-hover) font-medium drop-shadow-md mt-1">
-              {user?.status || t("profile:placeholders.status")}
+              {user?.profile_detail?.status || t("profile:placeholders.status")}
             </p>
           </div>
         </div>
@@ -131,7 +131,7 @@ export const ProfileHeader = ({
       {/* Stats Panel */}
       <div className="grid grid-cols-2 gap-4 rounded-xl sm:rounded-2xl md:rounded-3xl p-4 bg-glass-bg border-glass-border backdrop-blur-glass shadow-glass">
         <div className="flex flex-col items-center justify-center py-2 text-center border-r border-glass-border">
-          <span className="text-xl font-bold text-(--brand-main)">{user?.course || "—"}</span>
+          <span className="text-xl font-bold text-(--brand-main)">{user?.education_path?.course || "—"}</span>
           <span className="text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-medium">
             {t("profile:labels.course")}
           </span>
@@ -140,7 +140,7 @@ export const ProfileHeader = ({
           <div className="relative z-deep">
             <div className="flex items-center gap-1">
               <span className="text-xl font-bold text-(--brand-main)">
-                {user?.record_book_number || "—"}
+                {user?.education_path?.record_book_number || "—"}
               </span>
             </div>
           </div>
@@ -163,7 +163,7 @@ export const ProfileHeader = ({
             {user?.email || t("profile:placeholders.email")}
           </span>
         </Button>
-        {!!user?.telegram && (
+        {!!user?.profile_detail?.telegram && (
           <Button
             variant="ghost"
             leadingIcon={<TelegramIcon className="shrink-0" />}
@@ -172,7 +172,7 @@ export const ProfileHeader = ({
             className="justify-start h-12 rounded-xl bg-glass-bg border-glass-border hover:bg-glass-tint1 hover:border-brand/(--opacity-soft)"
           >
             <span className="truncate text-sm font-medium">
-              {user?.telegram || t("profile:placeholders.telegram")}
+              {user?.profile_detail?.telegram || t("profile:placeholders.telegram")}
             </span>
           </Button>
         )}

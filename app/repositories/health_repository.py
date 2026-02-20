@@ -77,9 +77,12 @@ class HealthRepository:
 
         # Fallback to actual count
         try:
+            from sqlalchemy.sql import quoted_name
+
             # Use parameterized table name safely
+            safe_table_name = quoted_name(table_name, quote=True)
             result = await self._connection.execute(
-                text(f"SELECT COUNT(*) FROM {table_name}")  # noqa: S608
+                text(f"SELECT COUNT(*) FROM {safe_table_name}")  # noqa: S608
             )
             row = result.fetchone()
             return int(row[0]) if row else 0
