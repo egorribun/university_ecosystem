@@ -30,8 +30,20 @@ async def lifespan(app: FastAPI):
 
     configure_database()
 
-    from app.api.websocket import start_presence_pubsub, stop_presence_pubsub
+    import app.api.websocket as _ws_module
+    from app.api.websocket import (
+        ConnectionManager,
+        start_presence_pubsub,
+        stop_presence_pubsub,
+    )
     from app.core.feature_flags import feature_flags
+
+    # Initialise the WebSocket ConnectionManager and expose it via app.state so
+    # that route handlers can inject it through get_connection_manager() and
+    # tests can swap it for a mock via app.state.connection_manager.
+    _cm = ConnectionManager()
+    app.state.connection_manager = _cm
+    _ws_module.manager = _cm  # Keep module-level alias for pubsub / background tasks
 
     await broker.startup()
     await feature_flags.initialize()

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.validation import raise_forbidden, raise_unauthorized
 from app.auth import mfa
-from app.auth.rbac import PermissionChecker
+from app.auth.rbac import PermissionChecker, SpiceDBUnavailableError
 from app.auth.security import decode_token
 from app.core.config import settings
 from app.core.container import get_vector_service
@@ -21,6 +21,7 @@ from app.models.user_loaders import (
     USER_AUTH_LOAD_OPTIONS,
     ensure_mfa_relationships_loaded,
 )
+from app.repositories.active_session_repository import ActiveSessionRepository
 from app.schemas.dtos import UserAuthDTO, UserDTO
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
@@ -107,15 +108,10 @@ async def get_current_user(
 
     # MISS or Fallback: Full DB Validation
     if not user:
-        res = await db.execute(
-            select(User, ActiveSession)
-            .join(ActiveSession, ActiveSession.user_id == User.id)
-            .where(User.id == user_id, User.is_active.is_(True))
-            .where(ActiveSession.jti == jti)
-            .where(ActiveSession.revoked_at.is_(None))
-            .options(*USER_AUTH_LOAD_OPTIONS)
+        session_repo = ActiveSessionRepository(db)
+        row = await session_repo.get_active_session_with_user(
+            user_id, jti, load_options=list(USER_AUTH_LOAD_OPTIONS)
         )
-        row = res.first()
         if not row:
             fail_auth()
         assert row is not None
@@ -230,18 +226,28 @@ async def get_current_user(
                 current_fingerprint=current_fp,
             )
             if event:
-                import logging
+                import logging as _logging
 
-                logging.getLogger("app.auth.security").warning(
-                    "Session fingerprint mismatch detected - enforcing MFA step-up",
+                _logging.getLogger("app.auth.security").warning(
+                    "Session fingerprint mismatch detected — revoking session immediately",
                     extra=event.to_log_record(),
                 )
-                # Delegate mutation (e.g. session revocation/MFA enforcement) to dedicated
-                # async events or background tasks instead of inline blocking DB writes here.
                 if (
                     os.getenv("ENVIRONMENT") != "testing"
                     and getattr(settings, "ENVIRONMENT", "production") != "testing"
                 ):
+                    # Revoke the session persistently so the stolen token cannot be
+                    # reused after the Redis TTL expires or on other service instances.
+                    session.revoked_at = datetime.now(UTC)
+                    await db.commit()
+                    # Immediately invalidate the Redis cache entry.
+                    try:
+                        await redis_service.revoke_session(jti)
+                    except Exception as _revoke_err:
+                        _logging.getLogger("app.auth.security").error(
+                            "Failed to revoke session in Redis after fingerprint mismatch: %s",
+                            _revoke_err,
+                        )
                     raise_forbidden(locale, "errors.auth.session_compromised")
 
     if session:
@@ -339,8 +345,21 @@ async def get_current_admin_user(
     user: Annotated[User, Depends(get_current_user)],
     checker: Annotated[PermissionChecker, Depends()],
 ) -> User:
-    """Dependency that ensures the current user is an admin via SpiceDB."""
-    is_admin_user = await checker.check_admin(str(user.id), user=user)
+    """Dependency that ensures the current user is an admin via SpiceDB.
+
+    Returns HTTP 503 when SpiceDB is unreachable (fail-closed) so that
+    operations can distinguish authorization outages from permission denials.
+    """
+    try:
+        is_admin_user = await checker.check_admin(str(user.id), user=user)
+    except SpiceDBUnavailableError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": "authz_unavailable",
+                "message": "Authorization service temporarily unavailable",
+            },
+        )
     if not is_admin_user:
         locale = resolve_locale(request=request)
         raise_forbidden(locale)

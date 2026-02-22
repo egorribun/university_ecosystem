@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from functools import lru_cache
 
 from authzed.api.v1 import Client, InsecureClient
@@ -44,16 +45,26 @@ class SpiceDBClient:
             scheme = p.scheme.lower()
             port = p.port
 
-        use_ssl = scheme == "https" or port == 443
+        # Default to TLS unless explicitly opted out via SPICEDB_INSECURE=true.
+        # InsecureClient transmits the pre-shared key in plaintext — only acceptable
+        # in local development environments.
+        allow_insecure = os.getenv("SPICEDB_INSECURE", "false").lower() == "true"
+        use_ssl = (scheme == "https" or port == 443) or not allow_insecure
 
         if use_ssl:
             from grpcutil import bearer_token_credentials
 
+            logger.info("SpiceDB: connecting with TLS to %s", endpoint)
             self.client = Client(
                 target=endpoint,
                 credentials=bearer_token_credentials(self._token),
             )
         else:
+            logger.warning(
+                "SpiceDB: connecting WITHOUT TLS to %s. "
+                "Only acceptable in local dev (SPICEDB_INSECURE=true).",
+                endpoint,
+            )
             self.client = InsecureClient(
                 target=endpoint,
                 token=self._token,

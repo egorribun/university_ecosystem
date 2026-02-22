@@ -1,13 +1,18 @@
 import uuid
 from collections.abc import Sequence
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import delete, func, select
+from sqlalchemy.orm import LoaderOption
 from sqlalchemy.sql.elements import ClauseElement
 
-from app.models.models import ActiveSession
+from app.models.models import ActiveSession, User
 from app.repositories.base import BaseRepository
 from app.schemas.dtos import ActiveSessionDTO
+
+if TYPE_CHECKING:
+    pass
 
 
 class ActiveSessionRepository(
@@ -74,3 +79,32 @@ class ActiveSessionRepository(
         stmt = delete(ActiveSession).where(whereclause)  # type: ignore[arg-type]
         result = await self.db.execute(stmt)
         return int(getattr(result, "rowcount", 0) or 0)
+
+    async def get_active_session_with_user(
+        self,
+        user_id: uuid.UUID,
+        jti: str,
+        load_options: list[LoaderOption] | None = None,
+    ) -> tuple[User, ActiveSession] | None:
+        """Single-query JOIN fetch for auth hot-path (avoids N+1).
+
+        Returns (User, ActiveSession) if a non-revoked, active session exists,
+        or None if any of the following conditions fail:
+          - user not found or inactive
+          - session jti not found
+          - session already revoked
+        """
+        stmt = (
+            select(User, ActiveSession)
+            .join(ActiveSession, ActiveSession.user_id == User.id)
+            .where(User.id == user_id, User.is_active.is_(True))
+            .where(ActiveSession.jti == jti)
+            .where(ActiveSession.revoked_at.is_(None))
+        )
+        if load_options:
+            stmt = stmt.options(*load_options)
+        result = await self.db.execute(stmt)
+        row = result.first()
+        if not row:
+            return None
+        return row[0], row[1]
