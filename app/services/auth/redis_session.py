@@ -66,7 +66,12 @@ class RedisSessionService:
             logger.warning(f"Failed to cache session {jti} in Redis: {e}")
 
     async def get_session(self, jti: str) -> RedisSessionData | None:
-        """Retrieve session data from Redis."""
+        """Retrieve session data from Redis.
+
+        Returns None on cache miss, Redis failure, or when the session has been
+        marked inactive (is_active != "1"). Callers can treat None as a cache
+        miss and fall back to the DB, which enforces revocation correctly.
+        """
         if not self.redis_url:
             return None
 
@@ -87,13 +92,19 @@ class RedisSessionService:
                 for k, v in raw.items()
             }
 
+            # If the session has been explicitly revoked (is_active="0"),
+            # treat as cache miss so the caller falls through to the DB,
+            # which will correctly enforce the revoked_at column.
+            if data.get("is_active") != "1":
+                return None
+
             return RedisSessionData(
                 user_id=data.get("user_id", ""),
                 fingerprint_hash=data.get("fingerprint_hash") or None,
                 mfa_verified_at=data.get("mfa_verified_at") or None,
                 last_seen_at=data.get("last_seen_at") or None,
                 created_at=data.get("created_at", ""),
-                is_active=data.get("is_active") == "1",
+                is_active=True,
             )
         except (RedisError, OSError):
             # Fail open (fallback to DB)
@@ -116,13 +127,33 @@ class RedisSessionService:
             pass
 
     async def revoke_session(self, jti: str) -> None:
-        """Remove session from Redis."""
+        """Invalidate session in Redis using a two-step approach.
+
+        Step 1: Set is_active="0" atomically — callers of get_session() will
+                receive None immediately (before TTL expiry or key deletion).
+        Step 2: Delete the key for cleanup.
+
+        If Redis is unavailable, raises so the caller can log a high-priority
+        alert. A silent failure here means a revoked session (e.g. after password
+        change or fingerprint mismatch) stays active in Redis until TTL expiry
+        (up to access_token_expire_minutes * 60 seconds).
+        """
         if not self.redis_url:
             return
 
         key = f"{self.KEY_PREFIX}{jti}"
         try:
             client = await _get_shared_client(self.redis_url)
+            # Step 1: Mark inactive immediately — checked in get_session().
+            await client.hset(key, "is_active", "0")  # type: ignore[misc]
+            # Step 2: Delete for cleanup (TTL would handle this anyway).
             await client.delete(key)
         except (RedisError, OSError) as e:
-            logger.warning(f"Failed to revoke session {jti} in Redis: {e}")
+            logger.error(
+                "Failed to revoke session %s in Redis: %s — "
+                "session may remain active until TTL expiry (%ds)",
+                jti,
+                e,
+                self.ttl_seconds,
+            )
+            raise

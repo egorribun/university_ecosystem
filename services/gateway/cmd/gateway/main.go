@@ -221,8 +221,8 @@ func main() {
 	}
 
 	// Initialize JWT Middleware
-	if cfg.JWTSecret == "" {
-		logger.Fatal("JWT_SECRET is mandatory for non-public routes. Gateway cannot start securely without it.")
+	if len(strings.TrimSpace(cfg.JWTSecret)) < 32 {
+		logger.Fatal("JWT_SECRET must be set and at least 32 characters. Gateway cannot start securely without it.")
 	}
 
 	var redisClient *redis.Client
