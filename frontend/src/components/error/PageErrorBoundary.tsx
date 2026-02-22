@@ -83,7 +83,7 @@ function PageErrorFallback({
                     </div>
                     <div>{apiError.message}</div>
                     {apiError.traceId && (
-                      <div className="opacity-70 text-[10px]">Trace ID: {apiError.traceId}</div>
+                      <div className="opacity-70 text-(--fs-label-xs)">Trace ID: {apiError.traceId}</div>
                     )}
                     {apiError.details && apiError.details.length > 0 && (
                       <ul className="mt-2 list-inside list-disc opacity-80">

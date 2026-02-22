@@ -24,6 +24,7 @@ from webauthn.helpers.structs import (
 from app.core.config import settings
 from app.models.models import User, WebAuthnCredential
 from app.repositories.auth_repository import AuthRepository
+from app.schemas.dtos import UserDTO
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,7 +46,7 @@ class WebAuthnService:
     def _get_origin(self) -> str:
         return settings.webauthn_origin
 
-    async def get_registration_options(self, user: User) -> dict[str, Any]:
+    async def get_registration_options(self, user: User | UserDTO) -> dict[str, Any]:
         """Generate options for a new WebAuthn credential registration."""
         if not user.webauthn_id:
             new_id = (
@@ -53,10 +54,21 @@ class WebAuthnService:
                 .decode("utf-8")
                 .rstrip("=")
             )
-            user.webauthn_id = new_id  # type: ignore[assignment]
-            await self.db.flush()
+            if not isinstance(user, User):
+                # We can't persist a new webauthn_id on a DTO in this flow
+                # without the DB. In practice, this should be ORM.
+                # However, for type safety, we handle it.
+                user = user.model_copy(update={"webauthn_id": new_id})
+            else:
+                user.webauthn_id = new_id
+                await self.db.flush()
 
-        user_id_bytes = base64.urlsafe_b64decode(user.webauthn_id + "==")
+        # Ensure webauthn_id is non-None for concatenation
+        wid = user.webauthn_id
+        if not wid:
+            raise ValueError("WebAuthn ID missing after generation attempt")
+
+        user_id_bytes = base64.urlsafe_b64decode(wid + "==")
 
         # Get existing credentials to exclude them
         result = await self.repo.list_user_webauthn_credentials(user.id)
@@ -115,7 +127,7 @@ class WebAuthnService:
         )
         return credential
 
-    async def get_authentication_options(self, user: User) -> dict[str, Any]:
+    async def get_authentication_options(self, user: User | UserDTO) -> dict[str, Any]:
         """Generate options for WebAuthn authentication."""
         result = await self.repo.list_user_webauthn_credentials(user.id)
         allow_credentials = [
@@ -158,7 +170,7 @@ class WebAuthnService:
         return json_to_dict(options_to_json(options))
 
     async def verify_authentication(
-        self, user: User, challenge: str, response: dict[str, Any]
+        self, user: User | UserDTO, challenge: str, response: dict[str, Any]
     ) -> WebAuthnCredential:
         """Verify the authentication response."""
         credential_id = response.get("id")

@@ -77,7 +77,7 @@ async def test_logout_revocation_logs_audit(async_client, user_factory, caplog):
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     assert login_response.status_code == 200
-    token = login_response.json()["access_token"]
+    token = login_response.cookies.get("access_token_v2")
 
     logout_response = await async_client.post(
         "/auth/logout",

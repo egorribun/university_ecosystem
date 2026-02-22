@@ -6,10 +6,7 @@ import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
 import { AnimatePresence } from "framer-motion"
 import { useTranslation } from "react-i18next"
-import dayjs from "dayjs"
-import utc from "dayjs/plugin/utc"
-
-dayjs.extend(utc)
+// dayjs imports removed
 
 export default function Messenger() {
   const { t } = useTranslation(["messenger", "common"])

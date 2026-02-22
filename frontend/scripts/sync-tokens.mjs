@@ -9,6 +9,7 @@ const __dirname = path.dirname(__filename)
 // Paths
 const PARTIALS_DIR = path.resolve(__dirname, "../src/styles/partials")
 const TOKENS_TS_PATH = path.resolve(__dirname, "../src/theme/tokens.ts")
+const THEME_CSS_PATH = path.resolve(__dirname, "../src/styles/theme.css")
 
 console.log("🔄 Starting Token Synchronization...")
 

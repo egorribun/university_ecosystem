@@ -262,16 +262,14 @@ export default defineConfig(({ mode }) => {
       chunkSizeWarningLimit: 768,
       rollupOptions: {
         output: {
-          manualChunks: {
+ manualChunks: {
             "vendor-react": ["react", "react-dom", "react-router-dom"],
             "vendor-ui": ["framer-motion", "lucide-react"],
             "vendor-query": ["@tanstack/react-query"],
-            "vendor-utils": ["dayjs", "axios", "zod", "i18next", "react-i18next", "@sentry/react"],
+            "vendor-utils": ["axios", "i18next", "react-i18next", "@sentry/react"],
             "vendor-security": [
               "dompurify",
               "@zxcvbn-ts/core",
-              "crypto-js",
-              "scrypt-js",
               "@simplewebauthn/browser",
             ],
           },

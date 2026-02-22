@@ -86,7 +86,7 @@ async def get_schedule(
     _set_schedule_cache_headers(response)
 
     query = GetScheduleQuery(
-        group_id=group_id,  # type: ignore[arg-type]
+        group_id=group_id,
         locale=locale,
         if_none_match=if_none_match,
     )
@@ -102,7 +102,8 @@ async def get_schedule(
     if result.etag:
         response.headers["ETag"] = result.etag
 
-    return result.payload  # type: ignore[no-any-return]
+    from typing import cast
+    return cast(list[schemas.ScheduleOut], result.payload)
 
 
 @router.patch("/{schedule_id}", response_model=schemas.ScheduleOut)
@@ -117,13 +118,13 @@ async def update_schedule(
     require_teacher_or_admin(user, locale)
 
     # We need previous group ID for cache invalidation
-    sched = await service.get_by_id(schedule_id)  # type: ignore[arg-type]
+    sched = await service.get_by_id(schedule_id)
     ensure_exists(sched, "schedule", locale)
     assert sched is not None
     previous_group = sched.group_id
 
     try:
-        updated = await service.update_schedule(schedule_id, data)  # type: ignore[arg-type]
+        updated = await service.update_schedule(schedule_id, data)
     except ValueError:
         ensure_exists(None, "schedule", locale)  # Will raise 404
 
@@ -132,7 +133,7 @@ async def update_schedule(
         _schedule_cache_key(previous_group),
         _schedule_cache_key(updated.group_id),
     )
-    return updated  # type: ignore[return-value]
+    return schemas.ScheduleOut.model_validate(updated)
 
 
 @router.delete("/{schedule_id}", response_model=dict)
@@ -145,12 +146,12 @@ async def delete_schedule(
     locale = resolve_locale(request=request, user=user)
     require_teacher_or_admin(user, locale)
 
-    sched = await service.get_by_id(schedule_id)  # type: ignore[arg-type]
+    sched = await service.get_by_id(schedule_id)
     ensure_exists(sched, "schedule", locale)
     assert sched is not None
     group_id = sched.group_id
 
-    deleted = await service.delete_schedule(schedule_id)  # type: ignore[arg-type]
+    deleted = await service.delete_schedule(schedule_id)
     if not deleted:
         ensure_exists(None, "schedule", locale)
 

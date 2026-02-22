@@ -175,10 +175,10 @@ async def delete_pending_totp_enrollment(
     enrollment = await db.get(MfaTotpEnrollment, enrollment_id)
     if not enrollment or enrollment.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Enrollment not found")
-    if enrollment.confirmed_at is not None or enrollment.revoked_at is not None:  # type: ignore[unreachable]
+    if enrollment.confirmed_at is not None or enrollment.revoked_at is not None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Enrollment is not pending")
 
-    await db.delete(enrollment)  # type: ignore[unreachable]
+    await db.delete(enrollment)
     await db.commit()
 
     audit.log(

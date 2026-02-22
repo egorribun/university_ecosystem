@@ -6,27 +6,33 @@ import { useAuthApi } from "@/hooks/auth/useAuthApi"
 import type { AuthContextType } from "@/types/Auth"
 import { ChallengeLockedError } from "@/types/Auth"
 import { logWarning } from "@/app/logger"
+import { useAuthStore } from "@/stores/useAuthStore"
 
 const noopSetUser = () => {
   logWarning("AuthContext setUser called outside provider")
 }
 
-export const AuthContext = createContext<AuthContextType>({
-  isAuth: false,
+export const AuthContext = createContext<Omit<AuthContextType, "user" | "loading" | "pendingMfa" | "isAuth" | "authOperation">>({
   login: async () => null,
   logout: async () => {},
-  user: null,
-  loading: false,
   setUser: noopSetUser,
   refresh: async () => {},
-  pendingMfa: null,
   submitMfaChallenge: async () => {},
   requireMfa: async () => null,
   loginWithPasskey: async () => {},
   resetEtagCache,
-})
+} as unknown as Omit<AuthContextType, "user" | "loading" | "pendingMfa" | "isAuth" | "authOperation">)
 
-export const useAuth = () => useContext(AuthContext)
+export const useAuth = (): AuthContextType => {
+  const store = useAuthStore()
+  const actions = useContext(AuthContext)
+  return {
+    ...store,
+    ...actions,
+    isAuth: store.user !== null,
+  }
+}
+
 export { ChallengeLockedError, currentUserQueryKey, fetchCurrentUser }
 export { PROFILE_CACHE_STORAGE_KEY } from "@/hooks/auth/useProfileSync"
 
@@ -41,8 +47,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const {
     user,
     setUser,
-    loading,
-    pendingMfa,
     updatePendingMfa,
     handleUnauthorized,
     authOperation,
@@ -67,31 +71,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const value = useMemo(
     () => ({
-      isAuth: user !== null,
       login,
       logout,
-      user,
-      loading,
       setUser,
       refresh,
-      pendingMfa,
       submitMfaChallenge,
       requireMfa,
       loginWithPasskey,
       resetEtagCache,
     }),
-    [
-      user,
-      login,
-      logout,
-      loading,
-      setUser,
-      refresh,
-      pendingMfa,
-      submitMfaChallenge,
-      requireMfa,
-      loginWithPasskey,
-    ]
+    [login, logout, setUser, refresh, submitMfaChallenge, requireMfa, loginWithPasskey]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

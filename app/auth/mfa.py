@@ -11,6 +11,7 @@ from collections.abc import MutableMapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
+from uuid import UUID
 
 import pyotp
 from fastapi import status
@@ -42,9 +43,9 @@ from app.services.session_cleanup import revoke_sessions_matching
 from app.utils import ratelimit as ratelimit_utils
 
 if TYPE_CHECKING:
-    from uuid import UUID
-
     from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.schemas.dtos import UserAuthDTO, UserDTO
 
 _TOTP_SECRET_LENGTH = 32
 _TOTP_VALID_WINDOW = settings.mfa_totp_initial_skew_windows
@@ -345,7 +346,7 @@ async def _lock_challenge(
     locale: str | None,
     status_code: int = status.HTTP_429_TOO_MANY_REQUESTS,
 ) -> None:
-    challenge.consumed_at = _utcnow()  # type: ignore[assignment]
+    challenge.consumed_at = _utcnow()
     await db.commit()
     audit_logger.warning(
         json.dumps(
@@ -401,7 +402,7 @@ async def _register_failed_attempt(
     if challenge is None:
         return
     current = int(getattr(challenge, "attempt_count", 0) or 0)
-    challenge.attempt_count = current + 1  # type: ignore[assignment]
+    challenge.attempt_count = current + 1
     await db.commit()  # Ensure persistence even on exception
     # Re-acquire challenge after commit (to bind to new transaction)
     stmt = select(MfaChallenge).where(MfaChallenge.id == challenge.id)
@@ -452,11 +453,11 @@ async def get_challenge(
     consumed_at = challenge.consumed_at
     if consumed_at is not None and consumed_at.tzinfo is None:
         consumed_at = consumed_at.replace(tzinfo=UTC)
-    if consumed_at is not None or (expires_at is not None and expires_at <= now):  # type: ignore[unreachable]
+    if consumed_at is not None or (expires_at is not None and expires_at <= now):
         raise_http_error(
             status.HTTP_400_BAD_REQUEST, "errors.mfa.invalid_challenge", locale
         )
-    if consume:  # type: ignore[unreachable]
+    if consume:
         challenge.consumed_at = now
         await db.flush()
     return challenge
@@ -600,7 +601,7 @@ async def consume_challenge(
             )
             raise ValueError("Unreachable")
         try:
-            payload: dict = challenge.payload  # type: ignore[assignment]
+            payload = challenge.payload or {}
             await service.verify_authentication(
                 user,
                 str(payload.get("options", {}).get("challenge", "")),
@@ -619,7 +620,7 @@ async def consume_challenge(
             )
 
     # If we reached here, verification was successful.
-    challenge.consumed_at = _utcnow()  # type: ignore[assignment]
+    challenge.consumed_at = _utcnow()
     await db.commit()
 
     return challenge, mfa_session
@@ -671,7 +672,7 @@ async def start_totp_enrollment(
         if not reuse_existing:
             raise_validation_error("errors.mfa.totp_enrollment_pending", "en")
         if label and label != pending.label:
-            pending.label = label  # type: ignore[assignment]
+            pending.label = label
             await db.flush()
         account_name = label or pending.label or user.email
         otpauth_url = build_totp_uri(
@@ -725,9 +726,9 @@ async def complete_totp_enrollment(
         raise_validation_error("errors.mfa.invalid_code", "en")
         raise ValueError("Invalid code")
     now = _utcnow()
-    enrollment.confirmed_at = now  # type: ignore[assignment]
-    enrollment.revoked_at = None  # type: ignore[assignment]
-    enrollment.is_active = True  # type: ignore[assignment]
+    enrollment.confirmed_at = now
+    enrollment.revoked_at = None
+    enrollment.is_active = True
     await db.flush()
     return enrollment
 
@@ -746,8 +747,8 @@ async def disable_totp(
     now = _utcnow()
     for record in result.scalars():
         if record.is_active:
-            record.is_active = False  # type: ignore[assignment]
-            record.revoked_at = now  # type: ignore[assignment]
+            record.is_active = False
+            record.revoked_at = now
             count += 1
 
     if count > 0:
@@ -762,7 +763,7 @@ async def disable_totp(
 async def start_totp_verification(
     db: AsyncSession,
     *,
-    user: User,
+    user: User | UserAuthDTO | UserDTO,
     session: ActiveSession | None = None,
     locale: str | None = None,
     payload: MutableMapping[str, Any] | None = None,
@@ -904,14 +905,14 @@ async def refresh_user_mfa_preferences(
 
     changed = False
     if user.mfa_default_method != new_default:
-        user.mfa_default_method = new_default  # type: ignore[assignment]
+        user.mfa_default_method = new_default
         changed = True
 
     if new_default is not None and not user.mfa_required:
-        user.mfa_required = True  # type: ignore[assignment]
+        user.mfa_required = True
         changed = True
     elif new_default is None and user.mfa_required:
-        user.mfa_required = False  # type: ignore[assignment]
+        user.mfa_required = False
         changed = True
 
     if changed:
@@ -920,22 +921,30 @@ async def refresh_user_mfa_preferences(
     return new_default
 
 
-async def reset_user_mfa(db: AsyncSession, *, user: User) -> MfaResetStats:
+async def reset_user_mfa(
+    db: AsyncSession, *, user: User | None = None, user_id: UUID | str | None = None
+) -> MfaResetStats:
     """Remove MFA factors, revoke challenges, and clear MFA state for a user."""
+    # Resolve user_id and ensure we have an ORM user if possible for field clearing
+    target_user_id: Any = user_id
+    if user:
+        target_user_id = user.id
+    elif user_id is None:
+        raise ValueError("Either user or user_id must be provided")
 
     stats = MfaResetStats()
 
     totp_result = await db.execute(
-        delete(MfaTotpEnrollment).where(MfaTotpEnrollment.user_id == user.id)
+        delete(MfaTotpEnrollment).where(MfaTotpEnrollment.user_id == target_user_id)
     )
     webauthn_result = await db.execute(
-        delete(WebAuthnCredential).where(WebAuthnCredential.user_id == user.id)
+        delete(WebAuthnCredential).where(WebAuthnCredential.user_id == target_user_id)
     )
     challenge_result = await db.execute(
-        delete(MfaChallenge).where(MfaChallenge.user_id == user.id)
+        delete(MfaChallenge).where(MfaChallenge.user_id == target_user_id)
     )
     recovery_result = await db.execute(
-        delete(RecoveryCode).where(RecoveryCode.user_id == user.id)
+        delete(RecoveryCode).where(RecoveryCode.user_id == target_user_id)
     )
 
     stats.totp_deleted = int(getattr(totp_result, "rowcount", 0))
@@ -943,22 +952,34 @@ async def reset_user_mfa(db: AsyncSession, *, user: User) -> MfaResetStats:
     stats.recovery_codes_deleted = int(getattr(recovery_result, "rowcount", 0))
     stats.challenges_revoked = int(getattr(challenge_result, "rowcount", 0))
 
-    if user.mfa_required:
-        user.mfa_required = False  # type: ignore[assignment]
-        stats.fields_cleared = True
-    if user.mfa_default_method:
-        user.mfa_default_method = None  # type: ignore[assignment]
-        stats.fields_cleared = True
-    if user.mfa_last_verified_at is not None:
-        user.mfa_last_verified_at = None  # type: ignore[assignment]
-        stats.fields_cleared = True
+    # If we have the user object, clear its fields.
+    # If not, we might need to fetch it to clear fields if it was mfa_required.
+    # But for a full reset, we can also just update by ID.
+    from sqlalchemy import update
+    update_stmt = (
+        update(User)
+        .where(User.id == target_user_id)
+        .values(
+            mfa_required=False,
+            mfa_default_method=None,
+            mfa_last_verified_at=None
+        )
+    )
+    await db.execute(update_stmt)
+    stats.fields_cleared = True  # We always clear them now
+
+    if user:
+        # Reflect changes in the provided object if it's the one we're resetting
+        user.mfa_required = False
+        user.mfa_default_method = None
+        user.mfa_last_verified_at = None
 
     await db.flush()
 
     # Revoke all sessions globally on MFA reset
     await revoke_sessions_matching(
         db=db,
-        whereclause=(ActiveSession.user_id == user.id),
+        whereclause=(ActiveSession.user_id == target_user_id),
     )
 
     return stats
@@ -967,18 +988,26 @@ async def reset_user_mfa(db: AsyncSession, *, user: User) -> MfaResetStats:
 async def record_mfa_success(
     db: AsyncSession,
     *,
-    user: User,
+    user: User | UserAuthDTO | UserDTO,
     session: ActiveSession | None,
     method: str,
-) -> None:
+) -> User | UserAuthDTO | UserDTO:
     now = _utcnow()
-    user.mfa_last_verified_at = now  # type: ignore[assignment]
+    if not isinstance(user, User):
+        # DTO path: mfa_last_verified_at is read-only in DTOs
+        updated_user: User | UserAuthDTO | UserDTO = user.model_copy(update={"mfa_last_verified_at": now})
+    else:
+        # ORM path
+        user.mfa_last_verified_at = now
+        updated_user = user
+
     if session is not None:
-        session.mfa_completed_at = now  # type: ignore[assignment]
-        session.mfa_required = False  # type: ignore[assignment]
-        session.mfa_method = method[:64]  # type: ignore[assignment]
-        session.mfa_verified_at = now  # type: ignore[assignment]
+        session.mfa_completed_at = now
+        session.mfa_required = False
+        session.mfa_method = method[:64]
+        session.mfa_verified_at = now
     await db.flush()
+    return updated_user
 
 
 async def create_trusted_device_token(

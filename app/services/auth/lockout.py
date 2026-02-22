@@ -84,7 +84,7 @@ class LockoutService:
         lock_until: datetime | None = None
         for threshold, seconds in rules:
             if total >= threshold:
-                attempt_time = self._normalize_timestamp(attempts[-1].attempted_at)  # type: ignore[arg-type]
+                attempt_time = self._normalize_timestamp(attempts[-1].attempted_at)
                 candidate = attempt_time + timedelta(seconds=seconds)
                 if candidate > now:
                     lock_until = (

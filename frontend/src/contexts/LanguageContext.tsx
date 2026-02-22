@@ -1,8 +1,4 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
-import dayjs from "dayjs"
-import "dayjs/locale/en"
-import "dayjs/locale/ru"
-import "dayjs/locale/ar"
 import type { ReactNode } from "react"
 import i18n from "@/i18n/config"
 import { fallbackLng, localeMeta, supportedLngs, type SupportedLanguage } from "@/i18n/metadata"
@@ -51,7 +47,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void i18n.changeLanguage(language)
     const locale = localeMeta[language]
-    dayjs.locale(locale?.dayjsLocale)
+    // dayjs.locale(locale?.dayjsLocale) removed
     if (typeof window !== "undefined") {
       window.localStorage.setItem(storageKey, language)
       document.documentElement.setAttribute("lang", language)

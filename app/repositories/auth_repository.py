@@ -1,3 +1,4 @@
+import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import select, update
@@ -7,10 +8,16 @@ from app.core.config import settings
 from app.models import models
 from app.repositories.base import BaseRepository
 from app.schemas import schemas
+from app.schemas.dtos import EmailChangeTokenDTO, PasswordResetTokenDTO
 
 
 class AuthRepository(
-    BaseRepository[models.PasswordResetToken, schemas.PasswordResetTokenCreate, dict]
+    BaseRepository[
+        models.PasswordResetToken,
+        PasswordResetTokenDTO,
+        schemas.PasswordResetTokenCreate,
+        dict,
+    ]
 ):
     """Repository for Authentication-related tokens (Password Reset, Email Change)."""
 
@@ -18,12 +25,16 @@ class AuthRepository(
     def model(self) -> type[models.PasswordResetToken]:
         return models.PasswordResetToken
 
+    @property
+    def dto_class(self) -> type[PasswordResetTokenDTO]:
+        return PasswordResetTokenDTO
+
     async def create_password_reset_token(
         self,
-        user_id: int,
+        user_id: uuid.UUID | str,
         token_hash: str,
         expires_at: datetime,
-    ) -> models.PasswordResetToken:
+    ) -> PasswordResetTokenDTO:
         """
         Create a password reset token, ensuring max active tokens limit.
         """
@@ -45,16 +56,16 @@ class AuthRepository(
 
         # Invalidate excess tokens
         for stale in active_tokens[max_active:]:
-            stale.used = True  # type: ignore[assignment]
+            stale.used = True
 
         # Recycle existing token slot if at limit
         if len(active_tokens) >= max_active:
             target = active_tokens[max_active - 1]
-            target.token_hash = token_hash  # type: ignore[assignment]
-            target.expires_at = expires_at  # type: ignore[assignment]
-            target.used = False  # type: ignore[assignment]
-            target.created_at = datetime.now(UTC)  # type: ignore[assignment]
-            return target
+            target.token_hash = token_hash
+            target.expires_at = expires_at
+            target.used = False
+            target.created_at = datetime.now(UTC)
+            return self._to_dto(target)
 
         # Create new token
         record = models.PasswordResetToken(
@@ -65,11 +76,11 @@ class AuthRepository(
         )
         self.db.add(record)
         await self.db.flush()
-        return record
+        return PasswordResetTokenDTO.model_validate(record)
 
     async def get_valid_password_reset_token(
         self, token_hash: str, with_for_update: bool = False
-    ) -> models.PasswordResetToken | None:
+    ) -> PasswordResetTokenDTO | None:
         """
         Get a valid (unused) password reset token by hash.
         """
@@ -81,9 +92,10 @@ class AuthRepository(
             stmt = stmt.with_for_update()
 
         result = await self.db.execute(stmt)
-        return result.scalar_one_or_none()
+        obj = result.scalar_one_or_none()
+        return PasswordResetTokenDTO.model_validate(obj) if obj else None
 
-    async def mark_password_reset_token_used(self, token_id: int) -> None:
+    async def mark_password_reset_token_used(self, token_id: uuid.UUID | str) -> None:
         """Mark a password reset token as used."""
         await self.db.execute(
             update(models.PasswordResetToken)
@@ -91,7 +103,7 @@ class AuthRepository(
             .values(used=True)
         )
 
-    async def invalidate_all_user_password_reset_tokens(self, user_id: int) -> None:
+    async def invalidate_all_user_password_reset_tokens(self, user_id: uuid.UUID | str) -> None:
         """Invalidate all password reset tokens for a user."""
         await self.db.execute(
             update(models.PasswordResetToken)
@@ -105,8 +117,8 @@ class AuthRepository(
     # Email Change Token Methods
 
     async def create_email_change_token(
-        self, user_id: int, new_email: str, token_hash: str, expires_at: datetime
-    ) -> models.EmailChangeToken:
+        self, user_id: uuid.UUID | str, new_email: str, token_hash: str, expires_at: datetime
+    ) -> EmailChangeTokenDTO:
         """
         Create an email change token, invalidating previous unused ones.
         """
@@ -129,11 +141,11 @@ class AuthRepository(
         )
         self.db.add(record)
         await self.db.flush()
-        return record
+        return EmailChangeTokenDTO.model_validate(record)
 
     async def get_active_email_change_request(
-        self, user_id: int
-    ) -> models.EmailChangeToken | None:
+        self, user_id: uuid.UUID | str
+    ) -> EmailChangeTokenDTO | None:
         """Get the latest active email change request for a user."""
         now = datetime.now(UTC)
         result = await self.db.execute(
@@ -145,11 +157,12 @@ class AuthRepository(
             )
             .order_by(models.EmailChangeToken.created_at.desc())
         )
-        return result.scalars().first()
+        obj = result.scalars().first()
+        return EmailChangeTokenDTO.model_validate(obj) if obj else None
 
     async def get_valid_email_change_token(
         self, token_hash: str, with_for_update: bool = False
-    ) -> models.EmailChangeToken | None:
+    ) -> EmailChangeTokenDTO | None:
         """Get a valid (unused) email change token by hash."""
         stmt = select(models.EmailChangeToken).where(
             models.EmailChangeToken.token_hash == token_hash,
@@ -158,9 +171,10 @@ class AuthRepository(
             stmt = stmt.with_for_update()
 
         result = await self.db.execute(stmt)
-        return result.scalar_one_or_none()
+        obj = result.scalar_one_or_none()
+        return EmailChangeTokenDTO.model_validate(obj) if obj else None
 
-    async def mark_email_change_token_used(self, token_id: int) -> None:
+    async def mark_email_change_token_used(self, token_id: uuid.UUID | str) -> None:
         """Mark an email change token as used."""
         await self.db.execute(
             update(models.EmailChangeToken)
@@ -169,7 +183,7 @@ class AuthRepository(
         )
 
     async def invalidate_other_email_change_tokens(
-        self, user_id: int, exclude_token_id: int
+        self, user_id: uuid.UUID | str, exclude_token_id: uuid.UUID | str
     ) -> None:
         """Invalidate all other email change tokens for a user."""
         await self.db.execute(
@@ -184,7 +198,7 @@ class AuthRepository(
     # WebAuthn Credential Methods
 
     async def get_webauthn_credential(
-        self, user_id: int, credential_id: str
+        self, user_id: uuid.UUID | str, credential_id: str
     ) -> models.WebAuthnCredential | None:
         """Get a specific WebAuthn credential for a user."""
         stmt = select(models.WebAuthnCredential).where(
@@ -195,7 +209,7 @@ class AuthRepository(
         return result.scalar_one_or_none()
 
     async def list_user_webauthn_credentials(
-        self, user_id: int
+        self, user_id: uuid.UUID | str
     ) -> list[models.WebAuthnCredential]:
         """List all WebAuthn credentials for a user."""
         stmt = select(models.WebAuthnCredential).where(
@@ -219,7 +233,7 @@ class AuthRepository(
         self.db.add(record)
         return record
 
-    async def get_user_mfa_capabilities(self, user_id: int) -> dict[str, bool]:
+    async def get_user_mfa_capabilities(self, user_id: uuid.UUID | str) -> dict[str, bool]:
         """Detect which MFA factors are active for a user."""
         from app.auth import mfa
 
@@ -248,7 +262,7 @@ class AuthRepository(
             mfa.MFA_METHOD_WEBAUTHN: webauthn_exists,
         }
 
-    async def has_active_mfa(self, user_id: int) -> bool:
+    async def has_active_mfa(self, user_id: uuid.UUID | str) -> bool:
         """Return True if the user has any active MFA factor."""
         capabilities = await self.get_user_mfa_capabilities(user_id)
         return any(capabilities.values())

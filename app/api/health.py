@@ -51,7 +51,7 @@ def reset_health_cache() -> None:
     _health_cache.update({"expires_at": 0.0, "payload": {}, "status_code": 200})
 
 
-async def _lightweight_storage_probe(backend) -> str | None:
+async def _lightweight_storage_probe(backend: Any) -> str | None:
     if isinstance(backend, StaticFSStorage):
         exists = await asyncio.to_thread(backend.base_dir.exists)
         return "ok" if exists else "error"
@@ -63,7 +63,7 @@ async def _lightweight_storage_probe(backend) -> str | None:
     return None
 
 
-async def _write_delete_storage_probe(backend) -> str:
+async def _write_delete_storage_probe(backend: Any) -> str:
     probe_name = f"healthz/{uuid.uuid4().hex}.txt"
     try:
         probe_url = await backend.save_file(probe_name, b"", content_type="text/plain")
@@ -121,7 +121,7 @@ async def _probe_storage() -> tuple[str, float]:
 
 
 @router.get("/healthz")
-async def healthz():
+async def healthz() -> JSONResponse:
     now = time.monotonic()
     if _health_cache["expires_at"] > now:
         return JSONResponse(
@@ -129,7 +129,7 @@ async def healthz():
             content=_health_cache["payload"],
         )
 
-    statuses: dict[str, str] = {}
+    statuses: dict[str, Any] = {}
     latencies: dict[str, float] = {}
 
     db_status = "ok"
@@ -259,6 +259,6 @@ async def healthz():
 
 
 @router.get("/ready")
-async def ready():
+async def ready() -> dict[str, str]:
     await wait_db(max_attempts=1, delay=0.1)
     return {"status": "ready"}

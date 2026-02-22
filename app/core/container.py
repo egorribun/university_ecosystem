@@ -21,8 +21,8 @@ from app.services.event_service import EventService
 from app.services.group_service import GroupService
 from app.services.news_service import NewsService
 from app.services.notification_service import NotificationService
-from app.services.user.admin_service import UserAdminService
-from app.services.user.data_service import UserDataService
+from app.services.user.compliance_service import UserComplianceService
+from app.services.user.media_service import UserMediaService
 from app.services.user.profile_service import UserProfileService
 from app.services.user_service import UserService
 from app.services.vector_service import VectorService
@@ -76,26 +76,26 @@ def get_user_service(
 
 def get_user_profile_service(
     db: AsyncSession = Depends(get_db),
-) -> UserProfileService:
-    repo = get_user_repository(db)
-    return UserProfileService(repo=repo)
-
-
-def get_user_admin_service(
-    db: AsyncSession = Depends(get_db),
     audit: AuditService = Depends(get_audit_service),
     notifications: NotificationService = Depends(get_notification_service),
-) -> UserAdminService:
+) -> UserProfileService:
     repo = get_user_repository(db)
-    return UserAdminService(repo=repo, audit=audit, notifications=notifications)
+    return UserProfileService(user_repo=repo, audit=audit, notifications=notifications)
 
 
-def get_user_data_service(
+def get_user_compliance_service(
     db: AsyncSession = Depends(get_db),
     audit: AuditService = Depends(get_audit_service),
-) -> UserDataService:
+) -> UserComplianceService:
     repo = get_user_repository(db)
-    return UserDataService(repo=repo, audit=audit)
+    return UserComplianceService(user_repo=repo, audit=audit)
+
+
+def get_user_media_service(
+    db: AsyncSession = Depends(get_db),
+) -> UserMediaService:
+    repo = get_user_repository(db)
+    return UserMediaService(user_repo=repo)
 
 
 def get_event_service(

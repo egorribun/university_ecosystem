@@ -6,7 +6,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { createQueryClient } from "@/app/queryClient"
 import { AuthContext } from "@/contexts/AuthContext"
 import Settings from "@/pages/Settings"
-import type { User } from "@/types/User"
 import { LanguageProvider } from "@/contexts/LanguageContext"
 
 vi.mock("@/hooks/useNotifications", () => ({
@@ -32,29 +31,6 @@ vi.mock("@/hooks/usePushPreferences", () => ({
   }),
 }))
 
-const baseUser: User = {
-  id: "uuid-1",
-  email: "test@example.com",
-  full_name: "Test User",
-  role: "student",
-  group_id: "group-1",
-  avatar_url: null,
-  avatar_url_optimized: null,
-  cover_url: null,
-  cover_url_optimized: null,
-    profile_detail: undefined,
-    education_path: undefined,
-    preferences: { dnd_enabled: false, timezone: null, dnd_start: null, dnd_end: null },
-    spotify_connected: false,
-  is_active: true,
-  mfa_required: false,
-  mfa_default_method: null,
-  mfa_last_verified_at: null,
-  recovery_codes_left: 0,
-  totp_enrollments: [],
-  mfa_challenges: [],
-}
-
 const renderSettings = () => {
   const queryClient = createQueryClient()
   const mockSetUser = vi.fn()
@@ -67,15 +43,11 @@ const renderSettings = () => {
           <LanguageProvider>
             <AuthContext.Provider
               value={{
-                user: baseUser,
                 setUser: mockSetUser,
                 logout: mockLogout,
                 login: vi.fn(),
                 loginWithPasskey: vi.fn(),
                 refresh: vi.fn(),
-                isAuth: true,
-                loading: false,
-                pendingMfa: null,
                 submitMfaChallenge: vi.fn().mockResolvedValue(undefined),
                 requireMfa: vi.fn().mockResolvedValue(null),
                 resetEtagCache: vi.fn(),

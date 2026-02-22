@@ -11,9 +11,7 @@ import Layout from "@/components/Layout"
 import SmartImage from "@/components/SmartImage"
 import type { Event } from "@/types/Event"
 import { useTranslation } from "react-i18next"
-import dayjs from "dayjs"
-import utc from "dayjs/plugin/utc"
-import timezone from "dayjs/plugin/timezone"
+import { formatDate } from "@/utils/date"
 import { Button, Badge, GlassCard } from "@/components/ui"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
@@ -22,15 +20,19 @@ import { EventAboutEditor } from "@/components/events/EventAboutEditor"
 import { EventFileManager } from "@/components/events/EventFileManager"
 import api from "@/api/client"
 
-dayjs.extend(utc)
-dayjs.extend(timezone)
+// dayjs extensions removed
 
 const formatLocalDateTime = (s?: string) => {
   if (!s) return "—"
-  const norm = s.replace(" ", "T")
-  const withSec = norm.length === 16 ? norm + ":00" : norm
-  const d = dayjs(withSec)
-  return d.isValid() ? d.format("DD.MM.YYYY HH:mm") : "—"
+  const d = formatDate(s, {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  })
+  return d || "—"
 }
 
 const formatDateSafe = (v?: string) => formatLocalDateTime(v)

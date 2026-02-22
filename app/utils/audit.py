@@ -1,14 +1,15 @@
 import hashlib
 import hmac
 import json
+import uuid
 from datetime import datetime
 
 from app.core.config import settings
 
 
 def calculate_log_signature(
-    actor_user_id: int | None,
-    subject_user_id: int | None,
+    actor_user_id: uuid.UUID | int | None,
+    subject_user_id: uuid.UUID | int | None,
     resource_type: str,
     resource_id: str | None,
     action: str,

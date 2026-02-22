@@ -1,0 +1,351 @@
+============================= test session starts =============================
+platform win32 -- Python 3.14.3, pytest-9.0.2, pluggy-1.6.0 -- C:\Users\egorribun\Documents\university_ecosystem\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+hypothesis profile 'default'
+rootdir: C:\Users\egorribun\Documents\university_ecosystem
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+plugins: anyio-4.12.1, hypothesis-6.151.4, asyncio-1.3.0, cov-7.0.0, xdist-3.8.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=session
+collecting ... collected 23 items
+
+tests/test_user_service.py::test_delete_avatar_with_existing FAILED      [  4%]
+tests/test_user_service.py::test_delete_avatar_without_existing PASSED   [  8%]
+tests/test_user_service.py::test_delete_cover_with_existing FAILED       [ 13%]
+tests/test_user_service.py::test_upload_avatar_success FAILED            [ 17%]
+tests/test_user_service.py::test_upload_avatar_commit_failure FAILED     [ 21%]
+tests/test_user_service.py::test_update_user_profile_success FAILED      [ 26%]
+tests/test_user_service.py::test_update_user_profile_invalid_email PASSED [ 30%]
+tests/test_user_service.py::test_update_user_profile_email_in_use PASSED [ 34%]
+tests/test_user_service.py::test_update_user_profile_preferences PASSED  [ 39%]
+tests/test_user_service.py::test_create_user_forbidden_non_admin PASSED  [ 43%]
+tests/test_user_service.py::test_create_user_teacher_requires_invite PASSED [ 47%]
+tests/test_user_service.py::test_create_user_invalid_invite PASSED       [ 52%]
+tests/test_user_service.py::test_create_user_success PASSED              [ 56%]
+tests/test_user_service.py::test_get_users_non_admin_no_search PASSED    [ 60%]
+tests/test_user_service.py::test_get_users_non_admin_with_search PASSED  [ 65%]
+tests/test_user_service.py::test_get_users_admin PASSED                  [ 69%]
+tests/test_user_service.py::test_admin_update_user_forbidden PASSED      [ 73%]
+tests/test_user_service.py::test_admin_update_user_success FAILED        [ 78%]
+tests/test_user_service.py::test_admin_update_user_mfa_reset PASSED      [ 82%]
+tests/test_user_service.py::test_admin_delete_user_forbidden PASSED      [ 86%]
+tests/test_user_service.py::test_admin_delete_user_not_found PASSED      [ 91%]
+tests/test_user_service.py::test_admin_delete_user_self PASSED           [ 95%]
+tests/test_user_service.py::test_admin_delete_user_success PASSED        [100%]
+
+================================== FAILURES ===================================
+______________________ test_delete_avatar_with_existing _______________________
+
+service = <app.services.user_service.UserService object at 0x0000020ED1994590>
+mock_db = <AsyncMock id='2262669280992'>
+mock_user = <MagicMock name='mock.get()' id='2262669294768'>
+
+    @pytest.mark.asyncio
+    async def test_delete_avatar_with_existing(service, mock_db, mock_user):
+        """Test delete_avatar when user has avatar."""
+        mock_user.profile.avatar_url = "/static/avatars/test.jpg"
+        service.repo.get.return_value = mock_user
+    
+        with patch("app.services.user_service.delete_static_file") as mock_delete:
+            with patch("app.services.user_service.ensure_mfa_relationships_loaded"):
+                await service.delete_avatar(mock_user)
+    
+>       mock_delete.assert_called_once_with("/static/avatars/test.jpg")
+
+tests\test_user_service.py:115: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <AsyncMock name='delete_static_file' id='2262669034224'>
+args = ('/static/avatars/test.jpg',), kwargs = {}
+msg = "Expected 'delete_static_file' to be called once. Called 0 times."
+
+    def assert_called_once_with(self, /, *args, **kwargs):
+        """assert that the mock was called exactly once and that that call was
+        with the specified arguments."""
+        if not self.call_count == 1:
+            msg = ("Expected '%s' to be called once. Called %s times.%s"
+                   % (self._mock_name or 'mock',
+                      self.call_count,
+                      self._calls_repr()))
+>           raise AssertionError(msg)
+E           AssertionError: Expected 'delete_static_file' to be called once. Called 0 times.
+
+C:\Python314\Lib\unittest\mock.py:996: AssertionError
+_______________________ test_delete_cover_with_existing _______________________
+
+service = <app.services.user_service.UserService object at 0x0000020ED18BE850>
+mock_db = <AsyncMock id='2262670924096'>
+mock_user = <MagicMock name='mock.get()' id='2262671608528'>
+
+    @pytest.mark.asyncio
+    async def test_delete_cover_with_existing(service, mock_db, mock_user):
+        """Test delete_cover when user has cover."""
+        mock_user.profile.cover_url = "/static/covers/test.jpg"
+        service.repo.get.return_value = mock_user
+    
+        with patch("app.services.user_service.delete_static_file") as mock_delete:
+            with patch("app.services.user_service.ensure_mfa_relationships_loaded"):
+                await service.delete_cover(mock_user)
+    
+>       mock_delete.assert_called_once()
+
+tests\test_user_service.py:142: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <AsyncMock name='delete_static_file' id='2262670923424'>
+
+    def assert_called_once(self):
+        """assert that the mock was called only once.
+        """
+        if not self.call_count == 1:
+            msg = ("Expected '%s' to have been called once. Called %s times.%s"
+                   % (self._mock_name or 'mock',
+                      self.call_count,
+                      self._calls_repr()))
+>           raise AssertionError(msg)
+E           AssertionError: Expected 'delete_static_file' to have been called once. Called 0 times.
+
+C:\Python314\Lib\unittest\mock.py:964: AssertionError
+_________________________ test_upload_avatar_success __________________________
+
+service = <app.services.user_service.UserService object at 0x0000020ED16F75C0>
+mock_db = <AsyncMock id='2262670922080'>
+mock_user = <MagicMock name='mock.get()' id='2262669039936'>
+mock_request = <MagicMock id='2262669038928'>
+
+    @pytest.mark.asyncio
+    async def test_upload_avatar_success(service, mock_db, mock_user, mock_request):
+        """Test successful avatar upload."""
+        service.repo.get.return_value = mock_user
+        mock_file = MagicMock()
+    
+        with patch("app.services.user_service.resolve_locale", return_value="en"):
+            with patch(
+                "app.services.user_service.save_upload",
+                return_value="/static/avatars/new.jpg",
+            ):
+                with patch("app.services.user_service.ensure_mfa_relationships_loaded"):
+>                   await service.upload_avatar(mock_user, mock_file)
+
+tests\test_user_service.py:160: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+app\services\user_service.py:124: in upload_avatar
+    return await self.media_service.upload_avatar(user, file)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\services\user_media_service.py:24: in upload_avatar
+    file_url = await save_upload(file, "avatars", f"user_{user.id}_avatar")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\api\utils.py:15: in save_upload
+    return await save_image(file, subdir, prefix, locale=locale)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+upload = <MagicMock id='2262670922752'>, subdir = 'avatars'
+prefix = 'user_690ce78a-8d97-472f-bd5c-d9e69d18472b_avatar'
+
+    async def save_image(
+        upload: UploadFile, subdir: str, prefix: str, *, locale: str | None = None
+    ) -> str:
+        declared_type = (upload.content_type or "").lower()
+        if declared_type not in ALLOWED_IMAGE_TYPES:
+>           raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail=translate("errors.files.unsupported_type", locale=locale),
+            )
+E           fastapi.exceptions.HTTPException: 415: Unsupported media type
+
+app\utils\files.py:255: HTTPException
+______________________ test_upload_avatar_commit_failure ______________________
+
+service = <app.services.user_service.UserService object at 0x0000020ED1892060>
+mock_db = <AsyncMock id='2262669034560'>
+mock_user = <MagicMock name='mock.get()' id='2262669284016'>
+mock_request = <MagicMock id='2262669282336'>
+
+    @pytest.mark.asyncio
+    async def test_upload_avatar_commit_failure(service, mock_db, mock_user, mock_request):
+        """Test avatar upload rolls back on commit failure."""
+        service.repo.get.return_value = mock_user
+        mock_user.profile.avatar_url = "/old.jpg"
+        service.repo.commit.side_effect = Exception(
+            "Commit failed"
+        )  # Changed from mock_db.commit
+        mock_file = MagicMock()
+    
+        with patch("app.services.user_service.resolve_locale", return_value="en"):
+            with patch(
+                "app.services.user_service.save_upload",
+                return_value="/static/avatars/new.jpg",
+            ):
+                with patch("app.services.user_service.delete_static_file") as mock_delete:
+                    with pytest.raises(Exception, match="Commit failed"):
+>                       await service.upload_avatar(mock_user, mock_file)
+
+tests\test_user_service.py:183: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+app\services\user_service.py:124: in upload_avatar
+    return await self.media_service.upload_avatar(user, file)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\services\user_media_service.py:24: in upload_avatar
+    file_url = await save_upload(file, "avatars", f"user_{user.id}_avatar")
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app\api\utils.py:15: in save_upload
+    return await save_image(file, subdir, prefix, locale=locale)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+upload = <MagicMock id='2262669281664'>, subdir = 'avatars'
+prefix = 'user_4b1dc38f-2cad-4425-aa3b-24167ad3dd9a_avatar'
+
+    async def save_image(
+        upload: UploadFile, subdir: str, prefix: str, *, locale: str | None = None
+    ) -> str:
+        declared_type = (upload.content_type or "").lower()
+        if declared_type not in ALLOWED_IMAGE_TYPES:
+>           raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail=translate("errors.files.unsupported_type", locale=locale),
+            )
+E           fastapi.exceptions.HTTPException: 415: Unsupported media type
+
+app\utils\files.py:255: HTTPException
+
+During handling of the above exception, another exception occurred:
+
+service = <app.services.user_service.UserService object at 0x0000020ED1892060>
+mock_db = <AsyncMock id='2262669034560'>
+mock_user = <MagicMock name='mock.get()' id='2262669284016'>
+mock_request = <MagicMock id='2262669282336'>
+
+    @pytest.mark.asyncio
+    async def test_upload_avatar_commit_failure(service, mock_db, mock_user, mock_request):
+        """Test avatar upload rolls back on commit failure."""
+        service.repo.get.return_value = mock_user
+        mock_user.profile.avatar_url = "/old.jpg"
+        service.repo.commit.side_effect = Exception(
+            "Commit failed"
+        )  # Changed from mock_db.commit
+        mock_file = MagicMock()
+    
+        with patch("app.services.user_service.resolve_locale", return_value="en"):
+            with patch(
+                "app.services.user_service.save_upload",
+                return_value="/static/avatars/new.jpg",
+            ):
+                with patch("app.services.user_service.delete_static_file") as mock_delete:
+>                   with pytest.raises(Exception, match="Commit failed"):
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E                   AssertionError: Regex pattern did not match.
+E                     Expected regex: 'Commit failed'
+E                     Actual message: '415: Unsupported media type'
+
+tests\test_user_service.py:182: AssertionError
+______________________ test_update_user_profile_success _______________________
+
+service = <app.services.user_service.UserService object at 0x0000020ED1746C30>
+mock_db = <AsyncMock id='2262671620960'>
+mock_user = <MagicMock name='mock.get()' id='2262669782592'>
+mock_request = <MagicMock id='2262669783600'>
+
+    @pytest.mark.asyncio
+    async def test_update_user_profile_success(service, mock_db, mock_user, mock_request):
+        """Test successful profile update."""
+        service.repo.get.return_value = mock_user
+        data = MagicMock()
+        data.model_dump.return_value = {"full_name": "New Name"}
+    
+        with patch("app.services.user_service.resolve_locale", return_value="en"):
+            with patch("app.services.user_service.ensure_mfa_relationships_loaded"):
+                with patch("app.services.user_service.attach_pending_email"):
+                    result = await service.update_user_profile(
+                        mock_user, data, mock_request
+                    )
+    
+>       assert result == mock_user
+E       AssertionError: assert <AsyncMock na...262675964320'> == <MagicMock na...262669782592'>
+E         
+E         Full diff:
+E         - <MagicMock name='mock.get()' id='2262669782592'>
+E         ?  ^^^^                 ^ -             -- --
+E         + <AsyncMock name='mock.update()' id='2262675964320'>
+E         ?  ^^^^                 ^^^^^                 +++ +
+
+tests\test_user_service.py:237: AssertionError
+_______________________ test_admin_update_user_success ________________________
+
+service = <app.services.user_service.UserService object at 0x0000020ED1898680>
+mock_db = <AsyncMock id='2262677281760'>
+mock_admin_user = <MagicMock id='2262671363440'>
+mock_request = <MagicMock id='2262671363776'>
+mock_audit = <MagicMock id='2262677289488'>
+
+    @pytest.mark.asyncio
+    async def test_admin_update_user_success(
+        service, mock_db, mock_admin_user, mock_request, mock_audit
+    ):
+        """Test successful admin user update."""
+        data = MagicMock()
+        updated_user = MagicMock()
+        updated_user.id = 2
+    
+        service.repo.get.return_value = updated_user
+    
+        with patch("app.services.user_service.resolve_locale", return_value="en"):
+            with patch("app.services.user_service.ensure_mfa_relationships_loaded"):
+>               result = await service.admin_update_user(
+                    2, data, mock_request, mock_admin_user
+                )
+
+tests\test_user_service.py:431: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+app\services\user_service.py:81: in admin_update_user
+    return await self.profile_service.admin_update_user(
+app\services\audit_service.py:298: in wrapper
+    raise e
+app\services\audit_service.py:281: in wrapper
+    result = await func(self, *args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <app.services.user_profile_service.UserProfileService object at 0x0000020ED1898470>
+user_id = 2, data = <MagicMock id='2262677281088'>
+request = <MagicMock id='2262671363776'>
+current_user = <MagicMock id='2262671363440'>
+
+    @auditable(SecurityEvent.ADMIN_USER_MODIFY, user_id_param="user_id")
+    async def admin_update_user(
+        self,
+        user_id: uuid.UUID | str,
+        data: schemas.UserAdminUpdate,
+        request: Request,
+        current_user: UserDTO,
+    ) -> UserDTO:
+        if current_user.role != "admin":
+            raise PermissionDenied()
+    
+        payload = data.model_dump(exclude_unset=True)
+        reset_requested = bool(payload.pop("reset_mfa", False))
+    
+        if "email" in payload and payload["email"] is not None:
+            payload["email"] = str(payload["email"]).strip().lower()
+    
+        updated_user = await self.repo.update(user_id, payload)
+        if not updated_user:
+            raise EntityNotFound("User", user_id)
+    
+        if reset_requested:
+            # reset_user_mfa takes a session and either a user object or ID.
+            # I should make sure it doesn't need to mutate the user object I have.
+            # It likely mutates the DB via session.
+>           await mfa.reset_user_mfa(self.repo.db, user_id=user_id)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E           TypeError: reset_user_mfa() got an unexpected keyword argument 'user_id'
+
+app\services\user_profile_service.py:119: TypeError
+=========================== short test summary info ===========================
+FAILED tests/test_user_service.py::test_delete_avatar_with_existing - Asserti...
+FAILED tests/test_user_service.py::test_delete_cover_with_existing - Assertio...
+FAILED tests/test_user_service.py::test_upload_avatar_success - fastapi.excep...
+FAILED tests/test_user_service.py::test_upload_avatar_commit_failure - Assert...
+FAILED tests/test_user_service.py::test_update_user_profile_success - Asserti...
+FAILED tests/test_user_service.py::test_admin_update_user_success - TypeError...
+======================== 6 failed, 17 passed in 3.33s =========================

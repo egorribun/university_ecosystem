@@ -10,6 +10,7 @@ import type { PendingMfaState, SetUserArg, UserState } from "@/types/Auth"
 import { clearAccessToken } from "./tokenStorage"
 import { logError, logWarning } from "@/app/logger"
 import { extractApiError } from "@/utils/error"
+import { useAuthStore } from "@/stores/useAuthStore"
 
 const PROFILE_CACHE_BASE_KEY = "ecosystem.profile.cache"
 const PROFILE_CACHE_SCHEMA_VERSION = 7
@@ -786,6 +787,19 @@ export const useProfileSync = (
       }
     })()
   }, [ensureSessionSigningKey, handleUnauthorized, setUser])
+
+  useEffect(() => {
+    useAuthStore.setState({
+      user: userState,
+      loading: initializing || authOperation,
+      pendingMfa: pendingMfaState,
+      authOperation,
+      setUser,
+      setLoading: setInitializing,
+      setPendingMfa: setPendingMfaState,
+      setAuthOperation,
+    });
+  }, [userState, initializing, authOperation, pendingMfaState, setUser, setInitializing, setPendingMfaState, setAuthOperation]);
 
   return {
     user: userState,

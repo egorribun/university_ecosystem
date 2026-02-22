@@ -51,7 +51,12 @@ func (c *Client) ReadPump() {
 		case "leave":
 			c.LeaveRoom(msg.Room)
 		case "message":
-			_ = c.Hub.Nats.Publish("chat."+msg.Room, data)
+			if js, err := c.Hub.Nats.JetStream(); err == nil {
+				_, _ = js.PublishAsync("chat."+msg.Room, data)
+			} else {
+				c.Hub.Logger.Error("Failed to init JetStream, falling back to core NATS", zap.Error(err))
+				_ = c.Hub.Nats.Publish("chat."+msg.Room, data)
+			}
 			c.Hub.Broadcast <- &msg
 		}
 	}

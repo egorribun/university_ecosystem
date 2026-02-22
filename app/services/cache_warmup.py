@@ -28,12 +28,12 @@ def _is_entry_fresh(entry: CacheEntry) -> bool:
     return (time.time() - entry.stored_at) <= max_age
 
 
-def _schedule_cache_key(group_id: int) -> str:
+def _schedule_cache_key(group_id: uuid.UUID | str) -> str:
     return f"schedule:group:{group_id}"
 
 
 async def _warm_schedule_group(
-    cache: BaseCache, db: AsyncSession, group_id: int, *, ttl_seconds: int
+    cache: BaseCache, db: AsyncSession, group_id: uuid.UUID | str, *, ttl_seconds: int
 ) -> None:
     if not cache.enabled:
         return
@@ -69,7 +69,7 @@ async def _warm_schedule(cache: BaseCache, db: AsyncSession) -> None:
         or _SCHEDULE_CACHE_TTL_SECONDS
     )
     tasks = [
-        _warm_schedule_group(cache, db, group_id, ttl_seconds=ttl)
+        _warm_schedule_group(cache, db, str(group_id), ttl_seconds=ttl)
         for group_id in settings.cache_warmup_group_ids
     ]
     await asyncio.gather(*tasks)
@@ -224,7 +224,7 @@ async def _warm_events(cache: BaseCache, db: AsyncSession) -> None:
     service = EventService(repo, vector_service)
 
     payload = await service.get_events(
-        user_id=0,  # System-level warmup
+        user_id=None,  # System-level warmup
         search="",
         type="",
         location="",

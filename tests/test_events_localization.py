@@ -27,7 +27,7 @@ async def _login(async_client, email: str, password: str) -> dict[str, str]:
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     assert response.status_code == 200
-    token = response.json()["access_token"]
+    token = response.cookies.get("access_token_v2")
     return {"Authorization": f"Bearer {token}"}
 
 

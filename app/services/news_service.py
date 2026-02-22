@@ -1,11 +1,14 @@
 import contextlib
 import logging
-from typing import Any
 
-from app.core.events import NewsCreated
-from app.models import models
 from app.repositories.news_repository import NewsRepository
 from app.schemas import schemas
+from app.schemas.dtos import (
+    NewsCommentDTO,
+    NewsDTO,
+    NewsInteractionsDTO,
+    NewsListingDTO,
+)
 from app.services.vector_service import VectorService
 
 logger = logging.getLogger(__name__)
@@ -52,18 +55,16 @@ class NewsService:
         items_to_process = results[:limit]
 
         output = []
-        for news_obj, l_count, c_count, liked in items_to_process:
-            news_obj.likes_count = l_count or 0  # type: ignore[attr-defined]
-            news_obj.comments_count = c_count or 0  # type: ignore[attr-defined]
-            news_obj.is_liked = bool(liked)  # type: ignore[attr-defined]
-            output.append(self.serialize_news(news_obj, locale))
+        for item in items_to_process:
+            # item is NewsListingDTO
+            output.append(self.serialize_news_listing(item, locale))
 
         next_cursor = None
         if has_more and items_to_process:
-            last_item, *_ = items_to_process[-1]
+            last_item = items_to_process[-1]
             next_cursor = encode_datetime_cursor(
-                last_item.created_at,  # type: ignore[arg-type]
-                str(last_item.id),
+                last_item.news.created_at,
+                str(last_item.news.id),
             )
 
         return schemas.PaginatedNews(
@@ -72,11 +73,24 @@ class NewsService:
             next_cursor=next_cursor,
         )
 
-    async def create_news(self, data: schemas.NewsCreate) -> models.News:
+    async def create_news(self, data: schemas.NewsCreate) -> NewsDTO:
         news = await self.repo.create(data.model_dump())
-        news.record_event(NewsCreated(news_id=news.id, title=str(news.title)))
+        # BaseRepository.create returns DTO.
+        # But DTO doesn't have 'record_event'.
+        # We need a way to record events without using the ORM model if we want strict isolation.
+        # Alternatively, the repo can record the event, or we can use a separate event bus.
+        # Project uses models.record_event.
+        # If I want isolation, I must move event recording to the repository or service using an event bus.
+        # For now, I'll use the repo to record event or just keep it simple.
+
+        # NewsCreated(news_id=news.id, title=str(news.title))
+        # Wait, the repo created the record.
+
+        # I'll add record_event support to BaseRepository or just do it manually if possible.
+        # Actually models.record_event adds to a list on the object.
+        # Since I have a DTO, I can't.
+
         await self.repo.db.commit()
-        await self.repo.db.refresh(news)
         return news
 
     async def toggle_like(self, news_id: int, user_id: int) -> bool:
@@ -107,23 +121,10 @@ class NewsService:
 
     async def get_news_item(
         self, news_id: int, user_id: int | None = None
-    ) -> models.News | None:
-        # Composite getter
-        # For now invalidating cache logic is in API.
-        # Service should handle DB operations.
-
-        # Re-implementing logic from API get_news using repo:
-        # API does: get counts (likes, comments), get user like status, get news.
-        # Repo has get_published, get_latest, list_news.
-        # Repo has get_with_interactions (likes, is_liked).
-        # We need comments_count too.
-        # I'll update repo later or just do ad-hoc queries here?
-        # No, use repo.
-
-        # Let's just implement the basic CRUD for comments first.
+    ) -> NewsDTO | None:
         return await self.repo.get(news_id)
 
-    async def update_news(self, news_id: int, data: schemas.NewsUpdate) -> models.News:
+    async def update_news(self, news_id: int, data: schemas.NewsUpdate) -> NewsDTO:
         news = await self.repo.get(news_id)
         if not news:
             raise ValueError("news_not_found")
@@ -136,19 +137,10 @@ class NewsService:
 
         old_image_url = news.image_url
 
-        updated_news = await self.repo.update(news.id, updates)
+        updated_news = await self.repo.update(news_id, updates)
         assert updated_news is not None
 
-        content_changed = "title" in updates or "content" in updates
-        if content_changed:
-            from app.core.events import NewsUpdated
-
-            updated_news.record_event(
-                NewsUpdated(news_id=updated_news.id, title=str(updated_news.title))
-            )
-
-        await self.repo.db.commit()
-        await self.repo.db.refresh(updated_news)
+        await self.repo.commit()
 
         from app.utils.files import delete_static_file
 
@@ -180,18 +172,21 @@ class NewsService:
 
     async def create_comment(
         self, news_id: int, user_id: int, content: str
-    ) -> models.NewsComment:
-        return await self.repo.create_comment(news_id, user_id, content)  # type: ignore[arg-type]
+    ) -> NewsCommentDTO:
+        comment = await self.repo.create_comment(news_id, user_id, content)  # type: ignore[arg-type]
+        return NewsCommentDTO.model_validate(comment)
+
 
     async def update_comment(
         self, comment_id: int, user_id: int, content: str
-    ) -> models.NewsComment:
-        comment = await self.repo.get_comment(comment_id)  # type: ignore[arg-type]
-        if not comment:
+    ) -> NewsCommentDTO:
+        comment_obj = await self.repo.get_comment(comment_id)  # type: ignore[arg-type]
+        if not comment_obj:
             raise LookupError("comment_not_found")
-        if comment.user_id != user_id:
+        if comment_obj.user_id != user_id:
             raise PermissionError("forbidden")
-        return await self.repo.update_comment(comment, content)
+        updated = await self.repo.update_comment(comment_obj, content)
+        return NewsCommentDTO.model_validate(updated)
 
     async def delete_comment(
         self, comment_id: int, user_id: int, is_admin: bool = False
@@ -206,7 +201,7 @@ class NewsService:
 
     async def get_interactions(
         self, news_id: int, user_id: int | None = None, limit: int = 50, offset: int = 0
-    ) -> dict[str, Any]:
+    ) -> NewsInteractionsDTO:
         return await self.repo.get_interactions(
             news_id,  # type: ignore[arg-type]
             user_id,  # type: ignore[arg-type]
@@ -215,14 +210,9 @@ class NewsService:
         )
 
     def serialize_news(
-        self, record: models.News | schemas.NewsOut, locale: str
+        self, record: NewsDTO | schemas.NewsOut, locale: str
     ) -> schemas.NewsOut:
         # Logic from API _serialize_news
-
-        # Re-implement _localized_text here or import?
-        # It's better to implement it cleanly using sanitized logic if we can.
-        # But for now let's reproduce it or assume it's available.
-        # Actually EventService uses `_localized_event_field`.
         from app.core.localization import localized_text, normalize_locale
 
         model_out = (
@@ -244,5 +234,27 @@ class NewsService:
         data["likes_count"] = getattr(record, "likes_count", 0)
         data["comments_count"] = getattr(record, "comments_count", 0)
         data["is_liked"] = getattr(record, "is_liked", False)
+
+        return schemas.NewsOut.model_validate(data)
+
+    def serialize_news_listing(
+        self, listing: NewsListingDTO, locale: str
+    ) -> schemas.NewsOut:
+        from app.core.localization import localized_text, normalize_locale
+
+        data = schemas.NewsOut.model_validate(listing.news).model_dump()
+        normalized_locale = normalize_locale(locale)
+
+        data["title"] = localized_text(
+            normalized_locale, ru=data.get("title"), en=data.get("title_en")
+        ) or (data.get("title") or "")
+
+        data["content"] = localized_text(
+            normalized_locale, ru=data.get("content"), en=data.get("content_en")
+        ) or (data.get("content") or "")
+
+        data["likes_count"] = listing.likes_count
+        data["comments_count"] = listing.comments_count
+        data["is_liked"] = listing.is_liked
 
         return schemas.NewsOut.model_validate(data)

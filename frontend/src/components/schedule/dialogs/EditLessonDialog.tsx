@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
-import dayjs from "dayjs"
+// dayjs removal
 import api from "@/api/client"
 import { Button, Input, Select } from "@/components/ui"
 import { Dialog, DialogActions, DialogContent, DialogTitle } from "@/components/settings"
@@ -161,7 +161,7 @@ export function EditLessonDialog({
                         if (!prev) return null
                         const datePart = prev.start_time?.includes("T")
                           ? prev.start_time.split("T")[0]
-                          : dayjs().format("YYYY-MM-DD")
+                          : new Date().toISOString().split("T")[0]
                         return {
                           ...prev,
                           start_time: `${datePart}T${event.target.value}:00`,
@@ -184,7 +184,7 @@ export function EditLessonDialog({
                         if (!prev) return null
                         const datePart = prev.end_time?.includes("T")
                           ? prev.end_time.split("T")[0]
-                          : dayjs().format("YYYY-MM-DD")
+                          : new Date().toISOString().split("T")[0]
                         return {
                           ...prev,
                           end_time: `${datePart}T${event.target.value}:00`,

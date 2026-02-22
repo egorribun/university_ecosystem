@@ -20,6 +20,7 @@ from app.models.models import ActiveSession, User
 from app.models.user_loaders import ensure_mfa_relationships_loaded
 from app.repositories.auth_repository import AuthRepository
 from app.schemas import schemas
+from app.schemas.dtos import ActiveSessionDTO, UserAuthDTO, UserDTO
 from app.tasks.email import send_lockout_alert
 
 if TYPE_CHECKING:
@@ -63,7 +64,7 @@ class LoginService:
         normalized_email = email.strip().lower()
         base_locale = resolve_locale(request=request)
 
-        user = await self.user_service.get_user_by_email(normalized_email)
+        user = await self.user_service.get_auth_user_by_email(normalized_email)
         locale = resolve_locale(request=request, user=user) if user else base_locale
 
         # 1. Check Lockout
@@ -113,10 +114,8 @@ class LoginService:
 
         # 3. Valid credentials, check MFA
         if new_hash:
-            user.hashed_password = new_hash  # type: ignore[assignment]
-            # self.db.add(user) handled by SQLAlchemy identity map usually,
-            # but we explicitly add via repo if needed.
-            # actually user is already attached to session from userService.
+            await self.user_service.repo.update(user.id, {"hashed_password": new_hash})
+            await self.user_service.repo.commit()
 
         if await self.lockout_service.clear_failed_attempts(normalized_email) > 0:
             self.audit.log(
@@ -134,7 +133,7 @@ class LoginService:
 
     async def finalize_login(
         self,
-        user: User,
+        user: User | UserAuthDTO | UserDTO,
         request: Request,
         response: Response,
         bg_tasks: BackgroundTasks,
@@ -155,7 +154,11 @@ class LoginService:
             now_val = datetime.now(UTC)
             metadata["mfa_completed_at"] = now_val
             metadata["mfa_verified_at"] = now_val
-            user.mfa_last_verified_at = now_val  # type: ignore[assignment]
+            if hasattr(user, "model_copy"):
+                 # Handle Pydantic DTO
+                 user = user.model_copy(update={"mfa_last_verified_at": now_val})
+            else:
+                 user.mfa_last_verified_at = now_val
 
         token, session = await self.session_service.create_access_token(
             sub=user.id,
@@ -189,7 +192,7 @@ class LoginService:
             jti=str(session.jti),
             user_id=user.id,
             fingerprint=fp,
-            mfa_verified_at=session.mfa_verified_at,  # type: ignore[arg-type]
+            mfa_verified_at=session.mfa_verified_at,
         )
 
         self.audit.log(
@@ -204,9 +207,9 @@ class LoginService:
 
     async def build_token_response(
         self,
-        user: User,
+        user: User | UserAuthDTO | UserDTO,
         token: str,
-        session: ActiveSession | None,
+        session: ActiveSession | ActiveSessionDTO | None,
     ) -> schemas.TokenWithProfile:
         # Optimization: use optimized loader
         user = await ensure_mfa_relationships_loaded(self.repo.db, user)  # type: ignore[assignment]
@@ -288,7 +291,7 @@ class LoginService:
 
     async def _handle_invalid_password(
         self,
-        user: User,
+        user: User | UserAuthDTO | UserDTO,
         email: str,
         request: Request,
         locale: str,
@@ -349,7 +352,11 @@ class LoginService:
         )
 
     async def _handle_mfa_required(
-        self, user: User, request: Request, response: Response, locale: str
+        self,
+        user: User | UserAuthDTO | UserDTO,
+        request: Request,
+        response: Response,
+        locale: str,
     ) -> auth_schemas.PendingMfaResponse:
         capabilities = await self._resolve_mfa_capabilities(user)
         methods = await self._collect_mfa_challenges(user, locale, capabilities)
@@ -374,7 +381,9 @@ class LoginService:
             methods=methods,
         )
 
-    async def _resolve_mfa_capabilities(self, user: User) -> dict[str, bool]:
+    async def _resolve_mfa_capabilities(
+        self, user: User | UserAuthDTO | UserDTO
+    ) -> dict[str, bool]:
         """Helper to resolve MFA capabilities for a user."""
         return await self.repo.get_user_mfa_capabilities(user.id)
 
@@ -392,7 +401,7 @@ class LoginService:
 
     async def _collect_mfa_challenges(
         self,
-        user: User,
+        user: User | UserAuthDTO | UserDTO,
         locale: str,
         capabilities: Mapping[str, bool],
         session: ActiveSession | None = None,

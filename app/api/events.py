@@ -45,6 +45,7 @@ from app.core.localization import normalize_locale, resolve_locale
 from app.deps.cache import etag_matches, format_etag, get_cache
 from app.models import models
 from app.schemas import schemas
+from app.schemas.dtos import EventFileDTO
 from app.services.event_service import EventService
 from app.services.notification_service import NotificationService
 from app.utils.files import delete_static_file, save_attachment
@@ -413,33 +414,35 @@ async def update_event(
         raise_forbidden(locale)
 
     old_image_url = q.image_url
+    ev_id = uuid.UUID(str(event_id)) if isinstance(event_id, int) else event_id
     try:
-        q = await events.update_event(event_id, data)
+        event_dto = await events.update_event(ev_id, data)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    if old_image_url and q.image_url != old_image_url:
+
+    if old_image_url and event_dto.image_url != old_image_url:
         await delete_static_file(str(old_image_url))
-    files = (
-        (
-            await db.execute(
-                select(models.EventFile).where(models.EventFile.event_id == q.id)
-            )
-        )
-        .scalars()
-        .all()
+
+    files_result = await db.execute(
+        select(models.EventFile).where(models.EventFile.event_id == event_dto.id)
     )
-    participant_count = (
-        await db.execute(
-            select(func.count())
-            .select_from(models.EventAttendance)
-            .where(models.EventAttendance.event_id == q.id)
-        )
-    ).scalar()
+    files = [
+        EventFileDTO.model_validate(f)
+        for f in files_result.scalars().all()
+    ]
+
+    participant_count_res = await db.execute(
+        select(func.count())
+        .select_from(models.EventAttendance)
+        .where(models.EventAttendance.event_id == event_dto.id)
+    )
+    participant_count = participant_count_res.scalar() or 0
+
     await _invalidate_events_list_cache()
     return events.serialize_event(
-        q,
+        event_dto,
         locale,
-        participant_count=participant_count,  # type: ignore[arg-type]
+        participant_count=int(participant_count),
         files=files,
     )
 

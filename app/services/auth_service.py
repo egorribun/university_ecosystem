@@ -10,10 +10,12 @@ from typing import TYPE_CHECKING
 
 from fastapi import BackgroundTasks, Request
 from pydantic import EmailStr, TypeAdapter
-from sqlalchemy import and_
+from sqlalchemy import and_, inspect
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.schemas.dtos import UserAuthDTO, UserDTO
 
 from app.api.validation import (
     raise_validation_error,
@@ -85,7 +87,7 @@ class AuthService:
             await send_auth_email.kiq(
                 str(user.email),
                 reset_link,
-                user.profile.full_name if user.profile else "",
+                user.full_name or "",
                 locale,
             )
             self.audit.log(
@@ -160,7 +162,8 @@ class AuthService:
         try:
             # HIBP check must be done before hashing (async, network call)
             await _validate_password_hibp(new_password, locale=locale)
-            user.hashed_password = await get_password_hash(new_password, locale=locale)  # type: ignore[assignment]
+            new_hashed = await get_password_hash(new_password, locale=locale)
+            await self.user_repo.update(rec.user_id, {"hashed_password": new_hashed})
         except ValueError as exc:
             raise_validation_error("errors.common.bad_request", locale, reason=str(exc))
 
@@ -182,11 +185,11 @@ class AuthService:
 
     async def initiate_email_change(
         self,
-        user: models.User,
+        user: models.User | UserAuthDTO,
         payload: schemas.UserEmailChangeIn,
         request: Request,
         bg: BackgroundTasks,
-    ) -> models.User:
+    ) -> models.User | UserAuthDTO | UserDTO:
         locale = resolve_locale(request=request, user=user)
         if not await verify_password(payload.password, str(user.hashed_password)):
             raise_validation_error("errors.users.invalid_password", locale)
@@ -223,12 +226,17 @@ class AuthService:
         )
 
         await self.auth_repo.commit()
-        await self.auth_repo.refresh(db_user)
-        await ensure_mfa_relationships_loaded(self.auth_repo.db, db_user)
-        await attach_pending_email(self.auth_repo.db, db_user)
+
+        # [MODERN] Safely handle refresh for DTOs vs ORM objects
+        if not hasattr(db_user, "model_dump"):  # Check if it's NOT a Pydantic DTO
+             await self.auth_repo.refresh(db_user)
+
+        # Enrich user object (handles both ORM and DTO)
+        enriched_user = await ensure_mfa_relationships_loaded(self.auth_repo.db, db_user)
+        enriched_user = await attach_pending_email(self.auth_repo.db, enriched_user)
 
         # Also attach to the current user object if it's different instance
-        if user is not db_user:
+        if user is not enriched_user:
             await attach_pending_email(self.auth_repo.db, user)
 
         base = settings.app_base_url_clean
@@ -250,10 +258,10 @@ class AuthService:
 
     async def confirm_email_change(
         self,
-        user: models.User,
+        user: models.User | UserAuthDTO | UserDTO,
         token: str,
         request: Request,
-    ) -> models.User:
+    ) -> models.User | UserAuthDTO | UserDTO:
         locale = resolve_locale(request=request, user=user)
         token_hash = _hash_token(token)
         now = datetime.now(UTC)
@@ -300,9 +308,10 @@ class AuthService:
                 locale,
             )
 
-        db_user = await self.user_repo.get(user.id)
-        assert db_user is not None
-        db_user.email = record.new_email
+        # Update the user's email and mark the token as used
+        db_user = await self.user_repo.update(record.user_id, {"email": record.new_email})
+        if not db_user:
+             raise EntityNotFound("User", record.user_id)
 
         # Mark this token as used
         await self.auth_repo.mark_email_change_token_used(record.id)
@@ -312,14 +321,12 @@ class AuthService:
         )
 
         await self.auth_repo.commit()
-        await self.auth_repo.refresh(db_user)
         await ensure_mfa_relationships_loaded(self.auth_repo.db, db_user)
         await attach_pending_email(self.auth_repo.db, db_user)
+
+        # If the input user object is different, we should update its pending state too
         if user is not db_user:
             await attach_pending_email(self.auth_repo.db, user)
-
-        # Update current user object as well for immediate response
-        user.email = record.new_email
 
         self.audit.log(
             "users.email.changed",
@@ -331,7 +338,7 @@ class AuthService:
 
     async def change_password(
         self,
-        user: models.User,
+        user: models.User | UserAuthDTO,
         payload: schemas.UserPasswordChangeIn,
         request: Request,
     ) -> tuple[bool, int]:
@@ -351,9 +358,7 @@ class AuthService:
         except ValueError as exc:
             raise_validation_error("errors.common.bad_request", locale, reason=str(exc))
 
-        db_user = await self.user_repo.get(user.id)
-        assert db_user is not None
-        db_user.hashed_password = hashed_password  # type: ignore[assignment]
+        await self.user_repo.update(user.id, {"hashed_password": hashed_password})
 
         active_session: models.ActiveSession | None = getattr(
             request.state, "active_session", None
@@ -370,11 +375,10 @@ class AuthService:
         )
 
         await self.auth_repo.commit()
-        await self.auth_repo.refresh(db_user)
-        await ensure_mfa_relationships_loaded(self.auth_repo.db, db_user)
 
-        # Update current user object
-        user.hashed_password = hashed_password  # type: ignore[assignment]
+        # Update current user object if it's an ORM model
+        if isinstance(user, models.User):
+            user.hashed_password = hashed_password
 
         self.audit.log(
             "users.password.changed",
@@ -386,15 +390,23 @@ class AuthService:
         return True, revoked
 
     async def refresh_pending_email(
-        self, user: models.User | None
-    ) -> models.User | None:
+        self, user: models.User | UserAuthDTO | UserDTO | None
+    ) -> models.User | UserAuthDTO | UserDTO | None:
         """
         Refresh the pending_email field on the user model.
         """
         if user is None:
             return None
+
         pending = await self.auth_repo.get_active_email_change_request(user.id)
-        user.pending_email = pending.new_email if pending else None  # type: ignore[attr-defined]
+        email = pending.new_email if pending else None
+
+        if not isinstance(user, models.User):
+            # DTO path
+            return user.model_copy(update={"pending_email": email})
+
+        # ORM path
+        user.pending_email = email  # type: ignore[attr-defined]
         return user
 
 
@@ -416,31 +428,46 @@ def _hash_token(token: str) -> str:
 
 
 async def attach_pending_email(
-    db: AsyncSession, user: models.User | None
-) -> models.User | None:
+    db: AsyncSession, user: models.User | UserAuthDTO | UserDTO | None
+) -> models.User | UserAuthDTO | UserDTO | None:
     """Attach the pending email to a user, loading the relationship if needed."""
     if user is None:
         return None
 
-    from sqlalchemy import inspect
-
-    insp = inspect(user)
-    if "email_change_tokens" in insp.unloaded:
-        # Fall back to repo call
+    if not isinstance(user, models.User):
+        # DTO Path (validated/frozen)
         repo = AuthRepository(db)
         pending = await repo.get_active_email_change_request(user.id)
-        user.pending_email = pending.new_email if pending else None  # type: ignore[attr-defined]
+        email = pending.new_email if pending else None
+        return user.model_copy(update={"pending_email": email})
+
+    # ORM Path
+    try:
+        insp = inspect(user)
+        assert insp is not None
+        if "email_change_tokens" in insp.unloaded:
+            repo = AuthRepository(db)
+            pending = await repo.get_active_email_change_request(user.id)
+            user.pending_email = pending.new_email if pending else None  # type: ignore[attr-defined]
+            return user
+    except Exception:
+        # Unexpected unmapped instance or error
         return user
 
     return attach_pending_email_sync(user)
 
 
 def attach_pending_email_sync(
-    user: models.User | None,
-) -> models.User | None:
+    user: models.User | UserAuthDTO | UserDTO | None,
+) -> models.User | UserAuthDTO | UserDTO | None:
     """Attach the pending email to a user whose email_change_tokens are already loaded."""
     if user is None:
         return None
+
+    if not isinstance(user, models.User):
+        # DTOs don't have relationships loaded this way
+        return user
+
     now = datetime.now(UTC)
     tokens = [
         t
@@ -454,5 +481,7 @@ def attach_pending_email_sync(
         > now
     ]
     tokens.sort(key=lambda x: x.created_at, reverse=True)
-    user.pending_email = tokens[0].new_email if tokens else None  # type: ignore[attr-defined]
+    pending = tokens[0] if tokens else None
+    email = pending.new_email if pending else None
+    user.pending_email = email  # type: ignore[attr-defined]
     return user

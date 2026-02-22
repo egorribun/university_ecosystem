@@ -6,9 +6,11 @@ Repository Pattern to separate data access from API layer.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from sqlalchemy import text
+
+from app.schemas.dtos.analytics import HealthStatsDTO
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncConnection
@@ -89,12 +91,8 @@ class HealthRepository:
         except Exception:
             return None
 
-    async def get_connection_stats(self) -> dict[str, Any]:
-        """Get database connection statistics (PostgreSQL only).
-
-        Returns:
-            Dictionary with connection stats, empty if not PostgreSQL.
-        """
+    async def get_connection_stats(self) -> HealthStatsDTO:
+        """Get database connection statistics (PostgreSQL only)."""
         try:
             result = await self._connection.execute(
                 text(
@@ -112,17 +110,19 @@ class HealthRepository:
             )
             row = result.fetchone()
             if row is not None:
-                return {
-                    "active_connections": row[0],
-                    "commits": row[1],
-                    "rollbacks": row[2],
-                    "cache_hit_ratio": (
+                return HealthStatsDTO(
+                    active_connections=row[0],
+                    commits=row[1],
+                    rollbacks=row[2],
+                    cache_hit_ratio=(
                         row[3] / (row[3] + row[4]) if (row[3] + row[4]) > 0 else 1.0
                     ),
-                }
+                )
         except Exception:
             pass
-        return {}
+        return HealthStatsDTO(
+            active_connections=0, commits=0, rollbacks=0, cache_hit_ratio=1.0
+        )
 
 
 __all__ = ["HealthRepository"]

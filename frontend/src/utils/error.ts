@@ -19,7 +19,7 @@ export interface ApiErrorResponse {
  */
 export const extractApiError = (error: unknown, fallbackMessage = "An unexpected error occurred"): ApiErrorResponse => {
   if (isAxiosError(error)) {
-    const data = error.response?.data as any
+    const data = error.response?.data as Record<string, unknown> | undefined
     const status = error.response?.status || 0
 
     // Extract standard FastAPI / internal error formats

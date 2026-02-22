@@ -2,7 +2,7 @@ import { useCallback, useMemo } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { isAxiosError } from "axios"
-import dayjs from "dayjs"
+import { formatDate, toDate } from "@/utils/date"
 
 import api from "@/api/client"
 import { useAuth } from "@/contexts/AuthContext"
@@ -78,8 +78,8 @@ export function useSessionManagement({
     const timeValue = (session: ActiveSession) => {
       const source = session.last_seen_at ?? session.created_at ?? null
       if (!source) return 0
-      const parsed = dayjs(source)
-      return parsed.isValid() ? parsed.valueOf() : 0
+      const parsed = toDate(source)
+      return !isNaN(parsed.getTime()) ? parsed.valueOf() : 0
     }
 
     if (!Array.isArray(sessions)) return []
@@ -167,9 +167,15 @@ export function useSessionManagement({
   const formatSessionTimestamp = useCallback(
     (value: string | null) => {
       if (!value) return t("settings:sessions.lastSeen.never")
-      const parsed = dayjs(value)
-      if (!parsed.isValid()) return t("settings:sessions.lastSeen.never")
-      return parsed.format("DD MMM YYYY HH:mm")
+      const formatted = formatDate(value, {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      })
+      return formatted || t("settings:sessions.lastSeen.never")
     },
     [t]
   )

@@ -1,0 +1,737 @@
+============================= test session starts =============================
+platform win32 -- Python 3.14.3, pytest-9.0.2, pluggy-1.6.0 -- C:\Users\egorribun\Documents\university_ecosystem\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+hypothesis profile 'default'
+rootdir: C:\Users\egorribun\Documents\university_ecosystem
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+plugins: anyio-4.12.1, hypothesis-6.151.4, asyncio-1.3.0, cov-7.0.0, xdist-3.8.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=session
+collecting ... collected 39 items
+
+tests/test_user_service.py::test_delete_avatar_with_existing PASSED      [  2%]
+tests/test_user_service.py::test_delete_avatar_without_existing PASSED   [  5%]
+tests/test_user_service.py::test_delete_cover_with_existing PASSED       [  7%]
+tests/test_user_service.py::test_upload_avatar_success PASSED            [ 10%]
+tests/test_user_service.py::test_upload_avatar_commit_failure PASSED     [ 12%]
+tests/test_user_service.py::test_update_user_profile_success PASSED      [ 15%]
+tests/test_user_service.py::test_update_user_profile_invalid_email PASSED [ 17%]
+tests/test_user_service.py::test_update_user_profile_email_in_use PASSED [ 20%]
+tests/test_user_service.py::test_update_user_profile_preferences PASSED  [ 23%]
+tests/test_user_service.py::test_create_user_forbidden_non_admin PASSED  [ 25%]
+tests/test_user_service.py::test_create_user_teacher_requires_invite PASSED [ 28%]
+tests/test_user_service.py::test_create_user_invalid_invite PASSED       [ 30%]
+tests/test_user_service.py::test_create_user_success PASSED              [ 33%]
+tests/test_user_service.py::test_get_users_non_admin_no_search PASSED    [ 35%]
+tests/test_user_service.py::test_get_users_non_admin_with_search PASSED  [ 38%]
+tests/test_user_service.py::test_get_users_admin PASSED                  [ 41%]
+tests/test_user_service.py::test_admin_update_user_forbidden PASSED      [ 43%]
+tests/test_user_service.py::test_admin_update_user_success PASSED        [ 46%]
+tests/test_user_service.py::test_admin_update_user_mfa_reset PASSED      [ 48%]
+tests/test_user_service.py::test_admin_delete_user_forbidden PASSED      [ 51%]
+tests/test_user_service.py::test_admin_delete_user_not_found PASSED      [ 53%]
+tests/test_user_service.py::test_admin_delete_user_self PASSED           [ 56%]
+tests/test_user_service.py::test_admin_delete_user_success PASSED        [ 58%]
+tests/test_user_service_decomposed.py::test_update_user_profile_decomposed_fields PASSED [ 61%]
+tests/test_user_service_decomposed.py::test_update_user_profile_email_change PASSED [ 64%]
+tests/test_user_profile_update.py::test_update_profile_email_normalizes FAILED [ 66%]
+tests/test_user_profile_update.py::test_update_profile_email_duplicate FAILED [ 69%]
+tests/test_user_profile_update.py::test_email_change_requires_confirmation FAILED [ 71%]
+tests/test_user_profile_update.py::test_update_profile_timezone_persisted FAILED [ 74%]
+tests/test_user_profile_update.py::test_update_profile_timezone_invalid PASSED [ 76%]
+tests/test_user_profile_update.py::test_delete_avatar_removes_file FAILED [ 79%]
+tests/test_user_profile_update.py::test_delete_avatar_ignores_invalid_path[] FAILED [ 82%]
+tests/test_user_profile_update.py::test_delete_avatar_ignores_invalid_path[https://example.com/avatar.png] FAILED [ 84%]
+tests/test_user_profile_update.py::test_upload_avatar_cleans_up_on_commit_failure PASSED [ 87%]
+tests/test_user_profile_update.py::test_upload_cover_cleans_up_on_commit_failure PASSED [ 89%]
+tests/test_user_profile_update.py::test_delete_cover_removes_file FAILED [ 92%]
+tests/test_user_profile_update.py::test_delete_cover_ignores_invalid_path[] FAILED [ 94%]
+tests/test_user_profile_update.py::test_delete_cover_ignores_invalid_path[https://example.com/cover.png] FAILED [ 97%]
+tests/test_user_profile_update.py::test_forgot_password_sends_email_via_thread PASSED [100%]
+
+================================== FAILURES ===================================
+____________________ test_update_profile_email_normalizes _____________________
+
+async_client = <httpx.AsyncClient object at 0x000001604FF4E900>
+user_factory = <function user_factory.<locals>._factory at 0x00000160500700F0>
+db_session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x000001604FB33750>
+
+    @pytest.mark.asyncio
+    async def test_update_profile_email_normalizes(async_client, user_factory, db_session):
+        password = "ChangeEmail123!"
+        hashed = await get_password_hash(password)
+        user = await user_factory(
+            email="original@example.com",
+            hashed_password=hashed,
+            is_active=True,
+        )
+    
+        headers = await _login(async_client, user.email, password)
+    
+        response = await async_client.put(
+            "/users/me",
+            json={"email": "New.Email@Example.com  "},
+            headers=headers,
+        )
+    
+        assert response.status_code == 200
+        body = response.json()
+        assert body["email"] == "new.email@example.com"
+    
+>       await db_session.expire_all()
+E       TypeError: 'NoneType' object can't be awaited
+
+tests\test_user_profile_update.py:62: TypeError
+---------------------------- Captured stderr setup ----------------------------
+{"timestamp": "2026-02-21T19:06:20.475Z", "level": "INFO", "logger": "app.core.feature_flags", "message": "Feature flag service initialized (4 flags)", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:20.483Z", "level": "INFO", "logger": "app.core.events", "message": "Domain event persistence listeners registered.", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:20.484Z", "level": "INFO", "logger": "app.services.event_handlers", "message": "Domain event handlers configured", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:20.486Z", "level": "INFO", "logger": "app.core.lifespan", "message": "Patching out computed column events.search_vector for dialect sqlite", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:20.524Z", "level": "INFO", "logger": "app.core.lifespan", "message": "Synchronously warming up PostgreSQL partitions to prevent cold start failures...", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:20.526Z", "level": "INFO", "logger": "app.services.cache_warmup", "message": "Cache warmup disabled, skipping", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:20.527Z", "level": "INFO", "logger": "app.workers.outbox", "message": "OutboxWorker started", "service_name": "university-ecosystem", "environment": "testing"}
+----------------------------- Captured log setup ------------------------------
+INFO     app.core.feature_flags:feature_flags.py:150 Feature flag service initialized (4 flags)
+INFO     app.core.events:events.py:265 Domain event persistence listeners registered.
+INFO     app.services.event_handlers:event_handlers.py:167 Domain event handlers configured
+INFO     app.core.lifespan:lifespan.py:104 Patching out computed column events.search_vector for dialect sqlite
+INFO     app.core.lifespan:lifespan.py:122 Synchronously warming up PostgreSQL partitions to prevent cold start failures...
+INFO     app.services.cache_warmup:cache_warmup.py:241 Cache warmup disabled, skipping
+INFO     app.workers.outbox:outbox.py:32 OutboxWorker started
+---------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-02-21T19:06:20.883Z", "level": "INFO", "logger": "app.auth", "message": "{\"event\": \"auth.login.success\", \"user_id\": \"019c80f3-b2cb-7284-a7aa-524d4f951e34\", \"request_id\": \"cf9f89eadcc245308bbb2269de69549c\", \"ip\": \"127.0.0.1\", \"path\": \"/api/v1/auth/login\", \"method\": \"POST\", \"reason\": \"authenticated\"}", "trace_id": "cf9f89eadcc245308bbb2269de69549c", "request_id": "cf9f89eadcc245308bbb2269de69549c", "service_name": "university-ecosystem", "environment": "testing", "event": "auth.login.success", "user_id": "019c80f3-b2cb-7284-a7aa-524d4f951e34", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+{"timestamp": "2026-02-21T19:06:20.920Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/auth/login \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:21.017Z", "level": "WARNING", "logger": "app.services.auth.redis_session", "message": "Failed to cache session 121d4b6c-8cd9-43f9-b38a-fbd0cfb81c26 in Redis: WRONGTYPE Operation against a key holding the wrong kind of value", "trace_id": "b19a7d5aaea846e9adea679c2cea27e6", "request_id": "b19a7d5aaea846e9adea679c2cea27e6", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:21.079Z", "level": "INFO", "logger": "app.users.audit", "message": "{\"event\": \"users.profile.update\", \"user_id\": \"019c80f3-b2cb-7284-a7aa-524d4f951e34\", \"request_id\": \"b19a7d5aaea846e9adea679c2cea27e6\", \"ip\": \"127.0.0.1\", \"path\": \"/api/v1/users/me\", \"method\": \"PUT\"}", "trace_id": "b19a7d5aaea846e9adea679c2cea27e6", "request_id": "b19a7d5aaea846e9adea679c2cea27e6", "service_name": "university-ecosystem", "environment": "testing", "event": "users.profile.update", "user_id": "019c80f3-b2cb-7284-a7aa-524d4f951e34", "ip": "127.0.0.1", "path": "/api/v1/users/me", "method": "PUT"}
+{"timestamp": "2026-02-21T19:06:21.082Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: PUT http://testserver/api/v1/users/me \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+------------------------------ Captured log call ------------------------------
+INFO     app.auth:audit_service.py:171 {"event": "auth.login.success", "user_id": "019c80f3-b2cb-7284-a7aa-524d4f951e34", "request_id": "cf9f89eadcc245308bbb2269de69549c", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/api/v1/auth/login "HTTP/1.1 200 OK"
+WARNING  app.services.auth.redis_session:redis_session.py:66 Failed to cache session 121d4b6c-8cd9-43f9-b38a-fbd0cfb81c26 in Redis: WRONGTYPE Operation against a key holding the wrong kind of value
+INFO     app.users.audit:audit_service.py:171 {"event": "users.profile.update", "user_id": "019c80f3-b2cb-7284-a7aa-524d4f951e34", "request_id": "b19a7d5aaea846e9adea679c2cea27e6", "ip": "127.0.0.1", "path": "/api/v1/users/me", "method": "PUT"}
+INFO     httpx:_client.py:1740 HTTP Request: PUT http://testserver/api/v1/users/me "HTTP/1.1 200 OK"
+_____________________ test_update_profile_email_duplicate _____________________
+
+async_client = <httpx.AsyncClient object at 0x00000160502D07D0>
+user_factory = <function user_factory.<locals>._factory at 0x0000016050487690>
+db_session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x000001605012AAD0>
+
+    @pytest.mark.asyncio
+    async def test_update_profile_email_duplicate(async_client, user_factory, db_session):
+        password = "DuplicateEmail123!"
+        hashed = await get_password_hash(password)
+        user = await user_factory(
+            email="first-user@example.com",
+            hashed_password=hashed,
+            is_active=True,
+        )
+        await user_factory(email="existing@example.com", is_active=True)
+    
+        headers = await _login(async_client, user.email, password)
+    
+        headers_ru = {**headers, "Accept-Language": "ru"}
+    
+        response = await async_client.put(
+            "/users/me",
+            json={"email": "Existing@Example.com"},
+            headers=headers_ru,
+        )
+    
+        assert response.status_code == 409
+        assert "╟ряшё№ єцх ёє∙хёЄтєхЄ" in response.json()["detail"]
+        assert "existing@example.com" in response.json()["detail"]
+    
+>       await db_session.expire_all()
+E       TypeError: 'NoneType' object can't be awaited
+
+tests\test_user_profile_update.py:92: TypeError
+---------------------------- Captured stderr setup ----------------------------
+{"timestamp": "2026-02-21T19:06:22.714Z", "level": "INFO", "logger": "app.core.events", "message": "Domain event persistence listeners registered.", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:22.715Z", "level": "INFO", "logger": "app.services.event_handlers", "message": "Domain event handlers configured", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:22.753Z", "level": "INFO", "logger": "app.core.lifespan", "message": "Synchronously warming up PostgreSQL partitions to prevent cold start failures...", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:22.755Z", "level": "INFO", "logger": "app.services.cache_warmup", "message": "Cache warmup disabled, skipping", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:22.756Z", "level": "INFO", "logger": "app.workers.outbox", "message": "OutboxWorker started", "service_name": "university-ecosystem", "environment": "testing"}
+----------------------------- Captured log setup ------------------------------
+INFO     app.core.events:events.py:265 Domain event persistence listeners registered.
+INFO     app.services.event_handlers:event_handlers.py:167 Domain event handlers configured
+INFO     app.core.lifespan:lifespan.py:122 Synchronously warming up PostgreSQL partitions to prevent cold start failures...
+INFO     app.services.cache_warmup:cache_warmup.py:241 Cache warmup disabled, skipping
+INFO     app.workers.outbox:outbox.py:32 OutboxWorker started
+---------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-02-21T19:06:23.169Z", "level": "INFO", "logger": "app.auth", "message": "{\"event\": \"auth.login.success\", \"user_id\": \"019c80f3-bba8-73aa-b035-33962833ea89\", \"request_id\": \"40bcebccef22455587084d09ecdc787f\", \"ip\": \"127.0.0.1\", \"path\": \"/api/v1/auth/login\", \"method\": \"POST\", \"reason\": \"authenticated\"}", "trace_id": "40bcebccef22455587084d09ecdc787f", "request_id": "40bcebccef22455587084d09ecdc787f", "service_name": "university-ecosystem", "environment": "testing", "event": "auth.login.success", "user_id": "019c80f3-bba8-73aa-b035-33962833ea89", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+{"timestamp": "2026-02-21T19:06:23.184Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/auth/login \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:23.199Z", "level": "WARNING", "logger": "app.services.auth.redis_session", "message": "Failed to cache session 538fdee1-c25b-435d-9937-09cb74239fcb in Redis: WRONGTYPE Operation against a key holding the wrong kind of value", "trace_id": "29f58747a913460986bb317d071298da", "request_id": "29f58747a913460986bb317d071298da", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T16:06:23.199916+00:00", "level": "WARNING", "logger": "app.auth.security", "message": "Session fingerprint mismatch detected - enforcing MFA step-up", "trace_id": "29f58747a913460986bb317d071298da", "request_id": "29f58747a913460986bb317d071298da", "service_name": "university-ecosystem", "environment": "testing", "event": "suspicious_activity", "user_id": "019c80f3-bba8-73aa-b035-33962833ea89", "session_id": "019c80f3-bc9d-7945-86ca-7ed188318a90", "event_type": "fingerprint_mismatch", "severity": "low", "mismatched_fields": ["accept_language"], "stored_hash": "68f36e734f286277a78b625e451d78e4", "current_hash": "fe2b11aadfc792808958e8ea3fbe6e5a", "current_ip": "127.0.0.1"}
+{"timestamp": "2026-02-21T19:06:23.220Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: PUT http://testserver/api/v1/users/me \"HTTP/1.1 409 Conflict\"", "service_name": "university-ecosystem", "environment": "testing"}
+------------------------------ Captured log call ------------------------------
+INFO     app.auth:audit_service.py:171 {"event": "auth.login.success", "user_id": "019c80f3-bba8-73aa-b035-33962833ea89", "request_id": "40bcebccef22455587084d09ecdc787f", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/api/v1/auth/login "HTTP/1.1 200 OK"
+WARNING  app.services.auth.redis_session:redis_session.py:66 Failed to cache session 538fdee1-c25b-435d-9937-09cb74239fcb in Redis: WRONGTYPE Operation against a key holding the wrong kind of value
+WARNING  app.auth.security:deps.py:229 Session fingerprint mismatch detected - enforcing MFA step-up
+INFO     httpx:_client.py:1740 HTTP Request: PUT http://testserver/api/v1/users/me "HTTP/1.1 409 Conflict"
+___________________ test_email_change_requires_confirmation ___________________
+
+async_client = <httpx.AsyncClient object at 0x000001605015DE50>
+user_factory = <function user_factory.<locals>._factory at 0x000001605049CB40>
+db_session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x00000160503E1550>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000016050499400>
+
+    @pytest.mark.asyncio
+    async def test_email_change_requires_confirmation(
+        async_client, user_factory, db_session, monkeypatch
+    ):
+        password = "ConfirmEmail123!"
+        hashed = await get_password_hash(password)
+        user = await user_factory(
+            email="change-me@example.com",
+            hashed_password=hashed,
+            is_active=True,
+        )
+    
+        headers = await _login(async_client, user.email, password)
+    
+        token_value = "confirm-token"
+    
+        class FakeTask:
+            async def kiq(self, *args, **kwargs):
+                return
+    
+        monkeypatch.setattr(
+            "app.services.auth_service.secrets.token_urlsafe",
+            lambda *_args, **_kwargs: token_value,
+        )
+        monkeypatch.setattr("app.services.auth_service.send_auth_email", FakeTask())
+    
+        response = await async_client.post(
+            "/users/me/email",
+            json={"email": "new.confirm@example.com", "password": password},
+            headers=headers,
+        )
+    
+        assert response.status_code == 200
+        body = response.json()
+        assert body["email"] == "change-me@example.com"
+        assert body.get("pending_email") == "new.confirm@example.com"
+    
+        user = await UserRepository(db_session).get(user.id)
+        assert user.email == "change-me@example.com"
+    
+        result = await db_session.execute(
+            select(models.EmailChangeToken).where(
+                models.EmailChangeToken.user_id == user.id
+            )
+        )
+        record = result.scalar_one_or_none()
+        assert record is not None
+        assert not record.used
+    
+        bad_response = await async_client.post(
+            "/users/me/email/confirm",
+            json={"token": "wrong-token"},
+            headers=headers,
+        )
+        assert bad_response.status_code == 400
+    
+        confirm_response = await async_client.post(
+            "/users/me/email/confirm",
+            json={"token": token_value},
+            headers=headers,
+        )
+    
+        assert confirm_response.status_code == 200
+        confirmed = confirm_response.json()
+        assert confirmed["email"] == "new.confirm@example.com"
+        assert confirmed.get("pending_email") is None
+    
+>       await db_session.expire_all()
+E       TypeError: 'NoneType' object can't be awaited
+
+tests\test_user_profile_update.py:164: TypeError
+---------------------------- Captured stderr setup ----------------------------
+{"timestamp": "2026-02-21T19:06:23.846Z", "level": "INFO", "logger": "app.core.events", "message": "Domain event persistence listeners registered.", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:23.846Z", "level": "INFO", "logger": "app.services.event_handlers", "message": "Domain event handlers configured", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:23.878Z", "level": "INFO", "logger": "app.core.lifespan", "message": "Synchronously warming up PostgreSQL partitions to prevent cold start failures...", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:23.880Z", "level": "INFO", "logger": "app.services.cache_warmup", "message": "Cache warmup disabled, skipping", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:23.881Z", "level": "INFO", "logger": "app.workers.outbox", "message": "OutboxWorker started", "service_name": "university-ecosystem", "environment": "testing"}
+----------------------------- Captured log setup ------------------------------
+INFO     app.core.events:events.py:265 Domain event persistence listeners registered.
+INFO     app.services.event_handlers:event_handlers.py:167 Domain event handlers configured
+INFO     app.core.lifespan:lifespan.py:122 Synchronously warming up PostgreSQL partitions to prevent cold start failures...
+INFO     app.services.cache_warmup:cache_warmup.py:241 Cache warmup disabled, skipping
+INFO     app.workers.outbox:outbox.py:32 OutboxWorker started
+---------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-02-21T19:06:24.266Z", "level": "INFO", "logger": "app.auth", "message": "{\"event\": \"auth.login.success\", \"user_id\": \"019c80f3-c00a-7d7a-baae-1092f479f6de\", \"request_id\": \"ec9f8ab33ddb4518a1a493fcbae9566f\", \"ip\": \"127.0.0.1\", \"path\": \"/api/v1/auth/login\", \"method\": \"POST\", \"reason\": \"authenticated\"}", "trace_id": "ec9f8ab33ddb4518a1a493fcbae9566f", "request_id": "ec9f8ab33ddb4518a1a493fcbae9566f", "service_name": "university-ecosystem", "environment": "testing", "event": "auth.login.success", "user_id": "019c80f3-c00a-7d7a-baae-1092f479f6de", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+{"timestamp": "2026-02-21T19:06:24.283Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/auth/login \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:24.300Z", "level": "WARNING", "logger": "app.services.auth.redis_session", "message": "Failed to cache session 901909a1-6f11-40fb-88c8-4987127bd305 in Redis: WRONGTYPE Operation against a key holding the wrong kind of value", "trace_id": "bc7d6820dbaa41a0878d628ac1d40a1e", "request_id": "bc7d6820dbaa41a0878d628ac1d40a1e", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:24.510Z", "level": "INFO", "logger": "app.users.audit", "message": "{\"event\": \"users.email.change_requested\", \"user_id\": \"019c80f3-c00a-7d7a-baae-1092f479f6de\", \"request_id\": \"bc7d6820dbaa41a0878d628ac1d40a1e\", \"ip\": \"127.0.0.1\", \"path\": \"/api/v1/users/me/email\", \"method\": \"POST\", \"reason\": \"pending_confirmation\"}", "trace_id": "bc7d6820dbaa41a0878d628ac1d40a1e", "request_id": "bc7d6820dbaa41a0878d628ac1d40a1e", "service_name": "university-ecosystem", "environment": "testing", "event": "users.email.change_requested", "user_id": "019c80f3-c00a-7d7a-baae-1092f479f6de", "ip": "127.0.0.1", "path": "/api/v1/users/me/email", "method": "POST", "reason": "pending_confirmation"}
+{"timestamp": "2026-02-21T19:06:24.517Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/users/me/email \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:24.551Z", "level": "WARNING", "logger": "app.services.auth.redis_session", "message": "Failed to cache session 901909a1-6f11-40fb-88c8-4987127bd305 in Redis: WRONGTYPE Operation against a key holding the wrong kind of value", "trace_id": "b8c6b48f329147789c6dd2c76ede1543", "request_id": "b8c6b48f329147789c6dd2c76ede1543", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:24.560Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/users/me/email/confirm \"HTTP/1.1 400 Bad Request\"", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:24.575Z", "level": "WARNING", "logger": "app.services.auth.redis_session", "message": "Failed to cache session 901909a1-6f11-40fb-88c8-4987127bd305 in Redis: WRONGTYPE Operation against a key holding the wrong kind of value", "trace_id": "790e3e7124364acc8054100d7113aaae", "request_id": "790e3e7124364acc8054100d7113aaae", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:24.605Z", "level": "INFO", "logger": "app.users.audit", "message": "{\"event\": \"users.email.changed\", \"user_id\": \"019c80f3-c00a-7d7a-baae-1092f479f6de\", \"request_id\": \"790e3e7124364acc8054100d7113aaae\", \"ip\": \"127.0.0.1\", \"path\": \"/api/v1/users/me/email/confirm\", \"method\": \"POST\", \"reason\": \"confirmed\"}", "trace_id": "790e3e7124364acc8054100d7113aaae", "request_id": "790e3e7124364acc8054100d7113aaae", "service_name": "university-ecosystem", "environment": "testing", "event": "users.email.changed", "user_id": "019c80f3-c00a-7d7a-baae-1092f479f6de", "ip": "127.0.0.1", "path": "/api/v1/users/me/email/confirm", "method": "POST", "reason": "confirmed"}
+{"timestamp": "2026-02-21T19:06:24.610Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/users/me/email/confirm \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+------------------------------ Captured log call ------------------------------
+INFO     app.auth:audit_service.py:171 {"event": "auth.login.success", "user_id": "019c80f3-c00a-7d7a-baae-1092f479f6de", "request_id": "ec9f8ab33ddb4518a1a493fcbae9566f", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/api/v1/auth/login "HTTP/1.1 200 OK"
+WARNING  app.services.auth.redis_session:redis_session.py:66 Failed to cache session 901909a1-6f11-40fb-88c8-4987127bd305 in Redis: WRONGTYPE Operation against a key holding the wrong kind of value
+INFO     app.users.audit:audit_service.py:171 {"event": "users.email.change_requested", "user_id": "019c80f3-c00a-7d7a-baae-1092f479f6de", "request_id": "bc7d6820dbaa41a0878d628ac1d40a1e", "ip": "127.0.0.1", "path": "/api/v1/users/me/email", "method": "POST", "reason": "pending_confirmation"}
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/api/v1/users/me/email "HTTP/1.1 200 OK"
+WARNING  app.services.auth.redis_session:redis_session.py:66 Failed to cache session 901909a1-6f11-40fb-88c8-4987127bd305 in Redis: WRONGTYPE Operation against a key holding the wrong kind of value
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/api/v1/users/me/email/confirm "HTTP/1.1 400 Bad Request"
+WARNING  app.services.auth.redis_session:redis_session.py:66 Failed to cache session 901909a1-6f11-40fb-88c8-4987127bd305 in Redis: WRONGTYPE Operation against a key holding the wrong kind of value
+INFO     app.users.audit:audit_service.py:171 {"event": "users.email.changed", "user_id": "019c80f3-c00a-7d7a-baae-1092f479f6de", "request_id": "790e3e7124364acc8054100d7113aaae", "ip": "127.0.0.1", "path": "/api/v1/users/me/email/confirm", "method": "POST", "reason": "confirmed"}
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/api/v1/users/me/email/confirm "HTTP/1.1 200 OK"
+___________________ test_update_profile_timezone_persisted ____________________
+
+async_client = <httpx.AsyncClient object at 0x00000160505156E0>
+user_factory = <function user_factory.<locals>._factory at 0x000001605053B1C0>
+db_session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x000001605057B610>
+
+    @pytest.mark.asyncio
+    async def test_update_profile_timezone_persisted(
+        async_client, user_factory, db_session
+    ):
+        password = "TimezonePersist123!"
+        hashed = await get_password_hash(password)
+        user = await user_factory(
+            hashed_password=hashed,
+            is_active=True,
+        )
+    
+        headers = await _login(async_client, user.email, password)
+    
+        response = await async_client.put(
+            "/users/me",
+            json={"timezone": "Europe/Paris"},
+            headers=headers,
+        )
+    
+        assert response.status_code == 200
+        body = response.json()
+        assert body["timezone"] == "Europe/Paris"
+    
+>       await db_session.expire_all()
+E       TypeError: 'NoneType' object can't be awaited
+
+tests\test_user_profile_update.py:202: TypeError
+---------------------------- Captured stderr setup ----------------------------
+{"timestamp": "2026-02-21T19:06:24.998Z", "level": "INFO", "logger": "app.core.events", "message": "Domain event persistence listeners registered.", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:24.998Z", "level": "INFO", "logger": "app.services.event_handlers", "message": "Domain event handlers configured", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:25.039Z", "level": "INFO", "logger": "app.core.lifespan", "message": "Synchronously warming up PostgreSQL partitions to prevent cold start failures...", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:25.041Z", "level": "INFO", "logger": "app.services.cache_warmup", "message": "Cache warmup disabled, skipping", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:25.042Z", "level": "INFO", "logger": "app.workers.outbox", "message": "OutboxWorker started", "service_name": "university-ecosystem", "environment": "testing"}
+----------------------------- Captured log setup ------------------------------
+INFO     app.core.events:events.py:265 Domain event persistence listeners registered.
+INFO     app.services.event_handlers:event_handlers.py:167 Domain event handlers configured
+INFO     app.core.lifespan:lifespan.py:122 Synchronously warming up PostgreSQL partitions to prevent cold start failures...
+INFO     app.services.cache_warmup:cache_warmup.py:241 Cache warmup disabled, skipping
+INFO     app.workers.outbox:outbox.py:32 OutboxWorker started
+---------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-02-21T19:06:25.394Z", "level": "INFO", "logger": "app.auth", "message": "{\"event\": \"auth.login.success\", \"user_id\": \"019c80f3-c493-7915-946f-f7d40ea5376d\", \"request_id\": \"6b1ce46718a44101b0833e11509b938e\", \"ip\": \"127.0.0.1\", \"path\": \"/api/v1/auth/login\", \"method\": \"POST\", \"reason\": \"authenticated\"}", "trace_id": "6b1ce46718a44101b0833e11509b938e", "request_id": "6b1ce46718a44101b0833e11509b938e", "service_name": "university-ecosystem", "environment": "testing", "event": "auth.login.success", "user_id": "019c80f3-c493-7915-946f-f7d40ea5376d", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+{"timestamp": "2026-02-21T19:06:25.410Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/auth/login \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:25.432Z", "level": "WARNING", "logger": "app.services.auth.redis_session", "message": "Failed to cache session 2f1477d0-fe10-490a-9751-5e2446fb4359 in Redis: WRONGTYPE Operation against a key holding the wrong kind of value", "trace_id": "f66df5d864674afd99478347ca0f1d53", "request_id": "f66df5d864674afd99478347ca0f1d53", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:25.463Z", "level": "INFO", "logger": "app.users.audit", "message": "{\"event\": \"users.profile.update\", \"user_id\": \"019c80f3-c493-7915-946f-f7d40ea5376d\", \"request_id\": \"f66df5d864674afd99478347ca0f1d53\", \"ip\": \"127.0.0.1\", \"path\": \"/api/v1/users/me\", \"method\": \"PUT\"}", "trace_id": "f66df5d864674afd99478347ca0f1d53", "request_id": "f66df5d864674afd99478347ca0f1d53", "service_name": "university-ecosystem", "environment": "testing", "event": "users.profile.update", "user_id": "019c80f3-c493-7915-946f-f7d40ea5376d", "ip": "127.0.0.1", "path": "/api/v1/users/me", "method": "PUT"}
+{"timestamp": "2026-02-21T19:06:25.466Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: PUT http://testserver/api/v1/users/me \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+------------------------------ Captured log call ------------------------------
+INFO     app.auth:audit_service.py:171 {"event": "auth.login.success", "user_id": "019c80f3-c493-7915-946f-f7d40ea5376d", "request_id": "6b1ce46718a44101b0833e11509b938e", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/api/v1/auth/login "HTTP/1.1 200 OK"
+WARNING  app.services.auth.redis_session:redis_session.py:66 Failed to cache session 2f1477d0-fe10-490a-9751-5e2446fb4359 in Redis: WRONGTYPE Operation against a key holding the wrong kind of value
+INFO     app.users.audit:audit_service.py:171 {"event": "users.profile.update", "user_id": "019c80f3-c493-7915-946f-f7d40ea5376d", "request_id": "f66df5d864674afd99478347ca0f1d53", "ip": "127.0.0.1", "path": "/api/v1/users/me", "method": "PUT"}
+INFO     httpx:_client.py:1740 HTTP Request: PUT http://testserver/api/v1/users/me "HTTP/1.1 200 OK"
+_______________________ test_delete_avatar_removes_file _______________________
+
+async_client = <httpx.AsyncClient object at 0x00000160505CA330>
+user_factory = <function user_factory.<locals>._factory at 0x0000016050616B90>
+db_session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x00000160505D2200>
+
+    @pytest.mark.asyncio
+    async def test_delete_avatar_removes_file(async_client, user_factory, db_session):
+        password = "DeleteAvatar123!"
+        hashed = await get_password_hash(password)
+        avatar_rel = f"avatars/test-avatar-{uuid.uuid4().hex}.png"
+        avatar_path = settings.static_dir_path / avatar_rel
+        avatar_path.parent.mkdir(parents=True, exist_ok=True)
+        avatar_path.write_bytes(b"avatar")
+    
+        user = await user_factory(
+            hashed_password=hashed,
+            is_active=True,
+            avatar_url=f"/static/{avatar_rel}",
+        )
+    
+        headers = await _login(async_client, user.email, password)
+    
+        response = await async_client.delete("/users/me/avatar", headers=headers)
+    
+        assert response.status_code == 200
+        body = response.json()
+        assert body["avatar_url"] is None
+        assert not avatar_path.exists()
+    
+>       await db_session.expire_all()
+E       TypeError: 'NoneType' object can't be awaited
+
+tests\test_user_profile_update.py:254: TypeError
+---------------------------- Captured stderr setup ----------------------------
+{"timestamp": "2026-02-21T19:06:27.294Z", "level": "INFO", "logger": "app.core.events", "message": "Domain event persistence listeners registered.", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:27.295Z", "level": "INFO", "logger": "app.services.event_handlers", "message": "Domain event handlers configured", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:27.334Z", "level": "INFO", "logger": "app.core.lifespan", "message": "Synchronously warming up PostgreSQL partitions to prevent cold start failures...", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:27.336Z", "level": "INFO", "logger": "app.services.cache_warmup", "message": "Cache warmup disabled, skipping", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:27.337Z", "level": "INFO", "logger": "app.workers.outbox", "message": "OutboxWorker started", "service_name": "university-ecosystem", "environment": "testing"}
+----------------------------- Captured log setup ------------------------------
+INFO     app.core.events:events.py:265 Domain event persistence listeners registered.
+INFO     app.services.event_handlers:event_handlers.py:167 Domain event handlers configured
+INFO     app.core.lifespan:lifespan.py:122 Synchronously warming up PostgreSQL partitions to prevent cold start failures...
+INFO     app.services.cache_warmup:cache_warmup.py:241 Cache warmup disabled, skipping
+INFO     app.workers.outbox:outbox.py:32 OutboxWorker started
+---------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-02-21T19:06:27.730Z", "level": "INFO", "logger": "app.auth", "message": "{\"event\": \"auth.login.success\", \"user_id\": \"019c80f3-cd94-77ef-a719-6da7835de28a\", \"request_id\": \"c2106b0344af45b7af1ab1c9cda99e2b\", \"ip\": \"127.0.0.1\", \"path\": \"/api/v1/auth/login\", \"method\": \"POST\", \"reason\": \"authenticated\"}", "trace_id": "c2106b0344af45b7af1ab1c9cda99e2b", "request_id": "c2106b0344af45b7af1ab1c9cda99e2b", "service_name": "university-ecosystem", "environment": "testing", "event": "auth.login.success", "user_id": "019c80f3-cd94-77ef-a719-6da7835de28a", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+{"timestamp": "2026-02-21T19:06:27.748Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/auth/login \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:27.760Z", "level": "WARNING", "logger": "app.services.auth.redis_session", "message": "Failed to cache session 20c3a176-d872-416e-9a3a-0e5335d8c3d6 in Redis: WRONGTYPE Operation against a key holding the wrong kind of value", "trace_id": "01867505b527453ba48043955b87d6d4", "request_id": "01867505b527453ba48043955b87d6d4", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:27.807Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: DELETE http://testserver/api/v1/users/me/avatar \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+------------------------------ Captured log call ------------------------------
+INFO     app.auth:audit_service.py:171 {"event": "auth.login.success", "user_id": "019c80f3-cd94-77ef-a719-6da7835de28a", "request_id": "c2106b0344af45b7af1ab1c9cda99e2b", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/api/v1/auth/login "HTTP/1.1 200 OK"
+WARNING  app.services.auth.redis_session:redis_session.py:66 Failed to cache session 20c3a176-d872-416e-9a3a-0e5335d8c3d6 in Redis: WRONGTYPE Operation against a key holding the wrong kind of value
+INFO     httpx:_client.py:1740 HTTP Request: DELETE http://testserver/api/v1/users/me/avatar "HTTP/1.1 200 OK"
+__________________ test_delete_avatar_ignores_invalid_path[] __________________
+
+async_client = <httpx.AsyncClient object at 0x00000160506496A0>
+user_factory = <function user_factory.<locals>._factory at 0x0000016050652770>
+db_session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x0000016050656DD0>
+avatar_url = ''
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("avatar_url", ["", "https://example.com/avatar.png"])
+    async def test_delete_avatar_ignores_invalid_path(
+        async_client, user_factory, db_session, avatar_url
+    ):
+        password = "IgnoreAvatar123!"
+        hashed = await get_password_hash(password)
+        sentinel_rel = f"avatars/sentinel-{uuid.uuid4().hex}.txt"
+        sentinel_path = settings.static_dir_path / sentinel_rel
+        sentinel_path.parent.mkdir(parents=True, exist_ok=True)
+        sentinel_path.write_text("keep")
+    
+        try:
+            user = await user_factory(
+                hashed_password=hashed,
+                is_active=True,
+                avatar_url=avatar_url,
+            )
+    
+            headers = await _login(async_client, user.email, password)
+    
+            response = await async_client.delete("/users/me/avatar", headers=headers)
+    
+            assert response.status_code == 200
+            body = response.json()
+            assert body["avatar_url"] is None
+            assert sentinel_path.exists()
+    
+>           await db_session.expire_all()
+E           TypeError: 'NoneType' object can't be awaited
+
+tests\test_user_profile_update.py:287: TypeError
+---------------------------- Captured stderr setup ----------------------------
+{"timestamp": "2026-02-21T19:06:28.447Z", "level": "INFO", "logger": "app.core.events", "message": "Domain event persistence listeners registered.", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:28.448Z", "level": "INFO", "logger": "app.services.event_handlers", "message": "Domain event handlers configured", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:28.495Z", "level": "INFO", "logger": "app.core.lifespan", "message": "Synchronously warming up PostgreSQL partitions to prevent cold start failures...", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:28.498Z", "level": "INFO", "logger": "app.services.cache_warmup", "message": "Cache warmup disabled, skipping", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:28.499Z", "level": "INFO", "logger": "app.workers.outbox", "message": "OutboxWorker started", "service_name": "university-ecosystem", "environment": "testing"}
+----------------------------- Captured log setup ------------------------------
+INFO     app.core.events:events.py:265 Domain event persistence listeners registered.
+INFO     app.services.event_handlers:event_handlers.py:167 Domain event handlers configured
+INFO     app.core.lifespan:lifespan.py:122 Synchronously warming up PostgreSQL partitions to prevent cold start failures...
+INFO     app.services.cache_warmup:cache_warmup.py:241 Cache warmup disabled, skipping
+INFO     app.workers.outbox:outbox.py:32 OutboxWorker started
+---------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-02-21T19:06:28.850Z", "level": "INFO", "logger": "app.auth", "message": "{\"event\": \"auth.login.success\", \"user_id\": \"019c80f3-d20a-7947-a021-6d83f8019557\", \"request_id\": \"4627bb4faa1f4289a7b69ee0e0ae7a37\", \"ip\": \"127.0.0.1\", \"path\": \"/api/v1/auth/login\", \"method\": \"POST\", \"reason\": \"authenticated\"}", "trace_id": "4627bb4faa1f4289a7b69ee0e0ae7a37", "request_id": "4627bb4faa1f4289a7b69ee0e0ae7a37", "service_name": "university-ecosystem", "environment": "testing", "event": "auth.login.success", "user_id": "019c80f3-d20a-7947-a021-6d83f8019557", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+{"timestamp": "2026-02-21T19:06:28.868Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/auth/login \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:28.880Z", "level": "WARNING", "logger": "app.services.auth.redis_session", "message": "Failed to cache session 563b2edf-3ade-4cac-a15b-03f0afae4af8 in Redis: WRONGTYPE Operation against a key holding the wrong kind of value", "trace_id": "d3cd9db3445f4d8e8b7b99453e8ca659", "request_id": "d3cd9db3445f4d8e8b7b99453e8ca659", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:28.927Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: DELETE http://testserver/api/v1/users/me/avatar \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+------------------------------ Captured log call ------------------------------
+INFO     app.auth:audit_service.py:171 {"event": "auth.login.success", "user_id": "019c80f3-d20a-7947-a021-6d83f8019557", "request_id": "4627bb4faa1f4289a7b69ee0e0ae7a37", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/api/v1/auth/login "HTTP/1.1 200 OK"
+WARNING  app.services.auth.redis_session:redis_session.py:66 Failed to cache session 563b2edf-3ade-4cac-a15b-03f0afae4af8 in Redis: WRONGTYPE Operation against a key holding the wrong kind of value
+INFO     httpx:_client.py:1740 HTTP Request: DELETE http://testserver/api/v1/users/me/avatar "HTTP/1.1 200 OK"
+___ test_delete_avatar_ignores_invalid_path[https://example.com/avatar.png] ___
+
+async_client = <httpx.AsyncClient object at 0x000001605064B130>
+user_factory = <function user_factory.<locals>._factory at 0x0000016050687A00>
+db_session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x0000016050654D70>
+avatar_url = 'https://example.com/avatar.png'
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("avatar_url", ["", "https://example.com/avatar.png"])
+    async def test_delete_avatar_ignores_invalid_path(
+        async_client, user_factory, db_session, avatar_url
+    ):
+        password = "IgnoreAvatar123!"
+        hashed = await get_password_hash(password)
+        sentinel_rel = f"avatars/sentinel-{uuid.uuid4().hex}.txt"
+        sentinel_path = settings.static_dir_path / sentinel_rel
+        sentinel_path.parent.mkdir(parents=True, exist_ok=True)
+        sentinel_path.write_text("keep")
+    
+        try:
+            user = await user_factory(
+                hashed_password=hashed,
+                is_active=True,
+                avatar_url=avatar_url,
+            )
+    
+            headers = await _login(async_client, user.email, password)
+    
+            response = await async_client.delete("/users/me/avatar", headers=headers)
+    
+            assert response.status_code == 200
+            body = response.json()
+            assert body["avatar_url"] is None
+            assert sentinel_path.exists()
+    
+>           await db_session.expire_all()
+E           TypeError: 'NoneType' object can't be awaited
+
+tests\test_user_profile_update.py:287: TypeError
+---------------------------- Captured stderr setup ----------------------------
+{"timestamp": "2026-02-21T19:06:29.612Z", "level": "INFO", "logger": "app.core.events", "message": "Domain event persistence listeners registered.", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:29.612Z", "level": "INFO", "logger": "app.services.event_handlers", "message": "Domain event handlers configured", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:29.652Z", "level": "INFO", "logger": "app.core.lifespan", "message": "Synchronously warming up PostgreSQL partitions to prevent cold start failures...", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:29.655Z", "level": "INFO", "logger": "app.services.cache_warmup", "message": "Cache warmup disabled, skipping", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:29.656Z", "level": "INFO", "logger": "app.workers.outbox", "message": "OutboxWorker started", "service_name": "university-ecosystem", "environment": "testing"}
+----------------------------- Captured log setup ------------------------------
+INFO     app.core.events:events.py:265 Domain event persistence listeners registered.
+INFO     app.services.event_handlers:event_handlers.py:167 Domain event handlers configured
+INFO     app.core.lifespan:lifespan.py:122 Synchronously warming up PostgreSQL partitions to prevent cold start failures...
+INFO     app.services.cache_warmup:cache_warmup.py:241 Cache warmup disabled, skipping
+INFO     app.workers.outbox:outbox.py:32 OutboxWorker started
+---------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-02-21T19:06:30.035Z", "level": "INFO", "logger": "app.auth", "message": "{\"event\": \"auth.login.success\", \"user_id\": \"019c80f3-d697-780f-a2f2-7f847cf7f040\", \"request_id\": \"a9bd8443fe4948c4a20b4162092d1916\", \"ip\": \"127.0.0.1\", \"path\": \"/api/v1/auth/login\", \"method\": \"POST\", \"reason\": \"authenticated\"}", "trace_id": "a9bd8443fe4948c4a20b4162092d1916", "request_id": "a9bd8443fe4948c4a20b4162092d1916", "service_name": "university-ecosystem", "environment": "testing", "event": "auth.login.success", "user_id": "019c80f3-d697-780f-a2f2-7f847cf7f040", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+{"timestamp": "2026-02-21T19:06:30.051Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/auth/login \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:30.063Z", "level": "WARNING", "logger": "app.services.auth.redis_session", "message": "Failed to cache session 3ffe79df-c303-4f13-b134-6e105675ba6f in Redis: WRONGTYPE Operation against a key holding the wrong kind of value", "trace_id": "c5dd04b82fcb4d43a13150084ddf3913", "request_id": "c5dd04b82fcb4d43a13150084ddf3913", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:30.091Z", "level": "WARNING", "logger": "app.services.storage", "message": "Failed to remove file at C:\\Users\\egorribun\\Documents\\university_ecosystem\\app\\test-static\\https:\\example.com\\avatar.png", "trace_id": "c5dd04b82fcb4d43a13150084ddf3913", "request_id": "c5dd04b82fcb4d43a13150084ddf3913", "service_name": "university-ecosystem", "environment": "testing", "exc_info": "Traceback (most recent call last):\n  File \"C:\\Users\\egorribun\\Documents\\university_ecosystem\\app\\services\\storage.py\", line 88, in _unlink_ignore_missing\n    path.unlink()\n    ~~~~~~~~~~~^^\n  File \"C:\\Python314\\Lib\\pathlib\\__init__.py\", line 1042, in unlink\n    os.unlink(self)\n    ~~~~~~~~~^^^^^^\nOSError: [WinError 123] ╤шэЄръёшўхёър  ю°шсър т шьхэш Їрщыр, шьхэш яряъш шыш ьхЄъх Єюьр: 'C:\\\\Users\\\\egorribun\\\\Documents\\\\university_ecosystem\\\\app\\\\test-static\\\\https:\\\\example.com\\\\avatar.png'"}
+{"timestamp": "2026-02-21T19:06:30.111Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: DELETE http://testserver/api/v1/users/me/avatar \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+------------------------------ Captured log call ------------------------------
+INFO     app.auth:audit_service.py:171 {"event": "auth.login.success", "user_id": "019c80f3-d697-780f-a2f2-7f847cf7f040", "request_id": "a9bd8443fe4948c4a20b4162092d1916", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/api/v1/auth/login "HTTP/1.1 200 OK"
+WARNING  app.services.auth.redis_session:redis_session.py:66 Failed to cache session 3ffe79df-c303-4f13-b134-6e105675ba6f in Redis: WRONGTYPE Operation against a key holding the wrong kind of value
+WARNING  app.services.storage:storage.py:92 Failed to remove file at C:\Users\egorribun\Documents\university_ecosystem\app\test-static\https:\example.com\avatar.png
+Traceback (most recent call last):
+  File "C:\Users\egorribun\Documents\university_ecosystem\app\services\storage.py", line 88, in _unlink_ignore_missing
+    path.unlink()
+    ~~~~~~~~~~~^^
+  File "C:\Python314\Lib\pathlib\__init__.py", line 1042, in unlink
+    os.unlink(self)
+    ~~~~~~~~~^^^^^^
+OSError: [WinError 123] ╤шэЄръёшўхёър  ю°шсър т шьхэш Їрщыр, шьхэш яряъш шыш ьхЄъх Єюьр: 'C:\\Users\\egorribun\\Documents\\university_ecosystem\\app\\test-static\\https:\\example.com\\avatar.png'
+INFO     httpx:_client.py:1740 HTTP Request: DELETE http://testserver/api/v1/users/me/avatar "HTTP/1.1 200 OK"
+_______________________ test_delete_cover_removes_file ________________________
+
+async_client = <httpx.AsyncClient object at 0x000001605084A550>
+user_factory = <function user_factory.<locals>._factory at 0x000001605087A2A0>
+db_session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x000001605088CDE0>
+
+    @pytest.mark.asyncio
+    async def test_delete_cover_removes_file(async_client, user_factory, db_session):
+        password = "DeleteCover123!"
+        hashed = await get_password_hash(password)
+        cover_rel = f"covers/test-cover-{uuid.uuid4().hex}.png"
+        cover_path = settings.static_dir_path / cover_rel
+        cover_path.parent.mkdir(parents=True, exist_ok=True)
+        cover_path.write_bytes(b"cover")
+    
+        user = await user_factory(
+            hashed_password=hashed,
+            is_active=True,
+            cover_url=f"/static/{cover_rel}",
+        )
+    
+        headers = await _login(async_client, user.email, password)
+    
+        response = await async_client.delete("/users/me/cover", headers=headers)
+    
+        assert response.status_code == 200
+        body = response.json()
+        assert body["cover_url"] is None
+        assert not cover_path.exists()
+    
+>       await db_session.expire_all()
+E       TypeError: 'NoneType' object can't be awaited
+
+tests\test_user_profile_update.py:408: TypeError
+---------------------------- Captured stderr setup ----------------------------
+{"timestamp": "2026-02-21T19:06:31.049Z", "level": "INFO", "logger": "app.core.events", "message": "Domain event persistence listeners registered.", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:31.050Z", "level": "INFO", "logger": "app.services.event_handlers", "message": "Domain event handlers configured", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:31.080Z", "level": "INFO", "logger": "app.core.lifespan", "message": "Synchronously warming up PostgreSQL partitions to prevent cold start failures...", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:31.082Z", "level": "INFO", "logger": "app.services.cache_warmup", "message": "Cache warmup disabled, skipping", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:31.083Z", "level": "INFO", "logger": "app.workers.outbox", "message": "OutboxWorker started", "service_name": "university-ecosystem", "environment": "testing"}
+----------------------------- Captured log setup ------------------------------
+INFO     app.core.events:events.py:265 Domain event persistence listeners registered.
+INFO     app.services.event_handlers:event_handlers.py:167 Domain event handlers configured
+INFO     app.core.lifespan:lifespan.py:122 Synchronously warming up PostgreSQL partitions to prevent cold start failures...
+INFO     app.services.cache_warmup:cache_warmup.py:241 Cache warmup disabled, skipping
+INFO     app.workers.outbox:outbox.py:32 OutboxWorker started
+---------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-02-21T19:06:31.474Z", "level": "INFO", "logger": "app.auth", "message": "{\"event\": \"auth.login.success\", \"user_id\": \"019c80f3-dc2b-72b4-8a42-55f4c2a30629\", \"request_id\": \"c1752cca794c4eab85269cce4b874fc1\", \"ip\": \"127.0.0.1\", \"path\": \"/api/v1/auth/login\", \"method\": \"POST\", \"reason\": \"authenticated\"}", "trace_id": "c1752cca794c4eab85269cce4b874fc1", "request_id": "c1752cca794c4eab85269cce4b874fc1", "service_name": "university-ecosystem", "environment": "testing", "event": "auth.login.success", "user_id": "019c80f3-dc2b-72b4-8a42-55f4c2a30629", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+{"timestamp": "2026-02-21T19:06:31.492Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/auth/login \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:31.506Z", "level": "WARNING", "logger": "app.services.auth.redis_session", "message": "Failed to cache session fcd26965-4df6-4401-b723-71644ccc0aba in Redis: WRONGTYPE Operation against a key holding the wrong kind of value", "trace_id": "eb46cc4de25942698e4d080a77871a8b", "request_id": "eb46cc4de25942698e4d080a77871a8b", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:31.556Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: DELETE http://testserver/api/v1/users/me/cover \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+------------------------------ Captured log call ------------------------------
+INFO     app.auth:audit_service.py:171 {"event": "auth.login.success", "user_id": "019c80f3-dc2b-72b4-8a42-55f4c2a30629", "request_id": "c1752cca794c4eab85269cce4b874fc1", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/api/v1/auth/login "HTTP/1.1 200 OK"
+WARNING  app.services.auth.redis_session:redis_session.py:66 Failed to cache session fcd26965-4df6-4401-b723-71644ccc0aba in Redis: WRONGTYPE Operation against a key holding the wrong kind of value
+INFO     httpx:_client.py:1740 HTTP Request: DELETE http://testserver/api/v1/users/me/cover "HTTP/1.1 200 OK"
+__________________ test_delete_cover_ignores_invalid_path[] ___________________
+
+async_client = <httpx.AsyncClient object at 0x000001605084B350>
+user_factory = <function user_factory.<locals>._factory at 0x00000160508AC720>
+db_session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x000001605088D8D0>
+cover_url = ''
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("cover_url", ["", "https://example.com/cover.png"])
+    async def test_delete_cover_ignores_invalid_path(
+        async_client, user_factory, db_session, cover_url
+    ):
+        password = "IgnoreCover123!"
+        hashed = await get_password_hash(password)
+        sentinel_rel = f"covers/sentinel-{uuid.uuid4().hex}.txt"
+        sentinel_path = settings.static_dir_path / sentinel_rel
+        sentinel_path.parent.mkdir(parents=True, exist_ok=True)
+        sentinel_path.write_text("keep")
+    
+        try:
+            user = await user_factory(
+                hashed_password=hashed,
+                is_active=True,
+                cover_url=cover_url,
+            )
+    
+            headers = await _login(async_client, user.email, password)
+    
+            response = await async_client.delete("/users/me/cover", headers=headers)
+    
+            assert response.status_code == 200
+            body = response.json()
+            assert body["cover_url"] is None
+            assert sentinel_path.exists()
+    
+>           await db_session.expire_all()
+E           TypeError: 'NoneType' object can't be awaited
+
+tests\test_user_profile_update.py:441: TypeError
+---------------------------- Captured stderr setup ----------------------------
+{"timestamp": "2026-02-21T19:06:32.195Z", "level": "INFO", "logger": "app.core.events", "message": "Domain event persistence listeners registered.", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:32.196Z", "level": "INFO", "logger": "app.services.event_handlers", "message": "Domain event handlers configured", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:32.235Z", "level": "INFO", "logger": "app.core.lifespan", "message": "Synchronously warming up PostgreSQL partitions to prevent cold start failures...", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:32.238Z", "level": "INFO", "logger": "app.services.cache_warmup", "message": "Cache warmup disabled, skipping", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:32.239Z", "level": "INFO", "logger": "app.workers.outbox", "message": "OutboxWorker started", "service_name": "university-ecosystem", "environment": "testing"}
+----------------------------- Captured log setup ------------------------------
+INFO     app.core.events:events.py:265 Domain event persistence listeners registered.
+INFO     app.services.event_handlers:event_handlers.py:167 Domain event handlers configured
+INFO     app.core.lifespan:lifespan.py:122 Synchronously warming up PostgreSQL partitions to prevent cold start failures...
+INFO     app.services.cache_warmup:cache_warmup.py:241 Cache warmup disabled, skipping
+INFO     app.workers.outbox:outbox.py:32 OutboxWorker started
+---------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-02-21T19:06:32.629Z", "level": "INFO", "logger": "app.auth", "message": "{\"event\": \"auth.login.success\", \"user_id\": \"019c80f3-e0af-7a11-9cd8-d19d5b27f0cf\", \"request_id\": \"45f9fad0461e4bf3a72c9abc2ce43ec7\", \"ip\": \"127.0.0.1\", \"path\": \"/api/v1/auth/login\", \"method\": \"POST\", \"reason\": \"authenticated\"}", "trace_id": "45f9fad0461e4bf3a72c9abc2ce43ec7", "request_id": "45f9fad0461e4bf3a72c9abc2ce43ec7", "service_name": "university-ecosystem", "environment": "testing", "event": "auth.login.success", "user_id": "019c80f3-e0af-7a11-9cd8-d19d5b27f0cf", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+{"timestamp": "2026-02-21T19:06:32.646Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/auth/login \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:32.658Z", "level": "WARNING", "logger": "app.services.auth.redis_session", "message": "Failed to cache session 2abf8827-6bc7-4929-a27d-553866bef156 in Redis: WRONGTYPE Operation against a key holding the wrong kind of value", "trace_id": "6d857de67ec34d21b828c838b24a1837", "request_id": "6d857de67ec34d21b828c838b24a1837", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:32.699Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: DELETE http://testserver/api/v1/users/me/cover \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+------------------------------ Captured log call ------------------------------
+INFO     app.auth:audit_service.py:171 {"event": "auth.login.success", "user_id": "019c80f3-e0af-7a11-9cd8-d19d5b27f0cf", "request_id": "45f9fad0461e4bf3a72c9abc2ce43ec7", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/api/v1/auth/login "HTTP/1.1 200 OK"
+WARNING  app.services.auth.redis_session:redis_session.py:66 Failed to cache session 2abf8827-6bc7-4929-a27d-553866bef156 in Redis: WRONGTYPE Operation against a key holding the wrong kind of value
+INFO     httpx:_client.py:1740 HTTP Request: DELETE http://testserver/api/v1/users/me/cover "HTTP/1.1 200 OK"
+____ test_delete_cover_ignores_invalid_path[https://example.com/cover.png] ____
+
+async_client = <httpx.AsyncClient object at 0x0000016050897020>
+user_factory = <function user_factory.<locals>._factory at 0x0000016050957480>
+db_session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x000001605088D470>
+cover_url = 'https://example.com/cover.png'
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("cover_url", ["", "https://example.com/cover.png"])
+    async def test_delete_cover_ignores_invalid_path(
+        async_client, user_factory, db_session, cover_url
+    ):
+        password = "IgnoreCover123!"
+        hashed = await get_password_hash(password)
+        sentinel_rel = f"covers/sentinel-{uuid.uuid4().hex}.txt"
+        sentinel_path = settings.static_dir_path / sentinel_rel
+        sentinel_path.parent.mkdir(parents=True, exist_ok=True)
+        sentinel_path.write_text("keep")
+    
+        try:
+            user = await user_factory(
+                hashed_password=hashed,
+                is_active=True,
+                cover_url=cover_url,
+            )
+    
+            headers = await _login(async_client, user.email, password)
+    
+            response = await async_client.delete("/users/me/cover", headers=headers)
+    
+            assert response.status_code == 200
+            body = response.json()
+            assert body["cover_url"] is None
+            assert sentinel_path.exists()
+    
+>           await db_session.expire_all()
+E           TypeError: 'NoneType' object can't be awaited
+
+tests\test_user_profile_update.py:441: TypeError
+---------------------------- Captured stderr setup ----------------------------
+{"timestamp": "2026-02-21T19:06:33.343Z", "level": "INFO", "logger": "app.core.events", "message": "Domain event persistence listeners registered.", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:33.343Z", "level": "INFO", "logger": "app.services.event_handlers", "message": "Domain event handlers configured", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:33.385Z", "level": "INFO", "logger": "app.core.lifespan", "message": "Synchronously warming up PostgreSQL partitions to prevent cold start failures...", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:33.387Z", "level": "INFO", "logger": "app.services.cache_warmup", "message": "Cache warmup disabled, skipping", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:33.388Z", "level": "INFO", "logger": "app.workers.outbox", "message": "OutboxWorker started", "service_name": "university-ecosystem", "environment": "testing"}
+----------------------------- Captured log setup ------------------------------
+INFO     app.core.events:events.py:265 Domain event persistence listeners registered.
+INFO     app.services.event_handlers:event_handlers.py:167 Domain event handlers configured
+INFO     app.core.lifespan:lifespan.py:122 Synchronously warming up PostgreSQL partitions to prevent cold start failures...
+INFO     app.services.cache_warmup:cache_warmup.py:241 Cache warmup disabled, skipping
+INFO     app.workers.outbox:outbox.py:32 OutboxWorker started
+---------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-02-21T19:06:33.781Z", "level": "INFO", "logger": "app.auth", "message": "{\"event\": \"auth.login.success\", \"user_id\": \"019c80f3-e53a-7a39-9ec4-a5677834a8a0\", \"request_id\": \"42285be6f4e342fead85e53f6e8404f6\", \"ip\": \"127.0.0.1\", \"path\": \"/api/v1/auth/login\", \"method\": \"POST\", \"reason\": \"authenticated\"}", "trace_id": "42285be6f4e342fead85e53f6e8404f6", "request_id": "42285be6f4e342fead85e53f6e8404f6", "service_name": "university-ecosystem", "environment": "testing", "event": "auth.login.success", "user_id": "019c80f3-e53a-7a39-9ec4-a5677834a8a0", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+{"timestamp": "2026-02-21T19:06:33.798Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/auth/login \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:33.810Z", "level": "WARNING", "logger": "app.services.auth.redis_session", "message": "Failed to cache session 0bbc9710-71d3-4225-857f-6c977dee8d1f in Redis: WRONGTYPE Operation against a key holding the wrong kind of value", "trace_id": "67811959e76d4a61b93c17656669db36", "request_id": "67811959e76d4a61b93c17656669db36", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-21T19:06:33.835Z", "level": "WARNING", "logger": "app.services.storage", "message": "Failed to remove file at C:\\Users\\egorribun\\Documents\\university_ecosystem\\app\\test-static\\https:\\example.com\\cover.png", "trace_id": "67811959e76d4a61b93c17656669db36", "request_id": "67811959e76d4a61b93c17656669db36", "service_name": "university-ecosystem", "environment": "testing", "exc_info": "Traceback (most recent call last):\n  File \"C:\\Users\\egorribun\\Documents\\university_ecosystem\\app\\services\\storage.py\", line 88, in _unlink_ignore_missing\n    path.unlink()\n    ~~~~~~~~~~~^^\n  File \"C:\\Python314\\Lib\\pathlib\\__init__.py\", line 1042, in unlink\n    os.unlink(self)\n    ~~~~~~~~~^^^^^^\nOSError: [WinError 123] ╤шэЄръёшўхёър  ю°шсър т шьхэш Їрщыр, шьхэш яряъш шыш ьхЄъх Єюьр: 'C:\\\\Users\\\\egorribun\\\\Documents\\\\university_ecosystem\\\\app\\\\test-static\\\\https:\\\\example.com\\\\cover.png'"}
+{"timestamp": "2026-02-21T19:06:33.853Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: DELETE http://testserver/api/v1/users/me/cover \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+------------------------------ Captured log call ------------------------------
+INFO     app.auth:audit_service.py:171 {"event": "auth.login.success", "user_id": "019c80f3-e53a-7a39-9ec4-a5677834a8a0", "request_id": "42285be6f4e342fead85e53f6e8404f6", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/api/v1/auth/login "HTTP/1.1 200 OK"
+WARNING  app.services.auth.redis_session:redis_session.py:66 Failed to cache session 0bbc9710-71d3-4225-857f-6c977dee8d1f in Redis: WRONGTYPE Operation against a key holding the wrong kind of value
+WARNING  app.services.storage:storage.py:92 Failed to remove file at C:\Users\egorribun\Documents\university_ecosystem\app\test-static\https:\example.com\cover.png
+Traceback (most recent call last):
+  File "C:\Users\egorribun\Documents\university_ecosystem\app\services\storage.py", line 88, in _unlink_ignore_missing
+    path.unlink()
+    ~~~~~~~~~~~^^
+  File "C:\Python314\Lib\pathlib\__init__.py", line 1042, in unlink
+    os.unlink(self)
+    ~~~~~~~~~^^^^^^
+OSError: [WinError 123] ╤шэЄръёшўхёър  ю°шсър т шьхэш Їрщыр, шьхэш яряъш шыш ьхЄъх Єюьр: 'C:\\Users\\egorribun\\Documents\\university_ecosystem\\app\\test-static\\https:\\example.com\\cover.png'
+INFO     httpx:_client.py:1740 HTTP Request: DELETE http://testserver/api/v1/users/me/cover "HTTP/1.1 200 OK"
+============================== warnings summary ===============================
+tests/test_user_profile_update.py: 12 warnings
+  C:\Users\egorribun\Documents\university_ecosystem\app\deps\cache.py:228: DeprecationWarning: 'asyncio.iscoroutinefunction' is deprecated and slated for removal in Python 3.16; use inspect.iscoroutinefunction() instead
+    if hasattr(client, "aclose") and asyncio.iscoroutinefunction(client.aclose):
+
+tests/test_user_profile_update.py::test_email_change_requires_confirmation
+  C:\Users\egorribun\Documents\university_ecosystem\.venv\Lib\site-packages\starlette\_exception_handler.py:59: DeprecationWarning: 'HTTP_422_UNPROCESSABLE_ENTITY' is deprecated. Use 'HTTP_422_UNPROCESSABLE_CONTENT' instead.
+    response = await handler(conn, exc)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_user_profile_update.py::test_update_profile_email_normalizes
+FAILED tests/test_user_profile_update.py::test_update_profile_email_duplicate
+FAILED tests/test_user_profile_update.py::test_email_change_requires_confirmation
+FAILED tests/test_user_profile_update.py::test_update_profile_timezone_persisted
+FAILED tests/test_user_profile_update.py::test_delete_avatar_removes_file - T...
+FAILED tests/test_user_profile_update.py::test_delete_avatar_ignores_invalid_path[]
+FAILED tests/test_user_profile_update.py::test_delete_avatar_ignores_invalid_path[https://example.com/avatar.png]
+FAILED tests/test_user_profile_update.py::test_delete_cover_removes_file - Ty...
+FAILED tests/test_user_profile_update.py::test_delete_cover_ignores_invalid_path[]
+FAILED tests/test_user_profile_update.py::test_delete_cover_ignores_invalid_path[https://example.com/cover.png]
+================= 10 failed, 29 passed, 13 warnings in 17.99s =================

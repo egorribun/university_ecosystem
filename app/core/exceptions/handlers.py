@@ -68,7 +68,7 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
         status.HTTP_404_NOT_FOUND: "Resource Not Found",
         status.HTTP_405_METHOD_NOT_ALLOWED: "Method Not Allowed",
         status.HTTP_409_CONFLICT: "Conflict",
-        status.HTTP_422_UNPROCESSABLE_ENTITY: "Validation Error",
+        status.HTTP_422_UNPROCESSABLE_CONTENT: "Validation Error",
         status.HTTP_429_TOO_MANY_REQUESTS: "Rate Limit Exceeded",
         status.HTTP_500_INTERNAL_SERVER_ERROR: "Internal Server Error",
     }
