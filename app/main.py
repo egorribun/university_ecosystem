@@ -8,7 +8,8 @@ configure_uvloop()
 import logging
 import os
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from starlette.middleware.base import BaseHTTPMiddleware
 
 try:
     from fastapi.responses import JSONResponse, ORJSONResponse
@@ -91,6 +92,19 @@ configure_metrics(app)
 
 # Middlewares
 configure_middleware(app, settings=settings)
+
+
+class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > 5 * 1024 * 1024:
+            return JSONResponse(
+                status_code=413, content={"detail": "Payload Too Large"}
+            )
+        return await call_next(request)
+
+
+app.add_middleware(ContentSizeLimitMiddleware)
 
 # Static files
 static_dir = settings.static_dir_path

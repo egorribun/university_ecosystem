@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import contextlib
 import uuid
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from sqlalchemy import and_, exists, false, func, or_, select
 
@@ -15,6 +15,11 @@ from app.core.config import settings
 from app.models import models
 from app.models.news import News
 from app.repositories.base import BaseRepository
+from app.schemas.dtos import (
+    NewsDTO,
+    NewsInteractionsDTO,
+    NewsListingDTO,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -23,34 +28,41 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 
-class NewsRepository(BaseRepository[News, dict, dict]):
+class NewsRepository(BaseRepository[News, NewsDTO, dict, dict]):
     """Repository for News model operations."""
 
     @property
     def model(self) -> type[News]:
         return News
 
-    async def get_published(self, *, skip: int = 0, limit: int = 20) -> list[News]:
+    @property
+    def dto_class(self) -> type[NewsDTO]:
+        return NewsDTO
+
+    async def get_published(self, *, skip: int = 0, limit: int = 20) -> list[NewsDTO]:
         """Get published news ordered by creation date descending with caching."""
         cache_key = f"news:published:{skip}:{limit}"
         cached = await news_cache.get(cache_key)
         if cached is not None:
             from typing import cast
 
-            return cast(list[News], cached)
+            return cast(list[NewsDTO], cached)
 
         result = await self.db.execute(
             select(News).order_by(News.created_at.desc()).offset(skip).limit(limit)
         )
         news_items = list(result.scalars().all())
-        await news_cache.set(cache_key, news_items)
-        return news_items
+        dtos = [self._to_dto(obj) for obj in news_items]
+        await news_cache.set(cache_key, dtos)
+        return dtos
 
-    async def get_latest(self, limit: int = 5) -> list[News]:
+    async def get_latest(self, limit: int = 5) -> list[NewsDTO]:
         """Get the latest news items."""
         return await self.get_published(skip=0, limit=limit)
 
-    async def search(self, query: str, *, skip: int = 0, limit: int = 20) -> list[News]:
+    async def search(
+        self, query: str, *, skip: int = 0, limit: int = 20
+    ) -> list[NewsDTO]:
         """Search news by title (case-insensitive)."""
         pattern = f"%{query.strip().lower()}%"
         result = await self.db.execute(
@@ -60,7 +72,8 @@ class NewsRepository(BaseRepository[News, dict, dict]):
             .offset(skip)
             .limit(limit)
         )
-        return list(result.scalars().all())
+        objs = result.scalars().all()
+        return [self._to_dto(obj) for obj in objs]
 
     async def count_total(self) -> int:
         """Count total news items."""
@@ -75,7 +88,7 @@ class NewsRepository(BaseRepository[News, dict, dict]):
         current_user_id: uuid.UUID | str | None = None,
         search_query: str | None = None,
         query_embedding: list[float] | None = None,
-    ) -> Sequence[tuple[News, int, int, bool]]:
+    ) -> Sequence[NewsListingDTO]:
         # Subqueries for counts
         likes_sub = (
             select(func.count(models.NewsLike.id))
@@ -153,7 +166,18 @@ class NewsRepository(BaseRepository[News, dict, dict]):
 
         stmt = stmt.limit(limit)
         result = await self.db.execute(stmt)
-        return [tuple(row) for row in result.all()]
+        rows = result.all()
+        from app.schemas.dtos.news import NewsListingDTO
+
+        return [
+            NewsListingDTO(
+                news=self._to_dto(row[0]),
+                likes_count=row[1] or 0,
+                comments_count=row[2] or 0,
+                is_liked=bool(row[3]),
+            )
+            for row in rows
+        ]
 
     async def get_with_interactions(
         self, news_id: uuid.UUID, current_user_id: uuid.UUID | None = None
@@ -231,7 +255,7 @@ class NewsRepository(BaseRepository[News, dict, dict]):
         *,
         limit: int = 50,
         offset: int = 0,
-    ) -> dict[str, Any]:
+    ) -> NewsInteractionsDTO:
         """Get likes count, current user's like status, and comments for a news item."""
         # Count likes
         likes_stmt = select(func.count(models.NewsLike.id)).where(
@@ -282,12 +306,16 @@ class NewsRepository(BaseRepository[News, dict, dict]):
         )
         total_comments = (await self.db.execute(total_comments_stmt)).scalar() or 0
 
-        return {
-            "likes_count": likes_count,
-            "is_liked": is_liked,
-            "comments": comments,
-            "comments_count": total_comments,
-        }
+        total_comments = (await self.db.execute(total_comments_stmt)).scalar() or 0
+
+        from app.schemas.dtos.news import NewsCommentListingDTO, NewsInteractionsDTO
+
+        return NewsInteractionsDTO(
+            likes_count=likes_count,
+            is_liked=is_liked,
+            comments=[NewsCommentListingDTO.model_validate(c) for c in comments],
+            comments_count=total_comments,
+        )
 
 
 def get_news_repository(db: AsyncSession) -> NewsRepository:

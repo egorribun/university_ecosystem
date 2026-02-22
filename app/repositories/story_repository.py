@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 
 from app.models.stories import Story
 from app.repositories.base import BaseRepository
+from app.schemas.dtos import StoryDTO
 
 if TYPE_CHECKING:
     import uuid
@@ -18,14 +19,18 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 
-class StoryRepository(BaseRepository[Story, dict, dict]):
+class StoryRepository(BaseRepository[Story, StoryDTO, dict, dict]):
     """Repository for Story model operations."""
 
     @property
     def model(self) -> type[Story]:
         return Story
 
-    async def get_active(self, *, skip: int = 0, limit: int = 20) -> list[Story]:
+    @property
+    def dto_class(self) -> type[StoryDTO]:
+        return StoryDTO
+
+    async def get_active(self, *, skip: int = 0, limit: int = 20) -> list[StoryDTO]:
         """Get active, non-expired stories ordered by published_at descending."""
         now = datetime.now(UTC)
         result = await self.db.execute(
@@ -39,11 +44,12 @@ class StoryRepository(BaseRepository[Story, dict, dict]):
             .offset(skip)
             .limit(limit)
         )
-        return list(result.scalars().all())
+        objs = result.scalars().all()
+        return [self._to_dto(obj) for obj in objs]
 
     async def get_by_user(
         self, user_id: uuid.UUID, *, skip: int = 0, limit: int = 20
-    ) -> list[Story]:
+    ) -> list[StoryDTO]:
         """Get stories created by a specific user."""
         result = await self.db.execute(
             select(Story)
@@ -52,7 +58,8 @@ class StoryRepository(BaseRepository[Story, dict, dict]):
             .offset(skip)
             .limit(limit)
         )
-        return list(result.scalars().all())
+        objs = result.scalars().all()
+        return [self._to_dto(obj) for obj in objs]
 
     async def count_active(self) -> int:
         """Count active, non-expired stories."""
@@ -65,7 +72,7 @@ class StoryRepository(BaseRepository[Story, dict, dict]):
         )
         return result.scalar() or 0
 
-    async def get_expired(self, *, limit: int = 100) -> list[Story]:
+    async def get_expired(self, *, limit: int = 100) -> list[StoryDTO]:
         """Get expired stories for cleanup."""
         now = datetime.now(UTC)
         result = await self.db.execute(
@@ -74,11 +81,12 @@ class StoryRepository(BaseRepository[Story, dict, dict]):
             .order_by(Story.expires_at.asc())
             .limit(limit)
         )
-        return list(result.scalars().all())
+        objs = result.scalars().all()
+        return [self._to_dto(obj) for obj in objs]
 
     async def deactivate(self, story_id: uuid.UUID) -> bool:
         """Deactivate a story by ID."""
-        story = await self.get(story_id)
+        story = await self._get_orm(story_id)
         if story is None:
             return False
         story.is_active = False  # type: ignore[assignment]

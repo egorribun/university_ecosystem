@@ -1,4 +1,5 @@
 import uuid
+from collections.abc import Sequence
 
 from sqlalchemy import select
 
@@ -6,46 +7,58 @@ from app.core.cache import schedule_cache
 from app.models import models
 from app.repositories.base import BaseRepository
 from app.schemas import schemas
+from app.schemas.dtos import GroupDTO, ScheduleDTO
 
 
 class GroupRepository(
-    BaseRepository[models.Group, schemas.GroupCreate, schemas.GroupUpdate]
+    BaseRepository[models.Group, GroupDTO, schemas.GroupCreate, schemas.GroupUpdate]
 ):
     @property
     def model(self) -> type[models.Group]:
         return models.Group
 
-    async def list_groups(self) -> list[models.Group]:
+    @property
+    def dto_class(self) -> type[GroupDTO]:
+        return GroupDTO
+
+    async def list_groups(self) -> Sequence[GroupDTO]:
         """List all groups with caching."""
         cache_key = "schedule:groups"
         cached = await schedule_cache.get(cache_key)
         if cached is not None:
             from typing import cast
 
-            return cast(list[models.Group], cached)
+            return cast(list[GroupDTO], cached)
 
         stmt = select(self.model).order_by(self.model.name)
         result = await self.db.execute(stmt)
         groups = list(result.scalars().all())
-        await schedule_cache.set(cache_key, groups)
-        return groups
+        dtos = [self._to_dto(g) for g in groups]
+        await schedule_cache.set(cache_key, dtos)
+        return dtos
 
 
 class ScheduleRepository(
-    BaseRepository[models.Schedule, schemas.ScheduleCreate, schemas.ScheduleUpdate]
+    BaseRepository[
+        models.Schedule, ScheduleDTO, schemas.ScheduleCreate, schemas.ScheduleUpdate
+    ]
 ):
     @property
     def model(self) -> type[models.Schedule]:
         return models.Schedule
 
-    async def get_by_group(self, group_id: uuid.UUID) -> list[models.Schedule]:
+    @property
+    def dto_class(self) -> type[ScheduleDTO]:
+        return ScheduleDTO
+
+    async def get_by_group(self, group_id: uuid.UUID) -> Sequence[ScheduleDTO]:
         """Get schedule for a group with caching."""
         cache_key = f"schedule:group:{group_id}"
         cached = await schedule_cache.get(cache_key)
         if cached is not None:
             from typing import cast
 
-            return cast(list[models.Schedule], cached)
+            return cast(list[ScheduleDTO], cached)
 
         stmt = (
             select(self.model)
@@ -54,25 +67,22 @@ class ScheduleRepository(
         )
         result = await self.db.execute(stmt)
         schedule_items = list(result.scalars().all())
-        await schedule_cache.set(cache_key, schedule_items)
-        return schedule_items
+        dtos = [self._to_dto(s) for s in schedule_items]
+        await schedule_cache.set(cache_key, dtos)
+        return dtos
 
-    async def get_by_teacher(self, teacher: str) -> list[models.Schedule]:
+    async def get_by_teacher(self, teacher: str) -> Sequence[ScheduleDTO]:
         stmt = (
             select(self.model)
             .where(self.model.teacher == teacher)
             .order_by(self.model.weekday, self.model.start_time)
         )
         result = await self.db.execute(stmt)
-        return list(result.scalars().all())
+        return [self._to_dto(s) for s in result.scalars().all()]
 
-    async def create(self, obj_in: schemas.ScheduleCreate | dict) -> models.Schedule:
-        # Override to handle UTC conversion if needed,
-        # though BaseRepository doesn't do it automatically for fields.
-        # crud.create_schedule did _ensure_utc.
-
+    async def create(self, obj_in: schemas.ScheduleCreate | dict) -> ScheduleDTO:
+        # Override to handle UTC conversion if needed
         data = obj_in.model_dump() if hasattr(obj_in, "model_dump") else obj_in.copy()
-
         data["start_time"] = self._ensure_utc(data["start_time"])
         data["end_time"] = self._ensure_utc(data["end_time"])
 

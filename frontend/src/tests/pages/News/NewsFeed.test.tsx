@@ -3,7 +3,7 @@ import { MemoryRouter } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { HttpResponse, http } from "msw"
-import type { ContextType } from "react"
+
 import type { User } from "@/types/User"
 import { server } from "../../mocks/server"
 
@@ -36,10 +36,9 @@ const renderNewsPage = async (queryClient?: QueryClient) => {
     import("@/contexts/LanguageContext"),
   ])
 
-  type AuthContextValue = ContextType<typeof AuthContext>
 
-  const authValue: AuthContextValue = {
-    isAuth: true,
+
+  const authValue = {
     login: vi.fn().mockResolvedValue(null),
     loginWithPasskey: vi.fn().mockResolvedValue(null),
     logout: vi.fn().mockResolvedValue(undefined),

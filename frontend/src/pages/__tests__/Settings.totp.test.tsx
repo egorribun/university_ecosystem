@@ -1,4 +1,4 @@
-import { useState, type PropsWithChildren } from "react"
+import { type PropsWithChildren } from "react"
 import { MemoryRouter } from "react-router-dom"
 import { QueryClientProvider } from "@tanstack/react-query"
 import { render, screen, waitFor } from "@testing-library/react"
@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import Settings from "@/pages/Settings"
 import { LanguageProvider } from "@/contexts/LanguageContext"
 import { AuthContext } from "@/contexts/AuthContext"
-import type { User } from "@/types/User"
+
 import type { MfaTotpEnrollment } from "@/types/Mfa"
 import { createQueryClient } from "@/app/queryClient"
 import { resetTestMfa, testUser } from "@/tests/mocks/handlers"
@@ -34,12 +34,7 @@ vi.mock("@/hooks/usePushPreferences", () => ({
   }),
 }))
 
-const createBaseUser = (): User => ({
-  ...testUser,
-  totp_enrollments: [],
-  mfa_default_method: null,
-  mfa_last_verified_at: null,
-})
+
 
 const createPendingEnrollment = (
   overrides: Partial<MfaTotpEnrollment> = {}
@@ -53,32 +48,25 @@ const createPendingEnrollment = (
   created_at: overrides.created_at ?? new Date().toISOString(),
 })
 
-type RenderSettingsOptions = {
-  initialUser?: User
-}
-
-const renderSettings = (options?: RenderSettingsOptions) => {
+const renderSettings = () => {
   const queryClient = createQueryClient()
-  const initialUser = options?.initialUser ?? createBaseUser()
+
 
   const TestAuthProvider = ({ children }: PropsWithChildren) => {
-    const [user, setUser] = useState<User | null>(initialUser)
+    const mockLogout = vi.fn()
+    const mockSetUser = vi.fn()
     return (
       <AuthContext.Provider
-        value={{
-          user,
-          setUser,
-          logout: vi.fn(),
-          login: vi.fn(),
-          loginWithPasskey: vi.fn(),
-          refresh: vi.fn(),
-          isAuth: true,
-          loading: false,
-          pendingMfa: null,
-          submitMfaChallenge: vi.fn(),
-          requireMfa: vi.fn(),
-          resetEtagCache: vi.fn(),
-        }}
+          value={{
+            login: vi.fn(),
+            loginWithPasskey: vi.fn(),
+            logout: mockLogout,
+            setUser: mockSetUser,
+            refresh: vi.fn(),
+            submitMfaChallenge: vi.fn(),
+            requireMfa: vi.fn(),
+            resetEtagCache: vi.fn(),
+          }}
       >
         {children}
       </AuthContext.Provider>
@@ -210,13 +198,9 @@ describe("Settings TOTP enrollment", () => {
   it("shows pending enrollments only inside the QR panel", async () => {
     const pendingEnrollment = createPendingEnrollment()
     testUser.totp_enrollments = [pendingEnrollment]
-    const initialUser = {
-      ...createBaseUser(),
-      totp_enrollments: [pendingEnrollment],
-    }
 
     const user = userEvent.setup()
-    renderSettings({ initialUser })
+    renderSettings()
 
     await user.click(await screen.findByRole("tab", { name: matchSecurityTab }))
     await screen.findByRole("heading", { name: matchSecurityHeading })
@@ -238,14 +222,9 @@ describe("Settings TOTP enrollment", () => {
     })
     testUser.totp_enrollments = [activeEnrollment]
     testUser.mfa_default_method = "totp"
-    const initialUser = {
-      ...createBaseUser(),
-      totp_enrollments: [activeEnrollment],
-      mfa_default_method: "totp",
-    }
 
     const user = userEvent.setup()
-    renderSettings({ initialUser })
+    renderSettings()
 
     await user.click(await screen.findByRole("tab", { name: matchSecurityTab }))
     await screen.findByRole("heading", { name: matchSecurityHeading })

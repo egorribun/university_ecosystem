@@ -73,15 +73,11 @@ const renderSettings = () => {
           <LanguageProvider>
             <AuthContext.Provider
               value={{
-                user: baseUser,
                 setUser: mockSetUser,
                 logout: mockLogout,
                 login: vi.fn(),
                 loginWithPasskey: vi.fn(),
                 refresh: vi.fn(),
-                isAuth: true,
-                loading: false,
-                pendingMfa: null,
                 submitMfaChallenge: vi.fn().mockResolvedValue(undefined),
                 requireMfa: vi.fn().mockResolvedValue(null),
                 resetEtagCache: vi.fn(),

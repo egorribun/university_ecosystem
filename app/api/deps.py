@@ -21,6 +21,7 @@ from app.models.user_loaders import (
     USER_AUTH_LOAD_OPTIONS,
     ensure_mfa_relationships_loaded,
 )
+from app.schemas.dtos import UserAuthDTO, UserDTO
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
@@ -42,16 +43,17 @@ async def get_current_user(
     raw_token = token or request.cookies.get("access_token_v2")
     if not raw_token:
         fail_auth()
-        return None  # type: ignore[return-value]
+    assert raw_token is not None
     payload = decode_token(raw_token)
     if not payload:
         fail_auth()
-        return None  # type: ignore[return-value]
+    assert payload is not None
     sub = payload.get("sub")
     jti = payload.get("jti")
     if not sub or not jti:
         fail_auth()
-        return None  # type: ignore[return-value]
+    assert isinstance(sub, str)
+    assert isinstance(jti, str)
     try:
         user_id = UUID(sub)
     except (TypeError, ValueError):
@@ -116,7 +118,7 @@ async def get_current_user(
         row = res.first()
         if not row:
             fail_auth()
-            return None  # type: ignore[return-value]
+        assert row is not None
         user, session_obj = row
 
         # POPULATE REDIS (Cache-Aside)
@@ -132,7 +134,7 @@ async def get_current_user(
             jti=str(jti),
             user_id=user.id,
             fingerprint=fp,
-            mfa_verified_at=session_obj.mfa_verified_at,  # type: ignore[arg-type]
+            mfa_verified_at=session_obj.mfa_verified_at,
         )
 
     # If we hit Redis, we still need `session_obj` for the logic below
@@ -171,7 +173,6 @@ async def get_current_user(
                 session_obj = res_s.scalars().first()
                 if not session_obj or session_obj.revoked_at:
                     fail_auth()
-                    return None  # type: ignore[return-value]
 
     # If we still don't have session_obj (shouldn't happen if logic is correct):
     if not session_obj:
@@ -180,7 +181,6 @@ async def get_current_user(
         session_obj = res_s.scalars().first()
         if not session_obj:
             fail_auth()
-            return None  # type: ignore[return-value]
 
     # --- Standard Validation Logic (from DB object) ---
     # Now that we have session_obj, we run standard checks.
@@ -196,16 +196,14 @@ async def get_current_user(
     # on `session` attributes.
     # Preserving behavior:
     session = session_obj
+    assert session is not None
     now = datetime.now(UTC)
     expires_at = session.expires_at
-    if expires_at is None:
-        fail_auth()
-        return None  # type: ignore[return-value]
+    assert expires_at is not None
     if expires_at.tzinfo is None:
         expires_at = expires_at.replace(tzinfo=UTC)
     if expires_at <= now:
         fail_auth()
-        return None  # type: ignore[return-value]
 
     # Fingerprint validation
     if session.fingerprint_hash:
@@ -246,14 +244,15 @@ async def get_current_user(
                 ):
                     raise_forbidden(locale, "errors.auth.session_compromised")
 
-    ttl = max(0, getattr(settings, "mfa_step_up_ttl_seconds", 0))
-    if ttl > 0 and session.mfa_verified_at is not None:
-        verified_at = session.mfa_verified_at
-        if verified_at.tzinfo is None:
-            verified_at = verified_at.replace(tzinfo=UTC)
-        if now - verified_at > timedelta(seconds=ttl):
-            session.mfa_verified_at = None  # type: ignore[assignment]
-            await db.commit()
+    if session:
+        ttl = max(0, getattr(settings, "mfa_step_up_ttl_seconds", 0))
+        if ttl > 0 and session.mfa_verified_at is not None:
+            verified_at = session.mfa_verified_at
+            if verified_at.tzinfo is None:
+                verified_at = verified_at.replace(tzinfo=UTC)
+            if now - verified_at > timedelta(seconds=ttl):
+                session.mfa_verified_at = None
+                await db.commit()
 
     # DB UPDATE OPTIMIZATION:
     # If we are using Redis and verified it was fresh, we can SKIP the DB
@@ -262,35 +261,53 @@ async def get_current_user(
     # We only update DB occasionally (e.g. every 5-10 mins) to keep audit logs
     # roughly accurate.
 
-    last_seen_at = session.last_seen_at
-    if last_seen_at is not None and last_seen_at.tzinfo is None:
-        last_seen_at = last_seen_at.replace(tzinfo=UTC)
+    if session:
+        last_seen_at = session.last_seen_at
+        if last_seen_at is not None and last_seen_at.tzinfo is None:
+            last_seen_at = last_seen_at.replace(tzinfo=UTC)
 
-    # Increase sync window to 10 minutes if using Redis, else 5 mins
-    sync_window = 600 if cached_session else 300
+        # Increase sync window to 10 minutes if using Redis, else 5 mins
+        sync_window = 600 if cached_session else 300
 
-    if last_seen_at is None or (now - last_seen_at >= timedelta(seconds=sync_window)):
-        from sqlalchemy import update
+        if last_seen_at is None or (
+            now - last_seen_at >= timedelta(seconds=sync_window)
+        ):
+            from sqlalchemy import update
 
-        stmt = (
-            update(ActiveSession)
-            .where(ActiveSession.id == session.id)
-            .where(
-                or_(
-                    ActiveSession.last_seen_at.is_(None),
-                    ActiveSession.last_seen_at < now - timedelta(seconds=sync_window),
+            stmt = (
+                update(ActiveSession)
+                .where(ActiveSession.id == session.id)
+                .where(
+                    or_(
+                        ActiveSession.last_seen_at.is_(None),
+                        ActiveSession.last_seen_at
+                        < now - timedelta(seconds=sync_window),
+                    )
                 )
+                .values(last_seen_at=now)
+                .execution_options(synchronize_session=False)
             )
-            .values(last_seen_at=now)
-            .execution_options(synchronize_session=False)
-        )
-        await db.execute(stmt)
-        await db.commit()
-        session.last_seen_at = now  # type: ignore[assignment]
-        await db.refresh(user)
+            await db.execute(stmt)
+            await db.commit()
+            session.last_seen_at = now
+            await db.refresh(user)
 
     request.state.active_session = session
     return user
+
+
+async def get_current_user_dto(
+    user: Annotated[User, Depends(get_current_user)],
+) -> UserDTO:
+    """Return the current user as a DTO."""
+    return UserDTO.model_validate(user)
+
+
+async def get_current_user_auth_dto(
+    user: Annotated[User, Depends(get_current_user)],
+) -> UserAuthDTO:
+    """Return the current user as an Auth DTO (includes sensitive fields)."""
+    return UserAuthDTO.model_validate(user)
 
 
 async def get_current_user_optional(
@@ -335,7 +352,6 @@ def _enforce_fresh_mfa(request: Request) -> None:
     locale = resolve_locale(request=request)
     if session is None:
         raise_forbidden(locale)
-        raise ValueError("Unreachable")  # Help mypy understand termination
 
     ttl = max(0, getattr(settings, "mfa_step_up_ttl_seconds", 0))
     if ttl == 0:
@@ -343,7 +359,7 @@ def _enforce_fresh_mfa(request: Request) -> None:
 
     verified_at = session.mfa_verified_at
     if verified_at is None:
-        message = translate("errors.auth.mfa_step_up_required", locale=locale)  # type: ignore[unreachable]
+        message = translate("errors.auth.mfa_step_up_required", locale=locale)
         raise HTTPException(
             status.HTTP_428_PRECONDITION_REQUIRED,
             detail={

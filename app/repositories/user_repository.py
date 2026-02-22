@@ -5,29 +5,36 @@ User repository for user data access operations.
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete, exists, func, or_, select
 from sqlalchemy.orm import selectinload
 
 from app.models import models
 from app.models.models import User, UserProfile
-from app.models.user_loaders import USER_MFA_LOAD_OPTIONS
+from app.models.user_loaders import USER_MFA_LOAD_OPTIONS, USER_MFA_RELATIONSHIP_NAMES
 from app.repositories.base import BaseRepository
 from app.schemas import schemas
+from app.schemas.dtos import UserAuthDTO, UserDTO
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 
-class UserRepository(BaseRepository[User, schemas.UserCreate, dict]):
+class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
     """Repository for User model operations."""
 
     @property
     def model(self) -> type[User]:
         return User
 
-    async def get(self, id: uuid.UUID | str) -> User | None:
+    @property
+    def dto_class(self) -> type[UserDTO]:
+        return UserDTO
+
+    async def get(
+        self, id: uuid.UUID | str, *, with_for_update: bool = False
+    ) -> UserDTO | None:
         """Get user by ID with MFA options loaded."""
         if isinstance(id, str):
             try:
@@ -35,10 +42,13 @@ class UserRepository(BaseRepository[User, schemas.UserCreate, dict]):
             except ValueError:
                 return None
         stmt = select(User).where(User.id == id).options(*USER_MFA_LOAD_OPTIONS)
+        if with_for_update:
+            stmt = stmt.with_for_update()
         result = await self.db.execute(stmt)
-        return result.scalars().first()
+        obj = result.scalars().first()
+        return self._to_dto(obj) if obj else None
 
-    async def get_by_email(self, email: str) -> User | None:
+    async def get_by_email(self, email: str) -> UserDTO | None:
         """Get user by email (case-insensitive)."""
         normalized = email.strip().lower()
         result = await self.db.execute(
@@ -46,9 +56,33 @@ class UserRepository(BaseRepository[User, schemas.UserCreate, dict]):
             .where(func.lower(User.email) == normalized)
             .options(*USER_MFA_LOAD_OPTIONS)
         )
-        return result.scalars().first()
+        obj = result.scalars().first()
+        return self._to_dto(obj) if obj else None
 
-    async def get_by_login(self, login: str) -> User | None:
+    async def get_auth_by_email(self, email: str) -> UserAuthDTO | None:
+        """Get user authentication data by email."""
+        normalized = email.strip().lower()
+        result = await self.db.execute(
+            select(User)
+            .where(func.lower(User.email) == normalized)
+            .options(*USER_MFA_LOAD_OPTIONS)
+        )
+        obj = result.scalars().first()
+        return UserAuthDTO.model_validate(obj) if obj else None
+
+    async def get_auth_by_id(self, id: uuid.UUID | str) -> UserAuthDTO | None:
+        """Get user authentication data by ID."""
+        if isinstance(id, str):
+            try:
+                id = uuid.UUID(id)
+            except ValueError:
+                return None
+        stmt = select(User).where(User.id == id).options(*USER_MFA_LOAD_OPTIONS)
+        result = await self.db.execute(stmt)
+        obj = result.scalars().first()
+        return UserAuthDTO.model_validate(obj) if obj else None
+
+    async def get_by_login(self, login: str) -> UserDTO | None:
         """Find user by email or username/login."""
         stmt = (
             select(User)
@@ -60,9 +94,10 @@ class UserRepository(BaseRepository[User, schemas.UserCreate, dict]):
             .options(*USER_MFA_LOAD_OPTIONS)
         )
         result = await self.db.execute(stmt)
-        return result.scalar_one_or_none()
+        obj = result.scalar_one_or_none()
+        return self._to_dto(obj) if obj else None
 
-    async def get_by_email_or_raise(self, email: str) -> User:
+    async def get_by_email_or_raise(self, email: str) -> UserDTO:
         """Get user by email or raise ValueError."""
         user = await self.get_by_email(email)
         if user is None:
@@ -72,7 +107,7 @@ class UserRepository(BaseRepository[User, schemas.UserCreate, dict]):
     async def list_users(
         self,
         filters: schemas.UserSearchFilter | None = None,
-    ) -> list[User]:
+    ) -> list[UserDTO]:
         filters = filters or schemas.UserSearchFilter()
         stmt = (
             select(User)
@@ -94,9 +129,12 @@ class UserRepository(BaseRepository[User, schemas.UserCreate, dict]):
 
         stmt = stmt.limit(filters.limit).offset(filters.offset)
         result = await self.db.execute(stmt)
-        return list(result.scalars().all())
+        objs = result.scalars().all()
+        return [self._to_dto(obj) for obj in objs]
 
-    async def get_active_users(self, *, skip: int = 0, limit: int = 100) -> list[User]:
+    async def get_active_users(
+        self, *, skip: int = 0, limit: int = 100
+    ) -> list[UserDTO]:
         """Get only active users."""
         result = await self.db.execute(
             select(User)
@@ -105,7 +143,8 @@ class UserRepository(BaseRepository[User, schemas.UserCreate, dict]):
             .limit(limit)
             .options(*USER_MFA_LOAD_OPTIONS)
         )
-        return list(result.scalars().all())
+        objs = result.scalars().all()
+        return [self._to_dto(obj) for obj in objs]
 
     async def count_active(self) -> int:
         """Count active users."""
@@ -121,9 +160,31 @@ class UserRepository(BaseRepository[User, schemas.UserCreate, dict]):
         )
         return result.scalar() or 0
 
+    async def update(
+        self, id: uuid.UUID | str, obj_in: schemas.UserAdminUpdate | dict[str, Any]
+    ) -> UserDTO | None:
+        """Update user with nested attributes handling."""
+        db_user = await self._get_orm(id, with_for_update=True)
+        if not db_user:
+            return None
+
+        if hasattr(obj_in, "model_dump"):
+            update_data = obj_in.model_dump(exclude_unset=True)
+        else:
+            update_data = obj_in
+
+        # Handle nested updates
+        from app.services.user.logic import update_user_attributes
+
+        update_user_attributes(db_user, update_data)
+
+        self.db.add(db_user)
+        await self.db.flush()
+        return self._to_dto(db_user)
+
     async def search_by_name(
         self, query: str, *, skip: int = 0, limit: int = 20
-    ) -> list[User]:
+    ) -> list[UserDTO]:
         """Search users by name (case-insensitive)."""
         pattern = f"%{query.strip().lower()}%"
         result = await self.db.execute(
@@ -135,7 +196,8 @@ class UserRepository(BaseRepository[User, schemas.UserCreate, dict]):
             .limit(limit)
             .options(*USER_MFA_LOAD_OPTIONS)
         )
-        return list(result.scalars().all())
+        objs = result.scalars().all()
+        return [self._to_dto(obj) for obj in objs]
 
     async def get_user_sessions(
         self, user_id: uuid.UUID | str, limit: int = 1000
@@ -235,7 +297,7 @@ class UserRepository(BaseRepository[User, schemas.UserCreate, dict]):
 
     async def create_with_invite(
         self, user_data: dict, invite_code: models.InviteCode | None
-    ) -> models.User:
+    ) -> UserDTO:
         """Create a user and optionally mark an invite code as used."""
         user = models.User(**user_data)
         self.db.add(user)
@@ -247,7 +309,18 @@ class UserRepository(BaseRepository[User, schemas.UserCreate, dict]):
             invite_code.used_by_user_id = user.id
             self.db.add(invite_code)
 
-        return user
+        await self.db.refresh(user, attribute_names=USER_MFA_RELATIONSHIP_NAMES)
+        return self._to_dto(user)
+
+    async def anonymize(self, user_id: uuid.UUID | str) -> None:
+        """Perform full anonymization and sensitive data deletion."""
+        db_user = await self._get_orm(user_id)
+        if not db_user:
+            return
+
+        from app.services.user.logic import execute_user_anonymization
+
+        await execute_user_anonymization(self, db_user)
 
     async def delete_sensitive_data(self, user_id: uuid.UUID | str):
         """Cleanup user-related transient records (sessions, challenges, etc)."""

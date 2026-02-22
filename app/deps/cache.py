@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import fnmatch
 import hashlib
+import inspect
 import logging
 import time as time_module
 from dataclasses import dataclass
@@ -225,10 +226,10 @@ class RedisCache(BaseCache):
         start = time_module.perf_counter()
         success = False
         try:
-            if hasattr(client, "aclose") and asyncio.iscoroutinefunction(client.aclose):
+            if hasattr(client, "aclose") and inspect.iscoroutinefunction(client.aclose):
                 await client.aclose()
             elif hasattr(client, "close"):
-                if asyncio.iscoroutinefunction(client.close):
+                if inspect.iscoroutinefunction(client.close):
                     await client.close()
                 else:
                     client.close()

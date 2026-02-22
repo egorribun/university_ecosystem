@@ -2,8 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useOptimistic } from "react"
 import { useNavigate, useParams } from "react-router-dom"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
-import dayjs from "dayjs"
-import utc from "dayjs/plugin/utc"
+import { formatDate, presets } from "@/utils/date"
 import { useAuth } from "@/contexts/AuthContext"
 import { useMessenger } from "@/contexts/MessengerContext"
 import {
@@ -17,13 +16,11 @@ import client from "@/api/client"
 import type { User } from "@/types/User"
 import type { Message as UiMessage } from "@/components/messenger"
 
-dayjs.extend(utc)
+// dayjs.extend(utc) removed in favor of native Intl utility
 
 const formatMessageTime = (dateString: string) => {
   if (!dateString) return ""
-  const cleanDate = dateString.replace(/(\.\d+)(Z|[+-]\d{2}:?\d{2})?$/, "$2")
-  const parsed = dayjs.utc(cleanDate)
-  return parsed.local().format("HH:mm")
+  return formatDate(dateString, presets.chatTime)
 }
 
 export const useMessengerController = () => {

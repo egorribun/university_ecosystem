@@ -44,7 +44,7 @@ async def test_logout_success_bearer(async_client, user_factory, db_session):
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     assert login_response.status_code == 200
-    token = login_response.json()["access_token"]
+    token = login_response.cookies.get("access_token_v2")
 
     from app.auth.security import decode_token
 

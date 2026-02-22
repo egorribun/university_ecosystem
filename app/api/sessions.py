@@ -111,8 +111,8 @@ async def revoke_session(
     require_owner_or_admin(current_user, locale, owner_id=session.user_id)
     now = datetime.now(UTC)
     revoked_at = session.revoked_at or now
-    session.revoked_at = revoked_at  # type: ignore[assignment]
-    session.signing_key = secrets.token_urlsafe(32)  # type: ignore[assignment]
+    session.revoked_at = revoked_at
+    session.signing_key = secrets.token_urlsafe(32)
     current_jti = _extract_jti(request)
     payload = schemas.ActiveSessionOut.model_validate(session).model_copy(
         update={"is_current": session.jti == current_jti, "revoked_at": revoked_at}

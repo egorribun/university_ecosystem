@@ -1,5 +1,5 @@
 import uuid
-from datetime import time
+from datetime import datetime, time
 
 from sqlalchemy import (
     UUID,
@@ -28,8 +28,8 @@ from app.models.spotify import SpotifyIntegration
 
 class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     __tablename__ = "users"
-    email = Column(String, unique=True, nullable=False)
-    hashed_password = Column(String, nullable=False)
+    email: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    hashed_password: Mapped[str] = mapped_column(String, nullable=False)
 
     __table_args__ = (Index("ix_users_email_lower", func.lower(email), unique=True),)
 
@@ -50,12 +50,20 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         index=True,
         nullable=True,
     )
-    is_active = Column(Boolean, default=True, index=True)
-    mfa_required = Column(Boolean, default=False, nullable=False, index=True)
-    mfa_default_method = Column(String(64))
-    mfa_last_verified_at = Column(DateTime(timezone=True), nullable=True, index=True)
-    webauthn_id = Column(String(128), unique=True, index=True, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    mfa_required: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, index=True
+    )
+    mfa_default_method: Mapped[str | None] = mapped_column(String(64))
+    mfa_last_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    webauthn_id: Mapped[str | None] = mapped_column(
+        String(128), unique=True, index=True, nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
 
     preferences = relationship(
         "UserPreferences",

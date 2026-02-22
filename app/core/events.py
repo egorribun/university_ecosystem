@@ -14,7 +14,7 @@ from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -36,7 +36,7 @@ class EventMetadata:
 
     correlation_id: str | None = None
     causation_id: str | None = None
-    user_id: int | None = None
+    user_id: UUID | None = None
     source: str = "app"
     retry_count: int = 0
     max_retries: int = 3
@@ -62,7 +62,7 @@ class DomainEvent(ABC):
 class UserCreated(DomainEvent):
     """Fired when a new user is created."""
 
-    user_id: int = 0
+    user_id: UUID | None = None
     email: str = ""
 
     @property
@@ -74,7 +74,7 @@ class UserCreated(DomainEvent):
 class UserUpdated(DomainEvent):
     """Fired when a user profile is updated."""
 
-    user_id: int = 0
+    user_id: UUID | None = None
     updated_fields: list[str] = field(default_factory=list)
 
     @property
@@ -86,7 +86,7 @@ class UserUpdated(DomainEvent):
 class UserDeleted(DomainEvent):
     """Fired when a user is deleted."""
 
-    user_id: int = 0
+    user_id: UUID | None = None
 
     @property
     def event_type(self) -> str:
@@ -98,7 +98,7 @@ class UserDeleted(DomainEvent):
 class UserLoggedIn(DomainEvent):
     """Fired when a user logs in successfully."""
 
-    user_id: int = 0
+    user_id: UUID | None = None
     ip_address: str | None = None
 
     @property
@@ -110,7 +110,7 @@ class UserLoggedIn(DomainEvent):
 class MfaEnabled(DomainEvent):
     """Fired when MFA is enabled for a user."""
 
-    user_id: int = 0
+    user_id: UUID | None = None
     method: str = "totp"
 
     @property
@@ -123,8 +123,8 @@ class MfaEnabled(DomainEvent):
 class EventCreated(DomainEvent):
     """Fired when a new event is created."""
 
-    event_id_entity: int = 0
-    organizer_id: int = 0
+    event_id_entity: UUID | None = None
+    organizer_id: UUID | None = None
     title: str = ""
 
     @property
@@ -136,7 +136,7 @@ class EventCreated(DomainEvent):
 class EventUpdated(DomainEvent):
     """Fired when an existing event is updated."""
 
-    event_id_entity: int = 0
+    event_id_entity: UUID | None = None
     title: str = ""
 
     @property
@@ -148,8 +148,8 @@ class EventUpdated(DomainEvent):
 class EventRegistration(DomainEvent):
     """Fired when a user registers for an event."""
 
-    event_id_entity: int = 0
-    user_id: int = 0
+    event_id_entity: UUID | None = None
+    user_id: UUID | None = None
 
     @property
     def event_type(self) -> str:
@@ -160,7 +160,7 @@ class EventRegistration(DomainEvent):
 class NewsCreated(DomainEvent):
     """Fired when a new news article is created."""
 
-    news_id: int = 0
+    news_id: UUID | None = None
     title: str = ""
 
     @property
@@ -172,7 +172,7 @@ class NewsCreated(DomainEvent):
 class NewsUpdated(DomainEvent):
     """Fired when an existing news article is updated."""
 
-    news_id: int = 0
+    news_id: UUID | None = None
     title: str = ""
 
     @property
@@ -186,7 +186,7 @@ class NotificationSent(DomainEvent):
     """Fired when a notification is sent."""
 
     notification_id: str = ""
-    user_id: int = 0
+    user_id: UUID | None = None
     notification_type: str = ""
 
     @property

@@ -4,7 +4,8 @@
  * Shared types and helper functions for the Schedule page components.
  */
 
-import dayjs from "dayjs"
+// dayjs import removed
+import { toDate } from "@/utils/date"
 import { StorageItem } from "@/utils/storage"
 
 // ============================================================================
@@ -151,9 +152,9 @@ export function getEndTimeStr(lesson: Lesson): string {
 
 export function parseMinutes(s?: string | null): number | null {
   if (!s) return null
-  const d = toDayjs(s)
-  if (!d || !d.isValid()) return null
-  return d.hour() * 60 + d.minute()
+  const d = toDate(s)
+  if (!d || isNaN(d.getTime())) return null
+  return d.getHours() * 60 + d.getMinutes()
 }
 
 export function minutesDiff(a?: string | null, b?: string | null): number {
@@ -162,23 +163,14 @@ export function minutesDiff(a?: string | null, b?: string | null): number {
   return mb - ma
 }
 
-export const toDayjs = (s?: string | null) => {
-  if (!s) return null
-  // If it's a full ISO string
-  if (s.length >= 16 && s.includes("T")) return dayjs(s)
-  // If it's just HH:mm
-  if (/^\d{2}:\d{2}$/.test(s)) {
-    return dayjs(`${dayjs().format("YYYY-MM-DD")}T${s}:00`)
-  }
-  return dayjs(s)
-}
+// Moved to utils/date.ts or used directly
+export { toDate }
 
 export function getTodayIdx(): number {
-  const d = dayjs()
-  // isoWeekday: 1 (Mon) - 7 (Sun)
-  const iso = d.isoWeekday()
-  if (iso === 7) return -1
-  return iso - 1
+  const d = new Date()
+  const day = d.getDay() // 0 (Sun) to 6 (Sat)
+  if (day === 0) return -1
+  return day - 1
 }
 
 // ============================================================================

@@ -9,18 +9,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.logs import DataAccessLog
 from app.repositories.base import BaseRepository
+from app.schemas.dtos.audit import DataAccessLogDTO
 
 
-class AuditRepository(BaseRepository[DataAccessLog, dict, dict]):
+class AuditRepository(BaseRepository[DataAccessLog, DataAccessLogDTO, dict, dict]):
     """Repository for Audit and Data Access logs."""
 
     @property
     def model(self) -> type[DataAccessLog]:
         return DataAccessLog
 
+    @property
+    def dto_class(self) -> type[DataAccessLogDTO]:
+        return DataAccessLogDTO
+
     async def get_logs_by_user(
         self, user_id: uuid.UUID | int, limit: int = 100
-    ) -> Sequence[DataAccessLog]:
+    ) -> Sequence[DataAccessLogDTO]:
         """Fetch audit logs involving a user."""
         stmt = (
             select(DataAccessLog)
@@ -32,7 +37,7 @@ class AuditRepository(BaseRepository[DataAccessLog, dict, dict]):
             .limit(limit)
         )
         result = await self.db.execute(stmt)
-        return result.scalars().all()
+        return [self._to_dto(row) for row in result.scalars().all()]
 
     async def prune_logs(self, cutoff: datetime) -> int:
         """Delete logs older than cutoff."""
@@ -48,7 +53,7 @@ class AuditRepository(BaseRepository[DataAccessLog, dict, dict]):
         resource_type: str | None = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> Sequence[DataAccessLog]:
+    ) -> Sequence[DataAccessLogDTO]:
         """List logs with filters."""
         stmt = select(DataAccessLog)
         if actor_id:
@@ -62,7 +67,7 @@ class AuditRepository(BaseRepository[DataAccessLog, dict, dict]):
             stmt.order_by(DataAccessLog.created_at.desc()).offset(offset).limit(limit)
         )
         result = await self.db.execute(stmt)
-        return result.scalars().all()
+        return [self._to_dto(row) for row in result.scalars().all()]
 
     async def batch_create(self, entries: list[dict]) -> None:
         """Batch create audit logs."""

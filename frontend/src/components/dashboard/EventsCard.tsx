@@ -11,7 +11,7 @@ import { prefetchEventsListQuery, EVENTS_PAGE_SIZE } from "@/api/hooks/events"
 import { useLanguage } from "@/contexts/LanguageContext"
 import { useQueryClient } from "@tanstack/react-query"
 import type { Event } from "@/types/Event"
-import dayjs from "dayjs"
+import { formatDate, toDate } from "@/utils/date"
 
 interface EventsCardProps {
   className?: string
@@ -53,36 +53,41 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
   )
 
   const todayEvents = useMemo(() => {
-    const now = dayjs()
-    const from = now.startOf("day")
-    const to = now.endOf("day")
+    const from = new Date()
+    from.setHours(0, 0, 0, 0)
+    const to = new Date()
+    to.setHours(23, 59, 59, 999)
+
     return events
       .filter((e) => e.starts_at)
-      .map((e) => ({ ...e, d: dayjs(e.starts_at) }))
+      .map((e) => ({ ...e, d: toDate(e.starts_at!) }))
       .filter(
         (e) =>
-          e.d.isValid() &&
-          (e.d.isSame(from) || e.d.isAfter(from)) &&
-          (e.d.isSame(to) || e.d.isBefore(to))
+          !isNaN(e.d.getTime()) &&
+          e.d >= from &&
+          e.d <= to
       )
-      .sort((a, b) => a.d.diff(b.d))
+      .sort((a, b) => a.d.getTime() - b.d.getTime())
       .slice(0, 6)
   }, [events])
 
   const weekEvents = useMemo(() => {
-    const now = dayjs()
-    const from = now.startOf("day")
-    const to = now.add(7, "day").endOf("day")
+    const from = new Date()
+    from.setHours(0, 0, 0, 0)
+    const to = new Date()
+    to.setDate(to.getDate() + 7)
+    to.setHours(23, 59, 59, 999)
+
     return events
       .filter((e) => e.starts_at)
-      .map((e) => ({ ...e, d: dayjs(e.starts_at) }))
+      .map((e) => ({ ...e, d: toDate(e.starts_at!) }))
       .filter(
         (e) =>
-          e.d.isValid() &&
-          (e.d.isSame(from) || e.d.isAfter(from)) &&
-          (e.d.isSame(to) || e.d.isBefore(to))
+          !isNaN(e.d.getTime()) &&
+          e.d >= from &&
+          e.d <= to
       )
-      .sort((a, b) => a.d.diff(b.d))
+      .sort((a, b) => a.d.getTime() - b.d.getTime())
       .slice(0, 6)
   }, [events])
 
@@ -198,7 +203,7 @@ export function EventsCard({ className, style, ...props }: EventsCardProps) {
                       <Badge
                         size="sm"
                         className="border-brand/(--opacity-dim) bg-brand/(--opacity-faint) font-mono text-xs font-medium text-brand dark:bg-brand/(--opacity-subtle)"
-                        label={e.d.isValid() ? e.d.format("DD MMM HH:mm") : ""}
+                        label={!isNaN(e.d.getTime()) ? formatDate(e.d, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }) : ""}
                       />
                       {!!e.location && (
                         <Badge

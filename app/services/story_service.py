@@ -2,9 +2,9 @@ import contextlib
 import uuid
 
 from app.core.localization import localized_text, normalize_locale
-from app.models import models
 from app.repositories.story_repository import StoryRepository
 from app.schemas import schemas
+from app.schemas.dtos import StoryDTO
 from app.utils.files import delete_static_file
 
 
@@ -14,7 +14,7 @@ class StoryService:
 
     def serialize_story(
         self,
-        story: models.Story | schemas.StoryOut,
+        story: StoryDTO | schemas.StoryOut,
         locale: str | None,
     ) -> schemas.StoryOut:
         normalized_locale = normalize_locale(locale)
@@ -46,7 +46,7 @@ class StoryService:
 
     async def create_story(
         self, data: schemas.StoryCreate, created_by: uuid.UUID
-    ) -> models.Story:
+    ) -> StoryDTO:
         payload = data.model_dump(exclude_unset=True)
 
         if payload.get("published_at"):
@@ -66,7 +66,7 @@ class StoryService:
 
     async def update_story(
         self, story_id: uuid.UUID, data: schemas.StoryUpdate
-    ) -> models.Story:
+    ) -> StoryDTO:
         story = await self.repo.get(story_id)
         if not story:
             raise ValueError("story_not_found")

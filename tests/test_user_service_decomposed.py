@@ -28,9 +28,16 @@ async def test_update_user_profile_decomposed_fields():
     db.execute.return_value = mock_res
     request = MagicMock()
 
+    # Mock return value for repo.update
+    updated_user_mock = MagicMock()
+    updated_user_mock.profile.about = "New about"
+    updated_user_mock.education_path.institute = "New institute"
+    updated_user_mock.preferences.timezone = "Europe/Moscow"
+    repo.update.return_value = updated_user_mock
+
     # Execute
     with patch(
-        "app.services.user_service.attach_pending_email", new_callable=AsyncMock
+        "app.services.user.profile_service.attach_pending_email", new_callable=AsyncMock
     ):
         updated_user = await service.update_user_profile(user, update_data, request)
 
@@ -64,9 +71,14 @@ async def test_update_user_profile_email_change():
     update_data = schemas.UserProfileUpdate(email="new@example.com")
     request = MagicMock()
 
+    # Mock return value for repo.update
+    updated_user_mock = MagicMock()
+    updated_user_mock.email = "new@example.com"
+    repo.update.return_value = updated_user_mock
+
     # Execute
     with patch(
-        "app.services.user_service.attach_pending_email", new_callable=AsyncMock
+        "app.services.user.profile_service.attach_pending_email", new_callable=AsyncMock
     ):
         updated_user = await service.update_user_profile(user, update_data, request)
 

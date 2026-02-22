@@ -1,3 +1,4 @@
+import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -13,7 +14,7 @@ from app.schemas import schemas
 
 @dataclass
 class GetScheduleQuery(Query):
-    group_id: int
+    group_id: uuid.UUID | str
     locale: str | None
     if_none_match: str | None
 
@@ -30,7 +31,7 @@ class GetScheduleHandler(QueryHandler[GetScheduleQuery, QueryResult]):
         self.db = db
         self.cache = cache
 
-    def _schedule_cache_key(self, group_id: int) -> str:
+    def _schedule_cache_key(self, group_id: uuid.UUID | str) -> str:
         return f"schedule:group:{group_id}"
 
     def _localize_schedule_payload(
@@ -67,11 +68,10 @@ class GetScheduleHandler(QueryHandler[GetScheduleQuery, QueryResult]):
         from app.repositories.schedule_repository import ScheduleRepository
 
         repo = ScheduleRepository(self.db)
-        from uuid import UUID
 
         rows = await repo.get_by_group(
-            UUID(str(query.group_id))
-            if isinstance(query.group_id, int)
+            uuid.UUID(str(query.group_id))
+            if isinstance(query.group_id, str)
             else query.group_id
         )
 
@@ -94,7 +94,7 @@ class GetScheduleHandler(QueryHandler[GetScheduleQuery, QueryResult]):
 @dataclass
 class GetStatsQuery(Query):
     kind: str
-    user_id: int
+    user_id: uuid.UUID | str
     period_key: str
     period_days: int
     locale: str | None

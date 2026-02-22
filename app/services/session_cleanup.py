@@ -98,17 +98,15 @@ async def revoke_sessions_matching(
     revoked = 0
 
     for session in sessions:
+        revoked += 1
         if session.revoked_at is None:
-            revoked += 1  # type: ignore[unreachable]
             session.revoked_at = now
             # Best effort revocation in backend
             with suppress(Exception):
                 await session_backend.revoke_session(session.jti)
-        else:
-            revoked += 1
 
         if rotate_signing_key:
-            session.signing_key = secrets.token_urlsafe(32)  # type: ignore[assignment]
+            session.signing_key = secrets.token_urlsafe(32)
 
     return revoked
 

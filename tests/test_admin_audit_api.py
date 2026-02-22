@@ -23,7 +23,7 @@ async def test_list_audit_logs_as_admin(root_client, user_factory, db_session):
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     assert login_response.status_code == 200
-    token = login_response.json()["access_token"]
+    token = login_response.cookies.get("access_token_v2")
 
     # Create some audit logs
     log1 = models.DataAccessLog(
@@ -63,7 +63,7 @@ async def test_list_audit_logs_forbidden_for_student(root_client, user_factory):
         data={"username": student.email, "password": password},
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
-    token = login_response.json()["access_token"]
+    token = login_response.cookies.get("access_token_v2")
 
     response = await root_client.get(
         "/admin/audit", headers={"Authorization": f"Bearer {token}"}
@@ -85,7 +85,7 @@ async def test_list_audit_logs_filtering(root_client, user_factory, db_session):
         data={"username": admin.email, "password": password},
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
-    token = login_response.json()["access_token"]
+    token = login_response.cookies.get("access_token_v2")
 
     # Create logs with different attributes
     log_action = models.DataAccessLog(
@@ -136,7 +136,7 @@ async def test_list_audit_logs_pagination(root_client, user_factory, db_session)
         data={"username": admin.email, "password": password},
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
-    token = login_response.json()["access_token"]
+    token = login_response.cookies.get("access_token_v2")
 
     # Create multiple logs
     for i in range(5):
@@ -181,7 +181,7 @@ async def test_list_audit_logs_actor_filtering(root_client, user_factory, db_ses
         data={"username": admin.email, "password": password},
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
-    token = login_response.json()["access_token"]
+    token = login_response.cookies.get("access_token_v2")
 
     # Create a log with a specific actor
     log = models.DataAccessLog(

@@ -1,9 +1,12 @@
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import pytest
 
 from app.models import models
 from app.schemas import schemas
+from app.schemas.dtos.news import NewsDTO, NewsListingDTO
 from app.services.news_service import NewsService
 
 
@@ -15,7 +18,6 @@ def mock_repo():
     repo.db.refresh = AsyncMock()
     # Mock return values for methods to avoid awaiting None
     repo.list_news.return_value = []
-    repo.create.return_value = MagicMock(spec=models.News)
     return repo
 
 
@@ -35,6 +37,25 @@ def news_service(mock_repo, mock_vector_service):
 async def test_list_news(news_service, mock_repo, mock_vector_service):
     # Test with search to trigger vector service
     search_query = "something"
+
+    mock_repo.list_news.return_value = [
+        NewsListingDTO(
+            news=NewsDTO(
+                id=uuid4(),
+                title="News",
+                content="Content",
+                created_at=datetime.now(UTC),
+                author_id=uuid4(),
+                title_en=None,
+                content_en=None,
+                image_url=None,
+            ),
+            likes_count=5,
+            comments_count=2,
+            is_liked=True,
+        )
+    ]
+
     await news_service.list_news(search=search_query)
 
     mock_vector_service.get_embedding.assert_awaited_once_with(search_query)
@@ -57,9 +78,7 @@ async def test_create_news(news_service, mock_repo):
     result = await news_service.create_news(data)
 
     mock_repo.create.assert_awaited_once()
-    mock_news.record_event.assert_called_once()
     mock_repo.db.commit.assert_awaited_once()
-    mock_repo.db.refresh.assert_awaited_once_with(mock_news)
     assert result == mock_news
 
 

@@ -9,13 +9,14 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.orm import aliased, selectinload
 
 from app.core.config import settings
 from app.models import models
 from app.models.models import Event
 from app.repositories.base import BaseRepository
+from app.schemas.dtos import EventAttendanceDTO, EventDTO, EventSearchResultDTO
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -23,14 +24,20 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 
-class EventRepository(BaseRepository[Event, dict, dict]):
+class EventRepository(BaseRepository[Event, EventDTO, dict, dict]):
     """Repository for Event model operations."""
 
     @property
     def model(self) -> type[Event]:
         return Event
 
-    async def get_with_details(self, event_id: uuid.UUID | str | int) -> Event | None:
+    @property
+    def dto_class(self) -> type[EventDTO]:
+        return EventDTO
+
+    async def get_with_details(
+        self, event_id: uuid.UUID | str | int
+    ) -> EventDTO | None:
         if isinstance(event_id, str):
             with contextlib.suppress(ValueError):
                 event_id = uuid.UUID(event_id)
@@ -38,9 +45,10 @@ class EventRepository(BaseRepository[Event, dict, dict]):
             select(Event).where(Event.id == event_id).options(selectinload(Event.files))
         )
         result = await self.db.execute(stmt)
-        return result.scalar_one_or_none()
+        obj = result.scalar_one_or_none()
+        return self._to_dto(obj) if obj else None
 
-    async def get_upcoming(self, *, skip: int = 0, limit: int = 20) -> list[Event]:
+    async def get_upcoming(self, *, skip: int = 0, limit: int = 20) -> list[EventDTO]:
         """Get upcoming events ordered by start date."""
         now = datetime.now(UTC)
         result = await self.db.execute(
@@ -50,11 +58,12 @@ class EventRepository(BaseRepository[Event, dict, dict]):
             .offset(skip)
             .limit(limit)
         )
-        return list(result.scalars().all())
+        objs = result.scalars().all()
+        return [self._to_dto(obj) for obj in objs]
 
     async def get_by_organizer(
         self, organizer_id: uuid.UUID | str | int, *, skip: int = 0, limit: int = 20
-    ) -> list[Event]:
+    ) -> list[EventDTO]:
         """Get events by organizer."""
         if isinstance(organizer_id, str):
             with contextlib.suppress(ValueError):
@@ -66,7 +75,8 @@ class EventRepository(BaseRepository[Event, dict, dict]):
             .offset(skip)
             .limit(limit)
         )
-        return list(result.scalars().all())
+        objs = result.scalars().all()
+        return [self._to_dto(obj) for obj in objs]
 
     async def count_upcoming(self) -> int:
         """Count upcoming events."""
@@ -78,7 +88,7 @@ class EventRepository(BaseRepository[Event, dict, dict]):
 
     async def search(
         self, query: str, *, skip: int = 0, limit: int = 20
-    ) -> list[Event]:
+    ) -> list[EventDTO]:
         """Search events by title (case-insensitive)."""
         pattern = f"%{query.strip().lower()}%"
         result = await self.db.execute(
@@ -88,7 +98,8 @@ class EventRepository(BaseRepository[Event, dict, dict]):
             .offset(skip)
             .limit(limit)
         )
-        return list(result.scalars().all())
+        objs = result.scalars().all()
+        return [self._to_dto(obj) for obj in objs]
 
     async def search_events(
         self,
@@ -101,7 +112,7 @@ class EventRepository(BaseRepository[Event, dict, dict]):
         limit: int = 20,
         cursor: tuple[datetime, uuid.UUID | int | str] | None = None,
         query_embedding: list[float] | None = None,
-    ) -> Sequence[tuple[Event, int, models.EventAttendance | None]]:
+    ) -> Sequence[EventSearchResultDTO]:
         now = datetime.now(UTC)
 
         # Build conditions
@@ -199,11 +210,23 @@ class EventRepository(BaseRepository[Event, dict, dict]):
 
         stmt = stmt.limit(limit)
         result = await self.db.execute(stmt)
-        return [tuple(row) for row in result.all()]
+        rows = result.all()
+        from app.schemas.dtos.event import EventAttendanceDTO, EventSearchResultDTO
+
+        return [
+            EventSearchResultDTO(
+                event=row[0] if isinstance(row[0], EventDTO) else self._to_dto(row[0]),
+                participant_count=row[1] or 0,
+                user_attendance=EventAttendanceDTO.model_validate(row[2])
+                if row[2]
+                else None,
+            )
+            for row in rows
+        ]
 
     async def get_event_with_details(
         self, event_id: uuid.UUID | int | str, user_id: uuid.UUID | int | str | None
-    ) -> tuple[Event, int, models.EventAttendance | None] | None:
+    ) -> EventSearchResultDTO | None:
         """Fetch event with participant count and specific user attendance."""
         if isinstance(event_id, str):
             with contextlib.suppress(ValueError):
@@ -235,11 +258,23 @@ class EventRepository(BaseRepository[Event, dict, dict]):
 
         result = await self.db.execute(stmt)
         first = result.first()
-        return tuple(first) if first else None
+        if not first:
+            return None
+
+        attendance_dto = (
+            EventAttendanceDTO.model_validate(first[2]) if first[2] else None
+        )
+        from app.schemas.dtos.event import EventSearchResultDTO
+
+        return EventSearchResultDTO(
+            event=self._to_dto(first[0]),
+            participant_count=first[1] or 0,
+            user_attendance=attendance_dto,
+        )
 
     async def get_attendance(
         self, event_id: uuid.UUID | int | str, user_id: uuid.UUID | int | str
-    ) -> models.EventAttendance | None:
+    ) -> EventAttendanceDTO | None:
         """Get user attendance for a specific event."""
         if isinstance(event_id, str):
             with contextlib.suppress(ValueError):
@@ -252,28 +287,63 @@ class EventRepository(BaseRepository[Event, dict, dict]):
             models.EventAttendance.user_id == user_id,
         )
         result = await self.db.execute(stmt)
-        return result.scalar_one_or_none()
+        obj = result.scalar_one_or_none()
+        return EventAttendanceDTO.model_validate(obj) if obj else None
 
-    async def create_attendance(self, **kwargs) -> models.EventAttendance:
+    async def create_attendance(self, **kwargs) -> EventAttendanceDTO:
         """Create a new event attendance record."""
         record = models.EventAttendance(**kwargs)
         self.db.add(record)
         await self.db.flush()
-        return record
+        return EventAttendanceDTO.model_validate(record)
 
     async def delete_attendance(
         self, event_id: uuid.UUID | int | str, user_id: uuid.UUID | int | str
     ) -> bool:
         """Delete user attendance for a specific event."""
-        attendance = await self.get_attendance(event_id, user_id)
-        if not attendance:
-            return False
-        await self.db.delete(attendance)
-        return True
+        if isinstance(event_id, str):
+            with contextlib.suppress(ValueError):
+                event_id = uuid.UUID(event_id)
+        if isinstance(user_id, str):
+            with contextlib.suppress(ValueError):
+                user_id = uuid.UUID(user_id)
+        stmt = delete(models.EventAttendance).where(
+            models.EventAttendance.event_id == event_id,
+            models.EventAttendance.user_id == user_id,
+        )
+        result = await self.db.execute(stmt)
+        return bool(getattr(result, "rowcount", 0))
+
+    async def update_attendance(
+        self,
+        event_id: uuid.UUID | int | str,
+        user_id: uuid.UUID | int | str,
+        updates: dict[str, Any],
+    ) -> EventAttendanceDTO | None:
+        """Update user attendance for a specific event."""
+        if isinstance(event_id, str):
+            with contextlib.suppress(ValueError):
+                event_id = uuid.UUID(event_id)
+        if isinstance(user_id, str):
+            with contextlib.suppress(ValueError):
+                user_id = uuid.UUID(user_id)
+
+        stmt = (
+            update(models.EventAttendance)
+            .where(
+                models.EventAttendance.event_id == event_id,
+                models.EventAttendance.user_id == user_id,
+            )
+            .values(**updates)
+            .returning(models.EventAttendance)
+        )
+        result = await self.db.execute(stmt)
+        obj = result.scalar_one_or_none()
+        return EventAttendanceDTO.model_validate(obj) if obj else None
 
     async def list_user_attended_events(
         self, user_id: uuid.UUID | int | str
-    ) -> list[Event]:
+    ) -> list[EventDTO]:
         """List all events a user has registered for."""
         if isinstance(user_id, str):
             with contextlib.suppress(ValueError):
@@ -285,7 +355,8 @@ class EventRepository(BaseRepository[Event, dict, dict]):
             .options(selectinload(Event.files), selectinload(Event.attendance))
         )
         result = await self.db.execute(stmt)
-        return list(result.scalars().all())
+        objs = result.scalars().all()
+        return [self._to_dto(obj) for obj in objs]
 
     async def get_event_file_urls(self, event_id: uuid.UUID | int | str) -> list[str]:
         """Get all file URLs associated with an event."""

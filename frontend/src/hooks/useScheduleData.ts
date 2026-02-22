@@ -1,11 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
-import dayjs from "dayjs"
-import isoWeek from "dayjs/plugin/isoWeek"
 import api from "@/api/client"
-
-dayjs.extend(isoWeek)
 import { useAuth } from "@/contexts/AuthContext"
 import {
   type Lesson,
@@ -41,16 +37,16 @@ export function useScheduleData() {
   const { t } = useTranslation(["schedule", "common"])
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null)
   const [currentParity, setCurrentParity] = useState<"odd" | "even">("odd")
-  const [nowTick, setNowTick] = useState(dayjs())
+  const [nowTick, setNowTick] = useState(new Date())
 
   // Update time ticker
   // Update time ticker
   useEffect(() => {
-    const id = setInterval(() => setNowTick(dayjs()), TICKER_INTERVAL_MS)
+    const id = setInterval(() => setNowTick(new Date()), TICKER_INTERVAL_MS)
     return () => clearInterval(id)
   }, [])
 
-  const minutesNow = useMemo(() => nowTick.hour() * 60 + nowTick.minute(), [nowTick])
+  const minutesNow = useMemo(() => nowTick.getHours() * 60 + nowTick.getMinutes(), [nowTick])
 
   // ============================================================================
   // CONFIGURATION (Weekdays & Lesson Types)
@@ -518,13 +514,13 @@ export function useScheduleData() {
     let text = ""
     if (currentLesson) {
       const end = parseMinutes(currentLesson.end_time) ?? 0
-      const left = Math.max(0, end - (nowTick.hour() * 60 + nowTick.minute()))
+      const left = Math.max(0, end - (nowTick.getHours() * 60 + nowTick.getMinutes()))
       const h = Math.floor(left / 60)
       const m = left % 60
       text = t("schedule:timeLeft.current", { duration: formatDuration(h, m) })
     } else if (nextLesson) {
       const start = parseMinutes(nextLesson.start_time) ?? 0
-      const left = Math.max(0, start - (nowTick.hour() * 60 + nowTick.minute()))
+      const left = Math.max(0, start - (nowTick.getHours() * 60 + nowTick.getMinutes()))
       const h = Math.floor(left / 60)
       const m = left % 60
       text = t("schedule:timeLeft.next", { duration: formatDuration(h, m) })

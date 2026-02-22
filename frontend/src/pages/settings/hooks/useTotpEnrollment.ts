@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useMemo } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { isAxiosError } from "axios"
-import dayjs from "dayjs"
+import { formatDate } from "@/utils/date"
 
 import { useAuth } from "@/contexts/AuthContext"
 import { currentUserQueryKey, fetchCurrentUser } from "@/hooks/auth/useProfileSync"
@@ -74,9 +74,14 @@ export function useTotpEnrollment({
 
   const formatDateTime = useCallback((value: string | null) => {
     if (!value) return null
-    const parsed = dayjs(value)
-    if (!parsed.isValid()) return null
-    return parsed.format("DD MMM YYYY HH:mm")
+    return formatDate(value, {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })
   }, [])
 
   const refreshUser = useCallback(async () => {

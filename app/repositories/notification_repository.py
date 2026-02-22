@@ -11,6 +11,7 @@ from sqlalchemy import and_, func, select, update
 
 from app.models.notifications import Notification
 from app.repositories.base import BaseRepository
+from app.schemas.dtos.notification import NotificationDTO
 
 if TYPE_CHECKING:
     import uuid
@@ -18,12 +19,16 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 
-class NotificationRepository(BaseRepository[Notification, dict, dict]):
+class NotificationRepository(BaseRepository[Notification, NotificationDTO, dict, dict]):
     """Repository for Notification model operations."""
 
     @property
     def model(self) -> type[Notification]:
         return Notification
+
+    @property
+    def dto_class(self) -> type[NotificationDTO]:
+        return NotificationDTO
 
     async def get_for_user(
         self,
@@ -32,7 +37,7 @@ class NotificationRepository(BaseRepository[Notification, dict, dict]):
         skip: int = 0,
         limit: int = 50,
         unread_only: bool = False,
-    ) -> list[Notification]:
+    ) -> list[NotificationDTO]:
         """Get notifications for a user, ordered by creation date descending."""
         stmt = select(Notification).where(Notification.user_id == user_id)
 
@@ -41,11 +46,11 @@ class NotificationRepository(BaseRepository[Notification, dict, dict]):
 
         stmt = stmt.order_by(Notification.created_at.desc()).offset(skip).limit(limit)
         result = await self.db.execute(stmt)
-        return list(result.scalars().all())
+        return [self._to_dto(row) for row in result.scalars().all()]
 
     async def get_unread_for_user(
         self, user_id: uuid.UUID | str | int, *, limit: int = 50
-    ) -> list[Notification]:
+    ) -> list[NotificationDTO]:
         """Get unread notifications for a user."""
         return await self.get_for_user(user_id, limit=limit, unread_only=True)
 
@@ -103,7 +108,7 @@ class NotificationRepository(BaseRepository[Notification, dict, dict]):
 
     async def get_by_dedupe_key(
         self, user_id: uuid.UUID | str | int, dedupe_key: str
-    ) -> Notification | None:
+    ) -> NotificationDTO | None:
         """Get notification by deduplication key."""
         result = await self.db.execute(
             select(Notification).where(
@@ -113,7 +118,8 @@ class NotificationRepository(BaseRepository[Notification, dict, dict]):
                 )
             )
         )
-        return result.scalars().first()
+        row = result.scalars().first()
+        return self._to_dto(row) if row else None
 
     async def count_by_type(self, user_id: uuid.UUID | str | int) -> dict[str, int]:
         """Count notifications by type for a user."""

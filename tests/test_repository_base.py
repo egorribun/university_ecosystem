@@ -11,6 +11,7 @@ Uses actual SQLAlchemy models (User) for realistic testing.
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.users import User
@@ -21,20 +22,34 @@ from app.repositories.base import BaseRepository, ReadOnlyRepository
 # ============================================================
 
 
-class UserRepository(BaseRepository[User, dict, dict]):
+class UserDTO(BaseModel):
+    model_config = ConfigDict(from_attributes=True, frozen=True)
+    id: int
+    email: str
+
+
+class UserRepository(BaseRepository[User, UserDTO, dict, dict]):
     """Repository implementation for testing with User model."""
 
     @property
     def model(self):
         return User
 
+    @property
+    def dto_class(self):
+        return UserDTO
 
-class UserReadOnlyRepository(ReadOnlyRepository[User]):
+
+class UserReadOnlyRepository(ReadOnlyRepository[User, UserDTO]):
     """Read-only repository for testing with User model."""
 
     @property
     def model(self):
         return User
+
+    @property
+    def dto_class(self):
+        return UserDTO
 
 
 @pytest.fixture
@@ -72,6 +87,9 @@ async def test_repository_get_found(repository, mock_db):
     mock_user = MagicMock(spec=User)
     mock_user.id = 1
     mock_user.email = "test@example.com"
+    # Ensure it doesn't return mocks for these fields
+    type(mock_user).id = PropertyMock(return_value=1)
+    type(mock_user).email = PropertyMock(return_value="test@example.com")
     mock_result = MagicMock()
     mock_result.scalars.return_value.first.return_value = mock_user
     mock_db.execute.return_value = mock_result
@@ -97,15 +115,14 @@ async def test_repository_get_not_found(repository, mock_db):
 @pytest.mark.asyncio
 async def test_repository_get_or_raise_found(repository, mock_db):
     """Test get_or_raise returns record when found."""
-    mock_user = MagicMock(spec=User)
-    mock_user.id = 1
+    mock_user = User(id=1, email="test@example.com")
     mock_result = MagicMock()
     mock_result.scalars.return_value.first.return_value = mock_user
     mock_db.execute.return_value = mock_result
 
     result = await repository.get_or_raise(1)
 
-    assert result is mock_user
+    assert result.id == 1
 
 
 @pytest.mark.asyncio
@@ -122,7 +139,7 @@ async def test_repository_get_or_raise_not_found(repository, mock_db):
 @pytest.mark.asyncio
 async def test_repository_get_by_ids_returns_records(repository, mock_db):
     """Test get_by_ids returns multiple records."""
-    mock_users = [MagicMock(spec=User), MagicMock(spec=User)]
+    mock_users = [User(id=1, email="u1@e.com"), User(id=2, email="u2@e.com")]
     mock_result = MagicMock()
     mock_result.scalars.return_value.all.return_value = mock_users
     mock_db.execute.return_value = mock_result
@@ -130,6 +147,7 @@ async def test_repository_get_by_ids_returns_records(repository, mock_db):
     result = await repository.get_by_ids([1, 2])
 
     assert len(result) == 2
+    assert result[0].id == 1
 
 
 @pytest.mark.asyncio
@@ -144,7 +162,7 @@ async def test_repository_get_by_ids_empty_list(repository, mock_db):
 @pytest.mark.asyncio
 async def test_repository_list_with_pagination(repository, mock_db):
     """Test list with skip and limit."""
-    mock_users = [MagicMock(spec=User), MagicMock(spec=User)]
+    mock_users = [User(id=1, email="u1@e.com"), User(id=2, email="u2@e.com")]
     mock_result = MagicMock()
     mock_result.scalars.return_value.all.return_value = mock_users
     mock_db.execute.return_value = mock_result

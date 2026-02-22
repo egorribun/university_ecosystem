@@ -30,7 +30,7 @@ async def _login_for_token(async_client, email: str, password: str) -> str:
     if response.status_code == status.HTTP_202_ACCEPTED:
         pytest.fail("Login unexpectedly returned an MFA challenge")
     assert response.status_code == status.HTTP_200_OK, response.text
-    return response.json()["access_token"]
+    return response.cookies.get("access_token_v2")
 
 
 def _get_method_entry(payload: dict, method: str) -> dict:
@@ -320,7 +320,7 @@ async def test_totp_enrollment_and_verification_flow(
     assert success.status_code == status.HTTP_200_OK
     body = success.json()
     assert body["token_type"] == "bearer"
-    assert body["access_token"]
+    assert success.cookies.get("access_token_v2")
     assert body["user"]["id"] == str(user.id)
     session = body.get("session")
     assert session is not None
@@ -596,7 +596,7 @@ async def test_disabling_last_factor_clears_mfa_requirement(
         },
     )
     assert verify.status_code == status.HTTP_200_OK
-    token = verify.json()["access_token"]
+    token = verify.cookies.get("access_token_v2")
     assert token
 
     headers = {"Authorization": f"Bearer {token}"}

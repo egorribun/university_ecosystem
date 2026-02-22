@@ -21,12 +21,10 @@ export const namespaces = [
 export const localeMeta = {
   en: {
     dir: "ltr" as const,
-    dayjsLocale: "en",
     formatterLocale: "en-US",
   },
   ru: {
     dir: "ltr" as const,
-    dayjsLocale: "ru",
     formatterLocale: "ru-RU",
   },
 } as const

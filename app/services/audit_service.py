@@ -10,10 +10,11 @@ from __future__ import annotations
 import hmac
 import json
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime
 from enum import StrEnum
 from hashlib import sha256
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from app.core.config import settings
 from app.core.observability import get_request_id
@@ -25,6 +26,8 @@ if TYPE_CHECKING:
 
     from fastapi import Request
     from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.schemas.dtos import DataAccessLogDTO
 
 logger = logging.getLogger("app.audit")
 
@@ -235,13 +238,16 @@ class AuditService:
 audit_service = AuditService()
 
 
+_F = TypeVar("_F", bound=Callable[..., Any])
+
+
 def auditable(
     event: str | SecurityEvent,
     *,
     user_id_param: str | None = None,
     include_args: bool = False,
     include_result: bool = False,
-) -> Any:
+) -> Callable[[_F], _F]:
     """Decorator to automatically log security audit events.
 
     This decorator simplifies service methods by removing manual audit.log calls.
@@ -250,7 +256,7 @@ def auditable(
     """
     from functools import wraps
 
-    def decorator(func: Any) -> Any:
+    def decorator(func: _F) -> _F:
         @wraps(func)
         async def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
             # We need to find the request object in args/kwargs
@@ -295,7 +301,7 @@ def auditable(
                 # or explicit access denials.
                 raise e
 
-        return wrapper
+        return wrapper  # type: ignore[return-value]
 
     return decorator
 
@@ -333,7 +339,7 @@ class SecureAuditService:
         return [key.encode("utf-8") for key in keys]
 
     def _compute_signature(
-        self, log: DataAccessLog, *, key: bytes | None = None
+        self, log: DataAccessLog | DataAccessLogDTO, *, key: bytes | None = None
     ) -> str:
         """Compute HMAC signature for an audit log entry."""
         data_parts = [
@@ -354,7 +360,7 @@ class SecureAuditService:
         signing_key = key or self._primary_key
         return hmac.new(signing_key, data.encode("utf-8"), sha256).hexdigest()
 
-    def _find_valid_key(self, log: DataAccessLog) -> bytes | None:
+    def _find_valid_key(self, log: DataAccessLog | DataAccessLogDTO) -> bytes | None:
         """Return the signing key that matches the stored signature, if any."""
         if not log.signature:
             return None
@@ -376,7 +382,7 @@ class SecureAuditService:
         context: dict[str, Any] | None = None,
         ip_address: str | None = None,
         user_agent: str | None = None,
-    ) -> DataAccessLog:
+    ) -> DataAccessLogDTO:
         """Create a signed audit log entry."""
         repo = AuditRepository(db)
         log = await repo.create(
@@ -391,15 +397,18 @@ class SecureAuditService:
                 "user_agent": user_agent,
             }
         )
-        log.signature = self._compute_signature(log)  # type: ignore[assignment]
+        signature = self._compute_signature(log)
+        # Update with calculated signature
+        log = log.model_copy(update={"signature": signature})
+
         await db.flush()
         return log
 
-    def verify_integrity(self, log: DataAccessLog) -> bool:
+    def verify_integrity(self, log: DataAccessLog | DataAccessLogDTO) -> bool:
         """Verify the integrity of an audit log entry."""
         return self._find_valid_key(log) is not None
 
-    def resign_log(self, log: DataAccessLog) -> bool:
+    def resign_log(self, log: DataAccessLog | DataAccessLogDTO) -> bool:
         """
         Re-sign an audit log entry with the primary key if needed.
 
@@ -409,14 +418,16 @@ class SecureAuditService:
         if valid_key is None:
             return False
         primary_signature = self._compute_signature(log, key=self._primary_key)
-        if log.signature == primary_signature:
+        if not isinstance(log, DataAccessLog):
+            # Cannot re-sign a frozen DTO in-place, caller should handle
             return False
+
         log.signature = primary_signature  # type: ignore[assignment]
         return True
 
     async def verify_batch(
         self, db: AsyncSession, *, limit: int = 1000
-    ) -> tuple[int, int, list[int]]:
+    ) -> tuple[int, int, list[UUID]]:
         """Verify integrity of a batch of audit logs."""
         repo = AuditRepository(db)
         logs = await repo.list_logs(limit=limit)

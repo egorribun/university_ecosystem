@@ -11,6 +11,7 @@ from sqlalchemy import and_, delete, func, select, update
 
 from app.models.auth import ActiveSession
 from app.repositories.base import BaseRepository
+from app.schemas.dtos.session import ActiveSessionDTO
 
 if TYPE_CHECKING:
     import uuid
@@ -18,23 +19,28 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 
-class SessionRepository(BaseRepository[ActiveSession, dict, dict]):
+class SessionRepository(BaseRepository[ActiveSession, ActiveSessionDTO, dict, dict]):
     """Repository for ActiveSession model operations."""
 
     @property
     def model(self) -> type[ActiveSession]:
         return ActiveSession
 
-    async def get_by_jti(self, jti: str) -> ActiveSession | None:
+    @property
+    def dto_class(self) -> type[ActiveSessionDTO]:
+        return ActiveSessionDTO
+
+    async def get_by_jti(self, jti: str) -> ActiveSessionDTO | None:
         """Get session by JTI (JWT ID)."""
         result = await self.db.execute(
             select(ActiveSession).where(ActiveSession.jti == jti)
         )
-        return result.scalars().first()
+        row = result.scalars().first()
+        return self._to_dto(row) if row else None
 
     async def get_active_for_user(
         self, user_id: uuid.UUID | str | int, *, skip: int = 0, limit: int = 50
-    ) -> list[ActiveSession]:
+    ) -> list[ActiveSessionDTO]:
         """Get active sessions for a user, ordered by last_seen_at descending."""
         result = await self.db.execute(
             select(ActiveSession)
@@ -48,7 +54,7 @@ class SessionRepository(BaseRepository[ActiveSession, dict, dict]):
             .offset(skip)
             .limit(limit)
         )
-        return list(result.scalars().all())
+        return [self._to_dto(row) for row in result.scalars().all()]
 
     async def count_active_for_user(self, user_id: uuid.UUID | str | int) -> int:
         """Count active sessions for a user."""

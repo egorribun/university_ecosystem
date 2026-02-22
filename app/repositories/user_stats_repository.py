@@ -9,14 +9,20 @@ from sqlalchemy.orm import aliased
 
 from app.models import models
 from app.repositories.base import ReadOnlyRepository
+from app.schemas.dtos import UserDTO
+from app.schemas.dtos.analytics import ParticipationStatsDTO
 
 
-class UserStatsRepository(ReadOnlyRepository[models.User]):
+class UserStatsRepository(ReadOnlyRepository[models.User, UserDTO]):
     """Repository for User Statistics and Analytics."""
 
     @property
     def model(self) -> type[models.User]:
         return models.User
+
+    @property
+    def dto_class(self) -> type[UserDTO]:
+        return UserDTO
 
     async def get_attendance_stats_raw(
         self,
@@ -171,7 +177,7 @@ class UserStatsRepository(ReadOnlyRepository[models.User]):
         user_id: uuid.UUID | str,
         window_start: datetime,
         now: datetime,
-    ) -> Sequence[Any]:
+    ) -> list[ParticipationStatsDTO]:
         """
         Fetch raw participation data: count, hours, and distinct groups.
         """
@@ -196,7 +202,16 @@ class UserStatsRepository(ReadOnlyRepository[models.User]):
             .order_by(models.Event.starts_at.desc())
         )
         result = await self.db.execute(stmt)
-        return result.all()
+        return [
+            ParticipationStatsDTO(
+                event_id=row.id,
+                title=row.title,
+                event_type=row.event_type,
+                starts_at=row.starts_at,
+                ends_at=row.ends_at,
+            )
+            for row in result.all()
+        ]
 
 
 def get_user_stats_repository(db: AsyncSession) -> UserStatsRepository:

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { useTranslation } from "react-i18next"
-import dayjs from "dayjs"
+import { formatDate, presets } from "@/utils/date"
 import {
   ChevronDown,
   ChevronUp,
@@ -55,10 +55,10 @@ function Row({ log }: { log: AuditLog }) {
         <td className="px-4 py-4">
           <div className="flex flex-col">
             <span className="text-sm font-bold text-text-primary">
-              {dayjs(log.created_at).format("MMM D")}
+              {formatDate(log.created_at, presets.auditDate)}
             </span>
             <span className="text-xs text-(--text-secondary) opacity-strong">
-              {dayjs(log.created_at).format("HH:mm:ss")}
+              {formatDate(log.created_at, presets.auditTime)}
             </span>
           </div>
         </td>

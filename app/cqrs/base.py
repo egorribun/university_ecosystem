@@ -11,7 +11,7 @@ class Query:
     pass
 
 
-class QueryHandler(Generic[TQuery, TResult], ABC):
+class QueryHandler(ABC, Generic[TQuery, TResult]):
     """Base class for all query handlers."""
 
     @abstractmethod

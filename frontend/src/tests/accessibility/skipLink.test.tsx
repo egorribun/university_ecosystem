@@ -6,7 +6,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { renderWithA11y } from "../axeTest"
 import { AuthContext } from "@/contexts/AuthContext"
 import { LanguageProvider } from "@/contexts/LanguageContext"
-import type { User } from "@/types/User"
 import Dashboard from "@/pages/Dashboard"
 import Profile from "@/pages/Profile"
 import Login from "@/pages/Login"
@@ -40,39 +39,12 @@ vi.mock("@/components/WeatherWidget", () => ({
 
 type AuthContextValue = ContextType<typeof AuthContext>
 
-const baseUser: User = {
-  id: "0194d2e7-9b84-7f04-b2ff-c087ea96a257",
-  email: "student@example.com",
-  full_name: "Test User",
-  role: "student",
-  group_id: "0194d2e7-9b84-7f04-b2ff-c087ea96a258",
-  avatar_url: null,
-  avatar_url_optimized: null,
-  cover_url: null,
-  cover_url_optimized: null,
-    profile_detail: undefined,
-    education_path: undefined,
-    preferences: undefined,
-    spotify_connected: false,
-  is_active: true,
-  mfa_required: false,
-  mfa_default_method: null,
-  mfa_last_verified_at: null,
-  recovery_codes_left: 0,
-  totp_enrollments: [],
-  mfa_challenges: [],
-}
-
 const baseAuthValue: AuthContextValue = {
-  isAuth: true,
   login: vi.fn(),
   loginWithPasskey: vi.fn(),
   logout: vi.fn(),
-  user: baseUser,
-  loading: false,
   setUser: vi.fn(),
   refresh: vi.fn(),
-  pendingMfa: null,
   submitMfaChallenge: vi.fn(),
   requireMfa: vi.fn(),
   resetEtagCache: vi.fn(),
@@ -80,8 +52,6 @@ const baseAuthValue: AuthContextValue = {
 
 const unauthenticatedAuthValue: AuthContextValue = {
   ...baseAuthValue,
-  isAuth: false,
-  user: null,
 }
 
 type RouteTestCase = {

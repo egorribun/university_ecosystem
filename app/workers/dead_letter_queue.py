@@ -14,7 +14,7 @@ import hashlib
 import json
 import logging
 from datetime import UTC, datetime, timedelta
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
@@ -37,7 +37,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class JobStatus(str, Enum):
+class JobStatus(StrEnum):
     """Status of a job in the dead letter queue."""
 
     PENDING = "pending"

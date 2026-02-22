@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import async_session
 from app.models.models import DataAccessLog
 from app.repositories.audit_repository import AuditRepository
+from app.schemas.dtos.audit import DataAccessLogDTO
 
 
 def _normalize_time(value: datetime | None) -> datetime | None:
@@ -32,15 +33,15 @@ async def log_data_access(
     resource_id: str | None = None,
     context: dict | None = None,
     commit: bool = True,
-) -> DataAccessLog:
+) -> DataAccessLogDTO:
     created_at = datetime.now(UTC)
 
     # Calculate signature
     from app.utils.audit import calculate_log_signature
 
     signature = calculate_log_signature(
-        actor_user_id=actor_user_id,  # type: ignore[arg-type]
-        subject_user_id=subject_user_id,  # type: ignore[arg-type]
+        actor_user_id=actor_user_id,
+        subject_user_id=subject_user_id,
         resource_type=resource_type,
         resource_id=resource_id,
         action=action,
@@ -67,7 +68,6 @@ async def log_data_access(
     )
     if commit:
         await db.commit()
-        await db.refresh(log_entry)
     return log_entry
 
 
@@ -154,7 +154,7 @@ async def export_access_logs(
     limit: int = 10_000,
     actor_user_id: int | None = None,
     subject_user_id: int | None = None,
-) -> Iterable[DataAccessLog]:
+) -> Iterable[DataAccessLogDTO]:
     start = _normalize_time(start_at)
     end = _normalize_time(end_at)
     stmt = select(DataAccessLog).order_by(DataAccessLog.created_at.desc()).limit(limit)
@@ -167,10 +167,12 @@ async def export_access_logs(
     if subject_user_id is not None:
         stmt = stmt.where(DataAccessLog.subject_user_id == subject_user_id)
     result = await db.execute(stmt)
-    return result.scalars().all()
+
+    repo = AuditRepository(db)
+    return [repo._to_dto(row) for row in result.scalars().all()]
 
 
-def serialize_access_logs_csv(entries: Iterable[DataAccessLog]) -> str:
+def serialize_access_logs_csv(entries: Iterable[DataAccessLogDTO]) -> str:
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     writer.writerow(

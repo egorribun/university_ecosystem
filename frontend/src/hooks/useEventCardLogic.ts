@@ -1,10 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
-import dayjs from "dayjs"
-import utc from "dayjs/plugin/utc"
-import timezone from "dayjs/plugin/timezone"
-import relativeTime from "dayjs/plugin/relativeTime"
+import { formatRelativeTime, toDate } from "@/utils/date"
 
 import api from "@/api/client"
 import { useAuth } from "@/contexts/AuthContext"
@@ -12,9 +9,7 @@ import { useEventRegistration } from "@/hooks/useEventRegistration"
 import { useSpotlight } from "@/components/ui/Spotlight"
 import type { Event, EventEditDraft } from "@/types/Event"
 
-dayjs.extend(utc)
-dayjs.extend(timezone)
-dayjs.extend(relativeTime)
+// dayjs extensions removed
 
 const normalizeDate = (d?: string) => (d ? d.replace("T", " ").replace("Z", "") : "")
 
@@ -91,20 +86,22 @@ export function useEventCardLogic({
 
   // -- Computed Properties --
   const timeStatus = useMemo(() => {
-    const now = dayjs()
-    const start = dayjs(normalizeDate(starts_at).replace(" ", "T"))
-    const end = dayjs(normalizeDate(ends_at).replace(" ", "T"))
+    const now = new Date()
+    const start = toDate(normalizeDate(starts_at).replace(" ", "T"))
+    const end = toDate(normalizeDate(ends_at).replace(" ", "T"))
 
-    if (now.isAfter(start) && now.isBefore(end)) return { status: "live" as const }
-    if (now.isBefore(start) && start.diff(now, "hour") < 24) {
-      return { status: "soon" as const, timeText: start.fromNow(true) }
+    if (now > start && now < end) return { status: "live" as const }
+
+    const diffMs = start.getTime() - now.getTime()
+    if (diffMs > 0 && diffMs < 24 * 60 * 60 * 1000) {
+      return { status: "soon" as const, timeText: formatRelativeTime(start, "en-US") }
     }
     return { status: "none" as const }
   }, [starts_at, ends_at])
 
   const eventEnded = useMemo(() => {
-    const end = dayjs(normalizeDate(ends_at).replace(" ", "T"))
-    return end.isValid() && end.isBefore(dayjs())
+    const end = toDate(normalizeDate(ends_at).replace(" ", "T"))
+    return !isNaN(end.getTime()) && end < new Date()
   }, [ends_at])
 
   const cardImageUrl = useMemo(() => previewUrl || image_url || undefined, [image_url, previewUrl])

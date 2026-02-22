@@ -2,7 +2,7 @@ import SmartImage from "@/components/SmartImage"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { cn } from "@/utils/cn"
 import { getMoscowDate } from "@/utils/date"
-import dayjs from "dayjs"
+// dayjs removed
 import { Cloud, FileText as ArticleIcon } from "lucide-react"
 import { memo, useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -27,7 +27,7 @@ const NewsCardHero = ({ image_url, title, created_at }: NewsCardHeroProps) => {
   const handleCardImageReady = useCallback(() => setCardImageReady(true), [])
 
   const createdAtIso = useMemo(
-    () => (created_at ? dayjs(created_at).toISOString() : ""),
+    () => (created_at ? new Date(created_at).toISOString() : ""),
     [created_at]
   )
   const createdAtLabel = useMemo(() => (created_at ? getMoscowDate(created_at) : ""), [created_at])

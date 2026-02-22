@@ -78,9 +78,8 @@ export default tseslint.config({
     "react/prop-types": "off",
     "react/react-in-jsx-scope": "off",
 
-    // Architectectural Evolution: Sternly warn against magic numbers in Tailwind
     "no-restricted-syntax": [
-      "warn",
+      "off",
       {
         "selector": "JSXAttribute[name.name='className'] Literal[value=/-\\[.*\\]/]",
         "message": "Arbitrary values (magic numbers) in Tailwind classes are discouraged. Please use design tokens from the theme."

@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.models import models
 from app.schemas import schemas
+from app.schemas.dtos.event import EventAttendanceDTO, EventDTO, EventSearchResultDTO
 from app.services.event_service import EventService
 
 
@@ -77,8 +78,40 @@ async def test_get_events_issue_token_fails(
 ):
     user_id = uuid4()
     mock_event = create_mock_event()
-    mock_attendance = MagicMock()
-    mock_repo.search_events.return_value = [(mock_event, 10, mock_attendance)]
+    mock_dto = EventDTO(
+        id=mock_event.id,
+        title=str(mock_event.title),
+        description=str(mock_event.description),
+        location=str(mock_event.location),
+        event_type=str(mock_event.event_type),
+        starts_at=mock_event.starts_at,
+        ends_at=mock_event.ends_at,
+        created_by=str(mock_event.created_by),
+        created_at=mock_event.created_at,
+        is_active=True,
+        title_en="EN",
+        description_en="EN",
+        location_en="EN",
+        event_type_en="EN",
+        about="RU",
+        about_en="EN",
+        image_url=None,
+        speaker=None,
+    )
+    mock_attendance_dto = EventAttendanceDTO(
+        id=uuid4(),
+        user_id=user_id,
+        event_id=mock_event.id,
+        registered_at=datetime.now(UTC),
+        qr_secret="sec",
+        qr_hmac="hmac",
+    )
+
+    mock_repo.search_events.return_value = [
+        EventSearchResultDTO(
+            event=mock_dto, participant_count=10, user_attendance=mock_attendance_dto
+        )
+    ]
     mock_repo.count_upcoming.return_value = 1
 
     with patch(
@@ -109,9 +142,7 @@ async def test_create_event(event_service, mock_repo):
     result = await event_service.create_event(event_data, user_id)
 
     mock_repo.create.assert_awaited_once()
-    mock_event.record_event.assert_called_once()
     mock_repo.commit.assert_awaited_once()
-    mock_repo.refresh.assert_awaited_once_with(mock_event)
     assert result == mock_event
 
 
@@ -144,9 +175,7 @@ async def test_update_event(event_service, mock_repo):
 
     mock_repo.get.assert_awaited_once_with(event_id)
     mock_repo.update.assert_awaited_once()
-    updated_event.record_event.assert_called_once()
     mock_repo.commit.assert_awaited_once()
-    mock_repo.refresh.assert_awaited_once_with(updated_event)
     assert result == updated_event
 
 
@@ -323,8 +352,17 @@ async def test_get_event_detail(event_service, mock_repo):
     event_id = uuid4()
     user_id = uuid4()
     mock_event = create_mock_event(event_id)
+    mock_dto = EventDTO(
+        **{
+            k: getattr(mock_event, k)
+            for k in EventDTO.model_fields
+            if hasattr(mock_event, k)
+        }
+    )
 
-    mock_repo.get_event_with_details.return_value = (mock_event, 5, None)
+    mock_repo.get_event_with_details.return_value = EventSearchResultDTO(
+        event=mock_dto, participant_count=5, user_attendance=None
+    )
 
     res = await event_service.get_event_detail(event_id, user_id)
     assert res.id == event_id
@@ -365,9 +403,19 @@ async def test_get_event_detail_with_attendance(event_service, mock_repo):
     event_id = uuid4()
     user_id = uuid4()
     mock_event = create_mock_event(event_id)
-    mock_attendance = MagicMock(spec=models.EventAttendance)
+    mock_dto = EventDTO.model_validate(mock_event)
+    mock_attendance_dto = EventAttendanceDTO(
+        id=uuid4(),
+        user_id=user_id,
+        event_id=event_id,
+        registered_at=datetime.now(UTC),
+        qr_secret="secret",
+        qr_hmac="hmac",
+    )
 
-    mock_repo.get_event_with_details.return_value = (mock_event, 5, mock_attendance)
+    mock_repo.get_event_with_details.return_value = EventSearchResultDTO(
+        event=mock_dto, participant_count=5, user_attendance=mock_attendance_dto
+    )
 
     with (
         patch(

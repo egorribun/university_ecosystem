@@ -117,6 +117,12 @@ async def lifespan(app: FastAPI):
     await setup_periodic_cleanups()
 
     if settings.partition_management_enabled:
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.info(
+            "Synchronously warming up PostgreSQL partitions to prevent cold start failures..."
+        )
         await ensure_partitions_exist()
         stop_partitions = await start_partition_management_scheduler(
             settings.partition_management_interval_seconds

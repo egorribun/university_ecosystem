@@ -192,7 +192,7 @@ async def test_login_migrates_legacy_hash(async_client, user_factory, db_session
     assert response.status_code == 200
     body = response.json()
     assert body["token_type"] == "bearer"
-    assert body["access_token"]
+    assert response.cookies.get("access_token_v2")
     assert body["user"]["id"] == str(user.id)
     session = body.get("session")
     assert session is not None
@@ -232,7 +232,7 @@ async def test_create_user_forbidden_for_non_admin(async_client, user_factory):
     )
 
     assert login_response.status_code == status.HTTP_200_OK
-    token = login_response.json()["access_token"]
+    token = login_response.cookies.get("access_token_v2")
 
     payload = {
         "email": "new-student@example.com",
@@ -272,7 +272,7 @@ async def test_create_user_allows_admin(async_client, user_factory):
     )
 
     assert login_response.status_code == status.HTTP_200_OK
-    token = login_response.json()["access_token"]
+    token = login_response.cookies.get("access_token_v2")
 
     payload = {
         "email": "created-by-admin@example.com",
@@ -333,7 +333,7 @@ async def test_login_accepts_mixed_case_username(async_client, user_factory):
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
     assert body["token_type"] == "bearer"
-    assert body["access_token"]
+    assert response.cookies.get("access_token_v2")
     assert body["user"]["id"] == str(user.id)
     session = body.get("session")
     assert session is not None
@@ -381,7 +381,7 @@ async def test_admin_update_normalizes_email(async_client, user_factory, db_sess
     )
 
     assert login_response.status_code == status.HTTP_200_OK
-    token = login_response.json()["access_token"]
+    token = login_response.cookies.get("access_token_v2")
 
     target_user = await user_factory()
     mixed_case_email = f"Updated{uuid.uuid4().hex[:6]}@Example.COM"

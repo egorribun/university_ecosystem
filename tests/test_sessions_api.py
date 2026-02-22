@@ -39,7 +39,7 @@ async def _login(
             "Login returned an MFA challenge; this helper expects a non-MFA user"
         )
     assert response.status_code == 200
-    token = response.json()["access_token"]
+    token = response.cookies.get("access_token_v2")
     return {"Authorization": f"Bearer {token}", "User-Agent": user_agent}
 
 

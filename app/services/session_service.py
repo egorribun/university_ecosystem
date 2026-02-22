@@ -12,8 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.redis_session import get_session_backend
 from app.core.config import settings
-from app.models.models import ActiveSession
 from app.repositories.active_session_repository import ActiveSessionRepository
+from app.schemas.dtos import ActiveSessionDTO
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ class SessionService:
         metadata: dict[str, Any] | None = None,
         bg_tasks: BackgroundTasks | None = None,
         extra_claims: dict[str, Any] | None = None,
-    ) -> tuple[str, ActiveSession]:
+    ) -> tuple[str, ActiveSessionDTO]:
         """
         Create a new session and mint a JWT.
 
@@ -121,10 +121,27 @@ class SessionService:
                 "created_at": now,
                 "last_seen_at": now,
             }
-            session = await self.repo.create(session_data)
 
+            # Merge metadata into session_data to avoid mutating frozen DTO
             if metadata:
-                self._apply_metadata(session, metadata)
+                fields = [
+                    "ip_address",
+                    "user_agent",
+                    "accept_language",
+                    "fingerprint_hash",
+                    "mfa_method",
+                ]
+                for key in fields:
+                    if val := metadata.get(key):
+                        session_data[key] = str(val)
+
+                session_data["mfa_required"] = bool(metadata.get("mfa_required", False))
+                if val := metadata.get("mfa_completed_at"):
+                    session_data["mfa_completed_at"] = val
+                if val := metadata.get("mfa_verified_at"):
+                    session_data["mfa_verified_at"] = val
+
+            session = await self.repo.create(session_data)
 
             # 3. Enforce concurrent session limit
             await self._enforce_concurrent_limit(user_id, jti, now)
@@ -134,7 +151,6 @@ class SessionService:
             if lock_acquired and redis_lock:
                 with contextlib.suppress(Exception):
                     await redis_lock.release()
-        await self.repo.refresh(session)
 
         # 4. Mint JWT
         token = self._mint_jwt(user_id, jti, now, expires_at, extra_claims)
@@ -154,26 +170,6 @@ class SessionService:
                 "Subject (sub) must be a valid UUID for session persistence"
             )
 
-    def _apply_metadata(self, session: ActiveSession, metadata: dict[str, Any]) -> None:
-        # PII-safe mapping for session tracking
-        fields = {
-            "ip_address": 64,
-            "user_agent": 512,
-            "accept_language": 256,
-            "fingerprint_hash": 64,
-            "mfa_method": 64,
-        }
-        for key, length in fields.items():
-            if val := metadata.get(key):
-                setattr(session, key, str(val)[:length])
-
-        # Boolean and Datetime flags
-        session.mfa_required = bool(metadata.get("mfa_required", False))  # type: ignore[assignment]
-        if val := metadata.get("mfa_completed_at"):
-            session.mfa_completed_at = val
-        if val := metadata.get("mfa_verified_at"):
-            session.mfa_verified_at = val
-
     async def _enforce_concurrent_limit(
         self, user_id: UUID, current_jti: str, now: datetime
     ) -> None:
@@ -191,7 +187,7 @@ class SessionService:
 
             backend = await get_session_backend()
             for s in old_sessions:
-                s.revoked_at = now  # type: ignore[assignment]
+                await self.repo.revoke_by_id(s.id, now)
                 try:
                     await backend.revoke_session(str(s.jti))
                 except Exception:
@@ -226,7 +222,7 @@ class SessionService:
 
     async def _sync_to_redis(
         self,
-        session: ActiveSession,
+        session: ActiveSessionDTO,
         user_id: UUID,
         jti: str,
         expires_at: datetime,
@@ -236,6 +232,6 @@ class SessionService:
         # For better SRP, this could be moved here too.
         args = (user_id, jti, expires_at, session.ip_address, session.user_agent)
         if bg_tasks:
-            bg_tasks.add_task(register_session_bg, *args)  # type: ignore[arg-type]
+            bg_tasks.add_task(register_session_bg, *args)
         else:
-            await register_session_bg(*args)  # type: ignore[arg-type]
+            await register_session_bg(*args)

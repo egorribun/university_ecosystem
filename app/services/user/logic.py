@@ -51,8 +51,7 @@ def update_user_attributes(user: models.User, data: dict) -> None:
         elif field in education_fields:
             if not user.education_path:
                 user.education_path = models.EducationPath(user_id=user.id)
-            for k, v in value.items():
-                setattr(user.education_path, k, v)
+            setattr(user.education_path, field, value)
         else:
             setattr(user, field, value)
 
@@ -88,12 +87,12 @@ async def anonymize_user_data(user: models.User) -> str:
             user_id=user.id, full_name="Deleted User", status="deleted"
         )
 
-    user.email = anonymized_email  # type: ignore[assignment]
-    user.hashed_password = ANONYMIZED_USER_CREDENTIAL  # type: ignore[assignment]
-    user.is_active = False  # type: ignore[assignment]
-    user.mfa_required = False  # type: ignore[assignment]
-    user.mfa_default_method = None  # type: ignore[assignment]
-    user.mfa_last_verified_at = None  # type: ignore[assignment]
+    user.email = anonymized_email
+    user.hashed_password = ANONYMIZED_USER_CREDENTIAL
+    user.is_active = False
+    user.mfa_required = False
+    user.mfa_default_method = None
+    user.mfa_last_verified_at = None
 
     # Clear nested relationships
     if user.profile:

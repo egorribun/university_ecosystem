@@ -12,6 +12,7 @@ from starlette.datastructures import Headers
 from app.auth.security import get_password_hash
 from app.core.config import settings
 from app.models import models
+from app.repositories.user_repository import UserRepository
 from app.services.audit_service import AuditService
 from app.services.user_service import UserService
 from app.utils.files import delete_static_file
@@ -32,7 +33,7 @@ async def _login(
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
     assert response.status_code == 200
-    token = response.json()["access_token"]
+    token = response.cookies.get("access_token_v2")
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -58,7 +59,9 @@ async def test_update_profile_email_normalizes(async_client, user_factory, db_se
     body = response.json()
     assert body["email"] == "new.email@example.com"
 
-    await db_session.refresh(user)
+    user_id = user.id
+    db_session.expire_all()
+    user = await UserRepository(db_session).get(user_id)
     assert user.email == "new.email@example.com"
 
 
@@ -87,7 +90,9 @@ async def test_update_profile_email_duplicate(async_client, user_factory, db_ses
     assert "Запись уже существует" in response.json()["detail"]
     assert "existing@example.com" in response.json()["detail"]
 
-    await db_session.refresh(user)
+    user_id = user.id
+    db_session.expire_all()
+    user = await UserRepository(db_session).get(user_id)
     assert user.email == "first-user@example.com"
 
 
@@ -128,7 +133,7 @@ async def test_email_change_requires_confirmation(
     assert body["email"] == "change-me@example.com"
     assert body.get("pending_email") == "new.confirm@example.com"
 
-    await db_session.refresh(user)
+    user = await UserRepository(db_session).get(user.id)
     assert user.email == "change-me@example.com"
 
     result = await db_session.execute(
@@ -158,7 +163,9 @@ async def test_email_change_requires_confirmation(
     assert confirmed["email"] == "new.confirm@example.com"
     assert confirmed.get("pending_email") is None
 
-    await db_session.refresh(user)
+    user_id = user.id
+    db_session.expire_all()
+    user = await UserRepository(db_session).get(user_id)
     assert user.email == "new.confirm@example.com"
 
     final = await db_session.execute(
@@ -195,7 +202,9 @@ async def test_update_profile_timezone_persisted(
     body = response.json()
     assert body["timezone"] == "Europe/Paris"
 
-    await db_session.refresh(user)
+    user_id = user.id
+    db_session.expire_all()
+    user = await UserRepository(db_session).get(user_id)
     assert user.preferences.timezone == "Europe/Paris"
 
 
@@ -246,7 +255,9 @@ async def test_delete_avatar_removes_file(async_client, user_factory, db_session
     assert body["avatar_url"] is None
     assert not avatar_path.exists()
 
-    await db_session.refresh(user)
+    user_id = user.id
+    db_session.expire_all()
+    user = await UserRepository(db_session).get(user_id)
     assert user.profile.avatar_url is None
 
 
@@ -278,7 +289,9 @@ async def test_delete_avatar_ignores_invalid_path(
         assert body["avatar_url"] is None
         assert sentinel_path.exists()
 
-        await db_session.refresh(user)
+        user_id = user.id
+        db_session.expire_all()
+        user = await UserRepository(db_session).get(user_id)
         assert user.profile.avatar_url is None
     finally:
         sentinel_path.unlink(missing_ok=True)
@@ -306,7 +319,9 @@ async def test_upload_avatar_cleans_up_on_commit_failure(
         delete_calls.append(url)
         await original_delete(url)
 
-    monkeypatch.setattr("app.services.user_service.delete_static_file", tracking_delete)
+    monkeypatch.setattr(
+        "app.services.user.media_service.delete_static_file", tracking_delete
+    )
 
     from unittest.mock import AsyncMock
 
@@ -351,7 +366,9 @@ async def test_upload_cover_cleans_up_on_commit_failure(
         delete_calls.append(url)
         await original_delete(url)
 
-    monkeypatch.setattr("app.services.user_service.delete_static_file", tracking_delete)
+    monkeypatch.setattr(
+        "app.services.user.media_service.delete_static_file", tracking_delete
+    )
 
     from unittest.mock import AsyncMock
 
@@ -398,7 +415,9 @@ async def test_delete_cover_removes_file(async_client, user_factory, db_session)
     assert body["cover_url"] is None
     assert not cover_path.exists()
 
-    await db_session.refresh(user)
+    user_id = user.id
+    db_session.expire_all()
+    user = await UserRepository(db_session).get(user_id)
     assert user.profile.cover_url is None
 
 
@@ -430,7 +449,9 @@ async def test_delete_cover_ignores_invalid_path(
         assert body["cover_url"] is None
         assert sentinel_path.exists()
 
-        await db_session.refresh(user)
+        user_id = user.id
+        db_session.expire_all()
+        user = await UserRepository(db_session).get(user_id)
         assert user.profile.cover_url is None
     finally:
         sentinel_path.unlink(missing_ok=True)

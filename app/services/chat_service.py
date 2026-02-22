@@ -24,7 +24,7 @@ from app.api.websocket import (
 )
 from app.core.config import settings
 from app.core.exceptions import BusinessRuleViolation
-from app.models.chat import Attachment, Chat, Message
+from app.models.chat import Attachment, Message
 from app.models.models import User
 from app.repositories.chat_repository import ChatRepository
 from app.schemas.chat import (
@@ -35,6 +35,7 @@ from app.schemas.chat import (
     MessagesListOut,
     PresenceStatus,
 )
+from app.schemas.dtos.chat import ChatDTO
 from app.services.notifications import create_notifications_for_users
 from app.utils.files import delete_static_file, save_attachment
 
@@ -49,7 +50,7 @@ class ChatService:
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def _collect_attachment_urls(self, chat: Chat) -> list[str]:
+    async def _collect_attachment_urls(self, chat: ChatDTO) -> list[str]:
         # Helper that assumes chat.messages are loaded
         urls: list[str] = []
         for message in chat.messages:
@@ -147,9 +148,7 @@ class ChatService:
                 )
             )
 
-        presence_map = await build_presence_map(
-            participant_ids, session=self.repository.session
-        )
+        presence_map = await build_presence_map(participant_ids, session=self.session)
 
         # Enrich with presence
         enriched_chats = []
@@ -170,9 +169,9 @@ class ChatService:
                 )
 
             participant_status = {}
-            for participant in chat_resp.participants:
-                participant_status[participant.id] = presence_map.get(
-                    participant.id, PresenceStatus()
+            for p_item in chat_resp.participants:
+                participant_status[p_item.id] = presence_map.get(
+                    p_item.id, PresenceStatus()
                 )
 
             enriched_chats.append(
@@ -222,7 +221,7 @@ class ChatService:
         if not user.id or not participant_id:
             raise BusinessRuleViolation("errors.chat.invalid_participants")
 
-        min_id, max_id = sorted([user.id.int, participant_id.int])
+        min_id, max_id = sorted([user.id, participant_id])
         lock_name = f"chat_init:{min_id}:{max_id}"
 
         async with redis_client.lock(lock_name, timeout=5):
@@ -252,7 +251,7 @@ class ChatService:
         await invalidate_presence_audience_cache(*participant_ids)
 
         presence_map = await build_presence_map(
-            [p.id for p in new_chat.participants], session=self.repository.session
+            [p.id for p in new_chat.participants], session=self.session
         )
 
         return ChatResponse(
@@ -294,7 +293,7 @@ class ChatService:
         last_message = await self.repository.get_last_message(chat_id)
 
         presence_map = await build_presence_map(
-            [p.id for p in chat.participants], session=self.repository.session
+            [p.id for p in chat.participants], session=self.session
         )
         participant_status = {
             p.id: presence_map.get(p.id, PresenceStatus()) for p in chat.participants
@@ -354,7 +353,7 @@ class ChatService:
         messages = list(reversed(messages))
 
         presence_map = await build_presence_map(
-            {msg.sender_id for msg in messages}, session=self.repository.session
+            {msg.sender_id for msg in messages}, session=self.session
         )
 
         response_items = [
@@ -365,7 +364,7 @@ class ChatService:
                 content=msg.content,
                 created_at=msg.created_at,
                 read_status=msg.read_status,
-                sender=msg.sender,
+                sender=None,
                 attachments=msg.attachments,
                 sender_presence=presence_map.get(msg.sender_id),
             )
@@ -437,7 +436,7 @@ class ChatService:
                 )
                 self.repository.add(attachment)
 
-            await self.repository.update_timestamp(chat, datetime.now(UTC))
+            await self.repository.update_timestamp_by_id(chat_id, datetime.now(UTC))
             await self.repository.commit()
         except Exception:
             await self.repository.rollback()
@@ -455,7 +454,7 @@ class ChatService:
             sender_name = (user.profile and user.profile.full_name) or "User"
             body_preview = content[:100] + "..." if len(content) > 100 else content
             await create_notifications_for_users(
-                self.repository.session,
+                self.session,
                 title=sender_name,
                 body=body_preview,
                 type="chat.message",
@@ -471,7 +470,7 @@ class ChatService:
             )
 
         presence_map = await build_presence_map(
-            [message.sender_id], session=self.repository.session
+            [message.sender_id], session=self.session
         )
 
         return MessageResponse(
@@ -536,8 +535,8 @@ class ChatService:
             # or logic
             # Repo has delete_messages(list).
             # chat.messages is available.
-            await self.repository.delete_messages(list(chat.messages))
-            await self.repository.update_timestamp(chat, datetime.now(UTC))
+            await self.repository.delete_messages([m.id for m in chat.messages])
+            await self.repository.update_timestamp_by_id(chat_id, datetime.now(UTC))
             await self.repository.commit()
         except Exception:
             await self.repository.rollback()
@@ -581,7 +580,7 @@ class ChatService:
         participant_ids = [p.id for p in chat.participants]
 
         try:
-            await self.repository.delete_chat(chat)
+            await self.repository.delete_chat(chat_id)
             await self.repository.commit()
 
             # Invalidate caches

@@ -10,6 +10,8 @@ from .models import User
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from app.schemas.dtos import UserAuthDTO, UserDTO
+
 USER_MFA_RELATIONSHIP_NAMES: tuple[str, ...] = (
     "totp_enrollments",
     "mfa_challenges",
@@ -52,16 +54,21 @@ USER_LIST_LOAD_OPTIONS: tuple = (joinedload(User.profile),)
 
 
 async def ensure_mfa_relationships_loaded(
-    db: AsyncSession, user: User | None
-) -> User | None:
+    db: AsyncSession, user: User | UserAuthDTO | UserDTO | None
+) -> User | UserAuthDTO | UserDTO | None:
     """Ensure MFA-related relationships are loaded on the given user instance."""
 
     if user is None:
         return None
 
-    state = inspect(user)
+    try:
+        state = inspect(user)
+    except Exception:
+        # Not a SQLAlchemy model (e.g. DTO), just return as-is
+        return user
+
     if state is None:
-        return user  # type: ignore[unreachable]
+        return user
 
     to_refresh = [
         name for name in USER_MFA_RELATIONSHIP_NAMES if name in state.unloaded

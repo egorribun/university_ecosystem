@@ -1,12 +1,7 @@
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import { QueryClientProvider } from "@tanstack/react-query"
-import dayjs from "dayjs"
-import "dayjs/locale/ru"
-import isoWeek from "dayjs/plugin/isoWeek"
-
-dayjs.extend(isoWeek)
-dayjs.locale("ru")
+// dayjs removed
 
 import App from "./App"
 import ErrorBoundary from "@/components/ErrorBoundary"

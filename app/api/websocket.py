@@ -414,7 +414,7 @@ async def get_user_from_token(token: str) -> tuple[User | None, str | None]:
 
             if active_session.revoked_at is not None:
                 return None, None
-            return user, session_jti  # type: ignore[unreachable]
+            return user, session_jti
     except Exception as e:
         logger.warning(f"Token validation failed: {e}")
         return None, None
@@ -480,7 +480,7 @@ async def _update_last_seen(session_jti: str | None) -> datetime:
         )
         active_session = result.scalars().first()
         if active_session:
-            active_session.last_seen_at = now  # type: ignore[assignment]
+            active_session.last_seen_at = now
             await session.commit()
 
     return now

@@ -20,9 +20,7 @@ import {
 } from "@/components/settings"
 import { useNewsInteraction } from "@/hooks/useNewsInteraction"
 import { useShare } from "@/hooks/useShare"
-import dayjs from "dayjs"
-import utc from "dayjs/plugin/utc"
-import timezone from "dayjs/plugin/timezone"
+import { formatDate, toDate } from "@/utils/date"
 import { deleteNews, fetchNewsItem, updateNews, uploadNewsImage, type NewsItem } from "@/api/news"
 import Layout from "@/components/Layout"
 import { SEO } from "@/components/SEO"
@@ -35,8 +33,7 @@ import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
 import { TIMEOUTS } from "@/config/timeouts"
 
-dayjs.extend(utc)
-dayjs.extend(timezone)
+// dayjs extensions removed
 
 const iconButtonClass =
   "inline-flex h-10 w-10 items-center justify-center rounded-full border border-(--glass-border) bg-(--bg-surface)/(--opacity-hover) text-(--text-secondary) shadow-sm transition hover:bg-(--bg-surface) hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--brand-main)"
@@ -72,9 +69,15 @@ async function fetchNews(id: string): Promise<NewsItem> {
 }
 
 const getMoscowDate = (dateStr: string) => {
-  let parsed = dayjs(dateStr)
-  if (!/([Zz]|[+-]\d\d:?\d\d)$/.test(dateStr)) parsed = dayjs.utc(dateStr)
-  return parsed.tz("Europe/Moscow").format("DD.MM.YYYY HH:mm")
+  return formatDate(dateStr, {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Europe/Moscow",
+  })
 }
 
 export default function NewsDetail() {
@@ -329,7 +332,7 @@ export default function NewsDetail() {
     return localized || english
   }, [language, query.data?.content, query.data?.content_en])
   const createdAt = query.data?.created_at
-  const createdAtIso = useMemo(() => (createdAt ? dayjs(createdAt).toISOString() : ""), [createdAt])
+  const createdAtIso = useMemo(() => (createdAt ? toDate(createdAt).toISOString() : ""), [createdAt])
   const createdAtLabel = useMemo(() => (createdAt ? getMoscowDate(createdAt) : ""), [createdAt])
 
   const readingTimeMinutes = useMemo(() => {
