@@ -176,7 +176,6 @@ class NewsService:
         comment = await self.repo.create_comment(news_id, user_id, content)  # type: ignore[arg-type]
         return NewsCommentDTO.model_validate(comment)
 
-
     async def update_comment(
         self, comment_id: int, user_id: int, content: str
     ) -> NewsCommentDTO:

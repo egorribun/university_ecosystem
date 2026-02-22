@@ -1,11 +1,11 @@
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import pytest
 
 from app.models import models
 from app.schemas import schemas
-from datetime import UTC, datetime
-from uuid import uuid4
 from app.schemas.dtos.news import NewsDTO, NewsListingDTO
 from app.services.news_service import NewsService
 
@@ -48,11 +48,11 @@ async def test_list_news(news_service, mock_repo, mock_vector_service):
                 author_id=uuid4(),
                 title_en=None,
                 content_en=None,
-                image_url=None
+                image_url=None,
             ),
             likes_count=5,
             comments_count=2,
-            is_liked=True
+            is_liked=True,
         )
     ]
 

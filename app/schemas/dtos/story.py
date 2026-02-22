@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict
 class DTOModel(BaseModel):
     model_config = ConfigDict(from_attributes=True, frozen=True)
 
+
 class StoryDTO(DTOModel):
     id: uuid.UUID
     title: str

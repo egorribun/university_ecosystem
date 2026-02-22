@@ -15,6 +15,7 @@ class AttachmentDTO(BaseModel):
     size: int
     created_at: datetime
 
+
 class MessageDTO(BaseModel):
     model_config = ConfigDict(from_attributes=True, frozen=True)
 
@@ -26,6 +27,7 @@ class MessageDTO(BaseModel):
     read_status: bool = False
     attachments: list[AttachmentDTO] = []
 
+
 class ChatParticipantDTO(BaseModel):
     model_config = ConfigDict(from_attributes=True, frozen=True)
     id: uuid.UUID
@@ -33,6 +35,7 @@ class ChatParticipantDTO(BaseModel):
     email: str | None = None
     avatar_url: str | None = None
     is_active: bool = True
+
 
 class ChatDTO(BaseModel):
     model_config = ConfigDict(from_attributes=True, frozen=True)

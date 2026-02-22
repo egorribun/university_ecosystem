@@ -426,10 +426,7 @@ async def update_event(
     files_result = await db.execute(
         select(models.EventFile).where(models.EventFile.event_id == event_dto.id)
     )
-    files = [
-        EventFileDTO.model_validate(f)
-        for f in files_result.scalars().all()
-    ]
+    files = [EventFileDTO.model_validate(f) for f in files_result.scalars().all()]
 
     participant_count_res = await db.execute(
         select(func.count())

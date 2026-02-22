@@ -148,9 +148,7 @@ class ChatService:
                 )
             )
 
-        presence_map = await build_presence_map(
-            participant_ids, session=self.session
-        )
+        presence_map = await build_presence_map(participant_ids, session=self.session)
 
         # Enrich with presence
         enriched_chats = []

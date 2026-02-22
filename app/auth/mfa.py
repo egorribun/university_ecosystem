@@ -956,14 +956,11 @@ async def reset_user_mfa(
     # If not, we might need to fetch it to clear fields if it was mfa_required.
     # But for a full reset, we can also just update by ID.
     from sqlalchemy import update
+
     update_stmt = (
         update(User)
         .where(User.id == target_user_id)
-        .values(
-            mfa_required=False,
-            mfa_default_method=None,
-            mfa_last_verified_at=None
-        )
+        .values(mfa_required=False, mfa_default_method=None, mfa_last_verified_at=None)
     )
     await db.execute(update_stmt)
     stats.fields_cleared = True  # We always clear them now
@@ -995,7 +992,9 @@ async def record_mfa_success(
     now = _utcnow()
     if not isinstance(user, User):
         # DTO path: mfa_last_verified_at is read-only in DTOs
-        updated_user: User | UserAuthDTO | UserDTO = user.model_copy(update={"mfa_last_verified_at": now})
+        updated_user: User | UserAuthDTO | UserDTO = user.model_copy(
+            update={"mfa_last_verified_at": now}
+        )
     else:
         # ORM path
         user.mfa_last_verified_at = now

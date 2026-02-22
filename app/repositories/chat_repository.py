@@ -127,7 +127,9 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict, dict]):
             .where(Message.id.in_(message_ids))
             .options(selectinload(Message.sender), selectinload(Message.attachments))
         )
-        return {msg.id: MessageDTO.model_validate(msg) for msg in result.scalars().all()}
+        return {
+            msg.id: MessageDTO.model_validate(msg) for msg in result.scalars().all()
+        }
 
     async def find_existing_dm(
         self, user1_id: uuid.UUID, user2_id: uuid.UUID
@@ -282,15 +284,13 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict, dict]):
         stmt = delete(Chat).where(Chat.id == chat_id)
         await self.db.execute(stmt)
 
-    async def update_timestamp_by_id(self, chat_id: uuid.UUID, timestamp: datetime) -> None:
+    async def update_timestamp_by_id(
+        self, chat_id: uuid.UUID, timestamp: datetime
+    ) -> None:
         """
         Update the `updated_at` timestamp of a chat by its ID.
         """
-        stmt = (
-            update(Chat)
-            .where(Chat.id == chat_id)
-            .values(updated_at=timestamp)
-        )
+        stmt = update(Chat).where(Chat.id == chat_id).values(updated_at=timestamp)
         await self.db.execute(stmt)
 
     # ------------------------------------------------------------------ #

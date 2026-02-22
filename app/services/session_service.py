@@ -124,7 +124,13 @@ class SessionService:
 
             # Merge metadata into session_data to avoid mutating frozen DTO
             if metadata:
-                fields = ["ip_address", "user_agent", "accept_language", "fingerprint_hash", "mfa_method"]
+                fields = [
+                    "ip_address",
+                    "user_agent",
+                    "accept_language",
+                    "fingerprint_hash",
+                    "mfa_method",
+                ]
                 for key in fields:
                     if val := metadata.get(key):
                         session_data[key] = str(val)
@@ -163,7 +169,6 @@ class SessionService:
             raise ValueError(
                 "Subject (sub) must be a valid UUID for session persistence"
             )
-
 
     async def _enforce_concurrent_limit(
         self, user_id: UUID, current_jti: str, now: datetime

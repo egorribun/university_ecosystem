@@ -60,7 +60,9 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict, dict]):
         """Get the latest news items."""
         return await self.get_published(skip=0, limit=limit)
 
-    async def search(self, query: str, *, skip: int = 0, limit: int = 20) -> list[NewsDTO]:
+    async def search(
+        self, query: str, *, skip: int = 0, limit: int = 20
+    ) -> list[NewsDTO]:
         """Search news by title (case-insensitive)."""
         pattern = f"%{query.strip().lower()}%"
         result = await self.db.execute(
@@ -166,6 +168,7 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict, dict]):
         result = await self.db.execute(stmt)
         rows = result.all()
         from app.schemas.dtos.news import NewsListingDTO
+
         return [
             NewsListingDTO(
                 news=self._to_dto(row[0]),

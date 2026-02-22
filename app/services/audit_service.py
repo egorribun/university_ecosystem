@@ -240,6 +240,7 @@ audit_service = AuditService()
 
 _F = TypeVar("_F", bound=Callable[..., Any])
 
+
 def auditable(
     event: str | SecurityEvent,
     *,

@@ -168,7 +168,7 @@ class EventService:
                     event,
                     locale,
                     participant_count=p_count,
-                    files=[], # We should probably handle files in EventDTO if needed
+                    files=[],  # We should probably handle files in EventDTO if needed
                     is_registered=is_registered,
                     my_qr_token=my_qr_token,
                 )
@@ -270,7 +270,9 @@ class EventService:
             # I'll assume I can just issue a new secret if needed via repo.
 
             if updates:
-                exist = await self.repo.update_attendance(data.event_id, user_id, updates)
+                exist = await self.repo.update_attendance(
+                    data.event_id, user_id, updates
+                )
                 assert exist is not None
                 await self.repo.commit()
 
@@ -307,7 +309,9 @@ class EventService:
             # and might need ORM. For now we focus on reachability.
 
             if retry_updates:
-                updated_exist = await self.repo.update_attendance(data.event_id, user_id, retry_updates)
+                updated_exist = await self.repo.update_attendance(
+                    data.event_id, user_id, retry_updates
+                )
                 if updated_exist:
                     exist = updated_exist
                 await self.repo.commit()
@@ -363,7 +367,7 @@ class EventService:
                 self.serialize_event(
                     event,
                     locale,
-                    participant_count=0, # Need participant count in list_user_attended_events return
+                    participant_count=0,  # Need participant count in list_user_attended_events return
                     files=[],
                     is_registered=True,
                     my_qr_token=qr_token,
@@ -391,9 +395,11 @@ class EventService:
                 # We should probably update via repo.
                 updates = {
                     "qr_secret": attendance.qr_secret,
-                    "qr_hmac": attendance.qr_hmac
+                    "qr_hmac": attendance.qr_hmac,
                 }
-                await self.repo.update_attendance(event_record.id, attendance.user_id, updates)
+                await self.repo.update_attendance(
+                    event_record.id, attendance.user_id, updates
+                )
                 await self.repo.commit()
 
             qr_token = attendance_tokens.issue_token(attendance)
@@ -402,7 +408,7 @@ class EventService:
             event_record,
             locale,
             participant_count=p_count,
-            files=[], # Handle files later if needed
+            files=[],  # Handle files later if needed
             is_registered=attendance is not None,
             my_qr_token=qr_token,
         )

@@ -36,16 +36,30 @@ class ActiveSession(Base, UUID7PrimaryKeyMixin, UserFK):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
-    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     ip_address: Mapped[str | None] = mapped_column(String(64))
     user_agent: Mapped[str | None] = mapped_column(String(512))
-    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
-    signing_key: Mapped[str] = mapped_column(String, nullable=False, default=_generate_session_signing_key)
-    mfa_required: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
-    mfa_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    signing_key: Mapped[str] = mapped_column(
+        String, nullable=False, default=_generate_session_signing_key
+    )
+    mfa_required: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, index=True
+    )
+    mfa_completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     mfa_method: Mapped[str | None] = mapped_column(String(64))
-    mfa_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    mfa_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     # Session fingerprint for security binding
     accept_language = Column(String(256))
     fingerprint_hash = Column(String(64), index=True)  # SHA-256 hex digest
@@ -64,9 +78,15 @@ class MfaTotpEnrollment(Base, UUID7PrimaryKeyMixin, UserFK):
 
     secret: Mapped[str] = mapped_column(EncryptedString(), nullable=False)
     label: Mapped[str | None] = mapped_column(String(255))
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
-    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
-    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, index=True
+    )
+    confirmed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -86,13 +106,19 @@ class MfaChallenge(Base, UUID7PrimaryKeyMixin, UserFK):
     )
     challenge_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     token: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
-    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    consumed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     payload: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
-    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0", default=0)
+    attempt_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0", default=0
+    )
 
     user = relationship("User", back_populates="mfa_challenges")
     session = relationship("ActiveSession", back_populates="challenges")
@@ -126,10 +152,18 @@ class FailedLoginAttempt(Base, UUID7PrimaryKeyMixin, UserFK):
 class PasswordResetToken(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "password_reset_tokens"
 
-    token_hash: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
-    used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    token_hash: Mapped[str] = mapped_column(
+        String, unique=True, index=True, nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    used: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
 
     user = relationship("User")
 
@@ -142,10 +176,18 @@ class EmailChangeToken(Base, UUID7PrimaryKeyMixin, UserFK):
     __tablename__ = "email_change_tokens"
 
     new_email: Mapped[str] = mapped_column(String, nullable=False, index=True)
-    token_hash: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
-    used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    token_hash: Mapped[str] = mapped_column(
+        String, unique=True, index=True, nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    used: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
 
     user = relationship("User", back_populates="email_change_tokens")
 

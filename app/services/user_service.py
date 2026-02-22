@@ -111,12 +111,8 @@ class UserService:
     ) -> UserDTO:
         return await self.compliance_service.create_user(data, request, current_user)
 
-    async def upload_avatar(
-        self, user: UserDTO, file: UploadFile
-    ) -> UserDTO:
+    async def upload_avatar(self, user: UserDTO, file: UploadFile) -> UserDTO:
         return await self.media_service.upload_avatar(user, file)
 
-    async def upload_cover(
-        self, user: UserDTO, file: UploadFile
-    ) -> UserDTO:
+    async def upload_cover(self, user: UserDTO, file: UploadFile) -> UserDTO:
         return await self.media_service.upload_cover(user, file)

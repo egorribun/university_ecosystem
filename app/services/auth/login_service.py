@@ -155,10 +155,10 @@ class LoginService:
             metadata["mfa_completed_at"] = now_val
             metadata["mfa_verified_at"] = now_val
             if hasattr(user, "model_copy"):
-                 # Handle Pydantic DTO
-                 user = user.model_copy(update={"mfa_last_verified_at": now_val})
+                # Handle Pydantic DTO
+                user = user.model_copy(update={"mfa_last_verified_at": now_val})
             else:
-                 user.mfa_last_verified_at = now_val
+                user.mfa_last_verified_at = now_val
 
         token, session = await self.session_service.create_access_token(
             sub=user.id,

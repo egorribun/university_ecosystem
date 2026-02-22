@@ -35,7 +35,9 @@ class EventRepository(BaseRepository[Event, EventDTO, dict, dict]):
     def dto_class(self) -> type[EventDTO]:
         return EventDTO
 
-    async def get_with_details(self, event_id: uuid.UUID | str | int) -> EventDTO | None:
+    async def get_with_details(
+        self, event_id: uuid.UUID | str | int
+    ) -> EventDTO | None:
         if isinstance(event_id, str):
             with contextlib.suppress(ValueError):
                 event_id = uuid.UUID(event_id)
@@ -210,11 +212,14 @@ class EventRepository(BaseRepository[Event, EventDTO, dict, dict]):
         result = await self.db.execute(stmt)
         rows = result.all()
         from app.schemas.dtos.event import EventAttendanceDTO, EventSearchResultDTO
+
         return [
             EventSearchResultDTO(
                 event=row[0] if isinstance(row[0], EventDTO) else self._to_dto(row[0]),
                 participant_count=row[1] or 0,
-                user_attendance=EventAttendanceDTO.model_validate(row[2]) if row[2] else None,
+                user_attendance=EventAttendanceDTO.model_validate(row[2])
+                if row[2]
+                else None,
             )
             for row in rows
         ]
@@ -260,10 +265,11 @@ class EventRepository(BaseRepository[Event, EventDTO, dict, dict]):
             EventAttendanceDTO.model_validate(first[2]) if first[2] else None
         )
         from app.schemas.dtos.event import EventSearchResultDTO
+
         return EventSearchResultDTO(
             event=self._to_dto(first[0]),
             participant_count=first[1] or 0,
-            user_attendance=attendance_dto
+            user_attendance=attendance_dto,
         )
 
     async def get_attendance(

@@ -13,6 +13,7 @@ class AttendanceStatsDTO(BaseModel):
     previous_attended: int
     recent_attended_events: list[dict] = []  # Can be further refined if needed
 
+
 class ParticipationStatsDTO(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -21,6 +22,7 @@ class ParticipationStatsDTO(BaseModel):
     event_type: str
     starts_at: datetime
     ends_at: datetime
+
 
 class HealthStatsDTO(BaseModel):
     model_config = ConfigDict(frozen=True)

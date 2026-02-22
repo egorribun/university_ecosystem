@@ -12,9 +12,9 @@ from starlette.datastructures import Headers
 from app.auth.security import get_password_hash
 from app.core.config import settings
 from app.models import models
+from app.repositories.user_repository import UserRepository
 from app.services.audit_service import AuditService
 from app.services.user_service import UserService
-from app.repositories.user_repository import UserRepository
 from app.utils.files import delete_static_file
 
 
@@ -319,7 +319,9 @@ async def test_upload_avatar_cleans_up_on_commit_failure(
         delete_calls.append(url)
         await original_delete(url)
 
-    monkeypatch.setattr("app.services.user.media_service.delete_static_file", tracking_delete)
+    monkeypatch.setattr(
+        "app.services.user.media_service.delete_static_file", tracking_delete
+    )
 
     from unittest.mock import AsyncMock
 
@@ -364,7 +366,9 @@ async def test_upload_cover_cleans_up_on_commit_failure(
         delete_calls.append(url)
         await original_delete(url)
 
-    monkeypatch.setattr("app.services.user.media_service.delete_static_file", tracking_delete)
+    monkeypatch.setattr(
+        "app.services.user.media_service.delete_static_file", tracking_delete
+    )
 
     from unittest.mock import AsyncMock
 

@@ -14,6 +14,7 @@ from app.services.notification_service import NotificationService
 
 logger = logging.getLogger(__name__)
 
+
 class UserProfileService:
     def __init__(
         self,
@@ -49,6 +50,7 @@ class UserProfileService:
 
         if "email" in payload and payload["email"] is not None:
             from app.services.user.logic import validate_user_email
+
             payload["email"] = await validate_user_email(
                 self.repo, payload["email"], exclude_user_id=user.id
             )
@@ -76,7 +78,11 @@ class UserProfileService:
     ) -> list[UserDTO]:
         filters = filters or schemas.UserSearchFilter()
 
-        if current_user and (current_user.role != "admin" and not filters.search and not filters.full_name):
+        if current_user and (
+            current_user.role != "admin"
+            and not filters.search
+            and not filters.full_name
+        ):
             raise PermissionDenied()
 
         name_query = filters.full_name
@@ -119,12 +125,16 @@ class UserProfileService:
 
         if reset_requested:
             log_id = uuid.UUID(str(user_id)) if isinstance(user_id, str) else user_id
-            self.audit.log("users.mfa.reset", request, user_id=log_id, reason="admin_reset")
+            self.audit.log(
+                "users.mfa.reset", request, user_id=log_id, reason="admin_reset"
+            )
             # We need to send notification, so we need the DTO (which we have)
             target_locale = resolve_locale(request=request, user=updated_user)
             title = translate("notifications.mfa.reset.title", locale=target_locale)
             body = translate("notifications.mfa.reset.body", locale=target_locale)
             await self.notifications.send_security_notification(
-                user_ids=[updated_user.id], title=title, body=body,
+                user_ids=[updated_user.id],
+                title=title,
+                body=body,
             )
         return updated_user

@@ -132,7 +132,9 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
         objs = result.scalars().all()
         return [self._to_dto(obj) for obj in objs]
 
-    async def get_active_users(self, *, skip: int = 0, limit: int = 100) -> list[UserDTO]:
+    async def get_active_users(
+        self, *, skip: int = 0, limit: int = 100
+    ) -> list[UserDTO]:
         """Get only active users."""
         result = await self.db.execute(
             select(User)
@@ -317,6 +319,7 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
             return
 
         from app.services.user.logic import execute_user_anonymization
+
         await execute_user_anonymization(self, db_user)
 
     async def delete_sensitive_data(self, user_id: uuid.UUID | str):

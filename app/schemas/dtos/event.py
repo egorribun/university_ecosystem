@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict
 class DTOModel(BaseModel):
     model_config = ConfigDict(from_attributes=True, frozen=True)
 
+
 class EventDTO(DTOModel):
     id: uuid.UUID
     title: str
@@ -31,6 +32,7 @@ class EventDTO(DTOModel):
     attendance: list[EventAttendanceDTO] = []
     files_detail: list[EventFileDTO] = []
 
+
 class EventAttendanceDTO(DTOModel):
     id: uuid.UUID
     user_id: uuid.UUID
@@ -40,11 +42,13 @@ class EventAttendanceDTO(DTOModel):
     qr_hmac: str | None = None
     qr_token: str | None = None
 
+
 class EventFileDTO(DTOModel):
     id: uuid.UUID
     event_id: uuid.UUID
     file_url: str
     description: str | None
+
 
 class EventSearchResultDTO(DTOModel):
     event: EventDTO

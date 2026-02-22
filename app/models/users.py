@@ -51,11 +51,19 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         nullable=True,
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    mfa_required: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    mfa_required: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, index=True
+    )
     mfa_default_method: Mapped[str | None] = mapped_column(String(64))
-    mfa_last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
-    webauthn_id: Mapped[str | None] = mapped_column(String(128), unique=True, index=True, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    mfa_last_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    webauthn_id: Mapped[str | None] = mapped_column(
+        String(128), unique=True, index=True, nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
 
     preferences = relationship(
         "UserPreferences",

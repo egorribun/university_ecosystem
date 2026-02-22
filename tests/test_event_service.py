@@ -4,10 +4,10 @@ from uuid import uuid4
 
 import pytest
 from sqlalchemy.exc import IntegrityError
-from app.schemas.dtos.event import EventDTO, EventSearchResultDTO, EventAttendanceDTO
 
 from app.models import models
 from app.schemas import schemas
+from app.schemas.dtos.event import EventAttendanceDTO, EventDTO, EventSearchResultDTO
 from app.services.event_service import EventService
 
 
@@ -96,7 +96,7 @@ async def test_get_events_issue_token_fails(
         about="RU",
         about_en="EN",
         image_url=None,
-        speaker=None
+        speaker=None,
     )
     mock_attendance_dto = EventAttendanceDTO(
         id=uuid4(),
@@ -104,15 +104,12 @@ async def test_get_events_issue_token_fails(
         event_id=mock_event.id,
         registered_at=datetime.now(UTC),
         qr_secret="sec",
-        qr_hmac="hmac"
+        qr_hmac="hmac",
     )
 
-    from app.schemas.dtos.event import EventSearchResultDTO
     mock_repo.search_events.return_value = [
         EventSearchResultDTO(
-            event=mock_dto,
-            participant_count=10,
-            user_attendance=mock_attendance_dto
+            event=mock_dto, participant_count=10, user_attendance=mock_attendance_dto
         )
     ]
     mock_repo.count_upcoming.return_value = 1
@@ -355,13 +352,16 @@ async def test_get_event_detail(event_service, mock_repo):
     event_id = uuid4()
     user_id = uuid4()
     mock_event = create_mock_event(event_id)
-    mock_dto = EventDTO(**{k: getattr(mock_event, k) for k in EventDTO.model_fields if hasattr(mock_event, k)})
+    mock_dto = EventDTO(
+        **{
+            k: getattr(mock_event, k)
+            for k in EventDTO.model_fields
+            if hasattr(mock_event, k)
+        }
+    )
 
-    from app.schemas.dtos.event import EventSearchResultDTO
     mock_repo.get_event_with_details.return_value = EventSearchResultDTO(
-        event=mock_dto,
-        participant_count=5,
-        user_attendance=None
+        event=mock_dto, participant_count=5, user_attendance=None
     )
 
     res = await event_service.get_event_detail(event_id, user_id)
@@ -410,14 +410,11 @@ async def test_get_event_detail_with_attendance(event_service, mock_repo):
         event_id=event_id,
         registered_at=datetime.now(UTC),
         qr_secret="secret",
-        qr_hmac="hmac"
+        qr_hmac="hmac",
     )
 
-    from app.schemas.dtos.event import EventSearchResultDTO
     mock_repo.get_event_with_details.return_value = EventSearchResultDTO(
-        event=mock_dto,
-        participant_count=5,
-        user_attendance=mock_attendance_dto
+        event=mock_dto, participant_count=5, user_attendance=mock_attendance_dto
     )
 
     with (

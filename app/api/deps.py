@@ -269,7 +269,9 @@ async def get_current_user(
         # Increase sync window to 10 minutes if using Redis, else 5 mins
         sync_window = 600 if cached_session else 300
 
-        if last_seen_at is None or (now - last_seen_at >= timedelta(seconds=sync_window)):
+        if last_seen_at is None or (
+            now - last_seen_at >= timedelta(seconds=sync_window)
+        ):
             from sqlalchemy import update
 
             stmt = (
@@ -278,7 +280,8 @@ async def get_current_user(
                 .where(
                     or_(
                         ActiveSession.last_seen_at.is_(None),
-                        ActiveSession.last_seen_at < now - timedelta(seconds=sync_window),
+                        ActiveSession.last_seen_at
+                        < now - timedelta(seconds=sync_window),
                     )
                 )
                 .values(last_seen_at=now)

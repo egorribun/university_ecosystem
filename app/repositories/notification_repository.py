@@ -29,6 +29,7 @@ class NotificationRepository(BaseRepository[Notification, NotificationDTO, dict,
     @property
     def dto_class(self) -> type[NotificationDTO]:
         return NotificationDTO
+
     async def get_for_user(
         self,
         user_id: uuid.UUID | str | int,

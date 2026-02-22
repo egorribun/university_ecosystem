@@ -10,6 +10,7 @@ from app.utils.files import delete_static_file
 
 logger = logging.getLogger(__name__)
 
+
 class UserMediaService:
     def __init__(self, user_repo: UserRepository) -> None:
         self.repo = user_repo

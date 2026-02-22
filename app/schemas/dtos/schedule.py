@@ -7,10 +7,12 @@ from pydantic import BaseModel, ConfigDict
 class DTOModel(BaseModel):
     model_config = ConfigDict(from_attributes=True, frozen=True)
 
+
 class GroupDTO(DTOModel):
     id: uuid.UUID
     name: str
     created_at: datetime
+
 
 class ScheduleDTO(DTOModel):
     id: uuid.UUID

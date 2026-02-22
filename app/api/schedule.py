@@ -103,6 +103,7 @@ async def get_schedule(
         response.headers["ETag"] = result.etag
 
     from typing import cast
+
     return cast(list[schemas.ScheduleOut], result.payload)
 
 

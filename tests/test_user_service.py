@@ -164,7 +164,9 @@ async def test_upload_avatar_success(service, mock_db, mock_user, mock_request):
             "app.services.user.media_service.save_upload",
             return_value="/static/avatars/new.jpg",
         ):
-            with patch("app.services.user.profile_service.ensure_mfa_relationships_loaded"):
+            with patch(
+                "app.services.user.profile_service.ensure_mfa_relationships_loaded"
+            ):
                 result = await service.upload_avatar(mock_user, mock_file)
 
     assert result.profile.avatar_url == "/static/avatars/new.jpg"
@@ -190,7 +192,9 @@ async def test_upload_avatar_commit_failure(service, mock_db, mock_user, mock_re
             "app.services.user.media_service.save_upload",
             return_value="/static/avatars/new.jpg",
         ):
-            with patch("app.services.user.media_service.delete_static_file") as mock_delete:
+            with patch(
+                "app.services.user.media_service.delete_static_file"
+            ) as mock_delete:
                 with pytest.raises(Exception, match="Commit failed"):
                     await service.upload_avatar(mock_user, mock_file)
 
@@ -463,7 +467,9 @@ async def test_admin_update_user_mfa_reset(
 
     with patch("app.services.user.profile_service.resolve_locale", return_value="en"):
         with patch("app.auth.mfa.reset_user_mfa", return_value=reset_stats):
-            with patch("app.services.user.profile_service.ensure_mfa_relationships_loaded"):
+            with patch(
+                "app.services.user.profile_service.ensure_mfa_relationships_loaded"
+            ):
                 service.repo.update.return_value = updated_user
                 await service.admin_update_user(2, data, mock_request, mock_admin_user)
 

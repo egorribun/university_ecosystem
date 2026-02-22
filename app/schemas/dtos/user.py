@@ -11,6 +11,7 @@ from app.models.enums import UserRole
 class DTOModel(BaseModel):
     model_config = ConfigDict(from_attributes=True, frozen=True)
 
+
 class UserDTO(DTOModel):
     id: uuid.UUID
     email: EmailStr
@@ -24,16 +25,22 @@ class UserDTO(DTOModel):
     pending_email: EmailStr | None = None
 
     # Flattened profile fields
-    full_name: str | None = Field(None, validation_alias=AliasPath("profile", "full_name"))
-    avatar_url: str | None = Field(None, validation_alias=AliasPath("profile", "avatar_url"))
+    full_name: str | None = Field(
+        None, validation_alias=AliasPath("profile", "full_name")
+    )
+    avatar_url: str | None = Field(
+        None, validation_alias=AliasPath("profile", "avatar_url")
+    )
     webauthn_id: str | None = None
 
     # Nested DTOs
     profile: UserProfileDTO | None = None
     preferences: UserPreferencesDTO | None = None
 
+
 class UserAuthDTO(UserDTO):
     hashed_password: str
+
 
 class UserProfileDTO(DTOModel):
     user_id: uuid.UUID
@@ -47,12 +54,14 @@ class UserProfileDTO(DTOModel):
     position: str | None
     department: str | None
 
+
 class UserPreferencesDTO(DTOModel):
     user_id: uuid.UUID
     dnd_enabled: bool
     dnd_start: time | None
     dnd_end: time | None
     timezone: str | None
+
 
 class UserListingDTO(DTOModel):
     id: uuid.UUID

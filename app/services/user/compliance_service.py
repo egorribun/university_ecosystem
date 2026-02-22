@@ -21,6 +21,7 @@ from app.services.data_access import log_data_access
 
 logger = logging.getLogger(__name__)
 
+
 class UserComplianceService:
     def __init__(self, user_repo: UserRepository, audit: AuditService) -> None:
         self.repo = user_repo
@@ -74,61 +75,94 @@ class UserComplianceService:
         sessions_list = await self.repo.get_user_sessions(user.id)
         sessions = [
             {
-                "id": s.id, "created_at": s.created_at, "expires_at": s.expires_at,
-                "revoked_at": s.revoked_at, "ip_address": s.ip_address,
-                "user_agent": s.user_agent, "last_seen_at": s.last_seen_at,
+                "id": s.id,
+                "created_at": s.created_at,
+                "expires_at": s.expires_at,
+                "revoked_at": s.revoked_at,
+                "ip_address": s.ip_address,
+                "user_agent": s.user_agent,
+                "last_seen_at": s.last_seen_at,
                 "mfa_completed_at": s.mfa_completed_at,
-            } for s in sessions_list
+            }
+            for s in sessions_list
         ]
 
         notifications_list = await self.repo.get_user_notifications(user.id)
         notifications = [
             {
-                "id": n.id, "title": n.title, "body": n.body,
-                "type": n.type, "created_at": n.created_at, "read_at": n.read_at,
-            } for n in notifications_list
+                "id": n.id,
+                "title": n.title,
+                "body": n.body,
+                "type": n.type,
+                "created_at": n.created_at,
+                "read_at": n.read_at,
+            }
+            for n in notifications_list
         ]
 
         challenges = [
             {
-                "id": c.id, "type": c.challenge_type, "expires_at": c.expires_at,
-                "consumed_at": c.consumed_at, "created_at": c.created_at,
-            } for c in getattr(db_user, "mfa_challenges", [])
+                "id": c.id,
+                "type": c.challenge_type,
+                "expires_at": c.expires_at,
+                "consumed_at": c.consumed_at,
+                "created_at": c.created_at,
+            }
+            for c in getattr(db_user, "mfa_challenges", [])
         ]
 
         enrollments = [
             {
-                "id": e.id, "label": e.label, "is_active": e.is_active,
-                "confirmed_at": e.confirmed_at, "revoked_at": e.revoked_at,
+                "id": e.id,
+                "label": e.label,
+                "is_active": e.is_active,
+                "confirmed_at": e.confirmed_at,
+                "revoked_at": e.revoked_at,
                 "created_at": e.created_at,
-            } for e in getattr(db_user, "totp_enrollments", [])
+            }
+            for e in getattr(db_user, "totp_enrollments", [])
         ]
 
         access_logs = await self.repo.get_user_access_logs(user.id, limit=2000)
         access_log_payload = [
             {
-                "resource_type": log.resource_type, "resource_id": log.resource_id,
-                "action": log.action, "created_at": log.created_at,
-                "ip_address": log.ip_address, "user_agent": log.user_agent,
+                "resource_type": log.resource_type,
+                "resource_id": log.resource_id,
+                "action": log.action,
+                "created_at": log.created_at,
+                "ip_address": log.ip_address,
+                "user_agent": log.user_agent,
                 "context": log.context,
-            } for log in access_logs
+            }
+            for log in access_logs
         ]
 
         await log_data_access(
-            self.repo.db, actor_user_id=user.id, subject_user_id=user.id,
-            resource_type="profile", resource_id=str(user.id),
-            action="export", request=request,
+            self.repo.db,
+            actor_user_id=user.id,
+            subject_user_id=user.id,
+            resource_type="profile",
+            resource_id=str(user.id),
+            action="export",
+            request=request,
         )
 
         return schemas.DataExportOut(
-            profile=profile, sessions=sessions, notifications=notifications,
-            mfa_challenges=challenges, mfa_enrollments=enrollments,
+            profile=profile,
+            sessions=sessions,
+            notifications=notifications,
+            mfa_challenges=challenges,
+            mfa_enrollments=enrollments,
             access_logs=access_log_payload,
         )
 
     @auditable(SecurityEvent.USER_DELETE, user_id_param="user")
     async def delete_user_data(
-        self, user: UserDTO, request: Request, *, confirm: bool,
+        self,
+        user: UserDTO,
+        request: Request,
+        *,
+        confirm: bool,
     ) -> schemas.DataDeletionOut:
         if not confirm:
             raise BusinessRuleViolation("errors.users.confirmation_required")
@@ -139,16 +173,22 @@ class UserComplianceService:
 
         await self.repo.anonymize(user.id)
         await log_data_access(
-            self.repo.db, actor_user_id=user.id, subject_user_id=user.id,
-            resource_type="profile", resource_id=str(user.id),
-            action="delete", request=request,
+            self.repo.db,
+            actor_user_id=user.id,
+            subject_user_id=user.id,
+            resource_type="profile",
+            resource_id=str(user.id),
+            action="delete",
+            request=request,
         )
 
         await self.repo.commit()
         # Refresh to get anonymized email
         updated_user = await self.repo.get(user.id)
         assert updated_user is not None
-        return schemas.DataDeletionOut(deleted=True, anonymized_email=updated_user.email)
+        return schemas.DataDeletionOut(
+            deleted=True, anonymized_email=updated_user.email
+        )
 
     async def register_user(self, user_in: schemas.UserCreate) -> UserDTO:
         raw_role = getattr(user_in, "role", None)
@@ -159,9 +199,17 @@ class UserComplianceService:
             raise EntityAlreadyExists("User", normalized_email)
 
         code = None
-        if hasattr(user_in, "invite_code") and requested_role in (UserRole.TEACHER, UserRole.ADMIN):
+        if hasattr(user_in, "invite_code") and requested_role in (
+            UserRole.TEACHER,
+            UserRole.ADMIN,
+        ):
             code_obj = await self.repo.get_invite_code(str(user_in.invite_code))
-            if not code_obj or code_obj.role != requested_role.value or not code_obj.is_active or code_obj.is_used:
+            if (
+                not code_obj
+                or code_obj.role != requested_role.value
+                or not code_obj.is_active
+                or code_obj.is_used
+            ):
                 raise BusinessRuleViolation("errors.users.invalid_invite")
             code = code_obj
 
@@ -169,14 +217,18 @@ class UserComplianceService:
             await _validate_password_hibp(user_in.password)
         hashed_password = await get_password_hash(user_in.password)
 
-        user_data = user_in.model_dump(exclude={"invite_code", "password", "spotify_connected"})
-        user_data.update({
-            "hashed_password": hashed_password,
-            "role": requested_role.value,
-            "email": normalized_email,
-            "mfa_required": settings.mfa_enabled,
-            "mfa_default_method": settings.mfa_default_method
-        })
+        user_data = user_in.model_dump(
+            exclude={"invite_code", "password", "spotify_connected"}
+        )
+        user_data.update(
+            {
+                "hashed_password": hashed_password,
+                "role": requested_role.value,
+                "email": normalized_email,
+                "mfa_required": settings.mfa_enabled,
+                "mfa_default_method": settings.mfa_default_method,
+            }
+        )
         if "id" in user_data:
             del user_data["id"]
 
@@ -191,7 +243,10 @@ class UserComplianceService:
 
     @auditable(SecurityEvent.ADMIN_USER_CREATE)
     async def create_user(
-        self, data: schemas.UserCreate, request: Request, current_user: UserDTO,
+        self,
+        data: schemas.UserCreate,
+        request: Request,
+        current_user: UserDTO,
     ) -> UserDTO:
         if current_user.role != "admin":
             raise PermissionDenied()
@@ -207,7 +262,9 @@ class UserComplianceService:
             await _validate_password_hibp(data.password)
         hashed = await get_password_hash(data.password)
 
-        user_data = data.model_dump(exclude={"invite_code", "password", "spotify_connected"})
+        user_data = data.model_dump(
+            exclude={"invite_code", "password", "spotify_connected"}
+        )
         user_data["hashed_password"] = hashed
 
         try:

@@ -10,7 +10,9 @@ from app.repositories.base import BaseRepository
 from app.schemas.dtos import ActiveSessionDTO
 
 
-class ActiveSessionRepository(BaseRepository[ActiveSession, ActiveSessionDTO, dict, dict]):
+class ActiveSessionRepository(
+    BaseRepository[ActiveSession, ActiveSessionDTO, dict, dict]
+):
     @property
     def model(self) -> type[ActiveSession]:
         return ActiveSession

@@ -229,10 +229,12 @@ class AuthService:
 
         # [MODERN] Safely handle refresh for DTOs vs ORM objects
         if not hasattr(db_user, "model_dump"):  # Check if it's NOT a Pydantic DTO
-             await self.auth_repo.refresh(db_user)
+            await self.auth_repo.refresh(db_user)
 
         # Enrich user object (handles both ORM and DTO)
-        enriched_user = await ensure_mfa_relationships_loaded(self.auth_repo.db, db_user)
+        enriched_user = await ensure_mfa_relationships_loaded(
+            self.auth_repo.db, db_user
+        )
         enriched_user = await attach_pending_email(self.auth_repo.db, enriched_user)
 
         # Also attach to the current user object if it's different instance
@@ -309,9 +311,11 @@ class AuthService:
             )
 
         # Update the user's email and mark the token as used
-        db_user = await self.user_repo.update(record.user_id, {"email": record.new_email})
+        db_user = await self.user_repo.update(
+            record.user_id, {"email": record.new_email}
+        )
         if not db_user:
-             raise EntityNotFound("User", record.user_id)
+            raise EntityNotFound("User", record.user_id)
 
         # Mark this token as used
         await self.auth_repo.mark_email_change_token_used(record.id)

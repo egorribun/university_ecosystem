@@ -103,7 +103,9 @@ class AuthRepository(
             .values(used=True)
         )
 
-    async def invalidate_all_user_password_reset_tokens(self, user_id: uuid.UUID | str) -> None:
+    async def invalidate_all_user_password_reset_tokens(
+        self, user_id: uuid.UUID | str
+    ) -> None:
         """Invalidate all password reset tokens for a user."""
         await self.db.execute(
             update(models.PasswordResetToken)
@@ -117,7 +119,11 @@ class AuthRepository(
     # Email Change Token Methods
 
     async def create_email_change_token(
-        self, user_id: uuid.UUID | str, new_email: str, token_hash: str, expires_at: datetime
+        self,
+        user_id: uuid.UUID | str,
+        new_email: str,
+        token_hash: str,
+        expires_at: datetime,
     ) -> EmailChangeTokenDTO:
         """
         Create an email change token, invalidating previous unused ones.
@@ -233,7 +239,9 @@ class AuthRepository(
         self.db.add(record)
         return record
 
-    async def get_user_mfa_capabilities(self, user_id: uuid.UUID | str) -> dict[str, bool]:
+    async def get_user_mfa_capabilities(
+        self, user_id: uuid.UUID | str
+    ) -> dict[str, bool]:
         """Detect which MFA factors are active for a user."""
         from app.auth import mfa
 

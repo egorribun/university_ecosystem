@@ -11,9 +11,9 @@ Uses actual SQLAlchemy models (User) for realistic testing.
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pydantic import BaseModel, ConfigDict
 from app.models.users import User
 from app.repositories.base import BaseRepository, ReadOnlyRepository
 
@@ -26,6 +26,7 @@ class UserDTO(BaseModel):
     model_config = ConfigDict(from_attributes=True, frozen=True)
     id: int
     email: str
+
 
 class UserRepository(BaseRepository[User, UserDTO, dict, dict]):
     """Repository implementation for testing with User model."""
@@ -138,10 +139,7 @@ async def test_repository_get_or_raise_not_found(repository, mock_db):
 @pytest.mark.asyncio
 async def test_repository_get_by_ids_returns_records(repository, mock_db):
     """Test get_by_ids returns multiple records."""
-    mock_users = [
-        User(id=1, email="u1@e.com"),
-        User(id=2, email="u2@e.com")
-    ]
+    mock_users = [User(id=1, email="u1@e.com"), User(id=2, email="u2@e.com")]
     mock_result = MagicMock()
     mock_result.scalars.return_value.all.return_value = mock_users
     mock_db.execute.return_value = mock_result
@@ -164,10 +162,7 @@ async def test_repository_get_by_ids_empty_list(repository, mock_db):
 @pytest.mark.asyncio
 async def test_repository_list_with_pagination(repository, mock_db):
     """Test list with skip and limit."""
-    mock_users = [
-        User(id=1, email="u1@e.com"),
-        User(id=2, email="u2@e.com")
-    ]
+    mock_users = [User(id=1, email="u1@e.com"), User(id=2, email="u2@e.com")]
     mock_result = MagicMock()
     mock_result.scalars.return_value.all.return_value = mock_users
     mock_db.execute.return_value = mock_result
