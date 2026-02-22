@@ -286,3 +286,4 @@ inspect_*.py
 # Test Tools
 fakeredis_shadow_backup/
 frontend/src/pages/Events_matches.txt
+.claude/
