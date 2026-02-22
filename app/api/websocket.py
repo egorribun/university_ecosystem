@@ -18,7 +18,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from redis.asyncio import Redis
 from sqlalchemy import func, select
 
@@ -211,6 +211,9 @@ class ConnectionManager:
             self.active_connections[user_id].discard(websocket)
             if not self.active_connections[user_id]:
                 del self.active_connections[user_id]
+                # Clean up presence throttle state only when the last connection closes.
+                # If the user has multiple tabs open, keep the throttle to avoid presence spam.
+                self._last_presence_sent_at.pop(user_id, None)
             logger.info(f"WebSocket disconnected: user_id={user_id}")
         return user_id
 
@@ -339,8 +342,23 @@ class ConnectionManager:
         return list(self.active_connections.keys())
 
 
-# Global connection manager instance
-manager = ConnectionManager()
+# Module-level reference — assigned by ``lifespan`` (app/core/lifespan.py) before
+# the first request is served.  Non-request contexts (pubsub handlers, background
+# tasks) use this directly.  FastAPI route handlers should prefer the
+# ``get_connection_manager`` dependency so mocks can be injected in tests.
+manager: ConnectionManager = ConnectionManager()  # default replaced at startup
+
+
+def get_connection_manager(request: Request) -> ConnectionManager:  # type: ignore[name-defined]
+    """FastAPI dependency — returns the app-state ConnectionManager.
+
+    Usage::
+
+        @router.get("/example")
+        async def example(cm: Annotated[ConnectionManager, Depends(get_connection_manager)]):
+            ...
+    """
+    return request.app.state.connection_manager
 
 
 async def _handle_presence_pubsub(payload: dict[str, Any]) -> None:

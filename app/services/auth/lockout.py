@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -105,10 +106,30 @@ class LockoutService:
     async def register_failed_attempt(
         self, email: str, user_id: UUID | None
     ) -> tuple[datetime | None, bool, int]:
+        """Record a failed login attempt, atomically with per-email serialization.
+
+        Uses a PostgreSQL advisory transaction lock keyed on the email hash to
+        prevent race conditions in concurrent login scenarios. Without this,
+        two simultaneous failed logins for the same email both read the same
+        attempt count, both compute the same ``previous_lock``, and the lockout
+        trigger may fire twice or not at all.
+
+        The advisory lock is automatically released when the transaction commits.
+        """
         limit = max(self._max_lockout_threshold(), 1)
-        await self._prune_stale_attempts(email)
-        existing = await self._fetch_recent_attempts(email, limit, for_update=True)
         now = datetime.now(UTC)
+
+        # Serialize all operations for this email within the transaction.
+        # hashtext() maps the email string to a stable 32-bit int.
+        await self.db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:email))"),
+            {"email": email},
+        )
+
+        await self._prune_stale_attempts(email)
+        # for_update=True is now redundant given the advisory lock,
+        # but kept for extra safety on replicas or lock contention edge cases.
+        existing = await self._fetch_recent_attempts(email, limit, for_update=True)
         previous_lock = self._calculate_lock_until(existing, now)
         attempt = await self.repo.create_failed_attempt(
             email=email, user_id=user_id, attempted_at=now
@@ -116,7 +137,7 @@ class LockoutService:
         await self.db.flush()
         updated = ([*existing, attempt])[-limit:]
         lock_until = self._calculate_lock_until(updated, now)
-        await self.db.commit()
+        await self.db.commit()  # Advisory lock released automatically on commit
         triggered = bool(
             lock_until
             and (previous_lock is None or previous_lock <= now)

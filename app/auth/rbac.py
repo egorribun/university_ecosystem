@@ -15,6 +15,15 @@ from app.core.spicedb import get_spicedb_client
 logger = logging.getLogger(__name__)
 
 
+class SpiceDBUnavailableError(RuntimeError):
+    """Raised when SpiceDB cannot be reached.
+
+    Distinct from a 'permission denied' response — callers should surface
+    this as HTTP 503 so ops can detect and alert on authorization service
+    degradation, rather than silently denying or allowing the request.
+    """
+
+
 class PermissionChecker:
     """
     Standardizes permission checks against SpiceDB.
@@ -26,28 +35,34 @@ class PermissionChecker:
     async def check_admin(self, user_id: str, *, user=None) -> bool:
         """
         Check if user is a semester admin (mapping to global admin for now).
-        Falls back to local role check if SpiceDB is unavailable.
+
+        Fails CLOSED on SpiceDB outage — denies access without falling back to
+        local role fields. The local ``user.role`` column must never be the sole
+        authorization gate for privileged operations.
+
+        Raises:
+            SpiceDBUnavailableError: propagated from check_permission on connectivity
+                failure. Callers should convert this to HTTP 503.
         """
-        result = await self.check_permission(
+        return await self.check_permission(
             resource_type="semester",
             resource_id="current",
             permission="admin",
             user_id=user_id,
         )
-        # Fallback: if SpiceDB fails and user object is provided, check local role
-        if not result and user is not None:
-            if hasattr(user, "role") and user.role == "admin":
-                logger.info(
-                    f"SpiceDB unavailable, falling back to local role for {user_id}"
-                )
-                return True
-        return result
 
     async def check_permission(
         self, resource_type: str, resource_id: str, permission: str, user_id: str
     ) -> bool:
         """
         Generic permission check against SpiceDB.
+
+        Returns True if SpiceDB confirms the permission, False if explicitly denied.
+
+        Raises:
+            SpiceDBUnavailableError: on any connectivity or unexpected error so that
+                callers can distinguish "SpiceDB said no" (returns False) from
+                "SpiceDB is unreachable" (raises).
         """
         try:
             resp: CheckPermissionResponse = self.client.CheckPermission(
@@ -67,10 +82,16 @@ class PermissionChecker:
             )
         except Exception as e:
             logger.error(
-                f"SpiceDB permission check failed "
-                f"({resource_type}:{resource_id}#{permission} for {user_id}): {e}"
+                "SpiceDB permission check failed (%s:%s#%s for %s): %s",
+                resource_type,
+                resource_id,
+                permission,
+                user_id,
+                e,
             )
-            return False
+            raise SpiceDBUnavailableError(
+                f"SpiceDB unreachable: {resource_type}:{resource_id}#{permission}"
+            ) from e
 
 
 async def is_admin(

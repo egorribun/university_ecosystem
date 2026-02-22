@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Bash(git -C /c/Users/egorribun/Documents/university_ecosystem/.claude/worktrees/cool-lalande log --oneline --all -- \"*.env*\" \".env.docker\")",
+      "Bash(git -C /c/Users/egorribun/Documents/university_ecosystem/.claude/worktrees/cool-lalande log:*)",
+      "Bash(git -C /c/Users/egorribun/Documents/university_ecosystem/.claude/worktrees/cool-lalande show HEAD:.gitignore)"
+    ]
+  }
+}

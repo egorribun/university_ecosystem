@@ -10,7 +10,6 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,15 +21,27 @@ from app.core.database import get_db
 from app.core.localization import resolve_locale, translate
 from app.core.rate_limit import RateLimitExceeded, RateLimitInfo, enforce_rate_limit
 from app.models.models import PushSubscription, User, UserPushTopic
-from app.services.notifications import prepare_push_payload_for_user
+from app.schemas.notifications import (
+    AdminUserTopicsResponse,
+    AdminUserTopicsUpdate,
+    DisableUserPushRequest,
+    NotifyBody,
+    PushSubscriptionDelete,
+    PushSubscriptionIn,
+    PushSubscriptionOut,
+    PushSubscriptionTopicsUpdate,
+    PushTestRequest,
+    PushTopicsResponse,
+    SendTestResponse,
+)
 from app.services.push_schema import ensure_push_subscription_schema
+from app.services.push_service import deliver_push_to_subscriptions
 from app.services.push_topics import (
     get_allowed_topics,
     normalize_topic,
     normalize_topics,
     resolve_topics,
     sort_topics,
-    subscription_supports_topic,
     synchronize_user_topics,
 )
 from app.services.webpush import WebPushResult, send_web_push
@@ -38,98 +49,6 @@ from app.services.webpush import WebPushResult, send_web_push
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/push", tags=["push"])
-
-
-class NotificationAction(BaseModel):
-    action: str = Field(..., description="Notification action identifier")
-    title: str = Field(..., description="Action button title")
-    url: str | None = Field(default=None, description="Optional URL to open")
-    icon: str | None = Field(default=None, description="Optional icon URL")
-
-    @field_validator("action", "title", mode="before")
-    @classmethod
-    def _strip(cls, value: Any) -> str:
-        if value is None:
-            return ""
-        return str(value).strip()
-
-
-class NotifyBody(BaseModel):
-    title: str
-    body: str | None = None
-    url: str | None = None
-    tag: str | None = None
-    badge: str | None = None
-    type: str | None = None
-    ttl: int | None = None
-    urgency: str | None = "normal"
-    topic: str | None = None
-    actions: list[NotificationAction] | None = None
-    data: dict[str, Any] | None = None
-
-    @field_validator("topic", mode="before")
-    @classmethod
-    def _normalize_topic(cls, value):
-        return normalize_topic(value)
-
-
-class PushSubscriptionKeys(BaseModel):
-    p256dh: str = Field(..., description="Base64-encoded public key")
-    auth: str = Field(..., description="Authentication secret")
-
-    @field_validator("p256dh", "auth", mode="before")
-    @classmethod
-    def _ensure_not_blank(cls, value: Any) -> str:
-        if value is None:
-            return ""
-        return str(value).strip()
-
-
-class PushSubscriptionIn(BaseModel):
-    endpoint: str = Field(..., description="Push subscription endpoint URL")
-    keys: PushSubscriptionKeys
-    topics: list[str] | None = Field(
-        default=None, description="Optional list of topics"
-    )
-    user_agent: str | None = Field(default=None, description="User agent override")
-
-    @field_validator("endpoint", mode="before")
-    @classmethod
-    def _normalize_endpoint(cls, value: Any) -> str:
-        if value is None:
-            return ""
-        return str(value).strip()
-
-    @field_validator("topics", mode="before")
-    @classmethod
-    def _normalize_topics(cls, value: list[str] | None) -> list[str] | None:
-        if value is None:
-            return None
-        return normalize_topics(value)
-
-
-class PushSubscriptionOut(BaseModel):
-    id: uuid.UUID
-    user_id: uuid.UUID
-    endpoint: str
-    p256dh: str
-    auth: str
-    created_at: datetime
-    user_agent: str | None = None
-    last_seen_at: datetime | None = None
-    updated_at: datetime | None = None
-    topics: list[str] = Field(default_factory=list)
-
-    model_config = ConfigDict(from_attributes=True)
-
-    @field_validator("topics", mode="before")
-    @classmethod
-    def _topics_before(cls, value):
-        if not value:
-            return []
-        if isinstance(value, list):
-            return normalize_topics(value)
-        return value
 
 
 def _serialize_subscription(subscription: PushSubscription) -> PushSubscriptionOut:
@@ -150,94 +69,6 @@ def _serialize_subscription(subscription: PushSubscription) -> PushSubscriptionO
         "topics": topics,
     }
     return PushSubscriptionOut.model_validate(data)
-
-
-class PushSubscriptionTopicsUpdate(BaseModel):
-    endpoint: str
-    topics: list[str] = Field(default_factory=list)
-
-    @field_validator("endpoint", mode="before")
-    @classmethod
-    def _normalize_endpoint(cls, value: Any) -> str:
-        if value is None:
-            return ""
-        return str(value).strip()
-
-    @field_validator("topics", mode="before")
-    @classmethod
-    def _normalize_topics(cls, value):
-        if value is None:
-            return []
-        return normalize_topics(value)
-
-
-class PushSubscriptionDelete(BaseModel):
-    endpoint: str
-
-    @field_validator("endpoint", mode="before")
-    @classmethod
-    def _normalize_endpoint(cls, value: Any) -> str:
-        if value is None:
-            return ""
-        return str(value).strip()
-
-
-class DisableUserPushRequest(BaseModel):
-    user_id: uuid.UUID = Field(
-        ...,
-        description=translate("notifications.push.disable_user.description"),
-    )
-
-
-class PushTopicsResponse(BaseModel):
-    allowed: list[str]
-    topics: list[str]
-    has_preferences: bool = False
-    updated_at: datetime | None = None
-
-
-class AdminUserTopicsUpdate(BaseModel):
-    topics: list[str] = Field(default_factory=list)
-
-    @field_validator("topics", mode="before")
-    @classmethod
-    def _normalize_topics(cls, value):
-        if value is None:
-            return []
-        return normalize_topics(value, strict=True)
-
-
-class AdminUserTopicsResponse(BaseModel):
-    user_id: uuid.UUID
-    email: str
-    topics: list[str]
-    allowed_topics: list[str]
-    updated_at: datetime | None = None
-
-
-class SendTestResponse(BaseModel):
-    total: int = 0
-    sent: int
-    removed: int
-    failed: int
-    detail: str | None = None
-
-
-class PushTestRequest(NotifyBody):
-    user_id: uuid.UUID | None = Field(
-        default=None, description="Target user id for testing"
-    )
-    title: str = Field(
-        default=translate("notifications.push.test.title_default"),
-        description="Notification title",
-    )
-    body: str | None = Field(
-        default=translate("notifications.push.test.body_default"),
-        description="Notification body",
-    )
-    url: str | None = Field(
-        default=None, description="URL to open when clicking the notification"
-    )
 
 
 async def _deliver_to_subscription(
@@ -831,13 +662,9 @@ async def send_test(
             if value is not None:
                 message[field] = value
 
-    results: list[WebPushResult] = []
-    for sub in subscriptions:
-        if not subscription_supports_topic(sub, normalized_topic):
-            continue
-        prepared = prepare_push_payload_for_user(message, getattr(sub, "user", None))
-        result = await _deliver_to_subscription(sub, prepared)
-        results.append(result)
+    results = await deliver_push_to_subscriptions(
+        subscriptions, message, topic=normalized_topic, concurrency=20
+    )
     summary = _aggregate_results(
         results,
         failure_detail=translate("notifications.push.test_failure", locale=locale),
@@ -1022,20 +849,6 @@ async def broadcast(
             },
         )
 
-    subscriptions = (
-        (
-            await db.execute(
-                select(PushSubscription).options(
-                    selectinload(PushSubscription.user).selectinload(
-                        User.push_topic_preferences
-                    )
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-
     topic = normalize_topic(data.topic)
     payload = data.model_dump(exclude_none=True)
     if topic:
@@ -1043,15 +856,42 @@ async def broadcast(
     else:
         payload.pop("topic", None)
 
+    # Stream subscriptions in batches to avoid loading all ORM objects at once.
+    # At 10k users × 2 devices each = 20k rows × ~2 KB per object = ~40 MB
+    # if loaded as a single query. Batching keeps peak memory bounded at
+    # BROADCAST_BATCH_SIZE × ~2 KB regardless of total subscription count.
+    _BROADCAST_BATCH_SIZE = 500
     results: list[WebPushResult] = []
-    for subscription in subscriptions:
-        if not subscription_supports_topic(subscription, topic):
-            continue
-        prepared = prepare_push_payload_for_user(
-            payload, getattr(subscription, "user", None)
-        )
-        results.append(await _deliver_to_subscription(subscription, prepared))
+    offset = 0
 
+    while True:
+        batch = (
+            (
+                await db.execute(
+                    select(PushSubscription)
+                    .options(
+                        selectinload(PushSubscription.user).selectinload(
+                            User.push_topic_preferences
+                        )
+                    )
+                    .order_by(PushSubscription.id)
+                    .limit(_BROADCAST_BATCH_SIZE)
+                    .offset(offset)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not batch:
+            break
+
+        batch_results = await deliver_push_to_subscriptions(
+            batch, payload, topic=topic, concurrency=50
+        )
+        results.extend(batch_results)
+        offset += _BROADCAST_BATCH_SIZE
+        # Yield to the event loop between batches so other requests are not starved.
+        await asyncio.sleep(0)
     summary = _aggregate_results(
         results,
         failure_detail=translate("notifications.push.broadcast_failure", locale=locale),

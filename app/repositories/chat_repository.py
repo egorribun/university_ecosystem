@@ -29,7 +29,10 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict, dict]):
         load_options = [selectinload(Chat.participants)]
         if load_messages:
             load_options.append(
-                selectinload(Chat.messages).selectinload(Message.attachments)
+                selectinload(Chat.messages).options(
+                    selectinload(Message.sender),
+                    selectinload(Message.attachments),
+                )
             )
         row = await self.db.get(Chat, chat_id, options=load_options)
         return self._to_dto(row) if row else None
