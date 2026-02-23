@@ -133,8 +133,8 @@ export function useEventCardLogic({
       }
       const payload = {
         ...editData,
-        starts_at: normalizeDate(editData.starts_at),
-        ends_at: normalizeDate(editData.ends_at),
+        starts_at: normalizeDate(editData.starts_at || undefined),
+        ends_at: normalizeDate(editData.ends_at || undefined),
         image_url: imgUrl,
       }
       await api.patch(`/events/${id}`, payload)

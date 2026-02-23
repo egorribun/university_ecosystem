@@ -1,32 +1,41 @@
-import type { components, paths } from "@/api/generated/schema"
+import type {
+  MfaChallengeOut,
+  MfaFactorStatusOut,
+  MfaMethodChallengeOut,
+  MfaTotpEnrollmentOut,
+  MfaVerifyIn,
+  PendingMfaResponse,
+  RequestStepUpApiV1AuthMfaStepUpPostResponse,
+  TotpEnrollmentConfirmIn,
+  TotpEnrollmentStartIn,
+  TotpEnrollmentStartOut,
+  WebAuthnAuthenticationOptionsOut,
+  WebAuthnRegistrationOptionsOut,
+  WebAuthnRegistrationVerifyIn,
+} from "@/api/generated"
 
-export type MfaMethod = components["schemas"]["MfaMethodChallengeOut"]["method"]
-export type MfaMethodChallenge = components["schemas"]["MfaMethodChallengeOut"]
-export type PendingMfaResponse = components["schemas"]["PendingMfaResponse"] & {
-  challenges: MfaMethodChallenge[]
-}
-export type MfaTotpEnrollment = components["schemas"]["MfaTotpEnrollmentOut"]
-export type MfaChallenge = components["schemas"]["MfaChallengeOut"]
-export type TotpEnrollmentStartResponse = components["schemas"]["TotpEnrollmentStartOut"]
-export type TotpEnrollmentStartPayload = components["schemas"]["TotpEnrollmentStartIn"]
-export type TotpEnrollmentConfirmPayload = components["schemas"]["TotpEnrollmentConfirmIn"]
-export type MfaVerifyPayload = {
-  method: "totp" | "webauthn"
-  challenge_token: string
-  code?: string
-  webauthn_response?: unknown
-  trust_device?: boolean
-}
+export type { PendingMfaResponse }
 
-type StepUpPath = paths["/api/v1/auth/mfa/step-up"]["post"]
+export type MfaMethod = "totp" | "webauthn" | "recovery_code"
 
-export type StepUpResponse = StepUpPath["responses"]["202"]["content"]["application/json"]
+export type MfaStepUpStatus = PendingMfaResponse
 
-export type MfaFactorStatus = {
-  disabled: boolean
-  mfa_default_method: MfaMethod | null
-  mfa_required: boolean
-}
+export type MfaEnrollment = MfaTotpEnrollmentOut
+export type MfaTotpEnrollment = MfaTotpEnrollmentOut
+
+export type MfaChallenge = MfaChallengeOut
+
+export type TotpEnrollmentStart = TotpEnrollmentStartOut
+
+export type TotpEnrollmentStartPayload = TotpEnrollmentStartIn
+
+export type TotpEnrollmentConfirmPayload = TotpEnrollmentConfirmIn
+
+export type MfaVerifyPayload = MfaVerifyIn
+
+export type StepUpResponse = RequestStepUpApiV1AuthMfaStepUpPostResponse
+
+export type MfaFactorStatus = MfaFactorStatusOut
 
 export type WebAuthnCredential = {
   id: string
@@ -36,12 +45,10 @@ export type WebAuthnCredential = {
   credential_id: string
 }
 
-export type WebAuthnRegistrationOptionsOut = {
-  publicKey: unknown
-}
+export type WebAuthnRegistrationOptions = WebAuthnRegistrationOptionsOut
 
-export type WebAuthnRegistrationVerifyIn = {
-  challenge: string
-  response: unknown
-  label?: string
-}
+export type WebAuthnRegistrationVerifyPayload = WebAuthnRegistrationVerifyIn
+
+export type MfaMethodChallenge = MfaMethodChallengeOut
+
+export type WebAuthnAuthenticationOptions = WebAuthnAuthenticationOptionsOut

@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next"
 import { isAxiosError } from "axios"
 import type { TFunction } from "i18next"
 import { useQueryClient } from "@tanstack/react-query"
-import api, { API_UNAUTHORIZED_EVENT } from "@/api/client"
+import api, { API_UNAUTHORIZED_EVENT, type ApiRequestConfig } from "@/api/client"
 import { SPOTIFY_REAUTH_EVENT } from "@/hooks/useNowPlaying"
 import type { PendingMfaResponse, MfaVerifyPayload } from "@/types/Mfa"
 import type { User } from "@/types/User"
@@ -144,16 +144,13 @@ export const useAuthApi = (
           {
             headers: { "Content-Type": "application/x-www-form-urlencoded" },
             skipRateLimitQueue: true,
-          }
+          } as ApiRequestConfig
         )
 
         if (response.status === 202) {
           const mfaResponse = response.data as PendingMfaResponse
-          // Backend returns 'methods', frontend expects 'challenges'
-          const challenges = mfaResponse.challenges || mfaResponse.methods || []
           const pendingState: PendingMfaState = {
             ...mfaResponse,
-            challenges,
             reason: "login",
           }
           updatePendingMfa(pendingState)
@@ -247,12 +244,12 @@ export const useAuthApi = (
         if (method === "totp") {
           payload.code = code
         } else if (method === "webauthn") {
-          payload.webauthn_response = webauthnResponse
+          payload.webauthn_response = webauthnResponse as { [key: string]: unknown }
         }
 
         const response = await api.post<TokenWithProfileResponse>("/auth/mfa/verify", payload, {
           skipRateLimitQueue: true,
-        })
+        } as ApiRequestConfig)
         const data = response.data
 
         if (isTokenWithProfileResponse(data)) {
@@ -304,7 +301,7 @@ export const useAuthApi = (
     try {
       const response = await api.post<PendingMfaResponse>("/auth/mfa/step-up", null, {
         skipRateLimitQueue: true,
-      })
+      } as ApiRequestConfig)
       if (response.status === 202) {
         const pendingState: PendingMfaState = { ...response.data, reason: "step-up" }
         updatePendingMfa(pendingState)
@@ -331,7 +328,7 @@ export const useAuthApi = (
     setAuthOperation(true)
     try {
       const profile = await fetchCurrentUser()
-      setUser(profile)
+      setUser(profile as User)
 
       // Try to recover push consent if localStorage was cleared but browser still has subscription
       await recoverPushConsentFromBrowser()
@@ -361,14 +358,12 @@ export const useAuthApi = (
         const optionsResponse = await api.post<WebAuthnAuthenticationOptionsOut>(
           "/auth/login/passkey/start",
           { email },
-          { skipRateLimitQueue: true }
+          { skipRateLimitQueue: true } as ApiRequestConfig
         )
 
         // 2. Start biometric authentication
         const authResponse = await startAuthentication({
-          optionsJSON: optionsResponse.data.publicKey as Parameters<
-            typeof startAuthentication
-          >[0]["optionsJSON"],
+          optionsJSON: optionsResponse.data.publicKey as any,
         })
 
         // 3. Verify authentication response
@@ -379,7 +374,7 @@ export const useAuthApi = (
             webauthn_response: authResponse,
             trust_device: trustDevice,
           },
-          { skipRateLimitQueue: true }
+          { skipRateLimitQueue: true } as ApiRequestConfig
         )
 
         const data = response.data

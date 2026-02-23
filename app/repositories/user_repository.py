@@ -5,7 +5,7 @@ User repository for user data access operations.
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from sqlalchemy import delete, exists, func, or_, select
 from sqlalchemy.orm import selectinload
@@ -160,28 +160,6 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
         )
         return result.scalar() or 0
 
-    async def update(
-        self, id: uuid.UUID | str, obj_in: schemas.UserAdminUpdate | dict[str, Any]
-    ) -> UserDTO | None:
-        """Update user with nested attributes handling."""
-        db_user = await self._get_orm(id, with_for_update=True)
-        if not db_user:
-            return None
-
-        if hasattr(obj_in, "model_dump"):
-            update_data = obj_in.model_dump(exclude_unset=True)
-        else:
-            update_data = obj_in
-
-        # Handle nested updates
-        from app.services.user.logic import update_user_attributes
-
-        update_user_attributes(db_user, update_data)
-
-        self.db.add(db_user)
-        await self.db.flush()
-        return self._to_dto(db_user)
-
     async def search_by_name(
         self, query: str, *, skip: int = 0, limit: int = 20
     ) -> list[UserDTO]:
@@ -312,16 +290,6 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
         await self.db.refresh(user, attribute_names=USER_MFA_RELATIONSHIP_NAMES)
         return self._to_dto(user)
 
-    async def anonymize(self, user_id: uuid.UUID | str) -> None:
-        """Perform full anonymization and sensitive data deletion."""
-        db_user = await self._get_orm(user_id)
-        if not db_user:
-            return
-
-        from app.services.user.logic import execute_user_anonymization
-
-        await execute_user_anonymization(self, db_user)
-
     async def delete_sensitive_data(self, user_id: uuid.UUID | str):
         """Cleanup user-related transient records (sessions, challenges, etc)."""
         if isinstance(user_id, str):
@@ -388,8 +356,12 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
 
         stmt = (
             select(models.DataAccessLog)
-            .where(models.DataAccessLog.actor_user_id == user_id)
-            .where(models.DataAccessLog.subject_user_id == user_id)
+            .where(
+                or_(
+                    models.DataAccessLog.actor_user_id == user_id,
+                    models.DataAccessLog.subject_user_id == user_id,
+                )
+            )
             .order_by(models.DataAccessLog.created_at.desc())
             .limit(limit)
         )

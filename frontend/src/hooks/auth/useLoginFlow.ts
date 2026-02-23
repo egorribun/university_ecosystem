@@ -182,12 +182,12 @@ export function useMfaFlow() {
   )
 
   const otpChallenge = useMemo(
-    () => loginChallenge?.challenges?.find((c) => c.method === "totp"),
+    () => loginChallenge?.methods?.find((c) => c.method === "totp"),
     [loginChallenge]
   ) as ChallengeWithAttempts | undefined
 
   const webauthnChallenge = useMemo(
-    () => loginChallenge?.challenges?.find((c) => c.method === "webauthn"),
+    () => loginChallenge?.methods?.find((c) => c.method === "webauthn"),
     [loginChallenge]
   )
 

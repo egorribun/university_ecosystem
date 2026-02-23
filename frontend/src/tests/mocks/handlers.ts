@@ -6,10 +6,11 @@ import type { StoryItem } from "@/types/Story"
 import type { NewsItem } from "@/api/news"
 import type {
   MfaMethod,
+  MfaMethodChallenge,
   MfaTotpEnrollment,
   MfaVerifyPayload,
   PendingMfaResponse,
-  TotpEnrollmentStartResponse,
+  TotpEnrollmentStart,
 } from "@/types/Mfa"
 
 type RegisterPayload = {
@@ -82,7 +83,7 @@ type ChallengeAttemptOverrides = {
 
 type ChallengeOptions = {
   includeTotp?: boolean
-  defaultMethod?: MfaMethod | null
+  defaultMethod?: PendingMfaResponse["default_method"]
   sessionId?: number | string | null
   attempts?: Partial<Record<MfaMethod, ChallengeAttemptOverrides>>
 }
@@ -130,11 +131,10 @@ const createMfaChallenge = ({
     session_id: typeof sessionId === "number" ? `session-${sessionId}` : sessionId,
     default_method: defaultMethod,
     methods,
-    challenges: methods,
   }
 }
 
-let totpDraft: TotpEnrollmentStartResponse | null = null
+let totpDraft: TotpEnrollmentStart | null = null
 let totpEnrollmentCounter = 1
 let loginChallenge: PendingMfaResponse | null = null
 let stepUpChallenge: PendingMfaResponse | null = createMfaChallenge({
@@ -485,7 +485,7 @@ export const handlers = [
     const matchChallenge = (challenge: PendingMfaResponse | null) =>
       Boolean(
         challenge?.methods.some(
-          (method) =>
+          (method: MfaMethodChallenge) =>
             method.method === body.method && method.challenge_token === body.challenge_token
         )
       )

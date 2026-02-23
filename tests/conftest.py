@@ -75,28 +75,36 @@ def mock_global_redis(monkeypatch_session):
     # Create a shared fake client for the session
     fake_client = fakeredis.aioredis.FakeRedis(decode_responses=True)
 
-    # Mock lock for fakeredis (which doesn't support evalsha/redlock by default)
-    from unittest.mock import AsyncMock, MagicMock
+    # Stable lock implementation to avoid AsyncMock/deepcopy RuntimeWarnings
+    class SimpleAsyncLock:
+        async def acquire(self, *args, **kwargs):
+            return True
 
-    mock_lock = MagicMock()
-    mock_lock.acquire = AsyncMock(return_value=True)
-    mock_lock.release = AsyncMock(return_value=None)
-    mock_lock.__aenter__ = AsyncMock(return_value=mock_lock)
-    mock_lock.__aexit__ = AsyncMock(return_value=None)
-    fake_client.lock = MagicMock(return_value=mock_lock)
+        async def release(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args, **kwargs):
+            pass
+
+    from unittest.mock import MagicMock
+
+    import redis.asyncio.client
+
+    fake_lock = SimpleAsyncLock()
 
     # Monkeypatch the Redis constructor to return our fake client
     monkeypatch_session.setattr(
         AsyncRedis, "from_url", lambda *args, **kwargs: fake_client
     )
     # Also patch the class itself if used as a constructor
-    # (though usually from_url is used)
-
-    import redis.asyncio.client
-
     monkeypatch_session.setattr(
         redis.asyncio.client, "Redis", lambda *args, **kwargs: fake_client
     )
+
+    fake_client.lock = MagicMock(return_value=fake_lock)
 
     return fake_client
 
@@ -153,3 +161,16 @@ def link_read_db_to_write_db():
     current = app.dependency_overrides.get(get_read_db)
     if current == get_db:
         del app.dependency_overrides[get_read_db]
+
+
+@pytest.fixture(autouse=True)
+def clear_dependency_overrides():
+    """
+    Aggressively clear any leftover dependency overrides after each test.
+    This prevents AsyncMocks and other test-specific objects from leaking
+    into subsequent tests, avoiding RuntimeWarnings during deepcopy.
+    """
+    from app.main import app
+
+    yield
+    app.dependency_overrides.clear()

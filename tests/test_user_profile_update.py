@@ -326,7 +326,8 @@ async def test_upload_avatar_cleans_up_on_commit_failure(
     from unittest.mock import AsyncMock
 
     service = UserService(AsyncMock(), AuditService(), AsyncMock())
-    service.repo.get.return_value = user
+    service.repo._get_orm.return_value = user
+    service.repo._to_dto.return_value = user
 
     async def failing_commit(*_args, **_kwargs):
         raise RuntimeError("commit failed")
@@ -373,7 +374,8 @@ async def test_upload_cover_cleans_up_on_commit_failure(
     from unittest.mock import AsyncMock
 
     service = UserService(AsyncMock(), AuditService(), AsyncMock())
-    service.repo.get.return_value = user
+    service.repo._get_orm.return_value = user
+    service.repo._to_dto.return_value = user
 
     async def failing_commit(*_args, **_kwargs):
         raise RuntimeError("commit failed")

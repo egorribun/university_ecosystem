@@ -129,10 +129,3 @@ async def validate_user_email(
     if await repo.check_email_exists(validated_email, exclude_user_id=exclude_user_id):
         raise EntityAlreadyExists("User", validated_email)
     return validated_email
-
-
-async def execute_user_anonymization(repo: UserRepository, user: models.User) -> str:
-    """Perform full anonymization and sensitive data deletion."""
-    anonymized_email = await anonymize_user_data(user)
-    await repo.delete_sensitive_data(user.id)
-    return anonymized_email

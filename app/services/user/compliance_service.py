@@ -18,6 +18,7 @@ from app.schemas import schemas
 from app.schemas.dtos import UserDTO
 from app.services.audit_service import AuditService, SecurityEvent, auditable
 from app.services.data_access import log_data_access
+from app.services.user.logic import anonymize_user_data
 
 logger = logging.getLogger(__name__)
 
@@ -37,27 +38,18 @@ class UserComplianceService:
         if current_user.role != "admin":
             raise PermissionDenied()
 
-        db_user = await self.repo.get(user_id)
+        # Fetch ORM user
+        db_user = await self.repo._get_orm(user_id)
         if db_user is None:
             raise EntityNotFound("User", user_id)
 
         if db_user.id == current_user.id:
             raise BusinessRuleViolation("errors.users.cannot_delete_self")
 
-        # anonymize_user_data needs an ORM object, so we should either move it to repo
-        # or have a repo method that handles it.
-        # Let's move it to repo or use an internal helper if we must.
-        # For now, I'll assume I can't easily move it, so I'll get ORM object.
-        # But wait, the goal is isolation.
+        # Perform anonymization
+        await anonymize_user_data(db_user)
+        await self.repo.delete_sensitive_data(db_user.id)
 
-        # I'll use a new repo method 'anonymize'
-        # Let's check if I've added it. No.
-        # I'll add 'anonymize' to UserRepository.
-
-        # execute_user_anonymization takes repo and ORM user.
-        # I'll fix it to take repo and user_id.
-
-        await self.repo.anonymize(user_id)
         await self.repo.commit()
         return {"deleted": True, "user_id": user_id}
 
@@ -167,11 +159,14 @@ class UserComplianceService:
         if not confirm:
             raise BusinessRuleViolation("errors.users.confirmation_required")
 
-        db_user = await self.repo.get(user.id)
+        # Fetch ORM user
+        db_user = await self.repo._get_orm(user.id)
         if not db_user:
             raise EntityNotFound("User", user.id)
 
-        await self.repo.anonymize(user.id)
+        await anonymize_user_data(db_user)
+        await self.repo.delete_sensitive_data(db_user.id)
+
         await log_data_access(
             self.repo.db,
             actor_user_id=user.id,

@@ -11,6 +11,11 @@ work without changes::
     await generate_recovery_codes(db, user=user)
 """
 
+from app.auth.constants import (
+    MFA_METHOD_RECOVERY_CODE,
+    MFA_METHOD_TOTP,
+    MFA_METHOD_WEBAUTHN,
+)
 from app.auth.mfa.challenge import (
     CHALLENGE_TYPE_TOTP_AUTH,
     consume_challenge,
@@ -50,6 +55,7 @@ from app.auth.mfa.trusted_device import (
     create_trusted_device_token,
     verify_trusted_device_token,
 )
+from app.models.models import MfaTotpEnrollment, WebAuthnCredential
 
 __all__ = [
     # challenge
@@ -86,4 +92,11 @@ __all__ = [
     # trusted_device
     "create_trusted_device_token",
     "verify_trusted_device_token",
+    # models
+    "MfaTotpEnrollment",
+    "WebAuthnCredential",
+    # constants
+    "MFA_METHOD_TOTP",
+    "MFA_METHOD_WEBAUTHN",
+    "MFA_METHOD_RECOVERY_CODE",
 ]

@@ -1,0 +1,215 @@
+import type { InternalAxiosRequestConfig } from "axios"
+
+const parsePositiveInteger = (value: unknown, fallback: number): number => {
+  const parsed = Number.parseInt(String(value ?? ""), 10)
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed
+  }
+  return fallback
+}
+
+export const RATE_LIMIT_DEFAULT_DELAY_MS = 2000
+export const RATE_LIMIT_MAX_RETRY = 2
+const RATE_LIMIT_WINDOW_MS = 60_000
+
+const CLIENT_RATE_LIMIT_REQUESTS_PER_WINDOW = parsePositiveInteger(
+  import.meta.env.VITE_API_RATE_LIMIT_PER_MINUTE,
+  90
+)
+
+const CLIENT_RATE_LIMIT_MAX_CONCURRENT = parsePositiveInteger(
+  import.meta.env.VITE_API_RATE_LIMIT_MAX_CONCURRENT,
+  6
+)
+
+let rateLimitResetAt = 0
+let rateLimitTimer: ReturnType<typeof setTimeout> | null = null
+const rateLimitWaiters: Array<() => void> = []
+
+let clientQueueInFlight = 0
+const clientQueueWaiters: Array<() => void> = []
+const clientQueueTimestamps: number[] = []
+let clientQueueTimer: ReturnType<typeof setTimeout> | null = null
+let clientQueueResetAt = 0
+
+const pruneClientQueueTimestamps = () => {
+  const threshold = Date.now() - RATE_LIMIT_WINDOW_MS
+  while (clientQueueTimestamps.length > 0) {
+    const oldest = clientQueueTimestamps[0]!
+    if (oldest <= threshold) {
+      clientQueueTimestamps.shift()
+    } else {
+      break
+    }
+  }
+}
+
+const scheduleClientQueueWindowReset = () => {
+  pruneClientQueueTimestamps()
+
+  if (clientQueueTimestamps.length < CLIENT_RATE_LIMIT_REQUESTS_PER_WINDOW) {
+    if (clientQueueTimer) {
+      clearTimeout(clientQueueTimer)
+      clientQueueTimer = null
+      clientQueueResetAt = 0
+    }
+    return
+  }
+
+  const oldest = clientQueueTimestamps[0] ?? Date.now()
+  const target = oldest + RATE_LIMIT_WINDOW_MS
+  if (clientQueueTimer && target >= clientQueueResetAt) {
+    return
+  }
+
+  if (clientQueueTimer) {
+    clearTimeout(clientQueueTimer)
+    clientQueueTimer = null
+  }
+
+  clientQueueResetAt = target
+  clientQueueTimer = setTimeout(
+    () => {
+      clientQueueTimer = null
+      clientQueueResetAt = 0
+      pruneClientQueueTimestamps()
+      notifyClientQueue()
+    },
+    Math.max(0, target - Date.now())
+  )
+}
+
+const notifyClientQueue = () => {
+  if (clientQueueWaiters.length === 0) {
+    return
+  }
+
+  while (clientQueueWaiters.length > 0) {
+    pruneClientQueueTimestamps()
+
+    if (clientQueueInFlight >= CLIENT_RATE_LIMIT_MAX_CONCURRENT) {
+      return
+    }
+
+    if (clientQueueTimestamps.length >= CLIENT_RATE_LIMIT_REQUESTS_PER_WINDOW) {
+      scheduleClientQueueWindowReset()
+      return
+    }
+
+    const resolve = clientQueueWaiters.shift()
+    if (!resolve) {
+      continue
+    }
+    resolve()
+  }
+}
+
+const tryAcquireClientQueueSlot = (): boolean => {
+  pruneClientQueueTimestamps()
+
+  if (clientQueueInFlight >= CLIENT_RATE_LIMIT_MAX_CONCURRENT) {
+    return false
+  }
+
+  if (clientQueueTimestamps.length >= CLIENT_RATE_LIMIT_REQUESTS_PER_WINDOW) {
+    scheduleClientQueueWindowReset()
+    return false
+  }
+
+  clientQueueInFlight += 1
+  clientQueueTimestamps.push(Date.now())
+  return true
+}
+
+const shouldThrottleRequest = (config: InternalAxiosRequestConfig) => {
+  const method = (config.method ?? "get").toString().toLowerCase()
+  return method === "get"
+}
+
+const throwIfAborted = (signal?: AbortSignal) => {
+  if (!signal?.aborted) {
+    return
+  }
+
+  const reason = signal.reason
+  if (reason instanceof Error) {
+    throw reason
+  }
+
+  throw new DOMException("Aborted", "AbortError")
+}
+
+export const waitForClientQueueSlot = async (config: any) => {
+  if (!shouldThrottleRequest(config as InternalAxiosRequestConfig)) {
+    return
+  }
+
+  while (true) {
+    throwIfAborted(config.signal)
+    if (tryAcquireClientQueueSlot()) {
+      config.__clientRateLimitAcquired = true
+      return
+    }
+
+    await new Promise<void>((resolve) => {
+      clientQueueWaiters.push(resolve)
+    })
+  }
+}
+
+export const releaseClientQueueSlot = (config?: any) => {
+  if (!config?.__clientRateLimitAcquired) {
+    return
+  }
+
+  config.__clientRateLimitAcquired = false
+
+  if (!shouldThrottleRequest(config as InternalAxiosRequestConfig)) {
+    return
+  }
+
+  if (clientQueueInFlight > 0) {
+    clientQueueInFlight -= 1
+  }
+
+  pruneClientQueueTimestamps()
+  notifyClientQueue()
+}
+
+export const scheduleRateLimitWindow = (delayMs: number) => {
+  const target = Date.now() + Math.max(delayMs, 0)
+  if (rateLimitTimer && target <= rateLimitResetAt) {
+    return
+  }
+
+  rateLimitResetAt = target
+
+  if (rateLimitTimer) {
+    clearTimeout(rateLimitTimer)
+    rateLimitTimer = null
+  }
+
+  rateLimitTimer = setTimeout(
+    () => {
+      rateLimitTimer = null
+      rateLimitResetAt = 0
+      while (rateLimitWaiters.length > 0) {
+        const resolve = rateLimitWaiters.shift()
+        resolve?.()
+      }
+    },
+    Math.max(0, target - Date.now())
+  )
+}
+
+export const waitForRateLimitWindow = async () => {
+  if (rateLimitResetAt <= Date.now()) {
+    return
+  }
+
+  await new Promise<void>((resolve) => {
+    rateLimitWaiters.push(resolve)
+  })
+}
+
+export const isRateLimited = () => rateLimitResetAt > Date.now()

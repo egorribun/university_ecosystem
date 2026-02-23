@@ -1,17 +1,14 @@
-import os
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
-from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.validation import raise_forbidden, raise_unauthorized
 from app.auth import mfa
 from app.auth.rbac import PermissionChecker, SpiceDBUnavailableError
-from app.auth.security import decode_token
 from app.core.config import settings
 from app.core.container import get_vector_service
 from app.core.database import get_db, get_read_db
@@ -23,6 +20,9 @@ from app.models.user_loaders import (
 )
 from app.repositories.active_session_repository import ActiveSessionRepository
 from app.schemas.dtos import UserAuthDTO, UserDTO
+from app.services.auth.fingerprint_service import AuthFingerprintService
+from app.services.auth.security_service import AuthSecurityService
+from app.services.auth.token_service import AuthTokenService
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
@@ -34,269 +34,73 @@ async def get_current_user(
 ) -> User:
     locale = resolve_locale(request=request)
 
-    def fail_auth():
-        raise_unauthorized(
-            locale,
-            "errors.auth.credentials_invalid",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    # 1. Decode and Validate Token
+    payload = AuthTokenService.extract_and_decode_token(request, token, locale)
+    user_id, jti = AuthTokenService.validate_payload(payload, locale)
 
-    raw_token = token or request.cookies.get("access_token_v2")
-    if not raw_token:
-        fail_auth()
-    assert raw_token is not None
-    payload = decode_token(raw_token)
-    if not payload:
-        fail_auth()
-    assert payload is not None
-    sub = payload.get("sub")
-    jti = payload.get("jti")
-    if not sub or not jti:
-        fail_auth()
-    assert isinstance(sub, str)
-    assert isinstance(jti, str)
-    try:
-        user_id = UUID(sub)
-    except (TypeError, ValueError):
-        fail_auth()
-
-    # Redis Session Check (Cache-Aside)
+    # 2. Redis Session Check (Cache-Aside)
     from app.services.auth.redis_session import RedisSessionService
 
     redis_service = RedisSessionService()
     cached_session = await redis_service.get_session(jti)
 
     user: User | None = None
-    session_obj: ActiveSession | None = None
+    session: ActiveSession | None = None
 
     if cached_session:
-        # HIT: Fast path
-        # 1. Verify User ID matches (sanity check)
+        # HIT: Fast path validation
         if cached_session["user_id"] != str(user_id):
-            fail_auth()
+            raise_unauthorized(locale, "errors.auth.credentials_invalid")
 
-        # 2. Update activity in background (Redis)
-        request.state.redis_session_jti = (
-            jti  # Store for optimized access later if needed
-        )
-        # We don't await this to keep latency low, or we assume it's fast enough
         await redis_service.update_last_seen(jti)
-
-        # 3. Load User from DB (Simple PK lookup, no joins needed for basic auth)
-        # Note: We still need user roles/options.
         user = await db.get(User, user_id, options=USER_AUTH_LOAD_OPTIONS)
         if not user or not user.is_active:
-            fail_auth()
+            raise_unauthorized(locale, "errors.auth.credentials_invalid")
 
-        # Reconstruct minimal Session object for compatibility
-        # We don't fetch the full ActiveSession from DB unless needed
-        # (e.g. fingerprint mismatch)
-        # However, legacy code expects `session` object.
-        # For now, we fetch DB session primarily if we suspect issues
-        # or for rigorous consistency,
-        # OR we construct a transient implementation.
-        # To maintain strict compatibility with `session.fingerprint_hash` checks below,
-        # we will skip the DB session load IF fingerprint matches.
-
-        # Validate Fingerprint from Redis data
-        cached_fp_hash = cached_session.get("fingerprint_hash")
-
-        # If we need the full DB object to respect logic below
-        # (which commits MFA state),
-        # we might still need it. But let's try to avoid the JOIN.
-        pass
-
-    # MISS or Fallback: Full DB Validation
+    # 3. MISS or Fallback: Full DB Validation
     if not user:
         session_repo = ActiveSessionRepository(db)
         row = await session_repo.get_active_session_with_user(
             user_id, jti, load_options=list(USER_AUTH_LOAD_OPTIONS)
         )
         if not row:
-            fail_auth()
-        assert row is not None
-        user, session_obj = row
+            raise_unauthorized(locale, "errors.auth.credentials_invalid")
+        user, session = row
 
-        # POPULATE REDIS (Cache-Aside)
+        # Populate Redis (Cache-Aside)
         from app.auth.fingerprint import SessionFingerprint
 
         fp = SessionFingerprint(
-            user_agent=str(session_obj.user_agent or ""),
-            ip_address=str(session_obj.ip_address or ""),
-            accept_language=str(session_obj.accept_language or ""),
-            fingerprint_hash=str(session_obj.fingerprint_hash or ""),
-        )
-        await redis_service.create_session(
-            jti=str(jti),
-            user_id=user.id,
-            fingerprint=fp,
-            mfa_verified_at=session_obj.mfa_verified_at,
-        )
-
-    # If we hit Redis, we still need `session_obj` for the logic below
-    # (fingerprint check etc).
-    # Optimally, we construct it from checking the current request matches Redis data.
-    # If we are here and `session_obj` is None, it means we hit Redis
-    # but haven't loaded DB session.
-
-    if not session_obj and cached_session:
-        # Check constraints without DB
-        cached_fp_hash = cached_session.get("fingerprint_hash")
-
-        # Fingerprint Validation (Redis Path)
-        if cached_fp_hash:
-            from app.auth.fingerprint import extract_fingerprint
-
-            current_fp = extract_fingerprint(request)
-            if current_fp.fingerprint_hash != cached_fp_hash:
-                # Suspicious! Fallback to DB to run full logic
-                pass  # Logic continues below requires real session object
-                # To simplify migration phase: If Redis hit, we basically trust it
-                # unless we implement full logic here.
-                # For safety in Phase 1: We will fetch the DB session even on Redis hit
-                # BUT using a simpler query
-                # (SELECT * FROM active_sessions WHERE id = ...),
-                # avoiding the JOIN if possible, or accept that we simply
-                # optimized user loading.
-
-                # REVISED STRATEGY:
-                # The big cost is the JOIN.
-                # We already loaded User.
-                # Let's load Session by JTI separately (fast index scan).
-                res_s = await db.execute(
-                    select(ActiveSession).where(ActiveSession.jti == jti)
-                )
-                session_obj = res_s.scalars().first()
-                if not session_obj or session_obj.revoked_at:
-                    fail_auth()
-
-    # If we still don't have session_obj (shouldn't happen if logic is correct):
-    if not session_obj:
-        # Fallback load
-        res_s = await db.execute(select(ActiveSession).where(ActiveSession.jti == jti))
-        session_obj = res_s.scalars().first()
-        if not session_obj:
-            fail_auth()
-
-    # --- Standard Validation Logic (from DB object) ---
-    # Now that we have session_obj, we run standard checks.
-    # The optimization is that we avoided the JOIN for every request
-    # by splitting queries
-    # (if using Redis) or we accept that we double-check DB for now.
-
-    # Actually, for true performance, we should NOT load session_obj if Redis is valid.
-    # Let's trust Redis for validity (revocation check) and only load DB
-    # if we need to write to it.
-    #
-    # Current implementation limitation: The existing logic heavily relies
-    # on `session` attributes.
-    # Preserving behavior:
-    session = session_obj
-    assert session is not None
-    now = datetime.now(UTC)
-    expires_at = session.expires_at
-    assert expires_at is not None
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=UTC)
-    if expires_at <= now:
-        fail_auth()
-
-    # Fingerprint validation
-    if session.fingerprint_hash:
-        from app.auth.fingerprint import (
-            SessionFingerprint,
-            extract_fingerprint,
-            get_suspicious_activity_detector,
-        )
-
-        current_fp = extract_fingerprint(request)
-        stored_fp = SessionFingerprint(
             user_agent=str(session.user_agent or ""),
-            accept_language=str(session.accept_language or ""),
             ip_address=str(session.ip_address or ""),
+            accept_language=str(session.accept_language or ""),
             fingerprint_hash=str(session.fingerprint_hash or ""),
         )
+        await redis_service.create_session(
+            jti=jti,
+            user_id=user.id,
+            fingerprint=fp,
+            mfa_verified_at=session.mfa_verified_at,
+        )
 
-        if current_fp.fingerprint_hash != stored_fp.fingerprint_hash:
-            detector = get_suspicious_activity_detector()
-            event = detector.check_fingerprint_mismatch(
-                user_id=user.id,
-                session_id=session.id,
-                stored_fingerprint=stored_fp,
-                current_fingerprint=current_fp,
-            )
-            if event:
-                import logging as _logging
+    # Ensure we have a session object (required for downstream logic)
+    if not session:
+        res_s = await db.execute(select(ActiveSession).where(ActiveSession.jti == jti))
+        session = res_s.scalars().first()
+        if not session or session.revoked_at:
+            raise_unauthorized(locale, "errors.auth.credentials_invalid")
 
-                _logging.getLogger("app.auth.security").warning(
-                    "Session fingerprint mismatch detected — revoking session immediately",
-                    extra=event.to_log_record(),
-                )
-                if (
-                    os.getenv("ENVIRONMENT") != "testing"
-                    and getattr(settings, "ENVIRONMENT", "production") != "testing"
-                ):
-                    # Revoke the session persistently so the stolen token cannot be
-                    # reused after the Redis TTL expires or on other service instances.
-                    session.revoked_at = datetime.now(UTC)
-                    await db.commit()
-                    # Immediately invalidate the Redis cache entry.
-                    try:
-                        await redis_service.revoke_session(jti)
-                    except Exception as _revoke_err:
-                        _logging.getLogger("app.auth.security").error(
-                            "Failed to revoke session in Redis after fingerprint mismatch: %s",
-                            _revoke_err,
-                        )
-                    raise_forbidden(locale, "errors.auth.session_compromised")
+    # 4. Security Lifecycle Validation
+    security_service = AuthSecurityService(db, locale)
+    security_service.validate_session_expiry(session)
 
-    if session:
-        ttl = max(0, getattr(settings, "mfa_step_up_ttl_seconds", 0))
-        if ttl > 0 and session.mfa_verified_at is not None:
-            verified_at = session.mfa_verified_at
-            if verified_at.tzinfo is None:
-                verified_at = verified_at.replace(tzinfo=UTC)
-            if now - verified_at > timedelta(seconds=ttl):
-                session.mfa_verified_at = None
-                await db.commit()
+    # 5. Fingerprint Validation
+    fingerprint_service = AuthFingerprintService(request, locale)
+    await fingerprint_service.validate_fingerprint(user, session, db, redis_service)
 
-    # DB UPDATE OPTIMIZATION:
-    # If we are using Redis and verified it was fresh, we can SKIP the DB
-    # `last_seen_at` update entirely!
-    # The Redis `update_last_seen` handles the hot path.
-    # We only update DB occasionally (e.g. every 5-10 mins) to keep audit logs
-    # roughly accurate.
-
-    if session:
-        last_seen_at = session.last_seen_at
-        if last_seen_at is not None and last_seen_at.tzinfo is None:
-            last_seen_at = last_seen_at.replace(tzinfo=UTC)
-
-        # Increase sync window to 10 minutes if using Redis, else 5 mins
-        sync_window = 600 if cached_session else 300
-
-        if last_seen_at is None or (
-            now - last_seen_at >= timedelta(seconds=sync_window)
-        ):
-            from sqlalchemy import update
-
-            stmt = (
-                update(ActiveSession)
-                .where(ActiveSession.id == session.id)
-                .where(
-                    or_(
-                        ActiveSession.last_seen_at.is_(None),
-                        ActiveSession.last_seen_at
-                        < now - timedelta(seconds=sync_window),
-                    )
-                )
-                .values(last_seen_at=now)
-                .execution_options(synchronize_session=False)
-            )
-            await db.execute(stmt)
-            await db.commit()
-            session.last_seen_at = now
-            await db.refresh(user)
+    # 6. Post-validation updates (MFA TTL, Last Seen sync)
+    await security_service.handle_mfa_ttl(session)
+    await security_service.sync_last_seen(session, cached_session=bool(cached_session))
 
     request.state.active_session = session
     return user
@@ -607,3 +411,9 @@ def get_login_service(
 
     lockout_service = LockoutService(db)
     return LoginService(db, user_service, session_service, lockout_service, audit)
+
+
+def get_analytics_service() -> Any:
+    from app.services.analytics import get_analytics_service
+
+    return get_analytics_service()

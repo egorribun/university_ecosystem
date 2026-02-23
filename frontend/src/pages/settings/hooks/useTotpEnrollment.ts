@@ -14,7 +14,7 @@ import {
 } from "@/api/mfa"
 import type {
   MfaTotpEnrollment,
-  TotpEnrollmentStartResponse,
+  TotpEnrollmentStart,
   TotpEnrollmentStartPayload,
 } from "@/types/Mfa"
 import type { User } from "@/types/User"
@@ -27,7 +27,7 @@ export interface UseTotpEnrollmentOptions {
 
 export interface UseTotpEnrollmentReturn {
   // State
-  totpDraft: TotpEnrollmentStartResponse | null
+  totpDraft: TotpEnrollmentStart | null
   totpBusy: boolean
   totpError: string | null
   // Computed
@@ -60,7 +60,7 @@ export function useTotpEnrollment({
   const { user, setUser } = useAuth()
   const queryClient = useQueryClient()
 
-  const [totpDraft, setTotpDraft] = useState<TotpEnrollmentStartResponse | null>(null)
+  const [totpDraft, setTotpDraft] = useState<TotpEnrollmentStart | null>(null)
   const [totpBusy, setTotpBusy] = useState(false)
   const [totpError, setTotpError] = useState<string | null>(null)
 
@@ -146,7 +146,7 @@ export function useTotpEnrollment({
       setTotpBusy(true)
       setTotpError(null)
       try {
-        const { data } = await startTotpEnrollment(options?.payload)
+        const data = await startTotpEnrollment(options?.payload)
         setTotpDraft(data)
       } catch (error) {
         if (!options?.skipStepUp && isStepUpError(error)) {
@@ -213,7 +213,7 @@ export function useTotpEnrollment({
     (enrollmentId: string) => {
       const action = async () => {
         try {
-          const { data } = await deleteTotpEnrollment(enrollmentId)
+          const data = await deleteTotpEnrollment(enrollmentId)
           if (data) {
             setUser((previous) =>
               previous

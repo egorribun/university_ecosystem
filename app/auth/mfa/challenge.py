@@ -24,10 +24,8 @@ from app.auth.constants import (
     MFA_METHOD_WEBAUTHN,
 )
 from app.core.config import settings
-from app.core.localization import translate
 from app.core.rate_limit import RateLimitExceeded, enforce_rate_limit
 from app.models.models import ActiveSession, MfaChallenge, MfaTotpEnrollment, User
-from app.utils import ratelimit as ratelimit_utils
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,19 +34,11 @@ logger = logging.getLogger(__name__)
 audit_logger = logging.getLogger("app.users.audit")
 
 # Re-export so callers that do ``from app.auth.mfa import CHALLENGE_TYPE_TOTP_AUTH`` work.
-CHALLENGE_TYPE_TOTP_AUTH = CHALLENGE_TYPE_TOTP_VERIFY
+# (CHALLENGE_TYPE_TOTP_AUTH is already imported from app.auth.constants)
 
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
-
-
-def _resolve_rate_limit_backend() -> str | None:
-    backend = settings.rate_limit_storage_backend.strip().lower()
-    uri = settings.rate_limit_storage_uri.strip()
-    if backend == "redis" and uri.lower().startswith(("redis://", "rediss://")):
-        return uri
-    return None
 
 
 async def _enforce_challenge_rate_limit(
@@ -61,26 +51,22 @@ async def _enforce_challenge_rate_limit(
     window = max(0, settings.mfa_challenge_ttl_seconds)
     if limit == 0 or window == 0:
         return
+
     key = f"mfa:{challenge_type}:{user_id}"
-    message = translate("errors.rate_limit.generic", locale=locale)
-    redis_url = _resolve_rate_limit_backend()
-    if redis_url:
-        try:
-            await enforce_rate_limit(
-                identifier=key,
-                namespace="mfa",
-                limit=limit,
-                window_seconds=window,
-                redis_url=redis_url,
-            )
-        except RateLimitExceeded:
-            raise_http_error(
-                status.HTTP_429_TOO_MANY_REQUESTS,
-                "errors.rate_limit.generic",
-                locale or "en",
-            )
-    else:
-        ratelimit_utils.limiter.check(key, limit, window, message=message)
+    try:
+        await enforce_rate_limit(
+            identifier=key,
+            namespace="mfa",
+            limit=limit,
+            window_seconds=window,
+            redis_url=settings.rate_limit_storage_uri,
+        )
+    except RateLimitExceeded:
+        raise_http_error(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "errors.rate_limit.generic",
+            locale or "en",
+        )
 
 
 def _extract_attempt_limit(

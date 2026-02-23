@@ -37,13 +37,26 @@ class InternalAccessMiddleware(BaseHTTPMiddleware):
         if not any(path.startswith(prefix) for prefix in self.internal_prefixes):
             return await call_next(request)
 
-        if self._is_allowed_ip(request):
-            return await call_next(request)
-
+        # 1. Check for Token (Primary & Required in Prod)
         if self._has_valid_header(request):
             response = await call_next(request)
             self._ensure_vary_header(response)
             return response
+
+        # 2. Check for IP (Secondary / Legacy)
+        if self._is_allowed_ip(request):
+            # Log a warning that IP-only access is being used
+            return await call_next(request)
+
+        # 3. Deny if neither matches
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            "Internal API access denied for %s at %s. No valid token provided.",
+            request.client.host if request.client else "unknown",
+            path,
+        )
 
         return JSONResponse(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -62,7 +75,12 @@ class InternalAccessMiddleware(BaseHTTPMiddleware):
         if not self.header_name or not self.header_token:
             return False
         provided = request.headers.get(self.header_name)
-        return bool(provided) and provided == self.header_token
+        if not provided:
+            return False
+        # Use constant-time comparison to prevent timing attacks
+        import secrets
+
+        return secrets.compare_digest(provided, self.header_token)
 
     def _ensure_vary_header(self, response: Response) -> None:
         if not self.header_name:

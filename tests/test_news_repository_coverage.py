@@ -1,3 +1,4 @@
+import uuid
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -30,13 +31,38 @@ async def test_get_published(news_repo, mock_db):
 
     await news_cache.invalidate_prefix("news:published")
 
+    now = datetime.now(UTC)
+    id1, id2 = uuid.uuid4(), uuid.uuid4()
+
+    mock_news1 = MagicMock()
+    mock_news1.id = id1
+    mock_news1.title = "title1"
+    mock_news1.content = "content1"
+    mock_news1.created_at = now
+    mock_news1.author_id = None
+    mock_news1.title_en = None
+    mock_news1.content_en = None
+    mock_news1.image_url = None
+
+    mock_news2 = MagicMock()
+    mock_news2.id = id2
+    mock_news2.title = "title2"
+    mock_news2.content = "content2"
+    mock_news2.created_at = now
+    mock_news2.author_id = None
+    mock_news2.title_en = None
+    mock_news2.content_en = None
+    mock_news2.image_url = None
+
     mock_result = MagicMock()
-    mock_result.scalars().all.return_value = ["news1", "news2"]
+    mock_result.scalars().all.return_value = [mock_news1, mock_news2]
     mock_db.execute.return_value = mock_result
 
     result = await news_repo.get_published(skip=0, limit=10)
 
-    assert result == ["news1", "news2"]
+    assert len(result) == 2
+    assert result[0].id == id1
+    assert result[1].id == id2
     mock_db.execute.assert_called_once()
 
 
@@ -51,13 +77,25 @@ async def test_get_latest(news_repo):
 
 @pytest.mark.asyncio
 async def test_search(news_repo, mock_db):
+    id1 = uuid.uuid4()
+    mock_news = MagicMock()
+    mock_news.id = id1
+    mock_news.title = "found"
+    mock_news.content = "content"
+    mock_news.created_at = datetime.now(UTC)
+    mock_news.author_id = None
+    mock_news.title_en = None
+    mock_news.content_en = None
+    mock_news.image_url = None
+
     mock_result = MagicMock()
-    mock_result.scalars().all.return_value = ["found"]
+    mock_result.scalars().all.return_value = [mock_news]
     mock_db.execute.return_value = mock_result
 
     result = await news_repo.search("test")
 
-    assert result == ["found"]
+    assert len(result) == 1
+    assert result[0].title == "found"
 
 
 @pytest.mark.asyncio
@@ -82,22 +120,47 @@ async def test_count_total_none(news_repo, mock_db):
 
 @pytest.mark.asyncio
 async def test_list_news_basic(news_repo, mock_db):
-    mock_result = MagicMock()
-    mock_result.all.return_value = [("news", 1, 2, False)]
-    mock_db.execute.return_value = mock_result
+    id1 = uuid.uuid4()
+    mock_news = MagicMock()
+    mock_news.id = id1
+    mock_news.title = "news"
+    mock_news.content = "content"
+    mock_news.created_at = datetime.now(UTC)
+    mock_news.author_id = None
+    mock_news.title_en = None
+    mock_news.content_en = None
+    mock_news.image_url = None
+
+    # 1. News items result
+    res_news = MagicMock()
+    res_news.scalars.return_value.all.return_value = [mock_news]
+
+    # 2. Likes count result
+    res_likes = MagicMock()
+    res_likes.all.return_value = [(id1, 1)]
+
+    # 3. Comments count result
+    res_comments = MagicMock()
+    res_comments.all.return_value = [(id1, 2)]
+
+    mock_db.execute.side_effect = [res_news, res_likes, res_comments]
 
     result = await news_repo.list_news()
     assert len(result) == 1
-    assert result[0] == ("news", 1, 2, False)
+    assert result[0].news.id == id1
+    assert result[0].likes_count == 1
+    assert result[0].comments_count == 2
+    assert result[0].is_liked is False
 
 
 @pytest.mark.asyncio
 async def test_list_news_cursor(news_repo, mock_db):
-    mock_result = MagicMock()
-    mock_result.all.return_value = []
-    mock_db.execute.return_value = mock_result
+    # Just verify it doesn't crash and handles cursor correctly
+    res_news = MagicMock()
+    res_news.scalars.return_value.all.return_value = []
+    mock_db.execute.return_value = res_news
 
-    await news_repo.list_news(cursor=(datetime.now(UTC), 1))
+    await news_repo.list_news(cursor=(datetime.now(UTC), uuid.uuid4()))
     # Verification of complex where clause construction would be implicit by success
 
 

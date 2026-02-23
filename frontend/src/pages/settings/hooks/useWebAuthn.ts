@@ -86,8 +86,7 @@ export function useWebAuthn({ setSnackbar, tabActive, openStepUpFor }: UseWebAut
     setCredentialsLoading(true)
     try {
       const response = await listWebAuthnCredentials()
-      const data = response.data
-      setCredentials(Array.isArray(data) ? (data as WebAuthnCredential[]) : [])
+      setCredentials(Array.isArray(response) ? (response as WebAuthnCredential[]) : [])
     } catch {
       setCredentials([])
     } finally {
@@ -120,8 +119,7 @@ export function useWebAuthn({ setSnackbar, tabActive, openStepUpFor }: UseWebAut
       setBusy(true)
       try {
         // Step 1: Start registration and get options from server
-        const startResponse = await startWebAuthnRegistration()
-        const { publicKey, challenge_token } = startResponse.data
+        const { publicKey, challenge_token } = await startWebAuthnRegistration()
 
         if (!isCreationOptions(publicKey)) {
           throw new Error("Invalid WebAuthn options received from server")

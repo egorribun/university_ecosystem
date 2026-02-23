@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import delete, func, select
-from sqlalchemy.orm import LoaderOption
+from sqlalchemy.orm.interfaces import LoaderOption
 from sqlalchemy.sql.elements import ClauseElement
 
 from app.models.models import ActiveSession, User
