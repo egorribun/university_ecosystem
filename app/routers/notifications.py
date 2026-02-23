@@ -390,7 +390,7 @@ async def subscribe(
                             "errors.push.subscription_exists", locale=locale
                         ),
                     },
-                )
+                ) from e
 
     if subscription is None:
         raise HTTPException(
@@ -601,7 +601,7 @@ async def send_test(
                 "message": translate("errors.rate_limit.push_test", locale=locale),
                 "retry_after": info.retry_after,
             },
-        )
+        ) from exc
 
     target_id = payload.user_id if payload and payload.user_id else user.id
     target = await db.get(User, target_id)

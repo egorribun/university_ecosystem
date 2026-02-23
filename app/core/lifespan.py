@@ -142,7 +142,21 @@ async def lifespan(app: FastAPI):
 
     # Start OutboxWorker
     outbox_worker = OutboxWorker()
-    outbox_task = asyncio.create_task(outbox_worker.run_forever())
+    outbox_task = asyncio.create_task(outbox_worker.run_forever(), name="outbox_worker")
+
+    def _on_outbox_done(task: asyncio.Task) -> None:  # type: ignore[type-arg]
+        """Log unexpected OutboxWorker exits so they are never silently swallowed."""
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            import logging as _logging
+
+            _logging.getLogger(__name__).error(
+                "OutboxWorker exited unexpectedly: %s", exc, exc_info=exc
+            )
+
+    outbox_task.add_done_callback(_on_outbox_done)
 
     # Start in-memory rate limit cleanup (for fallback mode)
     start_memory_cleanup_task()

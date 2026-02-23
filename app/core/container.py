@@ -10,6 +10,7 @@ from app.deps.cache import BaseCache, get_cache
 from app.repositories.auth_repository import get_auth_repository
 from app.repositories.event_repository import get_event_repository
 from app.repositories.news_repository import get_news_repository
+from app.repositories.session_repository import get_session_repository
 from app.repositories.user_repository import get_user_repository
 from app.services.audit_service import (
     AuditService,
@@ -166,4 +167,10 @@ def get_auth_service(
 ) -> AuthService:
     auth_repo = get_auth_repository(db)
     user_repo = get_user_repository(db)
-    return AuthService(audit=audit, auth_repo=auth_repo, user_repo=user_repo)
+    session_repo = get_session_repository(db)
+    return AuthService(
+        audit=audit,
+        auth_repo=auth_repo,
+        user_repo=user_repo,
+        session_repo=session_repo,
+    )

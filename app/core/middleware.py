@@ -4,8 +4,11 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from brotli_asgi import BrotliMiddleware
+from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse, Response
 
 from app.api.internal import INTERNAL_ROUTE_PREFIXES
 from app.core.csrf import CSRFMiddleware
@@ -24,6 +27,55 @@ if TYPE_CHECKING:
     from app.core.config import Settings
 
 _logger = logging.getLogger(__name__)
+
+
+class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
+    """Reject HTTP requests whose body exceeds *max_bytes*.
+
+    Provides defence-in-depth on top of upstream proxy limits (nginx / caddy).
+    Handles both Content-Length and chunked Transfer-Encoding so attackers
+    cannot bypass the check by omitting the header.
+    """
+
+    _BAD_CONTENT_LENGTH = JSONResponse(
+        status_code=400, content={"detail": "Invalid Content-Length header"}
+    )
+
+    def __init__(self, app, *, max_bytes: int = 5 * 1024 * 1024) -> None:
+        super().__init__(app)
+        self._max_bytes = max_bytes
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        # Fast path: Content-Length declared → reject immediately, no body read.
+        cl_header = request.headers.get("content-length")
+        if cl_header is not None:
+            try:
+                cl = int(cl_header)
+            except ValueError:
+                return self._BAD_CONTENT_LENGTH
+            if cl > self._max_bytes:
+                return self._oversized_response(self._max_bytes)
+
+        # Slow path: chunked / unknown length — stream and accumulate byte count.
+        method = request.method.upper()
+        path = request.url.path or ""
+        has_body = method in {"POST", "PUT", "PATCH"} and not path.startswith("/ws")
+        if has_body and cl_header is None:
+            accumulated = 0
+            async for chunk in request.stream():
+                accumulated += len(chunk)
+                if accumulated > self._max_bytes:
+                    return self._oversized_response(self._max_bytes)
+
+        return await call_next(request)
+
+    @staticmethod
+    def _oversized_response(limit: int) -> JSONResponse:
+        return JSONResponse(
+            status_code=413,
+            content={"detail": f"Payload Too Large (max {limit // (1024 * 1024)} MB)"},
+        )
+
 
 
 def _ensure_vary_header(response, header_name: str) -> None:
@@ -146,4 +198,11 @@ def configure_middleware(app: FastAPI, settings: Settings) -> None:
         allow_methods=settings.cors_allow_methods_list,
         allow_headers=settings.cors_allow_headers_list,
         expose_headers=settings.cors_expose_headers_list,
+    )
+
+    # Body-size guard: reject oversized payloads before they reach route handlers.
+    # Added last so it wraps all other middleware (Starlette applies in reverse).
+    app.add_middleware(
+        ContentSizeLimitMiddleware,
+        max_bytes=getattr(settings, "max_upload_body_bytes", 5 * 1024 * 1024),
     )

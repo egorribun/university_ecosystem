@@ -30,17 +30,21 @@ type Hub struct {
 	Nats       *nats.Conn
 	Logger     *zap.Logger
 	mu         sync.RWMutex
+	// authClient authorizes room-join requests against the Python backend.
+	// If nil, all room-join attempts are denied (fail-closed).
+	authClient RoomAuthClient
 }
 
-func NewHub(nc *nats.Conn, logger *zap.Logger) *Hub {
+func NewHub(nc *nats.Conn, logger *zap.Logger, authClient RoomAuthClient) *Hub {
 	return &Hub{
 		Clients:    make(map[string]*Client),
 		Rooms:      make(map[string]map[*Client]bool),
 		Register:   make(chan *Client),
 		Unregister: make(chan *Client),
-		Broadcast:  make(chan *Message, 256),
+		Broadcast:  make(chan *Message, 4096), // sized for NATS burst peaks
 		Nats:       nc,
 		Logger:     logger,
+		authClient: authClient,
 	}
 }
 
@@ -123,11 +127,13 @@ func (h *Hub) broadcastMessage(msg *Message) {
 			select {
 			case client.Send <- data:
 			default:
-				h.Logger.Warn("Client buffer full, dropping client", zap.String("id", client.ID))
-				go func(c *Client) {
-					c.Hub.Unregister <- c
-					_ = c.Conn.Close()
-				}(client)
+				// Client's send buffer is full — evict via the Unregister channel.
+				// The Unregister handler holds hub.mu.Lock() exclusively and is the
+				// sole owner responsible for close(client.Send). WritePump detects
+				// the closed channel and exits cleanly, then closes Conn.
+				// Calling Conn.Close() here would race with WritePump — do NOT do it.
+				h.Logger.Warn("Client buffer full, evicting", zap.String("id", client.ID))
+				go func(c *Client) { h.Unregister <- c }(client)
 			}
 		}
 	}
@@ -142,7 +148,16 @@ func (h *Hub) SubscribeToNATS() {
 
 		var wsMsg Message
 		if err := json.Unmarshal(msg.Data, &wsMsg); err == nil {
-			h.Broadcast <- &wsMsg
+			// Non-blocking push: if the Broadcast channel is full we drop
+			// the message rather than blocking the NATS subscriber goroutine.
+			// A blocked subscriber would exceed NATS MaxPending and close
+			// the subscription, causing a full WebSocket service outage.
+			select {
+			case h.Broadcast <- &wsMsg:
+			default:
+				h.Logger.Warn("Broadcast channel full, dropping NATS chat message",
+					zap.String("subject", msg.Subject))
+			}
 		}
 	})
 
@@ -154,9 +169,27 @@ func (h *Hub) SubscribeToNATS() {
 		var wsMsg Message
 		if err := json.Unmarshal(msg.Data, &wsMsg); err == nil {
 			wsMsg.Type = "notification"
-			h.Broadcast <- &wsMsg
+			select {
+			case h.Broadcast <- &wsMsg:
+			default:
+				h.Logger.Warn("Broadcast channel full, dropping NATS notification",
+					zap.String("subject", msg.Subject))
+			}
 		}
 	})
 
 	h.Logger.Info("Subscribed to NATS topics")
+}
+
+// AuthorizeRoomJoin verifies that userID is a participant of the given room
+// by delegating to the configured RoomAuthClient.
+// Fails closed: returns false when no client is configured or the check fails.
+func (h *Hub) AuthorizeRoomJoin(userID, room string) bool {
+	if h.authClient == nil {
+		// No auth client configured — deny by default (fail-closed).
+		h.Logger.Warn("AuthorizeRoomJoin: no auth client configured, denying",
+			zap.String("user", userID), zap.String("room", room))
+		return false
+	}
+	return h.authClient.CanJoinRoom(userID, room)
 }

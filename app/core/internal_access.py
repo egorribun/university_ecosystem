@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import secrets
 from typing import TYPE_CHECKING
 
 from fastapi import status
@@ -87,8 +88,6 @@ class InternalAccessMiddleware(BaseHTTPMiddleware):
         provided = request.headers.get(self.header_name)
         if not provided:
             return False
-        import secrets
-
         return secrets.compare_digest(provided, self.header_token)
 
     def _ensure_vary_header(self, response: Response) -> None:

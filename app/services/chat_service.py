@@ -214,9 +214,12 @@ class ChatService:
         ensure_exists(participant, "users", locale)
         assert participant is not None
 
-        from app.core.rate_limit import _get_shared_client
+        # Use the official cache client (not rate-limit internals) for the
+        # distributed lock.  This ensures we use the correct Redis cluster
+        # and do not couple ChatService to rate_limit implementation details.
+        from app.deps.cache import get_cache_client
 
-        redis_client = await _get_shared_client(settings.rate_limit_storage_uri)
+        cache_client = await get_cache_client()
 
         if not user.id or not participant_id:
             raise BusinessRuleViolation("errors.chat.invalid_participants")
@@ -224,7 +227,7 @@ class ChatService:
         min_id, max_id = sorted([user.id, participant_id])
         lock_name = f"chat_init:{min_id}:{max_id}"
 
-        async with redis_client.lock(lock_name, timeout=5):
+        async with cache_client.lock(lock_name, timeout=5, blocking_timeout=4):
             existing_chat = await self.repository.find_existing_dm(
                 user.id, participant_id
             )

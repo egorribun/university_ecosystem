@@ -8,7 +8,7 @@ import uuid
 from typing import TYPE_CHECKING
 
 from sqlalchemy import delete, exists, func, or_, select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.models import models
 from app.models.models import User, UserProfile
@@ -103,6 +103,33 @@ class UserRepository(BaseRepository[User, UserDTO, schemas.UserCreate, dict]):
         if user is None:
             raise ValueError(f"User with email {email} not found")
         return user
+
+    async def get_with_full_profile(self, user_id: uuid.UUID | str) -> UserDTO | None:
+        """Fetch a user with profile, preferences, and education_path in ONE query.
+
+        Use this instead of :meth:`get` when all three delegated sub-objects are
+        needed (e.g. /users/me, profile edit page).  A single LEFT OUTER JOIN
+        replaces the three consecutive selectin round-trips that the lazy
+        ``selectin`` relationship strategy would otherwise issue.
+        """
+        if isinstance(user_id, str):
+            try:
+                user_id = uuid.UUID(user_id)
+            except ValueError:
+                return None
+        stmt = (
+            select(User)
+            .where(User.id == user_id)
+            .options(
+                joinedload(User.profile),
+                joinedload(User.preferences),
+                joinedload(User.education_path),
+                *USER_MFA_LOAD_OPTIONS,
+            )
+        )
+        result = await self.db.execute(stmt)
+        obj = result.unique().scalars().first()
+        return self._to_dto(obj) if obj else None
 
     async def list_users(
         self,

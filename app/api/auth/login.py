@@ -141,7 +141,7 @@ async def login_passkey_verify(
         )
         await db.commit()
     except HTTPException:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid challenge")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid challenge") from None
 
     # Re-fetch after commit
     user = await db.get(User, challenge.user_id)
@@ -158,7 +158,7 @@ async def login_passkey_verify(
         )
     except Exception as e:
         logger.warning("Passkey verification failed for user %s: %s", user.id, e)
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Passkey verification failed")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Passkey verification failed") from e
 
     return await login_service.finalize_login(
         user=user,

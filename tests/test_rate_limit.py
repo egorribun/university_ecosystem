@@ -8,10 +8,10 @@ from redis.exceptions import RedisError
 
 from app.auth.security import get_password_hash
 from app.core import rate_limit
+from app.core import rate_limit as ratelimit_module
 from app.core.config import settings
 from app.core.localization import translate
 from app.core.rate_limit import RateLimitMiddleware
-from app.utils import ratelimit as ratelimit_module
 
 
 @pytest.mark.asyncio
@@ -131,22 +131,26 @@ async def test_rate_limit_skips_static_paths():
 
 
 @pytest.mark.asyncio
-async def test_sensitive_login_rate_limit(async_client, user_factory):
+async def test_sensitive_login_rate_limit(async_client, user_factory, monkeypatch):
     password = "ValidPass123!"
     user = await user_factory(
         email="login-rate@example.com",
         hashed_password=await get_password_hash(password),
     )
     data = {"username": user.email, "password": "wrong-password"}
-    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    # Bearer token bypasses CSRF middleware
+    headers = {"Content-Type": "application/x-www-form-urlencoded", "Authorization": "Bearer dummy"}
+    # Mock AuditService.log to avoid SQLite lock contention during rapid-fire hits
+    monkeypatch.setattr("app.services.audit_service.AuditService.log", lambda *args, **kwargs: None)
 
     for _ in range(4):
         response = await async_client.post("/auth/login", data=data, headers=headers)
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        # Delay to avoid SQLite lock contention on concurrent writes
+        await asyncio.sleep(0.5)
 
     blocked = await async_client.post("/auth/login", data=data, headers=headers)
     # Accept both rate limit (429) and account lockout (423) as valid blocking responses
-    # The lockout service may trigger before the rate limiter depending on configuration
     assert blocked.status_code in (
         status.HTTP_429_TOO_MANY_REQUESTS,
         status.HTTP_423_LOCKED,
@@ -158,11 +162,13 @@ async def test_sensitive_forgot_password_rate_limit(async_client, user_factory):
     user = await user_factory(email="forgot-rate@example.com")
     payload = {"email": user.email}
 
+    # Bearer token bypasses CSRF middleware
+    headers = {"Authorization": "Bearer dummy"}
     for _ in range(4):
-        response = await async_client.post("/password/forgot", json=payload)
+        response = await async_client.post("/password/forgot", json=payload, headers=headers)
         assert response.status_code == status.HTTP_200_OK
 
-    blocked = await async_client.post("/password/forgot", json=payload)
+    blocked = await async_client.post("/password/forgot", json=payload, headers=headers)
     assert blocked.status_code == status.HTTP_429_TOO_MANY_REQUESTS
 
 

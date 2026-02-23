@@ -297,7 +297,7 @@ async def confirm_webauthn_registration(
         logger.warning(
             f"Passkey registration verification failed for user {user.id}: {e}"
         )
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Passkey verification failed")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Passkey verification failed") from e
 
     await mfa.refresh_user_mfa_preferences(db, user=user)
     session: ActiveSession | None = getattr(request.state, "active_session", None)

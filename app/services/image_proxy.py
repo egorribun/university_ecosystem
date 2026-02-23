@@ -8,8 +8,6 @@ from typing import Literal
 
 from PIL import Image
 
-from app.core.config import settings
-from app.core.rate_limit import _get_shared_client
 from app.services.storage import StorageBackend
 from app.utils.images import _resolve_resample_filter
 
@@ -42,7 +40,9 @@ async def get_transformed_image(
     redis_key = f"image_proxy:{cache_key}"
 
     try:
-        redis_client = await _get_shared_client(settings.cache_redis_url)
+        from app.deps.cache import get_cache_client
+
+        redis_client = await get_cache_client()
         cached_payload = await redis_client.get(redis_key)
         if cached_payload:
             # We use pickle to store the tuple (bytes, str) safely as this is an internal cache
@@ -79,7 +79,9 @@ async def get_transformed_image(
 
         try:
             # Cache the result via Redis
-            redis_client = await _get_shared_client(settings.cache_redis_url)
+            from app.deps.cache import get_cache_client
+
+            redis_client = await get_cache_client()
             payload = pickle.dumps((transformed_data, mime))
             await redis_client.setex(redis_key, _CACHE_TTL, payload)
         except Exception as exc:
@@ -203,8 +205,8 @@ def _validate_path_within_base(base_dir: Path, rel_path: Path) -> Path:
     # Check that the resolved path is within the base directory
     try:
         full_path.relative_to(base_resolved)
-    except ValueError:
-        raise ValueError(f"Path traversal attempt detected: {rel_path}")
+    except ValueError as exc:
+        raise ValueError(f"Path traversal attempt detected: {rel_path}") from exc
 
     return full_path
 

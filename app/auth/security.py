@@ -8,12 +8,12 @@ from functools import partial
 from typing import Any
 from uuid import uuid4
 
+import bcrypt
 import httpx
 import jwt
 from argon2 import PasswordHasher, Type
 from argon2.exceptions import VerifyMismatchError
 from jwt import PyJWTError as JWTError
-from passlib.context import CryptContext
 from zxcvbn import zxcvbn
 
 from app.core.config import settings
@@ -39,6 +39,14 @@ _auth_executor = ThreadPoolExecutor(
     thread_name_prefix="auth_worker",
 )
 
+# Semaphore that caps concurrent async Argon2 operations to (worker_count - 1).
+# Without this, a login burst fans out 100+ simultaneous 64MB/~300ms hash calls,
+# saturating the thread pool and spiking latency for every other request.
+# The semaphore provides backpressure: excess callers await a free slot instead
+# of all racing to the executor at once.  Always ≥1 to avoid deadlock.
+_ARGON2_CONCURRENCY_LIMIT: int = max(1, _AUTH_EXECUTOR_WORKERS - 1)
+_argon2_semaphore = asyncio.Semaphore(_ARGON2_CONCURRENCY_LIMIT)
+
 
 class SecurityError(Exception):
     """Base class for security-related errors."""
@@ -46,57 +54,30 @@ class SecurityError(Exception):
     pass
 
 
-# NOTE: the upstream ``bcrypt`` package started raising ``ValueError`` for
-# inputs longer than 72 bytes during backend feature detection when running
-# under Python 3.12+.  Passlib expects backends to gracefully truncate these
-# probes, so the detection step aborts before we can create or verify legacy
-# hashes.  To keep migrations deterministic across interpreter versions we
-# proactively reinstate the historical truncation semantics so feature
-# detection and legacy verifications succeed across interpreter versions.
-try:  # pragma: no cover - optional backend
-    from passlib.handlers import bcrypt as passlib_bcrypt_handlers
-except ImportError:  # pragma: no cover - optional dependency
-    pass
-else:  # pragma: no cover - executed during import
-    _backend_common = getattr(passlib_bcrypt_handlers, "_BcryptCommon", None)
-    if _backend_common is not None:
-        _original_norm_digest = _backend_common._norm_digest_args.__func__
-
-        def _norm_digest_args_with_legacy_truncation(
-            cls, secret, ident, new=False, _orig=_original_norm_digest
-        ):
-            if secret and isinstance(secret, str):
-                secret = secret.encode("utf-8")
-
-            if (
-                isinstance(secret, bytes | bytearray)
-                and len(secret) > LEGACY_BCRYPT_MAX_BYTES
-            ):
-                secret = secret[:LEGACY_BCRYPT_MAX_BYTES]
-
-            return _orig(cls, secret, ident, new=new)
-
-        _backend_common._norm_digest_args = classmethod(
-            _norm_digest_args_with_legacy_truncation
-        )
-
-pwd_context = CryptContext(
-    schemes=[DEFAULT_SCHEME, LEGACY_SCHEME],
-    default=DEFAULT_SCHEME,
-    deprecated="auto",
-    argon2__type="ID",
-    argon2__memory_cost=ARGON2_MEMORY_COST_KIB,
-    argon2__time_cost=ARGON2_TIME_COST,
-    argon2__parallelism=ARGON2_PARALLELISM,
-)
-
-# Native argon2-cffi hasher for primary operations (2026 performance)
+# Native argon2-cffi hasher — the only scheme used for NEW passwords.
+# Legacy bcrypt hashes are verified below using the bare `bcrypt` package;
+# bcrypt is no longer used to create hashes.
 argon2_hasher = PasswordHasher(
     time_cost=ARGON2_TIME_COST,
     memory_cost=ARGON2_MEMORY_COST_KIB,
     parallelism=ARGON2_PARALLELISM,
     type=Type.ID,
 )
+
+
+def _verify_legacy_bcrypt(plain_password: str, hashed_password: str) -> bool:
+    """Verify a bcrypt hash using the native bcrypt package.
+
+    bcrypt silently truncates inputs at 72 bytes (the historical behaviour).
+    This matches the semantics passlib used; callers should rehash matching
+    legacy passwords to argon2id on successful login.
+    """
+    try:
+        password_bytes = plain_password.encode("utf-8")[:LEGACY_BCRYPT_MAX_BYTES]
+        return bcrypt.checkpw(password_bytes, hashed_password.encode("utf-8"))
+    except Exception as exc:
+        _logger.warning("Legacy bcrypt verification failed: %s", type(exc).__name__)
+        return False
 
 
 def _format_password_class_labels(class_names: list[str], *, locale: str | None) -> str:
@@ -263,15 +244,17 @@ def verify_password_sync(plain_password: str, hashed_password: str) -> bool:
                 "falling back to passlib: %s",
                 type(exc).__name__,
             )
-    return bool(pwd_context.verify(plain_password, hashed_password))
+    # Legacy bcrypt hash: verify with native bcrypt (no passlib)
+    return _verify_legacy_bcrypt(plain_password, hashed_password)
 
 
 async def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Asynchronous verification offloaded to thread pool."""
-    loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(
-        _auth_executor, verify_password_sync, plain_password, hashed_password
-    )
+    """Asynchronous verification offloaded to thread pool with backpressure."""
+    async with _argon2_semaphore:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            _auth_executor, verify_password_sync, plain_password, hashed_password
+        )
 
 
 def verify_and_update_password_sync(
@@ -298,25 +281,28 @@ def verify_and_update_password_sync(
             )
 
     try:
-        verified, new_hash = pwd_context.verify_and_update(
-            plain_password, hashed_password
-        )
-    except ValueError:
+        verified = _verify_legacy_bcrypt(plain_password, hashed_password)
+    except Exception:
         return False, None
-    return verified, new_hash
+    if not verified:
+        return False, None
+    # Upgrade legacy bcrypt to argon2id on successful login
+    new_hash = argon2_hasher.hash(plain_password)
+    return True, new_hash
 
 
 async def verify_and_update_password(
     plain_password: str, hashed_password: str
 ) -> tuple[bool, str | None]:
-    """Asynchronous verify and update offloaded to thread pool."""
-    loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(
-        _auth_executor,
-        verify_and_update_password_sync,
-        plain_password,
-        hashed_password,
-    )
+    """Asynchronous verify and update offloaded to thread pool with backpressure."""
+    async with _argon2_semaphore:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            _auth_executor,
+            verify_and_update_password_sync,
+            plain_password,
+            hashed_password,
+        )
 
 
 def get_password_hash_sync(
@@ -334,15 +320,16 @@ def get_password_hash_sync(
 async def get_password_hash(
     password: str, *, locale: str | None = None, validate_policy: bool = True
 ) -> str:
-    """Hash a password using Argon2id (Asynchronous/Non-blocking)."""
-    loop = asyncio.get_running_loop()
-    func = partial(
-        get_password_hash_sync,
-        password,
-        locale=locale,
-        validate_policy=validate_policy,
-    )
-    return await loop.run_in_executor(_auth_executor, func)
+    """Hash a password using Argon2id (Asynchronous/Non-blocking) with backpressure."""
+    async with _argon2_semaphore:
+        loop = asyncio.get_running_loop()
+        func = partial(
+            get_password_hash_sync,
+            password,
+            locale=locale,
+            validate_policy=validate_policy,
+        )
+        return await loop.run_in_executor(_auth_executor, func)
 
 
 def _mint_pure_jwt(
@@ -380,6 +367,11 @@ def _mint_pure_jwt(
 
 
 def decode_token(token: str) -> dict | None:
+    """Validate JWT signature and return the payload, or None if invalid.
+
+    Does NOT check revocation — callers in async context must additionally
+    call ``check_jti_revoked(jti)`` from deps to honour session invalidation.
+    """
     registry = settings.jwt_signing_key_registry
     if not registry:
         return None
@@ -405,9 +397,7 @@ def decode_token(token: str) -> dict | None:
     for secret in candidates:
         try:
             payload = jwt.decode(token, secret, algorithms=[settings.algorithm])
-            if isinstance(payload, dict):
-                return payload
-            return dict(payload)
+            return payload if isinstance(payload, dict) else dict(payload)
         except JWTError:
             continue
     return None

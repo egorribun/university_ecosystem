@@ -51,7 +51,8 @@ func main() {
 	}
 	defer nc.Close()
 
-	h := hub.NewHub(nc, logger)
+	authClient := hub.NewInternalAPIAuthClient(cfg.BackendURL)
+	h := hub.NewHub(nc, logger, authClient)
 	go h.Run()
 	h.SubscribeToNATS()
 
