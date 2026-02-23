@@ -76,6 +76,7 @@ dependencies = [
     "zxcvbn>=4.5.0",
     "authzed>=1.15.0",
     "grpcio-health-checking>=1.60.0",
+    "dishka[fastapi]>=0.14",
 ]
 
 [tool.mypy]

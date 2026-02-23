@@ -30,6 +30,12 @@ async def lifespan(app: FastAPI):
 
     configure_database()
 
+    from dishka.integrations.fastapi import setup_dishka  # noqa: PLC0415
+
+    from app.core.di_provider import create_dishka_container  # noqa: PLC0415
+
+    setup_dishka(create_dishka_container(), app)
+
     import app.api.websocket as _ws_module
     from app.api.websocket import (
         ConnectionManager,
@@ -165,6 +171,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        await app.state.dishka_container.close()
         await stop_presence_pubsub()
         await notification_queue.shutdown_notification_queue()
         webpush.cleanup()

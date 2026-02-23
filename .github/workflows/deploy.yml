@@ -150,6 +150,9 @@ jobs:
     name: Deploy to ${{ inputs.environment }}
     runs-on: ubuntu-latest
     needs: [build-and-push]
+    permissions:
+      contents: read
+      deployments: write
     environment:
       name: ${{ inputs.environment }}
       url: ${{ steps.deploy.outputs.url }}
@@ -172,6 +175,41 @@ jobs:
           # 4. Keep "blue" as rollback target
 
           echo "url=https://${{ inputs.environment }}.example.com" >> "$GITHUB_OUTPUT"
+
+      - name: Record DORA Lead Time for Changes
+        # DORA metric: time from triggering commit's author date to deployment.
+        # GitHub Insights tracks Deployment Frequency automatically via the
+        # 'environment' field above. Lead Time requires explicit calculation.
+        id: dora
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Fetch the triggering commit to get its author date
+            const { data: commit } = await github.rest.repos.getCommit({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+            })
+
+            const commitTs = new Date(commit.commit.author.date).getTime()
+            const deployTs = Date.now()
+            const leadTimeH = ((deployTs - commitTs) / 3_600_000).toFixed(2)
+            const leadTimeMin = ((deployTs - commitTs) / 60_000).toFixed(0)
+
+            core.setOutput('lead_time_hours', leadTimeH)
+            core.notice(`DORA Lead Time for Changes: ${leadTimeH}h (${leadTimeMin} min)`)
+
+            await core.summary
+              .addHeading('DORA: Lead Time for Changes', 3)
+              .addTable([
+                [{ data: 'Metric', header: true }, { data: 'Value', header: true }],
+                ['Environment', '${{ inputs.environment }}'],
+                ['Commit SHA', context.sha.slice(0, 7)],
+                ['Commit author date', commit.commit.author.date],
+                ['Deploy time (UTC)', new Date(deployTs).toISOString()],
+                ['Lead time', `${leadTimeH} hours`],
+              ])
+              .write()
 
       - name: Setup Python
         uses: actions/setup-python@v6

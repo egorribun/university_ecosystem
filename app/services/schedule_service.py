@@ -78,7 +78,8 @@ class ScheduleService:
             raise ValueError(translate("errors.schedule.not_found"))
 
         updated = await self.repo.update(schedule_id, data)
-        assert updated is not None
+        if updated is None:
+            raise ValueError(translate("errors.schedule.not_found"))
         await self.repo.commit()
         return updated
 

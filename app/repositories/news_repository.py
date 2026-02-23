@@ -22,6 +22,7 @@ from app.schemas.dtos import (
     NewsInteractionsDTO,
     NewsListingDTO,
 )
+from app.schemas.dtos.news import NewsCommentListingDTO
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -291,23 +292,9 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict, dict]):
         offset: int = 0,
     ) -> NewsInteractionsDTO:
         """Get likes count, current user's like status, and comments for a news item."""
-        # Count likes
         likes_stmt = select(func.count(models.NewsLike.id)).where(
             models.NewsLike.news_id == news_id
         )
-        likes_result = await self.db.execute(likes_stmt)
-        likes_count = likes_result.scalar() or 0
-
-        # User like status
-        is_liked = False
-        if current_user_id:
-            liked_stmt = select(models.NewsLike.id).where(
-                models.NewsLike.news_id == news_id,
-                models.NewsLike.user_id == current_user_id,
-            )
-            is_liked = (await self.db.execute(liked_stmt)).scalar() is not None
-
-        # Get comments with user names (paginated)
         comments_stmt = (
             select(
                 models.NewsComment.id,
@@ -322,7 +309,19 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict, dict]):
             .limit(limit)
             .offset(offset)
         )
-        comments_result = await self.db.execute(comments_stmt)
+        total_comments_stmt = select(func.count(models.NewsComment.id)).where(
+            models.NewsComment.news_id == news_id
+        )
+
+        # Run all independent queries in a single round-trip
+        likes_res, comments_res, total_res = await asyncio.gather(
+            self.db.execute(likes_stmt),
+            self.db.execute(comments_stmt),
+            self.db.execute(total_comments_stmt),
+        )
+
+        likes_count = likes_res.scalar() or 0
+        total_comments = total_res.scalar() or 0
         comments = [
             {
                 "id": row[0],
@@ -331,18 +330,16 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict, dict]):
                 "user_name": row[3],
                 "created_at": row[4],
             }
-            for row in comments_result.all()
+            for row in comments_res.all()
         ]
 
-        # Total comments count
-        total_comments_stmt = select(func.count(models.NewsComment.id)).where(
-            models.NewsComment.news_id == news_id
-        )
-        total_comments = (await self.db.execute(total_comments_stmt)).scalar() or 0
-
-        total_comments = (await self.db.execute(total_comments_stmt)).scalar() or 0
-
-        from app.schemas.dtos.news import NewsCommentListingDTO, NewsInteractionsDTO
+        is_liked = False
+        if current_user_id:
+            liked_stmt = select(models.NewsLike.id).where(
+                models.NewsLike.news_id == news_id,
+                models.NewsLike.user_id == current_user_id,
+            )
+            is_liked = (await self.db.execute(liked_stmt)).scalar() is not None
 
         return NewsInteractionsDTO(
             likes_count=likes_count,
@@ -355,25 +352,20 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict, dict]):
         self, start_date: datetime | None = None, end_date: datetime | None = None
     ) -> tuple[Sequence[Any], Sequence[str]]:
         """Fetch raw news data for high-performance Polars analytics."""
-        from sqlalchemy import text
-
-        query = """
-            SELECT
-                id, title, created_at, likes_count, comments_count,
-                DATE_TRUNC('day', created_at) as date
-            FROM news
-            WHERE 1=1
-        """
-        params: dict[str, Any] = {}
-
+        stmt = select(
+            models.News.id,
+            models.News.title,
+            models.News.created_at,
+            models.News.likes_count,
+            models.News.comments_count,
+            func.date_trunc("day", models.News.created_at).label("date"),
+        )
         if start_date:
-            query += " AND created_at >= :start_date"
-            params["start_date"] = start_date
+            stmt = stmt.where(models.News.created_at >= start_date)
         if end_date:
-            query += " AND created_at <= :end_date"
-            params["end_date"] = end_date
+            stmt = stmt.where(models.News.created_at <= end_date)
 
-        result = await self.db.execute(text(query), params)
+        result = await self.db.execute(stmt)
         return result.fetchall(), list(result.keys())
 
 

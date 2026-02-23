@@ -21,6 +21,10 @@ class GroupRepository(
     def dto_class(self) -> type[GroupDTO]:
         return GroupDTO
 
+    # Safety cap: no university has more than this many groups.
+    # Prevents runaway queries if data grows unexpectedly.
+    _MAX_GROUPS: int = 1000
+
     async def list_groups(self) -> Sequence[GroupDTO]:
         """List all groups with caching."""
         cache_key = "schedule:groups"
@@ -30,7 +34,7 @@ class GroupRepository(
 
             return cast(list[GroupDTO], cached)
 
-        stmt = select(self.model).order_by(self.model.name)
+        stmt = select(self.model).order_by(self.model.name).limit(self._MAX_GROUPS)
         result = await self.db.execute(stmt)
         groups = list(result.scalars().all())
         dtos = [self._to_dto(g) for g in groups]
@@ -51,6 +55,9 @@ class ScheduleRepository(
     def dto_class(self) -> type[ScheduleDTO]:
         return ScheduleDTO
 
+    # Safety cap: a group cannot realistically have more schedule items than this.
+    _MAX_ITEMS_PER_GROUP: int = 500
+
     async def get_by_group(self, group_id: uuid.UUID) -> Sequence[ScheduleDTO]:
         """Get schedule for a group with caching."""
         cache_key = f"schedule:group:{group_id}"
@@ -64,6 +71,7 @@ class ScheduleRepository(
             select(self.model)
             .where(self.model.group_id == group_id)
             .order_by(self.model.weekday, self.model.start_time)
+            .limit(self._MAX_ITEMS_PER_GROUP)
         )
         result = await self.db.execute(stmt)
         schedule_items = list(result.scalars().all())
