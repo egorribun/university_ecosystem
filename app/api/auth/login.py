@@ -158,7 +158,9 @@ async def login_passkey_verify(
         )
     except Exception as e:
         logger.warning("Passkey verification failed for user %s: %s", user.id, e)
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Passkey verification failed") from e
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Passkey verification failed"
+        ) from e
 
     return await login_service.finalize_login(
         user=user,

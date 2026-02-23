@@ -139,9 +139,14 @@ async def test_sensitive_login_rate_limit(async_client, user_factory, monkeypatc
     )
     data = {"username": user.email, "password": "wrong-password"}
     # Bearer token bypasses CSRF middleware
-    headers = {"Content-Type": "application/x-www-form-urlencoded", "Authorization": "Bearer dummy"}
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Authorization": "Bearer dummy",
+    }
     # Mock AuditService.log to avoid SQLite lock contention during rapid-fire hits
-    monkeypatch.setattr("app.services.audit_service.AuditService.log", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "app.services.audit_service.AuditService.log", lambda *args, **kwargs: None
+    )
 
     for _ in range(4):
         response = await async_client.post("/auth/login", data=data, headers=headers)
@@ -165,7 +170,9 @@ async def test_sensitive_forgot_password_rate_limit(async_client, user_factory):
     # Bearer token bypasses CSRF middleware
     headers = {"Authorization": "Bearer dummy"}
     for _ in range(4):
-        response = await async_client.post("/password/forgot", json=payload, headers=headers)
+        response = await async_client.post(
+            "/password/forgot", json=payload, headers=headers
+        )
         assert response.status_code == status.HTTP_200_OK
 
     blocked = await async_client.post("/password/forgot", json=payload, headers=headers)
