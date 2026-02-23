@@ -19,7 +19,10 @@ RUN go mod download
 COPY services/file-processor .
 
 # Build
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o file-processor ./cmd/file-processor
+RUN CGO_ENABLED=0 GOOS=linux go build \
+  -trimpath \
+  -ldflags="-w -s -buildid=" \
+  -o file-processor ./cmd/file-processor
 
 # Runtime stage
 FROM alpine:3.21.2

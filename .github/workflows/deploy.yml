@@ -69,7 +69,8 @@ jobs:
     permissions:
       contents: read
       packages: write
-      id-token: write
+      id-token: write  # Required for OIDC-based keyless cosign signing and SLSA provenance
+      attestations: write  # Required to push SLSA provenance attestations to GHCR
     outputs:
       backend_digest: ${{ steps.build_backend.outputs.digest }}
       frontend_digest: ${{ steps.build_frontend.outputs.digest }}
@@ -93,6 +94,11 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Install cosign (keyless image signing)
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: v3.0.5
+
       - name: Build and push backend
         id: build_backend
         uses: docker/build-push-action@v6
@@ -105,7 +111,18 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend:${{ inputs.environment }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          provenance: false
+          # provenance: true generates an in-toto SLSA L2 provenance attestation,
+          # making the build verifiable via 'cosign verify-attestation'.
+          provenance: true
+          sbom: true
+
+      - name: Sign backend image (keyless via Sigstore/Fulcio)
+        # Attaches a Rekor-logged transparency entry — no long-lived keys needed.
+        env:
+          DIGEST: ${{ steps.build_backend.outputs.digest }}
+          TAGS: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend:${{ steps.version.outputs.version }}
+        run: |
+          cosign sign --yes "${TAGS}@${DIGEST}"
 
       - name: Build and push frontend
         id: build_frontend
@@ -119,7 +136,15 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend:${{ inputs.environment }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          provenance: false
+          provenance: true
+          sbom: true
+
+      - name: Sign frontend image (keyless via Sigstore/Fulcio)
+        env:
+          DIGEST: ${{ steps.build_frontend.outputs.digest }}
+          TAGS: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend:${{ steps.version.outputs.version }}
+        run: |
+          cosign sign --yes "${TAGS}@${DIGEST}"
 
   deploy:
     name: Deploy to ${{ inputs.environment }}

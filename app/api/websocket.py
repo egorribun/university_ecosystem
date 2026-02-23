@@ -179,6 +179,11 @@ presence_pubsub = PresencePubSub()
 class ConnectionManager:
     """Manages WebSocket connections for all users."""
 
+    # Maximum concurrent WebSocket connections a single user may hold.
+    # Prevents memory exhaustion from DoS via connection flooding.
+    # Override via settings.ws_max_connections_per_user if needed.
+    MAX_CONNECTIONS_PER_USER: int = 5
+
     def __init__(self) -> None:
         # user_id -> set of WebSocket connections (user can have multiple tabs/devices)
         self.active_connections: dict[uuid.UUID, set[WebSocket]] = {}
@@ -192,17 +197,33 @@ class ConnectionManager:
         user_id: uuid.UUID,
         *,
         subprotocol: str | None = None,
-    ) -> None:
-        """Accept a WebSocket connection and register it for the user."""
+    ) -> bool:
+        """Accept a WebSocket connection and register it for the user.
+
+        Returns True when the connection was accepted, False when it was rejected
+        because the per-user connection limit has been reached.
+        """
+        current_conns = self.active_connections.get(user_id, set())
+        limit = getattr(settings, "ws_max_connections_per_user", self.MAX_CONNECTIONS_PER_USER)
+        if len(current_conns) >= limit:
+            # Reject BEFORE accepting — the client will receive a proper close frame.
+            await websocket.close(code=1008, reason="Connection limit exceeded")
+            logger.warning(
+                "WS connection limit reached for user %s (%d/%d) — rejected",
+                user_id,
+                len(current_conns),
+                limit,
+            )
+            return False
+
         if subprotocol:
             await websocket.accept(subprotocol=subprotocol)
         else:
             await websocket.accept()
-        if user_id not in self.active_connections:
-            self.active_connections[user_id] = set()
-        self.active_connections[user_id].add(websocket)
+        self.active_connections.setdefault(user_id, set()).add(websocket)
         self.connection_users[websocket] = user_id
-        logger.info(f"WebSocket connected: user_id={user_id}")
+        logger.info("WebSocket connected: user_id=%s", user_id)
+        return True
 
     def disconnect(self, websocket: WebSocket) -> uuid.UUID | None:
         """Remove a WebSocket connection and return the user_id if found."""
@@ -214,7 +235,7 @@ class ConnectionManager:
                 # Clean up presence throttle state only when the last connection closes.
                 # If the user has multiple tabs open, keep the throttle to avoid presence spam.
                 self._last_presence_sent_at.pop(user_id, None)
-            logger.info(f"WebSocket disconnected: user_id={user_id}")
+            logger.info("WebSocket disconnected: user_id=%s", user_id)
         return user_id
 
     def is_online(self, user_id: uuid.UUID) -> bool:
@@ -240,7 +261,7 @@ class ConnectionManager:
                 await connection.send_json(message)
                 sent += 1
             except Exception as e:
-                logger.warning(f"Failed to send to user {user_id}: {e}")
+                logger.warning("Failed to send to user %s: %s", user_id, e)
                 dead_connections.append(connection)
 
         # Clean up dead connections
@@ -332,9 +353,16 @@ class ConnectionManager:
             await presence_pubsub.publish(payload)
 
         audience = await _get_presence_audience(user_id)
-        total_sent = 0
-        for target_user in audience:
-            total_sent += await self.send_to_user(target_user, payload)
+        if not audience:
+            return 0
+
+        # Fan-out to all audience members concurrently instead of sequentially.
+        # asyncio.gather preserves order and collects exceptions without crashing.
+        results = await asyncio.gather(
+            *(self.send_to_user(uid, payload) for uid in audience),
+            return_exceptions=True,
+        )
+        total_sent = sum(r for r in results if isinstance(r, int))
         return total_sent
 
     def get_online_users(self) -> list[uuid.UUID]:
@@ -434,7 +462,7 @@ async def get_user_from_token(token: str) -> tuple[User | None, str | None]:
                 return None, None
             return user, session_jti
     except Exception as e:
-        logger.warning(f"Token validation failed: {e}")
+        logger.warning("Token validation failed: %s", e)
         return None, None
 
 
@@ -445,7 +473,7 @@ async def get_user_from_cookie(cookie_value: str) -> tuple[User | None, str | No
         # The cookie contains the JWT token directly
         return await get_user_from_token(cookie_value)
     except Exception as e:
-        logger.warning(f"Cookie validation failed: {e}")
+        logger.warning("Cookie validation failed: %s", e)
         return None, None
 
 
@@ -637,7 +665,7 @@ async def websocket_chat(websocket: WebSocket):
         token_str = str(header_token or protocol_token)
         user, session_jti = await get_user_from_token(token_str)
         if user:
-            logger.info(f"Token auth successful: user_id={user.id}")
+            logger.info("Token auth successful: user_id=%s", user.id)
         else:
             logger.warning("Token auth failed: invalid token")
 
@@ -648,19 +676,19 @@ async def websocket_chat(websocket: WebSocket):
             logger.info("Attempting token auth from query params (compat mode)")
             user, session_jti = await get_user_from_token(token)
             if user:
-                logger.info(f"Token auth successful: user_id={user.id}")
+                logger.info("Token auth successful: user_id=%s", user.id)
             else:
                 logger.warning("Token auth failed: invalid token")
 
     if not user:
         access_token = websocket.cookies.get("access_token_v2")
         logger.info(
-            f"Attempting cookie auth, access_token present: {bool(access_token)}"
+            "Attempting cookie auth, access_token present: %s", bool(access_token)
         )
         if access_token:
             user, session_jti = await get_user_from_cookie(access_token)
             if user:
-                logger.info(f"Cookie auth successful: user_id={user.id}")
+                logger.info("Cookie auth successful: user_id=%s", user.id)
             else:
                 logger.warning("Cookie auth failed: invalid cookie")
 
@@ -669,8 +697,10 @@ async def websocket_chat(websocket: WebSocket):
         await websocket.close(code=4001, reason="Authentication required")
         return
 
-    # Connect and register
-    await manager.connect(websocket, user.id, subprotocol=selected_subprotocol)
+    # Connect and register — may reject if per-user limit is reached
+    accepted = await manager.connect(websocket, user.id, subprotocol=selected_subprotocol)
+    if not accepted:
+        return  # close frame already sent inside connect()
     metrics.inc_ws_connections(path="/ws/chat")
     last_seen = await _update_last_seen(session_jti)
     await manager.broadcast_presence(
@@ -822,9 +852,9 @@ async def websocket_chat(websocket: WebSocket):
             source=PRESENCE_SOURCE_DISCONNECT,
             force=True,
         )
-        logger.info(f"WebSocket disconnected for user {user.id}")
+        logger.info("WebSocket disconnected for user %s", user.id)
     except Exception as e:
-        logger.error(f"WebSocket error for user {user.id}: {e}")
+        logger.error("WebSocket error for user %s: %s", user.id, e)
         manager.disconnect(websocket)
         last_seen = await _update_last_seen(session_jti)
         await manager.broadcast_presence(
@@ -836,7 +866,7 @@ async def websocket_chat(websocket: WebSocket):
         )
     finally:
         metrics.dec_ws_connections(path="/ws/chat")
-        logger.info(f"WebSocket cleanup for user {user.id}")
+        logger.info("WebSocket cleanup for user %s", user.id)
 
 
 async def notify_new_message(

@@ -42,7 +42,6 @@ class Settings(
     health_storage_probe_enabled: bool = True
     health_storage_probe_min_interval_seconds: int = 3600
     monitoring_heavy_probe_enabled: bool = False
-    audit_log_secret: str = "development-audit-secret-change-me"
     api_v2_prefix: str = "/api/v2"
 
     @field_validator("auto_create_schema")
@@ -61,20 +60,6 @@ class Settings(
                     environment or "production",
                 )
         return bool(value)
-
-    @field_validator("audit_log_secret")
-    @classmethod
-    def _validate_audit_log_secret(cls, value: str, info: ValidationInfo) -> str:
-        environment = str(info.data.get("environment") or "production").lower()
-        if environment not in _DEVELOPMENT_ENVIRONMENTS and (
-            not value or value == "development-audit-secret-change-me"
-        ):
-            _logger.warning(
-                "AUDIT_LOG_SECRET is using development default in %s environment. "
-                "Set a secure AUDIT_LOG_SECRET for production deployments.",
-                environment,
-            )
-        return value or "development-audit-secret-change-me"
 
     @cached_property
     def app_base_url_clean(self) -> str:

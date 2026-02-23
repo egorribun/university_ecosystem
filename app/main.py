@@ -67,6 +67,9 @@ if os.getenv("ENABLE_PROFILING", "false").lower() == "true":
     except Exception as e:
         logging.error(f"Failed to initialize Pyroscope: {e}")
 
+# Disable interactive API documentation in non-development environments to
+# reduce attack surface (schema enumeration, PoC generation by attackers).
+_is_dev = settings.environment in {"development", "testing", "local"}
 app = FastAPI(
     title="University Ecosystem API",
     description=(
@@ -75,9 +78,9 @@ app = FastAPI(
     ),
     version=API_VERSION,
     default_response_class=ORJSONResponse,
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
-    openapi_url="/api/openapi.json",
+    docs_url="/api/docs" if _is_dev else None,
+    redoc_url="/api/redoc" if _is_dev else None,
+    openapi_url="/api/openapi.json" if _is_dev else None,
     lifespan=lifespan,
 )
 
@@ -95,13 +98,54 @@ configure_middleware(app, settings=settings)
 
 
 class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
+    """Reject requests whose body exceeds MAX_BODY bytes.
+
+    Defence-in-depth layer on top of any upstream proxy limits (nginx/caddy).
+    Handles both Content-Length declared and chunked Transfer-Encoding requests
+    so that attackers cannot bypass the check by omitting the header.
+    """
+
+    MAX_BODY: int = 5 * 1024 * 1024  # 5 MB — configurable via settings override
+    _OVERSIZED = JSONResponse(
+        status_code=413, content={"detail": "Payload Too Large"}
+    )
+    _BAD_CL = JSONResponse(
+        status_code=400, content={"detail": "Invalid Content-Length header"}
+    )
+
     async def dispatch(self, request: Request, call_next):
-        content_length = request.headers.get("content-length")
-        if content_length and int(content_length) > 5 * 1024 * 1024:
-            return JSONResponse(
-                status_code=413, content={"detail": "Payload Too Large"}
-            )
+        limit = getattr(settings, "max_upload_body_bytes", self.MAX_BODY)
+
+        # Fast path: Content-Length declared → reject immediately, no body read.
+        cl_header = request.headers.get("content-length")
+        if cl_header is not None:
+            try:
+                cl = int(cl_header)
+            except ValueError:
+                return self._BAD_CL
+            if cl > limit:
+                return self._oversized_response(limit)
+
+        # Slow path: chunked / unknown length — stream and accumulate byte count.
+        # Only applies to non-WebSocket HTTP requests with a body.
+        method = request.method.upper()
+        path = request.url.path or ""
+        has_body = method in {"POST", "PUT", "PATCH"} and not path.startswith("/ws")
+        if has_body and cl_header is None:
+            accumulated = 0
+            async for chunk in request.stream():
+                accumulated += len(chunk)
+                if accumulated > limit:
+                    return self._oversized_response(limit)
+
         return await call_next(request)
+
+    @staticmethod
+    def _oversized_response(limit: int) -> JSONResponse:
+        return JSONResponse(
+            status_code=413,
+            content={"detail": f"Payload Too Large (max {limit // (1024 * 1024)} MB)"},
+        )
 
 
 app.add_middleware(ContentSizeLimitMiddleware)

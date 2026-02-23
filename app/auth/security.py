@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import logging
+import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from functools import partial
@@ -28,9 +29,15 @@ LEGACY_SCHEME = "bcrypt"
 
 _logger = logging.getLogger(__name__)
 
-# Executor for CPU-bound auth operations
-# max_workers=None defaults to num_cpus + 4, which is fine for hashing
-_auth_executor = ThreadPoolExecutor(thread_name_prefix="auth_worker")
+# Executor for CPU-bound auth operations (Argon2 hashing).
+# Argon2 at ARGON2_MEMORY_COST_KIB=65536 uses 64 MB per concurrent hash call;
+# bounding pool size to cpu_count prevents memory exhaustion under login bursts.
+# Python's default (cpu_count + 4) is designed for I/O-bound work — not suitable here.
+_AUTH_EXECUTOR_WORKERS: int = max(2, os.cpu_count() or 2)
+_auth_executor = ThreadPoolExecutor(
+    max_workers=_AUTH_EXECUTOR_WORKERS,
+    thread_name_prefix="auth_worker",
+)
 
 
 class SecurityError(Exception):

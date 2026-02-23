@@ -16,7 +16,7 @@ from fastapi import (
     status,
 )
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.api.deps import (
     get_audit_service,
@@ -37,6 +37,8 @@ from app.auth.schemas import (
 from app.core.config import settings
 from app.core.localization import resolve_locale, translate
 from app.core.rate_limit import sensitive_route_limit
+from app.core.timing import ensure_minimum_time
+from app.services.webauthn import WebAuthnService
 from app.models.models import User
 from app.schemas.schemas import (
     SessionSigningKeyOut,
@@ -73,9 +75,7 @@ async def login_passkey_start(
     normalized_email = payload.email.strip().lower()
 
     if user_service is None:
-        # Fallback if dependency injection fails/is overriden in test
-        from sqlalchemy import func
-
+        # Fallback if dependency injection fails/is overridden in test
         res = await db.execute(
             select(User).where(func.lower(User.email) == normalized_email)
         )
@@ -83,13 +83,9 @@ async def login_passkey_start(
     else:
         user = await user_service.get_user_by_email(normalized_email)
 
-    from app.services.webauthn import WebAuthnService
-
     service = WebAuthnService(db)
 
     start = time.perf_counter()
-    from app.core.timing import ensure_minimum_time
-
     if not user or not user.is_active:
         webauthn_options = service.get_dummy_authentication_options()
         await ensure_minimum_time(start, settings.auth_min_response_time)
@@ -152,8 +148,6 @@ async def login_passkey_verify(
     if not user or not user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found or inactive")
 
-    from app.services.webauthn import WebAuthnService
-
     service = WebAuthnService(db)
     try:
         payload_dict: dict = challenge.payload  # type: ignore[assignment]
@@ -163,7 +157,7 @@ async def login_passkey_verify(
             payload.webauthn_response,
         )
     except Exception as e:
-        logger.warning(f"Passkey verification failed for user {user.id}: {e}")
+        logger.warning("Passkey verification failed for user %s: %s", user.id, e)
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Passkey verification failed")
 
     return await login_service.finalize_login(

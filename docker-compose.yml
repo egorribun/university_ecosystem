@@ -33,7 +33,10 @@ services:
       SPOTIFY_SCOPES: ${SPOTIFY_SCOPES}
     volumes:
       - static-data:/app/app/static
-      - .:/app
+      # Mount only application code — excludes .git, .venv, node_modules,
+      # frontend sources, and Go service code from the container filesystem.
+      # This reduces inotify watch overhead and prevents accidental secret exposure.
+      - ./app:/app/app
     depends_on:
       redis:
         condition: service_healthy
@@ -199,7 +202,10 @@ services:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required - set in .env file}
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required - set in .env file}
     volumes:
-      - .:/app
+      # Alembic needs models (app/) + migration scripts + config only.
+      - ./app:/app/app
+      - ./alembic:/app/alembic
+      - ./alembic.ini:/app/alembic.ini:ro
     depends_on:
       postgres:
         condition: service_healthy
