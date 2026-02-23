@@ -77,7 +77,6 @@ class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
         )
 
 
-
 def _ensure_vary_header(response, header_name: str) -> None:
     existing = response.headers.get("Vary")
     if not existing:

@@ -14,7 +14,11 @@
       "Bash(grep:*)",
       "Bash(python -c:*)",
       "Bash(curl:*)",
-      "mcp__plugin_serena_serena__replace_content"
+      "mcp__plugin_serena_serena__replace_content",
+      "mcp__plugin_serena_serena__read_file",
+      "Bash(wc:*)",
+      "mcp__plugin_serena_serena__write_memory",
+      "mcp__plugin_serena_serena__edit_memory"
     ]
   }
 }

@@ -173,6 +173,7 @@ def _shard_lock(key: str) -> asyncio.Lock:
     """Return the lock shard for *key* via bitwise hash bucketing."""
     return _memory_locks[hash(key) & (_LOCK_SHARD_COUNT - 1)]
 
+
 # Memory cleanup configuration
 MEMORY_CLEANUP_INTERVAL_SECONDS: int = 60
 MEMORY_COUNTERS_MAX_ENTRIES: int = 50000
@@ -1077,14 +1078,17 @@ def get_progressive_delay_tracker() -> ProgressiveDelayTracker:
         redis_url = None
     return ProgressiveDelayTracker(redis_url=redis_url)
 
+
 class _Limiter:
     """Shim for legacy tests."""
 
     def reset(self) -> None:
         try:
             import asyncio
+
             loop = asyncio.get_running_loop()
             from app.core.rate_limit import clear_all_rate_limit_memory
+
             task = loop.create_task(clear_all_rate_limit_memory())
             _BACKGROUND_TASKS.add(task)
             task.add_done_callback(_BACKGROUND_TASKS.discard)
@@ -1092,6 +1096,7 @@ class _Limiter:
             import asyncio
 
             from app.core.rate_limit import clear_all_rate_limit_memory
+
             asyncio.run(clear_all_rate_limit_memory())
 
     async def check(self, *args, **kwargs) -> None:

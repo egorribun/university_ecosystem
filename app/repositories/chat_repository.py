@@ -324,17 +324,13 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict, dict]):
         """Fetch a User by primary key — used by ChatService to resolve participants."""
         return await self.db.get(User, user_id)
 
-    async def check_participant(
-        self, chat_id: uuid.UUID, user_id: uuid.UUID
-    ) -> bool:
+    async def check_participant(self, chat_id: uuid.UUID, user_id: uuid.UUID) -> bool:
         """Return True iff user_id is a participant of chat_id.
 
         Uses a direct EXISTS query on the association table — avoids loading
         Chat or User ORM objects and stays O(1) regardless of chat size.
         """
-        stmt = select(
-            chat_participants.c.user_id
-        ).where(
+        stmt = select(chat_participants.c.user_id).where(
             chat_participants.c.chat_id == chat_id,
             chat_participants.c.user_id == user_id,
         )

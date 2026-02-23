@@ -237,7 +237,6 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         order_by="desc(LoginHistory.created_at)",
     )
 
-
     def __init__(self, **kwargs) -> None:
         preferences_data = kwargs.pop("preferences", None)
         profile_data = kwargs.pop("profile", None) or kwargs.pop("profile_detail", None)
@@ -298,33 +297,71 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     # ------------------------------------------------------------------
     # Profile field delegation
     # ------------------------------------------------------------------
-    full_name        = _DelegatedProperty[str | None]("profile",        "full_name",        None,               lambda: UserProfile())
-    avatar_url       = _DelegatedProperty[str | None]("profile",        "avatar_url",       None,               lambda: UserProfile())
-    cover_url        = _DelegatedProperty[str | None]("profile",        "cover_url",        None,               lambda: UserProfile())
-    about            = _DelegatedProperty[str | None]("profile",        "about",            None,               lambda: UserProfile())
-    telegram         = _DelegatedProperty[str | None]("profile",        "telegram",         None,               lambda: UserProfile())
-    status           = _DelegatedProperty[str | None]("profile",        "status",           None,               lambda: UserProfile())
-    achievements     = _DelegatedProperty[str | None]("profile",        "achievements",     None,               lambda: UserProfile())
-    position         = _DelegatedProperty[str | None]("profile",        "position",         None,               lambda: UserProfile())
-    department       = _DelegatedProperty[str | None]("profile",        "department",       None,               lambda: UserProfile())
+    full_name = _DelegatedProperty[str | None](
+        "profile", "full_name", None, lambda: UserProfile()
+    )
+    avatar_url = _DelegatedProperty[str | None](
+        "profile", "avatar_url", None, lambda: UserProfile()
+    )
+    cover_url = _DelegatedProperty[str | None](
+        "profile", "cover_url", None, lambda: UserProfile()
+    )
+    about = _DelegatedProperty[str | None](
+        "profile", "about", None, lambda: UserProfile()
+    )
+    telegram = _DelegatedProperty[str | None](
+        "profile", "telegram", None, lambda: UserProfile()
+    )
+    status = _DelegatedProperty[str | None](
+        "profile", "status", None, lambda: UserProfile()
+    )
+    achievements = _DelegatedProperty[str | None](
+        "profile", "achievements", None, lambda: UserProfile()
+    )
+    position = _DelegatedProperty[str | None](
+        "profile", "position", None, lambda: UserProfile()
+    )
+    department = _DelegatedProperty[str | None](
+        "profile", "department", None, lambda: UserProfile()
+    )
 
     # ------------------------------------------------------------------
     # Preferences field delegation
     # ------------------------------------------------------------------
-    timezone         = _DelegatedProperty[str | None]("preferences",    "timezone",         None,               lambda: UserPreferences())
-    dnd_enabled      = _DelegatedProperty[bool]       ("preferences",    "dnd_enabled",      False,              lambda: UserPreferences())
-    dnd_start        = _DelegatedProperty[time | None]("preferences",    "dnd_start",        None,               lambda: UserPreferences())
-    dnd_end          = _DelegatedProperty[time | None]("preferences",    "dnd_end",          None,               lambda: UserPreferences())
+    timezone = _DelegatedProperty[str | None](
+        "preferences", "timezone", None, lambda: UserPreferences()
+    )
+    dnd_enabled = _DelegatedProperty[bool](
+        "preferences", "dnd_enabled", False, lambda: UserPreferences()
+    )
+    dnd_start = _DelegatedProperty[time | None](
+        "preferences", "dnd_start", None, lambda: UserPreferences()
+    )
+    dnd_end = _DelegatedProperty[time | None](
+        "preferences", "dnd_end", None, lambda: UserPreferences()
+    )
 
     # ------------------------------------------------------------------
     # EducationPath field delegation
     # ------------------------------------------------------------------
-    institute        = _DelegatedProperty[str | None]("education_path", "institute",        None,               lambda: EducationPath())
-    course           = _DelegatedProperty[str | None]("education_path", "course",           None,               lambda: EducationPath())
-    education_level  = _DelegatedProperty[str | None]("education_path", "education_level",  None,               lambda: EducationPath())
-    track            = _DelegatedProperty[str | None]("education_path", "track",            None,               lambda: EducationPath())
-    program          = _DelegatedProperty[str | None]("education_path", "program",          None,               lambda: EducationPath())
-    record_book_number = _DelegatedProperty[str | None]("education_path", "record_book_number", None,         lambda: EducationPath())
+    institute = _DelegatedProperty[str | None](
+        "education_path", "institute", None, lambda: EducationPath()
+    )
+    course = _DelegatedProperty[str | None](
+        "education_path", "course", None, lambda: EducationPath()
+    )
+    education_level = _DelegatedProperty[str | None](
+        "education_path", "education_level", None, lambda: EducationPath()
+    )
+    track = _DelegatedProperty[str | None](
+        "education_path", "track", None, lambda: EducationPath()
+    )
+    program = _DelegatedProperty[str | None](
+        "education_path", "program", None, lambda: EducationPath()
+    )
+    record_book_number = _DelegatedProperty[str | None](
+        "education_path", "record_book_number", None, lambda: EducationPath()
+    )
 
     def __repr__(self) -> str:
         # Email is PII — omit from repr to prevent leakage into logs and tracebacks.

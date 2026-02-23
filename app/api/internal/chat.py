@@ -40,6 +40,9 @@ async def check_participant(
     if not await repo.check_participant(room_id, user_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail={"error": "not_participant", "message": "User is not a chat participant"},
+            detail={
+                "error": "not_participant",
+                "message": "User is not a chat participant",
+            },
         )
     return {"participant": True}

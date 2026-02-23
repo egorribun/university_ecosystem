@@ -249,13 +249,36 @@ class MultiLayerCache:
         }
 
 
-# Global L1/L2 cache instances
-user_cache = LRUCache[Any](max_size=500, default_ttl=60.0)
-config_cache = LRUCache[Any](max_size=100, default_ttl=300.0)
+def _init_caches() -> (
+    tuple[LRUCache[Any], LRUCache[Any], MultiLayerCache, MultiLayerCache]
+):
+    """Build global cache singletons from settings (late import avoids circular deps)."""
+    from app.core.config import settings  # noqa: PLC0415
 
-# Multi-layer caches (L1 + L2 Redis)
-news_cache = MultiLayerCache(l1_max_size=200, l1_ttl=60.0, l2_ttl=3600.0)
-schedule_cache = MultiLayerCache(l1_max_size=100, l1_ttl=120.0, l2_ttl=7200.0)
+    return (
+        LRUCache[Any](
+            max_size=settings.cache_user_max_size,
+            default_ttl=settings.cache_user_ttl_s,
+        ),
+        LRUCache[Any](
+            max_size=settings.cache_config_max_size,
+            default_ttl=settings.cache_config_ttl_s,
+        ),
+        MultiLayerCache(
+            l1_max_size=settings.cache_news_l1_max_size,
+            l1_ttl=settings.cache_news_l1_ttl_s,
+            l2_ttl=settings.cache_news_l2_ttl_s,
+        ),
+        MultiLayerCache(
+            l1_max_size=settings.cache_schedule_l1_max_size,
+            l1_ttl=settings.cache_schedule_l1_ttl_s,
+            l2_ttl=settings.cache_schedule_l2_ttl_s,
+        ),
+    )
+
+
+# Global L1/L2 cache instances — parameters driven by settings at import time
+user_cache, config_cache, news_cache, schedule_cache = _init_caches()
 
 
 __all__ = [

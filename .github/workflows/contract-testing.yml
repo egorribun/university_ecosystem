@@ -196,7 +196,9 @@ jobs:
           uv run python -m openapi_spec_validator openapi.json
 
       - name: Run Schemathesis contract tests
-        if: vars.RUN_SCHEMATHESIS == 'true'
+        if: vars.RUN_SCHEMATHESIS != 'false'
+        timeout-minutes: 10
+        continue-on-error: true
         env:
           SECRET_KEY: "dummy_secret_key_for_ci_tests_at_least_32_chars"
           DATABASE_URL: "sqlite+aiosqlite:///:memory:"
@@ -205,14 +207,13 @@ jobs:
           uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 &
           sleep 5
 
-          # Run Schemathesis tests
+          # Run Schemathesis property-based contract tests
           uv run schemathesis run openapi.json \
             --base-url http://127.0.0.1:8000 \
             --checks all \
             --stateful=links \
-            --max-examples=50 \
-            --hypothesis-deadline=5000 \
-            || echo "::warning::Some Schemathesis checks failed"
+            --max-examples=100 \
+            --hypothesis-deadline=5000
 
       - name: Upload OpenAPI schema
         uses: actions/upload-artifact@v4

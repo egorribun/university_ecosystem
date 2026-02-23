@@ -28,6 +28,20 @@ class CacheSettings(BaseAppSettings):
     cache_warmup_periods: list[str] | str = "30d,90d"
     cache_warmup_max_age_seconds: int = 120
 
+    # ── Per-cache granular tuning ─────────────────────────────────────────────
+    # Env vars: CACHE_USER_MAX_SIZE, CACHE_USER_TTL_S, etc.
+    # Defaults mirror the previous hardcoded values so behaviour is unchanged.
+    cache_user_max_size: int = 500
+    cache_user_ttl_s: float = 60.0
+    cache_config_max_size: int = 100
+    cache_config_ttl_s: float = 300.0
+    cache_news_l1_max_size: int = 200
+    cache_news_l1_ttl_s: float = 60.0
+    cache_news_l2_ttl_s: float = 3600.0
+    cache_schedule_l1_max_size: int = 100
+    cache_schedule_l1_ttl_s: float = 120.0
+    cache_schedule_l2_ttl_s: float = 7200.0
+
     @field_validator("stats_cache_ttl_seconds")
     @classmethod
     def _validate_stats_cache_ttl_seconds(cls, value: int) -> int:

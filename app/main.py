@@ -96,8 +96,6 @@ configure_metrics(app)
 configure_middleware(app, settings=settings)
 
 
-
-
 # Static files
 static_dir = settings.static_dir_path
 static_dir.mkdir(parents=True, exist_ok=True)

@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from app.schemas.dtos import UserAuthDTO, UserDTO
+
     _AnyUser = models.User | UserAuthDTO | UserDTO
 
 from app.api.validation import raise_validation_error
@@ -153,6 +154,7 @@ class AuthService:
 
         try:
             from app.auth.security import _validate_password_hibp
+
             # HIBP check must be done before hashing (async, network call)
             await _validate_password_hibp(new_password, locale=locale)
             new_hashed = await get_password_hash(new_password, locale=locale)
@@ -183,6 +185,7 @@ class AuthService:
     ) -> models.User | UserAuthDTO | UserDTO:
         locale = resolve_locale(request=request, user=user)
         from app.auth.security import verify_password
+
         if not await verify_password(payload.password, str(user.hashed_password)):
             raise_validation_error("errors.users.invalid_password", locale)
 
@@ -222,9 +225,7 @@ class AuthService:
         if not hasattr(db_user, "model_dump"):  # Check if it's NOT a Pydantic DTO
             await self.auth_repo.refresh(db_user)
 
-        loaded_user = await ensure_mfa_relationships_loaded(
-            self.auth_repo.db, db_user
-        )
+        loaded_user = await ensure_mfa_relationships_loaded(self.auth_repo.db, db_user)
         enriched_user = await attach_pending_email(self.auth_repo.db, loaded_user)
 
         if user is not enriched_user:
@@ -246,6 +247,7 @@ class AuthService:
             reason="pending_confirmation",
         )
         from typing import cast
+
         return cast(models.User | UserAuthDTO | UserDTO, enriched_user)
 
     async def confirm_email_change(
@@ -326,6 +328,7 @@ class AuthService:
     ) -> tuple[bool, int]:
         locale = resolve_locale(request=request, user=user)
         from app.auth.security import _validate_password_hibp, verify_password
+
         if not await verify_password(
             payload.current_password, str(user.hashed_password)
         ):
@@ -413,6 +416,7 @@ async def attach_pending_email(
 def attach_pending_email_sync(user: Any, email: str | None) -> Any:
     if hasattr(user, "model_copy"):
         from typing import cast
+
         typed_user = cast(UserDTO, user)
         return cast(Any, typed_user.model_copy(update={"pending_email": email}))
 

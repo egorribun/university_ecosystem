@@ -268,6 +268,11 @@ async def save_image(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail=translate("errors.files.content_type_mismatch", locale=locale),
         )
+    if _looks_like_polyglot(data, detected_type):
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=translate("errors.files.unsupported_type", locale=locale),
+        )
     try:
         optimized_data, optimized_type = await asyncio.to_thread(
             optimize_image,
