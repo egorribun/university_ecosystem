@@ -27,9 +27,9 @@ async def test_login_response_does_not_contain_access_token_body(
     payload = response.json()
 
     # 1. Assert 'access_token' is NOT in the body
-    assert (
-        "access_token" not in payload
-    ), "CRITICAL: access_token leaked in response body!"
+    assert "access_token" not in payload, (
+        "CRITICAL: access_token leaked in response body!"
+    )
 
     # 2. Assert 'access_token_v2' cookie IS present
     assert "access_token_v2" in response.cookies, "access_token_v2 cookie missing"

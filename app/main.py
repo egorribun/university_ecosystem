@@ -106,9 +106,7 @@ class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
     """
 
     MAX_BODY: int = 5 * 1024 * 1024  # 5 MB — configurable via settings override
-    _OVERSIZED = JSONResponse(
-        status_code=413, content={"detail": "Payload Too Large"}
-    )
+    _OVERSIZED = JSONResponse(status_code=413, content={"detail": "Payload Too Large"})
     _BAD_CL = JSONResponse(
         status_code=400, content={"detail": "Invalid Content-Length header"}
     )

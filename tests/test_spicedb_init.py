@@ -32,10 +32,10 @@ def test_init_logic(endpoint, expected_target, expected_ssl):
             client_wrapper.get_client()
 
             if expected_ssl:
-                assert (
-                    mock_secure.called
-                ), f"Expected Client to be called for {endpoint}"
+                assert mock_secure.called, (
+                    f"Expected Client to be called for {endpoint}"
+                )
             else:
-                assert (
-                    mock_insecure.called
-                ), f"Expected InsecureClient to be called for {endpoint}"
+                assert mock_insecure.called, (
+                    f"Expected InsecureClient to be called for {endpoint}"
+                )
