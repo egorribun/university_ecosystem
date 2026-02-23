@@ -11,6 +11,7 @@ Usage in a new route handler:
     async def my_route(service: Annotated[UserService, FromDishka()]):
         ...
 """
+
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
@@ -55,7 +56,7 @@ class AppProvider(Provider):
     @provide(scope=Scope.APP)
     def _session_factory(self) -> async_sessionmaker[AsyncSession]:
         """Reuses the module-level write engine; late import avoids circular deps."""
-        from app.core.database import engine  # noqa: PLC0415
+        from app.core.database import engine
 
         return async_sessionmaker(engine, expire_on_commit=False)
 
@@ -97,7 +98,9 @@ class AppProvider(Provider):
 
     @provide(scope=Scope.REQUEST)
     def group_service(self, db: AsyncSession) -> GroupService:
-        from app.repositories.schedule_repository import GroupRepository  # noqa: PLC0415
+        from app.repositories.schedule_repository import (
+            GroupRepository,
+        )
 
         return GroupService(db=db, repo=GroupRepository(db))
 
@@ -171,7 +174,9 @@ class AppProvider(Provider):
     @provide(scope=Scope.REQUEST)
     def user_analytics_service(self, db: AsyncSession) -> object:
         # Typed via string to avoid eager import of optional analytics module
-        from app.services.user.analytics_service import UserAnalyticsService  # noqa: PLC0415
+        from app.services.user.analytics_service import (
+            UserAnalyticsService,
+        )
 
         return UserAnalyticsService(db=db)
 

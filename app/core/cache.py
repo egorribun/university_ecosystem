@@ -249,11 +249,11 @@ class MultiLayerCache:
         }
 
 
-def _init_caches() -> (
-    tuple[LRUCache[Any], LRUCache[Any], MultiLayerCache, MultiLayerCache]
-):
+def _init_caches() -> tuple[
+    LRUCache[Any], LRUCache[Any], MultiLayerCache, MultiLayerCache
+]:
     """Build global cache singletons from settings (late import avoids circular deps)."""
-    from app.core.config import settings  # noqa: PLC0415
+    from app.core.config import settings
 
     return (
         LRUCache[Any](
