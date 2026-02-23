@@ -204,7 +204,9 @@ class ConnectionManager:
         because the per-user connection limit has been reached.
         """
         current_conns = self.active_connections.get(user_id, set())
-        limit = getattr(settings, "ws_max_connections_per_user", self.MAX_CONNECTIONS_PER_USER)
+        limit = getattr(
+            settings, "ws_max_connections_per_user", self.MAX_CONNECTIONS_PER_USER
+        )
         if len(current_conns) >= limit:
             # Reject BEFORE accepting — the client will receive a proper close frame.
             await websocket.close(code=1008, reason="Connection limit exceeded")
@@ -698,7 +700,9 @@ async def websocket_chat(websocket: WebSocket):
         return
 
     # Connect and register — may reject if per-user limit is reached
-    accepted = await manager.connect(websocket, user.id, subprotocol=selected_subprotocol)
+    accepted = await manager.connect(
+        websocket, user.id, subprotocol=selected_subprotocol
+    )
     if not accepted:
         return  # close frame already sent inside connect()
     metrics.inc_ws_connections(path="/ws/chat")

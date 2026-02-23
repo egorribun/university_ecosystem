@@ -74,8 +74,8 @@ def configure_middleware(app: FastAPI, settings: Settings) -> None:
         CSRFMiddleware,
         exempt_prefixes=(
             "/internal",
-            "/api/v2/auth/token",    # OAuth2 password/refresh grant
-            "/api/v2/auth/webauthn", # WebAuthn challenge/response flow
+            "/api/v2/auth/token",  # OAuth2 password/refresh grant
+            "/api/v2/auth/webauthn",  # WebAuthn challenge/response flow
         ),
         cookie_secure=settings.cookie_secure,
         cookie_samesite=settings.cookie_samesite,
