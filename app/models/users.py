@@ -1,5 +1,7 @@
 import uuid
+from collections.abc import Callable
 from datetime import datetime, time
+from typing import Any, Generic, TypeVar
 
 from sqlalchemy import (
     UUID,
@@ -25,11 +27,69 @@ from app.models.enums import UserRole
 from app.models.mixins import UUID7PrimaryKeyMixin
 from app.models.spotify import SpotifyIntegration
 
+_T = TypeVar("_T")
+
+
+class _DelegatedProperty(Generic[_T]):
+    """Descriptor that transparently delegates a field to a related ORM object.
+
+    Usage (on the *owner* model)::
+
+        full_name = _DelegatedProperty[str | None](
+            "profile", "full_name", str | None, lambda: UserProfile()
+        )
+
+    On read:  returns ``owner.profile.full_name`` or ``None`` if the relation
+              is not loaded yet.
+    On write: lazily creates the related object via *factory* if it is absent,
+              then sets the attribute on it.
+
+    This eliminates the repetitive property + setter boilerplate that previously
+    spanned ~200 lines of the User model for 15 delegated fields across three
+    related tables.
+    """
+
+    __slots__ = ("_attr", "_default", "_factory", "_relation")
+
+    def __init__(
+        self,
+        relation: str,
+        attr: str,
+        default: _T,
+        factory: Callable[[], Any],
+    ) -> None:
+        self._relation = relation
+        self._attr = attr
+        self._default = default
+        self._factory = factory
+
+    def __set_name__(self, owner: type, name: str) -> None:
+        # Keep track of the public name for clearer error messages if needed.
+        pass
+
+    def __get__(self, obj: Any, objtype: type | None = None) -> _T:
+        if obj is None:
+            return self  # type: ignore[return-value]
+        related = getattr(obj, self._relation, None)
+        if related is None:
+            # Return a falsy neutral value that matches the declared type.
+            return self._default
+        return getattr(related, self._attr)  # type: ignore[no-any-return]
+
+    def __set__(self, obj: Any, value: _T) -> None:
+        related = getattr(obj, self._relation, None)
+        if related is None:
+            related = self._factory()
+            setattr(obj, self._relation, related)
+        setattr(related, self._attr, value)
+
 
 class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     __tablename__ = "users"
+    __allow_unmapped__ = True
     email: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String, nullable=False)
+    pending_email: str | None = None
 
     __table_args__ = (Index("ix_users_email_lower", func.lower(email), unique=True),)
 
@@ -177,6 +237,7 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         order_by="desc(LoginHistory.created_at)",
     )
 
+
     def __init__(self, **kwargs) -> None:
         preferences_data = kwargs.pop("preferences", None)
         profile_data = kwargs.pop("profile", None) or kwargs.pop("profile_detail", None)
@@ -184,33 +245,13 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
 
         super().__init__(**kwargs)
 
-        # Legacy field shim support
-        for field in ["dnd_enabled", "dnd_start", "dnd_end", "timezone"]:
-            if field in kwargs:
-                setattr(self, field, kwargs[field])
-
-        for field in [
-            "full_name",
-            "about",
-            "telegram",
-            "status",
-            "achievements",
-            "position",
-            "department",
-        ]:
-            if field in kwargs:
-                setattr(self, field, kwargs[field])
-
-        for field in [
-            "institute",
-            "course",
-            "education_level",
-            "track",
-            "program",
-            "record_book_number",
-        ]:
-            if field in kwargs:
-                setattr(self, field, kwargs[field])
+        # Auto-discover delegated fields from _DelegatedProperty descriptors so
+        # adding a new field to UserProfile/UserPreferences/EducationPath never
+        # requires a manual update here — the descriptor set is the single source
+        # of truth.
+        for field_name, descriptor in _DELEGATED_FIELDS.items():
+            if field_name in kwargs:
+                setattr(self, field_name, kwargs[field_name])
 
         if preferences_data is not None:
             if isinstance(preferences_data, dict):
@@ -254,199 +295,50 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
             self.spotify = SpotifyIntegration()
         self.spotify.display_name = value
 
-    @property
-    def full_name(self) -> str | None:
-        return self.profile.full_name if self.profile else None
+    # ------------------------------------------------------------------
+    # Profile field delegation
+    # ------------------------------------------------------------------
+    full_name        = _DelegatedProperty[str | None]("profile",        "full_name",        None,               lambda: UserProfile())
+    avatar_url       = _DelegatedProperty[str | None]("profile",        "avatar_url",       None,               lambda: UserProfile())
+    cover_url        = _DelegatedProperty[str | None]("profile",        "cover_url",        None,               lambda: UserProfile())
+    about            = _DelegatedProperty[str | None]("profile",        "about",            None,               lambda: UserProfile())
+    telegram         = _DelegatedProperty[str | None]("profile",        "telegram",         None,               lambda: UserProfile())
+    status           = _DelegatedProperty[str | None]("profile",        "status",           None,               lambda: UserProfile())
+    achievements     = _DelegatedProperty[str | None]("profile",        "achievements",     None,               lambda: UserProfile())
+    position         = _DelegatedProperty[str | None]("profile",        "position",         None,               lambda: UserProfile())
+    department       = _DelegatedProperty[str | None]("profile",        "department",       None,               lambda: UserProfile())
 
-    @full_name.setter
-    def full_name(self, value: str) -> None:
-        if not self.profile:
-            self.profile = UserProfile()
-        self.profile.full_name = value
+    # ------------------------------------------------------------------
+    # Preferences field delegation
+    # ------------------------------------------------------------------
+    timezone         = _DelegatedProperty[str | None]("preferences",    "timezone",         None,               lambda: UserPreferences())
+    dnd_enabled      = _DelegatedProperty[bool]       ("preferences",    "dnd_enabled",      False,              lambda: UserPreferences())
+    dnd_start        = _DelegatedProperty[time | None]("preferences",    "dnd_start",        None,               lambda: UserPreferences())
+    dnd_end          = _DelegatedProperty[time | None]("preferences",    "dnd_end",          None,               lambda: UserPreferences())
 
-    @property
-    def avatar_url(self) -> str | None:
-        return self.profile.avatar_url if self.profile else None
-
-    @avatar_url.setter
-    def avatar_url(self, value: str | None) -> None:
-        if not self.profile:
-            self.profile = UserProfile()
-        self.profile.avatar_url = value
-
-    @property
-    def cover_url(self) -> str | None:
-        return self.profile.cover_url if self.profile else None
-
-    @cover_url.setter
-    def cover_url(self, value: str | None) -> None:
-        if not self.profile:
-            self.profile = UserProfile()
-        self.profile.cover_url = value
-
-    @property
-    def timezone(self) -> str | None:
-        return self.preferences.timezone if self.preferences else None
-
-    @timezone.setter
-    def timezone(self, value: str | None) -> None:
-        if not self.preferences:
-            self.preferences = UserPreferences()
-        self.preferences.timezone = value
-
-    @property
-    def dnd_enabled(self) -> bool:
-        return self.preferences.dnd_enabled if self.preferences else False
-
-    @dnd_enabled.setter
-    def dnd_enabled(self, value: bool) -> None:
-        if not self.preferences:
-            self.preferences = UserPreferences()
-        self.preferences.dnd_enabled = value
-
-    @property
-    def dnd_start(self) -> time | None:
-        return self.preferences.dnd_start if self.preferences else None
-
-    @dnd_start.setter
-    def dnd_start(self, value: time | None) -> None:
-        if not self.preferences:
-            self.preferences = UserPreferences()
-        self.preferences.dnd_start = value
-
-    @property
-    def dnd_end(self) -> time | None:
-        return self.preferences.dnd_end if self.preferences else None
-
-    @dnd_end.setter
-    def dnd_end(self, value: time | None) -> None:
-        if not self.preferences:
-            self.preferences = UserPreferences()
-        self.preferences.dnd_end = value
-
-    @property
-    def about(self) -> str | None:
-        return self.profile.about if self.profile else None
-
-    @about.setter
-    def about(self, value: str | None) -> None:
-        if not self.profile:
-            self.profile = UserProfile()
-        self.profile.about = value
-
-    @property
-    def telegram(self) -> str | None:
-        return self.profile.telegram if self.profile else None
-
-    @telegram.setter
-    def telegram(self, value: str | None) -> None:
-        if not self.profile:
-            self.profile = UserProfile()
-        self.profile.telegram = value
-
-    @property
-    def status(self) -> str | None:
-        return self.profile.status if self.profile else None
-
-    @status.setter
-    def status(self, value: str | None) -> None:
-        if not self.profile:
-            self.profile = UserProfile()
-        self.profile.status = value
-
-    @property
-    def achievements(self) -> str | None:
-        return self.profile.achievements if self.profile else None
-
-    @achievements.setter
-    def achievements(self, value: str | None) -> None:
-        if not self.profile:
-            self.profile = UserProfile()
-        self.profile.achievements = value
-
-    @property
-    def position(self) -> str | None:
-        return self.profile.position if self.profile else None
-
-    @position.setter
-    def position(self, value: str | None) -> None:
-        if not self.profile:
-            self.profile = UserProfile()
-        self.profile.position = value
-
-    @property
-    def department(self) -> str | None:
-        return self.profile.department if self.profile else None
-
-    @department.setter
-    def department(self, value: str | None) -> None:
-        if not self.profile:
-            self.profile = UserProfile()
-        self.profile.department = value
-
-    @property
-    def institute(self) -> str | None:
-        return self.education_path.institute if self.education_path else None
-
-    @institute.setter
-    def institute(self, value: str | None) -> None:
-        if not self.education_path:
-            self.education_path = EducationPath()
-        self.education_path.institute = value
-
-    @property
-    def course(self) -> str | None:
-        return self.education_path.course if self.education_path else None
-
-    @course.setter
-    def course(self, value: str | None) -> None:
-        if not self.education_path:
-            self.education_path = EducationPath()
-        self.education_path.course = value
-
-    @property
-    def education_level(self) -> str | None:
-        return self.education_path.education_level if self.education_path else None
-
-    @education_level.setter
-    def education_level(self, value: str | None) -> None:
-        if not self.education_path:
-            self.education_path = EducationPath()
-        self.education_path.education_level = value
-
-    @property
-    def track(self) -> str | None:
-        return self.education_path.track if self.education_path else None
-
-    @track.setter
-    def track(self, value: str | None) -> None:
-        if not self.education_path:
-            self.education_path = EducationPath()
-        self.education_path.track = value
-
-    @property
-    def program(self) -> str | None:
-        return self.education_path.program if self.education_path else None
-
-    @program.setter
-    def program(self, value: str | None) -> None:
-        if not self.education_path:
-            self.education_path = EducationPath()
-        self.education_path.program = value
-
-    @property
-    def record_book_number(self) -> str | None:
-        return self.education_path.record_book_number if self.education_path else None
-
-    @record_book_number.setter
-    def record_book_number(self, value: str | None) -> None:
-        if not self.education_path:
-            self.education_path = EducationPath()
-        self.education_path.record_book_number = value
+    # ------------------------------------------------------------------
+    # EducationPath field delegation
+    # ------------------------------------------------------------------
+    institute        = _DelegatedProperty[str | None]("education_path", "institute",        None,               lambda: EducationPath())
+    course           = _DelegatedProperty[str | None]("education_path", "course",           None,               lambda: EducationPath())
+    education_level  = _DelegatedProperty[str | None]("education_path", "education_level",  None,               lambda: EducationPath())
+    track            = _DelegatedProperty[str | None]("education_path", "track",            None,               lambda: EducationPath())
+    program          = _DelegatedProperty[str | None]("education_path", "program",          None,               lambda: EducationPath())
+    record_book_number = _DelegatedProperty[str | None]("education_path", "record_book_number", None,         lambda: EducationPath())
 
     def __repr__(self) -> str:
         # Email is PII — omit from repr to prevent leakage into logs and tracebacks.
         return f"<User(id={self.id}, role='{self.role}')>"
+
+
+# Introspect User class once at import time to find all _DelegatedProperty descriptors.
+# User.__init__ uses this mapping to set delegated fields from kwargs — adding a new
+# descriptor to the User class automatically makes it settable in the constructor.
+_DELEGATED_FIELDS: dict[str, _DelegatedProperty[object]] = {
+    name: descriptor
+    for name, descriptor in vars(User).items()
+    if isinstance(descriptor, _DelegatedProperty)
+}
 
 
 class UserPreferences(Base):

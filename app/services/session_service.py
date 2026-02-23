@@ -165,10 +165,10 @@ class SessionService:
             return sub
         try:
             return UUID(str(sub))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError) as exc:
             raise ValueError(
                 "Subject (sub) must be a valid UUID for session persistence"
-            )
+            ) from exc
 
     async def _enforce_concurrent_limit(
         self, user_id: UUID, current_jti: str, now: datetime

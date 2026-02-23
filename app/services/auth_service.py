@@ -6,39 +6,36 @@ import logging
 import secrets
 import time
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from fastapi import BackgroundTasks, Request
 from pydantic import EmailStr, TypeAdapter
-from sqlalchemy import and_, inspect
+from sqlalchemy import inspect
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from app.schemas.dtos import UserAuthDTO, UserDTO
+    _AnyUser = models.User | UserAuthDTO | UserDTO
 
-from app.api.validation import (
-    raise_validation_error,
-)
-from app.auth.security import (
-    _validate_password_hibp,
-    get_password_hash,
-    verify_password,
-)
+from app.api.validation import raise_validation_error
+from app.auth.security import get_password_hash
 from app.core.config import settings
 from app.core.exceptions.domain import EntityNotFound
 from app.core.localization import resolve_locale
+from app.core.protocols import UserLike
 from app.models import models
-from app.models.user_loaders import (
-    ensure_mfa_relationships_loaded,
-)
+from app.models.user_loaders import ensure_mfa_relationships_loaded
 from app.repositories.auth_repository import AuthRepository
+from app.repositories.session_repository import SessionRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas import schemas
 from app.services.audit_service import AuditService
-from app.services.session_cleanup import revoke_sessions_matching
 from app.tasks.email import send_auth_email
 from app.utils.email import RESET_TOKEN_EXPIRY_MINUTES
+
+# _UserT is used for functions that return the same type as passed in
+_UserT = TypeVar("_UserT", bound=UserLike)
 
 logger = logging.getLogger(__name__)
 
@@ -49,10 +46,12 @@ class AuthService:
         audit: AuditService,
         auth_repo: AuthRepository,
         user_repo: UserRepository,
+        session_repo: SessionRepository,
     ) -> None:
         self.audit = audit
         self.auth_repo = auth_repo
         self.user_repo = user_repo
+        self.session_repo = session_repo
 
     async def initiate_password_reset(
         self,
@@ -63,13 +62,6 @@ class AuthService:
         user = await self.user_repo.get_by_email(email)
         start = time.perf_counter()
         from app.core.timing import ensure_minimum_time
-
-        if user:
-            # Re-fetch with profile to ensure we have full name for email
-            # Although get_by_email tries to load MFA options, we need profile for name.
-            # user_repo.get_by_email includes USER_MFA_LOAD_OPTIONS which includes
-            # profile joinedload.
-            pass
 
         if user:
             token = secrets.token_urlsafe(32)
@@ -160,6 +152,7 @@ class AuthService:
             raise_validation_error("errors.password.invalid_link", locale)
 
         try:
+            from app.auth.security import _validate_password_hibp
             # HIBP check must be done before hashing (async, network call)
             await _validate_password_hibp(new_password, locale=locale)
             new_hashed = await get_password_hash(new_password, locale=locale)
@@ -170,9 +163,7 @@ class AuthService:
         # Mark token as used via repository
         await self.auth_repo.mark_password_reset_token_used(rec.id)
 
-        # Invalidate other active tokens for this user?
-        # Requirement usually says: invalidate all others? Or just this one?
-        # Standard: invalidate all others to be safe.
+        # Invalidate all other active tokens for this user
         await self.auth_repo.invalidate_all_user_password_reset_tokens(user.id)
 
         await self.auth_repo.commit()
@@ -191,6 +182,7 @@ class AuthService:
         bg: BackgroundTasks,
     ) -> models.User | UserAuthDTO | UserDTO:
         locale = resolve_locale(request=request, user=user)
+        from app.auth.security import verify_password
         if not await verify_password(payload.password, str(user.hashed_password)):
             raise_validation_error("errors.users.invalid_password", locale)
 
@@ -227,17 +219,14 @@ class AuthService:
 
         await self.auth_repo.commit()
 
-        # [MODERN] Safely handle refresh for DTOs vs ORM objects
         if not hasattr(db_user, "model_dump"):  # Check if it's NOT a Pydantic DTO
             await self.auth_repo.refresh(db_user)
 
-        # Enrich user object (handles both ORM and DTO)
-        enriched_user = await ensure_mfa_relationships_loaded(
+        loaded_user = await ensure_mfa_relationships_loaded(
             self.auth_repo.db, db_user
         )
-        enriched_user = await attach_pending_email(self.auth_repo.db, enriched_user)
+        enriched_user = await attach_pending_email(self.auth_repo.db, loaded_user)
 
-        # Also attach to the current user object if it's different instance
         if user is not enriched_user:
             await attach_pending_email(self.auth_repo.db, user)
 
@@ -256,7 +245,8 @@ class AuthService:
             user_id=user.id,
             reason="pending_confirmation",
         )
-        return enriched_user
+        from typing import cast
+        return cast(models.User | UserAuthDTO | UserDTO, enriched_user)
 
     async def confirm_email_change(
         self,
@@ -287,18 +277,10 @@ class AuthService:
                 locale,
             )
 
-        # Race condition check: is email taken by someone else now?
         if await self.user_repo.check_email_exists(
             str(record.new_email), exclude_user_id=user.id
         ):
-            # Mark as used to prevent further attempts? Or just fail?
-            # Logic says conflict.
-            # We should invalidate this token as it point to invalid email now?
-            # Or just error out and let user try again / expire.
-            # Current logic: mark as used and conflict error.
-
             await self.auth_repo.mark_email_change_token_used(record.id)
-            # And invalidate others?
             await self.auth_repo.invalidate_other_email_change_tokens(
                 user.id, exclude_token_id=record.id
             )
@@ -310,16 +292,13 @@ class AuthService:
                 locale,
             )
 
-        # Update the user's email and mark the token as used
         db_user = await self.user_repo.update(
             record.user_id, {"email": record.new_email}
         )
         if not db_user:
             raise EntityNotFound("User", record.user_id)
 
-        # Mark this token as used
         await self.auth_repo.mark_email_change_token_used(record.id)
-        # Invalidate all other pending requests for this user
         await self.auth_repo.invalidate_other_email_change_tokens(
             user.id, exclude_token_id=record.id
         )
@@ -328,7 +307,6 @@ class AuthService:
         await ensure_mfa_relationships_loaded(self.auth_repo.db, db_user)
         await attach_pending_email(self.auth_repo.db, db_user)
 
-        # If the input user object is different, we should update its pending state too
         if user is not db_user:
             await attach_pending_email(self.auth_repo.db, user)
 
@@ -347,14 +325,15 @@ class AuthService:
         request: Request,
     ) -> tuple[bool, int]:
         locale = resolve_locale(request=request, user=user)
+        from app.auth.security import _validate_password_hibp, verify_password
         if not await verify_password(
             payload.current_password, str(user.hashed_password)
         ):
             raise_validation_error("errors.users.invalid_password", locale)
         if await verify_password(payload.new_password, str(user.hashed_password)):
             raise_validation_error("errors.users.password_same", locale)
+
         try:
-            # HIBP check must be done before hashing (async, network call)
             await _validate_password_hibp(payload.new_password, locale=locale)
             hashed_password = await get_password_hash(
                 payload.new_password, locale=locale
@@ -368,19 +347,16 @@ class AuthService:
             request.state, "active_session", None
         )
         current_session_id = active_session.id if active_session else None
-        conditions = [
-            models.ActiveSession.user_id == user.id,
-            models.ActiveSession.revoked_at.is_(None),
-        ]
+
         if current_session_id is not None:
-            conditions.append(models.ActiveSession.id != current_session_id)
-        revoked = await revoke_sessions_matching(
-            db=self.auth_repo.db, whereclause=and_(*conditions)
-        )
+            revoked = await self.session_repo.revoke_all_except(
+                user_id=user.id, current_session_id=current_session_id
+            )
+        else:
+            revoked = await self.session_repo.revoke_all_for_user(user_id=user.id)
 
         await self.auth_repo.commit()
 
-        # Update current user object if it's an ORM model
         if isinstance(user, models.User):
             user.hashed_password = hashed_password
 
@@ -396,34 +372,16 @@ class AuthService:
     async def refresh_pending_email(
         self, user: models.User | UserAuthDTO | UserDTO | None
     ) -> models.User | UserAuthDTO | UserDTO | None:
-        """
-        Refresh the pending_email field on the user model.
-        """
         if user is None:
             return None
 
         pending = await self.auth_repo.get_active_email_change_request(user.id)
         email = pending.new_email if pending else None
 
-        if not isinstance(user, models.User):
-            # DTO path
-            return user.model_copy(update={"pending_email": email})
-
-        # ORM path
-        user.pending_email = email  # type: ignore[attr-defined]
-        return user
-
-
-# Private helpers were removed as their logic moved to AuthRepository
-# But some are still used locally or need to be imported if we want to use them.
-
-# `_hash_token` is still used in this file.
+        return cast("_AnyUser | None", attach_pending_email_sync(user, email))
 
 
 def _hash_token(token: str) -> str:
-    """
-    Hash a token using HMAC-SHA256 with the app's SECRET_KEY.
-    """
     return hmac.new(
         settings.secret_key.encode(),
         token.encode(),
@@ -432,60 +390,49 @@ def _hash_token(token: str) -> str:
 
 
 async def attach_pending_email(
-    db: AsyncSession, user: models.User | UserAuthDTO | UserDTO | None
-) -> models.User | UserAuthDTO | UserDTO | None:
-    """Attach the pending email to a user, loading the relationship if needed."""
+    db: AsyncSession, user: _AnyUser | None
+) -> _AnyUser | None:
     if user is None:
         return None
 
-    if not isinstance(user, models.User):
-        # DTO Path (validated/frozen)
-        repo = AuthRepository(db)
-        pending = await repo.get_active_email_change_request(user.id)
-        email = pending.new_email if pending else None
-        return user.model_copy(update={"pending_email": email})
+    if isinstance(user, models.User):
+        try:
+            insp = inspect(user)
+            if insp is not None and "email_change_tokens" not in insp.unloaded:
+                return cast("_AnyUser", attach_pending_email_sync(user, None))
+        except Exception:
+            pass
 
-    # ORM Path
-    try:
-        insp = inspect(user)
-        assert insp is not None
-        if "email_change_tokens" in insp.unloaded:
-            repo = AuthRepository(db)
-            pending = await repo.get_active_email_change_request(user.id)
-            user.pending_email = pending.new_email if pending else None  # type: ignore[attr-defined]
-            return user
-    except Exception:
-        # Unexpected unmapped instance or error
-        return user
-
-    return attach_pending_email_sync(user)
-
-
-def attach_pending_email_sync(
-    user: models.User | UserAuthDTO | UserDTO | None,
-) -> models.User | UserAuthDTO | UserDTO | None:
-    """Attach the pending email to a user whose email_change_tokens are already loaded."""
-    if user is None:
-        return None
-
-    if not isinstance(user, models.User):
-        # DTOs don't have relationships loaded this way
-        return user
-
-    now = datetime.now(UTC)
-    tokens = [
-        t
-        for t in user.email_change_tokens
-        if not t.used
-        and (
-            t.expires_at.replace(tzinfo=UTC)
-            if t.expires_at.tzinfo is None
-            else t.expires_at
-        )
-        > now
-    ]
-    tokens.sort(key=lambda x: x.created_at, reverse=True)
-    pending = tokens[0] if tokens else None
+    repo = AuthRepository(db)
+    pending = await repo.get_active_email_change_request(user.id)
     email = pending.new_email if pending else None
-    user.pending_email = email  # type: ignore[attr-defined]
+
+    return cast("_AnyUser | None", attach_pending_email_sync(user, email))
+
+
+def attach_pending_email_sync(user: Any, email: str | None) -> Any:
+    if hasattr(user, "model_copy"):
+        from typing import cast
+        typed_user = cast(UserDTO, user)
+        return cast(Any, typed_user.model_copy(update={"pending_email": email}))
+
+    if email is not None:
+        user.pending_email = email
+    elif isinstance(user, models.User):
+        now = datetime.now(UTC)
+        tokens = [
+            t
+            for t in user.email_change_tokens
+            if not t.used
+            and (
+                t.expires_at.replace(tzinfo=UTC)
+                if t.expires_at.tzinfo is None
+                else t.expires_at
+            )
+            > now
+        ]
+        tokens.sort(key=lambda x: x.created_at, reverse=True)
+        pending = tokens[0] if tokens else None
+        user.pending_email = pending.new_email if pending else None
+
     return user

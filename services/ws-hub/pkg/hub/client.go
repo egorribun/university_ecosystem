@@ -47,6 +47,19 @@ func (c *Client) ReadPump() {
 
 		switch msg.Type {
 		case "join":
+			// Every room-join must be authorized against the Python backend's
+			// participant table to prevent OWASP A01 (broken access control).
+			// Any authenticated user who knows a chat UUID must be blocked
+			// from joining rooms they are not a participant of.
+			if msg.Room == "" {
+				break
+			}
+			if !c.Hub.AuthorizeRoomJoin(c.UserID, msg.Room) {
+				c.Hub.Logger.Warn("Unauthorized room join rejected",
+					zap.String("user", c.UserID),
+					zap.String("room", msg.Room))
+				break
+			}
 			c.JoinRoom(msg.Room)
 		case "leave":
 			c.LeaveRoom(msg.Room)

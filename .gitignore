@@ -287,3 +287,13 @@ inspect_*.py
 fakeredis_shadow_backup/
 frontend/src/pages/Events_matches.txt
 .claude/
+
+# Development overrides (personal, not shared)
+docker-compose.override.yml
+
+# Patch and diff artifacts — these are transient and should not be committed
+*.patch
+merge_diff.patch
+
+# Ad-hoc repro scripts
+test_repro.py

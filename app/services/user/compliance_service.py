@@ -232,9 +232,9 @@ class UserComplianceService:
             await self.repo.commit()
             # create_with_invite now returns DTO
             return db_user
-        except Exception:
+        except Exception as exc:
             await self.repo.rollback()
-            raise BusinessRuleViolation("errors.users.create_failed")
+            raise BusinessRuleViolation("errors.users.create_failed") from exc
 
     @auditable(SecurityEvent.ADMIN_USER_CREATE)
     async def create_user(
@@ -270,5 +270,5 @@ class UserComplianceService:
             await self.repo.rollback()
             error_str = str(exc.orig).lower() if exc.orig else str(exc).lower()
             if "email" in error_str or "users_email_key" in error_str:
-                raise EntityAlreadyExists("User", data.email)
-            raise BusinessRuleViolation("errors.users.create_failed")
+                raise EntityAlreadyExists("User", data.email) from exc
+            raise BusinessRuleViolation("errors.users.create_failed") from exc

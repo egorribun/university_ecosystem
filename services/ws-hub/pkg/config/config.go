@@ -12,6 +12,9 @@ type Config struct {
 	AllowedOrigins []string
 	SentryDSN      string
 	Environment    string
+	// BackendURL is the internal base URL of the Python FastAPI service.
+	// Used by the hub to authorize room-join requests via InternalAPIAuthClient.
+	BackendURL string
 }
 
 func LoadConfig() *Config {
@@ -22,6 +25,7 @@ func LoadConfig() *Config {
 		AllowedOrigins: getEnvSlice("ALLOWED_ORIGINS", []string{"http://localhost:3000", "http://localhost:5173"}),
 		SentryDSN:      getEnv("SENTRY_DSN", ""),
 		Environment:    getEnv("VITE_ENVIRONMENT", "development"),
+		BackendURL:     getEnv("BACKEND_INTERNAL_URL", "http://backend:8000"),
 	}
 }
 

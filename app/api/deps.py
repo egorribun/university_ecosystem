@@ -38,7 +38,23 @@ async def get_current_user(
     payload = AuthTokenService.extract_and_decode_token(request, token, locale)
     user_id, jti = AuthTokenService.validate_payload(payload, locale)
 
-    # 2. Redis Session Check (Cache-Aside)
+    # 2. JTI Revocation Fast-Path — rejects explicitly revoked tokens in O(1)
+    # before any DB or Redis session lookup.  SessionService.revoke_session()
+    # writes the key "revoked:jti:<jti>" with a TTL equal to the token's
+    # remaining lifetime, so no background cleanup is needed.
+    try:
+        from app.deps.cache import get_cache_client as _cache
+
+        _redis = await _cache()
+        if await _redis.exists(f"revoked:jti:{jti}"):
+            raise_unauthorized(locale, "errors.auth.credentials_invalid")
+    except HTTPException:
+        raise
+    except Exception:
+        # Redis unavailable: fall through to DB revoked_at check below
+        pass
+
+    # 3. Redis Session Check (Cache-Aside)
     from app.services.auth.redis_session import RedisSessionService
 
     redis_service = RedisSessionService()
@@ -163,7 +179,7 @@ async def get_current_admin_user(
                 "error": "authz_unavailable",
                 "message": "Authorization service temporarily unavailable",
             },
-        )
+        ) from None
     if not is_admin_user:
         locale = resolve_locale(request=request)
         raise_forbidden(locale)
@@ -362,13 +378,15 @@ def get_auth_service(
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> Any:
     from app.repositories.auth_repository import AuthRepository
+    from app.repositories.session_repository import SessionRepository
     from app.repositories.user_repository import UserRepository
     from app.services.audit_service import audit_service
     from app.services.auth_service import AuthService
 
     auth_repo = AuthRepository(session)
     user_repo = UserRepository(session)
-    return AuthService(audit_service, auth_repo, user_repo)
+    session_repo = SessionRepository(session)
+    return AuthService(audit_service, auth_repo, user_repo, session_repo)
 
 
 def get_session_service(

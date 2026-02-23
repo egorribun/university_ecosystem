@@ -43,9 +43,15 @@ func SetAllowedOrigins(origins []string) {
 }
 
 func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *config.Config) {
-	tokenStr := r.Header.Get("Sec-WebSocket-Protocol")
-	if strings.Contains(tokenStr, "access_token") {
-		protocols := strings.Split(tokenStr, ",")
+	// Extract JWT exclusively from the Sec-WebSocket-Protocol header.
+	// Format: "Sec-WebSocket-Protocol: access_token, <jwt>"
+	// Query-string tokens (e.g. ?token=<jwt>) are intentionally not supported:
+	// URL parameters appear verbatim in proxy access logs, browser history, and
+	// OpenTelemetry spans — making any token in a URL effectively public.
+	tokenStr := ""
+	rawProtocol := r.Header.Get("Sec-WebSocket-Protocol")
+	if strings.Contains(rawProtocol, "access_token") {
+		protocols := strings.Split(rawProtocol, ",")
 		for i, p := range protocols {
 			p = strings.TrimSpace(p)
 			if p == "access_token" && i+1 < len(protocols) {
@@ -53,12 +59,10 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 				break
 			}
 		}
-	} else {
-		tokenStr = r.URL.Query().Get("token")
 	}
 
 	if tokenStr == "" {
-		h.Logger.Warn("WebSocket missing authentication token")
+		h.Logger.Warn("WebSocket connection rejected: missing or malformed Sec-WebSocket-Protocol token")
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}

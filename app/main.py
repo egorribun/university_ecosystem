@@ -8,8 +8,7 @@ configure_uvloop()
 import logging
 import os
 
-from fastapi import FastAPI, HTTPException, Request
-from starlette.middleware.base import BaseHTTPMiddleware
+from fastapi import FastAPI, HTTPException
 
 try:
     from fastapi.responses import JSONResponse, ORJSONResponse
@@ -97,56 +96,7 @@ configure_metrics(app)
 configure_middleware(app, settings=settings)
 
 
-class ContentSizeLimitMiddleware(BaseHTTPMiddleware):
-    """Reject requests whose body exceeds MAX_BODY bytes.
 
-    Defence-in-depth layer on top of any upstream proxy limits (nginx/caddy).
-    Handles both Content-Length declared and chunked Transfer-Encoding requests
-    so that attackers cannot bypass the check by omitting the header.
-    """
-
-    MAX_BODY: int = 5 * 1024 * 1024  # 5 MB — configurable via settings override
-    _OVERSIZED = JSONResponse(status_code=413, content={"detail": "Payload Too Large"})
-    _BAD_CL = JSONResponse(
-        status_code=400, content={"detail": "Invalid Content-Length header"}
-    )
-
-    async def dispatch(self, request: Request, call_next):
-        limit = getattr(settings, "max_upload_body_bytes", self.MAX_BODY)
-
-        # Fast path: Content-Length declared → reject immediately, no body read.
-        cl_header = request.headers.get("content-length")
-        if cl_header is not None:
-            try:
-                cl = int(cl_header)
-            except ValueError:
-                return self._BAD_CL
-            if cl > limit:
-                return self._oversized_response(limit)
-
-        # Slow path: chunked / unknown length — stream and accumulate byte count.
-        # Only applies to non-WebSocket HTTP requests with a body.
-        method = request.method.upper()
-        path = request.url.path or ""
-        has_body = method in {"POST", "PUT", "PATCH"} and not path.startswith("/ws")
-        if has_body and cl_header is None:
-            accumulated = 0
-            async for chunk in request.stream():
-                accumulated += len(chunk)
-                if accumulated > limit:
-                    return self._oversized_response(limit)
-
-        return await call_next(request)
-
-    @staticmethod
-    def _oversized_response(limit: int) -> JSONResponse:
-        return JSONResponse(
-            status_code=413,
-            content={"detail": f"Payload Too Large (max {limit // (1024 * 1024)} MB)"},
-        )
-
-
-app.add_middleware(ContentSizeLimitMiddleware)
 
 # Static files
 static_dir = settings.static_dir_path

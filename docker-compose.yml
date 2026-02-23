@@ -33,10 +33,13 @@ services:
       SPOTIFY_SCOPES: ${SPOTIFY_SCOPES}
     volumes:
       - static-data:/app/app/static
-      # Mount only application code — excludes .git, .venv, node_modules,
-      # frontend sources, and Go service code from the container filesystem.
-      # This reduces inotify watch overhead and prevents accidental secret exposure.
-      - ./app:/app/app
+      # SECURITY: No live source mount in production.
+      # Code is baked into the Docker image at build time.
+      # For local development, create docker-compose.override.yml:
+      #   services:
+      #     backend:
+      #       volumes:
+      #         - ./app:/app/app
     depends_on:
       redis:
         condition: service_healthy
@@ -201,11 +204,8 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required - set in .env file}
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required - set in .env file}
-    volumes:
-      # Alembic needs models (app/) + migration scripts + config only.
-      - ./app:/app/app
-      - ./alembic:/app/alembic
-      - ./alembic.ini:/app/alembic.ini:ro
+    # SECURITY: Migration scripts and models are baked into the image.
+    # No host mounts needed — eliminates risk of running uncommitted local code.
     depends_on:
       postgres:
         condition: service_healthy
@@ -225,9 +225,14 @@ services:
     environment:
       IMGPROXY_KEY: ${IMGPROXY_KEY}
       IMGPROXY_SALT: ${IMGPROXY_SALT}
-      IMGPROXY_ALLOWED_SOURCES: "http://backend:8000/,https://*,http://*"
+      # Restrict to backend-served assets only — blocks SSRF via open redirect
+      IMGPROXY_ALLOWED_SOURCES: "http://backend:8000/static/"
       IMGPROXY_USE_ETAG: "true"
-      IMGPROXY_DEVELOPMENT_ERRORS_MODE: "true"
+      # SECURITY: NEVER enable in production — leaks internal paths and stacktraces
+      IMGPROXY_DEVELOPMENT_ERRORS_MODE: "false"
+      IMGPROXY_LOG_LEVEL: "warn"
+      # Suppress verbose download errors from leaking source URLs in logs
+      IMGPROXY_REPORT_DOWNLOADING_ERRORS: "false"
     restart: unless-stopped
     networks:
       - internal
@@ -239,26 +244,55 @@ services:
           memory: 512M
 
   temporal:
-    image: temporalio/admin-tools:1.26.2
+    # HIGH-6 FIX: Use PostgreSQL-backed server instead of ephemeral dev SQLite.
+    # Dev-mode stored workflows in /tmp/temporal.db which was wiped on every restart,
+    # causing silent workflow state loss.
+    image: temporalio/server:1.27.2
     container_name: temporal
     ports:
       - "7233:7233"
-      - "8233:8233"
     environment:
-      - TEMPORAL_CLI_ADDRESS=temporal:7233
-    entrypoint: [ "/bin/bash", "-c", "temporal server start-dev --ip 0.0.0.0 --ui-port 8233 --db-filename /tmp/temporal.db" ]
+      - DB=postgresql
+      - DB_PORT=5432
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PWD=${POSTGRES_PASSWORD}
+      - POSTGRES_SEEDS=postgres
+      - TEMPORAL_BROADCAST_ADDRESS=temporal
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - internal
     healthcheck:
-      test: [ "CMD-SHELL", "temporal operator cluster health --address 127.0.0.1:7233 || exit 1" ]
-      interval: 10s
+      test: [ "CMD", "temporal", "operator", "cluster", "health", "--address", "127.0.0.1:7233" ]
+      interval: 15s
       timeout: 10s
       retries: 10
+      start_period: 30s
     deploy:
       resources:
         limits:
           cpus: '0.50'
           memory: 1G
+
+  temporal-ui:
+    image: temporalio/ui:2.34.0
+    container_name: temporal-ui
+    ports:
+      - "8233:8080"
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:8233
+    depends_on:
+      temporal:
+        condition: service_healthy
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
 
   minio:
     image: minio/minio:RELEASE.2024-01-31T20-20-33Z

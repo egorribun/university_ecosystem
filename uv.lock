@@ -10,11 +10,11 @@ resolution-markers = [
 
 [[package]]
 name = "aiofiles"
-version = "25.1.0"
+version = "23.2.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/41/c3/534eac40372d8ee36ef40df62ec129bee4fdb5ad9706e58a29be53b2c970/aiofiles-25.1.0.tar.gz", hash = "sha256:a8d728f0a29de45dc521f18f07297428d56992a742f0cd2701ba86e44d23d5b2", size = 46354, upload-time = "2025-10-09T20:51:04.358Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/af/41/cfed10bc64d774f497a86e5ede9248e1d062db675504b41c320954d99641/aiofiles-23.2.1.tar.gz", hash = "sha256:84ec2218d8419404abcb9f0c02df3f34c6e0a68ed41072acfb1cef5cbc29051a", size = 32072, upload-time = "2023-08-09T15:23:11.564Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/bc/8a/340a1555ae33d7354dbca4faa54948d76d89a27ceef032c8c3bc661d003e/aiofiles-25.1.0-py3-none-any.whl", hash = "sha256:abe311e527c862958650f9438e859c1fa7568a141b22abcd015e120e86a85695", size = 14668, upload-time = "2025-10-09T20:51:03.174Z" },
+    { url = "https://files.pythonhosted.org/packages/c5/19/5af6804c4cc0fed83f47bff6e413a98a36618e7d40185cd36e69737f3b0e/aiofiles-23.2.1-py3-none-any.whl", hash = "sha256:19297512c647d4b27a2cf7c34caa7e405c0d60b5560618a29a9fe027b18b0107", size = 15727, upload-time = "2023-08-09T15:23:09.774Z" },
 ]
 
 [[package]]
@@ -348,6 +348,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/58/84/dd268a09058176b33e74c4432043e96eb77a4ad590633a9eeb019504d43e/authzed-1.24.1.tar.gz", hash = "sha256:5e3d1d69baeda683f4bc4908d1b64f9082c3fa007a10aa6ceef29a7720b58c73", size = 147615, upload-time = "2026-01-16T15:12:07.047Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ee/7d/25faee8a1210fe6455983c7640a1febe952d193729673a5198f9128430a9/authzed-1.24.1-py3-none-any.whl", hash = "sha256:b0333d6ee6c31837fb1e7d6796f8185cc4f6a94871621631fac95a34790add69", size = 189879, upload-time = "2026-01-16T15:12:05.408Z" },
+]
+
+[[package]]
+name = "bandit"
+version = "1.9.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "pyyaml" },
+    { name = "rich" },
+    { name = "stevedore" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/89/76/a7f3e639b78601118aaa4a394db2c66ae2597fbd8c39644c32874ed11e0c/bandit-1.9.3.tar.gz", hash = "sha256:ade4b9b7786f89ef6fc7344a52b34558caec5da74cb90373aed01de88472f774", size = 4242154, upload-time = "2026-01-19T04:05:22.802Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e0/0b/8bdc52111c83e2dc2f97403dc87c0830b8989d9ae45732b34b686326fb2c/bandit-1.9.3-py3-none-any.whl", hash = "sha256:4745917c88d2246def79748bde5e08b9d5e9b92f877863d43fab70cd8814ce6a", size = 134451, upload-time = "2026-01-19T04:05:20.938Z" },
 ]
 
 [[package]]
@@ -2412,20 +2427,6 @@ wheels = [
 ]
 
 [[package]]
-name = "passlib"
-version = "1.7.4"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/b6/06/9da9ee59a67fae7761aab3ccc84fa4f3f33f125b370f1ccdb915bf967c11/passlib-1.7.4.tar.gz", hash = "sha256:defd50f72b65c5402ab2c573830a6978e5f202ad0d984793c8dde2c4152ebe04", size = 689844, upload-time = "2020-10-08T19:00:52.121Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/3b/a4/ab6b7589382ca3df236e03faa71deac88cae040af60c071a78d254a62172/passlib-1.7.4-py2.py3-none-any.whl", hash = "sha256:aa6bca462b8d8bda89c70b382f0c298a20b5560af6cbfa2dce410c0a2fb669f1", size = 525554, upload-time = "2020-10-08T19:00:49.856Z" },
-]
-
-[package.optional-dependencies]
-bcrypt = [
-    { name = "bcrypt" },
-]
-
-[[package]]
 name = "pathspec"
 version = "1.0.4"
 source = { registry = "https://pypi.org/simple" }
@@ -3318,14 +3319,15 @@ wheels = [
 
 [[package]]
 name = "redis"
-version = "7.1.0"
+version = "5.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "async-timeout", marker = "python_full_version < '3.11.3'" },
+    { name = "pyjwt" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/43/c8/983d5c6579a411d8a99bc5823cc5712768859b5ce2c8afe1a65b37832c81/redis-7.1.0.tar.gz", hash = "sha256:b1cc3cfa5a2cb9c2ab3ba700864fb0ad75617b41f01352ce5779dabf6d5f9c3c", size = 4796669, upload-time = "2025-11-19T15:54:39.961Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6a/cf/128b1b6d7086200c9f387bd4be9b2572a30b90745ef078bd8b235042dc9f/redis-5.3.1.tar.gz", hash = "sha256:ca49577a531ea64039b5a36db3d6cd1a0c7a60c34124d46924a45b956e8cf14c", size = 4626200, upload-time = "2025-07-25T08:06:27.778Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/89/f0/8956f8a86b20d7bb9d6ac0187cf4cd54d8065bc9a1a09eb8011d4d326596/redis-7.1.0-py3-none-any.whl", hash = "sha256:23c52b208f92b56103e17c5d06bdc1a6c2c0b3106583985a76a18f83b265de2b", size = 354159, upload-time = "2025-11-19T15:54:38.064Z" },
+    { url = "https://files.pythonhosted.org/packages/7f/26/5c5fa0e83c3621db835cfc1f1d789b37e7fa99ed54423b5f519beb931aa7/redis-5.3.1-py3-none-any.whl", hash = "sha256:dc1909bd24669cc31b5f67a039700b16ec30571096c5f1f0d9d2324bff31af97", size = 272833, upload-time = "2025-07-25T08:06:26.317Z" },
 ]
 
 [[package]]
@@ -3515,6 +3517,15 @@ wheels = [
 ]
 
 [[package]]
+name = "stevedore"
+version = "5.7.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a2/6d/90764092216fa560f6587f83bb70113a8ba510ba436c6476a2b47359057c/stevedore-5.7.0.tar.gz", hash = "sha256:31dd6fe6b3cbe921e21dcefabc9a5f1cf848cf538a1f27543721b8ca09948aa3", size = 516200, upload-time = "2026-02-20T13:27:06.765Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/69/06/36d260a695f383345ab5bbc3fd447249594ae2fa8dfd19c533d5ae23f46b/stevedore-5.7.0-py3-none-any.whl", hash = "sha256:fd25efbb32f1abb4c9e502f385f0018632baac11f9ee5d1b70f88cc5e22ad4ed", size = 54483, upload-time = "2026-02-20T13:27:05.561Z" },
+]
+
+[[package]]
 name = "strawberry-graphql"
 version = "0.289.8"
 source = { registry = "https://pypi.org/simple" }
@@ -3587,15 +3598,15 @@ wheels = [
 
 [[package]]
 name = "taskiq-redis"
-version = "1.2.1"
+version = "1.0.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "redis" },
     { name = "taskiq" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/64/35/58ec34c74c888235ecea3dba3b0e74a3902a6b70f0cd56fffa0012f03a61/taskiq_redis-1.2.1.tar.gz", hash = "sha256:8a6b7d3187798e00f27fca6d4a9d73efc559ed88e3c3c571647c9163add7af47", size = 14376, upload-time = "2025-12-19T17:36:03.45Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ab/46/fa492736f5b90587e73113022093dfab3a2ae16fddcfeea79b2012f1f598/taskiq_redis-1.0.9.tar.gz", hash = "sha256:d25a5ef1c8a50dab680bf2433b6c0a811909adc100a9d986cc9ca8cf13b11300", size = 15771, upload-time = "2025-06-06T13:26:48.378Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/99/1e/d4202cdb98bf2df087dd303df35d0faf2528f985d62aa685cce994584c4f/taskiq_redis-1.2.1-py3-none-any.whl", hash = "sha256:caf91241a23cd77c4304e455a775caa08c5005b48b62fc613b4dd5b44a515488", size = 20570, upload-time = "2025-12-19T17:36:02.142Z" },
+    { url = "https://files.pythonhosted.org/packages/39/28/6311e2f8c9eef70d80f711be86887fba5e151817553231819a24bcd02fd9/taskiq_redis-1.0.9-py3-none-any.whl", hash = "sha256:a27a4940cfb79fabbe99dba557423ba53728f14517e1554394c9643df2972f3c", size = 20128, upload-time = "2025-06-06T13:26:47.206Z" },
 ]
 
 [[package]]
@@ -3758,7 +3769,6 @@ dependencies = [
     { name = "opentelemetry-sdk" },
     { name = "opentelemetry-semantic-conventions" },
     { name = "orjson" },
-    { name = "passlib", extra = ["bcrypt"] },
     { name = "pgvector" },
     { name = "pillow" },
     { name = "pillow-avif-plugin" },
@@ -3798,6 +3808,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "asgi-lifespan" },
+    { name = "bandit" },
     { name = "fakeredis" },
     { name = "hypothesis" },
     { name = "mypy" },
@@ -3811,10 +3822,10 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiofiles", specifier = ">=23.0" },
+    { name = "aiofiles", specifier = ">=23.0,<24.0" },
     { name = "aiosqlite", specifier = ">=0.19" },
-    { name = "alembic", specifier = ">=1.13" },
-    { name = "anyio", specifier = ">=4.0.0" },
+    { name = "alembic", specifier = ">=1.13,<2.0" },
+    { name = "anyio", specifier = ">=4.0.0,<5.0" },
     { name = "argon2-cffi", specifier = ">=23.1.0" },
     { name = "asyncpg", specifier = ">=0.30.0" },
     { name = "authzed", specifier = ">=1.15.0" },
@@ -3827,7 +3838,7 @@ requires-dist = [
     { name = "diskcache", specifier = ">=5.6.0" },
     { name = "elasticsearch", extras = ["async"], specifier = ">=8.0,<9.0.0" },
     { name = "email-validator", specifier = ">=2.0" },
-    { name = "fastapi", specifier = ">=0.128" },
+    { name = "fastapi", specifier = ">=0.128,<1.0" },
     { name = "filelock", specifier = ">=3.20.3" },
     { name = "geoip2", specifier = ">=4.0" },
     { name = "gputil", specifier = ">=1.4.0" },
@@ -3849,7 +3860,6 @@ requires-dist = [
     { name = "opentelemetry-sdk" },
     { name = "opentelemetry-semantic-conventions" },
     { name = "orjson", specifier = ">=3.10" },
-    { name = "passlib", extras = ["bcrypt"], specifier = "==1.7.4" },
     { name = "pgvector", extras = ["sqlalchemy"], specifier = ">=0.4.2" },
     { name = "pillow", specifier = ">=10" },
     { name = "pillow-avif-plugin", specifier = ">=1.4.0" },
@@ -3859,8 +3869,8 @@ requires-dist = [
     { name = "psutil", specifier = ">=6.0.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.1" },
     { name = "pyasn1", specifier = ">=0.6.2" },
-    { name = "pydantic", specifier = ">=2" },
-    { name = "pydantic-settings", specifier = ">=2" },
+    { name = "pydantic", specifier = ">=2,<3" },
+    { name = "pydantic-settings", specifier = ">=2,<3" },
     { name = "pyjwt", specifier = ">=2.10.1" },
     { name = "pyotp", specifier = ">=2.9" },
     { name = "pyroscope-io", marker = "sys_platform != 'win32'", specifier = ">=0.8.0" },
@@ -3869,9 +3879,9 @@ requires-dist = [
     { name = "python-multipart", specifier = ">=0.0.22" },
     { name = "pyvips", marker = "sys_platform != 'win32'", specifier = ">=2.2" },
     { name = "pywebpush", specifier = ">=1.9" },
-    { name = "redis", specifier = ">=5" },
+    { name = "redis", specifier = ">=5,<6" },
     { name = "sentry-sdk", extras = ["opentelemetry"], specifier = ">=2,<3" },
-    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2,<3" },
     { name = "starlette", specifier = ">=0.40" },
     { name = "strawberry-graphql", extras = ["fastapi"], specifier = ">=0.250" },
     { name = "structlog", specifier = ">=24.0" },
@@ -3889,6 +3899,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "asgi-lifespan", specifier = ">=2.1.0" },
+    { name = "bandit", extras = ["toml"], specifier = ">=1.8" },
     { name = "fakeredis", specifier = ">=2" },
     { name = "hypothesis", specifier = ">=6.112" },
     { name = "mypy", specifier = ">=1.11" },
@@ -3897,7 +3908,7 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=0.23" },
     { name = "pytest-cov", specifier = ">=5" },
     { name = "pytest-xdist", specifier = ">=3.5" },
-    { name = "ruff", specifier = ">=0.2" },
+    { name = "ruff", specifier = ">=0.15" },
 ]
 
 [[package]]

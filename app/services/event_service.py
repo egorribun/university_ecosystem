@@ -290,15 +290,15 @@ class EventService:
                 registered_at=datetime.now(UTC),
             )
             await self.repo.commit()
-        except IntegrityError:
+        except IntegrityError as exc:
             await self.repo.rollback()
             # Race condition retry
             exist = await self.repo.get_attendance(data.event_id, user_id)
             if not exist:
                 event = await self.repo.get(data.event_id)
                 if not event:
-                    raise EntityNotFound("Event", data.event_id)
-                raise ValueError("attendance_registration_failed")
+                    raise EntityNotFound("Event", data.event_id) from exc
+                raise ValueError("attendance_registration_failed") from exc
 
             # Existing found after race
             retry_updates: dict[str, Any] = {}
