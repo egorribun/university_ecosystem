@@ -65,6 +65,7 @@ async function fetchNews(id: string): Promise<NewsItem> {
   if (response.status === 304) {
     throw new Error("Not modified")
   }
+  if (!response.data) throw new Error("Item not found")
   return response.data
 }
 
@@ -512,7 +513,7 @@ export default function NewsDetail() {
 
           <NewsComments
             comments={comments}
-            user={user}
+            user={user as { id: string; role: string } | null}
             isCommenting={isCommenting}
             addComment={addComment}
             updateComment={updateComment}

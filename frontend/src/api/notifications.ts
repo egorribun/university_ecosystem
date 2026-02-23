@@ -1,7 +1,19 @@
 import * as v from "valibot"
 
-import api, { apiClient } from "@/api/client"
-import type { components } from "@/api/generated/schema"
+import {
+  adminGetUserTopicsApiV1PushAdminTopicsUserIdGet,
+  adminUpdateUserTopicsApiV1PushAdminTopicsUserIdPut,
+  checkScheduleAndGenerateApiV1NotificationsCheckSchedulePost,
+  clearNotificationsApiV1NotificationsDelete,
+  unsubscribeApiV1PushUnsubscribePost,
+  getPushTopicsApiV1PushTopicsGet,
+  getVapidPublicKeyApiV1PushVapidPublicKeyGet,
+  listNotificationsApiV1NotificationsGet,
+  markAllReadApiV1NotificationsReadAllPost,
+  markReadSingleApiV1NotificationsNotifIdReadPatch,
+  subscribeApiV1PushSubscribePost,
+  sendTestApiV1PushTestPost,
+} from "@/api/generated"
 import type {
   AdminUserTopicsResponse,
   PushSubscriptionResponse,
@@ -31,9 +43,9 @@ const notificationsListSchema = v.object({
 })
 
 const deadLetterJobSchema = v.object({
-  id: v.string(), // Redis/worker job IDs might still be numbers
+  id: v.string(),
   kind: v.string(),
-  record_id: v.string(), // This might need verification, is it referencing a DB ID?
+  record_id: v.string(),
   locale: v.optional(v.nullable(v.string())),
   enqueued_at: v.string(),
   claimed_at: v.optional(v.nullable(v.string())),
@@ -56,42 +68,52 @@ export const fetchNotificationsList = async (params?: {
   cursor?: string | null
   limit?: number
 }) => {
-  const response = await apiClient.get("/api/v1/notifications", {
-    params,
+  const response = await listNotificationsApiV1NotificationsGet({
+    query: {
+      cursor: params?.cursor ?? undefined,
+      limit: params?.limit,
+    },
   })
   return ensureValidResponse(notificationsListSchema, response.data, "GET /api/v1/notifications")
 }
 
 export const markNotificationRead = (notificationId: string) =>
-  apiClient.patch("/api/v1/notifications/{notif_id}/read", undefined, {
-    pathParams: { notif_id: notificationId },
+  markReadSingleApiV1NotificationsNotifIdReadPatch({
+    path: { notif_id: notificationId },
   })
 
-export const markAllNotificationsRead = () => apiClient.post("/api/v1/notifications/read-all")
+export const markAllNotificationsRead = () => markAllReadApiV1NotificationsReadAllPost()
 
-export const clearNotifications = () => apiClient.delete("/api/v1/notifications")
+export const clearNotifications = () => clearNotificationsApiV1NotificationsDelete()
 
 export const checkSchedule = (lookaheadMinutes: number = 15) =>
-  apiClient.post("/api/v1/notifications/check-schedule", undefined, {
-    params: { lookahead_minutes: lookaheadMinutes },
+  checkScheduleAndGenerateApiV1NotificationsCheckSchedulePost({
+    query: { lookahead_minutes: lookaheadMinutes },
   })
 
 export const fetchDeadLetterQueue = async (params?: { limit?: number; offset?: number }) => {
-  const response = await api.get("/notifications/admin/dead-letter", {
+  // This endpoint seems to be missing from the generated SDK or has a different name.
+  // Using direct import to avoid circular dependency or missing import errors.
+  const { apiClient } = await import("@/api/client")
+  const response = await apiClient.get("/api/v1/notifications/admin/dead-letter", {
     params,
   })
   return ensureValidResponse(
     deadLetterListSchema,
     response.data,
-    "GET /notifications/admin/dead-letter"
+    "GET /api/v1/notifications/admin/dead-letter"
   )
 }
 
-export const retryDeadLetterJobs = (jobIds: string[]) =>
-  api.post("/notifications/admin/dead-letter/retry", { job_ids: jobIds })
+export const retryDeadLetterJobs = async (jobIds: string[]) => {
+  const { apiClient } = await import("@/api/client")
+  return apiClient.post("/api/v1/notifications/admin/dead-letter/retry", { job_ids: jobIds })
+}
 
-export const purgeDeadLetterJobs = (jobIds: string[]) =>
-  api.post("/notifications/admin/dead-letter/purge", { job_ids: jobIds })
+export const purgeDeadLetterJobs = async (jobIds: string[]) => {
+  const { apiClient } = await import("@/api/client")
+  return apiClient.post("/api/v1/notifications/admin/dead-letter/purge", { job_ids: jobIds })
+}
 
 export async function saveSubscription(
   sub: PushSubscriptionJSON,
@@ -107,28 +129,33 @@ export async function saveSubscription(
   const userAgent =
     typeof navigator !== "undefined" && navigator.userAgent ? navigator.userAgent : undefined
 
-  const payload: components["schemas"]["PushSubscriptionIn"] = {
+  const payload = {
     endpoint,
     keys: { p256dh, auth },
     user_agent: userAgent,
     ...(Array.isArray(topics) ? { topics } : {}),
   }
-  const { data } = await apiClient.post("/api/v1/push/subscribe", payload)
+  const { data } = await subscribeApiV1PushSubscribePost({ body: payload })
+  if (!data) {
+    throw new Error("Failed to save subscription")
+  }
   return data
 }
 
 export async function deleteSubscription(endpoint: string): Promise<void> {
-  const payload: components["schemas"]["PushSubscriptionDelete"] = { endpoint }
-  await apiClient.post("/api/v1/push/unsubscribe", payload)
+  await unsubscribeApiV1PushUnsubscribePost({ body: { endpoint } })
 }
 
 export async function sendTest(): Promise<SendTestNotificationResponse> {
-  const { data } = await apiClient.post("/api/v1/push/test")
+  const { data } = await sendTestApiV1PushTestPost()
+  if (!data) {
+    throw new Error("Failed to send test notification")
+  }
   return data
 }
 
 export async function getVapidPublicKey(): Promise<string | null> {
-  const { data } = await apiClient.get("/api/v1/push/vapid-public-key")
+  const { data } = await getVapidPublicKeyApiV1PushVapidPublicKeyGet()
   const schema = v.object({ publicKey: v.optional(v.nullable(v.string())) })
   const parsed = ensureValidResponse(schema, data, "GET /api/v1/push/vapid-public-key")
   const normalized = parsed.publicKey?.trim()
@@ -143,7 +170,7 @@ const pushTopicsSchema = v.object({
 })
 
 export async function fetchPushTopics(): Promise<PushTopicsResponse> {
-  const { data } = await apiClient.get("/api/v1/push/topics")
+  const { data } = await getPushTopicsApiV1PushTopicsGet()
   const parsed = ensureValidResponse(pushTopicsSchema, data, "GET /api/v1/push/topics")
   return {
     allowed: parsed.allowed,
@@ -162,10 +189,9 @@ const adminTopicsSchema = v.object({
 })
 
 export async function fetchAdminUserTopics(userId: string): Promise<AdminUserTopicsResponse> {
-  const { data } = await apiClient.get("/api/v1/push/admin/topics/{user_id}", {
-    pathParams: { user_id: userId as unknown as number }, // Note: apiClient handles string/number path params
+  const { data } = await adminGetUserTopicsApiV1PushAdminTopicsUserIdGet({
+    path: { user_id: userId as unknown as number },
   })
-  // Cast data if needed, but schema.ts should now define user_id as string/number based on openapi
   return ensureValidResponse(adminTopicsSchema, data, `GET /api/v1/push/admin/topics/${userId}`)
 }
 
@@ -173,9 +199,9 @@ export async function updateAdminUserTopics(
   userId: string,
   topics: string[]
 ): Promise<AdminUserTopicsResponse> {
-  const payload = { topics }
-  const { data } = await apiClient.put("/api/v1/push/admin/topics/{user_id}", payload, {
-    pathParams: { user_id: userId as unknown as number },
+  const { data } = await adminUpdateUserTopicsApiV1PushAdminTopicsUserIdPut({
+    path: { user_id: userId as unknown as number },
+    body: { topics },
   })
   return ensureValidResponse(adminTopicsSchema, data, `PUT /api/v1/push/admin/topics/${userId}`)
 }

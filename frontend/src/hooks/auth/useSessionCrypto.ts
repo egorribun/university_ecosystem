@@ -4,13 +4,13 @@ import {
   SERVICE_WORKER_MESSAGE_TYPES,
   type ApiCacheControlMessage,
 } from "@/constants/serviceWorkerMessages"
-import type { components } from "@/api/generated/schema"
+import { SessionSigningKeyOut } from "@/api/generated"
 import { logWarning } from "@/app/logger"
 
 const PROFILE_CACHE_BASE_KEY = "ecosystem.profile.cache"
 export const SESSION_SIGNING_KEY_STORAGE_KEY = `${PROFILE_CACHE_BASE_KEY}.sessionKey`
 
-type SessionSigningKeyResponse = components["schemas"]["SessionSigningKeyOut"]
+type SessionSigningKeyResponse = SessionSigningKeyOut
 
 import { cryptoWorker } from "@/utils/cryptoWorker"
 
@@ -192,7 +192,7 @@ export const useSessionCrypto = () => {
       try {
         const response = await api.get<SessionSigningKeyResponse>("/auth/session/signing-key", {
           skipRateLimitQueue: true,
-        })
+        } as any)
         const key = response.data.signing_key
         updateSessionSigningKey(key)
         return key

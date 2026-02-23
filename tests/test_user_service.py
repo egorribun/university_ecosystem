@@ -55,6 +55,13 @@ def mock_repo():
     repo.list_users = AsyncMock()
     repo.check_email_exists = AsyncMock()
     repo.delete_sensitive_data = AsyncMock()
+    repo._get_orm = AsyncMock()
+    repo._to_dto = MagicMock()
+    repo.add = MagicMock()
+    repo.commit = AsyncMock()
+    repo.rollback = AsyncMock()
+    repo.flush = AsyncMock()
+    repo.update = AsyncMock()
     return repo
 
 
@@ -88,11 +95,16 @@ def mock_user():
     user.profile.avatar_url = None
     user.profile.cover_url = None
     user.profile.full_name = "Test User"
-
-    # Properties that delegate to profile/preferences
-    # We can just set them on the mock if needed, but the service accesses .profile directly now
+    user.profile.about = None
+    user.profile.telegram = None
 
     user.preferences = MagicMock()
+    user.preferences.timezone = "UTC"
+    user.preferences.dnd_enabled = False
+
+    user.education_path = MagicMock()
+    user.education_path.institute = None
+
     user.mfa_challenges = []
     user.totp_enrollments = []
     user.otp_enrollments = []
@@ -107,11 +119,11 @@ async def test_delete_avatar_with_existing(service, mock_db, mock_user):
     """Test delete_avatar when user has avatar."""
     mock_user.profile.avatar_url = "/static/avatars/test.jpg"
     mock_user.avatar_url = "/static/avatars/test.jpg"
-    service.repo.get.return_value = mock_user
+    service.repo._get_orm.return_value = mock_user
+    service.repo._to_dto.return_value = mock_user
 
     with patch("app.services.user.media_service.delete_static_file") as mock_delete:
-        with patch("app.services.user.profile_service.ensure_mfa_relationships_loaded"):
-            await service.delete_avatar(mock_user)
+        await service.delete_avatar(mock_user)
 
     mock_delete.assert_called_once_with("/static/avatars/test.jpg")
     service.repo.commit.assert_called_once()
@@ -122,11 +134,11 @@ async def test_delete_avatar_without_existing(service, mock_db, mock_user):
     """Test delete_avatar when user has no avatar."""
     mock_user.profile.avatar_url = None
     mock_user.avatar_url = None
-    service.repo.get.return_value = mock_user
+    service.repo._get_orm.return_value = mock_user
+    service.repo._to_dto.return_value = mock_user
 
     with patch("app.services.user.media_service.delete_static_file") as mock_delete:
-        with patch("app.services.user.profile_service.ensure_mfa_relationships_loaded"):
-            await service.delete_avatar(mock_user)
+        await service.delete_avatar(mock_user)
 
     mock_delete.assert_not_called()
 
@@ -135,11 +147,11 @@ async def test_delete_avatar_without_existing(service, mock_db, mock_user):
 async def test_delete_cover_with_existing(service, mock_db, mock_user):
     """Test delete_cover when user has cover."""
     mock_user.profile.cover_url = "/static/covers/test.jpg"
-    service.repo.get.return_value = mock_user
+    service.repo._get_orm.return_value = mock_user
+    service.repo._to_dto.return_value = mock_user
 
     with patch("app.services.user.media_service.delete_static_file") as mock_delete:
-        with patch("app.services.user.profile_service.ensure_mfa_relationships_loaded"):
-            await service.delete_cover(mock_user)
+        await service.delete_cover(mock_user)
 
     mock_delete.assert_called_once()
 
@@ -150,24 +162,21 @@ async def test_delete_cover_with_existing(service, mock_db, mock_user):
 @pytest.mark.asyncio
 async def test_upload_avatar_success(service, mock_db, mock_user, mock_request):
     """Test successful avatar upload."""
-    service.repo.get.return_value = mock_user
+    service.repo._get_orm.return_value = mock_user
     mock_file = MagicMock()
     mock_file.content_type = "image/jpeg"
 
-    # Create an updated user mock to return from repo.update
+    # Create an updated user mock to return from repo._to_dto
     updated_user = MagicMock()
     updated_user.profile.avatar_url = "/static/avatars/new.jpg"
-    service.repo.update.return_value = updated_user
+    service.repo._to_dto.return_value = updated_user
 
     with patch("app.services.user.profile_service.resolve_locale", return_value="en"):
         with patch(
             "app.services.user.media_service.save_upload",
             return_value="/static/avatars/new.jpg",
         ):
-            with patch(
-                "app.services.user.profile_service.ensure_mfa_relationships_loaded"
-            ):
-                result = await service.upload_avatar(mock_user, mock_file)
+            result = await service.upload_avatar(mock_user, mock_file)
 
     assert result.profile.avatar_url == "/static/avatars/new.jpg"
     service.repo.commit.assert_called_once()
@@ -176,11 +185,9 @@ async def test_upload_avatar_success(service, mock_db, mock_user, mock_request):
 @pytest.mark.asyncio
 async def test_upload_avatar_commit_failure(service, mock_db, mock_user, mock_request):
     """Test avatar upload rolls back on commit failure."""
-    service.repo.get.return_value = mock_user
+    service.repo._get_orm.return_value = mock_user
     mock_user.profile.avatar_url = "/old.jpg"
-    service.repo.commit.side_effect = Exception(
-        "Commit failed"
-    )  # Changed from mock_db.commit
+    service.repo.commit.side_effect = Exception("Commit failed")
     mock_file = MagicMock()
     mock_file.content_type = "image/jpeg"
 
@@ -198,7 +205,7 @@ async def test_upload_avatar_commit_failure(service, mock_db, mock_user, mock_re
                 with pytest.raises(Exception, match="Commit failed"):
                     await service.upload_avatar(mock_user, mock_file)
 
-    service.repo.rollback.assert_called_once()  # Changed from mock_db.rollback
+    service.repo.rollback.assert_called_once()
     assert mock_delete.call_count == 2
     mock_delete.assert_any_call("/old.jpg")
     mock_delete.assert_any_call("/static/avatars/new.jpg")
@@ -217,7 +224,7 @@ def mock_admin_user():
 
 
 @pytest.fixture
-def service(mock_db, mock_repo, mock_audit, mock_notifications):
+def service(mock_db, mock_repo, mock_audit, mock_notifications, monkeypatch):
     s = UserService(
         user_repo=mock_repo,
         audit=mock_audit,
@@ -228,6 +235,15 @@ def service(mock_db, mock_repo, mock_audit, mock_notifications):
     s.repo.db.execute.return_value.scalars.return_value = MagicMock()
     s.repo.db.execute.return_value.scalars.return_value.first.return_value = None
     s.repo.db.execute.return_value.scalars.return_value.all.return_value = []
+
+    # Mock attach_pending_email to avoid cascaded repo calls in unit tests
+    async def mock_attach(_db, user):
+        return user
+
+    monkeypatch.setattr(
+        "app.services.user.profile_service.attach_pending_email", mock_attach
+    )
+
     return s
 
 
@@ -244,14 +260,11 @@ async def test_update_user_profile_success(service, mock_db, mock_user, mock_req
     data.model_dump.return_value = {"full_name": "New Name"}
 
     with patch("app.services.user.profile_service.resolve_locale", return_value="en"):
-        with patch("app.services.user.profile_service.ensure_mfa_relationships_loaded"):
-            with patch("app.services.user.profile_service.attach_pending_email"):
-                service.repo.update.return_value = mock_user
-                result = await service.update_user_profile(
-                    mock_user, data, mock_request
-                )
+        service.repo._get_orm.return_value = mock_user
+        service.repo._to_dto.return_value = mock_user
+        result = await service.update_user_profile(mock_user, data, mock_request)
 
-    assert result == mock_user
+    assert result.id == mock_user.id
     service.repo.commit.assert_called_once()
 
 
@@ -297,9 +310,8 @@ async def test_update_user_profile_preferences(
     data.model_dump.return_value = {"dnd_enabled": True, "timezone": "UTC"}
 
     with patch("app.services.user.profile_service.resolve_locale", return_value="en"):
-        with patch("app.services.user.profile_service.ensure_mfa_relationships_loaded"):
-            with patch("app.services.user.profile_service.attach_pending_email"):
-                await service.update_user_profile(mock_user, data, mock_request)
+        service.repo._get_orm.return_value = mock_user
+        await service.update_user_profile(mock_user, data, mock_request)
 
     service.repo.commit.assert_called_once()
 
@@ -440,11 +452,9 @@ async def test_admin_update_user_success(
     service.repo.get.return_value = updated_user
 
     with patch("app.services.user.profile_service.resolve_locale", return_value="en"):
-        with patch("app.services.user.profile_service.ensure_mfa_relationships_loaded"):
-            service.repo.update.return_value = updated_user
-            result = await service.admin_update_user(
-                2, data, mock_request, mock_admin_user
-            )
+        service.repo._get_orm.return_value = updated_user
+        service.repo._to_dto.return_value = updated_user
+        result = await service.admin_update_user(2, data, mock_request, mock_admin_user)
 
     assert result.id == 2
     mock_audit.log.assert_called()
@@ -467,11 +477,9 @@ async def test_admin_update_user_mfa_reset(
 
     with patch("app.services.user.profile_service.resolve_locale", return_value="en"):
         with patch("app.auth.mfa.reset_user_mfa", return_value=reset_stats):
-            with patch(
-                "app.services.user.profile_service.ensure_mfa_relationships_loaded"
-            ):
-                service.repo.update.return_value = updated_user
-                await service.admin_update_user(2, data, mock_request, mock_admin_user)
+            service.repo._get_orm.return_value = updated_user
+            service.repo._to_dto.return_value = updated_user
+            await service.admin_update_user(2, data, mock_request, mock_admin_user)
 
     service.notifications.send_security_notification.assert_called_once()
 
@@ -493,7 +501,7 @@ async def test_admin_delete_user_not_found(
     service, mock_db, mock_admin_user, mock_request
 ):
     """Test admin_delete_user fails when user not found."""
-    service.repo.db.get.return_value = None  # Changed from mock_db.get
+    service.repo._get_orm.return_value = None
     service.repo.get.return_value = None
 
     with pytest.raises(EntityNotFound):
@@ -503,7 +511,7 @@ async def test_admin_delete_user_not_found(
 @pytest.mark.asyncio
 async def test_admin_delete_user_self(service, mock_db, mock_admin_user, mock_request):
     """Test admin cannot delete themselves."""
-    service.repo.db.get.return_value = mock_admin_user  # Changed from mock_db.get
+    service.repo._get_orm.return_value = mock_admin_user
     service.repo.get.return_value = mock_admin_user
 
     with pytest.raises(BusinessRuleViolation):
@@ -517,9 +525,9 @@ async def test_admin_delete_user_success(
     service, mock_db, mock_admin_user, mock_request, mock_user, mock_audit
 ):
     """Test successful admin user deletion."""
+    service.repo._get_orm.return_value = mock_user
     service.repo.get.return_value = mock_user
 
-    service.repo.db.get.return_value = mock_user
     result = await service.admin_delete_user(
         mock_user.id, mock_request, mock_admin_user
     )

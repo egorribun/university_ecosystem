@@ -35,6 +35,7 @@ from app.core.container import (
 )
 from app.core.database import get_read_db
 from app.core.localization import resolve_locale
+from app.core.rate_limit import sensitive_route_limit
 from app.models import models
 from app.schemas import schemas
 from app.schemas.dtos import UserAuthDTO, UserDTO
@@ -51,7 +52,6 @@ from app.services.notifications import create_notifications_for_users
 from app.services.user.compliance_service import UserComplianceService
 from app.services.user.media_service import UserMediaService
 from app.services.user.profile_service import UserProfileService
-from app.utils.ratelimit import sensitive_route_limit
 
 # Export for test compatibility
 __all__ = ["create_notifications_for_users"]

@@ -1,0 +1,32 @@
+
+> frontend@1.0.0 typecheck
+> tsc --noEmit
+
+src/api/__tests__/client.types.test.ts(18,45): error TS2344: Type 'NewsOut' does not satisfy the constraint '"Expected: ..., Actual: undefined"'.
+src/api/client.ts(3,8): error TS6133: 'AxiosInstance' is declared but its value is never read.
+src/api/client.ts(5,8): error TS6133: 'AxiosResponse' is declared but its value is never read.
+src/api/client.ts(164,11): error TS6133: 'T' is declared but its value is never read.
+src/api/hooks/events.ts(14,26): error TS2614: Module '"@/api/client"' has no exported member 'TypedRequestOptions'. Did you mean to use 'import TypedRequestOptions from "@/api/client"' instead?
+src/api/hooks/events.ts(159,24): error TS7006: Parameter 'status' implicitly has an 'any' type.
+src/api/hooks/events.ts(339,26): error TS7006: Parameter 'status' implicitly has an 'any' type.
+src/api/hooks/news.ts(11,26): error TS2614: Module '"@/api/client"' has no exported member 'TypedRequestOptions'. Did you mean to use 'import TypedRequestOptions from "@/api/client"' instead?
+src/api/hooks/news.ts(121,24): error TS7006: Parameter 'status' implicitly has an 'any' type.
+src/components/events/EventCard/EventInfo.tsx(5,10): error TS2305: Module '"@/utils/date"' has no exported member 'formatLocalDateTime'.
+src/components/events/EventEditDialog.tsx(122,13): error TS2322: Type 'string | null | undefined' is not assignable to type 'string | number | readonly string[] | undefined'.
+  Type 'null' is not assignable to type 'string | number | readonly string[] | undefined'.
+src/components/events/EventEditDialog.tsx(136,13): error TS2322: Type 'string | null | undefined' is not assignable to type 'string | number | readonly string[] | undefined'.
+  Type 'null' is not assignable to type 'string | number | readonly string[] | undefined'.
+src/components/events/EventEditDialog.tsx(152,13): error TS2322: Type 'string | null | undefined' is not assignable to type 'string | number | readonly string[] | undefined'.
+  Type 'null' is not assignable to type 'string | number | readonly string[] | undefined'.
+src/components/events/EventEditDialog.tsx(167,13): error TS2322: Type 'string | null | undefined' is not assignable to type 'string | number | readonly string[] | undefined'.
+  Type 'null' is not assignable to type 'string | number | readonly string[] | undefined'.
+src/components/events/EventEditDialog.tsx(178,20): error TS18049: 'draft.starts_at' is possibly 'null' or 'undefined'.
+src/components/events/EventEditDialog.tsx(189,20): error TS18049: 'draft.ends_at' is possibly 'null' or 'undefined'.
+src/components/events/EventEditDialog.tsx(205,13): error TS2322: Type 'string | null | undefined' is not assignable to type 'string | number | readonly string[] | undefined'.
+  Type 'null' is not assignable to type 'string | number | readonly string[] | undefined'.
+src/hooks/useEventCardLogic.ts(136,34): error TS2345: Argument of type 'string | null | undefined' is not assignable to parameter of type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/hooks/useEventCardLogic.ts(137,32): error TS2345: Argument of type 'string | null | undefined' is not assignable to parameter of type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.
+src/pages/settings/hooks/useWebAuthn.ts(89,29): error TS2339: Property 'data' does not exist on type 'unknown[]'.
+src/pages/settings/hooks/useWebAuthn.ts(124,62): error TS2339: Property 'data' does not exist on type '{ publicKey: unknown; challenge_token: string; }'.

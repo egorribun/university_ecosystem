@@ -336,7 +336,7 @@ export const useMyEventsQuery = (
       const etagKey = createMyEventsEtagKey(normalized)
       const config: TypedRequestOptions<"/api/v1/events/my", "get"> = {
         signal,
-        validateStatus: (status) => status >= 200 && status < 400,
+        validateStatus: (status: number) => status >= 200 && status < 400,
         etagCacheKey: etagKey,
       }
 

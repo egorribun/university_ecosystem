@@ -380,6 +380,32 @@ class EventRepository(BaseRepository[Event, EventDTO, dict, dict]):
             delete(models.EventFile).where(models.EventFile.event_id == event_id)
         )
 
+    async def get_analytics_data(
+        self, start_date: datetime | None = None
+    ) -> tuple[Sequence[Any], Sequence[str]]:
+        """Fetch raw event data for high-performance Polars analytics."""
+        from sqlalchemy import text
+
+        query = """
+            SELECT
+                e.id, e.title, e.starts_at as start_time, e.location,
+                COUNT(ea.user_id) as attendees_count,
+                e.max_attendees
+            FROM events e
+            LEFT JOIN event_attendance ea ON e.id = ea.event_id
+            WHERE e.deleted_at IS NULL
+        """
+        params: dict[str, Any] = {}
+
+        if start_date:
+            query += " AND e.starts_at >= :start_date"
+            params["start_date"] = start_date
+
+        query += " GROUP BY e.id, e.title, e.starts_at, e.location, e.max_attendees"
+
+        result = await self.db.execute(text(query), params)
+        return result.fetchall(), list(result.keys())
+
 
 def get_event_repository(db: AsyncSession) -> EventRepository:
     """Factory function for dependency injection."""

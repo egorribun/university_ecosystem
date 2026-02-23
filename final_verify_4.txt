@@ -1,0 +1,77 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.11, pytest-9.0.2, pluggy-1.6.0 -- C:\Python313\python.exe
+cachedir: .pytest_cache
+hypothesis profile 'default'
+rootdir: C:\Users\egorribun\Documents\university_ecosystem
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+plugins: anyio-4.12.1, hypothesis-6.150.3, asyncio-1.3.0, cov-7.0.0, xdist-3.8.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=session
+collecting ... collected 51 items
+
+tests/test_user_service.py::test_delete_avatar_with_existing PASSED      [  1%]
+tests/test_user_service.py::test_delete_avatar_without_existing PASSED   [  3%]
+tests/test_user_service.py::test_delete_cover_with_existing PASSED       [  5%]
+tests/test_user_service.py::test_upload_avatar_success PASSED            [  7%]
+tests/test_user_service.py::test_upload_avatar_commit_failure PASSED     [  9%]
+tests/test_user_service.py::test_update_user_profile_success PASSED      [ 11%]
+tests/test_user_service.py::test_update_user_profile_invalid_email PASSED [ 13%]
+tests/test_user_service.py::test_update_user_profile_email_in_use PASSED [ 15%]
+tests/test_user_service.py::test_update_user_profile_preferences PASSED  [ 17%]
+tests/test_user_service.py::test_create_user_forbidden_non_admin PASSED  [ 19%]
+tests/test_user_service.py::test_create_user_teacher_requires_invite PASSED [ 21%]
+tests/test_user_service.py::test_create_user_invalid_invite PASSED       [ 23%]
+tests/test_user_service.py::test_create_user_success PASSED              [ 25%]
+tests/test_user_service.py::test_get_users_non_admin_no_search PASSED    [ 27%]
+tests/test_user_service.py::test_get_users_non_admin_with_search PASSED  [ 29%]
+tests/test_user_service.py::test_get_users_admin PASSED                  [ 31%]
+tests/test_user_service.py::test_admin_update_user_forbidden PASSED      [ 33%]
+tests/test_user_service.py::test_admin_update_user_success PASSED        [ 35%]
+tests/test_user_service.py::test_admin_update_user_mfa_reset PASSED      [ 37%]
+tests/test_user_service.py::test_admin_delete_user_forbidden PASSED      [ 39%]
+tests/test_user_service.py::test_admin_delete_user_not_found PASSED      [ 41%]
+tests/test_user_service.py::test_admin_delete_user_self PASSED           [ 43%]
+tests/test_user_service.py::test_admin_delete_user_success PASSED        [ 45%]
+tests/test_user_service_decomposed.py::test_update_user_profile_decomposed_fields PASSED [ 47%]
+tests/test_user_service_decomposed.py::test_update_user_profile_email_change PASSED [ 49%]
+tests/test_user_profile_update.py::test_update_profile_email_normalizes PASSED [ 50%]
+tests/test_user_profile_update.py::test_update_profile_email_duplicate PASSED [ 52%]
+tests/test_user_profile_update.py::test_email_change_requires_confirmation PASSED [ 54%]
+tests/test_user_profile_update.py::test_update_profile_timezone_persisted PASSED [ 56%]
+tests/test_user_profile_update.py::test_update_profile_timezone_invalid PASSED [ 58%]
+tests/test_user_profile_update.py::test_delete_avatar_removes_file PASSED [ 60%]
+tests/test_user_profile_update.py::test_delete_avatar_ignores_invalid_path[] PASSED [ 62%]
+tests/test_user_profile_update.py::test_delete_avatar_ignores_invalid_path[https://example.com/avatar.png] PASSED [ 64%]
+tests/test_user_profile_update.py::test_upload_avatar_cleans_up_on_commit_failure PASSED [ 66%]
+tests/test_user_profile_update.py::test_upload_cover_cleans_up_on_commit_failure PASSED [ 68%]
+tests/test_user_profile_update.py::test_delete_cover_removes_file PASSED [ 70%]
+tests/test_user_profile_update.py::test_delete_cover_ignores_invalid_path[] PASSED [ 72%]
+tests/test_user_profile_update.py::test_delete_cover_ignores_invalid_path[https://example.com/cover.png] PASSED [ 74%]
+tests/test_user_profile_update.py::test_forgot_password_sends_email_via_thread PASSED [ 76%]
+tests/test_user_repository_coverage.py::test_get_by_email PASSED         [ 78%]
+tests/test_user_repository_coverage.py::test_get_by_login_found PASSED   [ 80%]
+tests/test_user_repository_coverage.py::test_get_by_email_or_raise PASSED [ 82%]
+tests/test_user_repository_coverage.py::test_list_users_filters PASSED   [ 84%]
+tests/test_user_repository_coverage.py::test_get_active_users PASSED     [ 86%]
+tests/test_user_repository_coverage.py::test_counts PASSED               [ 88%]
+tests/test_user_repository_coverage.py::test_search_by_name PASSED       [ 90%]
+tests/test_user_repository_coverage.py::test_check_email_exists PASSED   [ 92%]
+tests/test_user_repository_coverage.py::test_delete_sensitive_data PASSED [ 94%]
+tests/test_user_repository_coverage.py::test_get_by_id_variants PASSED   [ 96%]
+tests/test_user_repository_coverage.py::test_get_user_related_data PASSED [ 98%]
+tests/test_user_repository_coverage.py::test_invite_code PASSED          [100%]
+
+============================== warnings summary ===============================
+tests/test_user_profile_update.py::test_upload_avatar_cleans_up_on_commit_failure
+  C:\Users\egorribun\Documents\university_ecosystem\app\services\user\media_service.py:32: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    self.repo.add(db_user)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/test_user_profile_update.py::test_upload_cover_cleans_up_on_commit_failure
+  C:\Users\egorribun\Documents\university_ecosystem\app\services\user\media_service.py:54: RuntimeWarning: coroutine 'AsyncMockMixin._execute_mock_call' was never awaited
+    self.repo.add(db_user)
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================= 51 passed, 2 warnings in 14.71s =======================

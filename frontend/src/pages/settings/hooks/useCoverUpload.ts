@@ -33,7 +33,7 @@ export function useCoverUpload(setSnackbar: SetSnackbar) {
   const refreshUser = useCallback(async () => {
     const fresh = await queryClient.fetchQuery<User>({
       queryKey: currentUserQueryKey,
-      queryFn: fetchCurrentUser,
+      queryFn: ({ signal }) => fetchCurrentUser({ signal }),
       staleTime: 0,
     })
     setUser(fresh)

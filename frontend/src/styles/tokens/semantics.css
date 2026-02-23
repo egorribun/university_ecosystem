@@ -6,6 +6,8 @@
         --blur-sm: 8px;
         --blur-md: 12px;
         --blur-lg: 16px;
+        --blur-xl: 24px;
+        --blur-2xl: 40px;
 
         /* Touch Targets */
         --size-touch-target: 44px;
@@ -19,8 +21,10 @@
 
         /* Animation & Transitions */
         --transition-premium: 500ms var(--ease-premium);
+        --transition-spring: spring(1, 100, 10, 0);
         --transition-fast: 200ms var(--ease-premium);
         --scale-hover: 1.02;
+        --scale-hover-subtle: 1.01;
 
         /* Motion System */
         --motion-slide-sm: 10px;
@@ -142,6 +146,7 @@
         /* Semantic Transparency */
         --glass-border-subtle: color-mix(in srgb, var(--border-subtle) 40%, transparent);
         --glass-bg-elevated: color-mix(in srgb, var(--bg-surface) 90%, transparent);
+        --glass-sheen: linear-gradient(135deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.05) 50%, transparent 100%);
         --text-muted-subtle: color-mix(in srgb, var(--text-secondary) 60%, transparent);
         --text-label: color-mix(in srgb, var(--text-secondary) 55%, transparent);
         --text-caption: color-mix(in srgb, var(--text-secondary) 65%, transparent);

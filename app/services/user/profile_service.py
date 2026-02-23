@@ -10,7 +10,9 @@ from app.repositories.user_repository import UserRepository
 from app.schemas import schemas
 from app.schemas.dtos import UserAuthDTO, UserDTO
 from app.services.audit_service import AuditService, SecurityEvent, auditable
+from app.services.auth_service import attach_pending_email
 from app.services.notification_service import NotificationService
+from app.services.user.logic import update_user_attributes
 
 logger = logging.getLogger(__name__)
 
@@ -55,18 +57,22 @@ class UserProfileService:
                 self.repo, payload["email"], exclude_user_id=user.id
             )
 
-        updated_user = await self.repo.update(user.id, payload)
-        if not updated_user:
+        # Fetch ORM user with lock
+        db_user = await self.repo._get_orm(user.id, with_for_update=True)
+        if not db_user:
             raise EntityNotFound("User", user.id)
 
+        # Apply nested updates
+        update_user_attributes(db_user, payload)
+
+        self.repo.add(db_user)
+        await self.repo.flush()
         await self.repo.commit()
-        # attach_pending_email should ideally be in repo or handled differently,
-        # but for now let's assume it's still needed if it affects the session
-        # before DTO is returned? No, repo returned DTO.
-        # If attach_pending_email modifies the DB, it should be in repo.
-        # If it just returns data, it's fine.
-        # Let's check logic: it modifies the user object or returns it?
-        # userService facade might need to be adjusted.
+
+        # Convert back to DTO
+        updated_user = self.repo._to_dto(db_user)
+        # Attach pending email if any
+        updated_user = await attach_pending_email(self.repo.db, updated_user)
 
         return updated_user
 
@@ -111,9 +117,17 @@ class UserProfileService:
         if "email" in payload and payload["email"] is not None:
             payload["email"] = str(payload["email"]).strip().lower()
 
-        updated_user = await self.repo.update(user_id, payload)
-        if not updated_user:
+        # Fetch ORM user with lock
+        db_user = await self.repo._get_orm(user_id, with_for_update=True)
+        if not db_user:
             raise EntityNotFound("User", user_id)
+
+        # Apply nested updates
+        update_user_attributes(db_user, payload)
+
+        self.repo.add(db_user)
+        await self.repo.flush()
+        updated_user = self.repo._to_dto(db_user)
 
         if reset_requested:
             # reset_user_mfa takes a session and either a user object or ID.

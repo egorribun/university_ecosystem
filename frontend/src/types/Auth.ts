@@ -1,6 +1,8 @@
-import type { PendingMfaResponse } from "@/types/Mfa"
+import type { PendingMfaResponse, WebAuthnAuthenticationOptionsOut } from "@/api/generated"
 import type { User } from "@/types/User"
 import type { Dispatch, SetStateAction } from "react"
+
+export type { WebAuthnAuthenticationOptionsOut }
 
 export type UserState = User | null
 export type SetUserArg = SetStateAction<UserState>
@@ -13,11 +15,6 @@ export type SubmitMfaChallengePayload = {
   webauthnResponse?: unknown
   challengeToken?: string
   trustDevice?: boolean
-}
-
-export type WebAuthnAuthenticationOptionsOut = {
-  publicKey: unknown
-  challenge_token: string
 }
 
 export type AuthContextType = {

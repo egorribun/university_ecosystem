@@ -1,3 +1,3 @@
-import type { components } from "@/api/generated/schema"
+import type { StoryOut } from "@/api/generated"
 
-export type StoryItem = components["schemas"]["StoryOut"]
+export type StoryItem = StoryOut

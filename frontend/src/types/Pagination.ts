@@ -1,7 +1,5 @@
-import type { components } from "@/api/generated/schema"
+import type { PaginatedEvents } from "@/api/generated"
 
-type PaginatedEventsSchema = components["schemas"]["PaginatedEvents"]
-
-export type PaginatedResponse<T> = Omit<PaginatedEventsSchema, "items"> & {
+export type PaginatedResponse<T> = Omit<PaginatedEvents, "items"> & {
   items: T[]
 }

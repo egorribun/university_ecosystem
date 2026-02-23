@@ -167,7 +167,7 @@ function StoryAdminItem({ story, formatDate, onRefresh }: StoryAdminItemProps) {
     setUpdatingCover(true)
     try {
       const uploaded = await uploadStoryCover(coverFile)
-      const url = uploaded.data?.url ?? ""
+      const url = (uploaded as any).url ?? ""
       await updateStory(story.id, { cover_url: url })
       handleCoverReset()
       onRefresh()
@@ -475,7 +475,7 @@ export default function StoriesAdmin() {
       let coverUrl: string | null = null
       if (coverFile) {
         const uploaded = await uploadStoryCover(coverFile)
-        coverUrl = uploaded.data?.url ?? null
+        coverUrl = (uploaded as any).url ?? null
       }
       await createStory({
         title: formState.titleRu,

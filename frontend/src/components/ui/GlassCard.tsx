@@ -3,17 +3,17 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/utils/cn"
 
 const glassCardVariants = cva(
-  "relative overflow-hidden rounded-xl border border-glass-border shadow-glass",
+  "relative overflow-hidden rounded-xl border border-glass-border shadow-glass transition-all duration-premium",
   {
     variants: {
       intensity: {
         low: "bg-(--glass-bg-low) dark:bg-(--glass-bg-low-dark) backdrop-blur-md",
         medium: "bg-glass backdrop-blur-xl",
         high: "bg-(--glass-bg-high) backdrop-blur-2xl",
-        elevated: "bg-glass-elevated backdrop-blur-xl shadow-premium",
+        elevated: "bg-glass-elevated backdrop-blur-2xl shadow-premium",
       },
       interactive: {
-        true: "transition-transform duration-base hover:scale-hover-subtle hover:bg-glass-tint1",
+        true: "hover:scale-hover-subtle hover:bg-glass-tint1 hover:shadow-premium-lift cursor-pointer",
         false: "",
       },
       radius: {

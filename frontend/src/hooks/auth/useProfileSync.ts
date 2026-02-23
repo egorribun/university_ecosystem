@@ -4,7 +4,7 @@ import { isAxiosError } from "axios"
 import { hmac } from "@noble/hashes/hmac"
 import { sha256 } from "@noble/hashes/sha256"
 
-import api, { resetEtagCache } from "@/api/client"
+import api, { resetEtagCache, type ApiRequestConfig } from "@/api/client"
 import type { User } from "@/types/User"
 import type { PendingMfaState, SetUserArg, UserState } from "@/types/Auth"
 import { clearAccessToken } from "./tokenStorage"
@@ -409,7 +409,7 @@ export const fetchCurrentUser = async ({ signal }: FetchCurrentUserOptions = {})
       signal,
       headers,
       skipRateLimitQueue: true,
-    })
+    } as ApiRequestConfig)
     return response.data
   } catch (error) {
     if (cachedEnvelope && isAxiosError(error) && !signal?.aborted && error.response) {
@@ -419,7 +419,7 @@ export const fetchCurrentUser = async ({ signal }: FetchCurrentUserOptions = {})
       const retry = await api.get<User>("/users/me", {
         signal,
         skipRateLimitQueue: true,
-      })
+      } as ApiRequestConfig)
       return retry.data
     }
     throw error
@@ -762,7 +762,7 @@ export const useProfileSync = (
           }
         }
         if (!areDeepEqual(userStateRef.current, profile)) {
-          setUser(profile)
+          setUser(profile as User)
         }
       } catch (error) {
         if (controller.signal.aborted) return null

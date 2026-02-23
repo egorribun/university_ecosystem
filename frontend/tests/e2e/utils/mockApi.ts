@@ -2,7 +2,7 @@ import { expect, type Page } from "@playwright/test"
 import type {
   MfaTotpEnrollment,
   PendingMfaResponse,
-  TotpEnrollmentStartResponse,
+  TotpEnrollmentStart,
 } from "@/types/Mfa"
 import type { User } from "@/types/User"
 
@@ -17,7 +17,7 @@ const MOCK_IP_1 = "198.51.100.20"
 const MOCK_IP_2 = "203.0.113.50"
 
 type TotpState = {
-  pending: TotpEnrollmentStartResponse | null
+  pending: TotpEnrollmentStart | null
   enrollments: MfaTotpEnrollment[]
   nextId: number
 }
@@ -267,7 +267,6 @@ const createMfaChallenge = ({
     session_id: typeof sessionId === "number" ? `session-${sessionId}` : sessionId,
     default_method: defaultMethod,
     methods,
-    challenges: methods,
   }
 }
 

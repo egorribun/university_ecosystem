@@ -256,7 +256,7 @@ class AuthService:
             user_id=user.id,
             reason="pending_confirmation",
         )
-        return db_user
+        return enriched_user
 
     async def confirm_email_change(
         self,

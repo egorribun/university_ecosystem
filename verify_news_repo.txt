@@ -1,0 +1,58 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.11, pytest-9.0.2, pluggy-1.6.0 -- C:\Python313\python.exe
+cachedir: .pytest_cache
+hypothesis profile 'default'
+rootdir: C:\Users\egorribun\Documents\university_ecosystem
+configfile: pytest.ini (WARNING: ignoring pytest config in pyproject.toml!)
+plugins: anyio-4.12.1, hypothesis-6.150.3, asyncio-1.3.0, cov-7.0.0, xdist-3.8.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=session
+collecting ... collected 13 items
+
+tests/test_news_repository_coverage.py::test_get_published PASSED        [  7%]
+tests/test_news_repository_coverage.py::test_get_latest PASSED           [ 15%]
+tests/test_news_repository_coverage.py::test_search PASSED               [ 23%]
+tests/test_news_repository_coverage.py::test_count_total PASSED          [ 30%]
+tests/test_news_repository_coverage.py::test_count_total_none PASSED     [ 38%]
+tests/test_news_repository_coverage.py::test_list_news_basic FAILED      [ 46%]
+tests/test_news_repository_coverage.py::test_list_news_cursor PASSED     [ 53%]
+tests/test_news_repository_coverage.py::test_list_news_search_semantic PASSED [ 61%]
+tests/test_news_repository_coverage.py::test_list_news_search_text PASSED [ 69%]
+tests/test_news_repository_coverage.py::test_get_with_interactions PASSED [ 76%]
+tests/test_news_repository_coverage.py::test_toggle_like_add PASSED      [ 84%]
+tests/test_news_repository_coverage.py::test_toggle_like_remove PASSED   [ 92%]
+tests/test_news_repository_coverage.py::test_get_news_repository_factory PASSED [100%]
+
+================================== FAILURES ===================================
+____________________________ test_list_news_basic _____________________________
+
+news_repo = <app.repositories.news_repository.NewsRepository object at 0x0000023FE401DD90>
+mock_db = <AsyncMock id='2473431782736'>
+
+    @pytest.mark.asyncio
+    async def test_list_news_basic(news_repo, mock_db):
+        import uuid
+    
+        id1 = uuid.uuid4()
+        mock_news = MagicMock()
+        mock_news.id = id1
+        mock_news.title = "news"
+        mock_news.content = "content"
+        mock_news.created_at = datetime.now(UTC)
+        mock_news.author_id = None
+        mock_news.title_en = None
+        mock_news.content_en = None
+        mock_news.image_url = None
+    
+        mock_result = MagicMock()
+        mock_result.all.return_value = [(mock_news, 1, 2, False)]
+        mock_db.execute.return_value = mock_result
+    
+        result = await news_repo.list_news()
+>       assert len(result) == 1
+E       assert 0 == 1
+E        +  where 0 = len([])
+
+tests\test_news_repository_coverage.py:144: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_news_repository_coverage.py::test_list_news_basic - assert ...
+======================== 1 failed, 12 passed in 0.92s =========================

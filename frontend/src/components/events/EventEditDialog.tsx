@@ -119,7 +119,7 @@ export function EventEditDialog({
           </label>
           <input
             type="text"
-            value={getLocalizedEditValue("title")}
+            value={getLocalizedEditValue("title") || ""}
             onChange={(e) => updateLocalizedEditValue("title", e.target.value)}
             className={inputClass}
           />
@@ -133,7 +133,7 @@ export function EventEditDialog({
               : t("events:form.description")}
           </label>
           <textarea
-            value={getLocalizedEditValue("description")}
+            value={getLocalizedEditValue("description") || ""}
             onChange={(e) => updateLocalizedEditValue("description", e.target.value)}
             rows={2}
             className={cn(inputClass, "min-h-(--min-h-textarea) resize-y")}
@@ -149,7 +149,7 @@ export function EventEditDialog({
           </label>
           <input
             type="text"
-            value={getLocalizedEditValue("event_type")}
+            value={getLocalizedEditValue("event_type") || ""}
             onChange={(e) => updateLocalizedEditValue("event_type", e.target.value)}
             className={inputClass}
           />
@@ -164,7 +164,7 @@ export function EventEditDialog({
           </label>
           <input
             type="text"
-            value={getLocalizedEditValue("location")}
+            value={getLocalizedEditValue("location") || ""}
             onChange={(e) => updateLocalizedEditValue("location", e.target.value)}
             className={inputClass}
           />
@@ -175,7 +175,7 @@ export function EventEditDialog({
           </label>
           <input
             type="datetime-local"
-            value={draft.starts_at.slice(0, 16)}
+            value={draft.starts_at?.slice(0, 16) || ""}
             onChange={(e) => setDraft({ ...draft, starts_at: e.target.value })}
             className={inputClass}
           />
@@ -186,7 +186,7 @@ export function EventEditDialog({
           </label>
           <input
             type="datetime-local"
-            value={draft.ends_at.slice(0, 16)}
+            value={draft.ends_at?.slice(0, 16) || ""}
             onChange={(e) => setDraft({ ...draft, ends_at: e.target.value })}
             className={cn(inputClass, dateError && "border-error-border")}
           />
@@ -202,7 +202,7 @@ export function EventEditDialog({
           </label>
           <input
             type="text"
-            value={draft.speaker}
+            value={draft.speaker || ""}
             onChange={(e) => setDraft({ ...draft, speaker: e.target.value })}
             className={inputClass}
           />

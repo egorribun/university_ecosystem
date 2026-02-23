@@ -51,12 +51,11 @@ class Chat(Base, UUID7PrimaryKeyMixin):
         onupdate=utc_now,
     )
 
-    # Relationships
     participants = relationship(
-        "User", secondary=chat_participants, backref="chats", lazy="selectin"
+        "User", secondary=chat_participants, backref="chats", lazy="noload"
     )
     messages: Mapped[list["Message"]] = relationship(
-        "Message", back_populates="chat", cascade="all, delete-orphan", lazy="selectin"
+        "Message", back_populates="chat", cascade="all, delete-orphan", lazy="noload"
     )
 
 
@@ -84,7 +83,7 @@ class Message(Base, UUID7PrimaryKeyMixin):
         "Attachment",
         back_populates="message",
         cascade="all, delete-orphan",
-        lazy="selectin",
+        lazy="noload",
     )
 
 

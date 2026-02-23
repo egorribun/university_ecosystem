@@ -243,7 +243,6 @@ class ChatService:
 
             new_chat = await self.repository.create_chat([user, participant])
             await self.session.commit()
-            await self.session.refresh(new_chat)
 
         # Invalidate caches for participants and the new chat
         participant_ids = [p.id for p in new_chat.participants]
@@ -428,7 +427,7 @@ class ChatService:
                 meta = await self._process_chat_upload(upload, chat_id, locale=locale)
                 saved_urls.append(str(meta["url"]))
                 attachment = Attachment(
-                    message_id=message.id,
+                    message=message,
                     url=str(meta["url"]),
                     file_type=str(meta["file_type"]),
                     filename=str(meta["filename"]),
@@ -443,7 +442,6 @@ class ChatService:
             await self._cleanup_orphaned_files(saved_urls)
             raise
 
-        await self.repository.refresh(message)
         await self.repository.refresh(message)
 
         # Notifications

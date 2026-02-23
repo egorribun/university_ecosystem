@@ -4,8 +4,8 @@ import pytest
 import pytest_asyncio
 
 from app import main
+from app.core import rate_limit as ratelimit_module
 from app.core.config import settings
-from app.utils import ratelimit as ratelimit_module
 from asgi_lifespan import LifespanManager
 
 
@@ -16,11 +16,11 @@ async def _rate_limit_redis_client(mock_global_redis):
 
 @pytest_asyncio.fixture(scope="session", autouse=True)
 async def configure_rate_limit(_rate_limit_redis_client):
-    ratelimit_module._redis_client = _rate_limit_redis_client
+    ratelimit_module.set_rate_limit_client_factory(lambda _: _rate_limit_redis_client)
     # Make sure it's enabled for tests that need it
     settings.rate_limit_enabled = True
     yield
-    ratelimit_module._redis_client = None
+    ratelimit_module.set_rate_limit_client_factory(None)
 
 
 @pytest_asyncio.fixture(autouse=True)

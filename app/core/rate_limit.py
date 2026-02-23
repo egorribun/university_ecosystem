@@ -5,15 +5,16 @@ import hmac
 import math
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from fastapi import Request
+from fastapi import Request, status
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 from starlette.responses import JSONResponse, Response
 
+from app.api.validation import raise_http_error
 from app.core.config import settings
 from app.core.localization import resolve_locale, translate
 
@@ -700,6 +701,117 @@ def start_memory_cleanup_task() -> asyncio.Task[None] | None:
 async def stop_memory_cleanup_task() -> None:
     global _cleanup_task, _cleanup_running
     _cleanup_running = False
+
+
+# --- IP Resolution & Sensitive Route protection ---
+
+
+def _extract_ip_from_forwarded(forwarded_header: str) -> str | None:
+    """Extract IP from RFC 7239 Forwarded header."""
+    for segment in forwarded_header.split(","):
+        directives = segment.split(";")
+        for directive in directives:
+            directive = directive.strip()
+            if not directive or not directive.lower().startswith("for="):
+                continue
+            value = directive.split("=", 1)[1].strip().strip('"')
+            if not value:
+                continue
+            if value.startswith("[") and "]" in value:
+                value = value[1 : value.index("]")]
+            elif value.count(":") == 1 and "]" not in value:
+                value = value.split(":", 1)[0]
+            return value
+    return None
+
+
+def _normalize_ip(value: str | None) -> str | None:
+    """Normalize IP address (handling brackets and ports)."""
+    if not value:
+        return None
+    normalized = value.strip().lower()
+    if not normalized:
+        return None
+    if normalized.startswith("[") and "]" in normalized:
+        normalized = normalized[1 : normalized.index("]")]
+    elif normalized.count(":") == 1 and "]" not in normalized:
+        normalized = normalized.split(":", 1)[0]
+    return normalized or None
+
+
+def resolve_client_ip(request: Request) -> str:
+    """Resolve the real client IP, respecting trusted proxies."""
+    client_host = request.client.host if request.client else "unknown"
+    normalized_client = _normalize_ip(client_host) or "unknown"
+    trusted = {_normalize_ip(proxy) for proxy in settings.trusted_proxies_list}
+    trusted.discard(None)
+
+    ip: str | None = None
+    if normalized_client in trusted:
+        # Check X-Forwarded-For
+        xfwd = request.headers.get("X-Forwarded-For")
+        if xfwd:
+            for part in xfwd.split(","):
+                candidate = _normalize_ip(part)
+                if candidate:
+                    ip = candidate
+                    break
+
+        # Check RFC 7239 Forwarded
+        if not ip:
+            fwd = request.headers.get("Forwarded")
+            if fwd:
+                ip = _normalize_ip(_extract_ip_from_forwarded(fwd))
+
+    return ip or normalized_client
+
+
+def sensitive_route_limit(
+    limit: int | None = None,
+    window_sec: int | None = None,
+    *,
+    key_prefix: str = "sensitive",
+) -> Callable[[Request], Awaitable[None]]:
+    """
+    FastAPI dependency for sensitive route rate limiting.
+    Consolidates logic from legacy utils/ratelimit.py.
+    """
+
+    async def dependency(request: Request) -> None:
+        # Resolve limit and window from settings or overrides
+        default_limit, default_window = parse_rate_limit(
+            settings.rate_limit_sensitive_value,
+            fallback=(5, 60),
+        )
+        resolved_limit = limit if limit is not None else default_limit
+        resolved_window = window_sec if window_sec is not None else default_window
+
+        if resolved_limit <= 0 or resolved_window <= 0:
+            return
+
+        ip = resolve_client_ip(request)
+        key = f"{key_prefix}:{ip}:{request.url.path}"
+        locale = resolve_locale(request=request)
+
+        try:
+            await enforce_rate_limit(
+                identifier=key,
+                namespace="sensitive",
+                limit=resolved_limit,
+                window_seconds=resolved_window,
+                redis_url=settings.rate_limit_storage_uri,
+            )
+        except RateLimitExceeded as exc:
+            retry_after = max(0, exc.info.retry_after)
+            headers = {"Retry-After": str(retry_after)} if retry_after else None
+            raise_http_error(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                "errors.rate_limit.generic",
+                locale,
+                headers=headers,
+            )
+
+    return dependency
 
 
 # Progressive Delay configuration

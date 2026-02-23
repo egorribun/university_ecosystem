@@ -36,6 +36,7 @@ from app.auth.schemas import (
 )
 from app.core.config import settings
 from app.core.localization import resolve_locale, translate
+from app.core.rate_limit import sensitive_route_limit
 from app.models.models import User
 from app.schemas.schemas import (
     SessionSigningKeyOut,
@@ -43,7 +44,6 @@ from app.schemas.schemas import (
     UserCreate,
     WebAuthnAuthenticationOptionsOut,
 )
-from app.utils.ratelimit import sensitive_route_limit
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession

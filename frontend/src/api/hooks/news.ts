@@ -118,7 +118,7 @@ const createNewsListQueryFn =
     const requestConfig: TypedRequestOptions<"/api/v1/news", "get"> = {
       params,
       signal,
-      validateStatus: (status) => status >= 200 && status < 400,
+      validateStatus: (status: number) => status >= 200 && status < 400,
       ...(etagKey ? { etagCacheKey: etagKey } : {}),
     }
 

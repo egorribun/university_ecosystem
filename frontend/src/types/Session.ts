@@ -1,3 +1,3 @@
-import type { components } from "@/api/generated/schema"
+import type { ActiveSessionOut } from "@/api/generated"
 
-export type ActiveSession = components["schemas"]["ActiveSessionOut"]
+export type ActiveSession = ActiveSessionOut

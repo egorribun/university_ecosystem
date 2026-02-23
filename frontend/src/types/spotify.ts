@@ -1,6 +1,4 @@
-import type { components } from "@/api/generated/schema"
-
-type SpotifyNowPlayingOut = components["schemas"]["SpotifyNowPlayingOut"]
+import type { SpotifyNowPlayingOut } from "@/api/generated"
 
 export type NowPlaying = Omit<SpotifyNowPlayingOut, "artists" | "fetched_at"> & {
   artists: SpotifyNowPlayingOut["artists"] extends (infer T)[] | undefined ? T[] : string[]

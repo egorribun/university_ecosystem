@@ -1,0 +1,655 @@
+FFFF.F..F........FF....FF..F.......................                      [100%]
+================================== FAILURES ===================================
+______________________ test_delete_avatar_with_existing _______________________
+
+service = <app.services.user_service.UserService object at 0x00000228BECD6E40>
+mock_db = <AsyncMock id='2374023071792'>
+mock_user = <MagicMock name='mock.get()' id='2374022840400'>
+
+    @pytest.mark.asyncio
+    async def test_delete_avatar_with_existing(service, mock_db, mock_user):
+        """Test delete_avatar when user has avatar."""
+        mock_user.profile.avatar_url = "/static/avatars/test.jpg"
+        mock_user.avatar_url = "/static/avatars/test.jpg"
+        service.repo.get.return_value = mock_user
+    
+        with patch("app.services.user.media_service.delete_static_file") as mock_delete:
+>           with patch("app.services.user.profile_service.ensure_mfa_relationships_loaded"):
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_user_service.py:113: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Python313\Lib\unittest\mock.py:1497: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <unittest.mock._patch object at 0x00000228BEA89590>
+
+    def get_original(self):
+        target = self.getter()
+        name = self.attribute
+    
+        original = DEFAULT
+        local = False
+    
+        try:
+            original = target.__dict__[name]
+        except (AttributeError, KeyError):
+            original = getattr(target, name, DEFAULT)
+        else:
+            local = True
+    
+        if name in _builtins and isinstance(target, ModuleType):
+            self.create = True
+    
+        if not self.create and original is DEFAULT:
+>           raise AttributeError(
+                "%s does not have the attribute %r" % (target, name)
+            )
+E           AttributeError: <module 'app.services.user.profile_service' from 'C:\\Users\\egorribun\\Documents\\university_ecosystem\\app\\services\\user\\profile_service.py'> does not have the attribute 'ensure_mfa_relationships_loaded'
+
+C:\Python313\Lib\unittest\mock.py:1467: AttributeError
+_____________________ test_delete_avatar_without_existing _____________________
+
+service = <app.services.user_service.UserService object at 0x00000228BECC0E10>
+mock_db = <AsyncMock id='2374022843088'>
+mock_user = <MagicMock name='mock.get()' id='2374025217088'>
+
+    @pytest.mark.asyncio
+    async def test_delete_avatar_without_existing(service, mock_db, mock_user):
+        """Test delete_avatar when user has no avatar."""
+        mock_user.profile.avatar_url = None
+        mock_user.avatar_url = None
+        service.repo.get.return_value = mock_user
+    
+        with patch("app.services.user.media_service.delete_static_file") as mock_delete:
+>           with patch("app.services.user.profile_service.ensure_mfa_relationships_loaded"):
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_user_service.py:128: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Python313\Lib\unittest\mock.py:1497: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <unittest.mock._patch object at 0x00000228BEA668B0>
+
+    def get_original(self):
+        target = self.getter()
+        name = self.attribute
+    
+        original = DEFAULT
+        local = False
+    
+        try:
+            original = target.__dict__[name]
+        except (AttributeError, KeyError):
+            original = getattr(target, name, DEFAULT)
+        else:
+            local = True
+    
+        if name in _builtins and isinstance(target, ModuleType):
+            self.create = True
+    
+        if not self.create and original is DEFAULT:
+>           raise AttributeError(
+                "%s does not have the attribute %r" % (target, name)
+            )
+E           AttributeError: <module 'app.services.user.profile_service' from 'C:\\Users\\egorribun\\Documents\\university_ecosystem\\app\\services\\user\\profile_service.py'> does not have the attribute 'ensure_mfa_relationships_loaded'
+
+C:\Python313\Lib\unittest\mock.py:1467: AttributeError
+_______________________ test_delete_cover_with_existing _______________________
+
+service = <app.services.user_service.UserService object at 0x00000228BECC1A90>
+mock_db = <AsyncMock id='2374022842080'>
+mock_user = <MagicMock name='mock.get()' id='2374023078512'>
+
+    @pytest.mark.asyncio
+    async def test_delete_cover_with_existing(service, mock_db, mock_user):
+        """Test delete_cover when user has cover."""
+        mock_user.profile.cover_url = "/static/covers/test.jpg"
+        service.repo.get.return_value = mock_user
+    
+        with patch("app.services.user.media_service.delete_static_file") as mock_delete:
+>           with patch("app.services.user.profile_service.ensure_mfa_relationships_loaded"):
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_user_service.py:141: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Python313\Lib\unittest\mock.py:1497: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <unittest.mock._patch object at 0x00000228BEB7AC30>
+
+    def get_original(self):
+        target = self.getter()
+        name = self.attribute
+    
+        original = DEFAULT
+        local = False
+    
+        try:
+            original = target.__dict__[name]
+        except (AttributeError, KeyError):
+            original = getattr(target, name, DEFAULT)
+        else:
+            local = True
+    
+        if name in _builtins and isinstance(target, ModuleType):
+            self.create = True
+    
+        if not self.create and original is DEFAULT:
+>           raise AttributeError(
+                "%s does not have the attribute %r" % (target, name)
+            )
+E           AttributeError: <module 'app.services.user.profile_service' from 'C:\\Users\\egorribun\\Documents\\university_ecosystem\\app\\services\\user\\profile_service.py'> does not have the attribute 'ensure_mfa_relationships_loaded'
+
+C:\Python313\Lib\unittest\mock.py:1467: AttributeError
+_________________________ test_upload_avatar_success __________________________
+
+service = <app.services.user_service.UserService object at 0x00000228BEA67A80>
+mock_db = <AsyncMock id='2374023074816'>
+mock_user = <MagicMock name='mock.get()' id='2374025229520'>
+mock_request = <MagicMock id='2374025230528'>
+
+    @pytest.mark.asyncio
+    async def test_upload_avatar_success(service, mock_db, mock_user, mock_request):
+        """Test successful avatar upload."""
+        service.repo.get.return_value = mock_user
+        mock_file = MagicMock()
+        mock_file.content_type = "image/jpeg"
+    
+        # Create an updated user mock to return from repo.update
+        updated_user = MagicMock()
+        updated_user.profile.avatar_url = "/static/avatars/new.jpg"
+        service.repo.update.return_value = updated_user
+    
+        with patch("app.services.user.profile_service.resolve_locale", return_value="en"):
+            with patch(
+                "app.services.user.media_service.save_upload",
+                return_value="/static/avatars/new.jpg",
+            ):
+>               with patch(
+                    "app.services.user.profile_service.ensure_mfa_relationships_loaded"
+                ):
+
+tests\test_user_service.py:167: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Python313\Lib\unittest\mock.py:1497: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <unittest.mock._patch object at 0x00000228BEE9C450>
+
+    def get_original(self):
+        target = self.getter()
+        name = self.attribute
+    
+        original = DEFAULT
+        local = False
+    
+        try:
+            original = target.__dict__[name]
+        except (AttributeError, KeyError):
+            original = getattr(target, name, DEFAULT)
+        else:
+            local = True
+    
+        if name in _builtins and isinstance(target, ModuleType):
+            self.create = True
+    
+        if not self.create and original is DEFAULT:
+>           raise AttributeError(
+                "%s does not have the attribute %r" % (target, name)
+            )
+E           AttributeError: <module 'app.services.user.profile_service' from 'C:\\Users\\egorribun\\Documents\\university_ecosystem\\app\\services\\user\\profile_service.py'> does not have the attribute 'ensure_mfa_relationships_loaded'
+
+C:\Python313\Lib\unittest\mock.py:1467: AttributeError
+______________________ test_update_user_profile_success _______________________
+
+service = <app.services.user_service.UserService object at 0x00000228BEB79490>
+mock_db = <AsyncMock id='2374024363520'>
+mock_user = <MagicMock name='mock.get()' id='2374029116480'>
+mock_request = <MagicMock id='2374029117488'>
+
+    @pytest.mark.asyncio
+    async def test_update_user_profile_success(service, mock_db, mock_user, mock_request):
+        """Test successful profile update."""
+        service.repo.get.return_value = mock_user
+        data = MagicMock()
+        data.model_dump.return_value = {"full_name": "New Name"}
+    
+        with patch("app.services.user.profile_service.resolve_locale", return_value="en"):
+>           with patch("app.services.user.profile_service.ensure_mfa_relationships_loaded"):
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_user_service.py:247: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Python313\Lib\unittest\mock.py:1497: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <unittest.mock._patch object at 0x00000228BEB7D470>
+
+    def get_original(self):
+        target = self.getter()
+        name = self.attribute
+    
+        original = DEFAULT
+        local = False
+    
+        try:
+            original = target.__dict__[name]
+        except (AttributeError, KeyError):
+            original = getattr(target, name, DEFAULT)
+        else:
+            local = True
+    
+        if name in _builtins and isinstance(target, ModuleType):
+            self.create = True
+    
+        if not self.create and original is DEFAULT:
+>           raise AttributeError(
+                "%s does not have the attribute %r" % (target, name)
+            )
+E           AttributeError: <module 'app.services.user.profile_service' from 'C:\\Users\\egorribun\\Documents\\university_ecosystem\\app\\services\\user\\profile_service.py'> does not have the attribute 'ensure_mfa_relationships_loaded'
+
+C:\Python313\Lib\unittest\mock.py:1467: AttributeError
+____________________ test_update_user_profile_preferences _____________________
+
+service = <app.services.user_service.UserService object at 0x00000228BEA76E50>
+mock_db = <AsyncMock id='2374025221456'>
+mock_user = <MagicMock name='mock.get()' id='2374023072464'>
+mock_request = <MagicMock id='2374023078176'>
+
+    @pytest.mark.asyncio
+    async def test_update_user_profile_preferences(
+        service, mock_db, mock_user, mock_request
+    ):
+        """Test profile update with preferences fields."""
+        service.repo.get.return_value = mock_user
+        data = MagicMock()
+        data.model_dump.return_value = {"dnd_enabled": True, "timezone": "UTC"}
+    
+        with patch("app.services.user.profile_service.resolve_locale", return_value="en"):
+>           with patch("app.services.user.profile_service.ensure_mfa_relationships_loaded"):
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_user_service.py:300: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Python313\Lib\unittest\mock.py:1497: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <unittest.mock._patch object at 0x00000228BEBEB4D0>
+
+    def get_original(self):
+        target = self.getter()
+        name = self.attribute
+    
+        original = DEFAULT
+        local = False
+    
+        try:
+            original = target.__dict__[name]
+        except (AttributeError, KeyError):
+            original = getattr(target, name, DEFAULT)
+        else:
+            local = True
+    
+        if name in _builtins and isinstance(target, ModuleType):
+            self.create = True
+    
+        if not self.create and original is DEFAULT:
+>           raise AttributeError(
+                "%s does not have the attribute %r" % (target, name)
+            )
+E           AttributeError: <module 'app.services.user.profile_service' from 'C:\\Users\\egorribun\\Documents\\university_ecosystem\\app\\services\\user\\profile_service.py'> does not have the attribute 'ensure_mfa_relationships_loaded'
+
+C:\Python313\Lib\unittest\mock.py:1467: AttributeError
+_______________________ test_admin_update_user_success ________________________
+
+service = <app.services.user_service.UserService object at 0x00000228BF295020>
+mock_db = <AsyncMock id='2374024349072'>
+mock_admin_user = <MagicMock id='2374028575808'>
+mock_request = <MagicMock id='2374028577488'>
+mock_audit = <MagicMock id='2374028578160'>
+
+    @pytest.mark.asyncio
+    async def test_admin_update_user_success(
+        service, mock_db, mock_admin_user, mock_request, mock_audit
+    ):
+        """Test successful admin user update."""
+        data = MagicMock()
+        updated_user = MagicMock()
+        updated_user.id = 2
+    
+        service.repo.get.return_value = updated_user
+    
+        with patch("app.services.user.profile_service.resolve_locale", return_value="en"):
+>           with patch("app.services.user.profile_service.ensure_mfa_relationships_loaded"):
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_user_service.py:443: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Python313\Lib\unittest\mock.py:1497: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <unittest.mock._patch object at 0x00000228BEBEA5F0>
+
+    def get_original(self):
+        target = self.getter()
+        name = self.attribute
+    
+        original = DEFAULT
+        local = False
+    
+        try:
+            original = target.__dict__[name]
+        except (AttributeError, KeyError):
+            original = getattr(target, name, DEFAULT)
+        else:
+            local = True
+    
+        if name in _builtins and isinstance(target, ModuleType):
+            self.create = True
+    
+        if not self.create and original is DEFAULT:
+>           raise AttributeError(
+                "%s does not have the attribute %r" % (target, name)
+            )
+E           AttributeError: <module 'app.services.user.profile_service' from 'C:\\Users\\egorribun\\Documents\\university_ecosystem\\app\\services\\user\\profile_service.py'> does not have the attribute 'ensure_mfa_relationships_loaded'
+
+C:\Python313\Lib\unittest\mock.py:1467: AttributeError
+______________________ test_admin_update_user_mfa_reset _______________________
+
+service = <app.services.user_service.UserService object at 0x00000228BF2957B0>
+mock_db = <AsyncMock id='2374030432240'>
+mock_admin_user = <MagicMock id='2374029131856'>
+mock_request = <MagicMock id='2374029132192'>
+mock_audit = <MagicMock id='2374030437280'>
+
+    @pytest.mark.asyncio
+    async def test_admin_update_user_mfa_reset(
+        service, mock_db, mock_admin_user, mock_request, mock_audit
+    ):
+        """Test admin user update with MFA reset creates notification."""
+        data = MagicMock()
+        updated_user = MagicMock()
+        updated_user.id = 2
+        reset_stats = MagicMock()
+        reset_stats.changed = True
+    
+        updated_user.preferences = None
+        service.repo.get.return_value = updated_user
+        data.model_dump.return_value = {"reset_mfa": True}
+    
+        with patch("app.services.user.profile_service.resolve_locale", return_value="en"):
+            with patch("app.auth.mfa.reset_user_mfa", return_value=reset_stats):
+>               with patch(
+                    "app.services.user.profile_service.ensure_mfa_relationships_loaded"
+                ):
+
+tests\test_user_service.py:470: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Python313\Lib\unittest\mock.py:1497: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <unittest.mock._patch object at 0x00000228BEB7CE50>
+
+    def get_original(self):
+        target = self.getter()
+        name = self.attribute
+    
+        original = DEFAULT
+        local = False
+    
+        try:
+            original = target.__dict__[name]
+        except (AttributeError, KeyError):
+            original = getattr(target, name, DEFAULT)
+        else:
+            local = True
+    
+        if name in _builtins and isinstance(target, ModuleType):
+            self.create = True
+    
+        if not self.create and original is DEFAULT:
+>           raise AttributeError(
+                "%s does not have the attribute %r" % (target, name)
+            )
+E           AttributeError: <module 'app.services.user.profile_service' from 'C:\\Users\\egorribun\\Documents\\university_ecosystem\\app\\services\\user\\profile_service.py'> does not have the attribute 'ensure_mfa_relationships_loaded'
+
+C:\Python313\Lib\unittest\mock.py:1467: AttributeError
+_________________ test_update_user_profile_decomposed_fields __________________
+
+    @pytest.mark.asyncio
+    async def test_update_user_profile_decomposed_fields():
+        # Setup
+        db = AsyncMock()
+        repo = AsyncMock()
+        audit = MagicMock()
+        notifications = MagicMock()
+        MagicMock()
+        service = UserService(repo, audit, notifications)
+    
+        user = models.User(id=1, email="test@example.com")
+        repo.get.return_value = user
+    
+        update_data = schemas.UserProfileUpdate(
+            about="New about", institute="New institute", timezone="Europe/Moscow"
+        )
+        mock_res = MagicMock()
+        mock_res.scalars.return_value.first.return_value = None
+        db.execute.return_value = mock_res
+        request = MagicMock()
+    
+        # Mock return value for repo.update
+        updated_user_mock = MagicMock()
+        updated_user_mock.profile.about = "New about"
+        updated_user_mock.education_path.institute = "New institute"
+        updated_user_mock.preferences.timezone = "Europe/Moscow"
+        repo.update.return_value = updated_user_mock
+    
+        # Execute
+>       with patch(
+            "app.services.user.profile_service.attach_pending_email", new_callable=AsyncMock
+        ):
+
+tests\test_user_service_decomposed.py:39: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Python313\Lib\unittest\mock.py:1497: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <unittest.mock._patch object at 0x00000228BEBEB850>
+
+    def get_original(self):
+        target = self.getter()
+        name = self.attribute
+    
+        original = DEFAULT
+        local = False
+    
+        try:
+            original = target.__dict__[name]
+        except (AttributeError, KeyError):
+            original = getattr(target, name, DEFAULT)
+        else:
+            local = True
+    
+        if name in _builtins and isinstance(target, ModuleType):
+            self.create = True
+    
+        if not self.create and original is DEFAULT:
+>           raise AttributeError(
+                "%s does not have the attribute %r" % (target, name)
+            )
+E           AttributeError: <module 'app.services.user.profile_service' from 'C:\\Users\\egorribun\\Documents\\university_ecosystem\\app\\services\\user\\profile_service.py'> does not have the attribute 'attach_pending_email'
+
+C:\Python313\Lib\unittest\mock.py:1467: AttributeError
+____________________ test_update_user_profile_email_change ____________________
+
+    @pytest.mark.asyncio
+    async def test_update_user_profile_email_change():
+        # Setup
+        db = AsyncMock()
+        repo = AsyncMock()
+        audit = MagicMock()
+        notifications = MagicMock()
+        MagicMock()
+        service = UserService(repo, audit, notifications)
+    
+        user = models.User(id=1, email="old@example.com")
+        repo.get.return_value = user
+    
+        # Mock email uniqueness check
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_result.scalars.return_value.first.return_value = None
+        db.execute.return_value = mock_result
+        repo.check_email_exists.return_value = False
+    
+        update_data = schemas.UserProfileUpdate(email="new@example.com")
+        request = MagicMock()
+    
+        # Mock return value for repo.update
+        updated_user_mock = MagicMock()
+        updated_user_mock.email = "new@example.com"
+        repo.update.return_value = updated_user_mock
+    
+        # Execute
+>       with patch(
+            "app.services.user.profile_service.attach_pending_email", new_callable=AsyncMock
+        ):
+
+tests\test_user_service_decomposed.py:80: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Python313\Lib\unittest\mock.py:1497: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <unittest.mock._patch object at 0x00000228BF30AB30>
+
+    def get_original(self):
+        target = self.getter()
+        name = self.attribute
+    
+        original = DEFAULT
+        local = False
+    
+        try:
+            original = target.__dict__[name]
+        except (AttributeError, KeyError):
+            original = getattr(target, name, DEFAULT)
+        else:
+            local = True
+    
+        if name in _builtins and isinstance(target, ModuleType):
+            self.create = True
+    
+        if not self.create and original is DEFAULT:
+>           raise AttributeError(
+                "%s does not have the attribute %r" % (target, name)
+            )
+E           AttributeError: <module 'app.services.user.profile_service' from 'C:\\Users\\egorribun\\Documents\\university_ecosystem\\app\\services\\user\\profile_service.py'> does not have the attribute 'attach_pending_email'
+
+C:\Python313\Lib\unittest\mock.py:1467: AttributeError
+___________________ test_email_change_requires_confirmation ___________________
+
+async_client = <httpx.AsyncClient object at 0x00000228BF256C10>
+user_factory = <function user_factory.<locals>._factory at 0x00000228BF1589A0>
+db_session = <sqlalchemy.ext.asyncio.session.AsyncSession object at 0x00000228BF079400>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000228BF1399B0>
+
+    @pytest.mark.asyncio
+    async def test_email_change_requires_confirmation(
+        async_client, user_factory, db_session, monkeypatch
+    ):
+        password = "ConfirmEmail123!"
+        hashed = await get_password_hash(password)
+        user = await user_factory(
+            email="change-me@example.com",
+            hashed_password=hashed,
+            is_active=True,
+        )
+    
+        headers = await _login(async_client, user.email, password)
+    
+        token_value = "confirm-token"
+    
+        class FakeTask:
+            async def kiq(self, *args, **kwargs):
+                return
+    
+        monkeypatch.setattr(
+            "app.services.auth_service.secrets.token_urlsafe",
+            lambda *_args, **_kwargs: token_value,
+        )
+        monkeypatch.setattr("app.services.auth_service.send_auth_email", FakeTask())
+    
+        response = await async_client.post(
+            "/users/me/email",
+            json={"email": "new.confirm@example.com", "password": password},
+            headers=headers,
+        )
+    
+        assert response.status_code == 200
+        body = response.json()
+        assert body["email"] == "change-me@example.com"
+>       assert body.get("pending_email") == "new.confirm@example.com"
+E       AssertionError: assert None == 'new.confirm@example.com'
+E        +  where None = <built-in method get of dict object at 0x00000228BF3FBAC0>('pending_email')
+E        +    where <built-in method get of dict object at 0x00000228BF3FBAC0> = {'about': None, 'achievements': None, 'avatar_url': None, 'avatar_url_optimized': None, ...}.get
+
+tests\test_user_profile_update.py:134: AssertionError
+---------------------------- Captured stderr setup ----------------------------
+{"timestamp": "2026-02-22T23:52:53.834Z", "level": "INFO", "logger": "app.core.events", "message": "Domain event persistence listeners registered.", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-22T23:52:53.834Z", "level": "INFO", "logger": "app.services.event_handlers", "message": "Domain event handlers configured", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-22T23:52:53.845Z", "level": "INFO", "logger": "app.core.lifespan", "message": "Synchronously warming up PostgreSQL partitions to prevent cold start failures...", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-22T23:52:53.846Z", "level": "INFO", "logger": "app.services.cache_warmup", "message": "Cache warmup disabled, skipping", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-22T23:52:53.846Z", "level": "INFO", "logger": "app.workers.outbox", "message": "OutboxWorker started", "service_name": "university-ecosystem", "environment": "testing"}
+----------------------------- Captured log setup ------------------------------
+INFO     app.core.events:events.py:265 Domain event persistence listeners registered.
+INFO     app.services.event_handlers:event_handlers.py:167 Domain event handlers configured
+INFO     app.core.lifespan:lifespan.py:135 Synchronously warming up PostgreSQL partitions to prevent cold start failures...
+INFO     app.services.cache_warmup:cache_warmup.py:241 Cache warmup disabled, skipping
+INFO     app.workers.outbox:outbox.py:32 OutboxWorker started
+---------------------------- Captured stderr call -----------------------------
+{"timestamp": "2026-02-22T23:52:53.945Z", "level": "INFO", "logger": "app.auth", "message": "{\"event\": \"auth.login.success\", \"user_id\": \"019c8720-67fa-730f-aa48-e31dbf4befee\", \"request_id\": \"22811aff68bd4a35953e72940b7a21b3\", \"ip\": \"127.0.0.1\", \"path\": \"/api/v1/auth/login\", \"method\": \"POST\", \"reason\": \"authenticated\"}", "trace_id": "22811aff68bd4a35953e72940b7a21b3", "request_id": "22811aff68bd4a35953e72940b7a21b3", "service_name": "university-ecosystem", "environment": "testing", "event": "auth.login.success", "user_id": "019c8720-67fa-730f-aa48-e31dbf4befee", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+{"timestamp": "2026-02-22T23:52:53.952Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/auth/login \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-22T23:52:53.957Z", "level": "WARNING", "logger": "app.services.auth.redis_session", "message": "Failed to cache session 6ee88b6a-40b0-4f83-89a5-cad3857fd381 in Redis: WRONGTYPE Operation against a key holding the wrong kind of value", "trace_id": "03336f6e705f4e40ac625715907baf58", "request_id": "03336f6e705f4e40ac625715907baf58", "service_name": "university-ecosystem", "environment": "testing"}
+{"timestamp": "2026-02-22T23:52:54.004Z", "level": "INFO", "logger": "app.users.audit", "message": "{\"event\": \"users.email.change_requested\", \"user_id\": \"019c8720-67fa-730f-aa48-e31dbf4befee\", \"request_id\": \"03336f6e705f4e40ac625715907baf58\", \"ip\": \"127.0.0.1\", \"path\": \"/api/v1/users/me/email\", \"method\": \"POST\", \"reason\": \"pending_confirmation\"}", "trace_id": "03336f6e705f4e40ac625715907baf58", "request_id": "03336f6e705f4e40ac625715907baf58", "service_name": "university-ecosystem", "environment": "testing", "event": "users.email.change_requested", "user_id": "019c8720-67fa-730f-aa48-e31dbf4befee", "ip": "127.0.0.1", "path": "/api/v1/users/me/email", "method": "POST", "reason": "pending_confirmation"}
+{"timestamp": "2026-02-22T23:52:54.005Z", "level": "INFO", "logger": "httpx", "message": "HTTP Request: POST http://testserver/api/v1/users/me/email \"HTTP/1.1 200 OK\"", "service_name": "university-ecosystem", "environment": "testing"}
+------------------------------ Captured log call ------------------------------
+INFO     app.auth:audit_service.py:174 {"event": "auth.login.success", "user_id": "019c8720-67fa-730f-aa48-e31dbf4befee", "request_id": "22811aff68bd4a35953e72940b7a21b3", "ip": "127.0.0.1", "path": "/api/v1/auth/login", "method": "POST", "reason": "authenticated"}
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/api/v1/auth/login "HTTP/1.1 200 OK"
+WARNING  app.services.auth.redis_session:redis_session.py:66 Failed to cache session 6ee88b6a-40b0-4f83-89a5-cad3857fd381 in Redis: WRONGTYPE Operation against a key holding the wrong kind of value
+INFO     app.users.audit:audit_service.py:174 {"event": "users.email.change_requested", "user_id": "019c8720-67fa-730f-aa48-e31dbf4befee", "request_id": "03336f6e705f4e40ac625715907baf58", "ip": "127.0.0.1", "path": "/api/v1/users/me/email", "method": "POST", "reason": "pending_confirmation"}
+INFO     httpx:_client.py:1740 HTTP Request: POST http://testserver/api/v1/users/me/email "HTTP/1.1 200 OK"
+=========================== short test summary info ===========================
+FAILED tests/test_user_service.py::test_delete_avatar_with_existing - Attribu...
+FAILED tests/test_user_service.py::test_delete_avatar_without_existing - Attr...
+FAILED tests/test_user_service.py::test_delete_cover_with_existing - Attribut...
+FAILED tests/test_user_service.py::test_upload_avatar_success - AttributeErro...
+FAILED tests/test_user_service.py::test_update_user_profile_success - Attribu...
+FAILED tests/test_user_service.py::test_update_user_profile_preferences - Att...
+FAILED tests/test_user_service.py::test_admin_update_user_success - Attribute...
+FAILED tests/test_user_service.py::test_admin_update_user_mfa_reset - Attribu...
+FAILED tests/test_user_service_decomposed.py::test_update_user_profile_decomposed_fields
+FAILED tests/test_user_service_decomposed.py::test_update_user_profile_email_change
+FAILED tests/test_user_profile_update.py::test_email_change_requires_confirmation
+11 failed, 40 passed in 14.70s

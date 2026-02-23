@@ -1,10 +1,17 @@
 import * as v from "valibot"
 
-import type { components } from "@/api/generated/schema"
-import { apiClient } from "./client"
+import {
+  createNewsApiV1NewsPost,
+  deleteNewsApiV1NewsIdDelete,
+  getNewsApiV1NewsIdGet,
+  newsListApiV1NewsGet,
+  updateNewsApiV1NewsIdPatch,
+  uploadNewsImageApiV1NewsUploadImagePost,
+} from "@/api/generated"
+import type { NewsCreate, NewsOut, NewsUpdate } from "@/api/generated"
 import { ensureValidResponse } from "./validation"
 
-export type NewsItem = components["schemas"]["NewsOut"]
+export type NewsItem = NewsOut
 
 type FetchNewsOptions = {
   ifNoneMatch?: string | null
@@ -16,8 +23,8 @@ type FetchNewsItemOptions = {
   signal?: AbortSignal
 }
 
-export type CreateNewsPayload = components["schemas"]["NewsCreate"]
-export type UpdateNewsPayload = components["schemas"]["NewsUpdate"] | null
+export type CreateNewsPayload = NewsCreate
+export type UpdateNewsPayload = NewsUpdate | null
 
 const newsUploadResponseSchema = v.object({ url: v.pipe(v.string(), v.trim(), v.minLength(1)) })
 
@@ -46,21 +53,23 @@ export const parseNewsList = (data: unknown) =>
   ensureValidResponse(newsListSchema, data, "GET /api/v1/news")
 
 export const fetchNews = ({ ifNoneMatch, signal }: FetchNewsOptions = {}) =>
-  apiClient.get("/api/v1/news", {
+  newsListApiV1NewsGet({
     headers: ifNoneMatch ? { "if-none-match": ifNoneMatch } : undefined,
     signal,
-    validateStatus: (status) => status === 304 || (status >= 200 && status < 300),
+    // @ts-ignore - axios config extension
+    validateStatus: (status: number) => status === 304 || (status >= 200 && status < 300),
   })
 
 export const fetchNewsItem = async (
   id: string,
   { ifNoneMatch, signal }: FetchNewsItemOptions = {}
 ) => {
-  const response = await apiClient.get("/api/v1/news/{id}", {
-    pathParams: { id },
+  const response = await getNewsApiV1NewsIdGet({
+    path: { id },
     headers: ifNoneMatch ? { "if-none-match": ifNoneMatch } : undefined,
     signal,
-    validateStatus: (status) => status === 304 || (status >= 200 && status < 300),
+    // @ts-ignore - axios config extension
+    validateStatus: (status: number) => status === 304 || (status >= 200 && status < 300),
   })
   if (response.status !== 304) {
     applyParsedData(response, newsItemSchema, "GET /api/v1/news/{id}")
@@ -69,29 +78,30 @@ export const fetchNewsItem = async (
 }
 
 export const createNews = async (payload: CreateNewsPayload) => {
-  const response = await apiClient.post("/api/v1/news", payload)
+  const response = await createNewsApiV1NewsPost({
+    body: payload,
+  })
   applyParsedData(response, newsItemSchema, "POST /api/v1/news")
   return response
 }
 
 export const updateNews = async (id: string, payload: UpdateNewsPayload) => {
-  const response = await apiClient.patch("/api/v1/news/{id}", payload ?? undefined, {
-    pathParams: { id },
+  const response = await updateNewsApiV1NewsIdPatch({
+    path: { id },
+    body: payload ?? undefined,
   })
   applyParsedData(response, newsItemSchema, "PATCH /api/v1/news/{id}")
   return response
 }
 
 export const deleteNews = (id: string) =>
-  apiClient.delete("/api/v1/news/{id}", {
-    pathParams: { id },
+  deleteNewsApiV1NewsIdDelete({
+    path: { id },
   })
 
 export const uploadNewsImage = async (file: File) => {
-  const formData = new FormData()
-  formData.append("file", file)
-  const response = await apiClient.post("/api/v1/news/upload_image", formData, {
-    headers: { "Content-Type": "multipart/form-data" },
+  const response = await uploadNewsImageApiV1NewsUploadImagePost({
+    body: { file },
   })
   const parsed = ensureValidResponse(
     newsUploadResponseSchema,

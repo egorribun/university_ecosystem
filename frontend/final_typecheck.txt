@@ -1,0 +1,8 @@
+
+> frontend@1.0.0 typecheck
+> tsc --noEmit
+
+src/api/client.ts(3,8): error TS6133: 'AxiosInstance' is declared but its value is never read.
+src/api/client.ts(5,8): error TS6133: 'AxiosResponse' is declared but its value is never read.
+src/api/client.ts(40,32): error TS6205: All type parameters are unused.
+src/api/client.ts(166,11): error TS6133: 'T' is declared but its value is never read.

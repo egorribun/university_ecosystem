@@ -119,3 +119,16 @@ export function isAfter(a: DateInput, b: DateInput): boolean {
   return toDate(a).getTime() > toDate(b).getTime()
 }
 
+/**
+ * Formats a date to local date and time string.
+ */
+export function formatLocalDateTime(input: DateInput, locale = 'en-US'): string {
+  return formatDate(input, {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }, locale)
+}
+

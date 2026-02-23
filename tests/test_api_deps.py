@@ -32,7 +32,7 @@ async def test_get_current_user_no_token(mock_request, db_session):
 
 @pytest.mark.asyncio
 async def test_get_current_user_invalid_token(mock_request, db_session):
-    with patch("app.api.deps.decode_token", return_value=None):
+    with patch("app.services.auth.token_service.decode_token", return_value=None):
         with pytest.raises(HTTPException) as excinfo:
             await get_current_user(mock_request, "invalid-token", db_session)
     assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
@@ -41,7 +41,7 @@ async def test_get_current_user_invalid_token(mock_request, db_session):
 @pytest.mark.asyncio
 async def test_get_current_user_user_not_found(mock_request, db_session):
     payload = {"sub": "999", "jti": "some-jti"}
-    with patch("app.api.deps.decode_token", return_value=payload):
+    with patch("app.services.auth.token_service.decode_token", return_value=payload):
         with pytest.raises(HTTPException) as excinfo:
             await get_current_user(mock_request, "valid-token", db_session)
     assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
@@ -51,7 +51,7 @@ async def test_get_current_user_user_not_found(mock_request, db_session):
 async def test_get_current_user_inactive_user(mock_request, db_session, user_factory):
     user = await user_factory(is_active=False)
     payload = {"sub": str(user.id), "jti": "some-jti"}
-    with patch("app.api.deps.decode_token", return_value=payload):
+    with patch("app.services.auth.token_service.decode_token", return_value=payload):
         with pytest.raises(HTTPException) as excinfo:
             await get_current_user(mock_request, "valid-token", db_session)
     assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
@@ -61,7 +61,7 @@ async def test_get_current_user_inactive_user(mock_request, db_session, user_fac
 async def test_get_current_user_missing_jti(mock_request, db_session, user_factory):
     user = await user_factory(is_active=True)
     payload = {"sub": str(user.id)}  # No jti
-    with patch("app.api.deps.decode_token", return_value=payload):
+    with patch("app.services.auth.token_service.decode_token", return_value=payload):
         with pytest.raises(HTTPException) as excinfo:
             await get_current_user(mock_request, "valid-token", db_session)
     assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
@@ -82,7 +82,7 @@ async def test_get_current_user_revoked_session(mock_request, db_session, user_f
     await db_session.commit()
 
     payload = {"sub": str(user.id), "jti": jti}
-    with patch("app.api.deps.decode_token", return_value=payload):
+    with patch("app.services.auth.token_service.decode_token", return_value=payload):
         with pytest.raises(HTTPException) as excinfo:
             await get_current_user(mock_request, "valid-token", db_session)
     assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
@@ -100,7 +100,7 @@ async def test_get_current_user_expired_session(mock_request, db_session, user_f
     await db_session.commit()
 
     payload = {"sub": str(user.id), "jti": jti}
-    with patch("app.api.deps.decode_token", return_value=payload):
+    with patch("app.services.auth.token_service.decode_token", return_value=payload):
         with pytest.raises(HTTPException) as excinfo:
             await get_current_user(mock_request, "valid-token", db_session)
     assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
@@ -197,10 +197,13 @@ async def test_get_current_user_fingerprint_mismatch(
     mock_fp = MagicMock()
     mock_fp.fingerprint_hash = "different-hash"
 
-    with patch("app.api.deps.decode_token", return_value=payload):
-        with patch("app.auth.fingerprint.extract_fingerprint", return_value=mock_fp):
+    with patch("app.services.auth.token_service.decode_token", return_value=payload):
+        with patch(
+            "app.services.auth.fingerprint_service.extract_fingerprint",
+            return_value=mock_fp,
+        ):
             with patch(
-                "app.auth.fingerprint.get_suspicious_activity_detector"
+                "app.services.auth.fingerprint_service.get_suspicious_activity_detector"
             ) as mock_detector:
                 mock_det_inst = MagicMock()
                 mock_detector.return_value = mock_det_inst
@@ -218,7 +221,7 @@ async def test_get_current_user_fingerprint_mismatch(
 @pytest.mark.asyncio
 async def test_get_current_user_invalid_sub_type(mock_request, db_session):
     payload = {"sub": "abc", "jti": "some-jti"}
-    with patch("app.api.deps.decode_token", return_value=payload):
+    with patch("app.services.auth.token_service.decode_token", return_value=payload):
         with pytest.raises(HTTPException) as excinfo:
             await get_current_user(mock_request, "valid-token", db_session)
     assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
@@ -240,7 +243,7 @@ async def test_get_current_user_session_user_mismatch(
     await db_session.commit()
 
     payload = {"sub": str(user1.id), "jti": jti}  # Token for user1
-    with patch("app.api.deps.decode_token", return_value=payload):
+    with patch("app.services.auth.token_service.decode_token", return_value=payload):
         with pytest.raises(HTTPException) as excinfo:
             await get_current_user(mock_request, "valid-token", db_session)
     assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
@@ -261,7 +264,7 @@ async def test_get_current_user_mfa_ttl_expired(mock_request, db_session, user_f
     await db_session.commit()
 
     payload = {"sub": str(user.id), "jti": jti}
-    with patch("app.api.deps.decode_token", return_value=payload):
+    with patch("app.services.auth.token_service.decode_token", return_value=payload):
         with patch("app.api.deps.settings", MagicMock(mfa_step_up_ttl_seconds=300)):
             returned_user = await get_current_user(mock_request, "token", db_session)
             assert returned_user.id == user.id
@@ -287,7 +290,7 @@ async def test_get_current_user_last_seen_throttled(
     await db_session.commit()
 
     payload = {"sub": str(user.id), "jti": jti}
-    with patch("app.api.deps.decode_token", return_value=payload):
+    with patch("app.services.auth.token_service.decode_token", return_value=payload):
         await get_current_user(mock_request, "token", db_session)
         await db_session.refresh(session)
         # Compare actual values by stripping tzinfo if present,
@@ -343,7 +346,7 @@ async def test_get_chat_service(db_session):
 
     assert isinstance(service, ChatService)
     # The service delegates session management to the repository (architectural boundary).
-    assert service.repository.session == db_session
+    assert service.repository.db == db_session
 
 
 @pytest.mark.asyncio
@@ -375,7 +378,9 @@ async def test_get_current_user_no_expiration_mock(
 
         payload = {"sub": str(user.id), "jti": jti}
 
-        with patch("app.api.deps.decode_token", return_value=payload):
+        with patch(
+            "app.services.auth.token_service.decode_token", return_value=payload
+        ):
             # Mock the DB execution result
             mock_res_user = MagicMock()
             mock_res_user.first.return_value = (user, mock_session)
@@ -420,7 +425,7 @@ async def test_get_current_user_mfa_ttl_not_expired(
     await db_session.commit()
 
     payload = {"sub": str(user.id), "jti": jti}
-    with patch("app.api.deps.decode_token", return_value=payload):
+    with patch("app.services.auth.token_service.decode_token", return_value=payload):
         with patch("app.api.deps.settings", MagicMock(mfa_step_up_ttl_seconds=300)):
             returned_user = await get_current_user(mock_request, "token", db_session)
             assert returned_user.id == user.id

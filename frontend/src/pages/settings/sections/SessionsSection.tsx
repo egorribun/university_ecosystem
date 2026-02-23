@@ -12,20 +12,11 @@ import {
 } from "@/components/settings"
 
 import type { SettingsSectionProps } from "@/pages/settings/types"
-
-interface ActiveSession {
-  id: string
-  user_agent?: string | null
-  ip_address?: string | null
-  created_at: string
-  last_seen_at?: string | null
-  revoked_at?: string | null
-  is_current: boolean
-}
+import type { ActiveSessionOut } from "@/api/generated"
 
 interface SessionsSectionProps extends SettingsSectionProps {
-  sessions: ActiveSession[]
-  sortedSessions: ActiveSession[]
+  sessions: ActiveSessionOut[]
+  sortedSessions: ActiveSessionOut[]
   sessionsFetching: boolean
   sessionsErrorMessage: string | null
   revokeAllPending: boolean

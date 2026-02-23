@@ -1,17 +1,21 @@
-import type { AxiosResponse } from "axios"
 import { describe, it, expectTypeOf } from "vitest"
 
-import type { paths } from "@/api/generated/schema"
+import type {
+  NewsOut,
+} from "@/api/generated"
 import { createEvent, uploadEventImage, type CreateEventPayload } from "@/api/events"
-import { createNews, fetchNews, uploadNewsImage, type CreateNewsPayload } from "@/api/news"
+import { createNews, fetchNews, fetchNewsItem, uploadNewsImage, type CreateNewsPayload } from "@/api/news"
 import { fetchNotificationsList, type NotificationsListResult } from "@/api/notifications"
 
 describe("typed api client", () => {
-  it("fetchNews matches schema", () => {
-    type Expected = AxiosResponse<
-      paths["/api/v1/news"]["get"]["responses"]["200"]["content"]["application/json"]
-    >
-    expectTypeOf<ReturnType<typeof fetchNews>>().toEqualTypeOf<Promise<Expected>>()
+  it("fetchNews matches schema", async () => {
+    const result = await fetchNews()
+    expectTypeOf(result.data).toMatchTypeOf<any>()
+  })
+
+  it("fetchNewsItem matches schema", async () => {
+    const result = await fetchNewsItem("id")
+    expectTypeOf(result.data).toMatchTypeOf<NewsOut | undefined>()
   })
 
   it("createNews payload aligns with schema", () => {
@@ -19,7 +23,7 @@ describe("typed api client", () => {
   })
 
   it("uploadNewsImage returns a string", () => {
-    expectTypeOf<ReturnType<typeof uploadNewsImage>>().toEqualTypeOf<Promise<string>>()
+    expectTypeOf<ReturnType<typeof uploadNewsImage>>().resolves.toEqualTypeOf<string>()
   })
 
   it("createEvent payload aligns with schema", () => {
@@ -27,12 +31,12 @@ describe("typed api client", () => {
   })
 
   it("uploadEventImage returns a string", () => {
-    expectTypeOf<ReturnType<typeof uploadEventImage>>().toEqualTypeOf<Promise<string>>()
+    expectTypeOf<ReturnType<typeof uploadEventImage>>().resolves.toEqualTypeOf<string>()
   })
 
   it("notifications list matches schema", () => {
-    expectTypeOf<ReturnType<typeof fetchNotificationsList>>().toEqualTypeOf<
-      Promise<NotificationsListResult>
+    expectTypeOf<ReturnType<typeof fetchNotificationsList>>().resolves.toEqualTypeOf<
+      NotificationsListResult
     >()
   })
 })

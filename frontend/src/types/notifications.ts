@@ -1,7 +1,11 @@
-import type { components } from "@/api/generated/schema"
+import type {
+  AdminUserTopicsResponse,
+  PushSubscriptionOut,
+  SendTestResponse,
+} from "@/api/generated"
 
-export type PushSubscriptionResponse = components["schemas"]["PushSubscriptionOut"]
-export type SendTestNotificationResponse = components["schemas"]["SendTestResponse"]
+export type PushSubscriptionResponse = PushSubscriptionOut
+export type SendTestNotificationResponse = SendTestResponse
 
 export type PushTopicsResponse = {
   allowed: string[]
@@ -10,10 +14,4 @@ export type PushTopicsResponse = {
   updated_at?: string | null
 }
 
-export type AdminUserTopicsResponse = {
-  user_id: string
-  email: string
-  topics: string[]
-  allowed_topics: string[]
-  updated_at?: string | null
-}
+export type { AdminUserTopicsResponse }

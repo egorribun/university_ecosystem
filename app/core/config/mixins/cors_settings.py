@@ -6,6 +6,8 @@ from functools import cached_property
 from typing import Any
 from urllib.parse import urlparse
 
+from pydantic import ValidationInfo, field_validator
+
 from app.core.config.base import _coerce_str_list
 
 
@@ -38,6 +40,32 @@ class CorsSettingsMixin:
     internal_allowed_ips: str | list[str] = "127.0.0.1,::1"
     internal_auth_header: str = "X-Internal-Token"
     internal_auth_token: str | None = None
+
+    @field_validator("internal_auth_token")
+    @classmethod
+    def _validate_internal_auth_token(
+        cls, value: str | None, info: ValidationInfo
+    ) -> str | None:
+        # Require token in production to prevent IP-only access (spoofable)
+        if not value:
+            import os
+
+            from app.core.config.base import _DEVELOPMENT_ENVIRONMENTS
+
+            env = (
+                info.data.get("environment")
+                or os.environ.get("ENVIRONMENT", "development")
+            ).lower()
+            if env not in _DEVELOPMENT_ENVIRONMENTS:
+                import logging
+
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    "INTERNAL_AUTH_TOKEN is not set in %s environment. "
+                    "Internal API routes are vulnerable to IP spoofing.",
+                    env,
+                )
+        return value
 
     @cached_property
     def frontend_origins_list(self) -> list[str]:
