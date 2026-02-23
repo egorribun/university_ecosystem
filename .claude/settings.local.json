@@ -4,7 +4,17 @@
       "Bash(find:*)",
       "Bash(git -C /c/Users/egorribun/Documents/university_ecosystem/.claude/worktrees/cool-lalande log --oneline --all -- \"*.env*\" \".env.docker\")",
       "Bash(git -C /c/Users/egorribun/Documents/university_ecosystem/.claude/worktrees/cool-lalande log:*)",
-      "Bash(git -C /c/Users/egorribun/Documents/university_ecosystem/.claude/worktrees/cool-lalande show HEAD:.gitignore)"
+      "Bash(git -C /c/Users/egorribun/Documents/university_ecosystem/.claude/worktrees/cool-lalande show HEAD:.gitignore)",
+      "mcp__plugin_serena_serena__list_dir",
+      "mcp__plugin_serena_serena__activate_project",
+      "Bash(xargs ls:*)",
+      "Bash(xargs cat:*)",
+      "mcp__plugin_serena_serena__get_symbols_overview",
+      "mcp__plugin_serena_serena__find_file",
+      "Bash(grep:*)",
+      "Bash(python -c:*)",
+      "Bash(curl:*)",
+      "mcp__plugin_serena_serena__replace_content"
     ]
   }
 }

@@ -185,9 +185,22 @@ dev = [
     "hypothesis>=6.112",
     "mypy>=1.11",
     "pre-commit>=3.8",
+    "bandit[toml]>=1.8",
     "pytest>=8.3",
     "pytest-asyncio>=0.23",
     "pytest-cov>=5",
     "pytest-xdist>=3.5",
-    "ruff>=0.2",
+    "ruff>=0.15",
+]
+
+[tool.bandit]
+# Bandit static analysis security scanner.
+# Runs via pre-commit on app/ (excluding tests/).
+targets = ["app"]
+exclude_dirs = ["tests", "alembic"]
+skips = [
+    # B101: assert — acceptable in non-production guard code.
+    "B101",
+    # B104: bind all interfaces — uvicorn does this intentionally (0.0.0.0).
+    "B104",
 ]

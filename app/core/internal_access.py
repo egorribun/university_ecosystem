@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from fastapi import status
@@ -10,6 +11,8 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
     from starlette.requests import Request
+
+_logger = logging.getLogger(__name__)
 
 
 class InternalAccessMiddleware(BaseHTTPMiddleware):
@@ -45,14 +48,21 @@ class InternalAccessMiddleware(BaseHTTPMiddleware):
 
         # 2. Check for IP (Secondary / Legacy)
         if self._is_allowed_ip(request):
-            # Log a warning that IP-only access is being used
+            # IP-only access is a fallback path — always audit it so operators
+            # know it is being exercised and can migrate callers to token auth.
+            client_ip = request.client.host if request.client else "unknown"
+            _logger.warning(
+                "Internal API accessed via IP-only allowlist (no token). "
+                "Migrate caller to header-token authentication. "
+                "ip=%s path=%s method=%s",
+                client_ip,
+                path,
+                request.method,
+            )
             return await call_next(request)
 
         # 3. Deny if neither matches
-        import logging
-
-        logger = logging.getLogger(__name__)
-        logger.warning(
+        _logger.warning(
             "Internal API access denied for %s at %s. No valid token provided.",
             request.client.host if request.client else "unknown",
             path,
@@ -77,7 +87,6 @@ class InternalAccessMiddleware(BaseHTTPMiddleware):
         provided = request.headers.get(self.header_name)
         if not provided:
             return False
-        # Use constant-time comparison to prevent timing attacks
         import secrets
 
         return secrets.compare_digest(provided, self.header_token)

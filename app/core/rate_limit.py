@@ -83,27 +83,53 @@ def parse_rate_limit(
     return count, seconds
 
 
-# Fixed Window Counter Script (O(1))
-# KEYS[1]: key
-# ARGV[1]: limit
-# ARGV[2]: window_ms
+# ---------------------------------------------------------------------------
+# Sliding Window Log via Redis Sorted Set (O(log N))
+#
+# Compared to Fixed Window Counter this algorithm eliminates the "boundary
+# burst" vulnerability where an attacker can send 2×limit requests in the
+# span of a single millisecond by straddling two consecutive windows.
+#
+# KEYS[1]  : rate-limit key (namespaced externally)
+# ARGV[1]  : limit          (max requests per window)
+# ARGV[2]  : now_ms         (current epoch time in milliseconds)
+# ARGV[3]  : window_ms      (window size in milliseconds)
+#
+# Returns: {allowed (0/1), remaining, retry_after_ms}
+# ---------------------------------------------------------------------------
 _RATE_LIMIT_SCRIPT = """
-local key = KEYS[1]
-local limit = tonumber(ARGV[1])
-local window = tonumber(ARGV[2])
+local key       = KEYS[1]
+local limit     = tonumber(ARGV[1])
+local now_ms    = tonumber(ARGV[2])
+local window_ms = tonumber(ARGV[3])
+local cutoff    = now_ms - window_ms
 
-local current = redis.call("INCR", key)
-if current == 1 then
-    redis.call("PEXPIRE", key, window)
+-- 1. Evict requests that have fallen outside the sliding window.
+redis.call("ZREMRANGEBYSCORE", key, "-inf", cutoff)
+
+-- 2. Count requests still inside the window.
+local current = redis.call("ZCARD", key)
+
+if current >= limit then
+    -- Oldest request in the set tells us when the window will free a slot.
+    local oldest = redis.call("ZRANGE", key, 0, 0, "WITHSCORES")
+    local retry_after_ms = 0
+    if #oldest >= 2 then
+        local oldest_ts = tonumber(oldest[2])
+        retry_after_ms = math.max(0, (oldest_ts + window_ms) - now_ms)
+    end
+    return {0, 0, retry_after_ms}
 end
 
-if current > limit then
-    local ttl = redis.call("PTTL", key)
-    if ttl < 0 then ttl = 0 end
-    return {0, 0, ttl}
-end
+-- 3. Record the current request with a unique member to allow multiple
+--    requests within the same millisecond (e.g. concurrent load tests).
+local member = tostring(now_ms) .. ":" .. tostring(math.random(0, 999999))
+redis.call("ZADD", key, now_ms, member)
 
-local remaining = limit - current
+-- 4. Set the key TTL to window_ms so Redis cleans up idle keys automatically.
+redis.call("PEXPIRE", key, window_ms)
+
+local remaining = limit - current - 1
 return {1, remaining, 0}
 """
 
@@ -552,13 +578,16 @@ async def _redis_rate_limit(
     client = await _get_shared_client(redis_url)
 
     window_ms = max(int(window_seconds * 1000), 1)
+    # Current time in milliseconds — passed as ARGV so the Lua script
+    # uses the same clock as the Python process (avoids Redis TIME skew).
+    now_ms = int(time.time() * 1000)
     redis_key = f"rate-limit:{key}"
 
     try:
         from collections.abc import Awaitable
         from typing import Any, cast
 
-        # returns [allowed (0/1), remaining, retry_after_ms]
+        # Sliding Window Log script — returns [allowed (0/1), remaining, retry_after_ms]
         result = await cast(
             Awaitable[Any],
             client.eval(
@@ -566,12 +595,14 @@ async def _redis_rate_limit(
                 1,
                 redis_key,
                 limit,
+                now_ms,
                 window_ms,
             ),
         )
     except RedisError as exc:
         if "unknown command" not in str(exc).lower():
             raise
+        # Fallback: fixed-window pipeline (Redis EVAL unavailable, e.g. Redis Cluster mode)
         info = await _redis_rate_limit_fallback(client, redis_key, window_ms, limit)
         return info
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"net"
 	"net/http"
@@ -284,10 +285,27 @@ func authFunc(secret string, logger *zap.Logger) auth.AuthFunc {
 	}
 }
 func initTracer(ctx context.Context, cfg *config.Config) (*sdktrace.TracerProvider, error) {
-	exporter, err := otlptracegrpc.New(ctx,
-		otlptracegrpc.WithInsecure(),
-		otlptracegrpc.WithEndpoint("jaeger:4317"),
-	)
+	endpoint := cfg.OTLPEndpoint
+	if endpoint == "" {
+		endpoint = "jaeger:4317"
+	}
+
+	var opts []otlptracegrpc.Option
+	opts = append(opts, otlptracegrpc.WithEndpoint(endpoint))
+
+	if cfg.OTLPInsecure {
+		// Development / local Docker Compose: no TLS.
+		// NEVER set OTLP_INSECURE=true in production environments.
+		opts = append(opts, otlptracegrpc.WithInsecure())
+	} else {
+		// Production: enforce TLS.  The default TLS config uses the system CA
+		// pool; override with a custom CA via OTLP_CA_FILE if needed.
+		opts = append(opts, otlptracegrpc.WithTLSClientConfig(&tls.Config{
+			MinVersion: tls.VersionTLS12,
+		}))
+	}
+
+	exporter, err := otlptracegrpc.New(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}

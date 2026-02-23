@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api.internal import INTERNAL_ROUTE_PREFIXES
+from app.core.csrf import CSRFMiddleware
 from app.core.internal_access import InternalAccessMiddleware
 from app.core.rate_limit import RateLimitMiddleware, parse_rate_limit
 from app.core.security_headers import SecurityHeadersMiddleware
@@ -65,6 +66,20 @@ def configure_middleware(app: FastAPI, settings: Settings) -> None:
         )
 
     app.add_middleware(SecurityHeadersMiddleware, settings=settings)
+
+    # CSRF double-submit cookie protection for browser-based clients.
+    # Exempt: /ws (WebSocket), /internal (token-guarded), OAuth token endpoint.
+    # Bearer-token callers are auto-exempted inside CSRFMiddleware.dispatch().
+    app.add_middleware(
+        CSRFMiddleware,
+        exempt_prefixes=(
+            "/internal",
+            "/api/v2/auth/token",    # OAuth2 password/refresh grant
+            "/api/v2/auth/webauthn", # WebAuthn challenge/response flow
+        ),
+        cookie_secure=settings.cookie_secure,
+        cookie_samesite=settings.cookie_samesite,
+    )
 
     app.add_middleware(
         InternalAccessMiddleware,

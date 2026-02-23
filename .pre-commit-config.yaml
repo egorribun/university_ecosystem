@@ -1,6 +1,6 @@
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.7.3
+    rev: v0.15.2
     hooks:
       - id: ruff
         name: ruff check
@@ -16,10 +16,35 @@ repos:
         name: ruff format
 
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.18.3
+    rev: v8.30.0
     hooks:
       - id: gitleaks
         args: ["protect", "--staged"]
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.3
+    hooks:
+      - id: bandit
+        name: bandit security scan
+        # Config lives in [tool.bandit] inside pyproject.toml.
+        args: ["-c", "pyproject.toml"]
+        files: ^app/
+        exclude: ^tests/
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.15.0
+    hooks:
+      - id: mypy
+        name: mypy type check
+        args: ["--config-file", "pyproject.toml"]
+        additional_dependencies:
+          - pydantic>=2
+          - pydantic-settings>=2
+          - types-redis
+          - types-passlib
+        files: ^app/
+        # Run on the whole package to avoid cross-module false positives.
+        pass_filenames: false
 
   - repo: local
     hooks:

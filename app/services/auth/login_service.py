@@ -464,11 +464,16 @@ class LoginService:
         return methods
 
     def _extract_client_info(self, request: Request) -> tuple[str | None, str | None]:
-        forwarded_for = request.headers.get("x-forwarded-for")
-        if forwarded_for:
-            client_ip = forwarded_for.split(",")[0].strip() or None
-        else:
-            client_ip = request.client.host if request.client else None
+        """Extract real client IP and user-agent from the request.
+
+        Uses the centralised ``resolve_client_ip`` helper which respects the
+        configured ``TRUSTED_PROXIES`` list.  This prevents X-Forwarded-For
+        spoofing: an attacker prepending an arbitrary IP to the header is
+        ignored unless the actual connecting IP is a trusted proxy.
+        """
+        from app.core.rate_limit import resolve_client_ip
+
+        client_ip: str | None = resolve_client_ip(request) or None
         user_agent = request.headers.get("user-agent")
         return client_ip, user_agent
 

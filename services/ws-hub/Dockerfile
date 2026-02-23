@@ -19,7 +19,10 @@ RUN go mod download
 COPY services/ws-hub .
 
 # Build
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o ws-hub .
+RUN CGO_ENABLED=0 GOOS=linux go build \
+  -trimpath \
+  -ldflags="-w -s -buildid=" \
+  -o ws-hub .
 
 # Runtime stage
 FROM alpine:3.21.2

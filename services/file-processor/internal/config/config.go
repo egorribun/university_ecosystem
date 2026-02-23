@@ -20,6 +20,13 @@ type Config struct {
 	JWTSecret      string `mapstructure:"jwt_secret"`
 	SentryDSN      string `mapstructure:"sentry_dsn"`
 	Environment    string `mapstructure:"environment"`
+
+	// OTLPEndpoint is the OpenTelemetry collector gRPC endpoint.
+	// Defaults to jaeger:4317 for local development.
+	OTLPEndpoint string `mapstructure:"otlp_endpoint"`
+	// OTLPInsecure disables TLS for the OTLP exporter.
+	// MUST be false in production — use TLS with a trusted CA or mTLS.
+	OTLPInsecure bool `mapstructure:"otlp_insecure"`
 }
 
 // Load loads the configuration from environment variables using Viper
@@ -49,6 +56,13 @@ func Load() (*Config, error) {
 	_ = viper.BindEnv("jwt_secret", "JWT_SECRET")
 	_ = viper.BindEnv("sentry_dsn", "SENTRY_DSN")
 	_ = viper.BindEnv("environment", "VITE_ENVIRONMENT")
+	_ = viper.BindEnv("otlp_endpoint", "OTLP_ENDPOINT")
+	_ = viper.BindEnv("otlp_insecure", "OTLP_INSECURE")
+
+	viper.SetDefault("otlp_endpoint", "jaeger:4317")
+	// Default to insecure only in development; production deployments must
+	// set OTLP_INSECURE=false and provide a valid TLS CA / cert-manager cert.
+	viper.SetDefault("otlp_insecure", true)
 
 	var cfg Config
 	if err := viper.Unmarshal(&cfg); err != nil {

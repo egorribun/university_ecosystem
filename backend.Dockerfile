@@ -19,8 +19,8 @@ RUN --mount=type=cache,id=apt-lists-builder,target=/var/lib/apt/lists \
        curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv accurately
-COPY --from=ghcr.io/astral-sh/uv:0.5.21 /uv /uv/bin/uv
+# Pin uv to an exact version for reproducible builds.
+COPY --from=ghcr.io/astral-sh/uv:0.10.4 /uv /uv/bin/uv
 ENV PATH="/uv/bin:$PATH" \
     UV_PROJECT_ENVIRONMENT="/opt/venv"
 
@@ -34,6 +34,8 @@ FROM python:3.13.1-slim-bookworm AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    # Dump a Python traceback on SIGSEGV/SIGFPE/SIGABRT/SIGBUS/SIGILL — aids debugging.
+    PYTHONFAULTHANDLER=1 \
     PATH="/opt/venv/bin:$PATH"
 
 WORKDIR /app
