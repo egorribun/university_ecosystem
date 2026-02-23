@@ -342,9 +342,7 @@ def _configure_otel(engine: AsyncEngine) -> TracerProvider | None:
     # Propagate both trace context and W3C Baggage across service boundaries
     # (FastAPI → Go gateway → WS-hub). Must be set after the tracer provider.
     set_global_textmap(
-        CompositePropagator(
-            [TraceContextTextMapPropagator(), W3CBaggagePropagator()]
-        )
+        CompositePropagator([TraceContextTextMapPropagator(), W3CBaggagePropagator()])
     )
 
     meter_readers = []

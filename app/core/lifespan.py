@@ -30,9 +30,9 @@ async def lifespan(app: FastAPI):
 
     configure_database()
 
-    from dishka.integrations.fastapi import setup_dishka  # noqa: PLC0415
+    from dishka.integrations.fastapi import setup_dishka
 
-    from app.core.di_provider import create_dishka_container  # noqa: PLC0415
+    from app.core.di_provider import create_dishka_container
 
     setup_dishka(create_dishka_container(), app)
 
